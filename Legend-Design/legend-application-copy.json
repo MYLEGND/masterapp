@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-f23a5a4d392ad0f2",
+  "catalogVersion": "application-copy-v1-d2334d471ec08240",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -9974,6 +9974,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.31e3de3f5dcec991c299e419",
+      "source": "Attachment unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "5d5a151493f379ee",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7b77d749c2439f9fb7d1531b",
+      "source": "Attachment upload was not acknowledged.",
+      "context": "visual interface copy",
+      "sourceRevision": "2490047de3ca2372",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.f7094a8524a458d9d1fca519",
       "source": "Attachments remain unavailable until malware scanning marks them clean.",
       "context": "visual interface copy",
@@ -13355,6 +13377,17 @@
       "source": "Choose a language",
       "context": "visual interface copy",
       "sourceRevision": "f8416d793a642faa",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.98d25ce1709f0e70e16aa6d8",
+      "source": "Choose a reaction",
+      "context": "visual interface copy",
+      "sourceRevision": "3eb7065dfe9e3cb0",
       "placeholders": [
 
       ],
@@ -20297,6 +20330,17 @@
       "source": "Emergency Reserves",
       "context": "visual interface copy",
       "sourceRevision": "349367e177277f98",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a8e5b1cfcdb4a7d98fca46e4",
+      "source": "Emoji",
+      "context": "visual interface copy",
+      "sourceRevision": "61ad8976e650e153",
       "placeholders": [
 
       ],
@@ -30978,6 +31022,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a3955bd1cad2313631a05a12",
+      "source": "Message has not been acknowledged.",
+      "context": "visual interface copy",
+      "sourceRevision": "0d591841fa578e09",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8c97e53798ebb3cba65422c2",
       "source": "Message not sent",
       "context": "visual interface copy",
@@ -31763,6 +31818,17 @@
       "source": "Months Covered",
       "context": "visual interface copy",
       "sourceRevision": "9d25a9b73b6d82fc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.35b1fdf7a481b9ef792a9b43",
+      "source": "More reactions",
+      "context": "visual interface copy",
+      "sourceRevision": "729a37ee3af55a56",
       "placeholders": [
 
       ],
@@ -35273,6 +35339,17 @@
       "source": "Open or refresh to generate snapshot.",
       "context": "visual interface copy",
       "sourceRevision": "ffa3f27274a5fbd4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6237468da345e01d01b78f93",
+      "source": "Open or share attachments",
+      "context": "visual interface copy",
+      "sourceRevision": "5154757b7df8a98e",
       "placeholders": [
 
       ],
@@ -39724,6 +39801,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.33e92f7bb09e049fcef428a1",
+      "source": "React",
+      "context": "visual interface copy",
+      "sourceRevision": "01fad993ff61aca9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.46043b32cabaf1fb731283e8",
+      "source": "Reaction unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "9822d61a8c9e3c82",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.aa00505f91d7355e7b1fb30a",
       "source": "Read",
       "context": "visual interface copy",
@@ -40729,6 +40828,17 @@
       "source": "Remove override",
       "context": "visual interface copy",
       "sourceRevision": "6d43eea1425fd306",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.39a0beb328cf836faf650fe0",
+      "source": "Remove reaction",
+      "context": "visual interface copy",
+      "sourceRevision": "f7b22e519bdc79eb",
       "placeholders": [
 
       ],
@@ -45026,6 +45136,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c6bca0ba81608ca76734e079",
+      "source": "Share attachment",
+      "context": "visual interface copy",
+      "sourceRevision": "792231ab34b9ab4d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0c33b51820911753f8938b52",
+      "source": "Share content",
+      "context": "visual interface copy",
+      "sourceRevision": "3728a29d2d4cbabb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e97f9ac3c7f3f95a0e07f16f",
       "source": "Share message",
       "context": "visual interface copy",
@@ -45152,6 +45284,28 @@
       "source": "Shared client planning view synced with the connected Client Portal workspace.",
       "context": "visual interface copy",
       "sourceRevision": "fc3e990d8ca3531c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.313112f0dc55e75a052a8e81",
+      "source": "Shared content",
+      "context": "visual interface copy",
+      "sourceRevision": "c42aceea28de3945",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.dc58fce9941d6ad4ef38ab68",
+      "source": "Shared content is unavailable.",
+      "context": "visual interface copy",
+      "sourceRevision": "4970ea0729341953",
       "placeholders": [
 
       ],

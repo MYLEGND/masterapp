@@ -1,10 +1,7 @@
-using System.Diagnostics;
-using System.Text.Json;
 using AgentPortal.Security;
 using AgentPortal.Services;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgentPortal.Mobile;
@@ -17,8 +14,6 @@ namespace AgentPortal.Mobile;
 [TypeFilter(typeof(MobileApiExceptionFilter))]
 public sealed class MobileFounderAiController : MobileApiControllerBase
 {
-    private const string OperationHeader = "X-Legend-Ai-Operation-Id";
-    private static readonly JsonSerializerOptions StreamJsonOptions = new(JsonSerializerDefaults.Web);
     private readonly LegendFounderAiConversationService _conversation;
     private readonly LegendFounderAiProgressBroker _progress;
     private readonly ILogger<MobileFounderAiController> _logger;
@@ -43,41 +38,15 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
         return Ok(new MobileFounderAiAccessResponse(Available: true));
     }
 
+    private LegendFounderAiHttpTransport Transport => new(HttpContext, _conversation, _progress, _logger);
+
     [HttpGet("progress/{operationId:guid}")]
     public async Task Progress(Guid operationId, CancellationToken cancellationToken)
     {
         if (!FounderGuard.IsFounder(User)) { Response.StatusCode = StatusCodes.Status403Forbidden; return; }
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null || resolved.Actor is null) { Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
-
-        Response.StatusCode = StatusCodes.Status200OK;
-        Response.ContentType = "application/x-ndjson; charset=utf-8";
-        Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-        Response.Headers["X-Accel-Buffering"] = "no";
-        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
-
-        var reader = _progress.Subscribe(User, operationId);
-        var started = Stopwatch.GetTimestamp();
-        LegendFounderAiProgressEvent? last = null;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var wait = reader.WaitToReadAsync(cancellationToken).AsTask();
-            var heartbeat = Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-            var completed = await Task.WhenAny(wait, heartbeat);
-            if (completed == heartbeat)
-            {
-                if (last is not null)
-                    await WriteAsync(new { type = "heartbeat", elapsedSeconds = (int)Math.Round(Stopwatch.GetElapsedTime(started).TotalSeconds), progress = last }, cancellationToken);
-                continue;
-            }
-            if (!await wait) break;
-            while (reader.TryRead(out var update))
-            {
-                last = update;
-                await WriteAsync(new { type = "progress", progress = update }, cancellationToken);
-            }
-        }
+        await Transport.ProgressAsync(operationId, cancellationToken);
     }
 
     [HttpPost("chat")]
@@ -86,56 +55,7 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null || resolved.Actor is null) return resolved.Error!;
-        var operationId = ReadOperationId();
-        try
-        {
-            var result = await _conversation.ReplyAsync(
-                User,
-                request,
-                cancellationToken,
-                operationId.HasValue
-                    ? (update, token) => _progress.PublishAsync(User, operationId.Value, update, token)
-                    : null);
-            return Ok(result);
-        }
-        catch (ForbidResultException) { return Forbid(); }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // A mobile Stop action cancels the original HTTP request.  The
-            // conversation service receives that same token, so there is no
-            // background responder or mutation to keep running after it.
-            _logger.LogInformation(
-                "LEGEND Founder AI mobile conversation was cancelled by the client. OperationId={OperationId}",
-                operationId);
-            return new EmptyResult();
-        }
-        catch (Exception exception)
-        {
-            _logger.LogError(exception, "LEGEND Founder AI mobile conversation failed.");
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                new MobileApiErrorResponse(
-                    "legend_founder_ai_failed",
-                    "LEGEND® Ai encountered an unexpected server error.",
-                    CorrelationId(),
-                    new Dictionary<string, string[]>()));
-        }
-        finally
-        {
-            if (operationId.HasValue) _progress.Complete(User, operationId.Value);
-        }
-    }
-
-    private Guid? ReadOperationId()
-    {
-        if (!Request.Headers.TryGetValue(OperationHeader, out var values)) return null;
-        return Guid.TryParse(values.ToString(), out var parsed) && parsed != Guid.Empty ? parsed : null;
-    }
-
-    private async ValueTask WriteAsync(object value, CancellationToken cancellationToken)
-    {
-        await Response.WriteAsync(JsonSerializer.Serialize(value, StreamJsonOptions) + "\n", cancellationToken);
-        await Response.Body.FlushAsync(cancellationToken);
+        return await Transport.ChatAsync(request, cancellationToken, legacyMobileJson: true);
     }
 }
 

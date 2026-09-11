@@ -119,17 +119,32 @@ struct MobileHTTPClient: Sendable {
         return try await perform(request, response: response)
     }
 
+    func postStreamLines<Body: Encodable>(
+        _ path: String,
+        body: Body,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) throws -> AsyncThrowingStream<String, Error> {
+        streamLines(path, accessToken: accessToken, headers: headers,
+            httpBody: try JSONEncoder.mobile.encode(body))
+    }
+
     func streamLines(
         _ path: String,
         accessToken: String,
         queryItems: [URLQueryItem] = [],
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        httpBody: Data? = nil
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     var request = URLRequest(url: try endpointURL(path, queryItems: queryItems))
-                    request.httpMethod = "GET"
+                    request.httpMethod = httpBody == nil ? "GET" : "POST"
+                    request.httpBody = httpBody
+                    if httpBody != nil {
+                        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    }
                     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
                     headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
@@ -325,6 +340,15 @@ struct MobileHTTPClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         request.httpBody = try JSONEncoder.mobile.encode(body)
+        return try await perform(request, response: response)
+    }
+
+    func delete<Response: Decodable>(_ path: String, accessToken: String,
+        headers: [String: String] = [:], response: Response.Type) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await perform(request, response: response)
     }
 

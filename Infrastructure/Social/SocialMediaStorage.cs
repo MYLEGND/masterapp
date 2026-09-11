@@ -123,18 +123,6 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         var storageKey =
             $"originals/{utcNow:yyyy}/{utcNow:MM}/{mediaAssetId:N}/{storedFileName}";
 
-        // Video normalization deliberately executes against the local file
-        // after the multipart request has completed. Blob-only writes cannot
-        // meet the single-server FFmpeg contract, so they are rejected instead
-        // of silently publishing audio that missed normalization.
-        if (_blobContainer is not null &&
-            string.Equals(supportedType.MediaKind, "Video", StringComparison.Ordinal))
-        {
-            return SocialMediaStorageResult.Failure(
-                "SOCIAL_VIDEO_PROCESSING_LOCAL_REQUIRED",
-                "Legend video optimization requires local media storage on this server.");
-        }
-
         return _blobContainer is not null
             ? await StoreInBlobAsync(
                 storageKey,
@@ -187,7 +175,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                     content,
                     destination,
                     _maximumMediaBytes,
-                    durationProbe: null,
+                    durationProbe: supportedType.MediaKind == "Video" ? new Mp4HeaderDurationProbe() : null,
                     cancellationToken: cancellationToken);
             }
 
@@ -206,6 +194,11 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 supportedType,
                 actualSizeBytes,
                 storageKey);
+        }
+        catch (SocialVideoDurationExceededException)
+        {
+            await DeleteBlobIfExistsAsync(blobClient);
+            return SocialMediaStorageResult.Failure("SOCIAL_VIDEO_DURATION_EXCEEDED", "Videos must be 10 minutes or less.");
         }
         catch (SocialMediaMaximumSizeExceededException)
         {
@@ -369,9 +362,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
 
         try
         {
-            var download = await blobClient.DownloadStreamingAsync(
-                cancellationToken: cancellationToken);
-            return SocialMediaReadResult.Available(download.Value.Content);
+            return SocialMediaReadResult.Available(
+                await OpenBlobDeliveryReadAsync(blobClient, cancellationToken));
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -391,7 +383,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
     }
 
     /// <summary>
-    /// Finalizes one already-persisted local MP4. This is intentionally separate
+    /// Finalizes one already-persisted video through the existing local processor. This is intentionally separate
     /// from StoreAsync so a request releases its socket as soon as storage is
     /// durable, while exactly one hosted worker owns FFmpeg execution.
     /// </summary>
@@ -399,12 +391,9 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         string storageKey,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_blobContainer is not null)
-        {
-            return SocialMediaVideoProcessingResult.Failure(
-                "SOCIAL_VIDEO_PROCESSING_LOCAL_REQUIRED",
-                "Legend video optimization requires local media storage on this server.");
-        }
+            return await ProcessBlobVideoAsync(storageKey, cancellationToken);
 
         var physicalPath = ResolvePhysicalPath(storageKey);
         if (physicalPath is null)
@@ -422,6 +411,101 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
             : SocialMediaVideoProcessingResult.Failure(
                 result.ErrorCode ?? "SOCIAL_VIDEO_PROCESSING_FAILED",
                 result.ErrorMessage ?? "Legend could not optimize this video for playback.");
+    }
+
+    private async Task<SocialMediaVideoProcessingResult> ProcessBlobVideoAsync(
+        string storageKey, CancellationToken cancellationToken)
+    {
+        // Validate against the same key boundary as local storage; a blob name
+        // never becomes a caller-selected temporary filesystem path.
+        if (ResolvePhysicalPath(storageKey) == null)
+            return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_PATH_INVALID", "The video storage path is invalid.");
+        var workDirectory = Path.Combine(_rootPath, ".processing", Guid.NewGuid().ToString("N"));
+        var workFile = Path.Combine(workDirectory, "source.mp4");
+        var blob = _blobContainer!.GetBlobClient(storageKey);
+        try
+        {
+            BlobDownloadStreamingResult download;
+            try
+            {
+                download = (await blob.DownloadStreamingAsync(cancellationToken: cancellationToken)).Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // Reuse the established disk-to-blob migration. A local fallback
+                // stream alone is not sufficient for a conditional blob commit.
+                var legacyPath = ResolvePhysicalPath(storageKey)!;
+                if (File.Exists(legacyPath) && new FileInfo(legacyPath).Length is var legacySize &&
+                    (legacySize <= 0 || legacySize > _maximumMediaBytes))
+                    return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_SIZE_INVALID", "The stored video size is not permitted.");
+                var migrated = await MigrateLegacyFileAsync(storageKey, blob, cancellationToken);
+                if (migrated.Content != null) await migrated.Content.DisposeAsync();
+                download = (await blob.DownloadStreamingAsync(cancellationToken: cancellationToken)).Value;
+            }
+            await using (var source = download.Content)
+            {
+                if (download.Details.ContentLength <= 0 || download.Details.ContentLength > _maximumMediaBytes ||
+                    string.IsNullOrEmpty(download.Details.ETag.ToString()))
+                    return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_SIZE_INVALID", "The stored video size is not permitted.");
+                Directory.CreateDirectory(workDirectory);
+                await using var destination = new FileStream(workFile, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None, CopyBufferSize, useAsync: true);
+                var actualSize = await CopyWithLimitAsync(source, destination, _maximumMediaBytes,
+                    new Mp4HeaderDurationProbe(), cancellationToken);
+                if (actualSize != download.Details.ContentLength)
+                    return SocialMediaVideoProcessingResult.Failure("SOCIAL_MEDIA_SIZE_MISMATCH", "The stored video download was incomplete.");
+            }
+            var processed = await _videoProcessor.OptimizeAsync(workFile, cancellationToken);
+            if (!processed.Succeeded || processed.FileSizeBytes is not long outputSize)
+                return SocialMediaVideoProcessingResult.Failure(processed.ErrorCode ?? "SOCIAL_VIDEO_PROCESSING_FAILED",
+                    processed.ErrorMessage ?? "Legend could not optimize this video for playback.");
+            if (outputSize <= 0 || outputSize > _maximumMediaBytes)
+                return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_SIZE_INVALID", "The optimized video size is not permitted.");
+            await using var optimized = new FileStream(workFile, FileMode.Open, FileAccess.Read,
+                FileShare.Read, CopyBufferSize, useAsync: true);
+            await blob.UploadAsync(optimized, new BlobUploadOptions
+            {
+                Conditions = new BlobRequestConditions { IfMatch = download.Details.ETag },
+                HttpHeaders = new BlobHttpHeaders
+                {
+                    ContentType = download.Details.ContentType,
+                    CacheControl = download.Details.CacheControl,
+                    ContentDisposition = download.Details.ContentDisposition,
+                    ContentEncoding = download.Details.ContentEncoding,
+                    ContentLanguage = download.Details.ContentLanguage
+                },
+                Metadata = download.Details.Metadata
+            }, cancellationToken);
+            return SocialMediaVideoProcessingResult.Success(outputSize);
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_SOURCE_CHANGED", "The stored video changed during processing. Please retry.");
+        }
+        catch (SocialMediaMaximumSizeExceededException)
+        {
+            return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_SIZE_INVALID", "The stored video size is not permitted.");
+        }
+        catch (SocialVideoDurationExceededException)
+        {
+            return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_DURATION_EXCEEDED", "Videos must be 10 minutes or less.");
+        }
+        catch (Exception ex) when (ex is RequestFailedException or IOException or UnauthorizedAccessException or
+            AuthenticationFailedException or CredentialUnavailableException)
+        {
+            _logger.LogWarning("Blob video processing could not complete. FailureType={FailureType}", ex.GetType().Name);
+            return SocialMediaVideoProcessingResult.Failure("SOCIAL_VIDEO_PROCESSING_FAILED", "Legend could not finalize this video for playback. Please retry.");
+        }
+        finally
+        {
+            // Delete only this operation's unique workspace, never the blob or
+            // the legacy disk original. The processor cleans its own output.
+            try { if (Directory.Exists(workDirectory)) Directory.Delete(workDirectory, recursive: true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning("A temporary video processing directory could not be removed.");
+            }
+        }
     }
 
     public async Task DeleteAsync(
@@ -520,6 +604,19 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         }
     }
 
+    private static Task<Stream> OpenBlobDeliveryReadAsync(
+        BlobClient blobClient, CancellationToken cancellationToken) =>
+        // MVC needs a seekable stream to honor HTTP byte ranges. OpenRead uses
+        // blob properties for Length and fetches only bounded ranges on demand;
+        // the captured ETag prevents mixing versions across subsequent seeks.
+        // Reuse the existing 80 KiB copy bound rather than buffering a whole
+        // media object. Sequential reads trade more blob requests for that
+        // fixed per-reader memory/overfetch bound.
+        blobClient.OpenReadAsync(new BlobOpenReadOptions(allowModifications: false)
+        {
+            BufferSize = CopyBufferSize
+        }, cancellationToken);
+
     private async Task<SocialMediaReadResult> MigrateLegacyFileAsync(
         string storageKey,
         BlobClient blobClient,
@@ -545,15 +642,13 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 overwrite: false,
                 cancellationToken: cancellationToken);
 
-            var download = await blobClient.DownloadStreamingAsync(
-                cancellationToken: cancellationToken);
-            return SocialMediaReadResult.Available(download.Value.Content);
+            return SocialMediaReadResult.Available(
+                await OpenBlobDeliveryReadAsync(blobClient, cancellationToken));
         }
         catch (RequestFailedException ex) when (ex.Status is 409 or 412)
         {
-            var download = await blobClient.DownloadStreamingAsync(
-                cancellationToken: cancellationToken);
-            return SocialMediaReadResult.Available(download.Value.Content);
+            return SocialMediaReadResult.Available(
+                await OpenBlobDeliveryReadAsync(blobClient, cancellationToken));
         }
         catch (Exception ex)
             when (ex is RequestFailedException or IOException or UnauthorizedAccessException)

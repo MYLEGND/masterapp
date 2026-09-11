@@ -35,6 +35,27 @@ import coil3.compose.AsyncImage
 
 /** Protected social assets are cached as an authenticated performance layer, never made public for Android. */
 class AuthenticatedMediaRepository(private val context: Context, private val client: LegendApiClient) {
+    fun sharedPostUrl(postId: String): String = Uri.parse(client.baseUrl).buildUpon()
+        .appendPath("Social").appendPath("Posts").appendPath(postId).build().toString()
+
+    suspend fun messageAttachmentFile(attachment: com.mylegnd.legend.registered.core.model.MessageAttachment,
+        participantType: String): File = withContext(Dispatchers.IO) {
+        check(attachment.canDownload) { "Attachment is not ready." }
+        val directory = File(context.cacheDir, "message-attachments").apply { mkdirs() }
+        val safeName = attachment.originalFileName.substringAfterLast('/').substringAfterLast('\\')
+            .takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "attachment"
+        val target = File(directory, "${java.util.UUID.randomUUID()}-$safeName")
+        val request = Request.Builder().url("${client.baseUrl}/api/v1/mobile/messaging/attachments/${attachment.id}")
+            .header("X-Legend-Participant-Type", participantType).build()
+        try {
+            client.httpClient.newCall(request).execute().use { response ->
+                check(response.isSuccessful) { "Attachment is unavailable." }
+                response.body.byteStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+            }
+            target
+        } catch (failure: Exception) { target.delete(); throw failure }
+    }
+
     /**
      * Profile avatar routes are stable after an account owner replaces an image.
      * Revalidating once per process prevents the former path-only disk cache

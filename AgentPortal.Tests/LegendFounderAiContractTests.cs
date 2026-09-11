@@ -276,6 +276,8 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "LegendApi.kt"));
         var androidRepository = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "LegendRepositories.kt"));
+        var androidStream = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "FounderAiChatStream.kt"));
         var androidPresentation = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "LegendFounderAiConversation.kt"));
         var tokens = File.ReadAllText(
@@ -353,8 +355,12 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("LegendAiIcon.imageset/legendai.png", androidBuild, StringComparison.Ordinal);
         Assert.Contains("FounderAiRepository", androidRepository, StringComparison.Ordinal);
         Assert.Contains("api/v1/mobile/founder/legend-ai/access", androidApi, StringComparison.Ordinal);
-        Assert.Contains("api/v1/mobile/founder/legend-ai/chat", androidApi, StringComparison.Ordinal);
-        Assert.Contains("api/v1/mobile/founder/legend-ai/progress", androidRepository, StringComparison.Ordinal);
+        Assert.Contains("api/v1/mobile/founder/legend-ai/chat", androidStream, StringComparison.Ordinal);
+        Assert.Contains("application/x-ndjson", androidStream, StringComparison.Ordinal);
+        Assert.Contains("FounderAiChatStream(client.httpClient, client.baseUrl)", androidRepository, StringComparison.Ordinal);
+        Assert.DoesNotContain("api/v1/mobile/founder/legend-ai/progress", androidRepository, StringComparison.Ordinal);
+        Assert.DoesNotContain("api/v1/mobile/founder/legend-ai/progress", androidStream, StringComparison.Ordinal);
+        Assert.DoesNotContain("openai.com", androidStream, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("openai.com", androidApi, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("openai.com", androidRepository, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("LegendColors.Success", androidPresentation, StringComparison.Ordinal);
@@ -1279,6 +1285,34 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void ProductionDeploymentWorkflow_KeepsSqlProofOnTheExistingRestrictedAuthority()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+        var providerStart = workflow.IndexOf("  verify-legend-native:", StringComparison.Ordinal);
+        var sqlStart = workflow.IndexOf("  verify-legend-native-sql:", StringComparison.Ordinal);
+        Assert.True(providerStart >= 0 && sqlStart > providerStart);
+        var provider = workflow[providerStart..sqlStart];
+        var sql = workflow[sqlStart..];
+
+        Assert.Contains("name: Production", provider, StringComparison.Ordinal);
+        Assert.Contains("ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog", provider, StringComparison.Ordinal);
+        Assert.DoesNotContain("LEGEND_PRODUCTION_READONLY_CONNECTION", provider, StringComparison.Ordinal);
+        Assert.DoesNotContain("connection-string list", provider, StringComparison.Ordinal);
+        Assert.DoesNotContain("MasterAppDb", provider, StringComparison.Ordinal);
+        Assert.Contains("- verify-legend-native", sql, StringComparison.Ordinal);
+        Assert.Contains("name: LEGEND-Production-ReadOnly-Validation", sql, StringComparison.Ordinal);
+        Assert.Contains("name: ${{ env.TEST_ARTIFACT_NAME }}", sql, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_READONLY_CONNECTION: ${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}", sql, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_READONLY_FOUNDER_OID: ${{ secrets.LEGEND_PRODUCTION_READONLY_FOUNDER_OID }}", sql, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY: 'false'", sql, StringComparison.Ordinal);
+        Assert.Contains("$matrixResult.SqlPrincipalVerified -isnot [bool]", sql, StringComparison.Ordinal);
+        Assert.Contains("$matrixResult.Authority -ne 'release_workflow_matrix'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("id-token: write", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/login", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("az webapp", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProductionDeploymentWorkflow_BindsProofArtifactToCandidateTreeAndDeployedSha()
     {
         var workflow = File.ReadAllText(
@@ -1351,16 +1385,30 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void UnifiedProductionFlow_RecognizesBothCurrentDotnetTestSuccessFormats()
+    public void UnifiedProductionFlow_ValidatesStructuredResultsIndependentlyOfConsoleSuccessFormats()
     {
         var workflow = File.ReadAllText(
             Path.Combine(
                 AppContext.BaseDirectory,
                 "agentportal-production-deploy.yml"));
 
-        Assert.Contains("Test Run Successful", workflow, StringComparison.Ordinal);
-        Assert.Contains("Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0", workflow, StringComparison.Ordinal);
-        Assert.Contains("Failed:[[:space:]]*[1-9][0-9]*", workflow, StringComparison.Ordinal);
+        var start = workflow.IndexOf("      - name: Test full suite including security regressions", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var end = workflow.IndexOf("      - name:", start + 1, StringComparison.Ordinal);
+        Assert.True(end > start);
+        var regression = workflow[start..end];
+        Assert.Contains("--logger 'trx;LogFileName=full-regression.trx'", regression, StringComparison.Ordinal);
+        Assert.Contains("runner_exit=$?", regression, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/legend-baseline-regression.py", regression, StringComparison.Ordinal);
+        Assert.Contains("--manifest .github/legend-baseline-release.json", regression, StringComparison.Ordinal);
+        Assert.Contains("--source-root \"$GITHUB_WORKSPACE\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--results-directory \"$results_dir\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--runner-exit-code \"$runner_exit\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--run-start-utc \"$run_start\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--production-base-sha \"$LEGEND_BASELINE_PRODUCTION_BASE\"", regression, StringComparison.Ordinal);
+        Assert.DoesNotContain("continue-on-error", regression, StringComparison.Ordinal);
+        Assert.DoesNotContain("--filter", regression, StringComparison.Ordinal);
+        Assert.DoesNotContain("|| true", regression, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1384,65 +1432,59 @@ public sealed class LegendFounderAiContractTests
     [Fact]
     public void ProductionReadOnlyDiagnosticWorkflow_IsExplicitlyNonAuthoritativeAndCannotMutateProduction()
     {
-        var workflow = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
-
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
         Assert.Contains("timeout-minutes: 30", workflow, StringComparison.Ordinal);
         Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyCandidateObservation", workflow, StringComparison.Ordinal);
         Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);
-        Assert.Contains("Authority: non-authoritative", workflow, StringComparison.Ordinal);
-        Assert.Contains("DeployedSha: unavailable", workflow, StringComparison.Ordinal);
-        Assert.Contains("production proof lives only in agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
-        Assert.Contains("$executedTests -ne 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("$matrixCases -lt 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("legend-production-matrix-result.json", workflow, StringComparison.Ordinal);
-        Assert.Contains(
-            "Production read-only diagnostic was not completed successfully.",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains("Upload sanitized diagnostic transcript", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("run_full_shadow:", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("runFullShadow", workflow, StringComparison.Ordinal);
+        Assert.Contains("default: canonical_matrix", workflow, StringComparison.Ordinal);
+        Assert.Contains("'Authority': 'non-authoritative'", workflow, StringComparison.Ordinal);
+        Assert.Contains("'DeployedSha': 'unavailable'", workflow, StringComparison.Ordinal);
+        Assert.Contains("agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/run-legend-production-shadow.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND-Production-ReadOnly-Validation", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("id-token: write", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/login", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("az webapp", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("git commit", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("contents: write", workflow, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void ProductionReadOnlyDiagnosticWorkflow_PublishesFailedMatrixEvidenceWithoutFalseZero()
+    public void ProductionReadOnlyDiagnosticWorkflow_CollectsBoundedEvidenceWithoutWeakeningRegressionGate()
     {
-        var workflow = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
-
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
         var diagnosticStart = workflow.IndexOf("      - name: Run canonical production read-only diagnostics", StringComparison.Ordinal);
         var transcriptStart = workflow.IndexOf("      - name: Assemble sanitized diagnostic transcript", StringComparison.Ordinal);
-        Assert.True(diagnosticStart >= 0);
-        Assert.True(transcriptStart > diagnosticStart);
+        Assert.True(diagnosticStart >= 0 && transcriptStart > diagnosticStart);
         var diagnostic = workflow[diagnosticStart..transcriptStart];
-
-        var capture = diagnostic.IndexOf("$matrixCases = [int]$matrixResult.ExecutedCases", StringComparison.Ordinal);
-        var publish = diagnostic.IndexOf("\"matrix_cases=$matrixCases\"", StringComparison.Ordinal);
-        Assert.True(capture >= 0);
-        Assert.True(publish > capture);
-        Assert.Contains("$matrixCases = $null", diagnostic, StringComparison.Ordinal);
-        Assert.DoesNotContain("$matrixCases = 0", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("$matrixResultState = 'missing'", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("$matrixResultState = 'malformed'", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("matrix_total_cases=$matrixTotalCases", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("matrix_failed_cases=$matrixFailedCases", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("matrix_result_state=$matrixResultState", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("provider_client_count=$providerClientCount", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("production_write_command_count=$productionWriteCommandCount", diagnostic, StringComparison.Ordinal);
-        Assert.Contains(
-            "$matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "LEGEND_PRODUCTION_PROOF_RESULT_PATH=$env:GITHUB_WORKSPACE/diagnostics/legend-production-matrix-result.json",
-            workflow,
-            StringComparison.Ordinal);
+        Assert.Contains("!cancelled() && steps.build.outcome == 'success'", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("steps.regression.outcome == 'success'", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION", diagnostic, StringComparison.Ordinal);
+        var configurationStart = workflow.IndexOf("      - name: Check native diagnostic input delivery before building", StringComparison.Ordinal);
+        var setupStart = workflow.IndexOf("      - name: Set up .NET", StringComparison.Ordinal);
+        Assert.True(configurationStart >= 0 && setupStart > configurationStart && diagnosticStart > setupStart);
+        var configuration = workflow[configurationStart..setupStart];
+        const string sqlSecretExpression = "${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}";
+        Assert.Contains(sqlSecretExpression, configuration, StringComparison.Ordinal);
+        Assert.Contains("scripts/run-legend-production-shadow.sh --check-configuration", configuration, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet", configuration, StringComparison.Ordinal);
+        Assert.DoesNotContain(sqlSecretExpression, workflow[..configurationStart], StringComparison.Ordinal);
+        Assert.DoesNotContain(sqlSecretExpression, workflow[setupStart..diagnosticStart], StringComparison.Ordinal);
+        Assert.DoesNotContain(sqlSecretExpression, workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("steps.configuration.outcome == 'success'", workflow[setupStart..diagnosticStart], StringComparison.Ordinal);
+        Assert.Contains("'SecretStoreInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("'AzureConfigurationInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_OBSERVATION_REQUIRED: 'true'", diagnostic, StringComparison.Ordinal);
+        var gate = workflow[workflow.IndexOf("      - name: Enforce complete diagnostic and regression result", StringComparison.Ordinal)..];
+        Assert.Contains("$REGRESSION_OUTCOME", gate, StringComparison.Ordinal);
+        Assert.Contains("$CONFIGURATION_OUTCOME", gate, StringComparison.Ordinal);
+        Assert.Contains("exit 1", gate, StringComparison.Ordinal);
+        Assert.Contains("result['Status'] == 'passed'", gate, StringComparison.Ordinal);
+        Assert.Contains("result['ReleaseProof'] is False", gate, StringComparison.Ordinal);
+        Assert.DoesNotContain("diagnostics/legend-shadow/private", workflow[workflow.IndexOf("          path: |", StringComparison.Ordinal)..], StringComparison.Ordinal);
     }
 
     [Fact]

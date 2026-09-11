@@ -7,15 +7,6 @@ import android.net.Uri
 import com.mylegnd.legend.registered.core.media.SocialMediaUploader
 import com.mylegnd.legend.registered.core.media.MessagingAttachmentUploader
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.Request
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import java.util.TimeZone
 
 sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String) : LoadState<Nothing> }
@@ -28,8 +19,6 @@ catch (error: Exception) { LoadState.Error(when (error) {
 } ?: "Legend is unavailable right now.") }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
 class FounderAiRepository(private val client: LegendApiClient) {
-    private val json = Json { ignoreUnknownKeys = true }
-
     suspend fun access(role: String): LoadState<FounderAiAccessResponse> = request {
         client.api.founderAiAccess(role).legendBody()
     }
@@ -38,37 +27,13 @@ class FounderAiRepository(private val client: LegendApiClient) {
         role: String,
         operationId: String,
         chatRequest: FounderAiChatRequest,
+        onProgress: (FounderAiProgressEnvelope) -> Unit = {},
     ): LoadState<FounderAiChatResponse> = request {
-        client.api.founderAiChat(role, operationId, chatRequest).legendBody()
+        FounderAiChatStream(client.httpClient, client.baseUrl).chat(
+            role, operationId, chatRequest, onProgress,
+        )
     }
 
-    /** Advisory progress only; the same chat response remains authoritative. */
-    fun progress(role: String, operationId: String): Flow<FounderAiProgressEnvelope> = flow<FounderAiProgressEnvelope> {
-        val base = client.baseUrl.toHttpUrlOrNull()
-            ?: return@flow
-        val url = base.newBuilder()
-            .addPathSegments("api/v1/mobile/founder/legend-ai/progress/$operationId")
-            .build()
-        val request = Request.Builder()
-            .url(url)
-            .header("Accept", "application/x-ndjson")
-            .header("X-Legend-Participant-Type", role)
-            .build()
-
-        client.httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@use
-            val source = response.body.source()
-            while (!source.exhausted()) {
-                currentCoroutineContext().ensureActive()
-                val line = source.readUtf8Line()?.trim().orEmpty()
-                if (line.isBlank()) continue
-                val envelope = runCatching {
-                    json.decodeFromString(FounderAiProgressEnvelope.serializer(), line)
-                }.getOrNull()
-                if (envelope != null) emit(envelope)
-            }
-        }
-    }.flowOn(Dispatchers.IO)
 }
 class AgentWorkspaceRepository(private val client: LegendApiClient) {
     suspend fun restoreClient(role: String, id: String) = request { client.api.restoreCrmClient(role, id).legendBody() }
@@ -153,8 +118,12 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun conversation(role: String, id: String, beforeUtc: String? = null) = request {
         client.api.conversation(role, id, beforeUtc).legendBody()
     }
-    suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null) = request {
-        client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId)).legendBody()
+    suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null, clientMessageId: String, sharedPostId: String? = null) = request {
+        client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId, clientMessageId, sharedPostId)).legendBody()
+    }
+    suspend fun react(role: String, conversationId: String, messageId: String, emoji: String?) = request {
+        if (emoji == null) client.api.removeMessageReaction(role, conversationId, messageId).legendBody()
+        else client.api.setMessageReaction(role, conversationId, messageId, MessageReactionRequest(emoji)).legendBody()
     }
     suspend fun uploadAttachment(context: Context, role: String, conversationId: String, messageId: String, uri: Uri) = request {
         attachmentUploader.upload(context, role, conversationId, messageId, uri)
@@ -171,7 +140,7 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun setGroupCollaborator(role: String, id: String, participant: MobileParticipant, isManager: Boolean) = request { client.api.setGroupCollaborator(role, id, MessagingGroupCollaboratorRequest(participant.identity.userId, participant.identity.participantType, isManager)).legendBody() }
     suspend fun deleteGroup(role: String, id: String) = request { client.api.deleteMessagingGroup(role, id).legendBody() }
     suspend fun setGroupPromotion(role: String, id: String, isPromoted: Boolean) = request { client.api.setGroupPromotion(role, id, MessagingGroupPromotionRequest(isPromoted)).legendBody() }
-    suspend fun markRead(role: String, id: String) = request { client.api.markRead(role, id).legendBody() }
+    suspend fun markRead(role: String, id: String, readThroughMessageId: String? = null) = request { client.api.markRead(role, id, readThroughMessageId).legendBody() }
     suspend fun setPinned(role: String, id: String, isPinned: Boolean) = request {
         client.api.setConversationPinned(role, id, ConversationPinnedRequest(isPinned)).legendBody()
     }

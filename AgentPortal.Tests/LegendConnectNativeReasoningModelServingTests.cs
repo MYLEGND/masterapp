@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -69,6 +70,44 @@ public sealed class LegendConnectNativeReasoningModelServingTests
         Assert.Equal("Applied", assistance.State);
         Assert.Equal("ft:legend:reasoning-active", assistance.ModelVersion);
         Assert.NotNull(assistance.ModelTrainingRunId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScheduleCertificate_KeepsItsGovernedWordingWhileOrdinaryAnswersRemainEligible(bool hasCertificate)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedPromotedReasoningModelAsync(db, "Promoted");
+        var transport = FakeTransport.Success(SymbolicAnswer);
+        var fixture = CreateFixture(db, transport);
+        await SeedGovernedTransitionAsync(fixture.Curriculum);
+        var symbolic = await InferAsync(CreateFixture(db, null).Operations);
+
+        // This tests the promotion boundary with its already-authorized DTO.
+        // Schedule execution and language admission have separate contracts.
+        IReadOnlyList<LegendConnectGovernedScheduleCertificateSnapshot>? certificates = hasCertificate
+            ? [new("governed-batch", "reasoning.constrained-planning.batch", "digest", new string('a', 64),
+                [new(1, 7, 0, 11, 1, 1)], new Dictionary<string, string> { ["work"] = "7" },
+                new Dictionary<string, string> { ["elapsed"] = "11" }, ["admitted-pair"], 1, "BroadGoverned")]
+            : null;
+        symbolic = symbolic with { ScheduleCertificates = certificates };
+        var promotion = typeof(LegendConnectOperations).GetMethod(
+            "TryApplyPromotedReasoningModelAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(promotion);
+        var result = await Assert.IsAssignableFrom<Task<LegendConnectNativeInferenceSnapshot>>(
+            promotion.Invoke(fixture.Operations,
+                [RequestText, "en", symbolic, LegendConnectExternalProviderPolicy.ProviderEnabled, CancellationToken.None]));
+
+        Assert.True(result.Supported);
+        Assert.Equal(symbolic.Answer, result.Answer);
+        Assert.Same(certificates, result.ScheduleCertificates);
+        Assert.Equal(hasCertificate ? 0 : 1, transport.CallCount);
+        Assert.Equal(hasCertificate ? symbolic.ArticulationMode : "EvaluatedPromotedModelRealization", result.ArticulationMode);
+        Assert.Equal(hasCertificate ? "Dormant" : "Applied", result.ModelAssistance!.State);
+        Assert.Equal(hasCertificate
+            ? "active_reasoning_model_schedule_certificate_not_authorized"
+            : "active_reasoning_model_candidate_governed", result.ModelAssistance.ReasonCode);
     }
 
     [Fact]

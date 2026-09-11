@@ -711,7 +711,7 @@ private actor MessagingBootstrapAPI: MessagingAPI {
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { fatalError("Not used by bootstrap") }
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { fatalError("Not used by bootstrap") }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { [] }
-    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { fatalError("Not used by bootstrap") }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { fatalError("Not used by bootstrap") }
     func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { fatalError("Not used by bootstrap") }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }

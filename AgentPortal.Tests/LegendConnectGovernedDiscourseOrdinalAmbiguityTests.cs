@@ -146,8 +146,11 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         }
     }
 
-    [Fact]
-    public async Task HeldOutCorrection_ReplacesCompetingOrdinalChoiceWithoutProviderClients()
+    [Theory]
+    [InlineData("No, I meant the first option.", false)]
+    [InlineData("No, please use the first option instead.", true)]
+    public async Task HeldOutCorrection_RequiresAGroundedFunctionBeforeAnsweringTheBoundOrdinalWithoutProviders(
+        string currentRequest, bool hasGroundedCorrection)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var actor = Guid.NewGuid().ToString("D");
@@ -167,7 +170,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
 
             Assert.DoesNotContain(
                 await db.LegendLanguageTextUnits.Select(item => item.Text).ToListAsync(),
-                text => string.Equals(text, "No, I meant the first option.", StringComparison.Ordinal));
+                text => string.Equals(text, currentRequest, StringComparison.Ordinal));
 
             var operations = CreateOperations(db);
             var profiles = new AgentProfileAccessResolver(db);
@@ -191,8 +194,10 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             }
 
             var currentGraph = await operations.AnalyzeReusableMeaningGraphAsync(
-                "No, I meant the first option.");
+                currentRequest);
             Assert.True(currentGraph.IsComposed, currentGraph.ReasonCode);
+            Assert.Equal(hasGroundedCorrection, currentGraph.Nodes.Any(node =>
+                node.SemanticDimension == "conversation_function" && node.SemanticValue == "correction"));
             await discourse.RecordObservationAsync(
                 founder,
                 directConversationId.ToString(),
@@ -202,33 +207,47 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var directState = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
                 await discourse.GetStateAsync(founder, directConversationId.ToString()));
             var directPlan = await operations.TryPlanConversationAsync(
-                "No, I meant the first option.",
+                currentRequest,
                 directState);
-            Assert.True(directPlan.Supported, directPlan.ReasonCode);
-            var directStructuredPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
-                directPlan.Plan);
-            var directBinding = Assert.Single(directStructuredPlan.ResolvedDiscourseBindings);
-            Assert.Equal("bound", directBinding.ResolutionState);
-            Assert.Equal("choice", directBinding.EntitySemanticDimension);
-            Assert.Equal("alpha", directBinding.EntitySemanticValue);
-            Assert.True(directBinding.ReplacesActiveBinding);
-            Assert.False(directBinding.HasSupersededCurrentTurnEntity);
-            Assert.Null(directBinding.SupersededCurrentTurnNodeIndex);
-            Assert.Null(directBinding.SupersededCurrentTurnSemanticDimension);
-            Assert.Null(directBinding.SupersededCurrentTurnSemanticSignature);
-            Assert.Null(directBinding.SupersededCurrentTurnSemanticValue);
-            Assert.Null(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
-            Assert.Null(directBinding.SupersededCurrentTurnNodeTokenLength);
+            if (hasGroundedCorrection)
+            {
+                Assert.True(directPlan.Supported, directPlan.ReasonCode);
+                var directStructuredPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+                    directPlan.Plan);
+                var directBinding = Assert.Single(directStructuredPlan.ResolvedDiscourseBindings);
+                Assert.Equal("bound", directBinding.ResolutionState);
+                Assert.Equal("choice", directBinding.EntitySemanticDimension);
+                Assert.Equal("alpha", directBinding.EntitySemanticValue);
+                Assert.True(directBinding.ReplacesActiveBinding);
+                Assert.False(directBinding.HasSupersededCurrentTurnEntity);
+                Assert.Null(directBinding.SupersededCurrentTurnNodeIndex);
+                Assert.Null(directBinding.SupersededCurrentTurnSemanticDimension);
+                Assert.Null(directBinding.SupersededCurrentTurnSemanticSignature);
+                Assert.Null(directBinding.SupersededCurrentTurnSemanticValue);
+                Assert.Null(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
+                Assert.Null(directBinding.SupersededCurrentTurnNodeTokenLength);
+            }
+            else
+            {
+                // An ordinal replacement binds the choice; it does not supply
+                // the separate, unobserved correction-function premise.
+                Assert.False(directPlan.Supported);
+                Assert.Equal("semantic_transition_not_supported", directPlan.ReasonCode);
+                Assert.Null(directPlan.Plan);
+            }
 
             var directNative = await operations.TryInferConversationWithDiscourseAsync(
-                "No, I meant the first option.",
+                currentRequest,
                 priorMessages.Select(message => new LegendConnectConversationContextItem(
                         message.Role ?? string.Empty,
                         message.Content ?? string.Empty))
                     .ToArray(),
                 directState);
-            Assert.True(directNative.Supported, directNative.ReasonCode);
-            Assert.Equal("I understand the correction.", directNative.Answer);
+            Assert.Equal(hasGroundedCorrection, directNative.Supported);
+            if (hasGroundedCorrection)
+                Assert.Equal("I understand the correction.", directNative.Answer);
+            else
+                Assert.Null(directNative.Answer);
 
             var replyConversationId = Guid.NewGuid();
             foreach (var message in priorMessages)
@@ -257,19 +276,27 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 {
                     Mode = "legend",
                     NativeOnly = true,
+                    SourceLanguageCode = "en",
                     ConversationId = replyConversationId.ToString(),
                     Messages =
                     [
                         .. priorMessages,
-                        new LegendFounderAiChatMessage("user", "No, I meant the first option.")
+                        new LegendFounderAiChatMessage("user", currentRequest)
                     ]
                 });
 
-            Assert.True(
-                reply.Succeeded,
-                $"stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}; message={reply.Message}");
-            Assert.Equal("I understand the correction.", reply.Message);
-            Assert.Equal("LegendAi", reply.ResponseAuthority);
+            // A governed diagnostic is not a successfully answered correction.
+            Assert.Equal(hasGroundedCorrection, reply.Succeeded);
+            if (hasGroundedCorrection)
+            {
+                Assert.Equal("I understand the correction.", reply.Message);
+                Assert.Equal("LegendAi", reply.ResponseAuthority);
+            }
+            else
+            {
+                Assert.Equal("SystemDiagnostic", reply.ResponseAuthority);
+                Assert.NotEqual("I understand the correction.", reply.Message);
+            }
             Assert.Equal(0, countingFactory.CreateClientCalls);
         }
         finally

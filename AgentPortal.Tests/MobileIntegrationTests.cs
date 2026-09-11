@@ -43,15 +43,22 @@ public sealed class MobileIntegrationTests
         var root = Path.GetDirectoryName(GetSourcePath())!;
         var config = XDocument.Load(
             Path.Combine(root, "..", "AgentPortal", "web.config"));
-        var mediaLocation = Assert.Single(config.Root!.Elements("location")
-            .Where(element => (string?)element.Attribute("path") == "api/v1/mobile/social/posts/media"));
-        var limit = mediaLocation.Element("system.webServer")!
-            .Element("security")!.Element("requestFiltering")!
-            .Element("requestLimits")!.Attribute("maxAllowedContentLength");
-        Assert.Equal(SocialMediaUploadLimits.MaximumMultipartRequestBytes, (long)limit!);
-        Assert.Empty(config.Root.Elements("location")
-            .Where(element => (string?)element.Attribute("path") == ".")
-            .Descendants("requestLimits"));
+        // Independent runtime/test review: Docs/social/ingress-review-20260911.md.
+        var location = Assert.Single(config.Root!.Elements("location"));
+        Assert.Equal(".", (string?)location.Attribute("path"));
+        Assert.Equal("false", (string?)location.Attribute("inheritInChildApplications"));
+        var server = Assert.Single(location.Elements("system.webServer"));
+        var handler = Assert.Single(server.Element("handlers")!.Elements("add"));
+        Assert.Equal("aspNetCore", (string?)handler.Attribute("name"));
+        Assert.Equal("*", (string?)handler.Attribute("path"));
+        Assert.Equal("*", (string?)handler.Attribute("verb"));
+        Assert.Equal("AspNetCoreModuleV2", (string?)handler.Attribute("modules"));
+        Assert.Equal("Unspecified", (string?)handler.Attribute("resourceType"));
+        Assert.Single(server.Elements("aspNetCore"));
+        var limits = Assert.Single(config.Descendants("requestLimits"));
+        Assert.Same(server.Element("security")!.Element("requestFiltering"), limits.Parent);
+        Assert.Equal(SocialMediaUploadLimits.MaximumMultipartRequestBytes,
+            (long)limits.Attribute("maxAllowedContentLength")!);
     }
 
     private static string GetSourcePath(
@@ -610,12 +617,13 @@ public sealed class MobileIntegrationTests
             .ReturnsAsync(MessagingMessageResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "Not available."));
         var controller = CreateController(db, messaging.Object, Principal("agent-oid"));
 
-        var result = await controller.SendMessage(conversationId, new MobileSendMessageRequest("server-owned actor only"), CancellationToken.None);
+        var result = await controller.SendMessage(conversationId, new MobileSendMessageRequest("server-owned actor only", ClientMessageId: "stable-send-attempt"), CancellationToken.None);
         var response = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, response.StatusCode);
         Assert.NotNull(sent);
         Assert.Equal(new MessagingActor("agent-oid", MessagingParticipantTypes.Agent), sent!.Actor);
         Assert.Equal("server-owned actor only", sent.Body);
+        Assert.Equal("stable-send-attempt", sent.ClientMessageId);
     }
 
     [Fact]

@@ -1,0 +1,96 @@
+{
+  "tested_candidate": "5798e251f59146e6c79cd28d7f7d69efa779d8a7",
+  "production_commit": "262428f38c8e1dd0ee72a362983b277f493fd362",
+  "published_repair_commit": "16388fe014310388d73ba16f684b010c8eb8ad88",
+  "build": {
+    "warnings": 0,
+    "errors": 0,
+    "elapsed_seconds": 53.17
+  },
+  "composition_focused": {
+    "candidate": "21213eaf697b2960ddfb4c02b4786f850c6daccf",
+    "passed": 154,
+    "failed": 0,
+    "skipped": 0
+  },
+  "parser_before": {
+    "runtime_source": "21a3fc73",
+    "tests_commit": "101df8d4",
+    "passed": 4,
+    "failed": 7,
+    "skipped": 0
+  },
+  "parser_after": {
+    "passed": 55,
+    "failed": 0,
+    "skipped": 0
+  },
+  "full_regression": {
+    "counters": {
+      "total": 2363,
+      "executed": 2359,
+      "passed": 2350,
+      "failed": 9,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "passedButRunAborted": 0,
+      "notRunnable": 0,
+      "notExecuted": 0,
+      "disconnected": 0,
+      "warning": 0,
+      "completed": 0,
+      "inProgress": 0,
+      "pending": 0
+    },
+    "elapsed_seconds": 333,
+    "failed_tests": [
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\", requiredAnswerElements: [\"five\", \"hazardous\"])",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"haitian_creole_conflict\", requiredAnswerElements: [\"25\", \"27\"])",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\", requiredAnswerElements: [\"nine\", \"two\", \"Devon\", \"Monday\"])",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"causal_diagnosis\", requiredAnswerElements: [\"template\", \"clerk\"])",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\", requiredAnswerElements: [\"governed\"])",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\", requiredAnswerElements: [\"Kestrel\", \"premise\"])",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\", requiredAnswerElements: [\"34\", \"2/17\"])"
+    ],
+    "existing_environment_gated_passes_without_live_credit": 24,
+    "other_local_passes": 2326
+  },
+  "fresh_matrix_receipts": {
+    "file": "heldout-5798e251-20260911-0614.jsonl",
+    "sha256": "39121f1d711823e93bcebc20f2b0ba1f5862326d3a1b3435c60e6dfe86b73ae8",
+    "passed": 15,
+    "failed": 9,
+    "skipped": 0,
+    "elapsed_seconds": 22,
+    "reason_for_rerun": "Optional full-run append-only path contained earlier records. Preserved mixed file, then verified fresh path before rerun; no test assertions or runtime changes."
+  },
+  "separate_live_resources": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "includes": "Two live resource facts plus two authorization cases",
+    "azure": "Successful external translation, zero native-only HTTP calls",
+    "research": "InsufficientEvidence; one raw claim, one admitted claim, zero bound claims. No answer correctness established."
+  },
+  "frozen_files": {
+    "AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs": "c83e1007f394c895635547c11366e8121473e6e32733aa33d821cde614eec9ec",
+    "AgentPortal.Tests/LegendHeldOutFoundationPrerequisite.cs": "0190f448dea1590d974bdee56019123f04b8b0fc158a961c3afca90c98e26630"
+  },
+  "release_ready": false,
+  "remaining_gates": [
+    "Nine unchanged native capability cases fail at meaning/transition prerequisites.",
+    "Two SQL opt-in facts have not run against this unpublished candidate; existing protected workflow is the available restricted-credential route.",
+    "Authenticated Founder HTTP reproductions, representative cold/warm completed-response latency and postdeployment checks remain unverified.",
+    "Research resource connectivity and policy boundaries pass; its requested answer remains unsupported by retrieved evidence."
+  ],
+  "publication_block": "Automatic approval review rejected revised private-source publication to public MYLEGND/masterapp because prior authorization covered only commit16388fe0. No retry, alternate export, merge or deployment performed.",
+  "preservation": {
+    "original_checkout": "production262428f3; only pre-existing untracked Legend-Android/AGENTS.md",
+    "android_bundle_sha256": "cf8edaf824ebc3f5f4680e55a031e45f7f2e221333f27dfaa141729afe9b821d",
+    "verified_complete_bundle": "/private/tmp/legend-repair-preservation-20260910-173547/composition-repair-5798e251.bundle"
+  }
+}

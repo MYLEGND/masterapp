@@ -62,6 +62,8 @@ import kotlinx.serialization.Serializable
     val type: String,
     @SerialName("elapsedSeconds") val elapsedSeconds: Int? = null,
     val progress: FounderAiProgressUpdate? = null,
+    val status: Int? = null,
+    val result: FounderAiChatResponse? = null,
 )
 @Serializable data class FounderAiProgressUpdate(
     val stage: String,
@@ -267,6 +269,7 @@ internal object FinancialPresentationOrder {
     @SerialName("canManageMeeting") val canManageMeeting: Boolean = false,
     @SerialName("hasOlderMessages") val hasOlderMessages: Boolean = false,
     val readReceipts: MessagingReadReceiptSettings? = null,
+    val reactionOptions: List<String> = emptyList(),
 )
 @Serializable data class MessagingGroupMeeting(
     val host: MobileParticipant,
@@ -295,12 +298,14 @@ internal object FinancialPresentationOrder {
     @SerialName("verificationReview") val verificationReview: VerificationReview? = null,
     val translation: MessageTranslation? = null,
     @SerialName("originalBody") val originalBody: String? = null,
+    val reactions: List<MessageReaction> = emptyList(),
+    val sharedContent: MessagingSharedContent? = null,
 )
 @Serializable data class MessageReplyPreview(val id: String, val sender: MobileParticipant, val body: String, @SerialName("isDeleted") val isDeleted: Boolean)
 @Serializable data class VerificationReview(val id: String, @SerialName("requesterUserId") val requesterUserId: String, @SerialName("requesterParticipantType") val requesterParticipantType: String, val status: String, @SerialName("requestedUtc") val requestedUtc: String, @SerialName("canResolve") val canResolve: Boolean, @SerialName("resourceType") val resourceType: String)
 @Serializable data class MessageAttachment(val id: String, @SerialName("originalFileName") val originalFileName: String, @SerialName("contentType") val contentType: String, @SerialName("sizeBytes") val sizeBytes: Long, @SerialName("scanStatus") val scanStatus: String, @SerialName("createdUtc") val createdUtc: String, @SerialName("canDownload") val canDownload: Boolean)
 @Serializable data class MessageTranslation(@SerialName("originalLanguage") val originalLanguage: String, @SerialName("targetLanguage") val targetLanguage: String, val provider: String)
-@Serializable data class SendMessageRequest(val body: String, @SerialName("replyToMessageId") val replyToMessageId: String? = null)
+@Serializable data class SendMessageRequest(val body: String, @SerialName("replyToMessageId") val replyToMessageId: String? = null, @SerialName("clientMessageId") val clientMessageId: String, @SerialName("sharedPostId") val sharedPostId: String? = null)
 @Serializable data class StartConversationRequest(@SerialName("targetUserId") val targetUserId: String, @SerialName("targetParticipantType") val targetParticipantType: String, @SerialName("initialMessageBody") val initialMessageBody: String? = null)
 @Serializable data class MessagingGroupParticipantRequest(@SerialName("userId") val userId: String, @SerialName("participantType") val participantType: String)
 @Serializable data class MessagingGroupImageRequest(@SerialName("contentType") val contentType: String, @SerialName("base64Content") val base64Content: String)
@@ -477,3 +482,35 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
 @Serializable data class MessagingReadReceiptSettings(val globalEnabled: Boolean, val conversationEnabled: Boolean, val readers: List<MessagingReadReceipt> = emptyList())
 @Serializable data class MessagingReadReceipt(val userId: String, val participantType: String, val readThroughUtc: String)
 @Serializable data class MessagingReadReceiptRequest(val enabled: Boolean, val globally: Boolean)
+
+/** Receipt hierarchy uses the server's chronological page and privacy-filtered readers. */
+internal fun messageReceiptLabels(messages: List<ConversationMessage>, readers: List<MessagingReadReceipt>): Map<String, String> {
+    // Both fields are explicitly UTC in the server contract; ASP.NET may omit the zone.
+    fun utc(value: String): java.time.Instant = runCatching { java.time.Instant.parse(value) }
+        .getOrElse { java.time.LocalDateTime.parse(value).toInstant(java.time.ZoneOffset.UTC) }
+    val own = messages.filter { it.isMine && !it.isDeleted }
+    val latestRead = own.indexOfLast { message ->
+        readers.any { reader ->
+            !(reader.userId.equals(message.sender.identity.userId, true) &&
+                reader.participantType.equals(message.sender.identity.participantType, true)) &&
+                runCatching { utc(reader.readThroughUtc) >= utc(message.sentUtc) }.getOrDefault(false)
+        }
+    }
+    return own.mapIndexedNotNull { index, message ->
+        when {
+            index == latestRead -> message.id to "Read"
+            index > latestRead -> message.id to "Sent"
+            else -> null
+        }
+    }.toMap()
+}
+
+@Serializable data class MessageReaction(val emoji: String, val count: Int, val reactedByCurrentActor: Boolean)
+@Serializable data class MessageReactionRequest(val emoji: String)
+@Serializable data class MessageReactionResult(val messageId: String, val reactions: List<MessageReaction> = emptyList())
+
+@Serializable data class MessagingSharedContent(
+    val sourcePostId: String, val status: String,
+    val contentType: String? = null, val body: String? = null,
+    val authorDisplayName: String? = null, val media: List<SocialMedia> = emptyList(), val url: String,
+)

@@ -24,6 +24,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -871,8 +872,12 @@ private fun AuthenticatedShell(
         },
     )
     val messages: MessagingViewModel = viewModel(
+        key = MessagingViewModel.sessionKey(session.accountId, session.actor.identity),
         factory = LegendViewModelFactory { MessagingViewModel(container.messagingRepository, participantType) },
     )
+    DisposableEffect(messages) {
+        onDispose { messages.deactivate() }
+    }
     val account: AccountViewModel = viewModel(
         factory = LegendViewModelFactory { AccountViewModel(container.accountRepository, participantType) },
     )
@@ -2865,10 +2870,13 @@ private fun MessagesScreen(
                     participantType = participantType,
                     isSending = viewModel.isSending.collectAsStateWithLifecycle().value,
                     back = { selectedConversationId = null },
-                    send = viewModel::send,
+                    send = { context, id, body, replyId, attachments, completed ->
+                        viewModel.send(context, id, body, replyId, attachments, completed = completed)
+                    },
                     loadOlder = viewModel::loadOlder,
                     historyFailure = historyFailure,
                     delete = viewModel::deleteMessage,
+                    react = viewModel::react,
                     setReadReceipts = viewModel::setReadReceipts,
                     markViewed = viewModel::markViewed,
                     manageGroup = { managingGroup = it },
@@ -3546,15 +3554,17 @@ private fun MessageThread(
     participantType: String,
     isSending: Boolean,
     back: () -> Unit,
-    send: (Context, String, String, String?, List<Uri>) -> Unit,
+    send: (Context, String, String, String?, List<Uri>, (Boolean) -> Unit) -> Unit,
     loadOlder: () -> Unit,
     historyFailure: String?,
     delete: (ConversationMessage) -> Unit,
+    react: (ConversationMessage, String?) -> Unit,
     setReadReceipts: (String, Boolean, Boolean) -> Unit,
     markViewed: (String) -> Unit,
     manageGroup: (ConversationDetail) -> Unit,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
+    val receiptLabels = remember(conversation.messages, conversation.readReceipts) { messageReceiptLabels(conversation.messages, conversation.readReceipts?.readers.orEmpty()) }
     val openProfile = LocalLegendOpenProfile.current
     val counterparty = conversation.participants.firstOrNull { it.identity != currentIdentity }
     val context = LocalContext.current
@@ -3638,14 +3648,17 @@ private fun MessageThread(
                     participantType = participantType,
                     reply = { replyTo = message },
                     delete = { delete(message) },
+                    react = { emoji -> react(message, emoji) },
+                    reactionOptions = conversation.reactionOptions,
                     resolveVerification = resolveVerification,
                 )
-                if (message.isMine) {
-                    val read = conversation.readReceipts?.readers?.any { reader ->
-                        !(reader.userId.equals(currentIdentity.userId, true) && reader.participantType.equals(currentIdentity.participantType, true)) &&
-                            runCatching { java.time.Instant.parse(reader.readThroughUtc) >= java.time.Instant.parse(message.sentUtc) }.getOrDefault(false)
-                    } == true
-                    Text(if (read) legendLocalized("Read") else legendLocalized("Sent"), modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End, style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                receiptLabels[message.id]?.let { label ->
+                    val color = if (label == "Read") LegendColors.Success else LegendColors.Error
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        Text(legendLocalized(label), style = LegendTypography.Label, color = color,
+                            modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(50))
+                                .padding(horizontal = LegendSpacing.Sm, vertical = 2.dp))
+                    }
                 }
 
             }
@@ -3686,10 +3699,16 @@ private fun MessageThread(
                 OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text(legendLocalized("Write a message")) }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true, keyboardType = androidx.compose.ui.text.input.KeyboardType.Text), maxLines = 5, shape = LegendShapes.Control)
                 IconButton(
                     onClick = {
-                        send(context, conversation.id, draft, replyTo?.id, attachments)
-                        draft = ""
-                        replyTo = null
-                        attachments = emptyList()
+                        val submittedDraft = draft
+                        val submittedReply = replyTo
+                        val submittedAttachments = attachments
+                        send(context, conversation.id, submittedDraft, submittedReply?.id, submittedAttachments) { succeeded ->
+                            if (succeeded && draft == submittedDraft && replyTo == submittedReply && attachments == submittedAttachments) {
+                                draft = ""
+                                replyTo = null
+                                attachments = emptyList()
+                            }
+                        }
                     },
                     enabled = draft.isNotBlank() && !isSending,
                     modifier = Modifier.padding(start = LegendSpacing.Xs).background(if (draft.isNotBlank()) LegendColors.Gold else LegendColors.SurfaceInset, CircleShape),
@@ -3709,9 +3728,18 @@ private fun LegendMessageBubble(
     participantType: String,
     reply: () -> Unit,
     delete: () -> Unit,
+    react: (String?) -> Unit,
+    reactionOptions: List<String>,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
     var actionsOpen by remember(message.id) { mutableStateOf(false) }
+    var emojiPicker by remember(message.id) { mutableStateOf(false) }
+    var emojiDraft by remember(message.id) { mutableStateOf("") }
+    if (emojiPicker) AlertDialog(onDismissRequest = { emojiPicker = false },
+        title = { Text(legendLocalized("Choose a reaction")) },
+        text = { OutlinedTextField(value = emojiDraft, onValueChange = { emojiDraft = it.take(32) }, label = { Text(legendLocalized("Emoji")) }) },
+        confirmButton = { TextButton(onClick = { react(emojiDraft.trim()); emojiPicker = false }, enabled = emojiDraft.isNotBlank()) { Text(legendLocalized("React")) } },
+        dismissButton = { TextButton(onClick = { emojiPicker = false }) { Text(legendLocalized("Cancel")) } })
     val context = LocalContext.current
     fun copyText(text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Message", text))
@@ -3720,6 +3748,13 @@ private fun LegendMessageBubble(
     if (actionsOpen) AlertDialog(onDismissRequest = { actionsOpen = false },
         title = { Text(legendLocalized("Message actions")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                reactionOptions.forEach { emoji ->
+                    TextButton(onClick = { react(emoji); actionsOpen = false }) { Text(emoji) }
+                }
+                TextButton(onClick = { actionsOpen = false; emojiPicker = true }) { Text("+") }
+            }
+            if (message.reactions.any { it.reactedByCurrentActor }) TextButton(onClick = { react(null); actionsOpen = false }) { Text(legendLocalized("Remove reaction")) }
             androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
             Text(legendMeetingTime(message.sentUtc), style = LegendTypography.Label)
             TextButton(onClick = { actionsOpen = false; reply() }) { Text(legendLocalized("Reply")) }
@@ -3727,10 +3762,17 @@ private fun LegendMessageBubble(
             message.originalBody?.takeIf { it != message.body }?.let { original ->
                 TextButton(onClick = { copyText(original) }) { Text(legendLocalized("Copy original text")) }
             }
-            TextButton(onClick = {
-                actionsOpen = false
-                context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, message.body) }, null))
-            }) { Text(legendLocalized("Share message")) }
+            if (message.attachments.isNotEmpty()) {
+                message.attachments.forEach { LegendMessageAttachmentOpen(it, mediaRepository, participantType) }
+            } else {
+                TextButton(onClick = {
+                    actionsOpen = false
+                    val text = message.sharedContent?.let { mediaRepository.sharedPostUrl(it.sourcePostId) } ?: message.body
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text)
+                    }, null))
+                }) { Text(legendLocalized("Share message")) }
+            }
             if (message.isMine) TextButton(onClick = { actionsOpen = false; delete() }) { Text(legendLocalized("Unsend"), color = LegendColors.Error) }
         } }, confirmButton = { TextButton(onClick = { actionsOpen = false }) { Text(legendLocalized("Done")) } })
     val openProfile = LocalLegendOpenProfile.current
@@ -3740,7 +3782,7 @@ private fun LegendMessageBubble(
             Box(Modifier.clickable { openProfile(senderProfile) }) { LegendProtectedAvatar(message.sender.avatar, message.sender.displayName, participantType, mediaRepository, size = 28.dp) }
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
-        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onLongClick = { actionsOpen = true })) {
+        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("👍") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
             Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 message.reply?.let { replyPreview ->
@@ -3762,8 +3804,28 @@ private fun LegendMessageBubble(
                         }
                     }
                 }
-                message.attachments.forEach { attachment ->
-                    Text("${attachment.originalFileName} · ${attachment.scanStatus}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary)
+                if (!message.isDeleted) {
+                    message.sharedContent?.let { shared ->
+                        if (shared.status == "available") {
+                            Text(shared.authorDisplayName.orEmpty(), style = LegendTypography.BodyEmphasis)
+                            shared.body?.takeIf { it.isNotBlank() }?.let { Text(it) }
+                            shared.media.sortedBy { it.displayOrder }.forEach { media ->
+                                LegendProtectedSocialMedia(assetId = media.id, mediaKind = media.mediaKind,
+                                    participantType = participantType, repository = mediaRepository,
+                                    contentDescription = media.accessibilityText, modifier = Modifier.fillMaxWidth())
+                            }
+                        } else Text(legendLocalized("Shared content is unavailable."))
+                    }
+                    message.attachments.forEach { attachment ->
+                        LegendMessageAttachmentOpen(attachment, mediaRepository, participantType)
+                    }
+                }
+                if (message.reactions.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    message.reactions.forEach { reaction ->
+                        TextButton(onClick = { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }) {
+                            Text("${reaction.emoji} ${reaction.count}", color = if (reaction.reactedByCurrentActor) LegendColors.Gold else LegendColors.TextSecondary)
+                        }
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary, modifier = Modifier.weight(1f))
@@ -3827,8 +3889,6 @@ private fun LegendGlobalSocialShareSheet(
         messaging.loadRecipients(query.trim().takeIf(String::isNotBlank))
     }
 
-    val internalMessageBody = remember(post) { post.legendInternalShareBody() }
-    val externalMessageBody = remember(post) { post.legendExternalShareBody() }
     ModalBottomSheet(
         onDismissRequest = dismiss,
         containerColor = LegendColors.Canvas,
@@ -3875,7 +3935,7 @@ private fun LegendGlobalSocialShareSheet(
                                 Intent.createChooser(
                                     Intent(Intent.ACTION_SEND)
                                         .setType("text/plain")
-                                        .putExtra(Intent.EXTRA_TEXT, externalMessageBody),
+                                        .putExtra(Intent.EXTRA_TEXT, mediaRepository.sharedPostUrl(post.id)),
                                     "Share outside LEGEND",
                                 ),
                             )
@@ -3926,7 +3986,8 @@ private fun LegendGlobalSocialShareSheet(
                                                 messaging.send(
                                                     context = context,
                                                     id = conversationId,
-                                                    body = internalMessageBody,
+                                                    body = "",
+                                                    sharedPostId = post.id,
                                                     completed = { succeeded ->
                                                         recipientBeingSent = null
                                                         if (succeeded) {
@@ -3987,21 +4048,6 @@ private fun LegendGlobalSocialShareSheet(
         }
     }
 }
-
-private fun SocialPost.legendInternalShareBody(): String {
-    val heading = legendLocalized(
-        "Shared a LEGEND {contentType} by {displayName}",
-        mapOf("contentType" to displayContentLabel(), "displayName" to author.displayName),
-    )
-    return body.trim().takeIf(String::isNotBlank)?.let { "$heading\n\n$it" } ?: heading
-}
-
-private fun SocialPost.legendExternalShareBody(): String =
-    body.trim().takeIf(String::isNotBlank)
-        ?: legendLocalized(
-            "LEGEND {contentType} by {displayName}",
-            mapOf("contentType" to displayContentLabel(), "displayName" to author.displayName),
-        )
 
 @Composable
 private fun SocialScreen(
@@ -8311,4 +8357,37 @@ private fun LegendCallActionCard(title: String, subtitle: String, icon: androidx
             Icon(Icons.Default.NorthEast, null, tint = LegendColors.Gold)
         }
     }
+}
+
+@Composable
+private fun LegendMessageAttachmentOpen(
+    attachment: MessageAttachment, repository: AuthenticatedMediaRepository, participantType: String,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var loading by remember(attachment.id) { mutableStateOf(false) }
+    var failed by remember(attachment.id) { mutableStateOf(false) }
+    fun open(share: Boolean) {
+        loading = true
+        scope.launch {
+            try {
+                val file = repository.messageAttachmentFile(attachment, participantType)
+                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.call-snapshots", file)
+                val intent = if (share) Intent(Intent.ACTION_SEND).setType(attachment.contentType)
+                    .putExtra(Intent.EXTRA_STREAM, uri).apply { clipData = android.content.ClipData.newRawUri("attachment", uri) }
+                    else Intent(Intent.ACTION_VIEW).setDataAndType(uri, attachment.contentType)
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                context.startActivity(Intent.createChooser(intent, legendLocalized(if (share) "Share attachment" else "Open attachment")))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { failed = true }
+            finally { loading = false }
+        }
+    }
+    TextButton(enabled = attachment.canDownload && !loading, onClick = { open(false) }) {
+        Text("${attachment.originalFileName} · ${attachment.scanStatus}")
+    }
+    TextButton(enabled = attachment.canDownload && !loading, onClick = { open(true) }) {
+        Text(legendLocalized("Share attachment"))
+    }
+    if (failed) Text(legendLocalized("Attachment unavailable"), color = LegendColors.Error)
 }

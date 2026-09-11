@@ -2,6 +2,8 @@ using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Shared.Messaging;
 
 namespace Infrastructure.Messaging;
@@ -36,6 +38,31 @@ public abstract class MessagingControllerBase : Controller
     {
         var actor = await _actorContextResolver.ResolveAsync(HttpContext, cancellationToken);
         return actor is null ? null : new MessagingActor(actor.Value.UserId, actor.Value.ParticipantType);
+    }
+
+    [HttpPut("/Messaging/Conversations/{conversationId:guid}/Messages/{messageId:guid}/Reaction")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetMessageReaction(Guid conversationId, Guid messageId,
+        [FromBody] SetMessagingReactionRequest? request)
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor == null) return Forbid();
+        if (string.IsNullOrEmpty(request?.Emoji))
+            return Failure("MESSAGING_REACTION_INVALID", "Choose one emoji reaction.");
+        var result = await _messagingService.SetMessageReactionAsync(actor, conversationId,
+            messageId, request.Emoji, HttpContext.RequestAborted);
+        return result.Succeeded ? Ok(result.Value) : Failure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("/Messaging/Conversations/{conversationId:guid}/Messages/{messageId:guid}/Reaction")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveMessageReaction(Guid conversationId, Guid messageId)
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor == null) return Forbid();
+        var result = await _messagingService.SetMessageReactionAsync(actor, conversationId,
+            messageId, null, HttpContext.RequestAborted);
+        return result.Succeeded ? Ok(result.Value) : Failure(result.ErrorCode, result.ErrorMessage);
     }
 
     [HttpGet("/Messaging")]
@@ -121,13 +148,14 @@ public abstract class MessagingControllerBase : Controller
     }
 
     [HttpGet("/Messaging/Conversations/{conversationId:guid}")]
-    public async Task<IActionResult> Conversation(Guid conversationId)
+    public async Task<IActionResult> Conversation(Guid conversationId, DateTime? beforeUtc = null, int take = 60)
     {
         var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
         if (actor is null)
             return Forbid();
 
-        var result = await _messagingService.GetConversationAsync(actor, conversationId, HttpContext.RequestAborted);
+        var result = await _messagingService.GetConversationPageAsync(actor, conversationId,
+            new MessagingConversationMessagePageQuery(beforeUtc, Math.Clamp(take, 1, 80)), HttpContext.RequestAborted);
         return result.Succeeded ? Ok(result) : Failure(result.ErrorCode, result.ErrorMessage);
     }
 
@@ -149,7 +177,7 @@ public abstract class MessagingControllerBase : Controller
                 participant.ParticipantType,
                 request.Subject,
                 request.Body,
-                request.ClientMessageId),
+                request.ClientMessageId, request.SharedPostId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
@@ -178,30 +206,42 @@ public abstract class MessagingControllerBase : Controller
                 conversationId,
                 request.Body,
                 request.ClientMessageId,
-                request.ReplyToMessageId),
+                request.ReplyToMessageId, request.SharedPostId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
 
-        await PublishConversationEventAsync(
-            actor,
-            conversationId,
-            "messageReceived",
-            result.Message!.Id,
-            HttpContext.RequestAborted);
+        try
+        {
+            await PublishConversationEventAsync(
+                actor,
+                conversationId,
+                "messageReceived",
+                result.Message!.Id,
+                HttpContext.RequestAborted);
+        }
+        catch (Exception exception)
+        {
+            // The message and delivery outbox have committed. Realtime is an
+            // advisory wake-up; the existing poller retries from persisted rows.
+            // A transport failure must not relabel that committed send as failed.
+            HttpContext.RequestServices.GetService<ILogger<MessagingControllerBase>>()?
+                .LogWarning("Messaging realtime wake-up failed after commit. ExceptionType={ExceptionType}",
+                    exception.GetType().Name);
+        }
         return Ok(result);
     }
 
     [HttpPost("/Messaging/Conversations/{conversationId:guid}/Read")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> MarkRead(Guid conversationId)
+    public async Task<IActionResult> MarkRead(Guid conversationId, [FromQuery] Guid? readThroughMessageId = null)
     {
         var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
         if (actor is null)
             return Forbid();
 
         var result = await _messagingService.MarkConversationReadAsync(
-            new MessagingConversationActionCommand(actor, conversationId),
+            new MessagingConversationActionCommand(actor, conversationId, readThroughMessageId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
@@ -323,9 +363,13 @@ public abstract class MessagingControllerBase : Controller
         Guid? messageId,
         CancellationToken cancellationToken)
     {
-        var conversation = await _messagingService.GetConversationAsync(actor, conversationId, cancellationToken);
-        if (conversation.Succeeded && conversation.Conversation is not null)
-            await PublishConversationEventAsync(conversation.Conversation, eventType, messageId, cancellationToken);
+        var recipients = await _messagingService.GetConversationRealtimeRecipientsAsync(
+            actor, conversationId, cancellationToken);
+        if (recipients.Count > 0)
+        {
+            await _realtimePublisher.PublishAsync(new MessagingRealtimeEvent(
+                eventType, conversationId, messageId, DateTime.UtcNow, recipients), cancellationToken);
+        }
     }
 
     private Task PublishConversationEventAsync(

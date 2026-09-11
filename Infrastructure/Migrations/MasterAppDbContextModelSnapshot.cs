@@ -4281,6 +4281,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("SentUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("SharedSocialPostId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("VerificationReviewRequestId")
                         .HasColumnType("uniqueidentifier");
 
@@ -9278,6 +9281,32 @@ namespace Infrastructure.Migrations
                     b.ToTable("MessageConversationParticipants", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.MessageReaction", b =>
+                {
+                    b.Property<Guid>("InternalMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ParticipantType")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("InternalMessageId", "ActorProfileId", "ParticipantType");
+
+                    b.ToTable("MessageReactions", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.MessageTranslation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12934,6 +12963,17 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("Domain.Entities.MessageReaction", b =>
+                {
+                    b.HasOne("Domain.Entities.InternalMessage", "InternalMessage")
+                        .WithMany()
+                        .HasForeignKey("InternalMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InternalMessage");
                 });
 
             modelBuilder.Entity("Domain.Entities.MessageTranslation", b =>

@@ -3,11 +3,14 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -84,7 +87,8 @@ public sealed class LegendFounderAiConversationService
         LegendFounderAiDiscourseStateService discourse,
         ILegendLanguageRegistry languages,
         ITranslationService translation,
-        IFounderSoftwareRemediationService? softwareRemediation = null)
+        IFounderSoftwareRemediationService? softwareRemediation = null,
+        AgencyCommandService? agencyCommand = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
@@ -95,7 +99,8 @@ public sealed class LegendFounderAiConversationService
         _toolAuthority =
             new LegendFounderToolAuthority(
                 legend,
-                softwareRemediation);
+                softwareRemediation,
+                agencyCommand);
         _logger = logger;
 
         _timeoutSeconds =
@@ -191,6 +196,9 @@ public sealed class LegendFounderAiConversationService
     {
         ArgumentNullException.ThrowIfNull(founder);
         ArgumentNullException.ThrowIfNull(request);
+        using var requestActivity = Activity.Current is null
+            ? new Activity("LegendFounderAi.Reply").SetIdFormat(ActivityIdFormat.W3C).Start()
+            : null;
 
         if (!TryNormalizeMode(
                 request.Mode,
@@ -213,6 +221,14 @@ public sealed class LegendFounderAiConversationService
                 "message_validation",
                 "invalid_messages");
         }
+
+        // One immutable external-provider decision for this request. It is
+        // established once, before any authority runs, and is then carried
+        // explicitly into every boundary that could reach an external
+        // provider. Nothing downstream may widen it.
+        var providerPolicy = request.NativeOnly
+            ? LegendConnectExternalProviderPolicy.NativeOnly
+            : LegendConnectExternalProviderPolicy.ProviderEnabled;
 
         if (request.NativeOnly && IsTeacherMode(mode))
         {
@@ -244,36 +260,80 @@ public sealed class LegendFounderAiConversationService
 
         var executionClock =
             Stopwatch.StartNew();
+        using var stageScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["LegendRequestTraceId"] = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N"),
+            ["LegendMode"] = mode,
+            ["LegendNativeOnly"] = request.NativeOnly
+        });
 
         LegendConnectNativeInferenceSnapshot? nativeInference = null;
+        LegendConnectDiscourseStateSnapshot? currentDiscourseState = null;
         string? nativeFailureDetail = null;
         string? governedSourceLanguageCode = null;
+        var sourceLanguageTemporarilyUnavailable = false;
 
-        if (ShouldAttemptNativeInference(mode))
         {
             // Language identification can contact the existing governed
             // translation router. Preserve the Founder boundary before that
             // provider-backed read and before any meaning-graph analysis.
-            await _legend.EnsureFounderAuthorizedAsync(
-                founder,
-                effectiveToken);
+            await TraceNativeStageAsync("founder_authorization", "FounderLegendConnectService.EnsureFounderAuthorizedAsync", async () =>
+            {
+                await _legend.EnsureFounderAuthorizedAsync(founder, effectiveToken);
+                return true;
+            });
 
-            var sourceLanguage = await ResolveSourceLanguageAsync(
+            var sourceLanguage = await TraceNativeStageAsync("source_language", "LegendFounderAiConversationService.ResolveSourceLanguageAsync", () => ResolveSourceLanguageAsync(
                 request.SourceLanguageCode,
                 conversation[^1].Content ?? string.Empty,
-                effectiveToken);
+                effectiveToken,
+                providerPolicy));
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "SourceLanguageResolved", "LegendFounderAiConversationService.ResolveSourceLanguageAsync", "source_language", sourceLanguage.Outcome.ToString(),
+                LegendConnectTelemetry.NormalizeDiagnosticReason(sourceLanguage.Reason), providerPolicy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
             if (!sourceLanguage.Succeeded)
             {
-                return LegendFounderAiChatResponse.ModeFailure(
-                    mode,
-                    $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
-                    "language_identification",
-                    "source_language_identification",
-                    sourceLanguage.Reason);
-            }
+                if (providerPolicy.ForbidsExternalProviders ||
+                    !sourceLanguage.IsTransientIdentificationOutage)
+                {
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
+                        "language_identification",
+                        "source_language_identification",
+                        sourceLanguage.Reason);
+                }
 
-            var sourceLanguageCode = sourceLanguage.LanguageCode!;
-            governedSourceLanguageCode = sourceLanguageCode;
+                // The language authority did not settle meaning or receipt
+                // scope. A transient outage may use the already-enabled
+                // external responder, with no invented language/native proof.
+                sourceLanguageTemporarilyUnavailable = true;
+                nativeFailureDetail =
+                    $"Governed source-language identification was temporarily unavailable. SourceLanguageFailure={sourceLanguage.Reason}. " +
+                    "Native meaning and owned-record receipt scope were not established. Any provider response remains external, unresolved evidence.";
+            }
+            else
+            {
+                governedSourceLanguageCode = sourceLanguage.LanguageCode!;
+            }
+        }
+
+        if (governedSourceLanguageCode is not null)
+        {
+            currentDiscourseState = await ObserveDiscourseMeaningAsync(
+                founder,
+                request.ConversationId,
+                "user",
+                conversation[^1].Content ?? string.Empty,
+                effectiveToken,
+                cancellationToken,
+                governedSourceLanguageCode);
+        }
+
+        if (ShouldAttemptNativeInference(mode) && governedSourceLanguageCode is not null)
+        {
+            var sourceLanguageCode = governedSourceLanguageCode;
             var nativeStarted = Stopwatch.GetTimestamp();
             await ReportProgressAsync(
                 progress,
@@ -284,37 +344,27 @@ public sealed class LegendFounderAiConversationService
 
             try
             {
-                await ObserveDiscourseMeaningAsync(
-                    founder,
-                    request.ConversationId,
-                    "user",
-                    conversation[^1].Content ?? string.Empty,
-                    effectiveToken,
-                    cancellationToken,
-                    sourceLanguageCode);
                 var context = conversation
                     .Take(conversation.Count - 1)
                     .Select(message => new LegendConnectConversationContextItem(
                         message.Role ?? string.Empty,
                         message.Content ?? string.Empty))
                     .ToArray();
-                var discourseState = await _discourse.GetStateAsync(
-                    founder,
-                    request.ConversationId,
-                    effectiveToken);
-                nativeInference = await _legend.TryInferConversationWithDiscourseAsync(
+                nativeInference = await TraceNativeStageAsync("native_semantic_inference", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", () => _legend.TryInferConversationWithDiscourseAsync(
                     founder,
                     conversation[^1].Content ?? string.Empty,
                     context,
-                    discourseState,
+                    currentDiscourseState,
                     sourceLanguageCode,
-                    effectiveToken);
+                    effectiveToken,
+                    providerPolicy));
                 if (nativeInference.ReadOnlyContentRequest is { } readRequest)
                 {
-                    var binding = await _toolAuthority.BindReadOnlyResultAsync(
+                    var binding = await TraceNativeStageAsync("native_read_binding", "LegendFounderToolAuthority.BindReadOnlyResultAsync", () => _toolAuthority.BindReadOnlyResultAsync(
                         founder,
                         readRequest,
-                        effectiveToken);
+                        effectiveToken,
+                        providerPolicy));
                     if (!binding.Succeeded || binding.Receipt is null)
                     {
                         nativeInference = new LegendConnectNativeInferenceSnapshot(
@@ -330,15 +380,16 @@ public sealed class LegendFounderAiConversationService
                     }
                     else
                     {
-                        nativeInference = await _legend
+                        nativeInference = await TraceNativeStageAsync("native_read_realization", "FounderLegendConnectService.TryInferConversationWithReadOnlyContentAsync", () => _legend
                             .TryInferConversationWithReadOnlyContentAsync(
                                 founder,
                                 conversation[^1].Content ?? string.Empty,
                                 context,
-                                discourseState,
+                                currentDiscourseState,
                                 sourceLanguageCode,
                                 binding.Receipt,
-                                effectiveToken);
+                                effectiveToken,
+                                providerPolicy));
                     }
                 }
             }
@@ -356,20 +407,29 @@ public sealed class LegendFounderAiConversationService
                 // Native inference is strictly fail-closed. A read failure
                 // cannot manufacture an answer, and any fail-closed boundary
                 // already returned by the native authority remains in force.
-                nativeFailureDetail = exception.ToString();
+                nativeFailureDetail = "The native authority failed before producing a verified result. Reason=native_inference_unavailable.";
                 _logger.LogWarning(
-                    exception,
-                    "LEGEND native conversational inference was unavailable; preserving its governed escalation boundary.");
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExceptionType={ExceptionType}",
+                    "NativeInferenceException", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", "native_inference", "failed", exception.GetType().Name);
             }
             finally
             {
                 _logger.LogInformation(
-                    "LEGEND Founder AI stage completed. Mode={Mode} Stage=native_inference ElapsedMs={ElapsedMs}",
-                    mode,
-                    (long)Math.Ceiling(
-                        Stopwatch.GetElapsedTime(nativeStarted).TotalMilliseconds));
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} Supported={Supported} RequiresEscalation={RequiresEscalation} EvidenceCount={EvidenceCount}",
+                    "NativeInferenceCompleted", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", "native_inference",
+                    nativeInference is null ? "unavailable" : nativeInference.Supported ? "supported" : "unsupported",
+                    LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference?.ReasonCode),
+                    (long)Math.Ceiling(Stopwatch.GetElapsedTime(nativeStarted).TotalMilliseconds),
+                    nativeInference?.Supported ?? false, nativeInference?.RequiresEscalation ?? false, nativeInference?.EvidenceCount ?? 0);
             }
 
+            var observedResearchDecision = nativeInference?.ResearchDecision;
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ResearchRequired={ResearchRequired} ProviderPolicy={ProviderPolicy}",
+                "ResearchDecision", "LegendConnectOperations.DecideResearchNeeded", "research_decision",
+                observedResearchDecision is null ? "unavailable" : !observedResearchDecision.ResearchRequired ? "not_required" : request.NativeOnly ? "blocked" : "allowed",
+                LegendConnectTelemetry.NormalizeDiagnosticReason(observedResearchDecision?.ReasonCode ?? "research_decision_unavailable"),
+                observedResearchDecision?.ResearchRequired ?? false, providerPolicy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
             if (nativeInference?.ResearchDecision is
                 {
                     ResearchRequired: true
@@ -378,7 +438,7 @@ public sealed class LegendFounderAiConversationService
                 if (request.NativeOnly)
                 {
                     return new LegendFounderAiChatResponse(
-                        true,
+                        false,
                         mode,
                         "LEGEND identified that this request requires external research, but native-only isolation blocked every internet operation. " +
                         $"ResearchReason={researchDecision.ReasonCode}; EvidenceOrigin=UnresolvedEvidence.",
@@ -407,7 +467,7 @@ public sealed class LegendFounderAiConversationService
                 LegendConnectResearchOutcome researchOutcome;
                 try
                 {
-                    researchOutcome = await _toolAuthority.ResearchAsync(
+                    researchOutcome = await TraceNativeStageAsync("research", "LegendFounderToolAuthority.ResearchAsync", () => _toolAuthority.ResearchAsync(
                         founder,
                         conversation[^1].Content ?? string.Empty,
                         governedSourceLanguageCode!,
@@ -416,7 +476,8 @@ public sealed class LegendFounderAiConversationService
                             ? new FounderAiMutationAuthorization(
                                 Guid.NewGuid().ToString("N"))
                             : null,
-                        researchBudget.Token);
+                        researchBudget.Token,
+                        providerPolicy));
                 }
                 catch (OperationCanceledException)
                     when (!effectiveToken.IsCancellationRequested)
@@ -428,6 +489,11 @@ public sealed class LegendFounderAiConversationService
                         "research",
                         "research_budget_exhausted");
                 }
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                    "ResearchCompleted", "LegendFounderToolAuthority.ResearchAsync", "research", researchOutcome.State.ToString(),
+                    LegendConnectTelemetry.NormalizeDiagnosticReason(researchOutcome.Failure?.ReasonCode ?? researchOutcome.InsufficientEvidence?.ReasonCode ??
+                        researchOutcome.UnresolvedConflict?.ReasonCode ?? researchOutcome.Decision.ReasonCode));
                 return ResearchChatResponse(
                     mode,
                     researchOutcome,
@@ -459,6 +525,9 @@ public sealed class LegendFounderAiConversationService
                         $"ModelAssistanceReason={nativeInference.ModelAssistance?.ReasonCode ?? "model_assistance_receipt_unavailable"}."),
                     effectiveToken);
 
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} EvidenceCount={EvidenceCount}",
+                    "NativeAnswer", "LegendFounderAiConversationService.ReplyAsync", "native_response", "supported", LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode), nativeInference.EvidenceCount);
                 return new LegendFounderAiChatResponse(
                     true,
                     mode,
@@ -471,7 +540,9 @@ public sealed class LegendFounderAiConversationService
                     ModelVersion: nativeInference.ModelAssistance?.ModelVersion,
                     ModelTrainingRunId: nativeInference.ModelAssistance?.ModelTrainingRunId,
                     ModelProvenance: nativeInference.ModelAssistance?.Provenance,
-                    EvidenceOrigin: LegendConnectResearchEvidenceOrigin.InternalKnowledge);
+                    EvidenceOrigin: LegendConnectResearchEvidenceOrigin.InternalKnowledge,
+                    ScheduleCertificates: nativeInference.ScheduleCertificates,
+                    ReasoningTransitionPath: nativeInference.ReasoningTransitionPath);
             }
         }
 
@@ -481,6 +552,9 @@ public sealed class LegendFounderAiConversationService
         // loading provider tools, or issuing any external request.
         if (request.NativeOnly)
         {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "ProviderEscalation", "LegendFounderAiConversationService.ReplyAsync", "provider_escalation", "blocked", "external_provider_forbidden_by_native_only_policy", "native_only");
             await ReportProgressAsync(
                 progress,
                 new LegendFounderAiProgressEvent(
@@ -492,21 +566,20 @@ public sealed class LegendFounderAiConversationService
                 ? nativeInference is null
                     ? "native_inference_unavailable"
                     : "native_inference_unsupported"
-                : nativeInference.ReasonCode.Trim();
+                : LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode);
             var detail = !string.IsNullOrWhiteSpace(nativeFailureDetail)
                 ? NormalizeFailureDetail(nativeFailureDetail)
                 : !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
                     ? nativeInference.AuthoritySummary.Trim()
                     : "The native authority returned no additional detail.";
 
-            return new LegendFounderAiChatResponse(
-                true,
-                mode,
-                $"LEGEND could not complete this native-only response. " +
+            var diagnostic = $"LEGEND could not complete this native-only response. " +
                 $"NativeFailure={reason}; NativeDetail={detail}; " +
                 $"EvidenceCount={nativeInference?.EvidenceCount ?? 0}; " +
-                "OpenAIEscalation=blocked.",
-                null,
+                "OpenAIEscalation=blocked.";
+            return new LegendFounderAiChatResponse(
+                false, mode, diagnostic, diagnostic,
+                FailureKind: "native_inference",
                 ResponseAuthority: "SystemDiagnostic",
                 Stage: "native_only_blocked",
                 Reason: reason,
@@ -530,6 +603,10 @@ public sealed class LegendFounderAiConversationService
                 RequiresEscalation: false
             })
         {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "ProviderEscalation", "LegendFounderAiConversationService.ReplyAsync", "provider_escalation", "blocked",
+                LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode), "provider_enabled");
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
@@ -538,42 +615,104 @@ public sealed class LegendFounderAiConversationService
 
         var apiKey = OpenAiKeyResolver.Resolve(_configuration);
         if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "ProviderEscalation", "OpenAiKeyResolver.Resolve", "provider_escalation", "blocked", "provider_api_key_unavailable", "provider_enabled");
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
                 nativeFailureDetail,
                 "provider_api_key_unavailable",
                 "The external reasoning provider is not configured for this deployment.");
-
+        }
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+            "ProviderEscalation", "LegendFounderAiConversationService.ReplyAsync", "provider_escalation", "allowed", "provider_enabled_escalation", "provider_enabled");
         var model = ResolveProviderModel();
+
+        // One typed classification for both modes. Legend mode reuses the
+        // classification the native meaning-graph analysis already produced;
+        // Teacher mode, which never attempts a native answer, obtains it from
+        // the same Founder-gated read-only analysis authority. Neither mode
+        // falls back to surface text, and no analysis is duplicated.
+        var ownedRecordResolution = nativeInference?.OwnedRecordIntent is { } nativeOwnedRecordIntent
+            ? new FounderAiOwnedRecordResolution(nativeOwnedRecordIntent, nativeInference.ReadOnlyContentRequest)
+            : sourceLanguageTemporarilyUnavailable
+                ? new FounderAiOwnedRecordResolution(
+                    LegendConnectOwnedRecordRequest.AnalysisUnavailable("source_language_identification_unavailable"), null)
+                : await ClassifyOwnedRecordIntentAsync(
+                    founder,
+                    conversation,
+                    currentDiscourseState,
+                    governedSourceLanguageCode!,
+                    effectiveToken);
+        var ownedRecordIntent = ownedRecordResolution.Classification;
+
+        // Unavailable semantic analysis cannot establish native proof or a
+        // governed read scope. Actual analysis failures stop the request. Only
+        // the typed transient language outage retains the existing external
+        // responder permission, with unresolved evidence and no native proof.
+        if (ownedRecordIntent?.IsAnalysisUnavailable == true &&
+            !sourceLanguageTemporarilyUnavailable)
+        {
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                FailureMessageForMode(
+                    mode,
+                    "The governed meaning-graph analysis that determines whether this " +
+                    "request requires an authenticated LEGEND read was unavailable, " +
+                    "so no answer was accepted."),
+                "governed_analysis",
+                "governed_request_classification",
+                ownedRecordIntent.Diagnostic ??
+                    "governed_meaning_graph_analysis_unavailable");
+        }
 
         var requiresMandatoryGovernedInspection =
             RequiresGovernedInspection(
                 conversation,
-                mode);
+                mode,
+                ownedRecordIntent);
 
         var requiresGovernedInspection =
             RequiresProviderGovernedInspection(
                 conversation,
                 mode,
+                ownedRecordIntent,
                 nativeInference,
                 nativeFailureDetail);
 
-        var requiresComprehensiveGovernedInspection =
-            RequiresComprehensiveGovernedInspection(
-                conversation,
-                mode);
+        // Owned-record intent alone proves that a current read is needed;
+        // it does not identify which record or operation can satisfy it.
+        // Only the native authority's existing governed result frame supplies
+        // that scope. A provider-selected unrelated read is not a substitute.
+        var requiredReadScope = requiresMandatoryGovernedInspection
+            ? ownedRecordResolution.ReadOnlyContentRequest
+            : null;
+        if (requiresMandatoryGovernedInspection && requiredReadScope is null)
+        {
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                FailureMessageForMode(
+                    mode,
+                    "The governed request requires a current owned-record read, " +
+                    "but no governed result frame established its exact tool and record scope."),
+                "governed_inspection",
+                "governed_request_classification",
+                "owned_record_read_scope_unproven");
+        }
 
         LegendConnectRetainedKnowledgeSearchSnapshot? retainedKnowledge = null;
 
         // OpenAI Teacher is a direct Founder-to-provider mode.  It may ask
         // for governed LEGEND inspection through the existing function-tool
-        // registry, but it must not force a LEGEND read before the first
-        // OpenAI response.  This preserves responder isolation and makes
-        // every pre-provider LEGEND inspection genuinely optional.
+        // registry. Only source-language and read-only meaning classification
+        // precede its response; native answer generation remains bypassed.
         var preloadRetainedKnowledge =
             requiresGovernedInspection &&
-            !IsTeacherMode(mode);
+            !IsTeacherMode(mode) &&
+            !sourceLanguageTemporarilyUnavailable;
 
         if (preloadRetainedKnowledge)
         {
@@ -619,6 +758,12 @@ public sealed class LegendFounderAiConversationService
                           retainedKnowledge,
                           ResolveRetainedContextBudget(conversation)))
                 : BuildCasualInstructions(mode);
+        if (requiredReadScope is not null)
+        {
+            instructions += "\nGOVERNED_READ_REQUIREMENT:\n" +
+                JsonSerializer.Serialize(requiredReadScope, JsonOptions) +
+                "\nUse the specified tool and arguments. An unrelated read cannot satisfy this requirement.";
+        }
 
         var tools = _toolAuthority.Tools;
 
@@ -647,17 +792,17 @@ public sealed class LegendFounderAiConversationService
                     ? ResolveMaximumToolRounds(conversation)
                     : 3;
 
-            var requiredGovernedEvidenceReads =
-                requiresComprehensiveGovernedInspection
-                    ? 3
-                    : 1;
+            var failedGovernedReads =
+                new Dictionary<string, FounderAiReadDiagnostic>(StringComparer.Ordinal);
+            var successfulGovernedReads = new HashSet<string>(StringComparer.Ordinal);
 
-            var successfulGovernedEvidenceTools =
-                new HashSet<string>(StringComparer.Ordinal);
-
+            // Retained-knowledge preload is a passive context read performed by
+            // this service, not an executed governed inspection. It can never
+            // satisfy a request whose answer depends on current governed state,
+            // and it must not withdraw the governed tool catalog from the
+            // escalated round.
             var governedInspectionCompleted =
-                !requiresGovernedInspection ||
-                preloadRetainedKnowledge;
+                !requiresGovernedInspection;
 
             var confirmedLearningMutationRequired =
                 request.FounderCommandConfirmed &&
@@ -703,13 +848,10 @@ public sealed class LegendFounderAiConversationService
                         "request_budget_exhausted");
                 }
 
+                // Optional tools remain discoverable even when no owned-record
+                // intent was admitted. The same registry, authorization, and
+                // request budget govern every provider-selected operation.
                 var allowTools =
-                    requiresGovernedInspection &&
-                    (
-                        !governedInspectionCompleted ||
-                        (confirmedLearningMutationRequired &&
-                         !learningMutationCompleted)
-                    ) &&
                     round < maximumToolRounds - 1 &&
                     remaining >
                         TimeSpan.FromSeconds(
@@ -766,7 +908,7 @@ public sealed class LegendFounderAiConversationService
 
                 var providerStarted = Stopwatch.GetTimestamp();
                 using var responseDocument =
-                    await SendResponseAsync(
+                    await TraceNativeStageAsync("external_response", "LegendFounderAiConversationService.SendResponseAsync", () => SendResponseAsync(
                         apiKey,
                         model,
                         instructions,
@@ -783,7 +925,7 @@ public sealed class LegendFounderAiConversationService
                             conversation,
                             requiresGovernedInspection,
                             _maxOutputTokens),
-                        effectiveToken);
+                        effectiveToken));
 
                 _logger.LogInformation(
                     "LEGEND Founder AI stage completed. Mode={Mode} Stage=provider_round Round={Round} AllowTools={AllowTools} BudgetMs={BudgetMs} ElapsedMs={ElapsedMs}",
@@ -811,8 +953,9 @@ public sealed class LegendFounderAiConversationService
 
                 if (responseState == "incomplete")
                 {
-                    if (requiresMandatoryGovernedInspection &&
-                        !governedInspectionCompleted)
+                    if ((requiresMandatoryGovernedInspection &&
+                         !governedInspectionCompleted) ||
+                        (failedGovernedReads.Count > 0 && successfulGovernedReads.Count == 0))
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
                             mode,
@@ -872,11 +1015,16 @@ public sealed class LegendFounderAiConversationService
                             true,
                             mode,
                             AppendLearningReceipt(
-                                accumulatedProviderAnswer,
+                                AppendReadDiagnostics(accumulatedProviderAnswer, failedGovernedReads.Values),
                                 learningMutationReceipt),
                             null,
                             ResponseAuthority: "OpenAITeacher",
                             Stage: "provider_response",
+                            Reason: sourceLanguageTemporarilyUnavailable
+                                ? "source_language_identification_unavailable"
+                                : failedGovernedReads.Count > 0
+                                    ? "partial_governed_inspection"
+                                    : null,
                             EvidenceOrigin:
                                 LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
                     }
@@ -907,8 +1055,9 @@ public sealed class LegendFounderAiConversationService
 
                 if (toolCalls.Count == 0)
                 {
-                    if (requiresMandatoryGovernedInspection &&
-                        !governedInspectionCompleted)
+                    if ((requiresMandatoryGovernedInspection &&
+                         !governedInspectionCompleted) ||
+                        (failedGovernedReads.Count > 0 && successfulGovernedReads.Count == 0))
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
                             mode,
@@ -964,13 +1113,29 @@ public sealed class LegendFounderAiConversationService
                         true,
                         mode,
                         AppendLearningReceipt(
-                            accumulatedProviderAnswer,
+                            AppendReadDiagnostics(accumulatedProviderAnswer, failedGovernedReads.Values),
                             learningMutationReceipt),
                         null,
                         ResponseAuthority: "OpenAITeacher",
                         Stage: "provider_response",
+                        Reason: sourceLanguageTemporarilyUnavailable
+                            ? "source_language_identification_unavailable"
+                            : failedGovernedReads.Count > 0
+                                ? "partial_governed_inspection"
+                                : null,
                         EvidenceOrigin:
                             LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
+                }
+
+                if (!allowTools)
+                {
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        FailureMessageForMode(mode,
+                            "The provider requested a tool after the bounded execution window closed."),
+                        "governed_inspection",
+                        "governed_tool",
+                        "provider_tool_execution_not_allowed");
                 }
 
                 await ReportProgressAsync(
@@ -1008,6 +1173,19 @@ public sealed class LegendFounderAiConversationService
                             call.Name),
                         effectiveToken);
 
+                    // Provider latency and preceding calls consume the same window.
+                    remaining = TimeSpan.FromSeconds(_timeoutSeconds) - executionClock.Elapsed;
+                    if (ResolveReadOnlyToolBudget(remaining) < TimeSpan.FromSeconds(MinimumReadOnlyToolSeconds))
+                    {
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(mode, "The bounded execution window closed before the next governed check."),
+                            "governed_inspection",
+                            "governed_tool",
+                            "provider_tool_execution_not_allowed");
+                    }
+                    effectiveToken.ThrowIfCancellationRequested();
+
                     var toolOutput =
                         await ExecuteFounderToolWithBudgetAsync(
                             founder,
@@ -1016,7 +1194,8 @@ public sealed class LegendFounderAiConversationService
                             mutationAuthorization,
                             ResolveReadOnlyToolBudget(remaining),
                             toolOutputBudget,
-                            effectiveToken);
+                            effectiveToken,
+                            providerPolicy);
 
                     if (string.Equals(
                             call.Name,
@@ -1027,6 +1206,9 @@ public sealed class LegendFounderAiConversationService
                                 toolOutput,
                                 out var completedResearch))
                         {
+                            _logger.LogInformation(
+                                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                                "ResearchOutcomeValidated", "LegendFounderAiConversationService.TryReadResearchOutcome", "research_tool", "rejected", "research_citation_validation_missing");
                             return LegendFounderAiChatResponse.ModeFailure(
                                 mode,
                                 "LEGEND rejected an incomplete or unvalidated governed research outcome.",
@@ -1034,6 +1216,11 @@ public sealed class LegendFounderAiConversationService
                                 "research_failure",
                                 "research_citation_validation_missing");
                         }
+                        _logger.LogInformation(
+                            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                            "ResearchCompleted", "LegendFounderAiConversationService.TryReadResearchOutcome", "research_tool", completedResearch!.State.ToString(),
+                            LegendConnectTelemetry.NormalizeDiagnosticReason(completedResearch.Failure?.ReasonCode ?? completedResearch.InsufficientEvidence?.ReasonCode ??
+                                completedResearch.UnresolvedConflict?.ReasonCode ?? completedResearch.Decision.ReasonCode));
                         return ResearchChatResponse(
                             mode,
                             completedResearch!,
@@ -1045,13 +1232,38 @@ public sealed class LegendFounderAiConversationService
                         var governedReadSucceeded =
                             IsSuccessfulFounderToolOutput(toolOutput);
 
-                        if (_toolAuthority.IsGovernedEvidence(call.Name) &&
-                            governedReadSucceeded)
+                        if (_toolAuthority.IsGovernedEvidence(call.Name))
                         {
-                            successfulGovernedEvidenceTools.Add(call.Name);
-                            governedInspectionCompleted =
-                                successfulGovernedEvidenceTools.Count >=
-                                requiredGovernedEvidenceReads;
+                            var readScopeIdentity = ReadScopeIdentity(call.Name, call.Arguments);
+                            if (governedReadSucceeded)
+                            {
+                                failedGovernedReads.Remove(readScopeIdentity);
+                                successfulGovernedReads.Add(readScopeIdentity);
+                            }
+                            else
+                            {
+                                successfulGovernedReads.Remove(readScopeIdentity);
+                                failedGovernedReads[readScopeIdentity] = new FounderAiReadDiagnostic(
+                                    call.Name, readScopeIdentity, "governed_read_unavailable");
+                            }
+
+                            if (requiredReadScope is not null &&
+                                string.Equals(readScopeIdentity,
+                                    ReadScopeIdentity(requiredReadScope.ToolName, requiredReadScope.ArgumentsJson),
+                                    StringComparison.Ordinal))
+                            {
+                                governedInspectionCompleted = governedReadSucceeded &&
+                                    LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+                                        requiredReadScope,
+                                        toolOutput,
+                                        DateTime.UtcNow,
+                                        out _,
+                                        out _);
+                            }
+                            else if (!requiresMandatoryGovernedInspection)
+                            {
+                                governedInspectionCompleted = successfulGovernedReads.Count > 0;
+                            }
                         }
                     }
                     else if (IsLearningMutationTool(call.Name))
@@ -1067,10 +1279,13 @@ public sealed class LegendFounderAiConversationService
                     await ReportProgressAsync(
                         progress,
                         new LegendFounderAiProgressEvent(
-                            "tool_complete",
-                            $"Completed: {toolDescription}",
+                            IsSuccessfulFounderToolOutput(toolOutput) ? "tool_complete" : "tool_unavailable",
+                            IsSuccessfulFounderToolOutput(toolOutput)
+                                ? $"Completed: {toolDescription}"
+                                : $"Unavailable: {toolDescription}",
                             round + 1,
-                            call.Name),
+                            call.Name,
+                            ReadScopeIdentity(call.Name, call.Arguments)),
                         effectiveToken);
 
                     input.Add(new Dictionary<string, object?>
@@ -1109,23 +1324,21 @@ public sealed class LegendFounderAiConversationService
         catch (LegendFounderAiProviderException exception)
         {
             _logger.LogWarning(
-                "LEGEND Founder AI provider rejected the escalation. HTTP={StatusCode} ClientRequestId={ClientRequestId} ProviderRequestId={ProviderRequestId}",
-                exception.StatusCode,
-                exception.ClientRequestId,
-                exception.ProviderRequestId);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} StatusCode={StatusCode}",
+                "ProviderEscalationRejected", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_http_rejection", exception.StatusCode);
 
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
                 nativeFailureDetail,
                 $"provider_http_{exception.StatusCode}",
-                $"{exception.ProviderError} ClientRequestId={exception.ClientRequestId}; ProviderRequestId={exception.ProviderRequestId ?? "unavailable"}.") with
+                $"The provider returned HTTP {exception.StatusCode}.") with
             {
                 ProviderStatusCode = exception.StatusCode,
-                Reference = exception.ProviderRequestId ?? exception.ClientRequestId
+                Reference = SafeProviderCorrelation(exception.ProviderRequestId) ?? SafeProviderCorrelation(exception.ClientRequestId)
             };
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested)
         {
             if (IsTeacherMode(mode))
@@ -1143,40 +1356,39 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail,
                 "provider_timeout",
-                exception.Message);
+                "The provider response window expired.");
         }
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI provider transport failed.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "ProviderTransportFailed", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_transport_failure", exception.GetType().Name);
 
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
                 nativeFailureDetail,
                 "provider_transport_failure",
-                exception.Message);
+                "The provider transport failed.");
         }
         catch (JsonException exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI received invalid provider JSON.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "ProviderJsonInvalid", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_invalid_json", exception.GetType().Name);
 
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
                 nativeFailureDetail,
                 "provider_invalid_json",
-                exception.Message);
+                "The provider returned an invalid response format.");
         }
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI execution failed outside a provider response boundary. Mode={Mode}",
-                mode);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "GovernedExecutionFailed", "LegendFounderAiConversationService.ReplyAsync", "governed_execution", "failed", "unexpected_governed_failure", exception.GetType().Name);
 
             return LegendFounderAiChatResponse.ModeFailure(
                 mode,
@@ -1189,7 +1401,64 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    private async Task ObserveDiscourseMeaningAsync(
+    /// <summary>
+    /// Obtains the typed operational intent for the latest request from the
+    /// existing Founder-gated, observational, read-only meaning-graph analysis.
+    /// It is used only when the native inference result did not already carry
+    /// the classification, so exactly one analysis produces exactly one
+    /// classification per request.
+    /// </summary>
+    private async Task<FounderAiOwnedRecordResolution> ClassifyOwnedRecordIntentAsync(
+        ClaimsPrincipal founder,
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        LegendConnectDiscourseStateSnapshot? currentDiscourseState,
+        string sourceLanguageCode,
+        CancellationToken cancellationToken)
+    {
+        var latest = conversation[^1].Content ?? string.Empty;
+        try
+        {
+            // The existing observational content-plan authority selects the
+            // same governed result frame without generating a native answer.
+            // Both intent and exact read scope come from that one selection.
+            var plan = await TraceNativeStageAsync("owned_record_classification", "FounderLegendConnectService.TryBindConversationContentAsync", () => _legend.TryBindConversationContentAsync(
+                founder, latest, currentDiscourseState, sourceLanguageCode, cancellationToken));
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} RequiresGovernedReadReceipt={RequiresGovernedReadReceipt} ReadScopeEstablished={ReadScopeEstablished}",
+                "OwnedRecordClassified", "FounderLegendConnectService.TryBindConversationContentAsync", "owned_record_classification",
+                plan.OwnedRecordIntent?.Intent.ToString() ?? "unavailable", LegendConnectTelemetry.NormalizeDiagnosticReason(plan.ReasonCode),
+                plan.OwnedRecordIntent?.RequiresGovernedReadReceipt ?? false, plan.ReadOnlyContentRequest is not null);
+            return new FounderAiOwnedRecordResolution(
+                plan.OwnedRecordIntent ?? LegendConnectOwnedRecordRequest.AnalysisUnavailable(
+                    "governed_meaning_graph_analysis_unavailable"),
+                plan.ReadOnlyContentRequest);
+        }
+        catch (AgentPortal.Security.ForbidResultException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "OwnedRecordClassificationException", "FounderLegendConnectService.TryBindConversationContentAsync", "owned_record_classification",
+                "failed", "governed_meaning_graph_analysis_unavailable", exception.GetType().Name);
+            return new FounderAiOwnedRecordResolution(
+                LegendConnectOwnedRecordRequest.AnalysisUnavailable(
+                    "governed_meaning_graph_analysis_unavailable: " + exception.GetType().Name),
+                null);
+        }
+    }
+
+    private sealed record FounderAiOwnedRecordResolution(
+        LegendConnectOwnedRecordClassification Classification,
+        LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest);
+
+    private async Task<LegendConnectDiscourseStateSnapshot?> ObserveDiscourseMeaningAsync(
         ClaimsPrincipal founder,
         string? conversationId,
         string role,
@@ -1198,24 +1467,40 @@ public sealed class LegendFounderAiConversationService
         CancellationToken requestCancellationToken,
         string sourceLanguageCode)
     {
+        // There is no durable conversation to observe without a valid key.
+        // Skip this otherwise duplicated meaning analysis before its queries.
+        if (!Guid.TryParse(conversationId, out _))
+            return null;
         using var observationBudget = CancellationTokenSource.CreateLinkedTokenSource(
             inferenceCancellationToken);
         observationBudget.CancelAfter(
             TimeSpan.FromSeconds(MaximumDiscourseObservationSeconds));
         try
         {
-            var meaning = await _legend.AnalyzeReusableMeaningGraphAsync(
+            var meaning = await TraceNativeStageAsync("discourse_meaning_analysis", "FounderLegendConnectService.AnalyzeReusableMeaningGraphAsync", () => _legend.AnalyzeReusableMeaningGraphAsync(
                 founder,
                 surface,
                 sourceLanguageCode,
-                observationBudget.Token);
-            await _discourse.RecordObservationAsync(
+                observationBudget.Token));
+            var currentTurnSequence = await TraceNativeStageAsync("discourse_persistence", "LegendFounderAiDiscourseStateService.RecordCurrentObservationAsync", () => _discourse.RecordCurrentObservationAsync(
                 founder,
                 conversationId,
                 role,
                 meaning,
                 observationBudget.Token,
-                sourceLanguageCode);
+                sourceLanguageCode));
+            if (role != "user" || currentTurnSequence is not int sequence)
+                return null;
+            var state = await TraceNativeStageAsync("discourse_reload", "LegendFounderAiDiscourseStateService.GetStateAsync", () => _discourse.GetStateAsync(
+                founder, conversationId, observationBudget.Token, currentTurnSequence: sequence));
+            return state is null ? null : state with
+            {
+                CurrentTurnAnalysis = new LegendConnectCurrentTurnMeaningAnalysis(
+                    LegendLanguageIdentity.TextHash(LegendLanguageIdentity.NormalizeText(surface)),
+                    sourceLanguageCode,
+                    sequence,
+                    meaning)
+            };
         }
         catch (OperationCanceledException) when (requestCancellationToken.IsCancellationRequested)
         {
@@ -1230,14 +1515,102 @@ public sealed class LegendFounderAiConversationService
             // Conversation state is durable observability, not a second
             // inference authority. A failed state write must not turn a
             // governed native reply into a provider fallback.
-            _logger.LogWarning(exception, "LEGEND discourse observation persistence failed.");
+            _logger.LogWarning(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExceptionType={ExceptionType}",
+                "DiscourseObservationException", "LegendFounderAiConversationService.ObserveDiscourseMeaningAsync", "discourse_observation", "failed", exception.GetType().Name);
         }
+        return null;
+    }
+
+    private async Task<T> TraceNativeStageAsync<T>(string stage, string authorityMethod, Func<Task<T>> action)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var outcome = "completed";
+        var domainOutcome = "unknown";
+        var reasonCode = "none";
+        var exceptionType = "none";
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome}",
+            "StageStarted", authorityMethod, stage, "started");
+        try
+        {
+            var result = await action();
+            (domainOutcome, reasonCode) = DescribeNativeStageResult(result);
+            if (result is LegendConnectUtteranceMeaningGraphSnapshot graph)
+            {
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} GraphNodes={GraphNodes} GraphRelations={GraphRelations} UnknownComponents={UnknownComponents}",
+                    "MeaningGraphObserved", authorityMethod, stage, graph.IsComposed ? "composed" : "uncomposed",
+                    LegendConnectTelemetry.NormalizeDiagnosticReason(graph.ReasonCode), graph.Nodes.Count, graph.Relations.Count, graph.UnknownSurfaceComponents.Count);
+            }
+            if (result is LegendConnectDiscourseStateSnapshot discourse)
+            {
+                var nodes = discourse.Turns.SelectMany(turn => turn.Nodes).ToArray();
+                var bindings = discourse.Turns.SelectMany(turn => turn.Bindings).ToArray();
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} DiscourseTurns={DiscourseTurns} GraphNodes={GraphNodes} GraphRelations={GraphRelations} FounderNodes={FounderNodes} MachineNodes={MachineNodes} CurrentTurnAssertionNodes={CurrentTurnAssertionNodes} SourceSlotBindingNodes={SourceSlotBindingNodes} BindingsBound={BindingsBound} BindingsUnresolved={BindingsUnresolved}",
+                    "DiscourseStateObserved", authorityMethod, stage, "observed", discourse.Turns.Count, nodes.Length,
+                    discourse.Turns.Sum(turn => turn.Relations.Count),
+                    nodes.Count(node => node.Provenance == "FounderApproved"),
+                    nodes.Count(node => node.Provenance == "SystemValidatedMachine"),
+                    nodes.Count(node => node.Provenance == "CurrentTurnAssertion"),
+                    nodes.Count(node => node.SourceSlotBinding is not null),
+                    bindings.Count(binding => binding.ResolutionState == "bound"),
+                    bindings.Count(binding => binding.ResolutionState != "bound"));
+            }
+            return result;
+        }
+        catch (OperationCanceledException exception)
+        {
+            outcome = "cancelled";
+            exceptionType = exception.GetType().Name;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            outcome = "failed";
+            exceptionType = exception.GetType().Name;
+            throw;
+        }
+        finally
+        {
+            // Fixed stage names and bounded counts expose the blocking
+            // authority without recording a prompt, graph, value or actor.
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExecutionOutcome={ExecutionOutcome} DomainOutcome={DomainOutcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType} TraceId={TraceId}",
+                "StageEnded", authorityMethod, stage, outcome == "completed" ? domainOutcome : outcome, outcome, domainOutcome,
+                outcome == "cancelled" ? "operation_cancelled" : outcome == "failed" ? "authority_exception" : reasonCode,
+                (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType, Activity.Current?.TraceId.ToString());
+        }
+    }
+
+
+    internal static (string Outcome, string Reason) DescribeNativeStageResult(object? result)
+    {
+        var (outcome, reason) = result switch
+        {
+            TranslationDetectionResult detection => (detection.Succeeded ? "succeeded" : "failed", detection.ErrorCode),
+            FounderAiSourceLanguageResolution language => (language.Succeeded ? "succeeded" : "failed", language.Reason),
+            LegendConnectNativeInferenceSnapshot inference => (inference.Supported ? "supported" : "unsupported", inference.ReasonCode),
+            LegendConnectContentBoundResponseMeaningPlanResult plan => (plan.Supported ? "supported" : "unsupported", plan.ReasonCode),
+            LegendConnectResearchOutcome research => (research.State.ToString(),
+                research.Failure?.ReasonCode ?? research.InsufficientEvidence?.ReasonCode ??
+                research.UnresolvedConflict?.ReasonCode ?? research.Decision.ReasonCode),
+            LegendConnectReadOnlyContentBindingResult binding => (binding.Succeeded ? "succeeded" : "failed", binding.ReasonCode),
+            LegendConnectUtteranceMeaningGraphSnapshot graph => (graph.IsComposed ? "composed" : "uncomposed", graph.ReasonCode),
+            string output when output.TrimStart().StartsWith("{", StringComparison.Ordinal) =>
+                (IsSuccessfulFounderToolOutput(output) ? "succeeded" : "failed", (string?)null),
+            null => ("unavailable", (string?)null),
+            _ => ("observed", (string?)null)
+        };
+        return (outcome, LegendConnectTelemetry.NormalizeDiagnosticReason(reason));
     }
 
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
         string sourceText,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         if (!string.IsNullOrWhiteSpace(declaredLanguageCode))
         {
@@ -1246,15 +1619,19 @@ public sealed class LegendFounderAiConversationService
                     out var normalizedCode))
             {
                 return FounderAiSourceLanguageResolution.Failure(
+                    FounderAiSourceLanguageOutcome.InvalidDeclaration,
                     "source_language_code_invalid");
             }
 
+            // Founder conversation is a read path. Language identity is read
+            // from the seeded governed registry and never provisions baseline
+            // rows from a reply; initialization keeps its own authority.
             var enabledLanguage =
-                await _languages.NormalizeEnabledTranslationLanguageAsync(
-                    normalizedCode,
-                    cancellationToken);
+                await TraceNativeStageAsync("declared_language_registry", _languages.GetType().Name + "." + nameof(ILegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync),
+                    () => _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(normalizedCode, cancellationToken));
             return enabledLanguage is null
                 ? FounderAiSourceLanguageResolution.Failure(
+                    FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                     "source_language_unsupported")
                 : FounderAiSourceLanguageResolution.Success(
                     enabledLanguage);
@@ -1263,9 +1640,8 @@ public sealed class LegendFounderAiConversationService
         TranslationDetectionResult detected;
         try
         {
-            detected = await _translation.DetectLanguageAsync(
-                sourceText,
-                cancellationToken);
+            detected = await TraceNativeStageAsync("source_language_detection", _translation.GetType().Name + "." + nameof(ITranslationService.DetectLanguageAsync),
+                () => _translation.DetectLanguageAsync(sourceText, cancellationToken, providerPolicy));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1275,23 +1651,45 @@ public sealed class LegendFounderAiConversationService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI source-language identification was unavailable.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "SourceLanguageException", _translation.GetType().Name + "." + nameof(ITranslationService.DetectLanguageAsync), "source_language", "failed",
+                "source_language_identification_unavailable", exception.GetType().Name);
             return FounderAiSourceLanguageResolution.Failure(
+                FounderAiSourceLanguageOutcome
+                    .TransientIdentificationUnavailable,
                 "source_language_identification_unavailable");
         }
 
         if (!detected.Succeeded)
         {
-            return FounderAiSourceLanguageResolution.Failure(
-                detected.ErrorCode switch
-                {
-                    "translation_language_ambiguous" =>
-                        "source_language_ambiguous",
-                    "translation_language_unsupported" =>
-                        "source_language_unsupported",
-                    _ => "source_language_identification_unavailable"
-                });
+            return detected.ErrorCode switch
+            {
+                "translation_language_ambiguous" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
+                        "source_language_ambiguous"),
+                "translation_language_unsupported" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.UnsupportedLanguage,
+                        "source_language_unsupported"),
+                // Under a native-only policy the governed identification
+                // authority reached its own conclusion without any external
+                // provider. That is a semantic result, not a transient outage,
+                // so it must never be reported as one or escalated.
+                "native_only_governed_source_language_undetermined" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
+                        "native_only_governed_source_language_undetermined"),
+                "external_provider_forbidden_by_native_only_policy" or
+                "native_only_translation_boundary_not_policy_aware" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.ProviderPolicyBlocked,
+                        detected.ErrorCode),
+                _ => FounderAiSourceLanguageResolution.Failure(
+                    FounderAiSourceLanguageOutcome
+                        .TransientIdentificationUnavailable,
+                    "source_language_identification_unavailable")
+            };
         }
 
         if (!LegendLanguageIdentity.TryNormalize(
@@ -1299,15 +1697,16 @@ public sealed class LegendFounderAiConversationService
                 out var detectedCode))
         {
             return FounderAiSourceLanguageResolution.Failure(
+                FounderAiSourceLanguageOutcome.SemanticAmbiguity,
                 "source_language_ambiguous");
         }
 
         var enabledDetectedLanguage =
-            await _languages.NormalizeEnabledTranslationLanguageAsync(
-                detectedCode,
-                cancellationToken);
+            await TraceNativeStageAsync("resolved_language_registry", _languages.GetType().Name + "." + nameof(ILegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync),
+                () => _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(detectedCode, cancellationToken));
         return enabledDetectedLanguage is null
             ? FounderAiSourceLanguageResolution.Failure(
+                FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                 "source_language_unsupported")
             : FounderAiSourceLanguageResolution.Success(
                 enabledDetectedLanguage);
@@ -1488,14 +1887,9 @@ public sealed class LegendFounderAiConversationService
                     if (boundedDelay > TimeSpan.Zero)
                     {
                         _logger.LogWarning(
-                            "LEGEND Founder AI provider transient rejection. " +
-                            "HTTP={StatusCode} Attempt={Attempt} RetryDelayMs={RetryDelayMs} " +
-                            "RequestReset={RequestReset} TokenReset={TokenReset}",
-                            (int)response.StatusCode,
-                            attempt,
-                            (long)Math.Ceiling(boundedDelay.TotalMilliseconds),
-                            GetProviderHeader(response, "x-ratelimit-reset-requests") ?? "unavailable",
-                            GetProviderHeader(response, "x-ratelimit-reset-tokens") ?? "unavailable");
+                            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} StatusCode={StatusCode} Attempt={Attempt} RetryDelayMs={RetryDelayMs}",
+                            "ProviderRetry", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "retrying", "provider_transient_rejection",
+                            (int)response.StatusCode, attempt, (long)Math.Ceiling(boundedDelay.TotalMilliseconds));
 
                         await Task.Delay(
                             boundedDelay,
@@ -1512,19 +1906,14 @@ public sealed class LegendFounderAiConversationService
                     "x-request-id");
 
             _logger.LogError(
-                "LEGEND Founder AI provider rejected request. " +
-                "HTTP={StatusCode} ClientRequestId={ClientRequestId} " +
-                "ProviderRequestId={ProviderRequestId} Body={Body}",
-                (int)response.StatusCode,
-                clientRequestId,
-                providerRequestId ?? "unavailable",
-                errorBody);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} StatusCode={StatusCode} Attempt={Attempt}",
+                "ProviderRejected", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_http_rejection",
+                (int)response.StatusCode, attempt);
 
             throw new LegendFounderAiProviderException(
                 (int)response.StatusCode,
                 clientRequestId,
-                providerRequestId,
-                errorBody);
+                providerRequestId);
         }
     }
 
@@ -1690,7 +2079,7 @@ public sealed class LegendFounderAiConversationService
                 update,
                 cancellationToken);
 
-    private static LegendFounderAiChatResponse NativeInferenceUnavailableResponse(
+    internal static LegendFounderAiChatResponse NativeInferenceUnavailableResponse(
         string mode,
         LegendConnectNativeInferenceSnapshot? nativeInference,
         string? nativeFailureDetail = null,
@@ -1699,9 +2088,9 @@ public sealed class LegendFounderAiConversationService
     {
         var nativeReasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
             ? nativeInference is null ? "native_inference_unavailable" : "native_inference_unsupported"
-            : nativeInference.ReasonCode.Trim();
+            : LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode);
         var nativeDetail = !string.IsNullOrWhiteSpace(nativeFailureDetail)
-            ? NormalizeFailureDetail(nativeFailureDetail)
+            ? "The native authority did not produce a verified result."
             : !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
                 ? nativeInference.AuthoritySummary.Trim()
                 : "The native authority returned no additional failure detail.";
@@ -1714,16 +2103,14 @@ public sealed class LegendFounderAiConversationService
             ? nativeInference?.RequiresEscalation == true
                 ? "provider_unavailable_without_detail"
                 : "provider_not_attempted"
-            : providerFailureCode.Trim();
+            : LegendConnectTelemetry.NormalizeDiagnosticReason(providerFailureCode);
         var providerDetail = string.IsNullOrWhiteSpace(providerFailureCode)
             ? nativeInference?.RequiresEscalation == true
                 ? "The escalation path did not expose a provider-specific failure detail."
                 : "The governed native result did not permit external escalation."
-            : NormalizeFailureDetail(providerFailureDetail);
+            : $"The provider did not produce a usable response. Reason={providerCode}.";
 
-        if (IsTeacherMode(mode))
-        {
-            var failureKind = providerCode.Contains(
+        var failureKind = providerCode.Contains(
                 "timeout",
                 StringComparison.OrdinalIgnoreCase)
                 ? "timeout"
@@ -1739,8 +2126,10 @@ public sealed class LegendFounderAiConversationService
                             "json",
                             StringComparison.OrdinalIgnoreCase)
                             ? "provider_json"
-                            : "configuration";
+                            : providerCode == "provider_not_attempted" ? "native_inference" : "configuration";
 
+        if (IsTeacherMode(mode))
+        {
             return LegendFounderAiChatResponse.ModeFailure(
                 mode,
                 $"OpenAI Teacher could not complete this request. Stage=provider; Reason={providerCode}.",
@@ -1749,14 +2138,13 @@ public sealed class LegendFounderAiConversationService
                 providerCode);
         }
 
-        return new LegendFounderAiChatResponse(
-            true,
-            mode,
-            $"LEGEND could not complete this response. " +
+        var diagnostic = $"LEGEND could not complete this response. " +
             $"NativeFailure={nativeReasonCode}; NativeDetail={nativeDetail}; " +
             $"EvidenceCount={evidenceCount}; Escalation={escalationState}; " +
-            $"ProviderFailure={providerCode}; ProviderDetail={providerDetail}",
-            null,
+            $"ProviderFailure={providerCode}; ProviderDetail={providerDetail}";
+        return new LegendFounderAiChatResponse(
+            false, mode, diagnostic, diagnostic,
+            FailureKind: failureKind,
             ResponseAuthority: "SystemDiagnostic",
             Stage: "native_or_provider_unavailable",
             Reason: providerCode,
@@ -1766,6 +2154,11 @@ public sealed class LegendFounderAiConversationService
             ModelTrainingRunId: nativeInference?.ModelAssistance?.ModelTrainingRunId,
             ModelProvenance: nativeInference?.ModelAssistance?.Provenance);
     }
+
+    internal static string? SafeProviderCorrelation(string? value) =>
+        value is { Length: > 0 and <= 128 } &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_')
+            ? value : null;
 
     private static bool IsTeacherMode(string mode) =>
         string.Equals(mode, "teacher", StringComparison.Ordinal);
@@ -1958,21 +2351,23 @@ public sealed class LegendFounderAiConversationService
         FounderAiMutationAuthorization? mutationAuthorization,
         TimeSpan readOnlyBudget,
         int outputBudgetCharacters,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy providerPolicy)
     {
         if (!_toolAuthority.IsReadOnly(
                 call.Name))
         {
             try
             {
-                var mutationOutput = await _toolAuthority.ExecuteAsync(
+                var mutationOutput = await TraceNativeStageAsync("governed_tool", "LegendFounderToolAuthority.ExecuteAsync", () => _toolAuthority.ExecuteAsync(
                     founder,
                     call with
                     {
                         MutationAuthorization = mutationAuthorization
                     },
                     mode,
-                    cancellationToken);
+                    cancellationToken,
+                    providerPolicy));
                 return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
             }
             catch (OperationCanceledException)
@@ -1994,9 +2389,8 @@ public sealed class LegendFounderAiConversationService
             catch (Exception exception)
             {
                 _logger.LogWarning(
-                    exception,
-                    "LEGEND Founder AI governed mutation tool {Tool} failed before a response could be produced.",
-                    call.Name);
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                    "GovernedToolFailed", "LegendFounderToolAuthority.ExecuteAsync", "governed_tool", "failed", "tool_execution_failed", exception.GetType().Name);
 
                 throw new LegendFounderAiToolExecutionException(
                     call.Name,
@@ -2014,7 +2408,9 @@ public sealed class LegendFounderAiConversationService
 
         try
         {
-            var output = await _toolAuthority.ExecuteAsync(
+            var output = await TraceNativeStageAsync(
+                string.Equals(call.Name, "legend_research_internet", StringComparison.Ordinal) ? "research_tool" : "governed_tool",
+                "LegendFounderToolAuthority.ExecuteAsync", () => _toolAuthority.ExecuteAsync(
                 founder,
                 string.Equals(
                     call.Name,
@@ -2026,16 +2422,17 @@ public sealed class LegendFounderAiConversationService
                         }
                         : call,
                 mode,
-                toolBudget.Token);
+                toolBudget.Token,
+                providerPolicy));
+            toolBudget.Token.ThrowIfCancellationRequested();
             return BoundSerializedOutput(output, outputBudgetCharacters);
         }
         catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(
-                "Legend Founder AI read-only tool {Tool} exceeded its {Seconds:F1}-second dynamic budget; returning a structured diagnostic.",
-                call.Name,
-                readOnlyBudget.TotalSeconds);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                "GovernedToolTimedOut", "LegendFounderToolAuthority.ExecuteAsync", "governed_tool", "cancelled", "tool_timeout");
 
             throw new LegendFounderAiToolExecutionException(
                 call.Name,
@@ -2066,9 +2463,8 @@ public sealed class LegendFounderAiConversationService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI read-only tool {Tool} failed; preserving the exact tool failure for OpenAI and continuing independent governed reads.",
-                call.Name);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "GovernedToolFailed", "LegendFounderToolAuthority.ExecuteAsync", "governed_tool", "failed", "tool_execution_failed", exception.GetType().Name);
 
             return BuildReadOnlyToolFailureOutput(
                 call.Name,
@@ -2076,7 +2472,7 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    private static string BuildReadOnlyToolFailureOutput(
+    internal static string BuildReadOnlyToolFailureOutput(
         string tool,
         Exception exception)
     {
@@ -2103,36 +2499,19 @@ public sealed class LegendFounderAiConversationService
                 requestedResource = tool,
                 authorizationDecision = permissionDenied
                     ? "denied"
-                    : "not_implicated",
+                    : "unknown",
                 policyOrPermission = permissionDenied
                     ? exception.GetType().Name
                     : null,
                 correlationId,
                 exceptionType = exception.GetType().Name,
-                detail = NormalizeToolFailureDetail(exception.Message),
+                detail = "The governed authority did not produce a verified result.",
                 instruction = "This read failed. Continue any independent governed reads that can still execute, then report this exact failed authority without inventing unavailable state."
             },
             JsonOptions);
     }
 
-    private static string NormalizeToolFailureDetail(string? value)
-    {
-        var detail = NormalizeFailureDetail(value);
-        foreach (var sensitiveName in new[]
-                 {
-                     "password=", "pwd=", "user id=", "uid=",
-                     "api_key=", "apikey=", "access_token=", "connectionstring="
-                 })
-        {
-            var index = detail.IndexOf(sensitiveName, StringComparison.OrdinalIgnoreCase);
-            if (index >= 0)
-                return detail[..index] + "[REDACTED SENSITIVE CONFIGURATION DETAIL]";
-        }
-
-        return detail;
-    }
-
-    private static bool IsSuccessfulFounderToolOutput(string output)
+    internal static bool IsSuccessfulFounderToolOutput(string output)
     {
         if (string.IsNullOrWhiteSpace(output))
             return false;
@@ -2140,13 +2519,62 @@ public sealed class LegendFounderAiConversationService
         try
         {
             using var document = JsonDocument.Parse(output);
-            return document.RootElement.ValueKind != JsonValueKind.Object ||
-                   !document.RootElement.TryGetProperty("error", out _);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Array)
+                return true;
+            if (root.ValueKind != JsonValueKind.Object || root.TryGetProperty("error", out _))
+                return false;
+            if (root.TryGetProperty("stages", out var stages) &&
+                (stages.ValueKind != JsonValueKind.Array ||
+                 !stages.EnumerateArray().Any(stage =>
+                     stage.ValueKind == JsonValueKind.Object &&
+                     stage.TryGetProperty("state", out var state) &&
+                     state.ValueKind == JsonValueKind.String &&
+                     state.GetString() == "available")))
+                return false;
+            return (!root.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.False) &&
+                   (!root.TryGetProperty("succeeded", out var succeeded) || succeeded.ValueKind != JsonValueKind.False);
         }
         catch (JsonException)
         {
-            return true;
+            return false;
         }
+    }
+
+    private sealed record FounderAiReadDiagnostic(string Tool, string ScopeIdentity, string Reason);
+
+    private static string AppendReadDiagnostics(
+        string answer,
+        ICollection<FounderAiReadDiagnostic> failures) =>
+        failures.Count == 0
+            ? answer
+            : answer + "\n\nSome requested governed reads remain unavailable; their state was not verified.\n" +
+              "LEGEND_GOVERNED_READ_DIAGNOSTICS\n" + JsonSerializer.Serialize(failures, JsonOptions);
+
+    internal static string ReadScopeIdentity(string tool, string arguments)
+    {
+        var canonicalArguments = arguments;
+        try
+        {
+            using var document = JsonDocument.Parse(arguments);
+            var effectiveArguments = tool == "legend_operational_diagnostics"
+                ? LegendFounderToolAuthority.NormalizeOperationalDiagnosticArguments(document.RootElement)
+                : document.RootElement;
+            canonicalArguments = JsonSerializer.Serialize(CanonicalValue(effectiveArguments), JsonOptions);
+        }
+        catch (JsonException) { }
+        catch (ArgumentException) { }
+        return tool + ":" + Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(canonicalArguments)));
+
+        static object? CanonicalValue(JsonElement value) => value.ValueKind switch
+        {
+            JsonValueKind.Object => value.EnumerateObject()
+                .OrderBy(property => property.Name, StringComparer.Ordinal)
+                .ToDictionary(property => property.Name, property => CanonicalValue(property.Value), StringComparer.Ordinal),
+            JsonValueKind.Array => value.EnumerateArray().Select(CanonicalValue).ToArray(),
+            _ => value.Clone()
+        };
     }
 
     private static bool TryReadLearningMutationReceipt(
@@ -2691,7 +3119,7 @@ If the Founder explicitly asks you to teach or train LEGEND:
 
         var reasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
             ? "native_inference_unavailable"
-            : nativeInference.ReasonCode.Trim();
+            : LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode);
         var authorityDetail = !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
             ? NormalizeFailureDetail(nativeInference.AuthoritySummary)
             : "The native authority returned no additional governed summary.";
@@ -2709,7 +3137,7 @@ NativeEvidenceCount={evidenceCount}
 NativeExecutionDetail={failureDetail}
 
 DIAGNOSTIC TEACHER REQUIREMENTS:
-- This turn reached OpenAI because native LEGEND could not produce one governed answer and explicitly permitted escalation.
+- This turn reached external OpenAI under a provider-enabled request policy; native LEGEND did not supply an admissible answer. If NativeExecutionDetail reports unavailable language identification, no native meaning or record-scope classification completed.
 - Diagnose the missing linguistic/semantic capability against retained LEGEND evidence before relying on general OpenAI recall.
 - Use legend_search_retained_knowledge when a narrower query can distinguish an unknown component, ambiguous composition, missing transition, contradiction, realization gap, discourse gap, or production-eligibility gap.
 - If governed evidence supports a reusable controlled semantic family that would reduce recurrence, describe that candidate and the evidence it would require. Do not submit it unless this request contains the Founder's explicit instruction and request-level confirmation.
@@ -2727,7 +3155,7 @@ Native LEGEND conversational inference is bypassed in this mode.
 Respond naturally, directly, and conversationally.
 Do not claim current LEGEND database, training, readiness, provider, evidence, repository, deployment, or system-state facts in this conversational path.
 Do not invent internal state, private data, or operational results.
-If the Founder asks for current LEGEND facts, that request belongs to the governed inspection path rather than casual conversation.
+Use the available governed tools when current LEGEND facts are needed. Successful tool receipts support only the records and scope actually inspected. Disclose unavailable reads and do not infer private state from recollection.
 """
             : """
 You are Legend® Ai speaking with the Founder.
@@ -2735,7 +3163,7 @@ Respond naturally, directly, and conversationally.
 Use the product name exactly as "Legend® Ai" if you name yourself.
 Do not claim current LEGEND database, training, readiness, provider, evidence, repository, deployment, or system-state facts in this conversational path.
 Do not invent internal state, private data, or operational results.
-If the Founder asks for current LEGEND system facts, that request belongs to the governed inspection path rather than casual conversation.
+Use the available governed tools when current LEGEND facts are needed. Successful tool receipts support only the records and scope actually inspected. Disclose unavailable reads and do not infer private state from recollection.
 """;
 
     private async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
@@ -2792,8 +3220,8 @@ If the Founder asks for current LEGEND system facts, that request belongs to the
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "Legend Founder AI retained-knowledge retrieval failed closed.");
+                "LEGEND RuntimeDiagnostic Event={Event} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "RetainedKnowledgeFailed", "retained_knowledge", "failed", "retained_knowledge_unavailable", exception.GetType().Name);
 
             return new LegendConnectRetainedKnowledgeSearchSnapshot(
                 query,
@@ -3058,13 +3486,14 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return Math.Clamp(dynamicRounds, MinimumToolRounds, MaximumToolRounds);
     }
 
-    private static TimeSpan ResolveReadOnlyToolBudget(TimeSpan remaining)
+    internal static TimeSpan ResolveReadOnlyToolBudget(TimeSpan remaining)
     {
         var seconds = Math.Clamp(
             remaining.TotalSeconds / 4,
             MinimumReadOnlyToolSeconds,
             MaximumReadOnlyToolSeconds);
-        return TimeSpan.FromSeconds(seconds);
+        return TimeSpan.FromSeconds(Math.Min(seconds,
+            Math.Max(0, remaining.TotalSeconds - MinimumFinalSynthesisWindowSeconds)));
     }
 
     private static int ResolveToolOutputBudget(
@@ -3166,9 +3595,18 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return false;
     }
 
+    /// <summary>
+    /// Governed inspection is a typed semantic decision. It is established only
+    /// by the single governed meaning-graph classification for this request, so
+    /// no substring, paraphrase, homonym or non-English surface form can force
+    /// or suppress it. When the analysis itself was unavailable the request
+    /// fails closed onto mandatory inspection rather than being answered from
+    /// recollection.
+    /// </summary>
     private static bool RequiresGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
-        string mode)
+        string mode,
+        LegendConnectOwnedRecordClassification? ownedRecordIntent)
     {
         var latest = conversation
             .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
@@ -3177,70 +3615,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         if (latest.Length == 0)
             return false;
 
-        var text = latest.ToLowerInvariant();
-
-        var explicitGovernedSignals = new[]
-        {
-            "canonical", "retained knowledge", "retained evidence",
-            "governed inspection", "current authority",
-            "curriculum", "train legend", "training status",
-            "model readiness", "system state", "system status",
-            "provider capacity", "production deployment",
-            "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "tool registry",
-            "machineproposed", "machine proposed"
-        };
-
-        if (explicitGovernedSignals.Any(signal =>
-                text.Contains(signal, StringComparison.Ordinal)))
-        {
-            return true;
-        }
-
-        // General words such as "evidence", "reasoning", "respond", and
-        // "prompt" also describe ordinary subject matter. They must not turn
-        // OpenAI Direct into a mandatory LEGEND tool inspection. Operational
-        // vocabulary requires an explicit LEGEND/system subject.
-        var operationalSignals = new[]
-        {
-            "readiness", "alignment", "provenance", "metrics", "metric",
-            "azure", "corpus", "production", "ci", "coverage",
-            "architecture", "database", "data model", "schema", "configuration",
-            "config", "observability", "logs", "logging", "telemetry", "trace",
-            "system prompt", "routing", "fallback",
-            "tooling", "permission", "retrieval", "memory", "ingestion", "index",
-            "embedding", "evaluation", "validator", "critic", "promotion",
-            "learning pipeline", "reuse knowledge"
-        };
-
-        var operationalSubjects = new[]
-        {
-            "legend", "our system", "our database", "our model",
-            "our provider", "our deployment", "our repository"
-        };
-
-        if (operationalSignals.Any(signal =>
-                text.Contains(signal, StringComparison.Ordinal)) &&
-            operationalSubjects.Any(subject =>
-                text.Contains(subject, StringComparison.Ordinal)))
-            return true;
-
-        var currentStateSignals = new[]
-        {
-            "current", "currently", "latest", "today",
-            "right now", "update", "how many", "count", "status"
-        };
-
-        var currentStateSubjects = new[]
-        {
-            "legend", "language", "learning", "knowledge",
-            "model", "provider", "translation", "haitian creole"
-        };
-
-        return currentStateSignals.Any(signal =>
-                   text.Contains(signal, StringComparison.Ordinal)) &&
-               currentStateSubjects.Any(subject =>
-                   text.Contains(subject, StringComparison.Ordinal));
+        return ownedRecordIntent?.RequiresMandatoryGovernedInspection == true;
     }
 
     private static bool RequestsFounderLearningMutation(
@@ -3280,39 +3655,16 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return learningAction && learningSubject;
     }
 
-    private static bool RequiresComprehensiveGovernedInspection(
-        IReadOnlyList<LegendFounderAiChatMessage> conversation,
-        string mode)
-    {
-        if (!IsTeacherMode(mode))
-            return false;
-
-        var latest = conversation
-            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
-            .Content?.ToLowerInvariant() ?? string.Empty;
-
-        var broadSignals = new[]
-        {
-            "everything", "entire", "full system", "complete system",
-            "all of legend", "how legend works", "how legend is set up",
-            "architecture", "diagnose the system", "inspect the system",
-            "learn, reason", "learn reason", "reuse knowledge",
-            "curriculum and", "repository and", "database and"
-        };
-
-        return broadSignals.Any(signal =>
-            latest.Contains(signal, StringComparison.Ordinal));
-    }
-
     private static bool ShouldAttemptNativeInference(string mode) =>
         string.Equals(mode, "legend", StringComparison.Ordinal);
 
     private static bool RequiresProviderGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
         string mode,
+        LegendConnectOwnedRecordClassification? ownedRecordIntent,
         LegendConnectNativeInferenceSnapshot? nativeInference,
         string? nativeFailureDetail) =>
-        RequiresGovernedInspection(conversation, mode) ||
+        RequiresGovernedInspection(conversation, mode, ownedRecordIntent) ||
         nativeInference is { Supported: false, RequiresEscalation: true } ||
         !string.IsNullOrWhiteSpace(nativeFailureDetail);
 
@@ -3510,15 +3862,14 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public LegendFounderAiProviderException(
             int statusCode,
             string clientRequestId,
-            string? providerRequestId,
-            string providerError)
+            string? providerRequestId)
             : base(
                 $"Legend Founder AI provider returned HTTP {statusCode}.")
         {
             StatusCode = statusCode;
             ClientRequestId = clientRequestId;
             ProviderRequestId = providerRequestId;
-            ProviderError = NormalizeFailureDetail(providerError);
+
         }
 
         public int StatusCode { get; }
@@ -3527,7 +3878,6 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         public string? ProviderRequestId { get; }
 
-        public string ProviderError { get; }
     }
 
     /// <summary>
@@ -3557,18 +3907,49 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public string FailureKind { get; }
     }
 
-    private sealed record FounderAiSourceLanguageResolution(
+    /// <summary>
+    /// The typed result category of governed source-language resolution. The
+    /// caller routes on this category; the accompanying reason stays the exact
+    /// detail for observability and never becomes the routing key.
+    /// </summary>
+    internal enum FounderAiSourceLanguageOutcome
+    {
+        Resolved,
+        SemanticAmbiguity,
+        UnsupportedLanguage,
+        InvalidDeclaration,
+        ProviderPolicyBlocked,
+        TransientIdentificationUnavailable
+    }
+
+    internal sealed record FounderAiSourceLanguageResolution(
         bool Succeeded,
         string? LanguageCode,
-        string Reason)
+        string Reason,
+        FounderAiSourceLanguageOutcome Outcome)
     {
+        /// <summary>
+        /// Only a transient outage retains provider-enabled external responder
+        /// permission without establishing native meaning. Ambiguity, an unsupported
+        /// language, and an invalid declared code are semantic authority
+        /// results that fail closed in every mode.
+        /// </summary>
+        internal bool IsTransientIdentificationOutage =>
+            Outcome ==
+            FounderAiSourceLanguageOutcome.TransientIdentificationUnavailable;
+
         internal static FounderAiSourceLanguageResolution Success(
             string languageCode) =>
-            new(true, languageCode, string.Empty);
+            new(
+                true,
+                languageCode,
+                string.Empty,
+                FounderAiSourceLanguageOutcome.Resolved);
 
         internal static FounderAiSourceLanguageResolution Failure(
+            FounderAiSourceLanguageOutcome outcome,
             string reason) =>
-            new(false, null, reason);
+            new(false, null, reason, outcome);
     }
 
 }
@@ -3577,7 +3958,8 @@ public sealed record LegendFounderAiProgressEvent(
     string Stage,
     string Message,
     int? Round = null,
-    string? Tool = null);
+    string? Tool = null,
+    string? ScopeIdentity = null);
 
 public sealed record LegendFounderAiChatMessage(
     string? Role,
@@ -3647,7 +4029,9 @@ public sealed record LegendFounderAiChatResponse(
     string? ModelProvenance = null,
     LegendConnectResearchEvidenceOrigin EvidenceOrigin =
         LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
-    LegendConnectResearchOutcome? ResearchOutcome = null)
+    LegendConnectResearchOutcome? ResearchOutcome = null,
+    IReadOnlyList<LegendConnectGovernedScheduleCertificateSnapshot>? ScheduleCertificates = null,
+    IReadOnlyList<string>? ReasoningTransitionPath = null)
 {
     public static LegendFounderAiChatResponse Failure(
         string error,

@@ -149,6 +149,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
     {
         var clock = Stopwatch.StartNew();
         var settingsIdentity = "Unavailable";
+        LegendConnectResearchCandidateCounts? candidateCounts = null;
         LegendConnectResearchSearchTransportResult Failure(
             string reason,
             bool retryable,
@@ -179,7 +180,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
                     reason)).ToArray();
             return new LegendConnectResearchSearchTransportResult(
                 false, TransportName, ProviderName, model, settingsIdentity,
-                attemptedQueries, receipts, [], [], [], [], latency, null, reason, retryable);
+                attemptedQueries, receipts, [], [], [], [], latency, null, reason, retryable, candidateCounts);
         }
 
         if (!TryReadConfiguration(out var endpoint, out var apiKey, out var model, out settingsIdentity))
@@ -270,6 +271,14 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 return Failure("internet_research_search_output_missing", false, model, true);
             using var structured = JsonDocument.Parse(outputText);
             var cost = ReadCostMicrounits(root);
+            var structuredRoot = structured.RootElement;
+            candidateCounts = new LegendConnectResearchCandidateCounts(
+                RawClaims: structuredRoot.ValueKind == JsonValueKind.Object &&
+                    structuredRoot.TryGetProperty("claims", out var rawClaims) && rawClaims.ValueKind == JsonValueKind.Array
+                    ? rawClaims.GetArrayLength() : null,
+                RawContradictions: structuredRoot.ValueKind == JsonValueKind.Object &&
+                    structuredRoot.TryGetProperty("contradictions", out var rawContradictions) && rawContradictions.ValueKind == JsonValueKind.Array
+                    ? rawContradictions.GetArrayLength() : null);
             if (!TryBuildCandidatePacket(
                     request,
                     root,
@@ -281,7 +290,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
                     out var searchResults,
                     out var sources,
                     out var claims,
-                    out var contradictions))
+                    out var contradictions,
+                    ref candidateCounts))
                 return Failure("internet_research_search_lineage_invalid", false, model, true);
 
             var returnedModel = root.TryGetProperty("model", out var actualModel) &&
@@ -291,7 +301,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
             return new LegendConnectResearchSearchTransportResult(
                 true, TransportName, ProviderName, returnedModel, settingsIdentity,
                 executedQueries, queryReceipts, searchResults, sources, claims, contradictions,
-                (long)Math.Ceiling(clock.Elapsed.TotalMilliseconds), cost, null, false);
+                (long)Math.Ceiling(clock.Elapsed.TotalMilliseconds), cost, null, false,
+                candidateCounts);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -374,7 +385,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
         out IReadOnlyList<LegendConnectSearchResult> searchResults,
         out IReadOnlyList<LegendConnectResearchSourceIdentity> sources,
         out IReadOnlyList<LegendConnectResearchClaimCandidate> claims,
-        out IReadOnlyList<LegendConnectResearchClaimCandidate> contradictions)
+        out IReadOnlyList<LegendConnectResearchClaimCandidate> contradictions,
+        ref LegendConnectResearchCandidateCounts? candidateCounts)
     {
         executedQueries = [];
         queryReceipts = [];
@@ -513,11 +525,13 @@ Execute only the supplied bounded queries and return only the requested JSON.
         searchResults = resultRows;
         sources = sourceRows;
         claims = ReadClaimCandidates(claimArray, actualUris, request.UserLanguageCode, request.MaximumClaims);
+        candidateCounts = (candidateCounts ?? new LegendConnectResearchCandidateCounts()) with { AdmittedClaims = claims.Count };
         contradictions = ReadClaimCandidates(
             contradictionArray,
             actualUris,
             request.UserLanguageCode,
             request.MaximumClaims);
+        candidateCounts = candidateCounts with { AdmittedContradictions = contradictions.Count };
         return executedQueries.Count > 0 &&
                queryReceipts.Count == executedQueries.Count &&
                searchResults.Count > 0;
@@ -532,6 +546,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
         var rows = new List<LegendConnectResearchClaimCandidate>();
         foreach (var item in array.EnumerateArray())
         {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
             var claimIdentity = LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
                 ReadString(item, "claim_id"), 160);
             var statement = LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
@@ -543,7 +559,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(statement) ||
                 !string.Equals(evidenceLanguage, expectedEvidenceLanguage, StringComparison.OrdinalIgnoreCase) ||
                 !item.TryGetProperty("source_urls", out var urls) ||
-                urls.ValueKind != JsonValueKind.Array)
+                urls.ValueKind != JsonValueKind.Array ||
+                urls.EnumerateArray().Any(value => value.ValueKind != JsonValueKind.String))
                 continue;
             var canonicalUris = urls.EnumerateArray()
                 .Select(value => LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(value.GetString()))
@@ -718,6 +735,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
         cost.TryGetInt64(out var value) && value >= 0 ? value : null;
 
     private static string? ReadString(JsonElement root, string property) =>
+        root.ValueKind == JsonValueKind.Object &&
         root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;

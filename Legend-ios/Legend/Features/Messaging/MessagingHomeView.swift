@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 import UIKit
 import PhotosUI
@@ -2205,6 +2206,8 @@ struct ConversationThreadView: View {
             LegendMessageTimeline(
                 messages: conversation.messages.filter { !$0.isDeleted },
                 readReceipts: conversation.readReceipts,
+                reactionOptions: conversation.reactionOptions ?? [],
+                onReact: { message, emoji in store.react(to: message, emoji: emoji) },
                 participantAvatar: { identity in
                     conversation.participants.first(where: {
                         $0.identity == identity
@@ -2251,6 +2254,15 @@ struct ConversationThreadView: View {
                     symbol: "exclamationmark.circle.fill",
                     title: sendFailure.title,
                     message: sendFailure.message
+                )
+                .padding(.top, LegendNextSpacing.xs)
+            }
+
+            if MessagingAttachmentDraft.hasPendingAcknowledgedUploads(stagedAttachments) {
+                LegendMessagingStatusBanner(
+                    symbol: "exclamationmark.circle.fill",
+                    title: "Attachments pending",
+                    message: "Retry or remove attachments from the previous message before sending another message."
                 )
                 .padding(.top, LegendNextSpacing.xs)
             }
@@ -2435,22 +2447,32 @@ struct ConversationThreadView: View {
     private var canSend: Bool {
         !store.isSending &&
         !store.isUploadingAttachment &&
+        !MessagingAttachmentDraft.hasPendingAcknowledgedUploads(stagedAttachments) &&
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendDraft() {
-        let outgoing = draft.trimmingCharacters(
+        guard canSend else { return }
+        let submittedAttachmentIDs = Set(stagedAttachments.map(\.id))
+        let submittedReply = replyingToMessage
+        let submittedDraft = MessagingDraftSnapshot(body: draft, replyToMessageID: submittedReply?.id)
+        let outgoing = submittedDraft.body.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
 
         guard !outgoing.isEmpty else { return }
 
         Task {
-            guard let message = await store.send(body: outgoing) else { return }
-            draft = ""
-            replyingToMessage = nil
+            guard let message = await store.send(body: outgoing, replyingTo: submittedReply) else { return }
+            if submittedDraft.matches(body: draft, replyToMessageID: replyingToMessage?.id) {
+                draft = ""
+                replyingToMessage = nil
+            }
+            for index in stagedAttachments.indices where submittedAttachmentIDs.contains(stagedAttachments[index].id) {
+                stagedAttachments[index].acknowledgedMessageID = message.id
+            }
             messageForStagedAttachments = message
-            await uploadStagedAttachments(to: message)
+            await uploadStagedAttachments(to: message, attachmentIDs: submittedAttachmentIDs)
         }
     }
 
@@ -2527,8 +2549,8 @@ struct ConversationThreadView: View {
         attachmentIDs: Set<UUID>? = nil
     ) async {
         let uploads = stagedAttachments.filter { attachment in
-            (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true) &&
-                attachment.state != .uploading
+            attachment.canUpload(to: message.id) &&
+                (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true)
         }
 
         for attachment in uploads {
@@ -3283,6 +3305,8 @@ private struct LegendConversationFallbackHeader: View {
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
     var readReceipts: MessagingReadReceiptSettings? = nil
+    let reactionOptions: [String]
+    let onReact: (ConversationMessage, String?) -> Void
     let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
     let isLoadingOlderMessages: Bool
@@ -3292,6 +3316,7 @@ private struct LegendMessageTimeline: View {
     let onOpenVerificationProfile: (ConversationMessage) -> Void
 
     var body: some View {
+        let receiptLabels = messageReceiptLabels(messages: messages, readers: readReceipts?.readers ?? [])
         ScrollViewReader { proxy in
             LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(spacing: 2) {
@@ -3346,18 +3371,20 @@ private struct LegendMessageTimeline: View {
                                 onDelete: {
                                     onDelete(message)
                                 },
+                                onReact: { emoji in onReact(message, emoji) },
+                                reactionOptions: reactionOptions,
                                 onOpenVerificationProfile: message.verificationReview?.status != "Pending"
                                     ? nil
                                     : { onOpenVerificationProfile(message) }
                             )
                             .id(message.id)
-                            if message.isMine {
-                                let read = readReceipts?.readers.contains(where: {
-                                    !($0.userId.caseInsensitiveCompare(message.sender.identity.userID) == .orderedSame && $0.participantType == message.sender.identity.participantType.rawValue) && $0.readThroughUtc >= message.sentUTC
-                                }) == true
-                                Text(read ? LegendLocalized("Read") : LegendLocalized("Sent"))
-                                .font(.caption2).foregroundStyle(LegendNextColor.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            if let label = receiptLabels[message.id] {
+                                Text(LegendLocalized(label))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(label == "Read" ? LegendNextColor.success : LegendNextColor.danger)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background((label == "Read" ? LegendNextColor.success : LegendNextColor.danger).opacity(0.12), in: Capsule())
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
                             }
                         }
                     }
@@ -3585,15 +3612,22 @@ private struct LegendMessageContextPreview: View {
 }
 
 private struct LegendMessageBubble: View {
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var sharingAttachments = false
+
     let message: ConversationMessage
     let senderAvatar: ProfileAvatar?
     let showsSender: Bool
     let onReply: () -> Void
     let onDelete: () -> Void
+    let onReact: (String?) -> Void
+    let reactionOptions: [String]
     let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
     @State private var isShowingOriginal = false
+    @State private var emojiPicker = false
+    @State private var emojiDraft = ""
 
     private let senderBubbleColor = LegendNextColor.gold
 
@@ -3627,8 +3661,33 @@ private struct LegendMessageBubble: View {
                 style: .continuous
             )
         )
+        .onTapGesture(count: 2) { if !message.isDeleted { onReact("👍") } }
+        .sheet(isPresented: $emojiPicker) {
+            VStack(spacing: 16) {
+                Text(LegendLocalized("Choose a reaction")).font(.headline)
+                TextField(LegendLocalized("Emoji"), text: $emojiDraft).textFieldStyle(.roundedBorder)
+                Button(LegendLocalized("React")) { onReact(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines)); emojiPicker = false }
+                    .disabled(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }.padding().presentationDetents([.height(220)])
+        }
+        .sheet(isPresented: $sharingAttachments) {
+            NavigationStack {
+                List(message.attachments) { attachment in
+                    LegendMessageAttachmentChip(attachment: attachment, isMine: false)
+                }
+                .navigationTitle(LegendLocalized("Open or share attachments"))
+            }
+        }
         .contextMenu {
             if !message.isDeleted {
+                ForEach(reactionOptions, id: \.self) { emoji in
+                    Button(emoji) { onReact(emoji) }
+                }
+                Button { emojiPicker = true } label: { Label(LegendLocalized("More reactions"), systemImage: "plus") }
+                if message.reactions.contains(where: { $0.reactedByCurrentActor }) {
+                    Button(LegendLocalized("Remove reaction")) { onReact(nil) }
+                }
+                Divider()
                 Button {
                     onReply()
                 } label: {
@@ -3648,8 +3707,16 @@ private struct LegendMessageBubble: View {
                     )
                 }
 
-                ShareLink(item: message.body) {
-                    Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                if let shared = message.sharedContent, let url = messaging?.sharedPostURL(shared.sourcePostId) {
+                    ShareLink(item: url) { Label(LegendLocalized("Share content"), systemImage: "square.and.arrow.up") }
+                } else if !message.attachments.isEmpty {
+                    Button { sharingAttachments = true } label: {
+                        Label(LegendLocalized("Open or share attachments"), systemImage: "square.and.arrow.up")
+                    }
+                } else {
+                    ShareLink(item: message.body) {
+                        Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                    }
                 }
                 if let original = message.originalBody, original != message.body {
                     Button { UIPasteboard.general.string = original } label: {
@@ -3709,6 +3776,17 @@ private struct LegendMessageBubble: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
 
+                if !message.reactions.isEmpty {
+                    HStack {
+                        ForEach(message.reactions, id: \.emoji) { reaction in
+                            Button("\(reaction.emoji) \(reaction.count)") { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) }
+                                .font(.caption).buttonStyle(.bordered)
+                        }
+                    }
+                }
+                if !message.isDeleted, let shared = message.sharedContent {
+                    LegendSharedMessageCard(content: shared)
+                }
                 if !message.isDeleted {
                     ForEach(message.attachments) { attachment in
                         LegendMessageAttachmentChip(
@@ -3899,6 +3977,12 @@ private struct LegendMessageBubble: View {
 }
 
 private struct LegendMessageAttachmentChip: View {
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var previewURL: URL?
+    @State private var downloadedURL: URL?
+    @State private var isLoading = false
+    @State private var failed = false
+
     let attachment: MessagingAttachment
     let isMine: Bool
 
@@ -3911,6 +3995,15 @@ private struct LegendMessageAttachmentChip: View {
     }
 
     var body: some View {
+        Button {
+            guard let messaging, attachment.canDownload, !isLoading else { return }
+            isLoading = true
+            Task {
+                defer { isLoading = false }
+                do { let url = try await messaging.downloadAttachment(attachment); downloadedURL = url; previewURL = url }
+                catch { failed = true }
+            }
+        } label: {
         HStack(spacing: LegendNextSpacing.xs) {
             Image(systemName: isImage ? "photo.fill" : "doc.fill")
                 .font(.caption.weight(.semibold))
@@ -3948,6 +4041,19 @@ private struct LegendMessageAttachmentChip: View {
         .accessibilityLabel(
             "\(attachment.originalFileName), \(scanStatusLabel)"
         )
+        }
+        .disabled(!attachment.canDownload || isLoading)
+        .quickLookPreview($previewURL)
+        .onChange(of: previewURL) { _, current in
+            if current == nil, let downloadedURL {
+                try? FileManager.default.removeItem(at: downloadedURL.deletingLastPathComponent())
+                self.downloadedURL = nil
+            }
+        }
+        .alert(LegendLocalized("Attachment unavailable"), isPresented: $failed) {
+            Button(LegendLocalized("OK"), role: .cancel) { }
+        }
+
     }
 }
 
@@ -4337,4 +4443,24 @@ private struct LegendMessagingSearchField: View {
         .padding(.bottom, LegendNextSpacing.sm)
     }
 
+}
+
+private struct LegendSharedMessageCard: View {
+    let content: MessagingSharedContent
+    @Environment(\.legendSocialStore) private var social
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if content.status == "available", let social {
+                Text(content.authorDisplayName ?? "").font(.headline)
+                if let body = content.body, !body.isEmpty { Text(body) }
+                ForEach(content.media.sorted { $0.displayOrder < $1.displayOrder }) { media in
+                    if media.mediaKind == "Image" {
+                        LegendSocialMediaImage(media: media, social: social)
+                    } else if media.mediaKind == "Video" {
+                        LegendSocialMediaVideo(postID: content.sourcePostId, media: media, music: nil, social: social)
+                    }
+                }
+            } else { Text(LegendLocalized("Shared content is unavailable.")) }
+        }
+    }
 }

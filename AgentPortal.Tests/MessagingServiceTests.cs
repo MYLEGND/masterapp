@@ -142,6 +142,11 @@ public sealed partial class MessagingServiceTests
                      entry.RecipientParticipantType == client.ParticipantType &&
                      entry.ConversationId == conversation.Id);
         Assert.False(notification.IsRead);
+        var badgeEngine = new NotificationEngine(db,
+            new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance),
+            new NoopNotificationRealtimePublisher(), new ApplePushDeliverySignal(),
+            NullLogger<NotificationEngine>.Instance);
+        Assert.Equal(1, (await badgeEngine.GetBadgeSnapshotAsync(client)).UnreadCount);
         Assert.Equal(1, (await db.UserGlobalBadges.SingleAsync(
             badge => badge.UserId == client.UserId &&
                      badge.ParticipantType == client.ParticipantType)).UnreadCount);
@@ -1376,6 +1381,17 @@ public sealed partial class MessagingServiceTests
         Assert.True(started.Succeeded);
         var message = Assert.Single(await db.InternalMessages.ToListAsync());
 
+        Assert.Null(message.OriginalLanguage);
+        Assert.Empty(translator.Routes);
+        var recipientProjection = await service.GetConversationAsync(
+            new MessagingActor("client-1", MessagingParticipantTypes.Client), started.Conversation!.Id);
+        Assert.Equal("I am sending this in English. (es)",
+            Assert.Single(recipientProjection.Conversation!.Messages).Body);
+        var pendingNotification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal("I am sending this in English. (es)",
+            await service.PrepareNotificationPresentationAsync(
+                new MessagingActor("client-1", MessagingParticipantTypes.Client), pendingNotification.Id));
+
         // Preferred language describes how the sender receives communication.
         // The actual language detected from this individual body owns routing.
         Assert.Equal("en", message.SenderPreferredLanguage);
@@ -1392,7 +1408,7 @@ public sealed partial class MessagingServiceTests
             new MessagingActor("client-1", MessagingParticipantTypes.Client),
             started.Conversation!.Id);
 
-        // Reading reuses the send-time recipient presentation.
+        // Reading reuses the deferred recipient presentation.
         Assert.Single(translator.Routes);
         Assert.Single(await db.MessageTranslations.ToListAsync());
     }
@@ -1513,10 +1529,10 @@ public sealed partial class MessagingServiceTests
             InitialMessageBody: englishBody));
 
         Assert.True(started.Succeeded);
-        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(0, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
         var englishSource = Assert.Single(await db.InternalMessages.ToListAsync());
-        Assert.Equal("en", englishSource.OriginalLanguage);
+        Assert.Null(englishSource.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         Assert.Equal(
             englishBody,
@@ -1539,10 +1555,10 @@ public sealed partial class MessagingServiceTests
             creoleBody));
 
         Assert.True(sent.Succeeded);
-        Assert.Equal(2, translator.DetectionCallCount);
+        Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
         var creoleSource = await db.InternalMessages.SingleAsync(message => message.Body == creoleBody);
-        Assert.Equal("ht", creoleSource.OriginalLanguage);
+        Assert.Null(creoleSource.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         Assert.Equal(
             creoleBody,
@@ -1605,6 +1621,12 @@ public sealed partial class MessagingServiceTests
             InitialMessageBody: original));
 
         Assert.True(started.Succeeded);
+        Assert.Equal(0, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+        var notification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal(original, notification.Detail);
+        Assert.Equal($"{original} (ht)",
+            await service.PrepareNotificationPresentationAsync(client, notification.Id));
         Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(1, translator.TranslationCallCount);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());
@@ -1673,6 +1695,12 @@ public sealed partial class MessagingServiceTests
             "Your appointment is confirmed for tomorrow."));
 
         Assert.True(sent.Succeeded);
+        Assert.Equal(0, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+        var notification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal("Your appointment is confirmed for tomorrow.", notification.Detail);
+        Assert.Equal("Your appointment is confirmed for tomorrow. (ht)",
+            await service.PrepareNotificationPresentationAsync(client, notification.Id));
         Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(1, translator.TranslationCallCount);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());
@@ -3995,7 +4023,8 @@ public sealed partial class MessagingServiceTests
         Infrastructure.Data.MasterAppDbContext db,
         ITranslationService? translation = null,
         string? configuredFounderOid = null,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        Domain.Social.ISocialFeedService? social = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var images = new MessagingProfileImageResolver(
@@ -4014,7 +4043,7 @@ public sealed partial class MessagingServiceTests
                 new NoopNotificationRealtimePublisher(),
                 new ApplePushDeliverySignal(),
                 NullLogger<NotificationEngine>.Instance),
-            configuredFounderOid);
+            configuredFounderOid, social: social);
     }
 
     private static IConfiguration FounderConfiguration(string founderOid) =>

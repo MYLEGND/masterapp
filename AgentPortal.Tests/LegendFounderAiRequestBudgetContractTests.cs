@@ -18,31 +18,22 @@ public sealed class LegendFounderAiRequestBudgetContractTests
         Assert.Contains("MinimumFinalSynthesisWindowSeconds = 60", source, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void CompletedGovernedInspection_ForcesSynthesisInsteadOfUnboundedToolChurn()
-    {
-        var source = ReadSource("AgentPortal", "Services", "LegendFounderAiConversationService.cs");
-
-        Assert.Contains(
-            "!governedInspectionCompleted ||\n                        (confirmedLearningMutationRequired &&\n                         !learningMutationCompleted)",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("automaticNativeGapLearningWindow", source, StringComparison.Ordinal);
-        Assert.Contains(
-            "round < maximumToolRounds - 1",
-            source,
-            StringComparison.Ordinal);
-        Assert.Contains("parallel_tool_calls = allowTools", source, StringComparison.Ordinal);
-    }
+    // Provider tool churn is verified through the real orchestration loop by
+    // LegendFounderAiModeIsolationTests.ProviderToolChurn_StopsAtFinalSynthesisWithoutExecutingAnotherTool.
+    // Source formatting is not an execution-budget contract.
 
     [Fact]
     public void LongTeacherRequests_KeepUsingTheSingleStreamingChatEndpoint()
     {
         var controller = ReadSource("AgentPortal", "Controllers", "LegendFounderAiController.cs");
+        var mobile = ReadSource("AgentPortal", "Mobile", "MobileFounderAiController.cs");
+        var transport = ReadSource("AgentPortal", "Services", "LegendFounderAiHttpTransport.cs");
 
-        Assert.Contains("StreamHeartbeatInterval = TimeSpan.FromSeconds(4)", controller, StringComparison.Ordinal);
-        Assert.Contains("await StreamChatAsync(", controller, StringComparison.Ordinal);
-        Assert.DoesNotContain("BackgroundJob", controller, StringComparison.Ordinal);
+        Assert.Contains("Transport.ChatAsync(request, cancellationToken", controller, StringComparison.Ordinal);
+        Assert.Contains("Transport.ChatAsync(request, cancellationToken", mobile, StringComparison.Ordinal);
+        Assert.Contains("StreamHeartbeatInterval = TimeSpan.FromSeconds(4)", transport, StringComparison.Ordinal);
+        Assert.Contains("await StreamChatAsync(", transport, StringComparison.Ordinal);
+        Assert.DoesNotContain("BackgroundJob", transport, StringComparison.Ordinal);
     }
 
     private static string ReadSource(params string[] path)

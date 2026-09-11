@@ -116,13 +116,14 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let meeting: MessagingGroupMeeting?
     let canManageMeeting: Bool?
     let hasOlderMessages: Bool?
+    let reactionOptions: [String]?
     let readReceipts: MessagingReadReceiptSettings?
 
     private enum CodingKeys: String, CodingKey {
         case id, conversationType, title, participants, messages, isMuted, isClosed
         case canManageMembers, purpose, groupAvatar, canManageCollaborators
         case canDeleteGroup, isPromoted, canManagePromotion, meeting, canManageMeeting
-        case hasOlderMessages, readReceipts
+        case hasOlderMessages, readReceipts, reactionOptions
         case promotionStartedUTC = "promotionStartedUtc"
         case promotionEndedUTC = "promotionEndedUtc"
     }
@@ -147,7 +148,8 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         meeting: MessagingGroupMeeting? = nil,
         canManageMeeting: Bool? = nil,
         hasOlderMessages: Bool? = nil,
-        readReceipts: MessagingReadReceiptSettings? = nil
+        readReceipts: MessagingReadReceiptSettings? = nil,
+        reactionOptions: [String]? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -169,6 +171,7 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.canManageMeeting = canManageMeeting
         self.hasOlderMessages = hasOlderMessages
         self.readReceipts = readReceipts
+        self.reactionOptions = reactionOptions
     }
 }
 
@@ -224,6 +227,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let verificationReview: VerificationReview?
     let translation: MessageTranslationPresentation?
     let originalBody: String?
+    var reactions: [MessageReaction]
+    let sharedContent: MessagingSharedContent?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -237,6 +242,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case reply
         case verificationReview
         case translation
+        case reactions, sharedContent
         case originalBody
     }
 
@@ -252,7 +258,9 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         reply: MessageReplyPreview?,
         verificationReview: VerificationReview? = nil,
         translation: MessageTranslationPresentation? = nil,
-        originalBody: String? = nil
+        originalBody: String? = nil,
+        reactions: [MessageReaction] = [],
+        sharedContent: MessagingSharedContent? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -266,6 +274,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.verificationReview = verificationReview
         self.translation = translation
         self.originalBody = originalBody
+        self.reactions = reactions
+        self.sharedContent = sharedContent
     }
 
     init(from decoder: Decoder) throws {
@@ -282,6 +292,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview = try container.decodeIfPresent(VerificationReview.self, forKey: .verificationReview)
         translation = try container.decodeIfPresent(MessageTranslationPresentation.self, forKey: .translation)
         originalBody = try container.decodeIfPresent(String.self, forKey: .originalBody)
+        reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+        sharedContent = try container.decodeIfPresent(MessagingSharedContent.self, forKey: .sharedContent)
     }
 }
 
@@ -457,6 +469,15 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
     let contentType: String
     let data: Data
     var state: State
+    var acknowledgedMessageID: UUID?
+
+    func canUpload(to messageID: UUID) -> Bool {
+        acknowledgedMessageID == messageID && state != .uploading
+    }
+
+    static func hasPendingAcknowledgedUploads(_ attachments: [Self]) -> Bool {
+        attachments.contains { $0.acknowledgedMessageID != nil }
+    }
 
     init(
         id: UUID = UUID(),
@@ -473,13 +494,26 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
     }
 }
 
-struct SendMessageRequest: Encodable, Sendable {
+/// Captures the composer submission without owning message delivery state.
+struct MessagingDraftSnapshot {
     let body: String
     let replyToMessageID: UUID?
 
+    func matches(body: String, replyToMessageID: UUID?) -> Bool {
+        self.body == body && self.replyToMessageID == replyToMessageID
+    }
+}
+
+struct SendMessageRequest: Encodable, Sendable {
+    let body: String
+    let replyToMessageID: UUID?
+    let clientMessageID: UUID
+    var sharedPostId: UUID? = nil
+
     private enum CodingKeys: String, CodingKey {
-        case body
+        case body, sharedPostId
         case replyToMessageID = "replyToMessageId"
+        case clientMessageID = "clientMessageId"
     }
 }
 
@@ -721,6 +755,12 @@ struct FounderAccountBatchOutcome: Codable, Equatable, Sendable {
 }
 
 protocol MessagingAPI: Sendable {
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL
+    func sharedPostURL(_ postID: UUID) -> URL?
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws
+
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult
     func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws
     func conversations(accessToken: String) async throws -> [ConversationSummary]
     func recipients(
@@ -836,6 +876,7 @@ protocol MessagingAPI: Sendable {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage
     func upload(
@@ -852,6 +893,16 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileAPIError.invalidServerResponse }
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
+    func sharedPostURL(_ postID: UUID) -> URL? { nil }
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws {
+        try await markRead(conversationID: conversationID, accessToken: accessToken)
+    }
+
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult {
+        throw MobileMessagingContractError.unavailable
+    }
     func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
@@ -1119,6 +1170,7 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage {
         throw MobileMessagingContractError.unavailable
@@ -1159,6 +1211,15 @@ enum MobileMessagingContractError: LocalizedError, Equatable {
 }
 
 struct URLSessionMessagingAPI: MessagingAPI {
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult {
+        let path = "/api/v1/mobile/messaging/conversations/\(conversationID)/messages/\(messageID)/reaction"
+        if let emoji {
+            return try await client.put(path, body: MessageReactionRequest(emoji: emoji), accessToken: accessToken,
+                headers: participantHeader, response: MessageReactionResult.self)
+        }
+        return try await client.delete(path, accessToken: accessToken, headers: participantHeader, response: MessageReactionResult.self)
+    }
+
     let client: MobileHTTPClient
     let participantType: ParticipantType
 
@@ -1578,19 +1639,49 @@ struct URLSessionMessagingAPI: MessagingAPI {
         )
     }
 
+
+    func sharedPostURL(_ postID: UUID) -> URL? {
+        client.baseURL.appendingPathComponent("Social/Posts").appendingPathComponent(postID.uuidString)
+    }
+
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage {
+        try await client.post("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
+            body: SendMessageRequest(body: body, replyToMessageID: nil, clientMessageID: clientMessageID, sharedPostId: sharedPostID),
+            accessToken: accessToken, idempotencyKey: clientMessageID, headers: participantHeader, response: ConversationMessage.self)
+    }
+
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL {
+        guard attachment.canDownload else { throw MobileAPIError.invalidServerResponse }
+        let temporary = try await client.downloadFile("/api/v1/mobile/messaging/attachments/\(attachment.id.uuidString)",
+            accessToken: accessToken, headers: participantHeader)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let filename = (attachment.originalFileName as NSString).lastPathComponent
+        let destination = directory.appendingPathComponent(filename.isEmpty ? "attachment" : filename)
+        try FileManager.default.moveItem(at: temporary, to: destination)
+        return destination
+    }
+
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws {
+        try await client.post("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/read?readThroughMessageId=\(readThroughMessageID.uuidString)",
+            body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader)
+    }
+
     func send(
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage {
         try await client.post(
             "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
             body: SendMessageRequest(
                 body: body,
-                replyToMessageID: replyToMessageID),
+                replyToMessageID: replyToMessageID,
+                clientMessageID: clientMessageID),
             accessToken: accessToken,
-            idempotencyKey: UUID(),
+            idempotencyKey: clientMessageID,
             headers: participantHeader,
             response: ConversationMessage.self
         )
@@ -1663,3 +1754,34 @@ struct URLSessionMessagingAPI: MessagingAPI {
 }
 
 private struct EmptyMobileRequest: Encodable {}
+
+/// The server owns reader privacy and chronological ordering; this only reduces redundant labels.
+func messageReceiptLabels(messages: [ConversationMessage], readers: [MessagingReadReceipt]) -> [UUID: String] {
+    let own = messages.filter { $0.isMine && !$0.isDeleted }
+    let latestRead = own.lastIndex { message in
+        readers.contains { reader in
+            !(reader.userId.caseInsensitiveCompare(message.sender.identity.userID) == .orderedSame &&
+              reader.participantType == message.sender.identity.participantType.rawValue) &&
+                reader.readThroughUtc >= message.sentUTC
+        }
+    }
+    return Dictionary(uniqueKeysWithValues: own.enumerated().compactMap { index, message in
+        if index == latestRead { return (message.id, "Read") }
+        if latestRead == nil || index > latestRead! { return (message.id, "Sent") }
+        return nil
+    })
+}
+
+struct MessageReaction: Codable, Equatable, Sendable { let emoji: String; let count: Int; let reactedByCurrentActor: Bool }
+struct MessageReactionRequest: Encodable { let emoji: String }
+struct MessageReactionResult: Decodable { let messageId: UUID; let reactions: [MessageReaction] }
+
+struct MessagingSharedContent: Codable, Equatable, Sendable {
+    let sourcePostId: UUID
+    let status: String
+    let contentType: String?
+    let body: String?
+    let authorDisplayName: String?
+    let media: [MobileSocialMedia]
+    let url: String
+}

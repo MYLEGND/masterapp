@@ -51,13 +51,20 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             : await ToEffectiveSnapshotAsync(policy, true, cancellationToken);
     }
 
+    public Task<LegendConnectProductionReadinessSnapshot> GetReadinessAsync(
+        CancellationToken cancellationToken = default) =>
+        GetReadinessAsync(cancellationToken, providerPolicy: null);
+
     public async Task<LegendConnectProductionReadinessSnapshot> GetReadinessAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         var policy = await GetEffectiveAsync(cancellationToken);
         var azureCapacity = _azureSubscriptionCapacity is null
             ? null
-            : await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken);
+            : LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+                ? await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken, providerPolicy)
+                : await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken);
         // When the Azure source is registered (as it is in production), a
         // failed read must never revive historical runtime-policy numbers.
         // Capacity is either Azure-synchronized or safely unavailable.
@@ -87,7 +94,9 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         IReadOnlyList<LegendLanguageDefinitionSnapshot> languages;
         try
         {
-            languages = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
+            languages = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+                ? await _languages.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken)
+                : await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -1510,7 +1519,12 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     private async Task<(long Approved, long PendingEligible, long RejectedOrIneligible, long Deduplicated, long AwaitingKnowledgePairs)> CandidateReadinessAsync(
         CancellationToken cancellationToken)
     {
-        var candidates = await _db.Set<LegendCorpusCandidate>().AsNoTracking().ToListAsync(cancellationToken);
+        var candidates = await _db.Set<LegendCorpusCandidate>().AsNoTracking()
+            .Select(item => new
+            {
+                item.IsApproved, item.ProcessingState, item.SourceLanguageCode, item.TargetLanguageCode
+            })
+            .ToListAsync(cancellationToken);
         var approved = candidates.LongCount(item => item.IsApproved);
         var pending = candidates.LongCount(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing");
         var rejected = candidates.LongCount(item => !item.IsApproved || item.ProcessingState == "Rejected");

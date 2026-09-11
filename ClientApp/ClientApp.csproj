@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
   <PropertyGroup>
     <BaseIntermediateOutputPath>/tmp/masterapp/obj/ClientApp/</BaseIntermediateOutputPath>
     <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/ClientApp/</MSBuildProjectExtensionsPath>
@@ -27,6 +27,11 @@
   </PropertyGroup>
 
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.Web" />
+  <ItemGroup>
+    <Content Include="../Legend-Design/legend-design.tokens.json"
+             Link="wwwroot/design/legend-design.tokens.json"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <!-- Belt + suspenders: explicitly remove any accidental inclusion of these artifacts -->
   <ItemGroup>

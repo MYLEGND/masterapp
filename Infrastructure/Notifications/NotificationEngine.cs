@@ -6,6 +6,7 @@ using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Infrastructure.Notifications;
 
@@ -68,6 +69,11 @@ public interface INotificationRealtimePublisher
 
 public interface INotificationEngine
 {
+    void NotifyCommittedMessages() { }
+
+    Task<string?> PrepareDeliveryPresentationAsync(MessagingActor recipient, Guid notificationId,
+        CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
     /// <summary>Stages recipient entries in the caller's current database unit of work.</summary>
     Task<IReadOnlyList<MessagingActor>> StageMessageAsync(
         MessagingActor sender,
@@ -115,7 +121,12 @@ public interface INotificationEngine
         MessagingActor actor,
         Guid conversationId,
         DateTime readUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        DateTime? readThroughUtc = null);
+
+    async Task<NotificationBadgeSnapshot> GetBadgeSnapshotAsync(MessagingActor actor,
+        CancellationToken cancellationToken = default) =>
+        (await GetSnapshotAsync(actor, 1, cancellationToken)).Badge;
 
     Task<NotificationSnapshot> GetSnapshotAsync(
         MessagingActor actor,
@@ -181,6 +192,7 @@ internal sealed class NotificationEngine : INotificationEngine
     private const int MaximumTitleLength = 240;
     private const int MaximumDetailLength = 1_000;
     private const int MaximumDeviceTokenLength = 4_096;
+    private readonly IServiceProvider? _services;
     private readonly MasterAppDbContext _db;
     private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly INotificationRealtimePublisher _realtime;
@@ -192,13 +204,32 @@ internal sealed class NotificationEngine : INotificationEngine
         IMessagingProfileImageResolver participantIdentities,
         INotificationRealtimePublisher realtime,
         IApplePushDeliverySignal deliverySignal,
-        ILogger<NotificationEngine> logger)
+        ILogger<NotificationEngine> logger,
+        IServiceProvider? services = null)
     {
+        _services = services;
         _db = db;
         _participantIdentities = participantIdentities;
         _realtime = realtime;
         _deliverySignal = deliverySignal;
         _logger = logger;
+    }
+
+    public void NotifyCommittedMessages() => _deliverySignal.Notify();
+
+    public async Task<string?> PrepareDeliveryPresentationAsync(MessagingActor recipient, Guid notificationId,
+        CancellationToken cancellationToken = default)
+    {
+        var notification = await _db.MobileActivityNotifications.AsNoTracking().SingleOrDefaultAsync(
+            item => item.Id == notificationId && item.RecipientUserId == recipient.UserId &&
+                item.RecipientParticipantType == recipient.ParticipantType, cancellationToken);
+        if (notification is null || notification.IsCleared)
+            return null;
+        if (notification.SourceMessageId is null)
+            return notification.Detail;
+        var messaging = _services?.GetService<IMessagingService>();
+        return messaging is null ? null : await messaging.PrepareNotificationPresentationAsync(
+            recipient, notificationId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<MessagingActor>> StageMessageAsync(
@@ -337,7 +368,8 @@ internal sealed class NotificationEngine : INotificationEngine
         MessagingActor actor,
         Guid conversationId,
         DateTime readUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTime? readThroughUtc = null)
     {
         var recipient = Normalize(actor);
         var notifications = await _db.MobileActivityNotifications
@@ -345,6 +377,7 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.RecipientUserId == recipient.UserId &&
                 notification.RecipientParticipantType == recipient.ParticipantType &&
                 notification.ConversationId == conversationId &&
+                (!readThroughUtc.HasValue || notification.OccurredUtc <= readThroughUtc) &&
                 !notification.IsRead &&
                 !notification.IsCleared)
             .ToListAsync(cancellationToken);
@@ -354,6 +387,9 @@ internal sealed class NotificationEngine : INotificationEngine
             notification.ReadUtc = readUtc;
         }
     }
+
+    public Task<NotificationBadgeSnapshot> GetBadgeSnapshotAsync(MessagingActor actor,
+        CancellationToken cancellationToken = default) => ReconcileBadgeAsync(Normalize(actor), cancellationToken);
 
     public async Task<NotificationSnapshot> GetSnapshotAsync(
         MessagingActor actor,
@@ -381,6 +417,13 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.IsCleared))
             .ToListAsync(cancellationToken);
 
+        // Activity presentation also runs without a registered push device.
+        for (var index = 0; index < notifications.Count; index++)
+        {
+            var detail = await PrepareDeliveryPresentationAsync(recipient, notifications[index].Id, cancellationToken);
+            if (detail is not null)
+                notifications[index] = notifications[index] with { Detail = detail };
+        }
         var badge = await ReconcileBadgeAsync(recipient, cancellationToken);
         return new NotificationSnapshot(badge, notifications);
     }

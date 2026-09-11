@@ -55,7 +55,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
-    public async Task ProductionConversation_UsesSelectedGovernedEndpoint_WhenOriginalCompositionIsUnavailable()
+    public async Task ProductionConversation_UsesSelectedGovernedEndpoint_WhenEverySourceConditionIsGrounded()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -69,7 +69,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Hi there.");
         Assert.True(graph.IsComposed, graph.ReasonCode);
-        Assert.DoesNotContain(graph.Nodes, item => item.SemanticDimension == "register");
+        Assert.Contains(graph.Nodes, item => item.SemanticDimension == "register" && item.SemanticValue == "neutral");
 
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
             "Hi there.",
@@ -125,7 +125,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         for (var family = 4; family <= 6; family++)
         {
             var higher = await fixture.Curriculum.SubmitFounderBatchAsync(
-                RichResponsePlanFamily(family, "formal", "higher_standard_acknowledgement"));
+                RichResponsePlanFamily(family, "neutral", "higher_standard_acknowledgement"));
             Assert.True(higher.Succeeded, higher.Message);
         }
 
@@ -655,8 +655,14 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 (_, unit) => unit.Text)
             .ToArrayAsync();
 
+        const string request = "Please acknowledge the status update.";
+        Assert.False(await db.LegendLanguageTextUnits.AnyAsync(unit => unit.Text == request));
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(request);
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Single(graph.Relations);
+
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "Please acknowledge the status update.",
+            request,
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
@@ -1706,9 +1712,11 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 RichResponsePlanFamily(family, "neutral", "acknowledgement"));
             Assert.True(neutral.Succeeded, neutral.Message);
 
-            var formal = await fixture.Curriculum.SubmitFounderBatchAsync(
-                RichResponsePlanFamily(family + 3, "formal", "formal_acknowledgement"));
-            Assert.True(formal.Succeeded, formal.Message);
+            // Both conclusions now have the same fully observed source frame.
+            // A conflicting register would test source ambiguity instead.
+            var conflicting = await fixture.Curriculum.SubmitFounderBatchAsync(
+                RichResponsePlanFamily(family + 3, "neutral", "formal_acknowledgement"));
+            Assert.True(conflicting.Succeeded, conflicting.Message);
         }
 
         var planned = await fixture.Operations.TryPlanConversationAsync(
@@ -1716,7 +1724,33 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             new LegendConnectDiscourseStateSnapshot([]));
 
         Assert.False(planned.Supported);
-        Assert.Equal("ambiguous_semantic_transition_projection", planned.ReasonCode);
+        Assert.Equal("ambiguous_semantic_transition", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Theory]
+    [InlineData("neutral")]
+    [InlineData("formal")]
+    public async Task BroadProjection_RejectsUnobservedRegisterEvenWhenTheSourceGraphMatches(string register)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
+                RichResponsePlanFamily(family, register, "acknowledgement", groundRegister: false));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        // This is the original partial-source fixture: both declared graph
+        // nodes match, but no admitted span establishes the required register.
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Hi there.");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.DoesNotContain(graph.Nodes, node => node.SemanticDimension == "register");
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Hi there.", new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(planned.Supported);
+        Assert.Equal("semantic_transition_not_supported", planned.ReasonCode);
         Assert.Null(planned.Plan);
     }
 
@@ -1764,24 +1798,40 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         Assert.Null(planned.Plan);
     }
 
-    [Fact]
-    public async Task BroadProjection_AllowsAValidSameFamilyTransition()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BroadProjection_RequiresTheDeclaredRouteForASameFamilyTransition(bool groundRoute)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
         var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
-            SameFamilyProjectionFamily());
+            SameFamilyProjectionFamily(groundRoute));
         Assert.True(submitted.Succeeded, submitted.Message);
 
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            groundRoute ? "local handoff failure" : "handoff failure");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Equal(groundRoute, graph.Nodes.Any(node =>
+            node.SemanticDimension == "diagnostic_route" && node.SemanticValue == "same_family"));
         var planned = await fixture.Operations.TryPlanConversationAsync(
-            "handoff failure",
+            groundRoute ? "local handoff failure" : "handoff failure",
             new LegendConnectDiscourseStateSnapshot([]));
 
-        Assert.True(planned.Supported, planned.ReasonCode);
-        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
-        Assert.Equal("handoff_same_family_response", plan.ResultDimensions["conversation_function"]);
-        Assert.Equal("BroadGoverned", plan.EvidenceStandard);
+        if (groundRoute)
+        {
+            Assert.True(planned.Supported, planned.ReasonCode);
+            var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+            Assert.Equal("handoff_same_family_response", plan.ResultDimensions["conversation_function"]);
+            Assert.Equal("BroadGoverned", plan.EvidenceStandard);
+        }
+        else
+        {
+            Assert.False(planned.Supported);
+            Assert.Equal("semantic_transition_not_supported", planned.ReasonCode);
+            Assert.Null(planned.Plan);
+        }
     }
 
     [Fact]
@@ -1791,7 +1841,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var fixture = CreateFixture(db);
 
         var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
-            SameFamilyProjectionFamily());
+            SameFamilyProjectionFamily(groundRoute: true));
         Assert.True(submitted.Succeeded, submitted.Message);
 
         var unrelatedFamily = new LegendCurriculumFamily
@@ -1813,7 +1863,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await db.SaveChangesAsync();
 
         var planned = await fixture.Operations.TryPlanConversationAsync(
-            "handoff failure",
+            "local handoff failure",
             new LegendConnectDiscourseStateSnapshot([]));
 
         Assert.False(planned.Supported);
@@ -1821,8 +1871,11 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         Assert.Null(planned.Plan);
     }
 
-    [Fact]
-    public async Task BroadProjection_AllowsOnlyAProductionEligibleExplicitGovernedFamilyTransfer()
+    [Theory]
+    [InlineData("handoff", false)]
+    [InlineData("handoff scope", true)]
+    public async Task BroadProjection_RequiresTheObservedScopeForAnEligibleExplicitGovernedFamilyTransfer(
+        string input, bool hasScope)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -1843,15 +1896,28 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         }
 
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(input);
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Equal(hasScope, graph.Nodes.Any(node =>
+            node.SemanticDimension == "transfer_scope" && node.SemanticValue == "bounded"));
         var planned = await fixture.Operations.TryPlanConversationAsync(
-            "handoff",
+            input,
             new LegendConnectDiscourseStateSnapshot([]));
 
-        Assert.True(planned.Supported, planned.ReasonCode);
-        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
-        Assert.Equal("governed_transfer_response", plan.ResultDimensions["decision_posture"]);
-        Assert.Equal("HigherStandard", plan.EvidenceStandard);
-        Assert.Equal(3, plan.IndependentEvidenceCount);
+        if (hasScope)
+        {
+            Assert.True(planned.Supported, planned.ReasonCode);
+            var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+            Assert.Equal("governed_transfer_response", plan.ResultDimensions["decision_posture"]);
+            Assert.Equal("HigherStandard", plan.EvidenceStandard);
+            Assert.Equal(3, plan.IndependentEvidenceCount);
+        }
+        else
+        {
+            Assert.False(planned.Supported);
+            Assert.Equal("semantic_transition_not_supported", planned.ReasonCode);
+            Assert.Null(planned.Plan);
+        }
         var explicitTransfers = await db.LegendSemanticTransitionEvidence
             .Where(item => item.FounderSemanticExampleRelationEvidenceId != null)
             .ToArrayAsync();
@@ -1883,7 +1949,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         }
 
         var planned = await fixture.Operations.TryPlanConversationAsync(
-            "handoff",
+            "handoff scope",
             new LegendConnectDiscourseStateSnapshot([]));
 
         Assert.False(planned.Supported);
@@ -2920,6 +2986,16 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 "Let me know you received the rollout notice.", "received", "rollout notice",
                 "The notice is expressly noted.", "The notice", "is", "expressly", "noted")
         };
+        // Each family independently authorizes its request construction with
+        // another subject surface. Recombination must have a shared governed
+        // family; unrelated families' surface authorizations cannot be unioned.
+        // These controls add no result sentence or held-out request endpoint.
+        var (alternateSourceText, alternateSubjectSurface) = family switch
+        {
+            1 => ("For the rollout notice, please confirm receipt after review.", "rollout notice"),
+            2 => ("For the status update, kindly acknowledge receipt after review.", "status update"),
+            _ => ("Indicate whether the project report was received after review.", "project report")
+        };
 
         return new LegendConnectCurriculumBatchSubmission(
             $"response.original-articulation.{family}",
@@ -2938,6 +3014,21 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                             "function", "conversation_function", "receipt_confirmation_request", sourceFunctionSurface),
                         new LegendConnectMeaningNodeSubmission(
                             "subject", "subject", "status_message", sourceSubjectSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission("function", "applies-to", "subject")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    alternateSourceText,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "receipt_confirmation_request",
+                        ["subject"] = "status_message"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "conversation_function", "receipt_confirmation_request", sourceFunctionSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "subject", "status_message", alternateSubjectSurface)
                     ],
                     [new LegendConnectMeaningRelationSubmission("function", "applies-to", "subject")])),
                 new LegendConnectCurriculumExampleSubmission(
@@ -3986,28 +4077,33 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     ["conversation_function"] = $"{unrelatedFamily}_response"
                 }))]);
 
-    private static LegendConnectCurriculumBatchSubmission SameFamilyProjectionFamily() =>
+    private static LegendConnectCurriculumBatchSubmission SameFamilyProjectionFamily(bool groundRoute = false) =>
         new(
             "projection.same-family.handoff",
             "Same-family projected diagnostic transition",
             [
                 new LegendConnectCurriculumExampleSubmission(
-                    "Canonical handoff failure source.",
+                    groundRoute ? "Canonical local handoff failure source." : "Canonical handoff failure source.",
                     new Dictionary<string, string>
                     {
                         ["diagnostic_subject"] = "handoff",
                         ["diagnostic_family"] = "handoff_failure",
-                        ["diagnostic_route"] = "same_family"
+                        ["diagnostic_route"] = "same_family",
+                        ["route_surface"] = "local"
                     },
                     new LegendConnectMeaningGraphSubmission(
                     [
                         new LegendConnectMeaningNodeSubmission(
                             "subject", "diagnostic_subject", "handoff", "handoff"),
                         new LegendConnectMeaningNodeSubmission(
-                            "family", "diagnostic_family", "handoff_failure", "failure")
+                            "family", "diagnostic_family", "handoff_failure", "failure"),
+                        .. groundRoute ? new[] { new LegendConnectMeaningNodeSubmission(
+                            "route", "diagnostic_route", "same_family", "local") } : []
                     ],
                     [new LegendConnectMeaningRelationSubmission(
-                        "subject", "qualified-by", "family")])),
+                        "subject", "qualified-by", "family"),
+                        .. groundRoute ? new[] { new LegendConnectMeaningRelationSubmission(
+                            "family", "routed-by", "route") } : []])),
                 new LegendConnectCurriculumExampleSubmission(
                     "Use the governed handoff response.",
                     new Dictionary<string, string>
@@ -4025,7 +4121,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
                 {
                     ["conversation_function"] = "handoff_same_family_response"
-                }))]);
+                }))],
+            groundRoute
+                ? [new LegendConnectSemanticSpanGroundingSubmission("diagnostic_route", "route_surface")]
+                : []);
 
     private static LegendConnectCurriculumBatchSubmission ExplicitTransferSourceFamily(int support) =>
         new(
@@ -4046,7 +4145,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                         new LegendConnectMeaningNodeSubmission(
                             "scope", "transfer_scope", "bounded", "scope")
                     ],
-                    []),
+                    [new LegendConnectMeaningRelationSubmission("subject", "bounded-by", "scope")]),
                     $"governed-transfer-source-{support}"),
                 new LegendConnectCurriculumExampleSubmission(
                     $"Governed transfer source control {support}.",
@@ -4352,7 +4451,8 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     private static LegendConnectCurriculumBatchSubmission RichResponsePlanFamily(
         int family,
         string register,
-        string resultFunction) =>
+        string resultFunction,
+        bool groundRegister = true) =>
         new(
             $"response.plan.rich.{register}.{family}",
             "Founder-controlled rich response frame evidence",
@@ -4371,9 +4471,13 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                         new LegendConnectMeaningNodeSubmission(
                             "function", "conversation_function", "greeting", "Hi there"),
                         new LegendConnectMeaningNodeSubmission(
-                            "role", "discourse_role", "opening", "Hi there")
+                            "role", "discourse_role", "opening", "Hi there"),
+                        .. groundRegister ? new[] { new LegendConnectMeaningNodeSubmission(
+                            "register", "register", register, "Hi there") } : []
                     ],
-                    [new LegendConnectMeaningRelationSubmission("function", "realized-as", "role")])),
+                    [new LegendConnectMeaningRelationSubmission("function", "realized-as", "role"),
+                        .. groundRegister ? new[] { new LegendConnectMeaningRelationSubmission(
+                            "role", "qualified-by", "register") } : []])),
                 new LegendConnectCurriculumExampleSubmission(
                     $"Founder rich response evidence {family}.",
                     new Dictionary<string, string>
@@ -4392,10 +4496,14 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 {
                     ["conversation_function"] = resultFunction
                 }))],
-            family == 1 || family == 4
-                ? [new LegendConnectSemanticSpanGroundingSubmission(
-                    "conversation_function", "greeting_surface")]
-                : []);
+            [
+                .. family == 1 || family == 4
+                    ? new[] { new LegendConnectSemanticSpanGroundingSubmission(
+                        "conversation_function", "greeting_surface") } : [],
+                .. groundRegister
+                    ? new[] { new LegendConnectSemanticSpanGroundingSubmission(
+                        "register", "greeting_surface") } : []
+            ]);
 
     private static LegendConnectCurriculumExampleSubmission PlanSource(int family, string surface) =>
         new(

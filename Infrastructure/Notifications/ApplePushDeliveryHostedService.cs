@@ -595,18 +595,36 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                 continue;
             }
 
-            var snapshot = await engine.GetSnapshotAsync(
+            var presentation = await engine.PrepareDeliveryPresentationAsync(
                 new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
-                take: 1,
+                candidate.NotificationId, cancellationToken);
+            if (presentation is null)
+            {
+                // Count delivery preparation against the existing bounded delivery
+                // policy; this is not a gateway attempt or provider outcome.
+                delivery.AttemptCount++;
+                var failedAt = DateTime.UtcNow;
+                delivery.NextAttemptUtc = failedAt.AddSeconds(Math.Min(300, Math.Pow(2, delivery.AttemptCount)));
+                delivery.LastError = "notification_presentation_unavailable";
+                if (delivery.AttemptCount >= MaximumAttempts)
+                {
+                    delivery.AbandonedUtc = failedAt;
+                    delivery.LastError = "notification_presentation_exhausted";
+                }
+                continue;
+            }
+
+            var badge = await engine.GetBadgeSnapshotAsync(
+                new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
                 cancellationToken);
             var result = await _gateway.SendAsync(
                 new ApplePushDeliveryRequest(
                     candidate.DeviceToken,
                     candidate.Environment,
                     candidate.Title,
-                    candidate.Detail,
+                    presentation,
                     candidate.NotificationId,
-                    snapshot.Badge.UnreadCount,
+                    badge.UnreadCount,
                     candidate.ConversationId),
                 cancellationToken);
             ApplyResult(delivery, result, now);

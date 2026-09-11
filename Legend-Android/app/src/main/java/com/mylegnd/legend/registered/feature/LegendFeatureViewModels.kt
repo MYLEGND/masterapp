@@ -14,10 +14,14 @@ import com.mylegnd.legend.registered.core.network.SocialViewRequest
 import com.mylegnd.legend.registered.core.realtime.LegendMessagingRealtimeEvent
 import com.mylegnd.legend.registered.data.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -89,16 +93,6 @@ class FounderAiViewModel(
             failure = null,
         )
         operation = viewModelScope.launch {
-            val progressJob = launch {
-                repository.progress(role, operationId).collect { envelope ->
-                    val update = envelope.progress?.message?.trim().orEmpty()
-                    if (update.isNotBlank() && _state.value.operationId == operationId) {
-                        _state.value = _state.value.copy(
-                            progress = envelope.elapsedSeconds?.let { "$update · ${it}s" } ?: update,
-                        )
-                    }
-                }
-            }
             try {
                 when (val result = repository.chat(
                     role = role,
@@ -113,6 +107,16 @@ class FounderAiViewModel(
                         messages = submitted.map { FounderAiChatMessage(it.role, it.content) },
                         conversationId = conversationId,
                     ),
+                    onProgress = { envelope ->
+                        val update = envelope.progress?.message?.trim().orEmpty()
+                        if (update.isNotBlank()) {
+                            _state.update { current ->
+                                if (current.operationId != operationId) current else current.copy(
+                                    progress = envelope.elapsedSeconds?.let { "$update · ${it}s" } ?: update,
+                                )
+                            }
+                        }
+                    },
                 )) {
                     is LoadState.Data -> {
                         val response = result.value
@@ -138,7 +142,6 @@ class FounderAiViewModel(
                 // cancel() has already returned a truthful local status. The
                 // server receives the cancelled mobile request and stops work.
             } finally {
-                progressJob.cancel()
                 if (_state.value.operationId == operationId) {
                     _state.value = _state.value.copy(isSending = false, operationId = null, progress = null)
                 }
@@ -241,7 +244,66 @@ class FinancialViewModel(private val repository: FinancialRepository, private va
     }
 }
 
+/** Pending presentation transaction: only server acknowledgements advance it. */
+internal class PendingMessageSubmission private constructor(
+    val conversationId: String,
+    val body: String,
+    val replyToMessageId: String?,
+    val attachments: List<String>,
+    val sharedPostId: String?,
+) {
+    val clientMessageId: String = UUID.randomUUID().toString()
+    var acknowledgedMessageId: String? = null
+    val uploadedAttachmentIndexes = mutableSetOf<Int>()
+
+    suspend fun uploadRemaining(upload: suspend (Int) -> LoadState<*>): LoadState<Unit> {
+        if (acknowledgedMessageId == null) return LoadState.Error("Message has not been acknowledged.")
+        for (index in attachments.indices) {
+            if (index in uploadedAttachmentIndexes) continue
+            when (val result = upload(index)) {
+                is LoadState.Data -> uploadedAttachmentIndexes.add(index)
+                is LoadState.Error -> return result
+                else -> return LoadState.Error("Attachment upload was not acknowledged.")
+            }
+        }
+        return LoadState.Data(Unit)
+    }
+
+    companion object {
+        fun forPayload(previous: PendingMessageSubmission?, conversationId: String, body: String,
+                       replyToMessageId: String?, attachments: List<String>, sharedPostId: String? = null): PendingMessageSubmission =
+            previous?.takeIf { it.conversationId == conversationId && it.body == body &&
+                it.replyToMessageId == replyToMessageId && it.attachments == attachments && it.sharedPostId == sharedPostId }
+                ?: PendingMessageSubmission(conversationId, body, replyToMessageId, attachments.toList(), sharedPostId)
+    }
+}
+
 class MessagingViewModel(private val repository: MessagingRepository, private val role: String) : ViewModel() {
+    companion object {
+        internal fun sessionKey(accountId: String, identity: MobileIdentity): String =
+            "messaging:" + listOf(accountId, identity.userId, identity.participantType)
+                .joinToString(":") { "${it.length}:$it" }
+    }
+
+    fun deactivate() {
+        viewModelScope.coroutineContext.cancelChildren()
+        // Keep an uncertain send identity in this account-keyed ViewModel.
+        // Returning to the same account may retry it; another actor gets a
+        // different ViewModel. The cancelled send owns its final busy reset.
+        selectedConversationId = null
+        detailJob = null
+        inboxTask = null
+        readJobs.clear()
+        readAcknowledgements.clear()
+        presentationRevision++
+        inboxRequestRevision++
+        _conversations.value = LoadState.Idle
+        _detail.value = LoadState.Idle
+        _recipients.value = LoadState.Idle
+        _historyFailure.value = null
+    }
+
+    private var pendingSubmission: PendingMessageSubmission? = null
     private val _conversations = MutableStateFlow<LoadState<List<ConversationSummary>>>(LoadState.Idle)
     val conversations: StateFlow<LoadState<List<ConversationSummary>>> = _conversations.asStateFlow()
     private val _detail = MutableStateFlow<LoadState<ConversationDetail>>(LoadState.Idle)
@@ -270,16 +332,57 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
-    fun open(id: String, beforeUtc: String? = null) = viewModelScope.launch {
+    private var detailJob: Job? = null
+    private var detailRefreshPending = false
+    private var detailMarksRead = false
+    private var inboxTask: Deferred<Unit>? = null
+    private var inboxRefreshPending = false
+    private val readJobs = mutableMapOf<String, Job>()
+    private val readAcknowledgements = mutableMapOf<String, String>()
+
+    fun open(id: String, beforeUtc: String? = null): Job = requestDetail(id, beforeUtc, marksRead = true)
+
+    private fun requestDetail(id: String, beforeUtc: String? = null, marksRead: Boolean, newerActivity: Boolean = false): Job {
+        if (selectedConversationId == id && detailJob?.isActive == true) {
+            detailMarksRead = detailMarksRead || marksRead
+            detailRefreshPending = detailRefreshPending || newerActivity
+            return requireNotNull(detailJob)
+        }
+        detailJob?.cancel()
         selectedConversationId = id
         _historyFailure.value = null
         val revision = ++presentationRevision
+        detailMarksRead = marksRead
         if ((_detail.value as? LoadState.Data)?.value?.id != id) _detail.value = LoadState.Loading
-        val result = repository.conversation(role, id, beforeUtc)
-        if (revision != presentationRevision || selectedConversationId != id) return@launch
-        _detail.value = result
-        if (result is LoadState.Data) repository.markRead(role, id)
-        refreshInboxSilently()
+        return viewModelScope.launch {
+            do {
+                detailRefreshPending = false
+                val result = repository.conversation(role, id, beforeUtc)
+                ensureActive()
+                if (revision != presentationRevision || selectedConversationId != id) return@launch
+                if (result is LoadState.Data) {
+                    _detail.value = result
+                    if (detailMarksRead) acknowledgeVisible(id, result.value)
+                } else if (_detail.value !is LoadState.Data) _detail.value = result
+            } while (detailRefreshPending)
+        }.also { detailJob = it }
+    }
+
+    private fun acknowledgeVisible(id: String, detail: ConversationDetail) {
+        val latest = detail.messages.lastOrNull()?.id ?: return
+        if (readAcknowledgements[id] == latest || readJobs[id]?.isActive == true) return
+        readJobs[id] = viewModelScope.launch {
+            if (repository.markRead(role, id, latest) is LoadState.Data) {
+                readAcknowledgements[id] = latest
+                if ((_detail.value as? LoadState.Data)?.value?.messages?.lastOrNull()?.id == latest)
+                    updateInbox(id) { it.copy(unreadCount = 0) }
+            }
+            readJobs.remove(id)
+            val current = (_detail.value as? LoadState.Data)?.value
+            if (selectedConversationId == id && current?.id == id && current.messages.lastOrNull()?.id != latest) {
+                acknowledgeVisible(id, current)
+            }
+        }
     }
 
     private val _historyFailure = MutableStateFlow<String?>(null)
@@ -511,38 +614,57 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         body: String,
         replyToMessageId: String? = null,
         attachmentUris: List<Uri> = emptyList(),
+        sharedPostId: String? = null,
         completed: (Boolean) -> Unit,
     ) = viewModelScope.launch {
         val normalized = body.trim()
-        if (normalized.isBlank() || _isSending.value) {
+        if ((normalized.isBlank() && sharedPostId == null) || _isSending.value) {
             completed(false)
             return@launch
         }
+        val submission = PendingMessageSubmission.forPayload(pendingSubmission, id, normalized,
+            replyToMessageId, attachmentUris.map { it.toString() }, sharedPostId)
+        pendingSubmission = submission
+        _historyFailure.value = null
         _isSending.value = true
         try {
-            when (val result = repository.send(role, id, normalized, replyToMessageId)) {
-                is LoadState.Data -> {
-                    attachmentUris.forEach { uri ->
-                        repository.uploadAttachment(context, role, id, result.value.id, uri)
+            if (submission.acknowledgedMessageId == null) {
+                when (val result = repository.send(role, id, normalized, replyToMessageId, submission.clientMessageId, sharedPostId)) {
+                    is LoadState.Data -> submission.acknowledgedMessageId = result.value.id
+                    is LoadState.Error -> {
+                        _historyFailure.value = result.message
+                        completed(false)
+                        return@launch
                     }
-                    open(id)
-                    // Inbox activity must not wait for thread hydration or
-                    // mark-read. Both use the persisted server projection.
-                    launch { refreshInboxSilently() }
-                    completed(true)
+                    else -> { completed(false); return@launch }
                 }
-                is LoadState.Error -> {
-                    _detail.value = LoadState.Error(result.message)
-                    completed(false)
-                }
-                else -> completed(false)
             }
+            val messageId = requireNotNull(submission.acknowledgedMessageId)
+            when (val uploaded = submission.uploadRemaining { index ->
+                repository.uploadAttachment(context, role, id, messageId, attachmentUris[index])
+            }) {
+                is LoadState.Data -> Unit
+                is LoadState.Error -> {
+                    _historyFailure.value = "Message sent, but an attachment was not uploaded. " + uploaded.message
+                    completed(false)
+                    return@launch
+                }
+                else -> { completed(false); return@launch }
+            }
+            pendingSubmission = null
+            requestDetail(id, marksRead = true, newerActivity = true)
+            // Refreshes do not redefine the server's successful send acknowledgement.
+            launch { refreshInboxSilently() }
+            completed(true)
         } finally {
             _isSending.value = false
         }
     }
 
-    fun markViewed(id: String) = viewModelScope.launch { repository.markRead(role, id) }
+    fun markViewed(id: String) {
+        val current = (_detail.value as? LoadState.Data)?.value ?: return
+        if (selectedConversationId == id && current.id == id) acknowledgeVisible(id, current)
+    }
 
     fun setReadReceipts(id: String, enabled: Boolean, globally: Boolean) = viewModelScope.launch {
         when (val result = repository.setReadReceipts(role, id, enabled, globally)) {
@@ -584,12 +706,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     private suspend fun refreshOpenConversation(id: String) {
-        val revision = presentationRevision
-        when (val fresh = repository.conversation(role, id)) {
-            is LoadState.Data -> if (revision == presentationRevision && selectedConversationId == id) _detail.value = fresh
-            is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == id) _historyFailure.value = fresh.message
-            else -> Unit
-        }
+        if (selectedConversationId == id) requestDetail(id, marksRead = false, newerActivity = true).join()
     }
 
     /**
@@ -597,41 +714,60 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
      * deliberately never inserts a realtime body or derives an unread count;
      * both projections are reloaded from AgentPortal.
      */
-    fun reconcileRealtime(event: LegendMessagingRealtimeEvent) {
-        if (event.requiresResync) {
-            refreshPresentation()
-            return
-        }
-        val conversationId = event.conversationId ?: return
-        viewModelScope.launch {
-            refreshInboxSilently()
-            val selected = (_detail.value as? LoadState.Data)?.value
-            if (selected?.id != conversationId) return@launch
-            val revision = presentationRevision
-            when (val fresh = repository.conversation(role, conversationId)) {
-                is LoadState.Data -> if (revision == presentationRevision && selectedConversationId == conversationId) _detail.value = fresh
+    private val reactionJobs = mutableMapOf<String, Job>()
+    fun react(message: ConversationMessage, emoji: String?) {
+        if (message.isDeleted || reactionJobs[message.id]?.isActive == true) return
+        val revision = presentationRevision
+        reactionJobs[message.id] = viewModelScope.launch {
+            when (val result = repository.react(role, message.conversationId, message.id, emoji)) {
+                is LoadState.Data -> if (revision == presentationRevision && selectedConversationId == message.conversationId) {
+                    val current = (_detail.value as? LoadState.Data)?.value
+                    if (current?.id == message.conversationId && result.value.messageId == message.id) {
+                        _detail.value = LoadState.Data(current.copy(messages = current.messages.map {
+                            if (it.id == message.id) it.copy(reactions = result.value.reactions) else it
+                        }))
+                    }
+                }
+                is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == message.conversationId) _historyFailure.value = result.message
                 else -> Unit
             }
         }
     }
 
+    fun reconcileRealtime(event: LegendMessagingRealtimeEvent) {
+        if (event.requiresResync) { refreshPresentation(); return }
+        val conversationId = event.conversationId ?: return
+        viewModelScope.launch { refreshInboxSilently() }
+        if (selectedConversationId == conversationId) requestDetail(conversationId, marksRead = false, newerActivity = true)
+    }
+
     fun refreshPresentation() = viewModelScope.launch {
-        val revision = ++presentationRevision
+        detailJob?.cancel()
+        detailJob = null
+        readAcknowledgements.clear()
         launch { refreshInboxSilently() }
-        val id = selectedConversationId ?: return@launch
-        val fresh = repository.conversation(role, id)
-        if (revision == presentationRevision && selectedConversationId == id && fresh is LoadState.Data) {
-            _detail.value = fresh
-        }
+        selectedConversationId?.let { requestDetail(it, marksRead = false) }
     }
 
     private suspend fun refreshInboxSilently() {
-        val revision = ++inboxRequestRevision
-        when (val fresh = repository.conversations(role)) {
-            is LoadState.Data -> if (revision == inboxRequestRevision) _conversations.value = fresh
-            is LoadState.Error -> if (revision == inboxRequestRevision && _conversations.value !is LoadState.Data) _conversations.value = fresh
-            else -> Unit
+        inboxTask?.takeIf { it.isActive }?.let {
+            inboxRefreshPending = true
+            it.await()
+            return
         }
+        val task = viewModelScope.async {
+            do {
+                inboxRefreshPending = false
+                val revision = ++inboxRequestRevision
+                when (val fresh = repository.conversations(role)) {
+                    is LoadState.Data -> if (revision == inboxRequestRevision) _conversations.value = fresh
+                    is LoadState.Error -> if (revision == inboxRequestRevision && _conversations.value !is LoadState.Data) _conversations.value = fresh
+                    else -> Unit
+                }
+            } while (inboxRefreshPending)
+        }
+        inboxTask = task
+        try { task.await() } finally { if (inboxTask === task) inboxTask = null }
     }
 
     private fun updateInbox(id: String, transform: (ConversationSummary) -> ConversationSummary?) {

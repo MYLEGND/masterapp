@@ -13,7 +13,7 @@ namespace AgentPortal.Mobile;
 [Authorize(Policy = MobileApiAuthorization.PolicyName)]
 [IgnoreAntiforgeryToken]
 [TypeFilter(typeof(MobileApiExceptionFilter))]
-public sealed class MobileMessagingController : MobileApiControllerBase
+public sealed partial class MobileMessagingController : MobileApiControllerBase
 {
     private readonly IMessagingService _messaging;
     private readonly IMessageAttachmentStorage _attachmentStorage;
@@ -35,6 +35,30 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         _realtimePublisher = realtimePublisher;
         _profiles = profiles;
         _controlledResources = controlledResources;
+    }
+
+    [HttpPut("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> SetMessageReaction(Guid conversationId, Guid messageId,
+        [FromBody] SetMessagingReactionRequest? request, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error != null) return resolved.Error;
+        if (string.IsNullOrEmpty(request?.Emoji))
+            return MessagingFailure("MESSAGING_REACTION_INVALID", "Choose one emoji reaction.");
+        var result = await _messaging.SetMessageReactionAsync(resolved.Actor!.Actor,
+            conversationId, messageId, request.Emoji, cancellationToken);
+        return result.Succeeded ? Ok(result.Value) : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> RemoveMessageReaction(Guid conversationId, Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error != null) return resolved.Error;
+        var result = await _messaging.SetMessageReactionAsync(resolved.Actor!.Actor,
+            conversationId, messageId, null, cancellationToken);
+        return result.Succeeded ? Ok(result.Value) : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
     [HttpGet("session")]
@@ -223,7 +247,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 request?.TargetUserId ?? string.Empty,
                 request?.TargetParticipantType ?? string.Empty,
-                InitialMessageBody: request?.InitialMessageBody),
+                InitialMessageBody: request?.InitialMessageBody, SharedPostId: request?.SharedPostId),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -666,7 +690,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 conversationId,
                 request?.Body ?? string.Empty,
-                ReplyToMessageId: request?.ReplyToMessageId),
+                ClientMessageId: request?.ClientMessageId,
+                ReplyToMessageId: request?.ReplyToMessageId, SharedPostId: request?.SharedPostId),
             cancellationToken);
         if (!result.Succeeded || result.Message is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -749,14 +774,14 @@ public sealed class MobileMessagingController : MobileApiControllerBase
     }
 
     [HttpPost("messaging/conversations/{conversationId:guid}/read")]
-    public async Task<IActionResult> MarkRead(Guid conversationId, CancellationToken cancellationToken)
+    public async Task<IActionResult> MarkRead(Guid conversationId, CancellationToken cancellationToken, [FromQuery] Guid? readThroughMessageId = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
             return resolved.Error;
 
         var result = await _messaging.MarkConversationReadAsync(
-            new MessagingConversationActionCommand(resolved.Actor!.Actor, conversationId),
+            new MessagingConversationActionCommand(resolved.Actor!.Actor, conversationId, readThroughMessageId),
             cancellationToken);
         return result.Succeeded
             ? NoContent()
@@ -945,6 +970,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             Meeting = meeting,
             CanManageMeeting = conversation.CanManageMeeting,
             HasOlderMessages = conversation.HasOlderMessages,
+            ReactionOptions = conversation.ReactionOptions,
             ReadReceipts = conversation.ReadReceipts
         };
     }
@@ -1085,7 +1111,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 message.Translation.OriginalLanguage,
                 message.Translation.TargetLanguage,
                 message.Translation.Provider),
-        message.OriginalBody);
+        message.OriginalBody) { Reactions = message.Reactions, SharedContent = message.SharedContent };
 
     private static MobileAvatarDto? AvatarFor(
         MessagingParticipantSummary participant,
@@ -1242,6 +1268,7 @@ public sealed record MobileConversationDetailDto(
     MobileAvatarDto? GroupAvatar)
 {
     public MessagingReadReceiptSettings? ReadReceipts { get; init; }
+    public IReadOnlyList<string> ReactionOptions { get; init; } = Array.Empty<string>();
     public bool CanManageCollaborators { get; init; }
     public bool CanDeleteGroup { get; init; }
     public bool IsPromoted { get; init; }
@@ -1279,7 +1306,11 @@ public sealed record MobileMessageDto(
     MobileReplyPreviewDto? Reply = null,
     MobileVerificationReviewDto? VerificationReview = null,
     MobileMessageTranslationDto? Translation = null,
-    string? OriginalBody = null);
+    string? OriginalBody = null)
+{
+    public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
+    public MessagingSharedContent? SharedContent { get; init; }
+}
 
 public sealed record MobileMessageTranslationDto(
     string OriginalLanguage,
@@ -1312,7 +1343,9 @@ public sealed record MobileMessageAttachmentDto(
 
 public sealed record MobileSendMessageRequest(
     string? Body,
-    Guid? ReplyToMessageId = null);
+    Guid? ReplyToMessageId = null,
+    string? ClientMessageId = null,
+    Guid? SharedPostId = null);
 public sealed record MobileConversationPinnedRequest(bool? IsPinned);
 public sealed record MobileConversationMutedRequest(bool? IsMuted);
 public sealed record MobileReadReceiptRequest(bool Enabled, bool Globally);
@@ -1324,7 +1357,8 @@ public sealed record MobileConversationCallOptionsDto(
 public sealed record MobileStartConversationRequest(
     string? TargetUserId,
     string? TargetParticipantType,
-    string? InitialMessageBody);
+    string? InitialMessageBody,
+    Guid? SharedPostId = null);
 
 public sealed record MobileCreateGroupRequest(
     string? Subject,

@@ -2623,7 +2623,7 @@ internal sealed class LegendConnectAutonomousLearningService
                     : "machine_teaching_same_language_evidence_unproven",
                 researchObservation
                     ? "Research retention requires controlled examples that exactly match citation-validated material claims from the observed session."
-                    : "Same-language semantic teaching requires controlled examples already resolved by the existing governed meaning authority.");
+                    : "Same-language semantic teaching requires matching independently governed family definitions, contrasts, and transitions.");
         }
 
         var payload =
@@ -2749,7 +2749,34 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The deterministic candidate identity belongs to incompatible existing work.");
         }
 
-        var requestBuild = initialProposalRequest is not null
+        // Candidate identity belongs to the bare typed family. Healthy
+        // evidence growth must not manufacture another proposal for the same
+        // still-valid teaching artifact merely because selection changed.
+        // An existing validation/admission lease also owns that identity;
+        // reuse still requires the exact packet's current evidence below.
+        if (duplicateCandidate)
+        {
+            var retainedProposals = await _db.Set<LegendLanguageTeacherProposal>().AsNoTracking()
+                .Where(item => item.CorpusCandidateId == candidate.Id &&
+                    (item.ValidationState == "AwaitingCritic" || item.ValidationState == "AwaitingCanonicalValidation" ||
+                     item.ValidationState == "CanonicalValidationProcessing" || item.ValidationState == "SystemValidated" ||
+                     item.ValidationState == "CurriculumAdmissionProcessing" || item.ValidationState == "CurriculumAdmitted"))
+                .OrderBy(item => item.CreatedUtc).ThenBy(item => item.Id)
+                .Take(33).ToArrayAsync(cancellationToken);
+            if (retainedProposals.Length > 32)
+                return MachineTeachingFailure("machine_teaching_proposal_identity_bound", "The retained proposal identity scope exceeds its governed bound.");
+            foreach (var retained in retainedProposals)
+            {
+                if (TryReadMachineProposalPayload(retained.ProposalPayloadJson, out var retainedFamily, out _) &&
+                    JsonSerializer.Serialize(retainedFamily) == payload &&
+                    await IsCurrentCanonicalMachineEvidenceAsync(_db, _curriculum, candidate, retained, retainedFamily!, cancellationToken))
+                    return new LegendConnectMachineTeachingSubmissionResult(true, true, retained.ValidationState,
+                        null, "The exact conversational teaching artifact is already retained in LEGEND.",
+                        candidate.Id, retained.Id, ProposalAlreadyExisted: true);
+            }
+        }
+
+        var requestBuild = researchObservation && initialProposalRequest is not null
             ? LanguageProposalRequestBuildResult.Accepted(
                 initialProposalRequest)
             : await BuildLanguageProposalRequestAsync(
@@ -2777,6 +2804,8 @@ internal sealed class LegendConnectAutonomousLearningService
                                 item => item,
                                 StringComparer.Ordinal)));
 
+        payload = SerializeMachineProposalPayload(family, requestBuild.Binding);
+
         var proposalIdentity =
             LegendLanguageIdentity.TextHash(
                 string.Join(
@@ -2794,8 +2823,18 @@ internal sealed class LegendConnectAutonomousLearningService
                         proposalIdentity,
                     cancellationToken);
 
+        bool HasExactStoredIdentity(LegendLanguageTeacherProposal retained) =>
+            retained.CorpusCandidateId == candidate.Id &&
+            retained.SourceLanguageCode == candidate.SourceLanguageCode &&
+            retained.TargetLanguageCode == candidate.TargetLanguageCode && retained.PairKey == pairKey &&
+            retained.FamilyKey == family.FamilyKey && retained.SemanticCategory == family.SemanticCategory &&
+            retained.EvidenceIdentityHash == evidenceIdentityHash && retained.ProposalPayloadJson == payload;
+
         if (existing is not null)
         {
+            if (!HasExactStoredIdentity(existing))
+                return MachineTeachingFailure("machine_teaching_proposal_identity_collision",
+                    "The retained proposal identity belongs to incompatible evidence.");
             return new LegendConnectMachineTeachingSubmissionResult(
                 true,
                 true,
@@ -2900,6 +2939,9 @@ internal sealed class LegendConnectAutonomousLearningService
 
             if (concurrent is null)
                 throw;
+            if (!HasExactStoredIdentity(concurrent))
+                return MachineTeachingFailure("machine_teaching_proposal_identity_collision",
+                    "The retained proposal identity belongs to incompatible evidence.");
 
             return new LegendConnectMachineTeachingSubmissionResult(
                 true,
@@ -3432,16 +3474,7 @@ internal sealed class LegendConnectAutonomousLearningService
             }
 
             LegendLanguageTeacherFamilyProposal? family;
-            try
-            {
-                family =
-                    JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
-                        proposal.ProposalPayloadJson);
-            }
-            catch (JsonException)
-            {
-                family = null;
-            }
+            TryReadMachineProposalPayload(proposal.ProposalPayloadJson, out family, out var evidenceBinding);
 
             if (family is null ||
                 family.Examples is null ||
@@ -3482,15 +3515,17 @@ internal sealed class LegendConnectAutonomousLearningService
             var requestBuild = await BuildLanguageProposalRequestAsync(
                 candidate,
                 cancellationToken,
-                family);
+                family,
+                evidenceBinding);
             var request = requestBuild.Request;
 
             if (request is null)
             {
+                var changedBinding = requestBuild.FailureCode == "language_teacher_evidence_binding_changed";
                 await CompleteCanonicalLanguageProposalAsync(
                     proposal,
-                    "InsufficientEvidence",
-                    requestBuild.FailureCode ??
+                    changedBinding ? "Rejected" : "InsufficientEvidence",
+                    changedBinding ? "canonical_evidence_identity_mismatch" : requestBuild.FailureCode ??
                         "canonical_governed_evidence_unavailable",
                     cancellationToken);
                 return true;
@@ -3663,18 +3698,177 @@ internal sealed class LegendConnectAutonomousLearningService
             LegendLanguageTeacherFamilyProposal family,
             CancellationToken cancellationToken)
     {
+        var curriculum = _curriculum;
+        if (curriculum is null)
+            return CanonicalMachineProposalValidation.Rejected("curriculum_authority_unavailable");
+        var authority = await ReadCanonicalMachineSemanticAuthorityAsync(
+            _db, candidate, proposal, family, cancellationToken);
+        if (!authority.Validation.Succeeded)
+            return authority.Validation;
+        var definitions = authority.Definitions;
+        var governedProfileSet = authority.Profiles;
+
+        var containsNovelBehavior = false;
+        foreach (var example in family.Examples)
+        {
+            var normalized = LegendConnectCurriculumService
+                .NormalizeMachineTeachingExampleSemantics(example);
+            if (normalized is null)
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_example_constraints_invalid");
+            }
+
+            var normalizedProfile = CanonicalMachineProfile(
+                normalized.Components.Select(item =>
+                    item.SemanticSignature));
+            if (!governedProfileSet.Contains(normalizedProfile) ||
+                normalized.Components.Any(component =>
+                    !definitions.TryGetValue(
+                        component.SemanticSignature,
+                        out var definition) ||
+                    definition.Length != 1 ||
+                    !string.Equals(
+                        definition[0],
+                        CanonicalMachineDefinitionIdentity(
+                            component.Dimension,
+                            component.Value),
+                        StringComparison.Ordinal)))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_semantic_definition_unsupported");
+            }
+
+            var sourceConsistency = await ReadCanonicalMachineSourceConsistencyAsync(
+                curriculum, proposal.SourceLanguageCode, example.SourceText, normalized, cancellationToken);
+            if (!sourceConsistency.Validation.Succeeded)
+                return sourceConsistency.Validation;
+            containsNovelBehavior |= !sourceConsistency.IsKnown;
+
+            if (!string.IsNullOrWhiteSpace(example.TargetText))
+            {
+                var normalizedTarget =
+                    LegendLanguageIdentity.NormalizeText(
+                        example.TargetText);
+                if (string.IsNullOrWhiteSpace(normalizedTarget) ||
+                    normalizedTarget.Length > 10_000)
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_target_constraints_invalid");
+                }
+
+                var formulation = await curriculum
+                    .FormulateShadowTargetAsync(
+                        proposal.SourceLanguageCode,
+                        proposal.TargetLanguageCode,
+                        example.SourceText,
+                        cancellationToken);
+                if (string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation.Ambiguous,
+                        StringComparison.Ordinal) ||
+                    string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation.Contradicted,
+                        StringComparison.Ordinal))
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_target_formulation_contradicted");
+                }
+                if (string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation
+                            .SupportedForShadowEvaluation,
+                        StringComparison.Ordinal))
+                {
+                    if (string.IsNullOrWhiteSpace(formulation.Text) ||
+                        !string.Equals(
+                            LegendLanguageIdentity.NormalizeText(
+                                formulation.Text),
+                            normalizedTarget,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CanonicalMachineProposalValidation.Rejected(
+                            "canonical_target_text_contradicted");
+                    }
+                }
+                else
+                {
+                    containsNovelBehavior = true;
+                }
+            }
+        }
+
+        return containsNovelBehavior
+            ? CanonicalMachineProposalValidation.Accepted()
+            : CanonicalMachineProposalValidation.Rejected(
+                "canonical_proposal_already_known");
+    }
+
+    private sealed record CanonicalMachineSourceConsistency(
+        CanonicalMachineProposalValidation Validation, bool IsKnown);
+
+    // This is the existing canonical per-source check, shared with retention.
+    // Founder-only shadow analysis cannot recurse into machine eligibility.
+    // A compatible unknown surface stays reusable after admission; this check
+    // does not require novelty or grant any new semantic interpretation.
+    private static async Task<CanonicalMachineSourceConsistency> ReadCanonicalMachineSourceConsistencyAsync(
+        LegendConnectCurriculumService curriculum,
+        string sourceLanguageCode,
+        string sourceText,
+        LegendShadowSourceUnderstanding normalized,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var established = await curriculum.AnalyzeShadowSourceSemanticsAsync(
+            sourceLanguageCode, sourceText, cancellationToken);
+        if (string.Equals(established.State, LegendShadowSourceUnderstanding.Ambiguous, StringComparison.Ordinal))
+            return new(CanonicalMachineProposalValidation.Rejected("canonical_source_semantics_ambiguous"), false);
+        if (string.Equals(established.State,
+                LegendShadowSourceUnderstanding.SupportedForShadowEvaluation, StringComparison.Ordinal))
+        {
+            var proposedComponents = normalized.Components
+                .Select(item => CanonicalMachineComponentIdentity(item.Dimension, item.Value, item.SurfaceForm))
+                .OrderBy(item => item, StringComparer.Ordinal).ToArray();
+            var establishedComponents = established.Components
+                .Select(item => CanonicalMachineComponentIdentity(item.Dimension, item.Value, item.SurfaceForm))
+                .OrderBy(item => item, StringComparer.Ordinal).ToArray();
+            return proposedComponents.SequenceEqual(establishedComponents, StringComparer.Ordinal)
+                ? new(CanonicalMachineProposalValidation.Accepted(), true)
+                : new(CanonicalMachineProposalValidation.Rejected("canonical_source_semantics_contradicted"), true);
+        }
+        if (string.Equals(established.State, LegendShadowSourceUnderstanding.InsufficientEvidence, StringComparison.Ordinal) &&
+            established.Reasons.Count == 1 &&
+            string.Equals(established.Reasons[0], "source_semantic_component_unknown", StringComparison.Ordinal))
+            return new(CanonicalMachineProposalValidation.Accepted(), false);
+        // Invalid language/text or an incomplete bounded retrieval did not
+        // establish either compatible known meaning or an unknown surface.
+        return new(CanonicalMachineProposalValidation.Insufficient("canonical_source_semantics_unavailable"), false);
+    }
+
+    // The canonical validator and retained reads share current semantic
+    // authority. Only positive critic dependencies are frozen; later Founder
+    // contradictions remain authoritative and novelty is never rechecked here.
+    private static async Task<CanonicalMachineSemanticAuthority>
+        ReadCanonicalMachineSemanticAuthorityAsync(
+            MasterAppDbContext db,
+            LegendCorpusCandidate candidate,
+            LegendLanguageTeacherProposal proposal,
+            LegendLanguageTeacherFamilyProposal family,
+            CancellationToken cancellationToken)
+    {
         var proposedLineage = LegendConnectCurriculumService
             .NormalizeMachineTeachingSemanticLineage(family);
         if (proposedLineage is null)
         {
-            return CanonicalMachineProposalValidation.Rejected(
+            return CanonicalMachineSemanticAuthority.Rejected(
                 "canonical_semantic_lineage_invalid");
         }
 
         LegendCurriculumFamily? governedFamily;
         if (candidate.CurriculumFamilyId is Guid familyId)
         {
-            governedFamily = await _db.Set<LegendCurriculumFamily>()
+            governedFamily = await db.Set<LegendCurriculumFamily>()
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
                     item => item.Id == familyId,
@@ -3682,7 +3876,7 @@ internal sealed class LegendConnectAutonomousLearningService
         }
         else
         {
-            var matches = await _db.Set<LegendCurriculumFamily>()
+            var matches = await db.Set<LegendCurriculumFamily>()
                 .AsNoTracking()
                 .Where(item =>
                     item.FamilyKey == proposedLineage.FamilyKey)
@@ -3711,11 +3905,11 @@ internal sealed class LegendConnectAutonomousLearningService
                 proposedLineage.SemanticCategory,
                 StringComparison.OrdinalIgnoreCase))
         {
-            return CanonicalMachineProposalValidation.Rejected(
+            return CanonicalMachineSemanticAuthority.Rejected(
                 "canonical_founder_family_lineage_unproven");
         }
 
-        var governedExamples = await _db
+        var governedExamples = await db
             .Set<LegendCurriculumExample>()
             .AsNoTracking()
             .Where(item =>
@@ -3728,11 +3922,11 @@ internal sealed class LegendConnectAutonomousLearningService
             .ToListAsync(cancellationToken);
         if (governedExamples.Count < 2)
         {
-            return CanonicalMachineProposalValidation.Insufficient(
+            return CanonicalMachineSemanticAuthority.Insufficient(
                 "canonical_founder_family_examples_insufficient");
         }
 
-        var governedAnchors = await _db
+        var governedAnchors = await db
             .Set<LegendLanguageCompositionalAnchor>()
             .AsNoTracking()
             .Where(item =>
@@ -3755,7 +3949,7 @@ internal sealed class LegendConnectAutonomousLearningService
             .ToListAsync(cancellationToken);
         if (governedAnchors.Count == 0)
         {
-            return CanonicalMachineProposalValidation.Insufficient(
+            return CanonicalMachineSemanticAuthority.Insufficient(
                 "canonical_founder_definitions_insufficient");
         }
 
@@ -3772,7 +3966,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 StringComparer.Ordinal);
         if (definitions.Values.Any(item => item.Length != 1))
         {
-            return CanonicalMachineProposalValidation.Rejected(
+            return CanonicalMachineSemanticAuthority.Rejected(
                 "canonical_founder_definition_contradicted");
         }
 
@@ -3785,7 +3979,7 @@ internal sealed class LegendConnectAutonomousLearningService
         var governedProfileSet = governedProfiles.Values
             .ToHashSet(StringComparer.Ordinal);
 
-        var contrastRows = await _db
+        var contrastRows = await db
             .Set<LegendLanguageStructuralEvidence>()
             .AsNoTracking()
             .Where(item =>
@@ -3850,13 +4044,13 @@ internal sealed class LegendConnectAutonomousLearningService
             .ToArray();
         if (proposedProfiles.Length < 2)
         {
-            return CanonicalMachineProposalValidation.Rejected(
+            return CanonicalMachineSemanticAuthority.Rejected(
                 "canonical_controlled_contrast_missing");
         }
         if (proposedProfiles.Any(
                 item => !governedProfileSet.Contains(item)))
         {
-            return CanonicalMachineProposalValidation.Rejected(
+            return CanonicalMachineSemanticAuthority.Rejected(
                 "canonical_semantic_profile_outside_founder_family");
         }
 
@@ -3874,12 +4068,12 @@ internal sealed class LegendConnectAutonomousLearningService
             if (peerIdentities.Any(
                     contradictedContrasts.Contains))
             {
-                return CanonicalMachineProposalValidation.Rejected(
+                return CanonicalMachineSemanticAuthority.Rejected(
                     "canonical_controlled_contrast_contradicted");
             }
             if (!peerIdentities.Any(supportedContrasts.Contains))
             {
-                return CanonicalMachineProposalValidation.Insufficient(
+                return CanonicalMachineSemanticAuthority.Insufficient(
                     "canonical_controlled_contrast_insufficient");
             }
         }
@@ -3888,7 +4082,7 @@ internal sealed class LegendConnectAutonomousLearningService
         {
             var proposedTransitionSignatures =
                 proposedLineage.TransitionSignatures.ToArray();
-            var transitionStates = await _db
+            var transitionStates = await db
                 .Set<LegendSemanticTransitionEvidence>()
                 .AsNoTracking()
                 .Where(item =>
@@ -3917,7 +4111,7 @@ internal sealed class LegendConnectAutonomousLearningService
                     "Contradictory",
                     StringComparison.Ordinal)))
             {
-                return CanonicalMachineProposalValidation.Rejected(
+                return CanonicalMachineSemanticAuthority.Rejected(
                     "canonical_semantic_transition_contradicted");
             }
 
@@ -3931,149 +4125,25 @@ internal sealed class LegendConnectAutonomousLearningService
             if (proposedTransitionSignatures.Any(
                     item => !supportedTransitions.Contains(item)))
             {
-                return CanonicalMachineProposalValidation.Insufficient(
+                return CanonicalMachineSemanticAuthority.Insufficient(
                     "canonical_semantic_transition_unsupported");
             }
         }
 
-        var containsNovelBehavior = false;
-        foreach (var example in family.Examples)
-        {
-            var normalized = LegendConnectCurriculumService
-                .NormalizeMachineTeachingExampleSemantics(example);
-            if (normalized is null)
-            {
-                return CanonicalMachineProposalValidation.Rejected(
-                    "canonical_example_constraints_invalid");
-            }
+        return new(CanonicalMachineProposalValidation.Accepted(), definitions, governedProfileSet);
+    }
 
-            var normalizedProfile = CanonicalMachineProfile(
-                normalized.Components.Select(item =>
-                    item.SemanticSignature));
-            if (!governedProfileSet.Contains(normalizedProfile) ||
-                normalized.Components.Any(component =>
-                    !definitions.TryGetValue(
-                        component.SemanticSignature,
-                        out var definition) ||
-                    definition.Length != 1 ||
-                    !string.Equals(
-                        definition[0],
-                        CanonicalMachineDefinitionIdentity(
-                            component.Dimension,
-                            component.Value),
-                        StringComparison.Ordinal)))
-            {
-                return CanonicalMachineProposalValidation.Rejected(
-                    "canonical_semantic_definition_unsupported");
-            }
-
-            var established = await _curriculum!
-                .AnalyzeShadowSourceSemanticsAsync(
-                    proposal.SourceLanguageCode,
-                    example.SourceText,
-                    cancellationToken);
-            if (string.Equals(
-                    established.State,
-                    LegendShadowSourceUnderstanding.Ambiguous,
-                    StringComparison.Ordinal))
-            {
-                return CanonicalMachineProposalValidation.Rejected(
-                    "canonical_source_semantics_ambiguous");
-            }
-            if (string.Equals(
-                    established.State,
-                    LegendShadowSourceUnderstanding
-                        .SupportedForShadowEvaluation,
-                    StringComparison.Ordinal))
-            {
-                var proposedComponents = normalized.Components
-                    .Select(item => CanonicalMachineComponentIdentity(
-                        item.Dimension,
-                        item.Value,
-                        item.SurfaceForm))
-                    .OrderBy(item => item, StringComparer.Ordinal)
-                    .ToArray();
-                var establishedComponents = established.Components
-                    .Select(item => CanonicalMachineComponentIdentity(
-                        item.Dimension,
-                        item.Value,
-                        item.SurfaceForm))
-                    .OrderBy(item => item, StringComparer.Ordinal)
-                    .ToArray();
-                if (!proposedComponents.SequenceEqual(
-                        establishedComponents,
-                        StringComparer.Ordinal))
-                {
-                    return CanonicalMachineProposalValidation.Rejected(
-                        "canonical_source_semantics_contradicted");
-                }
-            }
-            else
-            {
-                // The surface sentence itself is intentionally held out. Its
-                // semantic profile is authorized by independent Founder
-                // definitions and contrasts above, not by exact preexistence.
-                containsNovelBehavior = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(example.TargetText))
-            {
-                var normalizedTarget =
-                    LegendLanguageIdentity.NormalizeText(
-                        example.TargetText);
-                if (string.IsNullOrWhiteSpace(normalizedTarget) ||
-                    normalizedTarget.Length > 10_000)
-                {
-                    return CanonicalMachineProposalValidation.Rejected(
-                        "canonical_target_constraints_invalid");
-                }
-
-                var formulation = await _curriculum
-                    .FormulateShadowTargetAsync(
-                        proposal.SourceLanguageCode,
-                        proposal.TargetLanguageCode,
-                        example.SourceText,
-                        cancellationToken);
-                if (string.Equals(
-                        formulation.State,
-                        LegendShadowTargetFormulation.Ambiguous,
-                        StringComparison.Ordinal) ||
-                    string.Equals(
-                        formulation.State,
-                        LegendShadowTargetFormulation.Contradicted,
-                        StringComparison.Ordinal))
-                {
-                    return CanonicalMachineProposalValidation.Rejected(
-                        "canonical_target_formulation_contradicted");
-                }
-                if (string.Equals(
-                        formulation.State,
-                        LegendShadowTargetFormulation
-                            .SupportedForShadowEvaluation,
-                        StringComparison.Ordinal))
-                {
-                    if (string.IsNullOrWhiteSpace(formulation.Text) ||
-                        !string.Equals(
-                            LegendLanguageIdentity.NormalizeText(
-                                formulation.Text),
-                            normalizedTarget,
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        return CanonicalMachineProposalValidation.Rejected(
-                            "canonical_target_text_contradicted");
-                    }
-                }
-                else
-                {
-                    containsNovelBehavior = true;
-                }
-            }
-        }
-
-        return containsNovelBehavior
-            ? CanonicalMachineProposalValidation.Accepted()
-            : CanonicalMachineProposalValidation.Rejected(
-                "canonical_proposal_already_known");
+    private sealed record CanonicalMachineSemanticAuthority(
+        CanonicalMachineProposalValidation Validation,
+        IReadOnlyDictionary<string, string[]> Definitions,
+        IReadOnlySet<string> Profiles)
+    {
+        internal static CanonicalMachineSemanticAuthority Rejected(string code) =>
+            new(CanonicalMachineProposalValidation.Rejected(code),
+                new Dictionary<string, string[]>(), new HashSet<string>());
+        internal static CanonicalMachineSemanticAuthority Insufficient(string code) =>
+            new(CanonicalMachineProposalValidation.Insufficient(code),
+                new Dictionary<string, string[]>(), new HashSet<string>());
     }
 
     private static string CanonicalMachineDefinitionIdentity(
@@ -4452,7 +4522,8 @@ internal sealed class LegendConnectAutonomousLearningService
             LegendLanguageTeacherFamilyProposal Family,
             LegendLanguageTeacherCritiqueResult Critique,
             LegendLanguageTeacherProposalRequest? Request,
-            string? PacketFailureCode)>(families.Length);
+            string? PacketFailureCode,
+            LanguageCriticEvidenceBinding? Binding)>(families.Length);
         var criticProviderCompleted = false;
 
         foreach (var family in families)
@@ -4479,7 +4550,8 @@ internal sealed class LegendConnectAutonomousLearningService
                             "critic_packet_rejected"
                         ]),
                     null,
-                    packetFailureCode));
+                    packetFailureCode,
+                    null));
                 continue;
             }
 
@@ -4525,7 +4597,7 @@ internal sealed class LegendConnectAutonomousLearningService
             }
 
             criticProviderCompleted = true;
-            critiques.Add((family, critique, criticRequest, null));
+            critiques.Add((family, critique, criticRequest, null, criticRequestBuild.Binding));
         }
 
         if (criticProviderCompleted)
@@ -4538,9 +4610,9 @@ internal sealed class LegendConnectAutonomousLearningService
 
         var anyApproved = false;
 
-        foreach (var (family, critique, criticRequest, packetFailureCode) in critiques)
+        foreach (var (family, critique, criticRequest, packetFailureCode, binding) in critiques)
         {
-            var payload = JsonSerializer.Serialize(family);
+            var payload = SerializeMachineProposalPayload(family, binding);
             var evidenceIdentityHash = criticRequest is null
                 ? LegendLanguageIdentity.TextHash(
                     string.Join(
@@ -4651,103 +4723,106 @@ internal sealed class LegendConnectAutonomousLearningService
             CancellationToken cancellationToken)
     {
         if (_curriculum is null ||
-            !string.Equals(
-                sourceLanguageCode,
-                targetLanguageCode,
-                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(sourceLanguageCode, targetLanguageCode, StringComparison.OrdinalIgnoreCase) ||
             !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
-                family.CapabilityIdentity,
-                family.CategoryIdentity,
-                sameLanguage: true) ||
-            family.Examples is null ||
-            family.Examples.Count is < 2 or > 8)
+                family.CapabilityIdentity, family.CategoryIdentity, sameLanguage: true) ||
+            family.Examples is null || family.Examples.Count is < 2 or > 8 ||
+            family.Examples.Any(example => !string.IsNullOrWhiteSpace(example.TargetText)))
         {
             return null;
         }
 
-        var semanticEvidence =
-            new List<LegendLanguageTeacherEvidence>(
-                family.Examples.Count);
-        foreach (var example in family.Examples)
+        // Preflight uses the same family/evidence collector that later builds
+        // the critic packet and rechecks its immutable evidence identity.
+        // This request value is never persisted. A novel proposed surface is
+        // not Founder evidence; only its independently governed family is.
+        var source = LegendLanguageIdentity.NormalizeText(family.Examples[0].SourceText);
+        var candidate = new LegendCorpusCandidate
         {
-            if (!string.IsNullOrWhiteSpace(example.TargetText) ||
-                example.Components is null ||
-                example.Components.Count is < 1 or > 16)
-            {
-                return null;
-            }
-
-            var understanding =
-                await _curriculum.AnalyzeShadowSourceSemanticsAsync(
-                    sourceLanguageCode,
-                    example.SourceText,
-                    cancellationToken);
-            if (!string.Equals(
-                    understanding.State,
-                    LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
-                    StringComparison.Ordinal))
-            {
-                return null;
-            }
-
-            var proposedComponents = example.Components
-                .Select(item => CanonicalMachineComponentIdentity(
-                    item.Dimension,
-                    item.Value,
-                    item.SurfaceForm))
-                .OrderBy(item => item, StringComparer.Ordinal)
-                .ToArray();
-            var governedComponents = understanding.Components
-                .Select(item => CanonicalMachineComponentIdentity(
-                    item.Dimension,
-                    item.Value,
-                    item.SurfaceForm))
-                .OrderBy(item => item, StringComparer.Ordinal)
-                .ToArray();
-            if (!proposedComponents.SequenceEqual(
-                    governedComponents,
-                    StringComparer.Ordinal))
-            {
-                return null;
-            }
-
-            var evidenceIdentity =
-                "semantic:" + LegendLanguageIdentity.TextHash(
-                    string.Join(
-                        "|",
-                        sourceLanguageCode,
-                        LegendLanguageIdentity.NormalizeText(example.SourceText),
-                        string.Join(",", understanding.Components
-                            .Select(item => item.SemanticSignature)
-                            .OrderBy(item => item, StringComparer.Ordinal))));
-            semanticEvidence.Add(
-                new LegendLanguageTeacherEvidence(
-                    evidenceIdentity,
-                    LegendLanguageIdentity.NormalizeText(example.SourceText),
-                    null,
-                    LegendConnectKnowledgeProvenance.FounderApproved,
-                    "GovernedSemanticPrimitive"));
-        }
-
-        return semanticEvidence.Count == family.Examples.Count
-            ? new LegendLanguageTeacherProposalRequest(
-                sourceLanguageCode,
-                targetLanguageCode,
-                family.SemanticCategory,
-                semanticEvidence,
-                MaximumFamilies: 1,
-                CapabilityIdentity: family.CapabilityIdentity,
-                CategoryIdentity: family.CategoryIdentity,
-                SemanticFamilyKey: family.FamilyKey,
-                SemanticCategory: family.SemanticCategory)
-            : null;
+            SourceLanguageCode = sourceLanguageCode,
+            TargetLanguageCode = targetLanguageCode,
+            SourceText = source,
+            SourceTextHash = LegendLanguageIdentity.TextHash(source),
+            Category = LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                family.CapabilityIdentity, family.CategoryIdentity),
+            Provenance = MachineConversationProvenance,
+            IsApproved = false,
+            ProcessingState = "ConversationProposal"
+        };
+        return (await BuildLanguageProposalRequestAsync(candidate, cancellationToken, family)).Request;
     }
 
-    private async Task<LanguageProposalRequestBuildResult>
+    private Task<LanguageProposalRequestBuildResult>
         BuildLanguageProposalRequestAsync(
             LegendCorpusCandidate candidate,
             CancellationToken cancellationToken,
-            LegendLanguageTeacherFamilyProposal? submittedConversationFamily = null)
+            LegendLanguageTeacherFamilyProposal? submittedConversationFamily = null,
+            LanguageCriticEvidenceBinding? binding = null) =>
+        BuildLanguageProposalRequestAsync(
+            _db, candidate, cancellationToken, submittedConversationFamily, binding);
+
+    /// <summary>
+    /// Rechecks the exact evidence packet used by canonical validation. Serving
+    /// and curriculum replay share this read-only collector without invoking
+    /// teaching, allocating work, or substituting different governed evidence.
+    /// </summary>
+    internal static async Task<bool> IsCurrentCanonicalMachineEvidenceAsync(
+        MasterAppDbContext db,
+        LegendConnectCurriculumService? curriculum,
+        LegendCorpusCandidate candidate,
+        LegendLanguageTeacherProposal proposal,
+        LegendLanguageTeacherFamilyProposal family,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (curriculum is null || family.Examples is null || family.Examples.Count is < 2 or > 8 ||
+            proposal.CorpusCandidateId != candidate.Id ||
+            proposal.SourceLanguageCode != candidate.SourceLanguageCode ||
+            proposal.TargetLanguageCode != candidate.TargetLanguageCode ||
+            proposal.PairKey != LegendLanguageIdentity.PairKey(candidate.SourceLanguageCode, candidate.TargetLanguageCode) ||
+            proposal.FamilyKey != family.FamilyKey || proposal.SemanticCategory != family.SemanticCategory)
+            return false;
+
+        var expectedIdentity = LegendLanguageIdentity.TextHash(string.Join("|",
+            "language-teacher-proposal:v1", candidate.IdempotencyKey,
+            proposal.EvidenceIdentityHash, proposal.ProposalPayloadJson));
+        if (!string.Equals(proposal.ProposalIdentity, expectedIdentity, StringComparison.Ordinal) ||
+            !TryReadMachineProposalPayload(proposal.ProposalPayloadJson, out var persistedFamily, out var binding) ||
+            JsonSerializer.Serialize(persistedFamily) != JsonSerializer.Serialize(family))
+            return false;
+        var authority = await ReadCanonicalMachineSemanticAuthorityAsync(
+            db, candidate, proposal, family, cancellationToken);
+        if (!authority.Validation.Succeeded)
+            return false;
+        var request = (await BuildLanguageProposalRequestAsync(
+            db, candidate, cancellationToken, family, binding)).Request;
+        if (request is null)
+            return false;
+
+        var currentEvidenceIdentityHash = LegendLanguageIdentity.TextHash(
+            string.Join("\n", request.Evidence
+                .Select(item => item.EvidenceIdentity)
+                .OrderBy(item => item, StringComparer.Ordinal)));
+        if (!string.Equals(proposal.EvidenceIdentityHash, currentEvidenceIdentityHash, StringComparison.Ordinal))
+            return false;
+        foreach (var example in family.Examples)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var normalized = LegendConnectCurriculumService.NormalizeMachineTeachingExampleSemantics(example);
+            if (normalized is null || !(await ReadCanonicalMachineSourceConsistencyAsync(
+                    curriculum, proposal.SourceLanguageCode, example.SourceText, normalized, cancellationToken)).Validation.Succeeded)
+                return false;
+        }
+        return true;
+    }
+
+    private static async Task<LanguageProposalRequestBuildResult>
+        BuildLanguageProposalRequestAsync(
+            MasterAppDbContext db,
+            LegendCorpusCandidate candidate,
+            CancellationToken cancellationToken,
+            LegendLanguageTeacherFamilyProposal? submittedConversationFamily = null,
+            LanguageCriticEvidenceBinding? binding = null)
     {
         var pairKey = LegendLanguageIdentity.PairKey(
             candidate.SourceLanguageCode,
@@ -4761,7 +4836,7 @@ internal sealed class LegendConnectAutonomousLearningService
             submittedConversationFamily;
         if (isConversationMachineCandidate && conversationFamily is null)
         {
-            var payload = await _db.Set<LegendLanguageTeacherProposal>()
+            var payload = await db.Set<LegendLanguageTeacherProposal>()
                 .AsNoTracking()
                 .Where(item =>
                     item.CorpusCandidateId == candidate.Id &&
@@ -4774,17 +4849,9 @@ internal sealed class LegendConnectAutonomousLearningService
                 return LanguageProposalRequestBuildResult.Rejected(
                     "language_teacher_proposal_lineage_unavailable");
             }
-            try
-            {
-                conversationFamily =
-                    JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
-                        payload);
-            }
-            catch (JsonException)
-            {
+            if (!TryReadMachineProposalPayload(payload, out conversationFamily, out binding))
                 return LanguageProposalRequestBuildResult.Rejected(
                     "language_teacher_proposal_lineage_invalid");
-            }
         }
 
         var sameLanguage = string.Equals(
@@ -4843,7 +4910,7 @@ internal sealed class LegendConnectAutonomousLearningService
         if (!isConversationMachineCandidate)
         {
             source =
-                await _db.Set<LegendLanguageTextUnit>()
+                await db.Set<LegendLanguageTextUnit>()
                     .AsNoTracking()
                     .SingleOrDefaultAsync(
                         item =>
@@ -4884,25 +4951,10 @@ internal sealed class LegendConnectAutonomousLearningService
             }
         }
 
-        if (isConversationMachineCandidate && sameLanguage)
-        {
-            var sameLanguageRequest =
-                await BuildGovernedSameLanguageMachineProposalRequestAsync(
-                    candidate.SourceLanguageCode,
-                    candidate.TargetLanguageCode,
-                    conversationFamily!,
-                    cancellationToken);
-            return sameLanguageRequest is null
-                ? LanguageProposalRequestBuildResult.Rejected(
-                    "language_teacher_same_language_lineage_unproven")
-                : LanguageProposalRequestBuildResult.Accepted(
-                    sameLanguageRequest);
-        }
-
         LegendCurriculumFamily? governedFamily;
         if (candidate.CurriculumFamilyId is Guid governedFamilyId)
         {
-            governedFamily = await _db.Set<LegendCurriculumFamily>()
+            governedFamily = await db.Set<LegendCurriculumFamily>()
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
                     item => item.Id == governedFamilyId,
@@ -4910,7 +4962,7 @@ internal sealed class LegendConnectAutonomousLearningService
         }
         else if (proposedLineage is not null)
         {
-            var matchingFamilies = await _db.Set<LegendCurriculumFamily>()
+            var matchingFamilies = await db.Set<LegendCurriculumFamily>()
                 .AsNoTracking()
                 .Where(item => item.FamilyKey == proposedLineage.FamilyKey)
                 .Take(2)
@@ -4935,7 +4987,8 @@ internal sealed class LegendConnectAutonomousLearningService
             governedFamily = null;
         }
 
-        if (governedFamily is null)
+        if (governedFamily is null ||
+            (sameLanguage && governedFamily.Provenance != LegendConnectKnowledgeProvenance.FounderApproved))
         {
             return LanguageProposalRequestBuildResult.Rejected(
                 "language_teacher_semantic_family_lineage_unproven");
@@ -4960,24 +5013,40 @@ internal sealed class LegendConnectAutonomousLearningService
                 "language_teacher_semantic_family_lineage_mismatch");
         }
 
+        if (binding is not null && !IsWellFormedEvidenceBinding(binding))
+            return LanguageProposalRequestBuildResult.Rejected("language_teacher_evidence_binding_invalid");
+        Guid[] BoundIds(string kind) => binding?.Dependencies
+            .Where(item => item.Kind == kind).Select(item => item.Id).ToArray() ?? [];
+        var boundExampleIds = BoundIds("example");
+        var boundAnchorIds = BoundIds("anchor");
+        var boundTransitionIds = BoundIds("transition");
+        var boundContrastIds = BoundIds("contrast");
+        var boundAlignmentIds = BoundIds("alignment");
+        var hasBinding = binding is not null;
+
         var familyExamples = await (
-            from example in _db.Set<LegendCurriculumExample>()
+            from example in db.Set<LegendCurriculumExample>()
                 .AsNoTracking()
-            join unit in _db.Set<LegendLanguageTextUnit>()
+            join unit in db.Set<LegendLanguageTextUnit>()
                 .AsNoTracking()
                 on example.TextUnitId equals unit.Id
             where
                 example.CurriculumFamilyId == governedFamily.Id &&
+                (!hasBinding || boundExampleIds.Contains(example.Id)) &&
                 example.SupersededUtc == null &&
                 unit.IsTrainingEligible &&
                 example.LanguageCode == unit.LanguageCode &&
+                (!sameLanguage ||
+                 (example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                  unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)) &&
                 (example.LanguageCode == candidate.SourceLanguageCode ||
                  example.LanguageCode == candidate.TargetLanguageCode)
             select new LanguageFamilyExampleLineage(
                 example.Id,
                 example.TextUnitId,
                 example.LanguageCode,
-                example.DerivedFromCurriculumExampleId))
+                example.DerivedFromCurriculumExampleId,
+                unit.Text, example, unit))
             .ToListAsync(cancellationToken);
 
         var sourceExamples = familyExamples
@@ -4993,7 +5062,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 StringComparison.OrdinalIgnoreCase) &&
                 item.DerivedFromCurriculumExampleId is not null)
             .ToArray();
-        if (sourceExamples.Length < 2 || targetExamples.Length < 2)
+        if (sourceExamples.Length < 2 || (!sameLanguage && targetExamples.Length < 2))
         {
             return LanguageProposalRequestBuildResult.Rejected(
                 "language_teacher_family_examples_insufficient");
@@ -5019,30 +5088,25 @@ internal sealed class LegendConnectAutonomousLearningService
             .Concat(targetExamples.Select(item => item.Id))
             .Distinct()
             .ToArray();
-        var primitiveRows = await _db
+        var primitiveRows = await db
             .Set<LegendLanguageCompositionalAnchor>()
             .AsNoTracking()
             .Where(item =>
                 allExampleIds.Contains(item.CurriculumExampleId) &&
+                (!hasBinding || boundAnchorIds.Contains(item.Id)) &&
                 item.CurriculumFamilyId == governedFamily.Id &&
                 item.SupersededUtc == null &&
                 item.SemanticSignature != null &&
                 item.SemanticSignature != string.Empty &&
                 item.Provenance ==
                     LegendConnectKnowledgeProvenance.FounderApproved)
-            .Select(item => new
-            {
-                item.CurriculumExampleId,
-                SemanticSignature = item.SemanticSignature!
-            })
-            .Distinct()
             .ToListAsync(cancellationToken);
         var primitivesByExample = primitiveRows
             .GroupBy(item => item.CurriculumExampleId)
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<string>)group
-                    .Select(item => item.SemanticSignature)
+                    .Select(item => item.SemanticSignature!)
                     .Distinct(StringComparer.Ordinal)
                     .OrderBy(item => item, StringComparer.Ordinal)
                     .ToArray());
@@ -5050,12 +5114,13 @@ internal sealed class LegendConnectAutonomousLearningService
         var sourceExampleIds = sourceExamples
             .Select(item => item.Id)
             .ToArray();
-        var transitions = await _db
+        var transitions = await db
             .Set<LegendSemanticTransitionEvidence>()
             .AsNoTracking()
             .Where(item =>
                 sourceExampleIds.Contains(item.SourceCurriculumExampleId) &&
                 sourceExampleIds.Contains(item.ResultCurriculumExampleId) &&
+                (!hasBinding || boundTransitionIds.Contains(item.Id)) &&
                 item.SourceLanguageCode == candidate.SourceLanguageCode &&
                 item.ResultLanguageCode == candidate.SourceLanguageCode &&
                 item.SupersededUtc == null &&
@@ -5067,7 +5132,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 item.TransitionSignature,
                 item.SourceCurriculumExampleId,
                 item.ResultCurriculumExampleId,
-                item.IndependentSourceIdentity))
+                item.IndependentSourceIdentity, item))
             .ToListAsync(cancellationToken);
 
         var transitionSignatures = transitions
@@ -5097,13 +5162,14 @@ internal sealed class LegendConnectAutonomousLearningService
                 item => item.ResultCurriculumExampleId))
             .ToHashSet();
 
-        var contrasts = await _db
+        var contrasts = await db
             .Set<LegendLanguageStructuralEvidence>()
             .AsNoTracking()
             .Where(item =>
                 item.CurriculumFamilyId == governedFamily.Id &&
                 item.LanguageCode == candidate.SourceLanguageCode &&
                 item.PairKey == string.Empty &&
+                (!hasBinding || boundContrastIds.Contains(item.Id)) &&
                 sourceExampleIds.Contains(item.BaselineCurriculumExampleId) &&
                 sourceExampleIds.Contains(item.ComparedCurriculumExampleId) &&
                 item.SupersededUtc == null &&
@@ -5115,7 +5181,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 item.EvidenceSignature,
                 item.BaselineCurriculumExampleId,
                 item.ComparedCurriculumExampleId,
-                item.IndependentSourceIdentity))
+                item.IndependentSourceIdentity, item))
             .ToListAsync(cancellationToken);
         var contrastExampleIds = contrasts
             .Select(item => item.BaselineCurriculumExampleId)
@@ -5189,6 +5255,182 @@ internal sealed class LegendConnectAutonomousLearningService
                 "language_teacher_candidate_semantic_lineage_unproven");
         }
 
+        async Task<LanguageProposalRequestBuildResult> CompleteBoundRequestAsync(
+            LegendLanguageTeacherProposalRequest request,
+            IReadOnlyCollection<Guid> selectedSourceIds,
+            IReadOnlyList<TrustedLanguageAlignmentLineage> selectedAlignmentLineages)
+        {
+            var sources = selectedSourceIds.Distinct().OrderBy(id => id).ToArray();
+            var relevantTransitions = selectedTransitions.Where(item =>
+                sources.Contains(item.SourceCurriculumExampleId) || sources.Contains(item.ResultCurriculumExampleId)).ToArray();
+            var relevantContrasts = contrasts.Where(item =>
+                sources.Contains(item.BaselineCurriculumExampleId) || sources.Contains(item.ComparedCurriculumExampleId)).ToArray();
+            var semanticExampleIds = sources.Concat(selectedAlignmentLineages.Select(item => item.TargetExample.Id)).ToHashSet();
+            var exampleIds = semanticExampleIds
+                .Concat(relevantTransitions.SelectMany(item => new[] { item.SourceCurriculumExampleId, item.ResultCurriculumExampleId }))
+                .Concat(relevantContrasts.SelectMany(item => new[] { item.BaselineCurriculumExampleId, item.ComparedCurriculumExampleId }))
+                .ToHashSet();
+            var relevantExamples = familyExamples.Where(item => exampleIds.Contains(item.Id)).ToArray();
+            var relevantAnchors = primitiveRows.Where(item => semanticExampleIds.Contains(item.CurriculumExampleId)).ToArray();
+            if (relevantExamples.Length != exampleIds.Count || relevantExamples.Any(item =>
+                    item.Unit.NormalizedHash != LegendLanguageIdentity.TextHash(item.Unit.Text)))
+                return LanguageProposalRequestBuildResult.Rejected("language_teacher_evidence_binding_changed");
+            var dependencies = new List<LanguageEvidenceDependency>
+            {
+                EvidenceDependency("family", governedFamily.Id, governedFamily.FamilyKey,
+                    governedFamily.SemanticCategory, governedFamily.Provenance)
+            };
+            foreach (var item in relevantExamples)
+            {
+                dependencies.Add(EvidenceDependency("example", item.Id, item.Example.CurriculumFamilyId,
+                    item.TextUnitId, item.LanguageCode, item.DerivedFromCurriculumExampleId,
+                    item.Example.SemanticExampleIdentity, item.Example.Provenance));
+            }
+            foreach (var item in relevantExamples.Select(item => item.Unit).DistinctBy(item => item.Id))
+                dependencies.Add(EvidenceDependency("unit", item.Id, item.LanguageCode, item.NormalizedHash,
+                    LegendLanguageIdentity.TextHash(item.Text), item.Provenance, item.IsTrainingEligible));
+            foreach (var item in relevantAnchors)
+                dependencies.Add(EvidenceDependency("anchor", item.Id, item.LanguageCode, item.PairKey,
+                    item.TextUnitId, item.LexemeId, item.ComponentStartTokenIndex, item.ComponentLength,
+                    item.CurriculumFamilyId, item.CurriculumExampleId, item.Dimension, item.Value,
+                    item.SemanticSignature, item.AnchorSignature, item.Provenance));
+            foreach (var row in relevantTransitions)
+            {
+                var item = row.Evidence;
+                dependencies.Add(EvidenceDependency("transition", item.Id, item.TransitionSignature,
+                    item.SourceSemanticFrameSignature, item.ResultSemanticFrameSignature,
+                    item.SourceSemanticFrame, item.ResultSemanticFrame, item.SourceLanguageCode,
+                    item.ResultLanguageCode, item.SourceCurriculumExampleId, item.ResultCurriculumExampleId,
+                    item.FounderSemanticExampleRelationEvidenceId, item.FounderRelationshipSemanticSignature,
+                    item.IndependentSourceIdentity, item.ContributionState, item.IsHumanVerifiedSupport, item.Provenance));
+            }
+            foreach (var row in relevantContrasts)
+            {
+                var item = row.Evidence;
+                dependencies.Add(EvidenceDependency("contrast", item.Id, item.StructuralPatternId,
+                    item.CurriculumFamilyId, item.PairKey, item.LanguageCode, item.VariationDimension,
+                    item.BaselineCurriculumExampleId, item.ComparedCurriculumExampleId,
+                    item.BaselineVariationValue, item.ComparedVariationValue, item.EvidenceSignature,
+                    item.BaselineComponentSignature, item.ComparedComponentSignature,
+                    item.IndependentSourceIdentity, item.ContributionState, item.IsHumanVerifiedSupport, item.Provenance));
+            }
+            foreach (var row in selectedAlignmentLineages.Select(item => item.Alignment).DistinctBy(item => item.Id))
+                dependencies.Add(EvidenceDependency("alignment", row.Id, row.Evidence.PairKey,
+                    row.SourceTextUnitId, row.TargetTextUnitId, row.HumanVerified, row.Provenance, row.QualityState));
+
+            if (sources.Length > 32 || dependencies.Count > MaximumCriticEvidenceDependencies)
+                return LanguageProposalRequestBuildResult.Rejected("language_teacher_evidence_binding_limit");
+
+            var parentIds = relevantTransitions.Select(item => item.Evidence.FounderSemanticExampleRelationEvidenceId)
+                .Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
+            LegendFounderSemanticExampleRelationEvidence[] parents = parentIds.Length == 0 ? [] :
+                await db.Set<LegendFounderSemanticExampleRelationEvidence>().AsNoTracking()
+                    .Where(item => parentIds.Contains(item.Id) && item.SupersededUtc == null &&
+                        item.ContributionState == "Supported" && item.IsHumanVerifiedSupport &&
+                        item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+                    .ToArrayAsync(cancellationToken);
+            if (parents.Length != parentIds.Length || relevantTransitions.Any(row =>
+                    row.Evidence.FounderSemanticExampleRelationEvidenceId is Guid parentId &&
+                    !parents.Any(parent => parent.Id == parentId &&
+                        parent.LanguageCode == row.Evidence.SourceLanguageCode &&
+                        parent.SourceCurriculumFamilyId == governedFamily.Id &&
+                        parent.ResultCurriculumFamilyId == governedFamily.Id &&
+                        parent.SourceCurriculumExampleId == row.SourceCurriculumExampleId &&
+                        parent.ResultCurriculumExampleId == row.ResultCurriculumExampleId &&
+                        parent.RelationshipSemanticSignature == row.Evidence.FounderRelationshipSemanticSignature)))
+                return LanguageProposalRequestBuildResult.Rejected("language_teacher_evidence_binding_changed");
+            foreach (var item in parents)
+                dependencies.Add(EvidenceDependency("founder-relation", item.Id, item.RelationIdentity,
+                    item.RelationshipSemanticIdentity, item.RelationshipSemanticSignature,
+                    item.SourceCurriculumFamilyId, item.ResultCurriculumFamilyId,
+                    item.SourceCurriculumExampleId, item.ResultCurriculumExampleId,
+                    item.SourceMeaningGraphSignature, item.ResultMeaningGraphSignature,
+                    item.LanguageCode, item.IndependentSourceIdentity, item.ContributionState,
+                    item.IsHumanVerifiedSupport, item.Provenance));
+
+            // Explicit Founder nodes attached to selected anchors are original
+            // proof too. Deleting one cannot silently substitute a later node
+            // with the same semantic profile.
+            var anchorIds = relevantAnchors.Select(item => item.Id).ToArray();
+            var boundNodeIds = BoundIds("node");
+            var nodes = await db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                .Where(item => anchorIds.Contains(item.CompositionalAnchorId) &&
+                    (!hasBinding || boundNodeIds.Contains(item.Id)) && item.SupersededUtc == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+                .Take(MaximumCriticEvidenceDependencies + 1).ToArrayAsync(cancellationToken);
+            foreach (var item in nodes)
+                dependencies.Add(EvidenceDependency("node", item.Id, item.LanguageCode, item.CurriculumFamilyId,
+                    item.CurriculumExampleId, item.CompositionalAnchorId, item.NodeKey, item.ClauseKey,
+                    item.SemanticSignature, item.SemanticDimension, item.SemanticValue, item.Provenance));
+            var retained = new LanguageCriticEvidenceBinding(sources,
+                selectedAlignmentLineages.Select(item => item.Alignment.Id).Distinct().OrderBy(id => id).ToArray(),
+                dependencies.OrderBy(item => item.Kind, StringComparer.Ordinal).ThenBy(item => item.Id).ToArray());
+            if (!IsWellFormedEvidenceBinding(retained) ||
+                System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(retained)) > MaximumCriticEvidenceBindingBytes)
+                return LanguageProposalRequestBuildResult.Rejected("language_teacher_evidence_binding_limit");
+            if (binding is not null && !string.Equals(JsonSerializer.Serialize(binding),
+                    JsonSerializer.Serialize(retained), StringComparison.Ordinal))
+                return LanguageProposalRequestBuildResult.Rejected("language_teacher_evidence_binding_changed");
+            return LanguageProposalRequestBuildResult.Accepted(request, retained);
+        }
+
+        if (isConversationMachineCandidate && sameLanguage)
+        {
+            var proposedProfiles = proposedLineage!.Examples
+                .Select(item => string.Join("|", item.PrimitiveSignatures))
+                .ToHashSet(StringComparer.Ordinal);
+            var selectedSemanticExamples = sourceExamples
+                .Where(example => (!hasBinding || binding!.SelectedSourceExampleIds.Contains(example.Id)) &&
+                    primitivesByExample.ContainsKey(example.Id) &&
+                    proposedProfiles.Contains(string.Join("|", primitivesByExample[example.Id])) &&
+                    contrastExampleIds.Contains(example.Id) &&
+                    (transitionExampleIds.Count == 0 || transitionExampleIds.Contains(example.Id)))
+                // One independently governed source per proposed profile
+                // keeps every controlled distinction in the bounded packet;
+                // repeated wording for one profile cannot crowd out another.
+                .GroupBy(example => string.Join("|", primitivesByExample[example.Id]), StringComparer.Ordinal)
+                .Select(group => group.OrderBy(example => example.Id).First())
+                .ToArray();
+            var semanticEvidence = selectedSemanticExamples.Select(example =>
+                {
+                    var exampleTransitions = selectedTransitions
+                        .Where(item => item.SourceCurriculumExampleId == example.Id ||
+                            item.ResultCurriculumExampleId == example.Id)
+                        .Select(item => item.TransitionSignature + ":" + item.IndependentSourceIdentity)
+                        .Distinct(StringComparer.Ordinal).OrderBy(item => item, StringComparer.Ordinal);
+                    var exampleContrasts = contrasts
+                        .Where(item => item.BaselineCurriculumExampleId == example.Id ||
+                            item.ComparedCurriculumExampleId == example.Id)
+                        .Select(item => item.EvidenceSignature + ":" + item.IndependentSourceIdentity)
+                        .Distinct(StringComparer.Ordinal).OrderBy(item => item, StringComparer.Ordinal);
+                    var identity = LegendLanguageIdentity.TextHash(string.Join("|",
+                        "language-critic-source-lineage:v1", governedFamily.Id.ToString("N"),
+                        example.Id.ToString("N"), LegendConnectKnowledgeProvenance.FounderApproved,
+                        LegendLanguageIdentity.TextHash(example.Text),
+                        string.Join(",", primitivesByExample[example.Id]),
+                        string.Join(",", exampleTransitions), string.Join(",", exampleContrasts)));
+                    return new LegendLanguageTeacherEvidence(
+                        "family-source:" + identity, example.Text, null,
+                        LegendConnectKnowledgeProvenance.FounderApproved, "GovernedSemanticPrimitive");
+                })
+                .OrderBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+                .Take(32)
+                .ToArray();
+            if (semanticEvidence.Length < 2 || semanticEvidence.Length != proposedProfiles.Count)
+            {
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_same_language_lineage_unproven");
+            }
+
+            return await CompleteBoundRequestAsync(new LegendLanguageTeacherProposalRequest(
+                candidate.SourceLanguageCode, candidate.TargetLanguageCode, governedSemanticCategory,
+                semanticEvidence, MaximumFamilies: 1,
+                CapabilityIdentity: conversationFamily!.CapabilityIdentity,
+                CategoryIdentity: conversationFamily.CategoryIdentity,
+                SemanticFamilyKey: governedFamily.FamilyKey, SemanticCategory: governedSemanticCategory),
+                selectedSemanticExamples.Select(item => item.Id).ToArray(), []);
+        }
+
         var sourceTextUnitIds = sourceExamples
             .Select(item => item.TextUnitId)
             .Distinct()
@@ -5202,16 +5444,17 @@ internal sealed class LegendConnectAutonomousLearningService
         // lineage; there is no language-pair-wide candidate pool to filter
         // after selection.
         var trusted = await (
-            from alignment in _db.Set<LegendTranslationAlignment>()
+            from alignment in db.Set<LegendTranslationAlignment>()
                 .AsNoTracking()
-            join evidenceSource in _db.Set<LegendLanguageTextUnit>()
+            join evidenceSource in db.Set<LegendLanguageTextUnit>()
                 .AsNoTracking()
                 on alignment.SourceTextUnitId equals evidenceSource.Id
-            join evidenceTarget in _db.Set<LegendLanguageTextUnit>()
+            join evidenceTarget in db.Set<LegendLanguageTextUnit>()
                 .AsNoTracking()
                 on alignment.TargetTextUnitId equals evidenceTarget.Id
             where
                 alignment.PairKey == pairKey &&
+                (!hasBinding || boundAlignmentIds.Contains(alignment.Id)) &&
                 alignment.SupersededUtc == null &&
                 sourceTextUnitIds.Contains(alignment.SourceTextUnitId) &&
                 targetTextUnitIds.Contains(alignment.TargetTextUnitId) &&
@@ -5230,7 +5473,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 alignment.Provenance,
                 alignment.QualityState,
                 evidenceSource.Text,
-                evidenceTarget.Text))
+                evidenceTarget.Text, alignment))
             .ToListAsync(cancellationToken);
 
         var machineValidatedIds = trusted
@@ -5240,7 +5483,7 @@ internal sealed class LegendConnectAutonomousLearningService
 
         HashSet<Guid> contradicted = machineValidatedIds.Length == 0
             ? []
-            : (await _db.Set<LegendTranslationQualityEvidence>()
+            : (await db.Set<LegendTranslationQualityEvidence>()
                 .AsNoTracking()
                 .Where(item =>
                     machineValidatedIds.Contains(
@@ -5412,7 +5655,7 @@ internal sealed class LegendConnectAutonomousLearningService
         if (learningGoal.Length > 500)
             learningGoal = learningGoal[..500];
 
-        return LanguageProposalRequestBuildResult.Accepted(
+        return await CompleteBoundRequestAsync(
             new LegendLanguageTeacherProposalRequest(
                 candidate.SourceLanguageCode,
                 candidate.TargetLanguageCode,
@@ -5426,16 +5669,134 @@ internal sealed class LegendConnectAutonomousLearningService
                     conversationFamily?.CategoryIdentity ??
                     LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
                 SemanticFamilyKey: governedFamily.FamilyKey,
-                SemanticCategory: governedSemanticCategory));
+                SemanticCategory: governedSemanticCategory),
+            selectedLineages.Select(item => item.SourceExample.Id)
+                .Concat(candidateSourceExample is null ? [] : new[] { candidateSourceExample.Id }).ToArray(),
+            selectedLineages);
     }
+
+    private const int MaximumCriticEvidenceDependencies = 1024;
+    private const int MaximumCriticEvidenceBindingBytes = 256 * 1024;
+    private const int MaximumMachineProposalPayloadBytes = 512 * 1024;
+
+    internal sealed record LanguageEvidenceDependency(string Kind, Guid Id, string Fingerprint);
+    internal sealed record LanguageCriticEvidenceBinding(
+        IReadOnlyList<Guid> SelectedSourceExampleIds,
+        IReadOnlyList<Guid> SelectedAlignmentIds,
+        IReadOnlyList<LanguageEvidenceDependency> Dependencies);
+    private sealed record MachineProposalEnvelope(
+        int LegendServerPayloadVersion,
+        LegendLanguageTeacherFamilyProposal Family,
+        LanguageCriticEvidenceBinding CriticEvidenceBindings);
+
+    // The transport supplies a typed family, never this server-owned envelope.
+    // Keeping the family nested makes old bare-family readers reject v2 rows
+    // rather than interpreting an ignored metadata section as legacy approval.
+    internal static string SerializeMachineProposalPayload(
+        LegendLanguageTeacherFamilyProposal family,
+        LanguageCriticEvidenceBinding? binding) =>
+        binding is null ? JsonSerializer.Serialize(family) :
+            JsonSerializer.Serialize(new MachineProposalEnvelope(2, family, binding));
+
+    internal static bool TryReadMachineProposalPayload(
+        string payload,
+        out LegendLanguageTeacherFamilyProposal? family,
+        out LanguageCriticEvidenceBinding? binding)
+    {
+        family = null;
+        binding = null;
+        if (string.IsNullOrWhiteSpace(payload) ||
+            System.Text.Encoding.UTF8.GetByteCount(payload) > MaximumMachineProposalPayloadBytes)
+            return false;
+        try
+        {
+            using var document = JsonDocument.Parse(payload, new JsonDocumentOptions { MaxDepth = 32 });
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return false;
+            var reserved = new[] { "LegendServerPayloadVersion", "Family", "CriticEvidenceBindings" };
+            if (!root.EnumerateObject().Any(property => reserved.Contains(property.Name, StringComparer.OrdinalIgnoreCase)))
+            {
+                family = root.Deserialize<LegendLanguageTeacherFamilyProposal>();
+                return family is not null;
+            }
+            if (HasDuplicatePayloadProperties(root) || root.EnumerateObject().Count() != 3 ||
+                !root.TryGetProperty("LegendServerPayloadVersion", out var version) ||
+                version.ValueKind != JsonValueKind.Number ||
+                !version.TryGetInt32(out var versionNumber) || versionNumber != 2 ||
+                !root.TryGetProperty("Family", out var familyJson) ||
+                !root.TryGetProperty("CriticEvidenceBindings", out var bindingJson) ||
+                System.Text.Encoding.UTF8.GetByteCount(bindingJson.GetRawText()) > MaximumCriticEvidenceBindingBytes)
+                return false;
+            var options = new JsonSerializerOptions
+            {
+                UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+                MaxDepth = 32
+            };
+            family = familyJson.Deserialize<LegendLanguageTeacherFamilyProposal>(options);
+            binding = bindingJson.Deserialize<LanguageCriticEvidenceBinding>(options);
+            if (family is null || !IsWellFormedEvidenceBinding(binding))
+            {
+                family = null;
+                binding = null;
+                return false;
+            }
+            return true;
+        }
+        catch (JsonException)
+        {
+            family = null;
+            binding = null;
+            return false;
+        }
+    }
+
+    private static bool HasDuplicatePayloadProperties(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Array)
+            return value.EnumerateArray().Any(HasDuplicatePayloadProperties);
+        if (value.ValueKind != JsonValueKind.Object)
+            return false;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in value.EnumerateObject())
+            if (!names.Add(property.Name) || HasDuplicatePayloadProperties(property.Value))
+                return true;
+        return false;
+    }
+
+    private static bool IsWellFormedEvidenceBinding(LanguageCriticEvidenceBinding? binding)
+    {
+        if (binding?.SelectedSourceExampleIds is null || binding.SelectedAlignmentIds is null ||
+            binding.Dependencies is null || binding.SelectedSourceExampleIds.Count is < 1 or > 32 ||
+            binding.SelectedAlignmentIds.Count > 32 || binding.Dependencies.Count is < 1 or > MaximumCriticEvidenceDependencies)
+            return false;
+        var kinds = new[] { "family", "example", "unit", "anchor", "transition", "contrast", "alignment", "node", "founder-relation" };
+        if (binding.SelectedSourceExampleIds.Any(id => id == Guid.Empty) ||
+            binding.SelectedAlignmentIds.Any(id => id == Guid.Empty) ||
+            binding.SelectedSourceExampleIds.Distinct().Count() != binding.SelectedSourceExampleIds.Count ||
+            binding.SelectedAlignmentIds.Distinct().Count() != binding.SelectedAlignmentIds.Count ||
+            binding.Dependencies.Any(item => item is null || item.Id == Guid.Empty ||
+                !kinds.Contains(item.Kind, StringComparer.Ordinal) || item.Fingerprint is null ||
+                item.Fingerprint.Length != 64 || item.Fingerprint.Any(character => !Uri.IsHexDigit(character))) ||
+            binding.Dependencies.Select(item => (item.Kind, item.Id)).Distinct().Count() != binding.Dependencies.Count ||
+            binding.Dependencies.Count(item => item.Kind == "family") != 1)
+            return false;
+        return binding.SelectedSourceExampleIds.All(id => binding.Dependencies.Any(item => item.Kind == "example" && item.Id == id)) &&
+            binding.SelectedAlignmentIds.All(id => binding.Dependencies.Any(item => item.Kind == "alignment" && item.Id == id));
+    }
+
+    private static LanguageEvidenceDependency EvidenceDependency(string kind, Guid id, params object?[] fields) =>
+        new(kind, id, LegendLanguageIdentity.TextHash(JsonSerializer.Serialize(fields)));
 
     private sealed record LanguageProposalRequestBuildResult(
         LegendLanguageTeacherProposalRequest? Request,
-        string? FailureCode)
+        string? FailureCode,
+        LanguageCriticEvidenceBinding? Binding = null)
     {
         internal static LanguageProposalRequestBuildResult Accepted(
-            LegendLanguageTeacherProposalRequest request) =>
-            new(request, null);
+            LegendLanguageTeacherProposalRequest request,
+            LanguageCriticEvidenceBinding? binding = null) =>
+            new(request, null, binding);
 
         internal static LanguageProposalRequestBuildResult Rejected(
             string failureCode) =>
@@ -5446,19 +5807,24 @@ internal sealed class LegendConnectAutonomousLearningService
         Guid Id,
         Guid TextUnitId,
         string LanguageCode,
-        Guid? DerivedFromCurriculumExampleId);
+        Guid? DerivedFromCurriculumExampleId,
+        string Text,
+        LegendCurriculumExample Example,
+        LegendLanguageTextUnit Unit);
 
     private sealed record LanguageTransitionLineage(
         string TransitionSignature,
         Guid SourceCurriculumExampleId,
         Guid ResultCurriculumExampleId,
-        string IndependentSourceIdentity);
+        string IndependentSourceIdentity,
+        LegendSemanticTransitionEvidence Evidence);
 
     private sealed record LanguageControlledContrastLineage(
         string EvidenceSignature,
         Guid BaselineCurriculumExampleId,
         Guid ComparedCurriculumExampleId,
-        string IndependentSourceIdentity);
+        string IndependentSourceIdentity,
+        LegendLanguageStructuralEvidence Evidence);
 
     private sealed record TrustedLanguageAlignment(
         Guid Id,
@@ -5469,7 +5835,8 @@ internal sealed class LegendConnectAutonomousLearningService
         string Provenance,
         string QualityState,
         string SourceText,
-        string TargetText);
+        string TargetText,
+        LegendTranslationAlignment Evidence);
 
     private sealed record TrustedLanguageAlignmentLineage(
         TrustedLanguageAlignment Alignment,
@@ -6073,17 +6440,7 @@ internal sealed class LegendConnectAutonomousLearningService
 
         LegendLanguageTeacherFamilyProposal? family;
 
-        try
-        {
-            family =
-                JsonSerializer.Deserialize<
-                    LegendLanguageTeacherFamilyProposal>(
-                    proposal.ProposalPayloadJson);
-        }
-        catch (JsonException)
-        {
-            family = null;
-        }
+        TryReadMachineProposalPayload(proposal.ProposalPayloadJson, out family, out _);
 
         if (family is null)
         {

@@ -412,6 +412,10 @@ public sealed record SocialOperationResult<T>(bool Succeeded, string? ErrorCode 
 
 public interface ISocialFeedService
 {
+    Task<SocialOperationResult<SocialPostView>> GetPostAsync(SocialFeedActor actor, Guid postId,
+        CancellationToken cancellationToken = default) => Task.FromResult(
+            SocialOperationResult<SocialPostView>.Failure("social_post_unavailable", "This post is unavailable."));
+
     Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetCurrentProfilePostsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetPublicProfilePostsAsync(SocialFeedActor actor, SocialAuthor profile, CancellationToken cancellationToken = default);

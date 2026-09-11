@@ -16,7 +16,7 @@ namespace Infrastructure.Social;
 /// profiles; private-profile content is visible only to its owner and approved
 /// followers.
 /// </summary>
-public sealed class SocialFeedService : ISocialFeedService
+public sealed partial class SocialFeedService : ISocialFeedService
 {
     private const int MaximumPostLength = 2_000;
     private const int MaximumCommentLength = 800;

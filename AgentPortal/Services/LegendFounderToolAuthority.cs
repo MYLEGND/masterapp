@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 
@@ -32,6 +33,7 @@ internal sealed class LegendFounderToolAuthority
 
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
+    private readonly AgencyCommandService? _agencyCommand;
     private readonly HashSet<string> _consumedMutationAuthorizations =
         new(StringComparer.Ordinal);
     private readonly object _mutationAuthorizationLock = new();
@@ -45,10 +47,12 @@ internal sealed class LegendFounderToolAuthority
 
     internal LegendFounderToolAuthority(
         FounderLegendConnectService legend,
-        IFounderSoftwareRemediationService? softwareRemediation)
+        IFounderSoftwareRemediationService? softwareRemediation,
+        AgencyCommandService? agencyCommand = null)
     {
         _legend = legend;
         _softwareRemediation = softwareRemediation;
+        _agencyCommand = agencyCommand;
     }
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
@@ -86,6 +90,7 @@ internal sealed class LegendFounderToolAuthority
             "legend_target_realizations" or
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
+            "legend_client_lead_portfolio" or
             "legend_language_state";
 
     private static bool IsReadOnlyFounderTool(
@@ -107,6 +112,7 @@ internal sealed class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_research_internet" or
             "legend_metric_detail" or
+            "legend_client_lead_portfolio" or
             "legend_language_state";
 
     /// <summary>
@@ -119,8 +125,11 @@ internal sealed class LegendFounderToolAuthority
         BindReadOnlyResultAsync(
             ClaimsPrincipal founder,
             LegendConnectReadOnlyContentBindingRequest request,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!TryResolveFounderFunctionParameters(
                 request.ToolName,
                 out var parameterSchema))
@@ -135,6 +144,7 @@ internal sealed class LegendFounderToolAuthority
                 out var argumentsReason))
             return new(false, argumentsReason, null);
 
+        FounderGuard.EnsureFounderOrThrow(founder);
         var output = await ExecuteAsync(
             founder,
             new FounderAiToolCall(
@@ -142,7 +152,9 @@ internal sealed class LegendFounderToolAuthority
                 request.ToolName,
                 request.ArgumentsJson),
             "legend",
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
+        cancellationToken.ThrowIfCancellationRequested();
         return TryCreateReadOnlyContentBindingReceipt(
             request,
             output,
@@ -165,7 +177,8 @@ internal sealed class LegendFounderToolAuthority
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
         FounderAiMutationAuthorization? restrictedAuthorization,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var decision = internalInference?.ResearchDecision ??
             await _legend.DecideResearchNeededAsync(
@@ -173,7 +186,8 @@ internal sealed class LegendFounderToolAuthority
                 question,
                 sourceLanguageCode,
                 internalInference,
-                cancellationToken);
+                cancellationToken,
+                providerPolicy);
         var requestId = Guid.NewGuid();
         if (!decision.ResearchRequired)
         {
@@ -254,7 +268,8 @@ internal sealed class LegendFounderToolAuthority
         return await _legend.ExecuteResearchAsync(
             founder,
             request,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
     }
 
 
@@ -262,8 +277,11 @@ internal sealed class LegendFounderToolAuthority
         ClaimsPrincipal founder,
         FounderAiToolCall call,
         string mode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!IsReadOnlyFounderTool(call.Name))
         {
             var authorizationFailure = await TryConsumeMutationAuthorizationAsync(
@@ -414,20 +432,36 @@ internal sealed class LegendFounderToolAuthority
                 var snapshot =
                     await _legend.GetLiveMetricsAsync(
                         founder,
-                        cancellationToken);
+                        cancellationToken,
+                        providerPolicy);
 
                 return SerializeUnbounded(snapshot);
             }
 
             case "legend_operational_diagnostics":
             {
+                if (!TryReadOperationalDiagnosticArguments(call.Arguments, out var section, out var language))
+                    return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
+                if (section is not null)
+                {
+                    var selected = await _legend.GetOperationalDiagnosticSectionAsync(
+                        founder, section, language!, cancellationToken);
+                    return SerializeUnbounded(new
+                    {
+                        ok = selected.Stage.State == "available",
+                        error = selected.Stage.State == "available" ? null : selected.Stage.ReasonCode,
+                        selectedSectionPage = selected.Value,
+                        stages = new[] { selected.Stage }
+                    });
+                }
                 // Preserve the governing readiness and capacity authorities
                 // without rebuilding the unrelated all-language dashboard.
                 // The previous broad projection routinely exhausted the
                 // bounded read-only tool window in production.
                 var diagnostics = await _legend.GetOperationalDiagnosticsAsync(
                     founder,
-                    cancellationToken);
+                    cancellationToken,
+                    providerPolicy);
                 return SerializeUnbounded(new
                 {
                     diagnostics.RuntimePolicy,
@@ -444,12 +478,28 @@ internal sealed class LegendFounderToolAuthority
                 });
             }
 
+            case "legend_client_lead_portfolio":
+            {
+                // Adapted from the canonical client/lead visibility owner;
+                // this registry never queries those records itself.
+                if (_agencyCommand is null)
+                {
+                    return """{"error":"client_lead_portfolio_unavailable"}""";
+                }
+
+                return SerializeUnbounded(
+                    await _agencyCommand.GetFounderPortfolioCountsAsync(
+                        founder,
+                        cancellationToken));
+            }
+
             case "legend_provider_capacity":
             {
                 var snapshot =
                     await _legend.GetProviderCapacityAsync(
                         founder,
-                        cancellationToken);
+                        cancellationToken,
+                        providerPolicy);
 
                 return SerializeUnbounded(snapshot);
             }
@@ -1030,7 +1080,8 @@ internal sealed class LegendFounderToolAuthority
                     await _legend.GetMetricDetailAsync(
                         founder,
                         metric,
-                        cancellationToken);
+                        cancellationToken,
+                        providerPolicy);
 
                 return SerializeUnbounded(snapshot);
             }
@@ -1058,7 +1109,8 @@ internal sealed class LegendFounderToolAuthority
                         founder,
                         language,
                         pair,
-                        cancellationToken);
+                        cancellationToken,
+                        providerPolicy);
                 return SerializeUnbounded(new
                 {
                     selectedLanguage = state.Knowledge?.Health,
@@ -1240,6 +1292,59 @@ internal sealed class LegendFounderToolAuthority
         return false;
     }
 
+    // The provider's strict schema requires nullable fields. Existing governed
+    // requests with {} retain their aggregate meaning and their receipt identity.
+    internal static JsonElement NormalizeOperationalDiagnosticArguments(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || HasDuplicateProperties(root))
+            return root;
+        var values = root.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+        using var nullValue = JsonDocument.Parse("null");
+        values.TryAdd("section", nullValue.RootElement.Clone());
+        values.TryAdd("language", nullValue.RootElement.Clone());
+        var defaulted = JsonSerializer.SerializeToElement(values);
+        // Validate raw supplied strings before trimming: normalization must not
+        // turn excessive length, control characters or unknown fields valid.
+        if (!TryResolveFounderFunctionParameters("legend_operational_diagnostics", out var schema) ||
+            !IsStrictSchemaInstance(schema, defaulted))
+            return root;
+        var section = ReadOptionalString(defaulted, "section");
+        var language = ReadOptionalString(defaulted, "language");
+        if (section is null ? language is not null : !IsBoundedLanguage(language))
+            return root;
+        if (language is not null)
+        {
+            // Match the existing section backend exactly. Language identity
+            // normalization would additionally merge underscore/hyphen scopes.
+            values["language"] = JsonSerializer.SerializeToElement(language.ToLowerInvariant());
+        }
+        return JsonSerializer.SerializeToElement(values);
+    }
+
+    private static bool TryReadOperationalDiagnosticArguments(
+        string arguments, out string? section, out string? language)
+    {
+        section = null;
+        language = null;
+        if (string.IsNullOrWhiteSpace(arguments) || arguments.Length > MaximumNativeReadArgumentsCharacters)
+            return false;
+        try
+        {
+            using var document = JsonDocument.Parse(arguments);
+            var root = NormalizeOperationalDiagnosticArguments(document.RootElement);
+            if (!TryResolveFounderFunctionParameters("legend_operational_diagnostics", out var schema) ||
+                !IsStrictSchemaInstance(schema, root))
+                return false;
+            section = ReadOptionalString(root, "section");
+            language = ReadOptionalString(root, "language");
+            return section is null ? language is null : IsBoundedLanguage(language);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static bool TryValidateNativeReadArguments(
         LegendConnectReadOnlyContentBindingRequest request,
         JsonElement parameterSchema,
@@ -1256,7 +1361,9 @@ internal sealed class LegendFounderToolAuthority
         try
         {
             using var arguments = JsonDocument.Parse(request.ArgumentsJson);
-            var root = arguments.RootElement;
+            var root = request.ToolName == "legend_operational_diagnostics"
+                ? NormalizeOperationalDiagnosticArguments(arguments.RootElement)
+                : arguments.RootElement;
             if (!IsStrictSchemaInstance(parameterSchema, root))
             {
                 reasonCode = "read_only_content_binding_arguments_invalid";
@@ -1268,6 +1375,8 @@ internal sealed class LegendFounderToolAuthority
             // broader for Founder/provider inspection.
             var valid = request.ToolName switch
             {
+                "legend_operational_diagnostics" =>
+                    TryReadOperationalDiagnosticArguments(request.ArgumentsJson, out _, out _),
                 "legend_language_knowledge" =>
                     IsBoundedLanguage(ReadRequiredString(root, "language")),
                 "legend_search_retained_knowledge" =>
@@ -1483,6 +1592,47 @@ internal sealed class LegendFounderToolAuthority
                         : reasonCode;
                 return false;
             }
+            if ((root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False) ||
+                (root.TryGetProperty("succeeded", out var succeeded) && succeeded.ValueKind == JsonValueKind.False))
+            {
+                reasonCode = "read_only_content_binding_tool_error";
+                return false;
+            }
+            if (string.Equals(request.ToolName, "legend_operational_diagnostics", StringComparison.Ordinal))
+            {
+                // Stage names are the snake-case form of their serialized
+                // root property. Preserve that existing diagnostic contract:
+                // a fallback value is not evidence, while another available
+                // stage in the same partial response can still supply a fact.
+                var selectedStageName = JsonNamingPolicy.SnakeCaseLower.ConvertName(
+                    request.ValuePath.Split('.')[0]);
+                var selectedStages = root.TryGetProperty("stages", out var stages) &&
+                    stages.ValueKind == JsonValueKind.Array
+                        ? stages.EnumerateArray().Where(stage =>
+                            stage.ValueKind == JsonValueKind.Object &&
+                            !HasDuplicateProperties(stage) &&
+                            stage.TryGetProperty("name", out var name) &&
+                            name.ValueKind == JsonValueKind.String &&
+                            string.Equals(name.GetString(), selectedStageName, StringComparison.Ordinal)).ToArray()
+                        : [];
+                // A timestamp from another stage cannot establish freshness of
+                // this value, even when both stages happened to be available.
+                if (!string.IsNullOrWhiteSpace(request.ObservedUtcPath) &&
+                    !string.Equals(request.ValuePath.Split('.')[0],
+                        request.ObservedUtcPath.Split('.')[0], StringComparison.Ordinal))
+                {
+                    reasonCode = "read_only_content_binding_source_unavailable";
+                    return false;
+                }
+                if (selectedStages.Length != 1 ||
+                    !selectedStages[0].TryGetProperty("state", out var state) ||
+                    state.ValueKind != JsonValueKind.String ||
+                    !string.Equals(state.GetString(), "available", StringComparison.Ordinal))
+                {
+                    reasonCode = "read_only_content_binding_source_unavailable";
+                    return false;
+                }
+            }
             if (!TrySelectPropertyPath(root, request.ValuePath, out var value) ||
                 !TryReadBoundedScalar(value, out var scalar))
             {
@@ -1503,6 +1653,8 @@ internal sealed class LegendFounderToolAuthority
                 {
                     return false;
                 }
+                if (observedUtc > executedUtc)
+                    return false;
                 if (executedUtc - observedUtc >
                     TimeSpan.FromSeconds(request.MaximumAgeSeconds))
                 {
@@ -1689,12 +1841,25 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_operational_diagnostics",
                 description =
-                    "Read the existing runtime-policy readiness gates, aggregate operational status, provider capacity, and acquisition contract together. Use this before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
+                    "Read the existing runtime-policy readiness gates, aggregate operational status, provider capacity, and acquisition contract together. With null section and language, read aggregate readiness. To inspect existing machine-learning lifecycle rows, select machine-learning-lifecycle and an explicit language; that bounded read skips aggregate readiness. Selected failures are failed observations, not successful aggregate evidence. This does not retrieve historical language-identification traces. Use aggregate readiness before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
                 parameters = new
                 {
                     type = "object",
-                    properties = new { },
-                    required = Array.Empty<string>(),
+                    properties = new
+                    {
+                        section = new
+                        {
+                            type = new[] { "string", "null" },
+                            @enum = new string?[] { "machine-learning-lifecycle", null }
+                        },
+                        language = new
+                        {
+                            type = new[] { "string", "null" },
+                            minLength = 2,
+                            maxLength = 40
+                        }
+                    },
+                    required = new[] { "section", "language" },
                     additionalProperties = false
                 },
                 strict = true
@@ -1746,6 +1911,21 @@ internal sealed class LegendFounderToolAuthority
                         }
                     },
                     required = new[] { "metric_key" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_client_lead_portfolio",
+                description =
+                    "Read the current Founder-visible counts of client and lead records held by this deployment, including the canonical CRM status breakdown of workstation leads. Use this for any question about how many clients or leads exist; never answer such a question from recollection or the public internet. This is read-only, zero-write, and returns counts only.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
                     additionalProperties = false
                 },
                 strict = true

@@ -50,6 +50,45 @@ public interface ITranslationService
         string targetLanguage,
         string? sourceLanguage = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Identifies the source language under an explicit external-provider
+    /// policy. A boundary that has not opted into policy awareness cannot
+    /// honor a native-only request, so this default refuses it rather than
+    /// silently dropping the policy and reaching the external detector.
+    /// </summary>
+    Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+                .ForbidsExternalProviders
+            ? Task.FromResult(new TranslationDetectionResult(
+                false,
+                null,
+                "native_only_translation_boundary_not_policy_aware"))
+            : DetectLanguageAsync(text, cancellationToken);
+
+    /// <summary>
+    /// Produces target-language text under an explicit external-provider
+    /// policy, with the same fail-closed default for boundaries that have not
+    /// opted into policy awareness.
+    /// </summary>
+    Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+                .ForbidsExternalProviders
+            ? Task.FromResult(new TranslationProviderResult(
+                false,
+                null,
+                null,
+                "none",
+                "native_only_translation_boundary_not_policy_aware"))
+            : TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken);
 }
 
 public sealed record TranslationDetectionResult(
@@ -128,7 +167,8 @@ public sealed record StartMessagingConversationCommand(
     string TargetParticipantType,
     string? Subject = null,
     string? InitialMessageBody = null,
-    string? ClientMessageId = null);
+    string? ClientMessageId = null,
+    Guid? SharedPostId = null);
 
 public sealed record CreateMessagingGroupCommand(
     MessagingActor Actor,
@@ -236,11 +276,13 @@ public sealed record SendMessagingMessageCommand(
     Guid ConversationId,
     string Body,
     string? ClientMessageId = null,
-    Guid? ReplyToMessageId = null);
+    Guid? ReplyToMessageId = null,
+    Guid? SharedPostId = null);
 
 public sealed record MessagingConversationActionCommand(
     MessagingActor Actor,
-    Guid ConversationId);
+    Guid ConversationId,
+    Guid? ReadThroughMessageId = null);
 
 public sealed record SetMessagingConversationMutedCommand(
     MessagingActor Actor,
@@ -493,6 +535,7 @@ public sealed record MessagingConversationDetail(
     bool HasOlderMessages = false)
 {
     public MessagingReadReceiptSettings? ReadReceipts { get; init; }
+    public IReadOnlyList<string> ReactionOptions { get; init; } = MessagingReactionOptions.Defaults;
 }
 
 public sealed record MessagingReadReceipt(string UserId, string ParticipantType, DateTime ReadThroughUtc);
@@ -562,7 +605,26 @@ public sealed record MessagingMessageSummary(
     MessagingReplyPreview? Reply = null,
     MessagingVerificationReview? VerificationReview = null,
     MessagingTranslationPresentation? Translation = null,
-    string? OriginalBody = null);
+    string? OriginalBody = null)
+{
+    public MessagingSharedContent? SharedContent { get; init; }
+    public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
+}
+
+public static class MessagingReactionOptions
+{
+    public static IReadOnlyList<string> Defaults { get; } = Array.AsReadOnly(new[] { "❤️", "👍", "👎", "😂", "‼️", "❓" });
+}
+
+public sealed record MessagingReactionSummary(string Emoji, int Count, bool ReactedByCurrentActor);
+public sealed record MessagingReactionState(Guid MessageId, IReadOnlyList<MessagingReactionSummary> Reactions);
+public sealed record MessagingReactionResult(bool Succeeded, string? ErrorCode, string? ErrorMessage,
+    MessagingReactionState? Value)
+{
+    public static MessagingReactionResult Failure(string code, string message) => new(false, code, message, null);
+}
+public sealed record SetMessagingReactionRequest(string? Emoji);
+
 
 /// <summary>
 /// Presentation metadata for a server-cached derivative. The message body's

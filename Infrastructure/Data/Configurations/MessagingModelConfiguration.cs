@@ -17,6 +17,7 @@ internal static class MessagingModelConfiguration
         ConfigureVerificationReviewRequest(modelBuilder.Entity<VerificationReviewRequest>(), providerName);
         ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
         ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
+        ConfigureMessageReaction(modelBuilder.Entity<MessageReaction>(), providerName);
         ConfigureLegendConnect(modelBuilder, providerName);
         ConfigureTranslationAccountUsage(modelBuilder, providerName);
         ConfigureMobileActivityNotification(modelBuilder.Entity<MobileActivityNotification>(), providerName);
@@ -255,6 +256,19 @@ internal static class MessagingModelConfiguration
         ConfigureRowVersion(entity.Property(x => x.RowVersion), providerName);
         entity.HasIndex(x => new { x.UserId, x.ParticipantType, x.ResourceType }).IsUnique();
         entity.HasIndex(x => new { x.ResourceType, x.IsActive });
+    }
+
+    private static void ConfigureMessageReaction(EntityTypeBuilder<MessageReaction> entity, string? providerName)
+    {
+        entity.ToTable("MessageReactions");
+        entity.HasKey(x => new { x.InternalMessageId, x.ActorProfileId, x.ParticipantType });
+        entity.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
+        var emoji = entity.Property(x => x.Emoji).IsRequired().HasMaxLength(64);
+        // SQL Server linguistic collations may equate distinct emoji. Counts
+        // must group the exact stored sequence, as SQLite's binary default does.
+        if (IsSqlServer(providerName)) emoji.UseCollation("Latin1_General_100_BIN2");
+        entity.HasOne(x => x.InternalMessage).WithMany()
+            .HasForeignKey(x => x.InternalMessageId).OnDelete(DeleteBehavior.Cascade);
     }
 
     private static void ConfigureMessageTranslation(EntityTypeBuilder<MessageTranslation> entity)
