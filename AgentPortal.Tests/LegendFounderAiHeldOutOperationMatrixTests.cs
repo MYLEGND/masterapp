@@ -584,6 +584,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         await using var db = BuildSentinelDb(writeSentinel);
         var founder = await AddFounderProfileAsync(db);
         ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        await AdmitFoundationPrerequisiteAsync(db);
         var handler = new RecordingProviderHandler();
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
@@ -871,6 +872,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             await SeedOperationalRecordsAsync(db);
         }
 
+        if (label.StartsWith("native_capability:", StringComparison.Ordinal) ||
+            label.StartsWith("native_only:", StringComparison.Ordinal))
+            await AdmitFoundationPrerequisiteAsync(db);
+
         // Every persistence attempt from this point on is counted and rejected,
         // so zero writes is proven at the command boundary instead of inferred
         // from unchanged row counts.
@@ -1028,6 +1033,11 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         });
         await db.SaveChangesAsync();
     }
+
+    private static Task AdmitFoundationPrerequisiteAsync(MasterAppDbContext db) =>
+        LegendHeldOutFoundationPrerequisite.AdmitAsync(db,
+            CapabilityMatrix.Select(item => item.Prompt)
+                .Concat(new[] { MemoryFirstPrompt, MemoryFollowUpPrompt, ToolPrompt }).ToArray());
 
     private static LegendFounderAiConversationService CreateService(
         MasterAppDbContext db,

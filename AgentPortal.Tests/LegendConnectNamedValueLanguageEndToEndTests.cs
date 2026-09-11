@@ -34,16 +34,7 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
             });
             await db.SaveChangesAsync();
             var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
-            foreach (var (family, owner, date) in new[]
-            {
-                ("amber", "Anika", "2030-02-14"),
-                ("copper", "Benoit", "2031-04-18"),
-                ("silver", "Carla", "2033-07-12")
-            })
-            {
-                var taught = await curriculum.SubmitFounderBatchAsync(Teaching(family, owner, date));
-                Assert.True(taught.Succeeded, taught.Message);
-            }
+            await SeedTeachingAsync(curriculum);
             const string newOwner = "Dr. Mireya D'Arcy";
             const string newDate = "9 November 2032";
             var request = Source(newOwner, newDate);
@@ -96,6 +87,20 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
                 node.SemanticValue == newOwner || node.SemanticValue == newDate));
             Assert.Equal((0, 0), externalCounts());
         });
+    }
+
+    internal static async Task SeedTeachingAsync(LegendConnectCurriculumService curriculum)
+    {
+        foreach (var (family, owner, date) in new[]
+        {
+            ("amber", "Anika", "2030-02-14"),
+            ("copper", "Benoit", "2031-04-18"),
+            ("silver", "Carla", "2033-07-12")
+        })
+        {
+            var taught = await curriculum.SubmitFounderBatchAsync(Teaching(family, owner, date));
+            Assert.True(taught.Succeeded, taught.Message);
+        }
     }
 
     private static LegendConnectCurriculumBatchSubmission Teaching(string family, string owner, string date) =>

@@ -143,21 +143,26 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
             });
             await db.SaveChangesAsync();
             var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
-            foreach (var family in new[] { "amber", "copper", "silver" })
-            {
-                var admitted = await curriculum.SubmitFounderBatchAsync(Teaching(family));
-                Assert.True(admitted.Succeeded, admitted.Message);
-                foreach (var sample in new[] { "first", "second" })
-                    await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                        new("source-" + family + "-" + sample, "reasoning.constrained-planning.batch.language-proof",
-                            "result-" + family + "-" + sample), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-            }
+            await SeedTeachingAsync(curriculum);
             await verify(services, db);
             Assert.Equal((0, 0), externalCounts());
         });
     }
 
-    private static LegendConnectCurriculumBatchSubmission Teaching(string family)
+    internal static async Task SeedTeachingAsync(LegendConnectCurriculumService curriculum, string identityNamespace = "")
+    {
+        foreach (var family in new[] { "amber", "copper", "silver" })
+        {
+            var admitted = await curriculum.SubmitFounderBatchAsync(Teaching(family, identityNamespace));
+            Assert.True(admitted.Succeeded, admitted.Message);
+            foreach (var sample in new[] { "first", "second" })
+                await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                    new(identityNamespace + "source-" + family + "-" + sample, "reasoning.constrained-planning.batch.language-proof",
+                        identityNamespace + "result-" + family + "-" + sample), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+    }
+
+    private static LegendConnectCurriculumBatchSubmission Teaching(string family, string identityNamespace)
     {
         var samples = family switch
         {
@@ -174,13 +179,13 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
                 new(inputs.Select(value => new LegendConnectMeaningNodeSubmission(value.Key, value.Key, value.Value, value.Value)).ToArray(),
                     inputs.Keys.Where(key => key != "workload").Select(key =>
                         new LegendConnectMeaningRelationSubmission("workload", "constrained-by", key)).ToArray()),
-                "source-" + family + "-" + sample));
+                identityNamespace + "source-" + family + "-" + sample));
             var outputs = Values(("batch_count", batches.ToString()), ("elapsed", elapsed.ToString()),
                 ("final_size", final.ToString()), ("status", "feasible"), ("digest", "$schedule_signature"));
             examples.Add(new($"Allocation: {batches} batches; duration {elapsed} minutes; final size {final}; status feasible.", outputs,
                 new(outputs.Where(value => value.Key != "digest").Select(value =>
                     new LegendConnectMeaningNodeSubmission(value.Key, value.Key, value.Value, value.Value)).ToArray(), []),
-                "result-" + family + "-" + sample));
+                identityNamespace + "result-" + family + "-" + sample));
             examples.Add(new($"Use {batches} batches over {elapsed} minutes.",
                 Values(("batch_count", batches.ToString()), ("elapsed", elapsed.ToString()), ("conversation_function", "schedule_answer"),
                     ("batch_connector", "batch_duration_connector"), ("time_unit", "minutes")),

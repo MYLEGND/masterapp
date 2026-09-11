@@ -240,20 +240,20 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
         });
     }
 
-    internal static async Task SeedTeachingAsync(LegendConnectCurriculumService curriculum, string teachingKind = "integer")
+    internal static async Task SeedTeachingAsync(LegendConnectCurriculumService curriculum, string teachingKind = "integer", string identityNamespace = "")
     {
         foreach (var family in new[] { "amber", "copper", "silver" })
         {
-            var submitted = await curriculum.SubmitFounderBatchAsync(Teaching(family, teachingKind));
+            var submitted = await curriculum.SubmitFounderBatchAsync(Teaching(family, teachingKind, identityNamespace));
             Assert.True(submitted.Succeeded, submitted.Message);
             foreach (var sample in new[] { "first", "second" })
                 await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                    new("source-" + family + "-" + sample, "reasoning.arithmetic.subtract.heldout-proof",
-                        "result-" + family + "-" + sample), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+                    new(identityNamespace + "source-" + family + "-" + sample, "reasoning.arithmetic.subtract.heldout-proof",
+                        identityNamespace + "result-" + family + "-" + sample), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         }
     }
 
-    private static LegendConnectCurriculumBatchSubmission Teaching(string family, string teachingKind)
+    private static LegendConnectCurriculumBatchSubmission Teaching(string family, string teachingKind, string identityNamespace)
     {
         var examples = new List<LegendConnectCurriculumExampleSubmission>();
         var samples = (teachingKind, family) switch
@@ -269,9 +269,9 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
         {
             examples.Add(new(Source(left, right), Values(("z_measure", left), ("a_measure", right)),
                 new([new("right", "a_measure", right, right), new("left", "z_measure", left, left)],
-                    [new("left", "paired-with", "right")]), "source-" + family + "-" + sample));
+                    [new("left", "paired-with", "right")]), identityNamespace + "source-" + family + "-" + sample));
             examples.Add(new("Computed measure: " + result + ".", Values(("total", result)),
-                new([new("value", "total", result, result)], []), "result-" + family + "-" + sample));
+                new([new("value", "total", result, result)], []), identityNamespace + "result-" + family + "-" + sample));
             examples.Add(new("The result is " + result + ".", Values(("total", result), ("conversation_function", "numeric_answer")),
                 new([new("value", "total", result, result),
                      new("function", "conversation_function", "numeric_answer", "The result is")], [])));
