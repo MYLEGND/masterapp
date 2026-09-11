@@ -1,0 +1,595 @@
+{
+  "tested_source": "37991900",
+  "environment": "Controlled local in-memory full regression",
+  "source_receipts": "adaptation-heldout.jsonl",
+  "failures": [
+    {
+      "case": "native_capability:internal_data_uncertainty",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 9,
+          "Counts": {
+            "TokenCount": 20,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 4,
+          "Counts": {
+            "TokenCount": 20,
+            "CandidateCount": 0,
+            "NodeCount": 36,
+            "RelationCount": 30,
+            "DeclarationCount": 12,
+            "TemplateCount": 12,
+            "MatchCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 12,
+          "Counts": {
+            "TokenCount": 20,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 20
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 12,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:rewriting",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 10,
+          "Counts": {
+            "TokenCount": 38,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 2,
+          "Counts": {
+            "TokenCount": 38,
+            "CandidateCount": 0,
+            "NodeCount": 36,
+            "RelationCount": 30,
+            "DeclarationCount": 12,
+            "TemplateCount": 12,
+            "MatchCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 12,
+          "Counts": {
+            "TokenCount": 38,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 38
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 12,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:constrained_planning",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 8,
+          "Counts": {
+            "TokenCount": 28,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 1,
+          "Counts": {
+            "TokenCount": 28,
+            "CandidateCount": 0,
+            "DeclarationCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 9,
+          "Counts": {
+            "TokenCount": 28,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 28
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 9,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:causal_diagnosis",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 8,
+          "Counts": {
+            "TokenCount": 36,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 2,
+          "Counts": {
+            "TokenCount": 36,
+            "CandidateCount": 0,
+            "NodeCount": 36,
+            "RelationCount": 30,
+            "DeclarationCount": 12,
+            "TemplateCount": 12,
+            "MatchCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 10,
+          "Counts": {
+            "TokenCount": 36,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 36
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 10,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:haitian_creole_conflict",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 65,
+          "Counts": {
+            "TokenCount": 26,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 1,
+          "Counts": {
+            "TokenCount": 26,
+            "CandidateCount": 0,
+            "DeclarationCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 66,
+          "Counts": {
+            "TokenCount": 26,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 26
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 66,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:deduction",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 12,
+          "Counts": {
+            "TokenCount": 32,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 1,
+          "Counts": {
+            "TokenCount": 32,
+            "CandidateCount": 0,
+            "DeclarationCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 13,
+          "Counts": {
+            "TokenCount": 32,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 32
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 13,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:arithmetic",
+      "reason": "semantic_transition_not_supported",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 14,
+          "Counts": {
+            "TokenCount": 41,
+            "CandidateCount": 1,
+            "NodeCount": 1
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 3,
+          "Counts": {
+            "TokenCount": 41,
+            "CandidateCount": 1,
+            "NodeCount": 38,
+            "RelationCount": 31,
+            "DeclarationCount": 16,
+            "TemplateCount": 16,
+            "MatchCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "completed",
+          "ReasonCode": "meaning_graph_atomic_primitive_governed",
+          "ElapsedMs": 17,
+          "Counts": {
+            "TokenCount": 41,
+            "CandidateCount": 1,
+            "NodeCount": 1,
+            "RelationCount": 0,
+            "UnknownCount": 40
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "semantic_transition_not_supported",
+          "ElapsedMs": 20,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:tool_planning",
+      "reason": "meaning_graph_component_unknown",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 8,
+          "Counts": {
+            "TokenCount": 16,
+            "CandidateCount": 0,
+            "NodeCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 1,
+          "Counts": {
+            "TokenCount": 16,
+            "CandidateCount": 0,
+            "DeclarationCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "rejected",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 8,
+          "Counts": {
+            "TokenCount": 16,
+            "CandidateCount": 0,
+            "NodeCount": 0,
+            "RelationCount": 0,
+            "UnknownCount": 16
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "meaning_graph_component_unknown",
+          "ElapsedMs": 9,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    },
+    {
+      "case": "native_capability:same_conversation_memory_turn_one",
+      "reason": "semantic_transition_not_supported",
+      "evidence_count": 0,
+      "provider_clients": 0,
+      "provider_calls": 0,
+      "observed_stages": [
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "Stage": "meaning_candidates",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 10,
+          "Counts": {
+            "TokenCount": 20,
+            "CandidateCount": 3,
+            "NodeCount": 3
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "Stage": "source_slots",
+          "Outcome": "completed",
+          "ReasonCode": "none",
+          "ElapsedMs": 2,
+          "Counts": {
+            "TokenCount": 20,
+            "CandidateCount": 3,
+            "NodeCount": 42,
+            "RelationCount": 33,
+            "DeclarationCount": 15,
+            "TemplateCount": 15,
+            "MatchCount": 0
+          }
+        },
+        {
+          "Event": "stage_completed",
+          "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+          "Stage": "meaning_graph",
+          "Outcome": "completed",
+          "ReasonCode": "meaning_graph_atomic_primitive_governed",
+          "ElapsedMs": 12,
+          "Counts": {
+            "TokenCount": 20,
+            "CandidateCount": 3,
+            "NodeCount": 1,
+            "RelationCount": 0,
+            "UnknownCount": 18
+          }
+        },
+        {
+          "Event": "NativeInferenceCompleted",
+          "AuthorityMethod": "FounderLegendConnectService.TryInferConversationWithDiscourseAsync",
+          "Stage": "native_inference",
+          "Outcome": "unsupported",
+          "ReasonCode": "semantic_transition_not_supported",
+          "ElapsedMs": 3,
+          "Counts": {
+            "EvidenceCount": 0
+          }
+        }
+      ],
+      "downstream_capability": "not established after missing meaning prerequisite",
+      "disposition": "Frozen test unchanged; native acceptance remains open"
+    }
+  ],
+  "interpretation": "These observations locate the failed prerequisites. They do not prove all downstream engines defective. New composition reproduction is independent and cannot substitute for the nine frozen acceptance cases."
+}

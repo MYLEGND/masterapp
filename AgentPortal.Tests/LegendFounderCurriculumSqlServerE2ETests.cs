@@ -1079,6 +1079,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     [InlineData("source_slot_declarations", "AnalyzeDeclaredSourceSlotsAsync")]
     [InlineData("source_slot_nodes", "AnalyzeDeclaredSourceSlotsAsync")]
     [InlineData("source_slot_relations", "AnalyzeDeclaredSourceSlotsAsync")]
+    [InlineData("computed_structure_examples", "LoadCurrentComputedStructuresAsync")]
+    [InlineData("computed_structure_nodes", "LoadCurrentComputedStructuresAsync")]
+    [InlineData("computed_structure_relations", "LoadCurrentComputedStructuresAsync")]
     public void SqlQueryAttribution_UsesOnlyStaticLabelsWithoutChangingFingerprint(string operation, string authority)
     {
         const string sql = "SELECT 1 AS Value";
@@ -5652,6 +5655,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     ("LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync", "source_slot_nodes"),
                 "-- LEGEND_QUERY:source_slot_relations" =>
                     ("LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync", "source_slot_relations"),
+                "-- LEGEND_QUERY:computed_structure_examples" =>
+                    ("LegendConnectCurriculumService.LoadCurrentComputedStructuresAsync", "computed_structure_examples"),
+                "-- LEGEND_QUERY:computed_structure_nodes" =>
+                    ("LegendConnectCurriculumService.LoadCurrentComputedStructuresAsync", "computed_structure_nodes"),
+                "-- LEGEND_QUERY:computed_structure_relations" =>
+                    ("LegendConnectCurriculumService.LoadCurrentComputedStructuresAsync", "computed_structure_relations"),
                 _ => (null, null)
             };
         }
