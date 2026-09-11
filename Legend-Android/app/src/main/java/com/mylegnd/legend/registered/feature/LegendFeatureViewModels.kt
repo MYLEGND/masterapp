@@ -241,7 +241,41 @@ class FinancialViewModel(private val repository: FinancialRepository, private va
     }
 }
 
+/** Pending presentation transaction: only server acknowledgements advance it. */
+internal class PendingMessageSubmission private constructor(
+    val conversationId: String,
+    val body: String,
+    val replyToMessageId: String?,
+    val attachments: List<String>,
+) {
+    val clientMessageId: String = UUID.randomUUID().toString()
+    var acknowledgedMessageId: String? = null
+    val uploadedAttachmentIndexes = mutableSetOf<Int>()
+
+    suspend fun uploadRemaining(upload: suspend (Int) -> LoadState<*>): LoadState<Unit> {
+        if (acknowledgedMessageId == null) return LoadState.Error("Message has not been acknowledged.")
+        for (index in attachments.indices) {
+            if (index in uploadedAttachmentIndexes) continue
+            when (val result = upload(index)) {
+                is LoadState.Data -> uploadedAttachmentIndexes.add(index)
+                is LoadState.Error -> return result
+                else -> return LoadState.Error("Attachment upload was not acknowledged.")
+            }
+        }
+        return LoadState.Data(Unit)
+    }
+
+    companion object {
+        fun forPayload(previous: PendingMessageSubmission?, conversationId: String, body: String,
+                       replyToMessageId: String?, attachments: List<String>): PendingMessageSubmission =
+            previous?.takeIf { it.conversationId == conversationId && it.body == body &&
+                it.replyToMessageId == replyToMessageId && it.attachments == attachments }
+                ?: PendingMessageSubmission(conversationId, body, replyToMessageId, attachments.toList())
+    }
+}
+
 class MessagingViewModel(private val repository: MessagingRepository, private val role: String) : ViewModel() {
+    private var pendingSubmission: PendingMessageSubmission? = null
     private val _conversations = MutableStateFlow<LoadState<List<ConversationSummary>>>(LoadState.Idle)
     val conversations: StateFlow<LoadState<List<ConversationSummary>>> = _conversations.asStateFlow()
     private val _detail = MutableStateFlow<LoadState<ConversationDetail>>(LoadState.Idle)
@@ -518,25 +552,40 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
             completed(false)
             return@launch
         }
+        val submission = PendingMessageSubmission.forPayload(pendingSubmission, id, normalized,
+            replyToMessageId, attachmentUris.map { it.toString() })
+        pendingSubmission = submission
+        _historyFailure.value = null
         _isSending.value = true
         try {
-            when (val result = repository.send(role, id, normalized, replyToMessageId)) {
-                is LoadState.Data -> {
-                    attachmentUris.forEach { uri ->
-                        repository.uploadAttachment(context, role, id, result.value.id, uri)
+            if (submission.acknowledgedMessageId == null) {
+                when (val result = repository.send(role, id, normalized, replyToMessageId, submission.clientMessageId)) {
+                    is LoadState.Data -> submission.acknowledgedMessageId = result.value.id
+                    is LoadState.Error -> {
+                        _historyFailure.value = result.message
+                        completed(false)
+                        return@launch
                     }
-                    open(id)
-                    // Inbox activity must not wait for thread hydration or
-                    // mark-read. Both use the persisted server projection.
-                    launch { refreshInboxSilently() }
-                    completed(true)
+                    else -> { completed(false); return@launch }
                 }
-                is LoadState.Error -> {
-                    _detail.value = LoadState.Error(result.message)
-                    completed(false)
-                }
-                else -> completed(false)
             }
+            val messageId = requireNotNull(submission.acknowledgedMessageId)
+            when (val uploaded = submission.uploadRemaining { index ->
+                repository.uploadAttachment(context, role, id, messageId, attachmentUris[index])
+            }) {
+                is LoadState.Data -> Unit
+                is LoadState.Error -> {
+                    _historyFailure.value = "Message sent, but an attachment was not uploaded. " + uploaded.message
+                    completed(false)
+                    return@launch
+                }
+                else -> { completed(false); return@launch }
+            }
+            pendingSubmission = null
+            open(id)
+            // Refreshes do not redefine the server's successful send acknowledgement.
+            launch { refreshInboxSilently() }
+            completed(true)
         } finally {
             _isSending.value = false
         }

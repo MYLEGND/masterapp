@@ -3546,7 +3546,7 @@ private fun MessageThread(
     participantType: String,
     isSending: Boolean,
     back: () -> Unit,
-    send: (Context, String, String, String?, List<Uri>) -> Unit,
+    send: (Context, String, String, String?, List<Uri>, (Boolean) -> Unit) -> Unit,
     loadOlder: () -> Unit,
     historyFailure: String?,
     delete: (ConversationMessage) -> Unit,
@@ -3686,10 +3686,16 @@ private fun MessageThread(
                 OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text(legendLocalized("Write a message")) }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true, keyboardType = androidx.compose.ui.text.input.KeyboardType.Text), maxLines = 5, shape = LegendShapes.Control)
                 IconButton(
                     onClick = {
-                        send(context, conversation.id, draft, replyTo?.id, attachments)
-                        draft = ""
-                        replyTo = null
-                        attachments = emptyList()
+                        val submittedDraft = draft
+                        val submittedReply = replyTo
+                        val submittedAttachments = attachments
+                        send(context, conversation.id, submittedDraft, submittedReply?.id, submittedAttachments) { succeeded ->
+                            if (succeeded && draft == submittedDraft && replyTo == submittedReply && attachments == submittedAttachments) {
+                                draft = ""
+                                replyTo = null
+                                attachments = emptyList()
+                            }
+                        }
                     },
                     enabled = draft.isNotBlank() && !isSending,
                     modifier = Modifier.padding(start = LegendSpacing.Xs).background(if (draft.isNotBlank()) LegendColors.Gold else LegendColors.SurfaceInset, CircleShape),

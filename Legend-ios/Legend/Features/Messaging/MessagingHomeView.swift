@@ -2446,7 +2446,7 @@ struct ConversationThreadView: View {
         guard !outgoing.isEmpty else { return }
 
         Task {
-            guard let message = await store.send(body: outgoing) else { return }
+            guard let message = await store.send(body: outgoing, replyingTo: replyingToMessage) else { return }
             draft = ""
             replyingToMessage = nil
             messageForStagedAttachments = message

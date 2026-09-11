@@ -476,10 +476,12 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
 struct SendMessageRequest: Encodable, Sendable {
     let body: String
     let replyToMessageID: UUID?
+    let clientMessageID: UUID
 
     private enum CodingKeys: String, CodingKey {
         case body
         case replyToMessageID = "replyToMessageId"
+        case clientMessageID = "clientMessageId"
     }
 }
 
@@ -836,6 +838,7 @@ protocol MessagingAPI: Sendable {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage
     func upload(
@@ -1119,6 +1122,7 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage {
         throw MobileMessagingContractError.unavailable
@@ -1582,15 +1586,17 @@ struct URLSessionMessagingAPI: MessagingAPI {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage {
         try await client.post(
             "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
             body: SendMessageRequest(
                 body: body,
-                replyToMessageID: replyToMessageID),
+                replyToMessageID: replyToMessageID,
+                clientMessageID: clientMessageID),
             accessToken: accessToken,
-            idempotencyKey: UUID(),
+            idempotencyKey: clientMessageID,
             headers: participantHeader,
             response: ConversationMessage.self
         )

@@ -351,11 +351,13 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     func testSendRequestEncodingDoesNotContainSenderOrParticipantIdentity() throws {
-        let data = try JSONEncoder.mobile.encode(SendMessageRequest(body: "Secure hello", replyToMessageID: nil))
+        let clientMessageID = UUID()
+        let data = try JSONEncoder.mobile.encode(SendMessageRequest(body: "Secure hello", replyToMessageID: nil, clientMessageID: clientMessageID))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(object["body"] as? String, "Secure hello")
-        XCTAssertEqual(Set(object.keys), Set(["body"]))
+        XCTAssertEqual(object["clientMessageId"] as? String, clientMessageID.uuidString)
+        XCTAssertEqual(Set(object.keys), Set(["body", "clientMessageId"]))
     }
 
     func testAccountAndJourneyContractsKeepProfileFieldsAndSelectionsTyped() throws {
@@ -698,6 +700,32 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(api.conversationListCallCount, 2)
     }
 
+    func testMessageRetryReusesIdentityAfterLostAcknowledgementAndNewMessageGetsFreshIdentity() async {
+        let api = InboxReconciliationMessagingAPI(conversationID: UUID())
+        let store = MessagingStore(api: api, accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let started = expectation(description: "Conversation opened")
+        store.startConversation(with: api.recipient) { _ in started.fulfill() }
+        await fulfillment(of: [started], timeout: 1)
+        api.failNextSendAfterPersistence = true
+        let failed = await store.send(body: "Delivery acknowledgement may be lost")
+        XCTAssertNil(failed)
+        XCTAssertNotNil(store.sendFailure)
+        let retried = await store.send(body: "Delivery acknowledgement may be lost")
+        XCTAssertNotNil(retried)
+        XCTAssertEqual(api.sentClientMessageIDs.count, 2)
+        XCTAssertEqual(api.sentClientMessageIDs[0], api.sentClientMessageIDs[1])
+        XCTAssertEqual(api.persistedMessages.count, 1)
+        let another = await store.send(body: "Delivery acknowledgement may be lost")
+        XCTAssertNotNil(another)
+        XCTAssertNotEqual(api.sentClientMessageIDs[1], api.sentClientMessageIDs[2])
+        XCTAssertEqual(api.persistedMessages.count, 2)
+        api.failNextSendAfterPersistence = true
+        _ = await store.send(body: "Uncertain first payload")
+        _ = await store.send(body: "A deliberately changed payload")
+        XCTAssertNotEqual(api.sentClientMessageIDs[3], api.sentClientMessageIDs[4])
+    }
+
     func testMessagingStoreFirstSuccessfulSendReconcilesPreviousMessagesFromServer() async {
         let conversationID = UUID()
         let api = InboxReconciliationMessagingAPI(conversationID: conversationID)
@@ -854,10 +882,10 @@ final class MobileNativeContractTests: XCTestCase {
         let id = UUID()
         let api = InboxReconciliationMessagingAPI(conversationID: id)
         let store = MessagingStore(api: api, accessTokenProvider: { "token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
-        _ = try await api.send(conversationID: id, body: "Bonjou", replyToMessageID: nil, accessToken: "token")
+        _ = try await api.send(conversationID: id, body: "Bonjou", replyToMessageID: nil, clientMessageID: UUID(), accessToken: "token")
         store.openConversation(id)
         try await Task.sleep(for: .milliseconds(80))
-        _ = try await api.send(conversationID: id, body: "Hello", replyToMessageID: nil, accessToken: "token")
+        _ = try await api.send(conversationID: id, body: "Hello", replyToMessageID: nil, clientMessageID: UUID(), accessToken: "token")
         await store.refreshLanguagePresentation()
         guard case .loaded(let conversation) = store.detailState else {
             return XCTFail("Expected refreshed conversation")
@@ -1506,7 +1534,7 @@ private struct StubMessagingAPI: MessagingAPI {
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
-    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
     func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }
@@ -1518,6 +1546,9 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
     private(set) var recipientCallCount = 0
     private var isVisibleInInbox = false
     private var lastMessage: ConversationMessage?
+    var failNextSendAfterPersistence = false
+    private(set) var sentClientMessageIDs: [UUID] = []
+    private(set) var persistedMessages: [UUID: ConversationMessage] = [:]
     var holdNextInboxSnapshot = false
     var releaseInboxSnapshot: CheckedContinuation<Void, Never>?
 
@@ -1600,7 +1631,9 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
         lastMessage.map { [$0] } ?? []
     }
 
-    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage {
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage {
+        sentClientMessageIDs.append(clientMessageID)
+        if let existing = persistedMessages[clientMessageID] { return existing }
         let message = ConversationMessage(
             id: UUID(),
             conversationID: conversationID,
@@ -1620,6 +1653,11 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
             reply: nil)
         lastMessage = message
         isVisibleInInbox = true
+        persistedMessages[clientMessageID] = message
+        if failNextSendAfterPersistence {
+            failNextSendAfterPersistence = false
+            throw URLError(.timedOut)
+        }
         return message
     }
 
@@ -1667,7 +1705,7 @@ private struct OfflineMessagingAPI: MessagingAPI {
         throw MobileAPIError.networkUnavailable
     }
 
-    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage {
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage {
         throw MobileAPIError.networkUnavailable
     }
 
@@ -1701,7 +1739,7 @@ private struct UnauthorizedMessagingAPI: MessagingAPI {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
-    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage {
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
@@ -1782,7 +1820,7 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { [] }
-    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
     func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }

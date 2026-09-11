@@ -118,8 +118,8 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun conversation(role: String, id: String, beforeUtc: String? = null) = request {
         client.api.conversation(role, id, beforeUtc).legendBody()
     }
-    suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null) = request {
-        client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId)).legendBody()
+    suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null, clientMessageId: String) = request {
+        client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId, clientMessageId)).legendBody()
     }
     suspend fun uploadAttachment(context: Context, role: String, conversationId: String, messageId: String, uri: Uri) = request {
         attachmentUploader.upload(context, role, conversationId, messageId, uri)

@@ -413,6 +413,14 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var hasMoreConversations = true
     @Published private(set) var refreshFailure: UserFacingFailure?
 
+    private struct PendingSubmission {
+        let conversationID: UUID
+        let body: String
+        let replyToMessageID: UUID?
+        let clientMessageID: UUID
+    }
+    private var pendingSubmission: PendingSubmission?
+
     private let api: any MessagingAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
@@ -1151,6 +1159,13 @@ final class MessagingStore: ObservableObject {
             return nil
         }
 
+        if pendingSubmission?.conversationID != conversationID ||
+            pendingSubmission?.body != normalizedBody ||
+            pendingSubmission?.replyToMessageID != replyTarget?.id {
+            pendingSubmission = PendingSubmission(conversationID: conversationID, body: normalizedBody,
+                replyToMessageID: replyTarget?.id, clientMessageID: UUID())
+        }
+        guard let submission = pendingSubmission else { return nil }
         isSending = true
         sendFailure = nil
         defer { isSending = false }
@@ -1159,7 +1174,9 @@ final class MessagingStore: ObservableObject {
                 conversationID: conversationID,
                 body: normalizedBody,
                 replyToMessageID: replyTarget?.id,
+                clientMessageID: submission.clientMessageID,
                 accessToken: try await accessTokenProvider())
+            pendingSubmission = nil
             append(message: message, to: conversationID)
 
             // The server conversation/participant/message projection is the one
