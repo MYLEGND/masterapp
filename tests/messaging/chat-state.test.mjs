@@ -109,3 +109,160 @@ test('realtime invalidation during a snapshot queues a fresh coalesced read',asy
   old.resolve({conversation:{id:'A',messages:[]}});await Promise.all([opening,first,second]);
   assert.equal(calls,2);assert.equal(c.state.active.messages[0].id,'new');
 });
+
+const flushTasks = () => new Promise(resolve => setImmediate(resolve));
+
+test('reaction mutations serialize per message and keep the latest explicit selection', async () => {
+  const first = deferred(), second = deferred(), calls = [];
+  const c = domEnvironment((url, options) => {
+    calls.push({ url, options });
+    return calls.length === 1 ? first.promise : second.promise;
+  });
+  const message = { id: 'message', reactions: [] };
+  c.state.active = { id: 'A', messages: [message] };
+  const like = c.setMessageReaction('A', message, '👍');
+  const heart = c.setMessageReaction('A', message, '❤️');
+  await flushTasks();
+  assert.equal(calls.length, 1, 'The newer selection must wait for the first mutation');
+  assert.equal(JSON.parse(calls[0].options.body).emoji, '👍');
+  first.resolve({ messageId: 'message', reactions: [{ emoji: '👍', count: 2, reactedByCurrentActor: true }] });
+  await like;
+  await flushTasks();
+  assert.equal(calls.length, 2);
+  assert.equal(JSON.parse(calls[1].options.body).emoji, '❤️');
+  assert.equal(c.state.active.messages[0].reactions[0].emoji, '👍');
+  second.resolve({ messageId: 'message', reactions: [{ emoji: '❤️', count: 3, reactedByCurrentActor: true }] });
+  await heart;
+  assert.equal(c.state.active.messages[0].reactions[0].emoji, '❤️');
+  assert.equal(c.state.active.messages[0].reactions[0].count, 3);
+  assert.equal(c.state.reactionFlights.size, 0);
+});
+
+test('queued reaction survives prior failure without leaking an old thread error', async () => {
+  const first = deferred(), calls = [], errors = [];
+  const c = domEnvironment((url, options) => {
+    calls.push({ url, options });
+    return calls.length === 1 ? first.promise : Promise.resolve({ messageId: 'message', reactions: [] });
+  });
+  c.showError = error => errors.push(error);
+  const message = { id: 'message', reactions: [] };
+  c.state.active = { id: 'A', messages: [message] };
+  const like = c.setMessageReaction('A', message, '👍');
+  const remove = c.setMessageReaction('A', message, null);
+  await flushTasks();
+  c.selectDraftRecipient({ userId: 'B', participantType: 'Client' });
+  first.reject(new Error('Old thread unavailable'));
+  await Promise.all([like, remove]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].options.method, 'DELETE');
+  assert.equal(errors.length, 0);
+  assert.equal(c.state.active, null);
+  assert.equal(c.state.draftTarget.userId, 'B');
+});
+
+for (const hiddenBy of ['closing the command center', 'hiding the document']) {
+  test(`${hiddenBy} during detail loading prevents a read acknowledgement`, async () => {
+    const detail = deferred(), calls = [];
+    const c = environment(url => {
+      calls.push(url);
+      assert.equal(url.includes('/Read?'), false, 'A hidden detail must not acknowledge a rendered boundary');
+      return detail.promise;
+    });
+    const opening = c.loadConversation('A', true);
+    if (hiddenBy === 'closing the command center') c.state.isOpen = false;
+    else c.document.hidden = true;
+    detail.resolve({ conversation: { id: 'A', messages: [{ id: 'not-viewed' }] } });
+    await opening;
+    assert.equal(calls.length, 1);
+    assert.equal(c.state.readAcknowledged.size, 0);
+  });
+}
+
+function submissionEnvironment(request) {
+  const c = environment(request);
+  Object.assign(c.state, { pendingSubmissions: new Map(), pendingSubmission: null, drafts: {}, draftTarget: null });
+  Object.assign(c.elements, { messageBody: { value: 'Submitted body' }, files: { files: [], value: '' }, sendButton: { disabled: false } });
+  c.FormData = FormData;
+  c.token = null;
+  c.renderSelectedFiles = () => {};
+  c.participantIdentityKey = (id, type) => `${type}:${id}`;
+  let identity = 0;
+  c.clientMessageId = () => `test-submission-${++identity}`;
+  for (const name of ['activeDraftKey', 'saveDraft', 'createSubmission', 'uploadAttachments', 'sendMessage'])
+    vm.runInContext(implementation(name), c);
+  return c;
+}
+
+test('double form submission shares the message and every attachment upload', async () => {
+  const acknowledgement = deferred(), upload = deferred(), calls = [];
+  const c = submissionEnvironment((url, options) => {
+    calls.push({ url, options });
+    if (url === '/Messaging/Conversations/A/Messages') return acknowledgement.promise;
+    if (url.endsWith('/Attachments')) return upload.promise;
+    if (url === '/Messaging/Conversations') return Promise.resolve({ conversations: [] });
+    return Promise.resolve({ conversation: { id: 'A', messages: [{ id: 'committed' }] } });
+  });
+  c.state.active = { id: 'A', messages: [] };
+  c.elements.files.files = [new Blob(['original attachment'], { type: 'text/plain' })];
+  const sending = c.sendMessage();
+  const submission = c.state.pendingSubmissions.get('conversation:A');
+  await c.sendMessage();
+  assert.equal(calls.filter(call => call.url.endsWith('/Messages')).length, 1);
+  acknowledgement.resolve({ message: { id: 'committed' } });
+  await flushTasks();
+  assert.equal(calls.filter(call => call.url.endsWith('/Attachments')).length, 1);
+  await c.sendMessage();
+  assert.equal(calls.filter(call => call.url.endsWith('/Attachments')).length, 1, 'An in-flight upload must not be sent again');
+  upload.resolve({});
+  await sending;
+  await flushTasks();
+  assert.equal(calls.filter(call => call.url.endsWith('/Messages')).length, 1);
+  assert.equal(calls.filter(call => call.url.endsWith('/Attachments')).length, 1);
+  assert.deepEqual(Array.from(submission.uploadedFileIndexes), [0]);
+  assert.equal(submission.sending, false);
+  assert.equal(c.state.pendingSubmissions.size, 0);
+});
+
+test('create acknowledgement after navigation retains canonical attachment retry ownership', async () => {
+  const acknowledgement = deferred(), upload = deferred(), calls = [];
+  const errors = [];
+  const c = submissionEnvironment((url, options) => {
+    calls.push({ url, options });
+    if (url === '/Messaging/Conversations' && options?.method === 'POST') return acknowledgement.promise;
+    if (url.endsWith('/Attachments')) return upload.promise;
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  c.showError = error => errors.push(error);
+  const originalTarget = { userId: 'A', participantType: 'Client', contactKey: 'typed-A' };
+  c.selectDraftRecipient(originalTarget);
+  const originalFile = new Blob(['owned attachment'], { type: 'text/plain' });
+  c.elements.files.files = [originalFile];
+  c.saveDraft();
+  const sending = c.sendMessage();
+  const originalKey = 'recipient:Client:A';
+  const submission = c.state.pendingSubmissions.get(originalKey);
+  c.selectDraftRecipient({ userId: 'B', participantType: 'Agent', contactKey: 'typed-B' });
+  c.elements.messageBody.value = 'New recipient draft';
+  const newFile = new Blob(['new attachment'], { type: 'text/plain' });
+  c.elements.files.files = [newFile];
+  c.saveDraft();
+  acknowledgement.resolve({ conversation: { id: 'created-A', messages: [
+    { id: 'committed-A', senderUserId: 'self', senderType: 'Client', body: 'Submitted body' }
+  ] } });
+  await flushTasks();
+  assert.equal(c.state.pendingSubmissions.get('conversation:created-A'), submission);
+  assert.equal(c.state.pendingSubmissions.get(originalKey), submission);
+  assert.equal(submission.messageId, 'committed-A');
+  assert.equal(submission.files[0], originalFile);
+  assert.equal(calls.filter(call => call.url.endsWith('/Attachments')).length, 1);
+  upload.reject(new Error('Attachment delivery failed'));
+  await sending;
+  assert.equal(c.state.pendingSubmissions.get('conversation:created-A'), submission, 'Known commit must remain retryable by conversation ID');
+  assert.equal(c.state.active, null);
+  assert.equal(c.state.draftTarget.userId, 'B');
+  assert.equal(c.elements.messageBody.value, 'New recipient draft');
+  assert.equal(c.elements.files.files[0], newFile);
+  assert.equal(c.state.drafts['recipient:Agent:B'], 'New recipient draft');
+  assert.equal(submission.sending, false);
+  assert.equal(errors.filter(Boolean).length, 1);
+});
