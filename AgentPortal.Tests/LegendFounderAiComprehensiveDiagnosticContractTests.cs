@@ -33,6 +33,25 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
     public Task ResourceEnabled_ResearchBoundary_ReportsActualGovernedOutcomeWithoutPromotion() =>
         ObserveResourceAsync("research");
 
+    [Theory]
+    [InlineData("ExplicitResourceDiagnosticOptIn", false, "research_public_authorization_invalid")]
+    [InlineData(LegendConnectResearchContracts.LockedEvaluationAuthorizationProvenance, true, "research_request_governed")]
+    public void ResourceResearchAuthorization_UsesExistingLockedEvaluatorContract(
+        string provenance, bool expectedValid, string expectedReason)
+    {
+        const string question = "What title is published at https://www.rfc-editor.org/rfc/rfc9110?";
+        var decision = LegendConnectOperations.DecideResearchNeeded(
+            question, "en", null, new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc));
+        var request = LegendConnectResearchRequestFactory.Create(question, decision,
+            new(true, provenance, null, decision.AccessClass, true, true), null, null, 0);
+
+        Assert.True(decision.ResearchRequired);
+        Assert.Equal(LegendConnectResearchAccessClass.PublicReadOnly, decision.AccessClass);
+        Assert.Equal(expectedValid, LegendConnectOperations.TryValidateResearchRequest(request, out var reason));
+        Assert.Equal(expectedReason, reason);
+        Assert.True(request.Authorization.IsReadOnly && request.Authorization.ZeroWrite);
+    }
+
     private static async Task ObserveResourceAsync(string resource)
     {
         var startedUtc = DateTime.UtcNow;
@@ -177,7 +196,7 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
                 Assert.True(decision.ResearchRequired, decision.ReasonCode);
                 Assert.Equal(LegendConnectResearchAccessClass.PublicReadOnly, decision.AccessClass);
                 var request = LegendConnectResearchRequestFactory.Create(question, decision,
-                    new(true, "ExplicitResourceDiagnosticOptIn", null, decision.AccessClass, true, true), null, null, 0);
+                    new(true, LegendConnectResearchContracts.LockedEvaluationAuthorizationProvenance, null, decision.AccessClass, true, true), null, null, 0);
                 var blocked = await StageAsync("native_only_execution", () => operations.ExecuteResearchAsync(
                     request, deadline.Token, LegendConnectExternalProviderPolicy.NativeOnly));
                 Assert.Equal("native_only_external_research_forbidden", blocked.Failure?.ReasonCode);
@@ -201,6 +220,10 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
                     await operations.RecordResearchObservabilityAsync(outcome, deadline.Token);
                     return true;
                 });
+                Assert.Equal(LegendConnectResearchContracts.LockedEvaluationAuthorizationProvenance,
+                    outcome.Provenance.AuthorizationProvenance);
+                Assert.Null(outcome.Retention);
+                Assert.Null(LegendConnectResearchRetentionContracts.CreateExternalObservation(outcome));
                 Assert.NotEqual(LegendConnectResearchOutcomeState.Failure, outcome.State);
                 Assert.True(outcome.Provenance.IsReadOnly && outcome.Provenance.ZeroWrite);
                 Assert.NotEmpty(outcome.Session.SearchQueryReceipts ?? []);
