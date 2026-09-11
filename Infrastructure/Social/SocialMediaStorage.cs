@@ -362,9 +362,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
 
         try
         {
-            var download = await blobClient.DownloadStreamingAsync(
-                cancellationToken: cancellationToken);
-            return SocialMediaReadResult.Available(download.Value.Content);
+            return SocialMediaReadResult.Available(
+                await OpenBlobDeliveryReadAsync(blobClient, cancellationToken));
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -605,6 +604,19 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
         }
     }
 
+    private static Task<Stream> OpenBlobDeliveryReadAsync(
+        BlobClient blobClient, CancellationToken cancellationToken) =>
+        // MVC needs a seekable stream to honor HTTP byte ranges. OpenRead uses
+        // blob properties for Length and fetches only bounded ranges on demand;
+        // the captured ETag prevents mixing versions across subsequent seeks.
+        // Reuse the existing 80 KiB copy bound rather than buffering a whole
+        // media object. Sequential reads trade more blob requests for that
+        // fixed per-reader memory/overfetch bound.
+        blobClient.OpenReadAsync(new BlobOpenReadOptions(allowModifications: false)
+        {
+            BufferSize = CopyBufferSize
+        }, cancellationToken);
+
     private async Task<SocialMediaReadResult> MigrateLegacyFileAsync(
         string storageKey,
         BlobClient blobClient,
@@ -630,15 +642,13 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVide
                 overwrite: false,
                 cancellationToken: cancellationToken);
 
-            var download = await blobClient.DownloadStreamingAsync(
-                cancellationToken: cancellationToken);
-            return SocialMediaReadResult.Available(download.Value.Content);
+            return SocialMediaReadResult.Available(
+                await OpenBlobDeliveryReadAsync(blobClient, cancellationToken));
         }
         catch (RequestFailedException ex) when (ex.Status is 409 or 412)
         {
-            var download = await blobClient.DownloadStreamingAsync(
-                cancellationToken: cancellationToken);
-            return SocialMediaReadResult.Available(download.Value.Content);
+            return SocialMediaReadResult.Available(
+                await OpenBlobDeliveryReadAsync(blobClient, cancellationToken));
         }
         catch (Exception ex)
             when (ex is RequestFailedException or IOException or UnauthorizedAccessException)
