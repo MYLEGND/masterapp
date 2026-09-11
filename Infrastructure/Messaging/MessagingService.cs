@@ -4777,38 +4777,13 @@ internal sealed partial class MessagingService : IMessagingService
         }
     }
 
-    private async Task<string?> ResolveRoutingSourceLanguageAsync(
+    private Task<string?> ResolveRoutingSourceLanguageAsync(
         MessageTranslationSource message,
         CancellationToken cancellationToken)
     {
-        // The language of the actual message body is authoritative for routing.
-        // A user's preferred communication language describes presentation
-        // preference; it does not constrain which language that user may type.
-        //
-        // Preserve the sender preference only as a fail-closed fallback when
-        // the body language cannot be established through the existing
-        // detection/metadata authority.
-        var detectedMessageLanguage = await ResolveDetectedMessageLanguageAsync(
-            message,
-            cancellationToken);
-        if (detectedMessageLanguage is not null)
-            return detectedMessageLanguage;
-
-        var senderPreferredLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            message.SenderPreferredLanguage,
-            cancellationToken);
-        if (senderPreferredLanguage is not null)
-            return senderPreferredLanguage;
-
-        if (!string.IsNullOrWhiteSpace(message.SenderUserId) &&
-            !string.IsNullOrWhiteSpace(message.SenderType))
-        {
-            return await _controlledResources.GetCanonicalPreferredLanguageAsync(
-                new MessagingActor(message.SenderUserId, message.SenderType),
-                cancellationToken);
-        }
-
-        return null;
+        // Communication preference is a presentation target, never evidence of
+        // the language of this body. Unknown detection must remain unavailable.
+        return ResolveDetectedMessageLanguageAsync(message, cancellationToken);
     }
 
     private async Task<string?> ResolveDetectedMessageLanguageAsync(

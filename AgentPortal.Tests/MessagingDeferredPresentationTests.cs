@@ -109,6 +109,52 @@ public sealed partial class MessagingServiceTests
         Assert.Equal("Bonjou.", await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
     }
 
+    [Fact]
+    public async Task DeferredNotification_DetectionFailureCannotUseMatchingProfilePreferencesAsBodyEvidence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1", ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation, IsActive = true,
+            GrantedUtc = DateTime.UtcNow, GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.AddRange(
+            new MobileProfileSettings
+            {
+                ProfileId = agentProfile.Id, ParticipantType = MessagingParticipantTypes.Agent,
+                PreferredCommunicationLanguage = "en"
+            },
+            new MobileProfileSettings
+            {
+                ProfileId = clientProfile.Id, ParticipantType = MessagingParticipantTypes.Client,
+                PreferredCommunicationLanguage = "en"
+            });
+        await db.SaveChangesAsync();
+        var service = CreateService(db, new FailingTranslationService());
+        var sender = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var recipient = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            sender, recipient.UserId, recipient.ParticipantType));
+        const string body = "Mwen konfime randevou ou pou demen.";
+        var sent = await service.SendMessageAsync(new SendMessagingMessageCommand(
+            sender, opened.Conversation!.Id, body));
+        Assert.True(sent.Succeeded);
+        var source = Assert.Single(await db.InternalMessages.ToListAsync());
+        Assert.Equal("en", source.SenderPreferredLanguage);
+        Assert.Null(source.OriginalLanguage);
+        var notification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        // Before the fix this returned the raw Creole body as a ready English
+        // presentation solely because sender and recipient preferences matched.
+        Assert.Null(await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
+        Assert.Equal(body, notification.Detail);
+        Assert.Null(source.OriginalLanguage);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+    }
+
     private sealed class DeferredPushProbe : IApplePushGateway, IFirebasePushGateway
     {
         public List<string> Bodies { get; } = new();
