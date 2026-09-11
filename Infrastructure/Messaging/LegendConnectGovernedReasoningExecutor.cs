@@ -2872,10 +2872,8 @@ internal sealed class LegendGovernedComputedStructureReceipt
                 string.IsNullOrWhiteSpace(relation.SourceDimension) || string.IsNullOrWhiteSpace(relation.TargetDimension) ||
                 !resultFrame.ContainsKey(relation.SourceDimension) || !resultFrame.ContainsKey(relation.TargetDimension))
                 return null;
-            var coordinate = "rel_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-                string.Join("|", "meaning-graph-structure|v1", relation.RelationKind,
-                    relation.SourceDimension, relation.TargetDimension, relation.ClauseKey ?? string.Empty))))
-                .ToLowerInvariant()[..32];
+            var coordinate = LegendConnectCurriculumService.StructuralRelationFrameDimension(relation.RelationKind,
+                relation.SourceDimension, relation.TargetDimension, relation.ClauseKey);
             if (!resultFrame.TryGetValue(coordinate, out var value) || value != "present")
                 return null;
             coordinates.Add(coordinate);
