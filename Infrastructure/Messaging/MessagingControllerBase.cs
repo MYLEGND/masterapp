@@ -123,13 +123,14 @@ public abstract class MessagingControllerBase : Controller
     }
 
     [HttpGet("/Messaging/Conversations/{conversationId:guid}")]
-    public async Task<IActionResult> Conversation(Guid conversationId)
+    public async Task<IActionResult> Conversation(Guid conversationId, DateTime? beforeUtc = null, int take = 60)
     {
         var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
         if (actor is null)
             return Forbid();
 
-        var result = await _messagingService.GetConversationAsync(actor, conversationId, HttpContext.RequestAborted);
+        var result = await _messagingService.GetConversationPageAsync(actor, conversationId,
+            new MessagingConversationMessagePageQuery(beforeUtc, Math.Clamp(take, 1, 80)), HttpContext.RequestAborted);
         return result.Succeeded ? Ok(result) : Failure(result.ErrorCode, result.ErrorMessage);
     }
 

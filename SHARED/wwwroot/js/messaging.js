@@ -59,6 +59,13 @@
     searchTimer: null,
     searchRequestId: 0,
     inboxRequestId: 0,
+    inboxFlight: null,
+    inboxDirty: false,
+    detailFlights: new Map(),
+    readFlights: new Map(),
+    readAcknowledged: new Map(),
+    requestedConversationId: null,
+    navigationVersion: 0,
     isSearchingContacts: false,
     searchResultNodes: new Map(),
     searchStatusNode: null,
@@ -70,7 +77,8 @@
     isJourneyOpen: false,
     journeyDashboard: null,
     lastTrigger: null,
-    pendingSubmission: null
+    pendingSubmission: null,
+    pendingSubmissions: new Map()
   };
   syncRecipientScopeControls();
 
@@ -229,6 +237,8 @@
     state.recipientMatchesQuery = '';
     state.recipientsLoaded = false;
     state.searchRequestId += 1;
+    state.navigationVersion += 1;
+    state.requestedConversationId = null;
     state.pendingSubmission = null;
     elements.search.value = '';
     elements.newMessages.hidden = true;
@@ -880,6 +890,113 @@
     return elements.messages.scrollHeight - elements.messages.scrollTop - elements.messages.clientHeight < 96;
   }
 
+  async function setMessageReaction(conversationId, message, emoji) {
+    try {
+      const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Messages/${encodeURIComponent(message.id)}/Reaction`, {
+        method: emoji ? 'PUT' : 'DELETE',
+        ...(emoji ? { body: JSON.stringify({ emoji }) } : {})
+      });
+      if (state.active?.id !== conversationId) return;
+      state.active = { ...state.active, messages: state.active.messages.map(item =>
+        item.id === message.id ? { ...item, reactions: result.reactions || [] } : item) };
+      renderConversation();
+    } catch (error) { showError(error.message); }
+  }
+
+  function appendMessageInteractions(card, conversation, message) {
+    const reactions = document.createElement('div');
+    reactions.className = 'messaging-reactions';
+    (message.reactions || []).forEach(reaction => {
+      const button = createTextElement('button', 'messaging-reaction', `${reaction.emoji} ${reaction.count}`);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(reaction.reactedByCurrentActor));
+      button.setAttribute('aria-label', `${reaction.emoji}, ${reaction.count} reactions`);
+      button.addEventListener('click', () => setMessageReaction(conversation.id, message,
+        reaction.reactedByCurrentActor ? null : reaction.emoji));
+      reactions.append(button);
+    });
+    const menu = document.createElement('details');
+    menu.className = 'messaging-message-actions';
+    const trigger = createTextElement('summary', '', 'React');
+    menu.append(trigger);
+    const palette = document.createElement('div');
+    palette.className = 'messaging-reaction-palette';
+    palette.setAttribute('aria-label', 'Choose a reaction');
+    ['❤️', '👍', '👎', '😂', '‼️', '❓'].forEach(emoji => {
+      const button = createTextElement('button', 'messaging-reaction', emoji);
+      button.type = 'button';
+      button.setAttribute('aria-label', `React ${emoji}`);
+      button.addEventListener('click', () => setMessageReaction(conversation.id, message, emoji));
+      palette.append(button);
+    });
+    const picker = document.createElement('input');
+    picker.type = 'text';
+    picker.maxLength = 32;
+    picker.hidden = true;
+    picker.placeholder = 'Choose an emoji';
+    picker.setAttribute('aria-label', 'Additional emoji reaction');
+    const plus = createTextElement('button', 'messaging-reaction', '+');
+    plus.type = 'button';
+    plus.setAttribute('aria-label', 'Choose another emoji');
+    plus.addEventListener('click', () => { picker.hidden = false; picker.focus(); });
+    picker.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && picker.value.trim()) {
+        event.preventDefault();
+        setMessageReaction(conversation.id, message, picker.value.trim());
+      }
+    });
+    palette.append(plus, picker);
+    menu.append(palette);
+    reactions.append(menu);
+    card.append(reactions);
+    card.addEventListener('dblclick', event => {
+      if (event.target.closest('a, button, input, summary, video, audio')) return;
+      setMessageReaction(conversation.id, message, '👍');
+    });
+    card.addEventListener('contextmenu', event => {
+      if (event.target.closest('a, button, input, video, audio') || window.getSelection()?.toString()) return;
+      event.preventDefault();
+      menu.open = true;
+      trigger.focus();
+    });
+    let hold;
+    card.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' || event.target.closest('a, button, input, summary')) return;
+      hold = window.setTimeout(() => { menu.open = true; }, 500);
+    });
+    ['pointerup', 'pointercancel', 'pointermove'].forEach(name => card.addEventListener(name, () => window.clearTimeout(hold)));
+  }
+
+  function appendSharedContent(card, content) {
+    if (!content) return;
+    const shared = document.createElement('div');
+    shared.className = 'messaging-shared-content';
+    if (content.status !== 'available') {
+      shared.append(createTextElement('p', '', 'This shared content is unavailable.'));
+    } else {
+      shared.append(createTextElement('strong', '', content.authorDisplayName || 'Shared content'));
+      if (content.body) shared.append(createTextElement('p', '', content.body));
+      // The canonical resolver rechecks visibility and serves protected media.
+      const link = createTextElement('a', '', `Open ${content.contentType || 'shared content'}`);
+      link.href = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
+      shared.append(link);
+    }
+    card.append(shared);
+  }
+
+  function latestReadMessageIndex(conversation, messages) {
+    const readers = (conversation.readReceipts?.readers || []).filter(reader =>
+      !isCurrentParticipant(reader.userId, reader.participantType));
+    let latest = -1;
+    messages.forEach((message, index) => {
+      if (!isCurrentParticipant(message.senderUserId, message.senderType)) return;
+      const sent = parseUtcTimestamp(message.sentUtc)?.getTime();
+      if (sent != null && readers.some(reader =>
+        (parseUtcTimestamp(reader.readThroughUtc)?.getTime() || 0) >= sent)) latest = index;
+    });
+    return latest;
+  }
+
   function renderConversation(shouldScrollToBottom = false) {
     const conversation = state.active;
     const target = conversation ? currentCounterparty(conversation) : state.draftTarget;
@@ -909,8 +1026,16 @@
       elements.mute.textContent = conversation.isMuted ? 'Unmute' : 'Mute';
       elements.closeConversation.textContent = isClosed ? 'Reopen' : 'Close';
 
+      if (conversation.hasOlderMessages) {
+        const older = createTextElement('button', 'messaging-history-button', 'Load earlier messages');
+        older.type = 'button';
+        older.addEventListener('click', () => loadOlderMessages(older));
+        elements.messages.append(older);
+      }
+      const visibleMessages = (conversation.messages || []).filter(message => !message.isDeleted);
+      const latestReadIndex = latestReadMessageIndex(conversation, visibleMessages);
       let previousDay = '';
-      (conversation.messages || []).filter(message => !message.isDeleted).forEach(message => {
+      visibleMessages.forEach((message, messageIndex) => {
         const label = dayLabel(message.sentUtc);
         if (label && label !== previousDay) {
           elements.messages.append(createTextElement('p', 'messaging-day-divider', label));
@@ -925,16 +1050,14 @@
         meta.className = 'messaging-message-meta';
         meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId, message.senderType)));
         meta.append(createTextElement('time', '', formatMessageTime(message.sentUtc)));
-        if (isOwn) {
-          const sent = parseUtcTimestamp(message.sentUtc)?.getTime();
-          const read = (conversation.readReceipts?.readers || []).some(reader =>
-            !isCurrentParticipant(reader.userId, reader.participantType) &&
-            sent != null && (parseUtcTimestamp(reader.readThroughUtc)?.getTime() || 0) >= sent);
-          meta.append(createTextElement('span', '', read ? 'Read' : 'Sent'));
+        if (isOwn && messageIndex >= latestReadIndex) {
+          const read = messageIndex === latestReadIndex;
+          meta.append(createTextElement('span', `messaging-receipt is-${read ? 'read' : 'sent'}`, read ? 'Read' : 'Sent'));
         }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
         card.append(meta);
         card.append(createTextElement('p', 'messaging-message-body', message.body));
+        appendSharedContent(card, message.sharedContent);
 
         if (message.attachments?.length) {
           const attachments = document.createElement('div');
@@ -957,6 +1080,7 @@
           });
           card.append(attachments);
         }
+        appendMessageInteractions(card, conversation, message);
         elements.messages.append(card);
       });
       restoreMessageScroll(conversation.id, shouldScrollToBottom);
@@ -1141,36 +1265,91 @@
   }
 
   async function refreshList() {
-    const requestId = ++state.inboxRequestId;
-    const result = await request('/Messaging/Conversations');
-    if (requestId !== state.inboxRequestId) return;
-    state.conversations = result.conversations || [];
-    setUnreadCount();
-    renderConversations();
-    renderSearchResults();
+    state.inboxDirty = true;
+    if (state.inboxFlight) return state.inboxFlight;
+    state.inboxFlight = (async () => {
+      do {
+        state.inboxDirty = false;
+        const result = await request('/Messaging/Conversations');
+        state.conversations = result.conversations || [];
+        setUnreadCount();
+        renderConversations();
+        renderSearchResults();
+      } while (state.inboxDirty);
+    })();
+    try { await state.inboxFlight; }
+    finally { state.inboxFlight = null; }
+  }
+
+  async function acknowledgeVisibleConversation(conversation) {
+    const id = conversation.id;
+    const latest = conversation.messages?.at(-1)?.id;
+    if (!latest || state.readAcknowledged.get(id) === latest) return;
+    if (state.readFlights.has(id)) {
+      await state.readFlights.get(id);
+      if (state.active?.id === id) return acknowledgeVisibleConversation(state.active);
+      return;
+    }
+    const flight = request(`/Messaging/Conversations/${encodeURIComponent(id)}/Read`, { method: 'POST' });
+    state.readFlights.set(id, flight);
+    try {
+      await flight;
+      state.readAcknowledged.set(id, latest);
+    } finally { state.readFlights.delete(id); }
   }
 
   async function loadConversation(conversationId, markRead, shouldScrollToBottom = false) {
+    if (state.requestedConversationId !== conversationId) {
+      state.requestedConversationId = conversationId;
+      state.navigationVersion += 1;
+    }
+    const version = state.navigationVersion;
     if (state.active?.id !== conversationId) elements.newMessages.hidden = true;
     if (state.active?.id) {
       state.scrollPositions[state.active.id] = elements.messages.scrollTop;
       writeSession('scroll-positions', state.scrollPositions);
     }
-    const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}`);
+    let flight = state.detailFlights.get(conversationId);
+    if (!flight) {
+      flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`);
+      state.detailFlights.set(conversationId, flight);
+      flight.finally(() => {
+        if (state.detailFlights.get(conversationId) === flight) state.detailFlights.delete(conversationId);
+      }).catch(() => {});
+    }
+    const result = await flight;
+    if (version !== state.navigationVersion || state.requestedConversationId !== conversationId) return;
     state.active = result.conversation;
     state.draftTarget = null;
-    state.pendingSubmission = null;
+    // A refresh cannot acknowledge or discard an uncertain send transaction.
     writeSession('last-conversation', conversationId);
     renderConversation(shouldScrollToBottom);
     renderConversations();
     if (markRead) {
-      try {
-        await request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Read`, { method: 'POST' });
-        await refreshList();
-      } catch (error) {
-        showError(error.message);
-      }
+      try { await acknowledgeVisibleConversation(state.active); }
+      catch (error) { if (version === state.navigationVersion) showError(error.message); }
     }
+  }
+
+  async function loadOlderMessages(button) {
+    const conversation = state.active;
+    const oldest = conversation?.messages?.[0]?.sentUtc;
+    if (!oldest || !conversation.hasOlderMessages) return;
+    const version = state.navigationVersion;
+    button.disabled = true;
+    try {
+      const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversation.id)}?take=60&beforeUtc=${encodeURIComponent(oldest)}`);
+      if (version !== state.navigationVersion || state.active?.id !== conversation.id) return;
+      const existing = state.active.messages || [];
+      const ids = new Set(existing.map(message => message.id));
+      const older = (result.conversation.messages || []).filter(message => !ids.has(message.id));
+      const height = elements.messages.scrollHeight;
+      const top = elements.messages.scrollTop;
+      state.active = { ...state.active, messages: [...older, ...existing], hasOlderMessages: result.conversation.hasOlderMessages };
+      renderConversation();
+      elements.messages.scrollTop = top + elements.messages.scrollHeight - height;
+    } catch (error) { showError(error.message); }
+    finally { button.disabled = false; }
   }
 
   async function loadRecipients() {
@@ -1220,7 +1399,7 @@
   }
 
   async function uploadAttachments(messageId, submission) {
-    const files = Array.from(elements.files.files || []);
+    const files = submission.files;
     for (let index = 0; index < files.length; index += 1) {
       if (submission.uploadedFileIndexes.includes(index)) continue;
       const formData = new FormData();
@@ -1236,15 +1415,22 @@
 
   function createSubmission(body) {
     const key = activeDraftKey();
-    if (state.pendingSubmission?.key === key && state.pendingSubmission.body === body) return state.pendingSubmission;
+    const retained = state.pendingSubmissions.get(key);
+    if (retained && retained.body === body) return retained;
+    if (retained?.messageId && retained.uploadedFileIndexes.length < retained.files.length)
+      throw new Error('Retry the pending attachment delivery before sending another message.');
     state.pendingSubmission = {
       key,
       body,
+      conversationId: state.active?.id || null,
+      target: state.draftTarget,
+      files: Array.from(elements.files.files || []),
       clientMessageId: clientMessageId(),
       messageId: null,
       uploadedFileIndexes: [],
       draftKeys: [key]
     };
+    state.pendingSubmissions.set(key, state.pendingSubmission);
     return state.pendingSubmission;
   }
 
@@ -1252,19 +1438,28 @@
     const body = elements.messageBody.value.trim();
     if (!body || (!state.active && !state.draftTarget)) return;
 
-    const submission = createSubmission(body);
+    let submission;
+    try { submission = createSubmission(body); }
+    catch (error) { showError(error.message); return; }
+    const navigationVersion = state.navigationVersion;
     elements.sendButton.disabled = true;
     showError('');
     try {
       if (!submission.messageId) {
-        if (state.active) {
-          const result = await request(`/Messaging/Conversations/${encodeURIComponent(state.active.id)}/Messages`, {
+        if (submission.conversationId) {
+          const result = await request(`/Messaging/Conversations/${encodeURIComponent(submission.conversationId)}/Messages`, {
             method: 'POST',
             body: JSON.stringify({ body, clientMessageId: submission.clientMessageId })
           });
           submission.messageId = result.message?.id;
+          if (state.active?.id === submission.conversationId && result.message) {
+            const messages = state.active.messages || [];
+            if (!messages.some(message => message.id === result.message.id)) messages.push(result.message);
+            state.active = { ...state.active, messages };
+            renderConversation(true);
+          }
         } else {
-          const target = state.draftTarget;
+          const target = submission.target;
           const result = await request('/Messaging/Conversations', {
             method: 'POST',
             body: JSON.stringify({
@@ -1278,25 +1473,39 @@
           submission.messageId = [...(created?.messages || [])]
             .reverse()
             .find(message => isCurrentParticipant(message.senderUserId, message.senderType) && message.body === body)?.id || null;
-          state.active = created;
-          state.draftTarget = null;
-          submission.key = activeDraftKey();
-          if (!submission.draftKeys.includes(submission.key)) submission.draftKeys.push(submission.key);
+          submission.conversationId = created?.id;
+          if (navigationVersion === state.navigationVersion && state.draftTarget === target) {
+            state.active = created;
+            state.draftTarget = null;
+            state.requestedConversationId = created?.id;
+            submission.key = activeDraftKey();
+            state.pendingSubmissions.set(submission.key, submission);
+            if (!submission.draftKeys.includes(submission.key)) submission.draftKeys.push(submission.key);
+          }
         }
       }
 
       if (!submission.messageId) throw new Error('The message was created, but its attachment target could not be determined.');
       await uploadAttachments(submission.messageId, submission);
-      const sentConversationId = state.active?.id;
-      submission.draftKeys.forEach(key => delete state.drafts[key]);
+      const stillSelected = navigationVersion === state.navigationVersion && state.active?.id === submission.conversationId;
+      const unchangedBody = elements.messageBody.value.trim() === submission.body;
+      submission.draftKeys.forEach(key => {
+        if (state.drafts[key] === submission.body) delete state.drafts[key];
+        if (state.pendingSubmissions.get(key) === submission) state.pendingSubmissions.delete(key);
+      });
       writeSession('drafts', state.drafts);
-      elements.messageBody.value = '';
-      elements.files.value = '';
+      if (stillSelected && unchangedBody) elements.messageBody.value = '';
+      const selectedFiles = Array.from(elements.files.files || []);
+      if (stillSelected && selectedFiles.length === submission.files.length && selectedFiles.every((file, index) => file === submission.files[index]))
+        elements.files.value = '';
       renderSelectedFiles();
-      state.pendingSubmission = null;
-      if (sentConversationId) await loadConversation(sentConversationId, false);
-      await refreshList();
-      renderConversation(true);
+      if (state.pendingSubmission === submission) state.pendingSubmission = null;
+      if (stillSelected) {
+        saveDraft();
+        renderConversation(true);
+        loadConversation(submission.conversationId, false).catch(error => showError(error.message));
+      }
+      refreshList().catch(() => {});
     } catch (error) {
       showError(error.message);
     } finally {
@@ -1338,13 +1547,15 @@
     state.realtime = connection;
     const refreshForEvent = async (event, incomingMessage = false) => {
       try {
-        await refreshList();
-        if (state.active && event?.conversationId === state.active.id) {
+        const listRefresh = refreshList();
+        if (state.active && event?.conversationId === state.active.id &&
+            (!state.requestedConversationId || state.requestedConversationId === state.active.id)) {
           const shouldScrollToBottom = isNearMessageBottom();
           const viewed = incomingMessage && state.isOpen && !document.hidden && shouldScrollToBottom;
           await loadConversation(state.active.id, viewed, shouldScrollToBottom);
           if (!shouldScrollToBottom) elements.newMessages.hidden = false;
         }
+        await listRefresh;
       } catch (_) { }
     };
     connection.on('messageReceived', event => refreshForEvent(event, true));

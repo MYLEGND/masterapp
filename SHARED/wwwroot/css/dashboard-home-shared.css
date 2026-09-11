@@ -6068,6 +6068,38 @@ header .legend-global-nav .container-fluid {
     color: #c8ffdf;
 }
 
+.messaging-receipt {
+    display: inline-flex;
+    border-radius: 999px;
+    padding: 0.12rem 0.42rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+.messaging-receipt.is-read { color: #d9ffe9; background: #135c39; }
+.messaging-receipt.is-sent { color: #fff0f1; background: #912c38; }
+.messaging-history-button { align-self: center; }
+
+.messaging-reactions, .messaging-reaction-palette {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
+}
+.messaging-reaction {
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+.messaging-reaction[aria-pressed="true"] { background: rgba(255, 255, 255, 0.2); }
+.messaging-message-actions summary { cursor: pointer; font-size: 0.75rem; }
+.messaging-shared-content { border-left: 3px solid currentColor; padding: 0.5rem; margin-top: 0.5rem; }
+.messaging-shared-content a { color: inherit; text-decoration: underline; }
+
 .messaging-message-edited {
     opacity: 0.75;
 }

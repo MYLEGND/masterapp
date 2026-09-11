@@ -441,11 +441,13 @@ internal sealed partial class MessagingService : IMessagingService
         bool applyTranslation = true,
         Guid? acknowledgedMessageId = null)
     {
+        using var timing = new ProjectionTiming(_logger, "conversation");
         actor = NormalizeActor(actor);
         var includeGroupImage = messagePage?.IncludeGroupImage ?? true;
         if (!await IsValidActorAsync(actor, cancellationToken))
             return MessagingConversationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
 
+        timing.Next("conversation_query");
         var conversation = await (await AuthorizedConversationsQueryAsync(actor, cancellationToken))
             .Where(x => x.Id == conversationId)
             .Select(x => new ConversationDetailRow(
@@ -477,6 +479,7 @@ internal sealed partial class MessagingService : IMessagingService
         if (conversation is null)
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
 
+        timing.Next("participants_query");
         var participants = await _db.MessageConversationParticipants
             .AsNoTracking()
             .Where(x => x.ConversationId == conversationId && x.IsActive)
@@ -504,6 +507,7 @@ internal sealed partial class MessagingService : IMessagingService
         var projectionMessages = acknowledgedMessageId is Guid acknowledgmentId
             ? messagesQuery.Where(message => message.Id == acknowledgmentId)
             : messagesQuery;
+        timing.Next("messages_query");
         var newestMessages = await projectionMessages
             .OrderByDescending(message => message.SentUtc)
             .ThenByDescending(message => message.Id)
@@ -536,6 +540,7 @@ internal sealed partial class MessagingService : IMessagingService
             .OrderBy(message => message.SentUtc)
             .ThenBy(message => message.Id)
             .ToList();
+        timing.Next("history_query");
         var hasOlderMessages = false;
         if (take.HasValue && messages.Count > 0)
         {
@@ -545,6 +550,7 @@ internal sealed partial class MessagingService : IMessagingService
         }
 
         var messageIds = messages.Select(message => message.Id).ToArray();
+        timing.Next("attachments_query");
         var attachments = messageIds.Length == 0
             ? new List<AttachmentRow>()
             : await _db.MessageAttachments
@@ -568,6 +574,7 @@ internal sealed partial class MessagingService : IMessagingService
                     message.Reply.SenderType)))
             .ToArray();
         var hostIdentity = GroupMeetingHostReference(conversation);
+        timing.Next("participant_projection");
         var displayNames = await LoadDisplayNamesAsync(
             participants,
             hostIdentity is null
@@ -596,6 +603,7 @@ internal sealed partial class MessagingService : IMessagingService
                     request.ResourceType))
                 .ToListAsync(cancellationToken))
                 .ToDictionary(request => request.Id);
+        timing.Next("membership");
         var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var currentParticipant = participants.FirstOrDefault(x =>
             IsCurrentActor(x.UserId, x.ParticipantType, actorUserIds, actor.ParticipantType));
@@ -603,6 +611,7 @@ internal sealed partial class MessagingService : IMessagingService
             conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
             !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken);
 
+        timing.Next("translation_presentation");
         var messageSummaries = messages
             .Select(message => ToMessageSummary(message, attachments, reviews))
             .ToList();
@@ -610,6 +619,7 @@ internal sealed partial class MessagingService : IMessagingService
             messageSummaries = await ApplyTranslationPresentationAsync(
                 actor, messageSummaries, messages, cancellationToken);
 
+        timing.Next("capabilities");
         var isGroupOwner =
             conversation.ConversationType == MessagingConversationTypes.Group &&
             IsSameParticipant(
@@ -645,6 +655,7 @@ internal sealed partial class MessagingService : IMessagingService
             participantSummaries,
             displayNames);
 
+        timing.Next("receipt_projection");
         var detail = new MessagingConversationDetail(
             conversation.Id,
             conversation.ConversationType,
@@ -669,6 +680,7 @@ internal sealed partial class MessagingService : IMessagingService
             isGroupOwner && conversation.Purpose is null,
             hasOlderMessages) with { ReadReceipts = await ReadReceiptSettingsAsync(actor, conversationId, cancellationToken) };
 
+        timing.Complete();
         return new MessagingConversationResult(true, null, null, detail);
     }
 
@@ -4474,6 +4486,15 @@ internal sealed partial class MessagingService : IMessagingService
         if (targetLanguage is null || summaries.Count == 0)
             return summaries.ToList();
 
+        // One page-scoped cache read, including quoted originals. Never run EF calls
+        // concurrently on this scoped context or retain presentation across actors.
+        var translationIds = sourceMessages.Select(message => message.Id)
+            .Concat(sourceMessages.Where(message => message.Reply is not null)
+                .Select(message => message.Reply!.Id)).Distinct().ToArray();
+        var pageCache = await _db.MessageTranslations.AsNoTracking()
+            .Where(row => translationIds.Contains(row.InternalMessageId) && row.TargetLanguage == targetLanguage)
+            .ToDictionaryAsync(row => row.InternalMessageId, cancellationToken);
+        var presentationCache = new Dictionary<Guid, CachedMessageTranslation?>();
         var sources = sourceMessages.ToDictionary(message => message.Id);
         var presented = new List<MessagingMessageSummary>(summaries.Count);
         foreach (var summary in summaries)
@@ -4488,7 +4509,9 @@ internal sealed partial class MessagingService : IMessagingService
                     ToTranslationSource(source),
                     targetLanguage,
                     actor,
-                    cancellationToken);
+                    cancellationToken,
+                    pageCache: pageCache,
+                    presentationCache: presentationCache);
                 if (translation is not null)
                 {
                     presentation = presentation with
@@ -4508,7 +4531,9 @@ internal sealed partial class MessagingService : IMessagingService
                 source,
                 actor,
                 targetLanguage,
-                cancellationToken));
+                cancellationToken,
+                pageCache,
+                presentationCache));
         }
 
         return presented;
@@ -4519,7 +4544,9 @@ internal sealed partial class MessagingService : IMessagingService
         MessageDetailRow? source,
         MessagingActor actor,
         string targetLanguage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<Guid, MessageTranslation> pageCache,
+        Dictionary<Guid, CachedMessageTranslation?> presentationCache)
     {
         if (summary.Reply is null ||
             source?.Reply is null ||
@@ -4537,7 +4564,9 @@ internal sealed partial class MessagingService : IMessagingService
             ToTranslationSource(source.Reply),
             targetLanguage,
             actor,
-            cancellationToken);
+            cancellationToken,
+            pageCache: pageCache,
+            presentationCache: presentationCache);
         return translation is null
             ? summary
             : summary with { Reply = summary.Reply with { Body = translation.TranslatedText } };
@@ -4548,7 +4577,26 @@ internal sealed partial class MessagingService : IMessagingService
         string targetLanguage,
         MessagingActor billingAccount,
         CancellationToken cancellationToken,
-        string? resolvedSourceLanguage = null)
+        string? resolvedSourceLanguage = null,
+        IReadOnlyDictionary<Guid, MessageTranslation>? pageCache = null,
+        Dictionary<Guid, CachedMessageTranslation?>? presentationCache = null)
+    {
+        if (presentationCache is not null && presentationCache.TryGetValue(message.Id, out var presented))
+            return presented;
+        var result = await GetOrCreateMessageTranslationCoreAsync(message, targetLanguage,
+            billingAccount, cancellationToken, resolvedSourceLanguage, pageCache);
+        if (presentationCache is not null)
+            presentationCache[message.Id] = result;
+        return result;
+    }
+
+    private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationCoreAsync(
+        MessageTranslationSource message,
+        string targetLanguage,
+        MessagingActor billingAccount,
+        CancellationToken cancellationToken,
+        string? resolvedSourceLanguage,
+        IReadOnlyDictionary<Guid, MessageTranslation>? pageCache)
     {
         var sourceLanguage = resolvedSourceLanguage ?? await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
         if (sourceLanguage is null)
@@ -4564,7 +4612,16 @@ internal sealed partial class MessagingService : IMessagingService
         if (local is not null)
             return new CachedMessageTranslation(local.TranslatedText, sourceLanguage, local.Provider);
 
-        var cached = await _db.MessageTranslations
+        CachedMessageTranslation? cached;
+        if (pageCache is not null)
+        {
+            cached = pageCache.TryGetValue(message.Id, out var retained)
+                ? new CachedMessageTranslation(retained.TranslatedText, sourceLanguage, retained.Provider)
+                : null;
+        }
+        else
+        {
+            cached = await _db.MessageTranslations
             .AsNoTracking()
             .Where(translation =>
                 translation.InternalMessageId == message.Id &&
@@ -4574,6 +4631,7 @@ internal sealed partial class MessagingService : IMessagingService
                 sourceLanguage,
                 translation.Provider))
             .SingleOrDefaultAsync(cancellationToken);
+        }
         if (cached is not null)
             return cached;
 
