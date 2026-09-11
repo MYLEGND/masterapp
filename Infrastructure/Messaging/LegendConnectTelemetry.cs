@@ -124,6 +124,7 @@ public static class LegendConnectTelemetry
         "computed_operator_roles_ambiguous",
         "computed_operator_roles_unproven",
         "computed_operator_sample_frame_invalid",
+        "computed_operator_result_structure_unproven",
         "computed_operator_sample_graph_unproven",
         "computed_operator_sample_invalid",
         "computed_operator_sample_result_invalid",

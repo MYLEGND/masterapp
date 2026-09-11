@@ -7,6 +7,7 @@ public sealed class LegendResearchDiagnosticReasonTests
 {
     [Theory]
     [InlineData("research_evidence_standard_unmet")]
+    [InlineData("computed_operator_result_structure_unproven")]
     [InlineData("research_claim_passage_entailment_failed")]
     [InlineData("research_source_publication_timestamp_missing")]
     [InlineData("research_claim_verified_by_controlling_evidence")]
