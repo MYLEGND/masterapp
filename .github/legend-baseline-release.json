@@ -9,11 +9,14 @@
     "scripts/legend-baseline-regression.py",
     "scripts/test-legend-baseline-regression.py",
     "docs/legend-connect/repair-20260910/baseline-release-policy.md",
-    "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs"
+    "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+    "AgentPortal.Tests/LegendFounderAiContractTests.cs"
   ],
   "frozenFiles": {
     "AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs": "c83e1007f394c895635547c11366e8121473e6e32733aa33d821cde614eec9ec",
-    "AgentPortal.Tests/LegendHeldOutFoundationPrerequisite.cs": "0190f448dea1590d974bdee56019123f04b8b0fc158a961c3afca90c98e26630"
+    "AgentPortal.Tests/LegendHeldOutFoundationPrerequisite.cs": "0190f448dea1590d974bdee56019123f04b8b0fc158a961c3afca90c98e26630",
+    "AgentPortal.Tests/LegendFounderAiContractTests.cs": "bb3a8f8a36b186ec21b1c4b4da5af0d598292ed808abe53f5df839bd75ab5fbc",
+    "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs": "1a74542940d5f9f65fd4575a665b16d3bda97e34a5bc9773411dadeaf4eb4210"
   },
   "tests": [
     {
@@ -5505,6 +5508,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiContractTests.ProductionDeploymentWorkflow_KeepsSqlProofOnTheExistingRestrictedAuthority",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiContractTests.ProductionDeploymentWorkflow_PreservesFailedMatrixEvidenceBeforeFailingGate",
       "outcome": "Passed"
     },
@@ -9515,5 +9522,5 @@
       "outcome": "Passed"
     }
   ],
-  "rosterSha256": "e3e7a47ba9b6921fd4663ccf33261ecfc4feb6e658db338e3847af012ed74283"
+  "rosterSha256": "6abf3714e565df681e50c315a98175b4de2e9ae978aea61b764e88e8ee6ba7d7"
 }
