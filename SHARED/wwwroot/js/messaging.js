@@ -1780,5 +1780,15 @@
   } else {
     refreshList().catch(() => { });
   }
+  // Both web hosts publish the same design document already used by native.
+  fetch('/design/legend-design.tokens.json', { credentials: 'same-origin', cache: 'force-cache' })
+    .then(response => { if (!response.ok) throw new Error('Design unavailable'); return response.json(); })
+    .then(design => {
+      const semantic = design.platformSemanticColors;
+      for (const [status, key] of [['read', 'success'], ['sent', 'danger']]) {
+        const color = semantic?.[key]?.android;
+        if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-receipt-${status}`, color);
+      }
+    }).catch(() => {});
   startRealtime();
 })();

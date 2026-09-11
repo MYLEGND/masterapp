@@ -6076,8 +6076,8 @@ header .legend-global-nav .container-fluid {
     font-weight: 700;
     line-height: 1.35;
 }
-.messaging-receipt.is-read { color: #d9ffe9; background: #135c39; }
-.messaging-receipt.is-sent { color: #fff0f1; background: #912c38; }
+.messaging-receipt.is-read { color: var(--messaging-receipt-read); background: color-mix(in srgb, var(--messaging-receipt-read) 12%, transparent); }
+.messaging-receipt.is-sent { color: var(--messaging-receipt-sent); background: color-mix(in srgb, var(--messaging-receipt-sent) 12%, transparent); }
 .messaging-history-button { align-self: center; }
 
 .messaging-reactions, .messaging-reaction-palette {
