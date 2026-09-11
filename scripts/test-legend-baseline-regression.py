@@ -193,6 +193,58 @@ class RegressionTests(unittest.TestCase):
         element(infos, 'RunInfo', outcome='Error')
         self.rejected()
 
+    def make_zero_failure(self):
+        self.runner = 0
+        for result in self.root.find('t:Results', NS):
+            if result.get('outcome') == 'Failed':
+                result.set('outcome', 'Passed')
+                result.remove(result.find('t:Output', NS))
+        self.root.find('t:ResultSummary', NS).set('outcome', 'Completed')
+        counters = self.root.find('t:ResultSummary/t:Counters', NS)
+        counters.set('failed', '0'); counters.set('passed', '11')
+
+    def test_normal_zero_allows_changed_source_base_and_new_passing_test(self):
+        self.make_zero_failure()
+        self.frozen.write_text('future repaired runtime')
+        self.base = 'f' * 40
+        # Add an entirely new passing result and its execution metadata.
+        result = deepcopy(self.result(13))
+        name = V.PREFIX + 'NewPassingControl'
+        result.set('testName', name)
+        result.set('testId', 'future-test'); result.set('executionId', 'future-execution')
+        self.root.find('t:Results', NS).append(result)
+        definition = deepcopy(self.root.find('t:TestDefinitions', NS)[13])
+        definition.set('name', name); definition.set('id', 'future-test')
+        definition.find('t:Execution', NS).set('id', 'future-execution')
+        definition.find('t:TestMethod', NS).set('name', 'NewPassingControl')
+        self.root.find('t:TestDefinitions', NS).append(definition)
+        element(self.root.find('t:TestEntries', NS), 'TestEntry', testId='future-test', executionId='future-execution')
+        counters = self.root.find('t:ResultSummary/t:Counters', NS)
+        counters.set('total', '16'); counters.set('executed', '12'); counters.set('passed', '12')
+        for key in ('sourceCommit', 'frozenFiles', 'rosterSha256', 'productionBaseCommit', 'allowedPolicyPaths'):
+            self.manifest.pop(key)
+        report = self.check()
+        self.assertEqual('AcceptedZeroFailureRun', report['status'])
+        self.assertEqual((0, 4), (report['failed'], report['notExecuted']))
+        self.assertFalse(report['allTestsPassed'])
+
+    def test_normal_zero_allows_approved_skip_to_execute(self):
+        self.make_zero_failure()
+        self.result(9).set('outcome', 'Passed')
+        counters = self.root.find('t:ResultSummary/t:Counters', NS)
+        counters.set('executed', '12'); counters.set('passed', '12')
+        self.assertEqual(3, self.check()['notExecuted'])
+
+    def test_normal_zero_rejects_failure_new_skip_missing_result_and_counter_error(self):
+        original = deepcopy(self.root)
+        self.runner = 0; self.rejected()
+        self.root = deepcopy(original); self.make_zero_failure()
+        self.result(13).set('outcome', 'NotExecuted'); self.rejected()
+        self.root = deepcopy(original); self.make_zero_failure()
+        results = self.root.find('t:Results', NS); results.remove(results[0]); self.rejected()
+        self.root = deepcopy(original); self.make_zero_failure()
+        self.root.find('t:ResultSummary/t:Counters', NS).set('error', '1'); self.rejected()
+
     def test_actual_capture(self):
         if not ACTUAL:
             self.skipTest('Pass both actual capture arguments for observation')
@@ -204,7 +256,8 @@ class RegressionTests(unittest.TestCase):
         path = self.path / 'actual-manifest.json'; path.write_text(json.dumps(manifest))
         start = V.timestamp(root.find('t:Times', NS).get('start')) - timedelta(seconds=1)
         report = V.validate(ACTUAL, path, source, 1, start.isoformat(), BASE)
-        self.assertEqual((2370, 9, 4), (report['total'], report['failed'], report['notExecuted']))
+        self.assertEqual((len(root.findall('t:Results/t:UnitTestResult', NS)), 9, 4),
+                         (report['total'], report['failed'], report['notExecuted']))
         self.assertEqual('AcceptedKnownBaseline', report['status'])
 
 
