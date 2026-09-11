@@ -24,4 +24,10 @@ Web and mobile Founder chat use the existing shared conversation service and sha
 
 Prior restricted SQL observation at `c1e4172f` completed all 53 SELECT calls without SQL failure, but its six-case observation had two native failures and exceeded the unsupported-request latency target. This is not a passing production proof. Authenticated Founder HTTP reproduction and final-candidate live provider/SQL/post-deployment checks remain unexecuted until their authorized workflow runs. The four opt-in skips cannot stand in for these checks.
 
-Final local verification and publication state will be recorded below before source publication.
+## Final local verification
+
+Candidate `3debcadf1857ddabb7f9cd7a394ce3db1edcb53a` built in Release with zero warnings and zero errors (52.64 seconds). Its complete unfiltered regression run completed in 6 minutes 11 seconds: 2,371 total, 2,358 passed, nine failed, four skipped. The actual runner exit was 1. The committed manifest validator returned `AcceptedKnownBaseline`, retaining those nine failed outcomes and four unexecuted cases. All 18 validator checks passed, including rejection cases and an actual captured full run. Workflow YAML parsed and the patch passed whitespace checks.
+
+The initial pre-amendment run recorded 2,371 total, 2,357 passed, ten failed and four skipped; its only additional failure was the separately reviewed stale console-parser assertion described above. Both runs and build logs were preserved locally. Final documentation-only commits do not alter the tested runtime or verification sources.
+
+At documentation commit time, GitHub production remained `262428f38c8e1dd0ee72a362983b277f493fd362`; no merge, deployment or final-candidate live checks had run. Publication and deployment must be established by the subsequent production workflow, not inferred from this local baseline decision.
