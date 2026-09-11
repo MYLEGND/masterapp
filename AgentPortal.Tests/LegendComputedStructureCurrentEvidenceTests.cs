@@ -5,6 +5,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Messaging;
+using Domain.Entities;
+using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,24 +28,8 @@ public sealed class LegendComputedStructureCurrentEvidenceTests
     {
         await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(async (services, db, externalCounts) =>
         {
-            ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
-            await db.SaveChangesAsync();
             var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
-            // Reuse the independent composition fixture; no alternate teaching or heldout changes.
-            var teaching = typeof(LegendConnectCompositionalArithmeticAdmissionTests)
-                .GetMethod("Teaching", BindingFlags.Static | BindingFlags.NonPublic)!;
-            foreach (var family in new[] { "amber", "copper", "silver" })
-            {
-                var submission = (LegendConnectCurriculumBatchSubmission)teaching.Invoke(null, [family])!;
-                Assert.True((await curriculum.SubmitFounderBatchAsync(submission)).Succeeded);
-                foreach (var sample in new[] { "first", "second" })
-                    await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                        new("chain-input-" + family + "-" + sample, "reasoning.arithmetic.multiply.measurement-chain",
-                            "chain-subtotal-" + family + "-" + sample), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-            }
-            var projections = await db.LegendSemanticTransitionEvidence
-                .Where(item => item.SupersededUtc == null && item.FounderSemanticExampleRelationEvidenceId != null)
-                .ToArrayAsync();
+            var projections = await AdmitMeasurements(curriculum, db);
             var signature = Assert.Single(projections.Select(item => item.TransitionSignature).Distinct());
             Assert.Contains(signature, await ReadOperators(curriculum, signature));
             var resultIds = projections.Select(item => item.ResultCurriculumExampleId).Distinct().ToArray();
@@ -99,14 +85,84 @@ public sealed class LegendComputedStructureCurrentEvidenceTests
         });
     }
 
+    [Fact]
+    public async Task ValidReceiptFromAnotherActivePair_CannotAttachToCountedObservation()
+    {
+        await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(async (services, db, externalCounts) =>
+        {
+            var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
+            var projections = await AdmitMeasurements(curriculum, db);
+            var signature = Assert.Single(projections.Select(item => item.TransitionSignature).Distinct());
+            var retrieval = await ReadOperatorRetrieval(curriculum, signature);
+            var receiptsBySignature = (IReadOnlyDictionary<string, IReadOnlyList<LegendGovernedComputedStructureReceipt>>)
+                retrieval.GetType().GetProperty("StructuralConclusions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(retrieval)!;
+            var receipts = receiptsBySignature[signature];
+            Assert.True(receipts.Count >= 2);
+            var own = receipts[0];
+            var foreign = receipts.First(item => item.SourceExampleId != own.SourceExampleId || item.ResultExampleId != own.ResultExampleId);
+            var projection = Assert.Single(projections.Where(item => item.SourceCurriculumExampleId == own.SourceExampleId &&
+                item.ResultCurriculumExampleId == own.ResultExampleId));
+            var foreignProjection = Assert.Single(projections.Where(item => item.SourceCurriculumExampleId == foreign.SourceExampleId &&
+                item.ResultCurriculumExampleId == foreign.ResultExampleId));
+            Assert.Equal(projection.SourceSemanticFrame, foreignProjection.SourceSemanticFrame);
+            Assert.Equal(projection.ResultSemanticFrame, foreignProjection.ResultSemanticFrame);
+            var sourceFamily = await db.LegendCurriculumExamples.Where(item => item.Id == own.SourceExampleId)
+                .Select(item => item.CurriculumFamilyId).SingleAsync();
+            var resultFamily = await db.LegendCurriculumExamples.Where(item => item.Id == own.ResultExampleId)
+                .Select(item => item.CurriculumFamilyId).SingleAsync();
+            var observationType = typeof(LegendConnectCurriculumService).GetNestedType("SemanticTransitionObservation", BindingFlags.NonPublic)!;
+            var observation = Activator.CreateInstance(observationType, signature, projection.SourceSemanticFrame,
+                projection.ResultSemanticFrame, projection.IndependentSourceIdentity, projection.ContributionState,
+                projection.IsHumanVerifiedSupport, projection.Provenance, own.SourceExampleId, own.ResultExampleId,
+                sourceFamily, resultFamily, false, null)!;
+            var group = Array.CreateInstance(observationType, 1);
+            group.SetValue(observation, 0);
+            var select = typeof(LegendConnectCurriculumService).GetMethod("SelectCurrentComputedStructure",
+                BindingFlags.Static | BindingFlags.NonPublic)!;
+            object? Select(LegendGovernedComputedStructureReceipt receipt, string[] counted) => select.Invoke(null,
+                [new[] { receipt }, group, counted, projection.SourceSemanticFrame, projection.ResultSemanticFrame]);
+            Assert.Same(own, Select(own, [projection.IndependentSourceIdentity]));
+            Assert.Null(Select(foreign, [projection.IndependentSourceIdentity]));
+            Assert.Null(Select(own, []));
+            Assert.Equal((0, 0), externalCounts());
+        });
+    }
+
+    private static async Task<LegendSemanticTransitionEvidence[]> AdmitMeasurements(
+        LegendConnectCurriculumService curriculum, MasterAppDbContext db)
+    {
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        await db.SaveChangesAsync();
+        // Reuse the independent composition fixture; no alternate teaching or heldout changes.
+        var teaching = typeof(LegendConnectCompositionalArithmeticAdmissionTests)
+            .GetMethod("Teaching", BindingFlags.Static | BindingFlags.NonPublic)!;
+        foreach (var family in new[] { "amber", "copper", "silver" })
+        {
+            var submission = (LegendConnectCurriculumBatchSubmission)teaching.Invoke(null, [family])!;
+            Assert.True((await curriculum.SubmitFounderBatchAsync(submission)).Succeeded);
+            foreach (var sample in new[] { "first", "second" })
+                await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                    new("chain-input-" + family + "-" + sample, "reasoning.arithmetic.multiply.measurement-chain",
+                        "chain-subtotal-" + family + "-" + sample), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+        return await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null && item.FounderSemanticExampleRelationEvidenceId != null)
+            .ToArrayAsync();
+    }
+
     private static async Task<string[]> ReadOperators(LegendConnectCurriculumService curriculum, string signature)
+    {
+        var result = await ReadOperatorRetrieval(curriculum, signature);
+        var operators = (IReadOnlyDictionary<string, string>)result.GetType().GetProperty("Operators")!.GetValue(result)!;
+        return operators.Keys.ToArray();
+    }
+
+    private static async Task<object> ReadOperatorRetrieval(LegendConnectCurriculumService curriculum, string signature)
     {
         var method = typeof(LegendConnectCurriculumService).GetMethod(
             "LoadActiveGovernedReasoningOperatorsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var task = (Task)method.Invoke(curriculum, ["en", new[] { signature }, CancellationToken.None])!;
         await task;
-        var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
-        var operators = (IReadOnlyDictionary<string, string>)result.GetType().GetProperty("Operators")!.GetValue(result)!;
-        return operators.Keys.ToArray();
+        return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 }

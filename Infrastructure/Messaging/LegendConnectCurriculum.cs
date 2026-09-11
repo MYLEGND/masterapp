@@ -8652,6 +8652,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return selections;
     }
 
+    private static LegendGovernedComputedStructureReceipt? SelectCurrentComputedStructure(
+        IReadOnlyList<LegendGovernedComputedStructureReceipt> receipts,
+        IReadOnlyList<SemanticTransitionObservation> governedGroup,
+        IReadOnlyList<string> independentEvidenceIdentities,
+        string sourceFrame,
+        string resultFrame) =>
+        receipts.FirstOrDefault(receipt => governedGroup.Any(observation =>
+            observation.SourceExampleId == receipt.SourceExampleId &&
+            observation.ResultExampleId == receipt.ResultExampleId &&
+            observation.ContributionState == "Supported" &&
+            independentEvidenceIdentities.Contains(observation.IndependentSourceIdentity, StringComparer.Ordinal) &&
+            TryReadSemanticFrame(observation.SourceFrame, out var observedSource) &&
+            TryReadSemanticFrame(observation.ResultFrame, out var observedResult) &&
+            observedSource.Serialized == sourceFrame && observedResult.Serialized == resultFrame));
+
     private async Task<GovernedReasonedResponseSelection> TrySelectGovernedReasonedResponseAsync(
         string language,
         IReadOnlyDictionary<string, string> currentValues,
@@ -8727,15 +8742,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 .OrderBy(item => item.SourceSemanticFamilyId)
                 .ThenBy(item => item.ResultSemanticFamilyId)
                 .ToArray();
-            var structure = structuralConclusions.GetValueOrDefault(group.Key, [])
-                .FirstOrDefault(receipt => governedGroup.Any(observation =>
-                    observation.SourceExampleId == receipt.SourceExampleId &&
-                    observation.ResultExampleId == receipt.ResultExampleId &&
-                    observation.ContributionState == "Supported" &&
-                    independentEvidenceIdentities.Contains(observation.IndependentSourceIdentity, StringComparer.Ordinal) &&
-                    TryReadSemanticFrame(observation.SourceFrame, out var observedSource) &&
-                    TryReadSemanticFrame(observation.ResultFrame, out var observedResult) &&
-                    observedSource.Serialized == sourceFrame.Serialized && observedResult.Serialized == resultFrame.Serialized));
+            var structure = SelectCurrentComputedStructure(
+                structuralConclusions.GetValueOrDefault(group.Key, []), governedGroup,
+                independentEvidenceIdentities, sourceFrame.Serialized, resultFrame.Serialized);
             rules.Add(new LegendGovernedReasoningRule(
                 group.Key,
                 reasoningOperators[group.Key],
@@ -18472,7 +18481,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             : LegendLanguageIdentity.TextHash(
                 "founder-semantic-example|v2|" + languageCode.Trim().ToLowerInvariant() + "|" + semanticExampleKey);
 
-    private static string StructuralRelationFrameDimension(
+    internal static string StructuralRelationFrameDimension(
         string relationKind,
         string sourceDimension,
         string targetDimension,
