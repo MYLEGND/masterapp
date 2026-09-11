@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
@@ -249,7 +250,23 @@ public sealed class LegendFounderAiController : Controller
         CancellationToken cancellationToken,
         Func<LegendFounderAiProgressEvent, CancellationToken, ValueTask>? progress)
     {
+        // Reuse the server trace when present. Direct controller execution
+        // still gets one identity shared by all nested runtime stages.
+        using var requestActivity = Activity.Current is null
+            ? new Activity("LegendFounderAiController.ExecuteAsync").Start()
+            : null;
+        using var requestScope = _logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["LegendRequestTraceId"] = Activity.Current?.TraceId.ToString(),
+            ["LegendOperationId"] = operationId
+        });
         var started = Stopwatch.GetTimestamp();
+        var executionOutcome = "failed";
+        var domainOutcome = "not_observed";
+        var reasonCode = "unexpected_execution_failure";
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} StartedUtc={StartedUtc}",
+            "StageStarted", "LegendFounderAiController.ExecuteAsync", "request", DateTimeOffset.UtcNow);
         try
         {
             var result = await _conversation.ReplyAsync(
@@ -258,6 +275,9 @@ public sealed class LegendFounderAiController : Controller
                 cancellationToken,
                 progress);
 
+            executionOutcome = "completed";
+            domainOutcome = result.Succeeded ? "succeeded" : "failed";
+            reasonCode = LegendConnectTelemetry.NormalizeDiagnosticReason(result.Reason);
             _logger.LogInformation(
                 "LEGEND Founder AI conversation completed. OperationId={OperationId} Mode={Mode} Authority={Authority} Stage={Stage} Reason={Reason} Succeeded={Succeeded} ElapsedMs={ElapsedMs}",
                 operationId,
@@ -272,6 +292,8 @@ public sealed class LegendFounderAiController : Controller
         }
         catch (ForbidResultException)
         {
+            domainOutcome = "denied";
+            reasonCode = "founder_authorization_required";
             var mode = string.Equals(
                 request?.Mode?.Trim(),
                 "teacher",
@@ -291,10 +313,11 @@ public sealed class LegendFounderAiController : Controller
                 "authorization",
                 "founder_authorization_required");
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
         {
+            executionOutcome = "cancelled";
+            reasonCode = "request_cancelled";
             _logger.LogWarning(
-                exception,
                 "LEGEND Founder AI conversation was cancelled before a response could be produced.");
 
             return LegendFounderAiChatResponse.UnexpectedFailure(
@@ -307,9 +330,17 @@ public sealed class LegendFounderAiController : Controller
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "LEGEND Founder AI conversation failed.");
+            _logger.LogError("LEGEND Founder AI conversation failed. ExceptionType={ExceptionType}", exception.GetType().Name);
             return LegendFounderAiChatResponse.UnexpectedFailure(
                 request?.Mode);
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} ExecutionOutcome={ExecutionOutcome} DomainOutcome={DomainOutcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} CancellationRequested={CancellationRequested}",
+                "StageEnded", "LegendFounderAiController.ExecuteAsync", "request", executionOutcome,
+                domainOutcome, reasonCode, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                cancellationToken.IsCancellationRequested);
         }
     }
 
