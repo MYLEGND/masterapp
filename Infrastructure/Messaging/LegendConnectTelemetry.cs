@@ -115,6 +115,7 @@ public static class LegendConnectTelemetry
         "inspection_window_exhausted",
         "insufficient_quota",
         "insufficient_evidence",
+        "semantic_transition_not_production_eligible",
         "internal_legend_state_requires_governed_tools",
         "internal_operational_data_requires_governed_tools",
         "invalid_cross_example_relationship",

@@ -35,6 +35,7 @@ public sealed class LegendFounderFailureTruthTests
         Assert.Equal(failureKind, result.FailureKind);
         Assert.Equal(result.Message, result.Error);
         Assert.Contains("EvidenceCount=9", result.Error);
+        Assert.Contains("semantic_transition_not_production_eligible", result.Error);
         Assert.Contains("production eligibility gate", result.Error);
         Assert.DoesNotContain("secret-token", result.Error);
         Assert.DoesNotContain("private customer data", result.Error);
