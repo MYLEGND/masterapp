@@ -25,6 +25,32 @@
       "cause": "Three negative behavioral cases expected unsupported/no admitted result, but their old unconditional Succeeded=true assertions contradicted corrected domain-failure status.",
       "repair": "Require failure for the same unsupported inputs; preserve positive ordinal branch, expected answers, grounding, privacy, certificates, and provider isolation.",
       "review": "Independent evaluation specialist reviewed each failing case against its direct native contract. Nine positive capability gates unchanged."
+    },
+    {
+      "commits": [
+        "4b2d948b"
+      ],
+      "cause": "Live observation could not attribute parameterized SQL failures and reported the last case as the aggregate failure phase.",
+      "repair": "Allowlisted constant query-authority tags only; aggregate_assertions phase before final aggregate check; preserve actual command outcomes and frozen capabilities.",
+      "review": "Independent diagnostic specialist plus focused attribution tests."
+    },
+    {
+      "commits": [
+        "892d2193"
+      ],
+      "cause": "Source-text assertion required the old per-token equality form after independently reviewed multiplicity grouping preserved that semantic requirement.",
+      "repair": "Assert requestHashes.Contains, grouping by request count, and inner per-hash grouping; retain input scope and bounded retrieval requirements.",
+      "review": "Independent source review plus populated multiplicity and relational translation regressions. Initial local invocation lacked GITHUB_WORKSPACE; repeat with existing root setting passed all 13 focused tests."
+    },
+    {
+      "commits": [
+        "4d8636d7",
+        "909acc2c",
+        "1a4e7333"
+      ],
+      "cause": "Controlled positive capability gates had no admitted foundation curriculum; attachment explicitly requires legitimate prerequisite evidence.",
+      "repair": "Admit unchanged existing numeric, named-value and batch teaching corpora before arming write sentinel. Namespace only colliding example identities; preserve frozen prompts, answers, thresholds, exclusions and assertions. Add original positive controls against combined corpus.",
+      "review": "Independent static review recorded in foundation-prerequisite-review.md; held-out gates continue failing and are not declared repaired."
     }
   ]
 }

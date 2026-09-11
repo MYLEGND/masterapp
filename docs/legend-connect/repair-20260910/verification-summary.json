@@ -22,5 +22,53 @@
   },
   "release_gate": "blocked",
   "deployment_performed": false,
-  "source_pushed": false
+  "source_pushed": false,
+  "continued_repair": {
+    "source_candidate": "1a4e733379d2af41007fcfec221216c8dbd2e570",
+    "build": {
+      "warnings": 0,
+      "errors": 0
+    },
+    "focused_query_checks": {
+      "passed": 13,
+      "failed": 0,
+      "candidate": "892d2193"
+    },
+    "combined_foundation_controls": {
+      "passed": 3,
+      "failed": 0,
+      "elapsed_seconds": 8,
+      "coverage": [
+        "existing numeric recombination and provenance",
+        "existing named-value reply and conversation recall",
+        "existing batch allocation certificate"
+      ],
+      "environment": "controlled local EF test fixture using combined governed admission",
+      "live_production_validation": false
+    },
+    "full_suite": {
+      "total": 2278,
+      "runner_passed": 2265,
+      "failed": 9,
+      "skipped_result_records": 4,
+      "environmental_early_return_passes_without_live_execution_credit": 24,
+      "other_local_passing_executions": 2241,
+      "elapsed_seconds": 339,
+      "failed_tests": [
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"haitian_creole_conflict\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"causal_diagnosis\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\")",
+        "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier"
+      ]
+    },
+    "live_rerun": "blocked_pending_public_repository_publication_approval",
+    "performance_improvement_verified": false,
+    "deployment_performed": false,
+    "source_pushed": false
+  }
 }
