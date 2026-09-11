@@ -1,4 +1,8 @@
 using AgentPortal.Mobile;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using Infrastructure.Mobile;
 using Shared.Messaging;
 
@@ -17,36 +21,46 @@ public sealed class AgentPortalMessagingActorContextResolver : IMessagingActorCo
         _mobileActorResolver = mobileActorResolver;
     }
 
-    public Task<(string UserId, string ParticipantType)?> ResolveAsync(
+    public async Task<(string UserId, string ParticipantType)?> ResolveAsync(
         HttpContext httpContext,
         CancellationToken cancellationToken = default)
     {
         if (httpContext.Items.TryGetValue("IsAssistant", out var value) && value is true)
-            return Task.FromResult<(string UserId, string ParticipantType)?>(null);
+            return null;
 
-        if (httpContext.User.Identities.Any(identity =>
-                string.Equals(
-                    identity.AuthenticationType,
-                    MobileApiAuthorization.BearerScheme,
-                    StringComparison.Ordinal)))
+        // A JWT identity's AuthenticationType is not its ASP.NET handler name.
+        // Use the validated ticket, then the same mobile scope and typed-profile
+        // authority used by REST. Never reinterpret a rejected mobile Client as
+        // the Agent profile sharing its Entra object ID.
+        var mobile = await httpContext.AuthenticateAsync(MobileApiAuthorization.BearerScheme);
+        if (mobile.Succeeded && mobile.Principal is { } principal)
         {
-            return ResolveMobileActorAsync(httpContext, cancellationToken);
+            var authorization = httpContext.RequestServices.GetRequiredService<IAuthorizationService>();
+            if (!(await authorization.AuthorizeAsync(principal, httpContext, MobileApiAuthorization.PolicyName)).Succeeded)
+                return null;
+            return await ResolveMobileActorAsync(httpContext, principal, cancellationToken);
         }
+        if (mobile.Failure != null || httpContext.Request.Headers.Authorization.ToString()
+                .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var cookie = await httpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        if (!cookie.Succeeded) return null;
 
         var userId = _agentContext.EffectiveAgentOid?.Trim();
-        return Task.FromResult<(string UserId, string ParticipantType)?>(
-            string.IsNullOrWhiteSpace(userId) ? null : (userId, "Agent"));
+        return string.IsNullOrWhiteSpace(userId) ? null : (userId, "Agent");
     }
 
     private async Task<(string UserId, string ParticipantType)?> ResolveMobileActorAsync(
         HttpContext httpContext,
+        ClaimsPrincipal principal,
         CancellationToken cancellationToken)
     {
         var participantType = httpContext.Request
             .Headers[MobileApiAuthorization.ParticipantTypeHeader]
             .FirstOrDefault();
         var resolution = await _mobileActorResolver.ResolveAsync(
-            httpContext.User,
+            principal,
             participantType,
             cancellationToken);
         if (!resolution.Succeeded ||
