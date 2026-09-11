@@ -4,7 +4,7 @@ using Infrastructure.Social;
 using Microsoft.AspNetCore.Authorization;
 using Shared.Messaging;
 
-namespace AgentPortal.Controllers;
+namespace ClientApp.Controllers;
 
 [Authorize]
 public sealed class SocialSharedContentController(

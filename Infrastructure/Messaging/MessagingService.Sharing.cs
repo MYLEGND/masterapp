@@ -16,7 +16,7 @@ internal sealed partial class MessagingService
             return unavailable;
         var identities = await _participantIdentities.ResolveIdentitiesAsync(
             [new MessagingParticipantReference(actor.UserId, actor.ParticipantType)], cancellationToken);
-        if (!identities.TryGetValue((actor.UserId, actor.ParticipantType), out var identity))
+        if (!identities.TryGetValue(MessagingParticipantIdentityKey.Create(actor.UserId, actor.ParticipantType), out var identity))
             return unavailable;
         var result = await _social.GetPostAsync(new SocialFeedActor(actor, identity.ProfileId, identity.DisplayName),
             postId, cancellationToken);

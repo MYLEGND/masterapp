@@ -17,3 +17,9 @@ Existing web/mobile message responses add optional `sharedContent`:
 Source-only notification preparation uses the current recipient-visible card only to choose localized application copy (`Shared content` or unavailable). It never copies a private source caption, author contact field or media URL to notifications. Empty commentary is not a translation source. Message cards, rather than the notification label, deliver the actual content.
 
 Controlled tests cover captionless source persistence, first/existing conversation sends, idempotent retry, actual media IDs, private/deleted-source revocation, source-only notification privacy, and clean/pending/rejected mobile attachment streaming. Integration owns the combined generated EF migration/snapshot, compilation and execution. This work is local and does not authorize deployment.
+
+## Host and dependency parity
+
+The canonical post/media routes are implemented once by SocialSharedContentControllerBase in Infrastructure, with thin authorized AgentPortal and ClientApp controllers using each host's existing actor resolver. These are the only two repository hosts deriving MessagingControllerBase. ClientApp registers the same social authority/storage/music services with media processing disabled, so read-only shared content does not introduce another worker. Both hosts must resolve the same configured social media storage for the same database; actual production configuration is not inferred or changed here.
+
+Sharing dictionary lookups use MessagingParticipantIdentityKey.Create, matching the existing profile identity resolver's normalization. SocialFeedService has no IMessagingService dependency: the new messaging-to-social dependency does not form a constructor cycle. Added tests resolve both registered authorities without a media worker and exercise both host wrappers with a mixed-case/whitespace identity.
