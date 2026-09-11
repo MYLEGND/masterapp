@@ -1463,7 +1463,7 @@
     const retained = state.pendingSubmissions.get(key);
     const files = Array.from(elements.files.files || []);
     const sameFiles = retained && files.length === retained.files.length && files.every((file, index) => file === retained.files[index]);
-    if (retained && retained.body === body && (sameFiles || retained.messageId)) return retained;
+    if (retained && retained.body === body && sameFiles) return retained;
     if (retained?.sending) throw new Error('The current message is still sending.');
     if (retained?.messageId && retained.uploadedFileIndexes.length < retained.files.length)
       throw new Error('Retry the pending attachment delivery before sending another message.');
@@ -1482,13 +1482,26 @@
     return state.pendingSubmission;
   }
 
-  async function sendMessage() {
-    const body = elements.messageBody.value.trim();
+  function offerPendingRetry(submission) {
+    if (!submission || submission.sending) return;
+    const retry = createTextElement('button', 'messaging-retry',
+      submission.messageId ? 'Retry pending attachments' : 'Retry previous message');
+    retry.type = 'button';
+    retry.addEventListener('click', () => sendMessage(submission));
+    elements.error.append(retry);
+  }
+
+  async function sendMessage(ownedSubmission = null) {
+    const body = ownedSubmission?.body ?? elements.messageBody.value.trim();
     if (!body || (!state.active && !state.draftTarget)) return;
 
     let submission;
-    try { submission = createSubmission(body); }
-    catch (error) { showError(error.message); return; }
+    try { submission = ownedSubmission || createSubmission(body); }
+    catch (error) {
+      showError(error.message);
+      offerPendingRetry(state.pendingSubmissions.get(activeDraftKey()));
+      return;
+    }
     if (submission.sending) return;
     submission.sending = true;
     const navigationVersion = state.navigationVersion;
@@ -1559,7 +1572,9 @@
       }
       refreshList().catch(() => {});
     } catch (error) {
-      showError(error.message);
+      submission.sending = false;
+      showError(navigationVersion === state.navigationVersion ? error.message : `Previous message delivery: ${error.message}`);
+      offerPendingRetry(submission);
     } finally {
       submission.sending = false;
       elements.sendButton.disabled = Boolean(state.active?.isClosed) || (!state.active && !state.draftTarget);

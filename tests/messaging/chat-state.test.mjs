@@ -179,7 +179,8 @@ for (const hiddenBy of ['closing the command center', 'hiding the document']) {
 }
 
 function submissionEnvironment(request) {
-  const c = environment(request);
+  const c = domEnvironment(request);
+  c.elements.error = new Element('div');
   Object.assign(c.state, { pendingSubmissions: new Map(), pendingSubmission: null, drafts: {}, draftTarget: null });
   Object.assign(c.elements, { messageBody: { value: 'Submitted body' }, files: { files: [], value: '' }, sendButton: { disabled: false } });
   c.FormData = FormData;
@@ -188,7 +189,7 @@ function submissionEnvironment(request) {
   c.participantIdentityKey = (id, type) => `${type}:${id}`;
   let identity = 0;
   c.clientMessageId = () => `test-submission-${++identity}`;
-  for (const name of ['activeDraftKey', 'saveDraft', 'createSubmission', 'uploadAttachments', 'sendMessage'])
+  for (const name of ['activeDraftKey', 'saveDraft', 'createSubmission', 'uploadAttachments', 'offerPendingRetry', 'sendMessage'])
     vm.runInContext(implementation(name), c);
   return c;
 }
@@ -265,4 +266,24 @@ test('create acknowledgement after navigation retains canonical attachment retry
   assert.equal(c.state.drafts['recipient:Agent:B'], 'New recipient draft');
   assert.equal(submission.sending, false);
   assert.equal(errors.filter(Boolean).length, 1);
+});
+test('pending attachment retry is explicit and never substitutes newly selected files', async()=>{
+  let uploads=0,messages=0;const uploaded=[];
+  const c=submissionEnvironment(async(url,options)=>{
+    if(url.endsWith('/Messages')) { messages++;return {message:{id:'committed'}}; }
+    if(url.endsWith('/Attachments')) { uploaded.push(await options.body.get('file').text());if(++uploads===1)throw Error('offline');return {}; }
+    if(url==='/Messaging/Conversations')return {conversations:[]};
+    return {conversation:{id:'A',messages:[{id:'committed'}]}};
+  });
+  c.state.active={id:'A',messages:[]};
+  c.elements.files.files=[new Blob(['original'])];
+  await c.sendMessage();
+  c.elements.messageBody.value='New draft';c.elements.files.files=[new Blob(['new file'])];c.saveDraft();
+  await c.sendMessage();
+  assert.equal(uploads,1);
+  const retry=c.elements.error.children.at(-1);
+  await retry.events.click();await flushTasks();
+  assert.deepEqual(uploaded,['original','original']);assert.equal(messages,1);
+  assert.equal(c.elements.messageBody.value,'New draft');
+  assert.equal(await c.elements.files.files[0].text(),'new file');
 });
