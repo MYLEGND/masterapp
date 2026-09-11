@@ -13,7 +13,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MessageReactionTransportTest {
-    @Test fun typedAuthenticatedSetRemoveAndForbiddenUseCanonicalContract() = runBlocking {
+    @Test fun typedAuthenticatedSetRemoveAndForbiddenUseCanonicalContract() = runBlocking<Unit> {
         ServerSocket(0).use { server ->
             server.soTimeout = 5_000
             val peer = CompletableFuture.runAsync {
