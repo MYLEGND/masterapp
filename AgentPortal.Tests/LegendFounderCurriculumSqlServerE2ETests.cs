@@ -1126,31 +1126,31 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             """).SingleAsync(token);
         Assert.Equal(1, identityVerified);
         var permissions = await db.Database.SqlQueryRaw<ObservationPermission>("""
-            SELECT CAST('DATABASE' AS nvarchar(32)) AS [Scope], permission_name AS [PermissionName], CAST(0 AS bit) AS [GrantOption]
+            SELECT CAST('DATABASE' AS nvarchar(32)) COLLATE DATABASE_DEFAULT AS [Scope], permission_name COLLATE DATABASE_DEFAULT AS [PermissionName], CAST(0 AS bit) AS [GrantOption]
               FROM sys.fn_my_permissions(NULL, 'DATABASE')
             UNION ALL
-            SELECT 'SCHEMA', permission.permission_name, CAST(0 AS bit)
+            SELECT 'SCHEMA' COLLATE DATABASE_DEFAULT, permission.permission_name COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
               FROM sys.schemas AS scope
               CROSS APPLY sys.fn_my_permissions(QUOTENAME(scope.name), 'SCHEMA') AS permission
             UNION ALL
-            SELECT CASE WHEN permission.subentity_name = '' THEN 'OBJECT' ELSE 'COLUMN' END,
-              permission.permission_name, CAST(0 AS bit)
+            SELECT CASE WHEN permission.subentity_name = '' THEN 'OBJECT' ELSE 'COLUMN' END COLLATE DATABASE_DEFAULT,
+              permission.permission_name COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
               FROM sys.objects AS scope
               CROSS APPLY sys.fn_my_permissions(QUOTENAME(SCHEMA_NAME(scope.schema_id)) + '.' + QUOTENAME(scope.name), 'OBJECT') AS permission
               WHERE scope.is_ms_shipped = 0
             UNION ALL
-            SELECT 'EXPLICIT_GRANT', permission.permission_name, CAST(CASE WHEN permission.state = 'W' THEN 1 ELSE 0 END AS bit)
+            SELECT 'EXPLICIT_GRANT' COLLATE DATABASE_DEFAULT, permission.permission_name COLLATE DATABASE_DEFAULT, CAST(CASE WHEN permission.state = 'W' THEN 1 ELSE 0 END AS bit)
               FROM sys.database_permissions AS permission
               JOIN sys.user_token AS token ON permission.grantee_principal_id = token.principal_id
               WHERE permission.state IN ('G', 'W')
             UNION ALL
-            SELECT 'OWNERSHIP', 'CONTROL', CAST(0 AS bit)
+            SELECT 'OWNERSHIP' COLLATE DATABASE_DEFAULT, 'CONTROL' COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
               FROM sys.schemas AS scope JOIN sys.user_token AS token ON scope.principal_id = token.principal_id
             UNION ALL
-            SELECT 'OWNERSHIP', 'CONTROL', CAST(0 AS bit)
+            SELECT 'OWNERSHIP' COLLATE DATABASE_DEFAULT, 'CONTROL' COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
               FROM sys.objects AS scope JOIN sys.user_token AS token ON scope.principal_id = token.principal_id
             UNION ALL
-            SELECT 'OWNERSHIP', 'CONTROL', CAST(0 AS bit)
+            SELECT 'OWNERSHIP' COLLATE DATABASE_DEFAULT, 'CONTROL' COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
               FROM sys.database_principals AS scope JOIN sys.user_token AS token ON scope.owning_principal_id = token.principal_id
             """).ToListAsync(token);
         Assert.NotEmpty(permissions);
