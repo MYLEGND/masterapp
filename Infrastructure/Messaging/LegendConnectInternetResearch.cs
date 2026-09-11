@@ -546,6 +546,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
         var rows = new List<LegendConnectResearchClaimCandidate>();
         foreach (var item in array.EnumerateArray())
         {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
             var claimIdentity = LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
                 ReadString(item, "claim_id"), 160);
             var statement = LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
@@ -557,7 +559,8 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(statement) ||
                 !string.Equals(evidenceLanguage, expectedEvidenceLanguage, StringComparison.OrdinalIgnoreCase) ||
                 !item.TryGetProperty("source_urls", out var urls) ||
-                urls.ValueKind != JsonValueKind.Array)
+                urls.ValueKind != JsonValueKind.Array ||
+                urls.EnumerateArray().Any(value => value.ValueKind != JsonValueKind.String))
                 continue;
             var canonicalUris = urls.EnumerateArray()
                 .Select(value => LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(value.GetString()))
@@ -732,6 +735,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
         cost.TryGetInt64(out var value) && value >= 0 ? value : null;
 
     private static string? ReadString(JsonElement root, string property) =>
+        root.ValueKind == JsonValueKind.Object &&
         root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
