@@ -6,7 +6,7 @@ This is a prepared release checklist, not a deployed configuration. The user exp
 
 Read-only Azure inspection found `masterappstorage1221` and its existing `legend-social-media` container. The portal and client app settings contain no configured Social:Media Blob connection, container URL or explicit root. Deployed appsettings also contain no effective Blob configuration. The existing implementation consequently selects each app's own persistent home/data/legend-social-media directory. The client website cannot read the portal's files from its own disk.
 
-The portal has a system-assigned identity with Storage Blob Data Contributor inherited at the existing social container. The client app has no managed identity (identity property null). No account keys or credential values were retrieved or recorded. Container public-access inspection is recorded separately in local verification output; do not infer public permission from a URL.
+The portal has a system-assigned identity with Storage Blob Data Contributor inherited at the existing social container. The client app has no managed identity (identity property null). No account keys or credential values were retrieved or recorded. The existing container reports publicAccess null (private). The existing App Service plan has one hosting instance. Multiple concurrent processing workers have not been validated.
 
 ## Prepared code
 
@@ -25,3 +25,5 @@ The source transition must use the existing container. It must not create anothe
 ## Open evidence gates
 
 Storage configuration and migration are not executed; client managed-identity access is not established. Actual production media parity, corrected IIS ingress and end-to-end latency therefore remain unverified. These are explicit release prerequisites, not successful checks. Local test success does not close them and no new deployment is authorized by this document.
+
+A memory-only production FFmpeg-to-FFprobe synthetic codec probe through the existing Kudu command endpoint timed out after 30 seconds without a result. A subsequent process inspection showed no ffmpeg or ffprobe processes. This is unverified codec execution, not a pass; local orchestration tests do not replace the production codec gate.
