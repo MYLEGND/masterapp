@@ -34,7 +34,7 @@ namespace AgentPortal.Tests;
 /// ILegendConnectOperations adapter, rather than a second chat endpoint.
 /// </summary>
 [Collection("LegendConnectFounderEnvironment")]
-public sealed class LegendFounderAiModeIsolationTests
+public sealed partial class LegendFounderAiModeIsolationTests
 {
     [Fact]
     public async Task TeacherMode_CallsOpenAiDirectlyAndNeverCallsNativeLegendInference()
@@ -117,8 +117,10 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
 
-    [Fact]
-    public async Task LegendMode_ProgressResultStreamKeepsGovernedNativeFirstRequestActiveBeyondFormerGatewayBoundary()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegendMode_ProgressResultStreamKeepsGovernedNativeFirstRequestActiveBeyondFormerGatewayBoundary(bool mobile)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -161,17 +163,8 @@ public sealed class LegendFounderAiModeIsolationTests
         var context = ControllerContextFor(founder);
         context.HttpContext.Request.Headers.Accept = "application/x-ndjson";
         context.HttpContext.Response.Body = body;
-        var controller = new LegendFounderAiController(
-            service,
-            new LegendFounderAiProgressBroker(),
-            NullLogger<LegendFounderAiController>.Instance)
-        {
-            ControllerContext = context
-        };
-
-        var result = await controller.Chat(
-            Request("legend", "Explain the governed gap."),
-            CancellationToken.None);
+        var result = await ChatThroughControllerAsync(mobile, service, context,
+            Request("legend", "Explain the governed gap."), CancellationToken.None);
 
         Assert.IsType<EmptyResult>(result);
         var transcript = Encoding.UTF8.GetString(body.ToArray());
@@ -2683,6 +2676,8 @@ public sealed class LegendFounderAiModeIsolationTests
         }
 
         public int RequestCount { get; private set; }
+        public TaskCompletionSource RequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool CancellationObserved { get; private set; }
 
         public List<string> RequestBodies { get; } = [];
 
@@ -2700,8 +2695,12 @@ public sealed class LegendFounderAiModeIsolationTests
             if (_responses.Count == 0)
                 throw new InvalidOperationException("No OpenAI response was queued for this test.");
 
+            RequestStarted.TrySetResult();
             if (_responseDelay > TimeSpan.Zero)
-                await Task.Delay(_responseDelay, cancellationToken);
+            {
+                try { await Task.Delay(_responseDelay, cancellationToken); }
+                catch (OperationCanceledException) { CancellationObserved = true; throw; }
+            }
 
             return _responses.Dequeue();
         }

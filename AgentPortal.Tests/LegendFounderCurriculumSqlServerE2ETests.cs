@@ -5276,6 +5276,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var sourcePath = authorityType switch
             {
                 "LegendFounderAiConversationService" => "AgentPortal/Services/LegendFounderAiConversationService.cs",
+                "LegendFounderAiHttpTransport" => "AgentPortal/Services/LegendFounderAiHttpTransport.cs",
                 "LegendFounderAiDiscourseStateService" => "AgentPortal/Services/LegendFounderAiDiscourseStateService.cs",
                 "FounderLegendConnectService" => "AgentPortal/Services/FounderLegendConnectService.cs",
                 "LegendFounderToolAuthority" => "AgentPortal/Services/LegendFounderToolAuthority.cs",
@@ -5321,11 +5322,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "NormalizeEnabledTranslationLanguageAsync", "GetEnabledPairAsync", "TryGetTrustedExactMemoryAsync",
                 "EvaluateContextAsync", "TryGetReusableProviderObservationAsync", "TryComposeAsync", "GetEffectiveAsync",
                 "TryTranslateAsync", "TryReserveAsync", "CompleteAsync", "RecordAvoidedAsync", "TranslateAsync", "TranslateCoreAsync",
-                "DecideResearchNeeded", "ExecuteAsync", "TryReadResearchOutcome" };
+                "DecideResearchNeeded", "ExecuteAsync", "ChatAsync", "TryReadResearchOutcome" };
             var authorityMethod = sourcePath != "unmapped_runtime_authority" &&
                 methodName is not null && allowedMethods.Contains(methodName, StringComparer.Ordinal)
                     ? authorityType + "." + methodName : "unresolved_from_capture";
-            var eventName = Code("Event") is { } declaredEvent && declaredEvent is "StageStarted" or "StageEnded" or
+            var eventName = Code("Event") is { } declaredEvent && declaredEvent is "StageStarted" or "StageEnded" or "ResponseCompleted" or
                 "LanguageDetectionCompleted" or "LanguageGraphAnalyzed" or "LanguageCandidatesRead" or
                 "SourceLanguageResolved" or "NativeInferenceCompleted" or "ResearchDecision" or "ProviderEscalation" or
                 "CaseAssertionFailed" or "stage_completed" or "MeaningGraphObserved" or "DiscourseStateObserved" or "OwnedRecordClassified" or
@@ -5348,7 +5349,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "translation_context" or "translation_runtime_policy" or "translation_promoted_model" or "translation_provider_observation" or
                 "translation_quota" or "translation_capacity" or "translation_provider" or "translation_capacity_finalization" or
                 "translation_result" or "translation_intelligence" or "translation_usage" or "translation_quota_finalization" or
-                "research_decision" or "research_tool" or "governed_tool"
+                "research_decision" or "research_tool" or "governed_tool" or "request" or "response_transport"
                     ? declaredStage : "unreported";
             var capturedReason = fields.GetValueOrDefault("ReasonCode") as string;
             var reasonCode = capturedReason is null ? null :

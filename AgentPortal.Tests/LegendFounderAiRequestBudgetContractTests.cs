@@ -26,10 +26,14 @@ public sealed class LegendFounderAiRequestBudgetContractTests
     public void LongTeacherRequests_KeepUsingTheSingleStreamingChatEndpoint()
     {
         var controller = ReadSource("AgentPortal", "Controllers", "LegendFounderAiController.cs");
+        var mobile = ReadSource("AgentPortal", "Mobile", "MobileFounderAiController.cs");
+        var transport = ReadSource("AgentPortal", "Services", "LegendFounderAiHttpTransport.cs");
 
-        Assert.Contains("StreamHeartbeatInterval = TimeSpan.FromSeconds(4)", controller, StringComparison.Ordinal);
-        Assert.Contains("await StreamChatAsync(", controller, StringComparison.Ordinal);
-        Assert.DoesNotContain("BackgroundJob", controller, StringComparison.Ordinal);
+        Assert.Contains("Transport.ChatAsync(request, cancellationToken", controller, StringComparison.Ordinal);
+        Assert.Contains("Transport.ChatAsync(request, cancellationToken", mobile, StringComparison.Ordinal);
+        Assert.Contains("StreamHeartbeatInterval = TimeSpan.FromSeconds(4)", transport, StringComparison.Ordinal);
+        Assert.Contains("await StreamChatAsync(", transport, StringComparison.Ordinal);
+        Assert.DoesNotContain("BackgroundJob", transport, StringComparison.Ordinal);
     }
 
     private static string ReadSource(params string[] path)

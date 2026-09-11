@@ -1,0 +1,11 @@
+# Shared web/mobile chat transport
+
+The mobile JSON POST previously stayed idle until the shared conversation service finished, while progress traveled over a different request. Android's ordinary read timeout was 30 seconds; independent progress cannot keep that POST alive. The web endpoint already has accepted/progress/heartbeat/result NDJSON frames on the original response connection.
+
+This change moves that existing framing, status mapping, safe execution handling and correlation timing into `LegendFounderAiHttpTransport`, a transport adapter over the same injected conversation service and progress broker. Both controllers call it. Web cookie/Founder/antiforgery and mobile bearer/Founder/selected-actor guards stay in place. No inference authority, provider policy, source-language choice, learning approval or serving gate changes.
+
+Mobile clients opt in with `Accept: application/x-ndjson`; existing JSON requests retain their returned-response status contract, authorization denial, cancellation behavior and unexpected-error envelope. NDJSON remains HTTP 200 after acceptance, with semantic status and the unchanged structured response in the terminal `result` frame. Heartbeats remain four seconds. Stop/disconnect cancels and joins the original operation before its transport resources are disposed; no durable continuation is claimed.
+
+The existing request-budget source assertion is relocated from the web controller to the shared transport because the implementation moved. It still asserts the same heartbeat interval and streaming implementation, and now checks both endpoints delegate to it. The existing native-first stream regression is extended to both controllers with its original 31-second delay and original semantic assertions. Additional paired controller tests cover structured failure, legacy JSON, and cancellation reaching the active provider operation. No held-out prompts, expected answers, thresholds or exclusions are amended.
+
+Client changes and native client builds are separately required. Shared server code and controller tests do not establish authenticated web/iOS/Android end-to-end execution or authorize a production baseline. No builds, tests, provider calls or production writes were performed while authoring this change.
