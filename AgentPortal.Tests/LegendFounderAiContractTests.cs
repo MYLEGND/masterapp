@@ -276,6 +276,8 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "LegendApi.kt"));
         var androidRepository = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "LegendRepositories.kt"));
+        var androidStream = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "FounderAiChatStream.kt"));
         var androidPresentation = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "LegendFounderAiConversation.kt"));
         var tokens = File.ReadAllText(
@@ -353,8 +355,12 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("LegendAiIcon.imageset/legendai.png", androidBuild, StringComparison.Ordinal);
         Assert.Contains("FounderAiRepository", androidRepository, StringComparison.Ordinal);
         Assert.Contains("api/v1/mobile/founder/legend-ai/access", androidApi, StringComparison.Ordinal);
-        Assert.Contains("api/v1/mobile/founder/legend-ai/chat", androidApi, StringComparison.Ordinal);
-        Assert.Contains("api/v1/mobile/founder/legend-ai/progress", androidRepository, StringComparison.Ordinal);
+        Assert.Contains("api/v1/mobile/founder/legend-ai/chat", androidStream, StringComparison.Ordinal);
+        Assert.Contains("application/x-ndjson", androidStream, StringComparison.Ordinal);
+        Assert.Contains("FounderAiChatStream(client.httpClient, client.baseUrl)", androidRepository, StringComparison.Ordinal);
+        Assert.DoesNotContain("api/v1/mobile/founder/legend-ai/progress", androidRepository, StringComparison.Ordinal);
+        Assert.DoesNotContain("api/v1/mobile/founder/legend-ai/progress", androidStream, StringComparison.Ordinal);
+        Assert.DoesNotContain("openai.com", androidStream, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("openai.com", androidApi, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("openai.com", androidRepository, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("LegendColors.Success", androidPresentation, StringComparison.Ordinal);
