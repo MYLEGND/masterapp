@@ -1,6 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Security.Cryptography;
 using System.Text;
 using Domain.Entities;
+using Domain.Billing;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
@@ -158,6 +162,55 @@ public sealed class TranslationEntitlementIdentityTests
         Assert.False(result.Succeeded);
         Assert.Equal("translation_accounting_unavailable", result.ErrorCode);
         Assert.Equal(6, await db.LegendTranslationUsagePeriods.SumAsync(item => item.ConsumedCharacters));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FounderDirectoryRetainsAllUsageMetricsAcrossIdentityForms(bool includeAlias)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAsync(db);
+        var profile = await db.ClientProfiles.SingleAsync();
+        profile.CrmStatus = "Active";
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            Id = Guid.NewGuid(), ClientProfileId = profile.Id, AcceptedOfferId = Guid.NewGuid(),
+            OwnerAgentUserId = "test-founder", Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current, MonthlyAmountCents = 1, Currency = "USD"
+        });
+        foreach (var userId in includeAlias ? new[] { Canonical.UserId, Alias.UserId } : new[] { Canonical.UserId })
+        {
+            var row = Usage(userId, consumed: 2, reserved: 1);
+            row.SameLanguageCharactersAvoided = 3;
+            row.TranslationMemoryCharactersAvoided = 4;
+            row.StructuralCompositionCharactersAvoided = 5;
+            row.ContextualCharactersAvoided = 6;
+            row.PromotedTranslationModelCharactersAvoided = 7;
+            row.ProviderObservationCharactersAvoided = 8;
+            row.ProviderOperationCount = 9;
+            row.ProviderBillableCharacters = 10;
+            row.QuotaDeniedRequestCount = 11;
+            row.ProviderFailureCount = 12;
+            row.GroupUniqueTargetReuseCount = 13;
+            db.Add(row);
+        }
+        await db.SaveChangesAsync();
+        var account = Assert.Single((await Authority(db).SearchFounderAccountsAsync(null, 8)).Accounts);
+        var multiplier = includeAlias ? 2 : 1;
+        Assert.Equal(2 * multiplier, account.Entitlement.ConsumedCharacters);
+        Assert.Equal(multiplier, account.Entitlement.ReservedCharacters);
+        Assert.Equal(3 * multiplier, account.Usage.SameLanguageCharactersAvoided);
+        Assert.Equal(4 * multiplier, account.Usage.TranslationMemoryCharactersAvoided);
+        Assert.Equal(5 * multiplier, account.Usage.StructuralCompositionCharactersAvoided);
+        Assert.Equal(6 * multiplier, account.Usage.ContextualCharactersAvoided);
+        Assert.Equal(7 * multiplier, account.Usage.PromotedTranslationModelCharactersAvoided);
+        Assert.Equal(8 * multiplier, account.Usage.ProviderObservationCharactersAvoided);
+        Assert.Equal(9 * multiplier, account.Usage.ProviderOperationCount);
+        Assert.Equal(10 * multiplier, account.Usage.ProviderBillableCharacters);
+        Assert.Equal(11 * multiplier, account.Usage.QuotaDeniedRequestCount);
+        Assert.Equal(12 * multiplier, account.Usage.ProviderFailureCount);
+        Assert.Equal(13 * multiplier, account.Usage.GroupUniqueTargetReuseCount);
     }
 
     private static LegendTranslationUsagePeriod Usage(string userId, long consumed = 0, long reserved = 0) => new()
