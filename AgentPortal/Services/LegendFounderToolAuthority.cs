@@ -1302,6 +1302,22 @@ internal sealed class LegendFounderToolAuthority
         using var nullValue = JsonDocument.Parse("null");
         values.TryAdd("section", nullValue.RootElement.Clone());
         values.TryAdd("language", nullValue.RootElement.Clone());
+        var defaulted = JsonSerializer.SerializeToElement(values);
+        // Validate raw supplied strings before trimming: normalization must not
+        // turn excessive length, control characters or unknown fields valid.
+        if (!TryResolveFounderFunctionParameters("legend_operational_diagnostics", out var schema) ||
+            !IsStrictSchemaInstance(schema, defaulted))
+            return root;
+        var section = ReadOptionalString(defaulted, "section");
+        var language = ReadOptionalString(defaulted, "language");
+        if (section is null ? language is not null : !IsBoundedLanguage(language))
+            return root;
+        if (language is not null)
+        {
+            // Match the existing section backend exactly. Language identity
+            // normalization would additionally merge underscore/hyphen scopes.
+            values["language"] = JsonSerializer.SerializeToElement(language.ToLowerInvariant());
+        }
         return JsonSerializer.SerializeToElement(values);
     }
 
