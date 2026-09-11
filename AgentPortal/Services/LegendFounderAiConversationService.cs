@@ -438,7 +438,7 @@ public sealed class LegendFounderAiConversationService
                 if (request.NativeOnly)
                 {
                     return new LegendFounderAiChatResponse(
-                        true,
+                        false,
                         mode,
                         "LEGEND identified that this request requires external research, but native-only isolation blocked every internet operation. " +
                         $"ResearchReason={researchDecision.ReasonCode}; EvidenceOrigin=UnresolvedEvidence.",

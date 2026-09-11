@@ -865,6 +865,26 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         Assert.Equal("OpenAITeacher", providerResponse.ResponseAuthority);
     }
 
+    [Fact]
+    public async Task NativeOnly_ExplicitResearchWithoutAnAnswer_ReportsFailureAndConstructsNoClients()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        await using var scope = BuildProductionEquivalentScope();
+        var founder = await SeedFounderAsync(scope.Db);
+
+        var response = await scope.Resolve<LegendFounderAiConversationService>().ReplyAsync(
+            founder,
+            NativeRequest("Please cite sources for the deepest ocean dive record.", nativeOnly: true));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("native_only_research_blocked", response.Stage);
+        Assert.Equal("explicit_verification_requires_research", response.Reason);
+        Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
+        Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
+        Assert.Contains("blocked every internet operation", response.Message);
+        AssertNoExternalProviderWasReached(scope.External, "blocked research cannot construct clients");
+    }
+
     private static LegendFounderAiChatRequest NativeRequest(
         string prompt,
         bool nativeOnly) =>
