@@ -2323,7 +2323,14 @@ public sealed class LegendFounderAiModeIsolationTests
         var response = await CreateService(db, operations.Object, handler).ReplyAsync(founder,
             Request(mode, "Unseen current request.", nativeOnly: mode == "legend", conversationId: conversationId));
 
-        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal(mode == "teacher", response.Succeeded);
+        if (mode == "legend")
+        {
+            Assert.Equal("native_only_blocked", response.Stage);
+            Assert.Equal("meaning_graph_component_unknown", response.Reason);
+            Assert.Equal("native_inference", response.FailureKind);
+            Assert.Equal(response.Message, response.Error);
+        }
         var captured = Assert.IsType<LegendConnectDiscourseStateSnapshot>(observed);
         var analysis = Assert.IsType<LegendConnectCurrentTurnMeaningAnalysis>(captured.CurrentTurnAnalysis);
         Assert.Same(graph, analysis.Graph);
