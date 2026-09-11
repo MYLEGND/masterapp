@@ -147,7 +147,12 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
     public Task CombinedFoundation_PreservesOriginalNumericRecombinationControl() =>
         VerifyResponseAsync("integer", "83", "35", "48", requireUnseenOperands: false, combinedFoundation: true);
 
-    private static async Task VerifyResponseAsync(string teachingKind, string left, string right, string expected, bool requireUnseenOperands, bool combinedFoundation = false)
+    [Fact]
+    public Task OmittedSourceLanguage_IdentifiesAndComputesThroughNativeFounderReply() =>
+        VerifyResponseAsync("integer", "147", "26", "121", requireUnseenOperands: true,
+            sourceLanguageCode: null);
+
+    private static async Task VerifyResponseAsync(string teachingKind, string left, string right, string expected, bool requireUnseenOperands, bool combinedFoundation = false, string? sourceLanguageCode = "en")
     {
         using var founderScope = new FounderScope();
         await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(async (services, db, externalCounts) =>
@@ -234,7 +239,7 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
                 ControllerTestHelpers.BuildUser(FounderScope.FounderId),
                 new LegendFounderAiChatRequest
                 {
-                    Mode = "legend", NativeOnly = true, SourceLanguageCode = "en", Messages = [new("user", request)]
+                    Mode = "legend", NativeOnly = true, SourceLanguageCode = sourceLanguageCode, Messages = [new("user", request)]
                 });
             Assert.True(response.Succeeded, response.Error);
             Assert.Equal("LegendAi", response.ResponseAuthority);
