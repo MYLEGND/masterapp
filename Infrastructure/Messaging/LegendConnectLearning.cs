@@ -2752,12 +2752,15 @@ internal sealed class LegendConnectAutonomousLearningService
         // Candidate identity belongs to the bare typed family. Healthy
         // evidence growth must not manufacture another proposal for the same
         // still-valid teaching artifact merely because selection changed.
+        // An existing validation/admission lease also owns that identity;
+        // reuse still requires the exact packet's current evidence below.
         if (duplicateCandidate)
         {
             var retainedProposals = await _db.Set<LegendLanguageTeacherProposal>().AsNoTracking()
                 .Where(item => item.CorpusCandidateId == candidate.Id &&
                     (item.ValidationState == "AwaitingCritic" || item.ValidationState == "AwaitingCanonicalValidation" ||
-                     item.ValidationState == "SystemValidated" || item.ValidationState == "CurriculumAdmitted"))
+                     item.ValidationState == "CanonicalValidationProcessing" || item.ValidationState == "SystemValidated" ||
+                     item.ValidationState == "CurriculumAdmissionProcessing" || item.ValidationState == "CurriculumAdmitted"))
                 .OrderBy(item => item.CreatedUtc).ThenBy(item => item.Id)
                 .Take(33).ToArrayAsync(cancellationToken);
             if (retainedProposals.Length > 32)
