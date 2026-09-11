@@ -140,7 +140,7 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
                         LegendConnectResearchNeededDecision decision =>
                             (decision.ResearchRequired ? "RESEARCH_REQUIRED" : "RESEARCH_NOT_AUTHORIZED", decision.ReasonCode),
                         LegendConnectResearchOutcome research =>
-                            (research.State.ToString(), research.Failure?.ReasonCode ?? research.Session.FailureReason),
+                            (research.State.ToString(), ResourceResearchReason(research)),
                         _ => ("COMPLETED", null)
                     };
                     return result;
@@ -206,7 +206,8 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
                 observed = new { Policy = "ProviderEnabled", NativeOnlyReason = forbidden.ReasonCode,
                     DecisionReason = decision.ReasonCode, Need = decision.Need.ToString(),
                     Outcome = outcome.State.ToString(), EvidenceOrigin = outcome.EvidenceOrigin.ToString(),
-                    FailureReason = outcome.Failure?.ReasonCode ?? outcome.Session.FailureReason,
+                    FailureReason = ResourceResearchReason(outcome),
+                    EvidenceDiagnostics = ResourceResearchEvidence(outcome),
                     outcome.Provenance.SearchProvider, outcome.Provenance.Provenance,
                     outcome.Provenance.IsReadOnly, outcome.Provenance.ZeroWrite,
                     QueryReceipts = outcome.Session.SearchQueryReceipts?.Count ?? 0,
@@ -267,6 +268,49 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         }
         Assert.True(status == "OBSERVED", status + ": " + reason + " at " + stage);
     }
+
+    private static string ResourceResearchReason(LegendConnectResearchOutcome outcome) =>
+        LegendConnectTelemetry.NormalizeDiagnosticReason(outcome.Failure?.ReasonCode ??
+            outcome.InsufficientEvidence?.ReasonCode ?? outcome.UnresolvedConflict?.ReasonCode ??
+            outcome.Session.FailureReason);
+
+    // Project only bounded counts, enum states and allowlisted reasons. Never
+    // serialize source identities, URLs, questions, passages or claim text.
+    private static object ResourceResearchEvidence(LegendConnectResearchOutcome outcome) => new
+    {
+        AdmissibleClaimCount = outcome.InsufficientEvidence?.AdmissibleClaimCount,
+        IndependentSourceCount = outcome.InsufficientEvidence?.IndependentSourceCount,
+        RequiredIndependentSourceCount = outcome.InsufficientEvidence?.RequiredIndependentSourceCount,
+        ClaimCount = outcome.Session.ClaimEvidence.Count,
+        MaterialClaimCount = outcome.Session.MaterialClaimEvidence?.Count ?? 0,
+        ContradictionCount = outcome.Session.ContradictingEvidence.Count,
+        Admissibility = outcome.Session.EvidenceAdmissibility?.Take(32).Select(item => new
+        {
+            Subject = item.Subject.ToString(), SourceClass = item.SourceClass.ToString(),
+            Disposition = item.Disposition.ToString(),
+            Reason = LegendConnectTelemetry.NormalizeDiagnosticReason(item.ReasonCode)
+        }).ToArray(),
+        ClaimResolutions = outcome.Session.ClaimResolutions?.Take(12).Select(item => new
+        {
+            State = item.State.ToString(),
+            Reason = LegendConnectTelemetry.NormalizeDiagnosticReason(item.ReasonCode),
+            MaterialEvidenceCount = item.MaterialEvidenceIdentities.Count,
+            IndependentSourceCount = item.IndependentSourceLineages.Count,
+            item.RequiresDiscriminatingEvidence
+        }).ToArray(),
+        Pages = outcome.Session.PageReceipts?.Take(8).Select(item => new
+        {
+            item.Succeeded, item.StatusCode, item.RequestCount, item.RedirectCount,
+            item.ReturnedBytes,
+            Reason = LegendConnectTelemetry.NormalizeDiagnosticReason(item.FailureReason)
+        }).ToArray(),
+        CitationValidation = outcome.Session.CitationValidation is { } citation ? new
+        {
+            citation.Succeeded, citation.MaterialClaimCount, citation.InlineCitationCount,
+            RejectionReasons = citation.RejectionReasons.Take(16)
+                .Select(LegendConnectTelemetry.NormalizeDiagnosticReason).ToArray()
+        } : null
+    };
 
     private sealed class ResourceDiagnosticFactAttribute : FactAttribute
     {
