@@ -1,12 +1,23 @@
 using System;
 using AgentPortal.Services;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
 
 public sealed class LegendFounderFailureTruthTests
 {
+    [Theory]
+    [InlineData("provider_http_400", "provider_http_400")]
+    [InlineData("provider_http_429", "provider_http_429")]
+    [InlineData("provider_http_503", "provider_http_503")]
+    [InlineData("insufficient_evidence", "insufficient_evidence")]
+    [InlineData("provider_http_private_customer_data", "unclassified_reason")]
+    [InlineData("provider_http_999", "unclassified_reason")]
+    public void DiagnosticVocabulary_PreservesFinitePublicCodesAndRejectsArbitraryPrefixes(string reason, string expected) =>
+        Assert.Equal(expected, LegendConnectTelemetry.NormalizeDiagnosticReason(reason));
+
     [Theory]
     [InlineData(null, "native_inference")]
     [InlineData("provider_http_429", "provider_http")]
