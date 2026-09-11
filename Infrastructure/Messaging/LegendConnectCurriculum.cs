@@ -4628,6 +4628,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             select candidate.Key.AnchorId;
 
         var rows = await candidateQuery
+            .TagWith("LEGEND_QUERY:indexed_semantic_anchors")
             .Take(MaximumIndexedSemanticTextUnits + 1)
             .ToArrayAsync(cancellationToken);
 
@@ -4730,6 +4731,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.SupersededUtc == null &&
                 anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
             select anchor.Id)
+            .TagWith("LEGEND_QUERY:exact_semantic_anchors")
             .Take(MaximumIndexedSemanticAnchors + 1)
             .ToArrayAsync(cancellationToken);
     }
@@ -5737,7 +5739,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.ComponentLength,
                 node.Id,
                 node.Provenance)
-        ).Take(MaximumIndexedSemanticAnchors + 1)
+        ).TagWith("LEGEND_QUERY:reusable_meaning_candidates")
+            .Take(MaximumIndexedSemanticAnchors + 1)
             .ToListAsync(cancellationToken);
 
         if (candidates.Count > MaximumIndexedSemanticAnchors)
@@ -5793,6 +5796,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(item => item.NodeId).Distinct().ToArray();
         Guid[] exampleIds = candidateNodeIds.Length == 0 ? [] :
             await _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                .TagWith("LEGEND_QUERY:source_slot_examples")
                 .Where(item => candidateNodeIds.Contains(item.Id))
                 .Select(item => item.CurriculumExampleId).Distinct().ToArrayAsync(cancellationToken);
         var inputTokens = SurfaceComponents(input);
@@ -5834,7 +5838,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             orderby transition.Id
             select new SourceSlotDeclaration(transition.Id, example.Id, example.CurriculumFamilyId,
                 unit.Text, transition.SourceSemanticFrame, transition.ContributionState)
-        ).Take(MaximumSourceSlotTemplates + 1).ToArrayAsync(cancellationToken);
+        ).TagWith("LEGEND_QUERY:source_slot_declarations")
+            .Take(MaximumSourceSlotTemplates + 1).ToArrayAsync(cancellationToken);
         declarationCount = declarations.Length;
         if (declarations.Length > MaximumSourceSlotTemplates)
             return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumSourceSlotTemplates);
@@ -5864,7 +5869,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             select new SourceSlotNode(node.Id, node.CurriculumExampleId, node.NodeKey,
                 node.SemanticDimension, node.SemanticValue, node.SemanticSignature, node.ClauseKey,
                 anchor.ComponentStartTokenIndex!.Value, anchor.ComponentLength!.Value)
-        ).Take(MaximumIndexedSemanticAnchors + 1).ToArrayAsync(cancellationToken);
+        ).TagWith("LEGEND_QUERY:source_slot_nodes")
+            .Take(MaximumIndexedSemanticAnchors + 1).ToArrayAsync(cancellationToken);
         nodeCount = nodes.Length;
         if (nodes.Length > MaximumIndexedSemanticAnchors)
             return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumIndexedSemanticAnchors);
@@ -5894,7 +5900,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 nodeIds.Contains(evidence.SourceMeaningNodeId) && nodeIds.Contains(evidence.TargetMeaningNodeId)
             select new FounderGraphRelation(evidence.CurriculumExampleId,
                 evidence.SourceMeaningNodeId, evidence.TargetMeaningNodeId, relation.RelationKind, relation.ClauseKey)
-        ).Take(MaximumSemanticTransitionObservations + 1).ToArrayAsync(cancellationToken);
+        ).TagWith("LEGEND_QUERY:source_slot_relations")
+            .Take(MaximumSemanticTransitionObservations + 1).ToArrayAsync(cancellationToken);
         relationCount = relations.Length;
         if (relations.Length > MaximumSemanticTransitionObservations)
             return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumSemanticTransitionObservations);
