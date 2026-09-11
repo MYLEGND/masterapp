@@ -208,7 +208,8 @@ internal static class LegendConnectGovernedReasoningExecutor
         out IReadOnlyDictionary<string, string> computed,
         out IReadOnlyList<LegendGovernedScheduleStep> scheduleSteps,
         out string? reason,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendGovernedComputedStructureReceipt? structuralConclusions = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         computed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -217,7 +218,7 @@ internal static class LegendConnectGovernedReasoningExecutor
         var mode = ResolveMode(operatorIdentity);
         if (!HasBoundedSemanticFrame(sourceFrame) || !HasBoundedSemanticFrame(resultFrame) ||
             !(IsArithmeticMode(mode)
-                ? IsGovernedArithmeticFrames(sourceFrame, resultFrame, mode!.Value)
+                ? IsGovernedArithmeticFrames(sourceFrame, resultFrame, mode!.Value, operatorIdentity!, structuralConclusions)
                 : mode == ReasoningMode.BatchSchedule && IsGovernedBatchScheduleFrames(sourceFrame, resultFrame)))
             return false;
 
@@ -1022,7 +1023,7 @@ internal static class LegendConnectGovernedReasoningExecutor
         {
             return false;
         }
-        if (IsArithmeticMode(mode) && !IsGovernedArithmeticFrames(rule.SourceFrame, rule.ResultFrame, mode!.Value))
+        if (IsArithmeticMode(mode) && !IsGovernedArithmeticFrames(rule.SourceFrame, rule.ResultFrame, mode!.Value, rule.OperatorIdentity, rule.StructuralConclusions))
             return false;
         if (mode == ReasoningMode.BatchSchedule && !IsGovernedBatchScheduleFrames(rule.SourceFrame, rule.ResultFrame))
             return false;
@@ -1051,8 +1052,12 @@ internal static class LegendConnectGovernedReasoningExecutor
     private static bool IsGovernedArithmeticFrames(
         IReadOnlyDictionary<string, string> sourceFrame,
         IReadOnlyDictionary<string, string> resultFrame,
-        ReasoningMode mode)
+        ReasoningMode mode,
+        string operatorIdentity,
+        LegendGovernedComputedStructureReceipt? structuralConclusions = null)
     {
+        if (structuralConclusions is not null && !structuralConclusions.Matches(operatorIdentity, sourceFrame, resultFrame))
+            return false;
         var output = mode == ReasoningMode.ArithmeticCompare
             ? NumericComparisonVariable : NumericResultVariable;
         // Roles belong to the authored operator, not to names or ordering of
@@ -1066,7 +1071,8 @@ internal static class LegendConnectGovernedReasoningExecutor
             !sourceFrame.Values.Contains(NumericComparisonVariable, StringComparer.Ordinal) &&
             resultFrame.Values.Contains(output, StringComparer.Ordinal) &&
             resultFrame.All(item => item.Value == output ||
-                (IsVariable(item.Value) && sourceFrame.Values.Contains(item.Value, StringComparer.Ordinal)));
+                (IsVariable(item.Value) && sourceFrame.Values.Contains(item.Value, StringComparer.Ordinal)) ||
+                structuralConclusions?.Authorizes(item.Key, item.Value) == true);
     }
 
     private static bool IsGovernedBatchScheduleFrames(
@@ -2820,6 +2826,75 @@ internal static class LegendConnectGovernedReasoningExecutor
         string SafetyStatus);
 }
 
+// Only the curriculum authority may supply these after current graph/parent qualification.
+// These internal receipts grant exact derived graph coordinates, never arbitrary literal facts.
+internal sealed record LegendGovernedComputedRelationEvidence(
+    Guid RelationEvidenceId, Guid SourceNodeEvidenceId, Guid TargetNodeEvidenceId,
+    string RelationKind, string SourceDimension, string TargetDimension, string? ClauseKey);
+
+internal sealed class LegendGovernedComputedStructureReceipt
+{
+    private readonly string _operatorIdentity;
+    private readonly Dictionary<string, string> _sourceFrame;
+    private readonly Dictionary<string, string> _resultFrame;
+    private readonly HashSet<string> _coordinates;
+    internal Guid SourceExampleId { get; }
+    internal Guid ResultExampleId { get; }
+    internal IReadOnlyList<LegendGovernedComputedRelationEvidence> Relations { get; }
+
+    private LegendGovernedComputedStructureReceipt(Guid sourceExampleId, Guid resultExampleId,
+        string operatorIdentity, IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame, HashSet<string> coordinates,
+        IReadOnlyList<LegendGovernedComputedRelationEvidence> relations)
+    {
+        SourceExampleId = sourceExampleId;
+        ResultExampleId = resultExampleId;
+        _operatorIdentity = operatorIdentity;
+        _sourceFrame = new(sourceFrame, StringComparer.Ordinal);
+        _resultFrame = new(resultFrame, StringComparer.Ordinal);
+        _coordinates = coordinates;
+        Relations = Array.AsReadOnly(relations.ToArray());
+    }
+
+    internal static LegendGovernedComputedStructureReceipt? FromGraph(
+        Guid sourceExampleId, Guid resultExampleId, string operatorIdentity,
+        IReadOnlyDictionary<string, string> sourceFrame, IReadOnlyDictionary<string, string> resultFrame,
+        IReadOnlyList<LegendGovernedComputedRelationEvidence> relations)
+    {
+        if (sourceExampleId == Guid.Empty || resultExampleId == Guid.Empty || sourceExampleId == resultExampleId ||
+            string.IsNullOrWhiteSpace(operatorIdentity) || relations.Count == 0)
+            return null;
+        var coordinates = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var relation in relations)
+        {
+            if (relation.RelationEvidenceId == Guid.Empty || relation.SourceNodeEvidenceId == Guid.Empty ||
+                relation.TargetNodeEvidenceId == Guid.Empty || string.IsNullOrWhiteSpace(relation.RelationKind) ||
+                string.IsNullOrWhiteSpace(relation.SourceDimension) || string.IsNullOrWhiteSpace(relation.TargetDimension) ||
+                !resultFrame.ContainsKey(relation.SourceDimension) || !resultFrame.ContainsKey(relation.TargetDimension))
+                return null;
+            var coordinate = "rel_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join("|", "meaning-graph-structure|v1", relation.RelationKind,
+                    relation.SourceDimension, relation.TargetDimension, relation.ClauseKey ?? string.Empty))))
+                .ToLowerInvariant()[..32];
+            if (!resultFrame.TryGetValue(coordinate, out var value) || value != "present")
+                return null;
+            coordinates.Add(coordinate);
+        }
+        return new(sourceExampleId, resultExampleId, operatorIdentity, sourceFrame, resultFrame, coordinates, relations);
+    }
+
+    internal bool Matches(string operatorIdentity, IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame) =>
+        string.Equals(operatorIdentity, _operatorIdentity, StringComparison.Ordinal) &&
+        SameFrame(_sourceFrame, sourceFrame) && SameFrame(_resultFrame, resultFrame);
+
+    internal bool Authorizes(string dimension, string value) => value == "present" && _coordinates.Contains(dimension);
+
+    private static bool SameFrame(IReadOnlyDictionary<string, string> expected, IReadOnlyDictionary<string, string> actual) =>
+        expected.Count == actual.Count && expected.All(item => actual.TryGetValue(item.Key, out var value) &&
+            string.Equals(value, item.Value, StringComparison.Ordinal));
+}
+
 internal sealed record LegendGovernedReasoningFamilyConnection(
     Guid SourceSemanticFamilyId,
     Guid ResultSemanticFamilyId,
@@ -2835,7 +2910,10 @@ internal sealed record LegendGovernedReasoningRule(
     IReadOnlySet<Guid> SourceSemanticFamilyIds,
     IReadOnlySet<Guid> ResultSemanticFamilyIds,
     IReadOnlyList<string> IndependentEvidenceIdentities,
-    IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections);
+    IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections)
+{
+    internal LegendGovernedComputedStructureReceipt? StructuralConclusions { get; init; }
+}
 
 internal sealed record LegendGovernedReasoningProofStep(
     string TransitionSignature,
