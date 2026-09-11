@@ -2201,14 +2201,20 @@ internal sealed partial class MessagingService : IMessagingService
         if (participant is null)
             return MessagingOperationResult.Failure("MESSAGING_PARTICIPANT_NOT_FOUND", "The conversation participant was not found.");
 
-        var latestMessage = await _db.InternalMessages
-            .AsNoTracking()
-            .Where(x => x.ConversationId == command.ConversationId)
+        // A supplied boundary is the client's rendered snapshot, not the newest
+        // row at processing time: later arrivals must remain unread.
+        var readMessages = _db.InternalMessages.AsNoTracking()
+            .Where(x => x.ConversationId == command.ConversationId);
+        if (command.ReadThroughMessageId is { } renderedMessageId)
+            readMessages = readMessages.Where(x => x.Id == renderedMessageId && !x.IsDeleted);
+        var latestMessage = await readMessages
             .OrderByDescending(x => x.SentUtc)
             .Select(x => new { x.Id, x.SentUtc })
             .FirstOrDefaultAsync(cancellationToken);
         if (latestMessage is null)
-            return MessagingOperationResult.Success();
+            return command.ReadThroughMessageId.HasValue
+                ? MessagingOperationResult.Failure("MESSAGING_READ_BOUNDARY_INVALID", "The rendered message was not found in this conversation.")
+                : MessagingOperationResult.Success();
 
         var receiptSettings = await ReadReceiptSettingsAsync(actor, command.ConversationId, cancellationToken);
         var advancesPrivateRead = participant.LastReadUtc == null || participant.LastReadUtc < latestMessage.SentUtc;
@@ -2228,7 +2234,8 @@ internal sealed partial class MessagingService : IMessagingService
             actor,
             command.ConversationId,
             DateTime.UtcNow,
-            cancellationToken);
+            cancellationToken,
+            command.ReadThroughMessageId.HasValue ? latestMessage.SentUtc : null);
 
         var saveResult = await SaveOperationAsync("ConversationRead", actor.UserId, command.ConversationId, cancellationToken);
         if (saveResult.Succeeded)

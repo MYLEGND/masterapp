@@ -281,7 +281,8 @@ public sealed record SendMessagingMessageCommand(
 
 public sealed record MessagingConversationActionCommand(
     MessagingActor Actor,
-    Guid ConversationId);
+    Guid ConversationId,
+    Guid? ReadThroughMessageId = null);
 
 public sealed record SetMessagingConversationMutedCommand(
     MessagingActor Actor,

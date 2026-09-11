@@ -234,14 +234,14 @@ public abstract class MessagingControllerBase : Controller
 
     [HttpPost("/Messaging/Conversations/{conversationId:guid}/Read")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> MarkRead(Guid conversationId)
+    public async Task<IActionResult> MarkRead(Guid conversationId, [FromQuery] Guid? readThroughMessageId = null)
     {
         var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
         if (actor is null)
             return Forbid();
 
         var result = await _messagingService.MarkConversationReadAsync(
-            new MessagingConversationActionCommand(actor, conversationId),
+            new MessagingConversationActionCommand(actor, conversationId, readThroughMessageId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);

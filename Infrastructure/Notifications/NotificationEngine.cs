@@ -121,7 +121,8 @@ public interface INotificationEngine
         MessagingActor actor,
         Guid conversationId,
         DateTime readUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        DateTime? readThroughUtc = null);
 
     async Task<NotificationBadgeSnapshot> GetBadgeSnapshotAsync(MessagingActor actor,
         CancellationToken cancellationToken = default) =>
@@ -367,7 +368,8 @@ internal sealed class NotificationEngine : INotificationEngine
         MessagingActor actor,
         Guid conversationId,
         DateTime readUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DateTime? readThroughUtc = null)
     {
         var recipient = Normalize(actor);
         var notifications = await _db.MobileActivityNotifications
@@ -375,6 +377,7 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.RecipientUserId == recipient.UserId &&
                 notification.RecipientParticipantType == recipient.ParticipantType &&
                 notification.ConversationId == conversationId &&
+                (!readThroughUtc.HasValue || notification.OccurredUtc <= readThroughUtc) &&
                 !notification.IsRead &&
                 !notification.IsCleared)
             .ToListAsync(cancellationToken);

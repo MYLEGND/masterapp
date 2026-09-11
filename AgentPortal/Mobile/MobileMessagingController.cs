@@ -774,14 +774,14 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
     }
 
     [HttpPost("messaging/conversations/{conversationId:guid}/read")]
-    public async Task<IActionResult> MarkRead(Guid conversationId, CancellationToken cancellationToken)
+    public async Task<IActionResult> MarkRead(Guid conversationId, CancellationToken cancellationToken, [FromQuery] Guid? readThroughMessageId = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
             return resolved.Error;
 
         var result = await _messaging.MarkConversationReadAsync(
-            new MessagingConversationActionCommand(resolved.Actor!.Actor, conversationId),
+            new MessagingConversationActionCommand(resolved.Actor!.Actor, conversationId, readThroughMessageId),
             cancellationToken);
         return result.Succeeded
             ? NoContent()
