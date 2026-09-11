@@ -107,6 +107,8 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual((9, 4, 15), (report['failed'], report['notExecuted'], report['total']))
         self.assertFalse(report['allTestsPassed'])
         self.assertEqual(9, len(report['knownFailures']))
+        self.assertTrue(all('message' not in item and len(item['failureMessageSha256']) == 64
+                            for item in report['knownFailures']))
 
     def test_known_failure_may_improve_but_is_not_relabelled_in_input(self):
         self.result().set('outcome', 'Passed')

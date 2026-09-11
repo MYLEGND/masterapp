@@ -176,7 +176,7 @@ def validate(trx_path, manifest_path, source_root, runner_exit_code, run_start_u
             reasons = re.findall(r'(?:^|;\s*)reason=([a-z0-9_]+)(?=;|$)', error)
             require(reasons == [expected['reason']], 'Known case changed failure reason: ' + name)
             require(digest(error.encode()) == expected['failureMessageSha256'], 'Known case changed failure message: ' + name)
-            failures.append({'name': name, 'outcome': outcome, 'reason': reasons[0], 'message': error})
+            failures.append({'name': name, 'outcome': outcome, 'reason': reasons[0], 'failureMessageSha256': digest(error.encode())})
         elif outcome == 'Passed':
             require(result.find('t:Output/t:ErrorInfo', NS) is None, 'Passed result contains failure evidence')
     actual_skips = Counter(r.get('testName') for r in results if r.get('outcome') == 'NotExecuted')
