@@ -177,7 +177,7 @@ public abstract class MessagingControllerBase : Controller
                 participant.ParticipantType,
                 request.Subject,
                 request.Body,
-                request.ClientMessageId),
+                request.ClientMessageId, request.SharedPostId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
@@ -206,7 +206,7 @@ public abstract class MessagingControllerBase : Controller
                 conversationId,
                 request.Body,
                 request.ClientMessageId,
-                request.ReplyToMessageId),
+                request.ReplyToMessageId, request.SharedPostId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);

@@ -15,7 +15,7 @@ namespace AgentPortal.Mobile;
 [Authorize(Policy = MobileApiAuthorization.PolicyName)]
 [IgnoreAntiforgeryToken]
 [TypeFilter(typeof(MobileApiExceptionFilter))]
-public sealed class MobileSocialController : MobileApiControllerBase
+public sealed partial class MobileSocialController : MobileApiControllerBase
 {
     private readonly ISocialFeedService _social;
     private readonly IMessagingProfileImageResolver _profiles;

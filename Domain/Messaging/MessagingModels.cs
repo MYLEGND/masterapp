@@ -167,7 +167,8 @@ public sealed record StartMessagingConversationCommand(
     string TargetParticipantType,
     string? Subject = null,
     string? InitialMessageBody = null,
-    string? ClientMessageId = null);
+    string? ClientMessageId = null,
+    Guid? SharedPostId = null);
 
 public sealed record CreateMessagingGroupCommand(
     MessagingActor Actor,
@@ -275,7 +276,8 @@ public sealed record SendMessagingMessageCommand(
     Guid ConversationId,
     string Body,
     string? ClientMessageId = null,
-    Guid? ReplyToMessageId = null);
+    Guid? ReplyToMessageId = null,
+    Guid? SharedPostId = null);
 
 public sealed record MessagingConversationActionCommand(
     MessagingActor Actor,
@@ -604,6 +606,7 @@ public sealed record MessagingMessageSummary(
     MessagingTranslationPresentation? Translation = null,
     string? OriginalBody = null)
 {
+    public MessagingSharedContent? SharedContent { get; init; }
     public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
 }
 
@@ -620,6 +623,7 @@ public sealed record MessagingReactionResult(bool Succeeded, string? ErrorCode, 
     public static MessagingReactionResult Failure(string code, string message) => new(false, code, message, null);
 }
 public sealed record SetMessagingReactionRequest(string? Emoji);
+
 
 /// <summary>
 /// Presentation metadata for a server-cached derivative. The message body's

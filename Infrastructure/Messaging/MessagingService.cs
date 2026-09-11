@@ -61,9 +61,11 @@ internal sealed partial class MessagingService : IMessagingService
         ITranslationEntitlementAuthority? translationEntitlements = null,
         ITranslationSystemUsageRecorder? translationSystemUsage = null,
         IApplicationLocalizationService? applicationLocalization = null,
-        IMessagingRealtimePublisher? realtime = null)
+        IMessagingRealtimePublisher? realtime = null,
+        Domain.Social.ISocialFeedService? social = null)
     {
         _db = db;
+        _social = social;
         _realtime = realtime;
         _logger = logger;
         _moderation = moderation;
@@ -620,6 +622,7 @@ internal sealed partial class MessagingService : IMessagingService
                 Reactions = reactionSummaries.GetValueOrDefault(message.Id) ?? []
             })
             .ToList();
+        messageSummaries = await ApplySharedContentAsync(actor, messageSummaries, cancellationToken);
         if (applyTranslation)
             messageSummaries = await ApplyTranslationPresentationAsync(
                 actor, messageSummaries, messages, cancellationToken);
@@ -765,6 +768,12 @@ internal sealed partial class MessagingService : IMessagingService
         var subject = NormalizeOptional(command.Subject);
         var initialMessage = NormalizeOptional(command.InitialMessageBody);
         var clientMessageId = NormalizeOptional(command.ClientMessageId);
+        if (command.SharedPostId is Guid sourceId)
+        {
+            if (await ResolveSharedContentAsync(actor, sourceId, cancellationToken) is not { Status: "available" })
+                return MessagingConversationResult.Failure("MESSAGING_SHARED_CONTENT_UNAVAILABLE", "This content cannot be shared.");
+            initialMessage ??= string.Empty;
+        }
 
         if (!await IsValidActorAsync(actor, cancellationToken))
             return MessagingConversationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
@@ -840,7 +849,7 @@ internal sealed partial class MessagingService : IMessagingService
                 conversationType,
                 requestedParticipantCount,
                 participants.Count);
-            return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken);
+            return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId);
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -866,7 +875,7 @@ internal sealed partial class MessagingService : IMessagingService
         }));
 
         IReadOnlyList<MessagingActor> notificationRecipients = Array.Empty<MessagingActor>();
-        if (!string.IsNullOrWhiteSpace(initialMessage))
+        if (!string.IsNullOrWhiteSpace(initialMessage) || command.SharedPostId.HasValue)
         {
             var message = new InternalMessage
             {
@@ -874,7 +883,8 @@ internal sealed partial class MessagingService : IMessagingService
                 ConversationId = conversation.Id,
                 SenderUserId = actor.UserId,
                 SenderType = actor.ParticipantType,
-                Body = initialMessage,
+                Body = initialMessage ?? string.Empty,
+                SharedSocialPostId = command.SharedPostId,
                 SenderPreferredLanguage = await _controlledResources
                     .GetCanonicalPreferredLanguageAsync(actor, cancellationToken),
                 SentUtc = nowUtc,
@@ -963,7 +973,7 @@ internal sealed partial class MessagingService : IMessagingService
                         concurrent.Id,
                         conversationType,
                         directConversationKey);
-                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken);
+                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId);
                 }
             }
 
@@ -1969,12 +1979,17 @@ internal sealed partial class MessagingService : IMessagingService
         var clientMessageId = NormalizeOptional(command.ClientMessageId);
         if (!await IsValidActorAsync(actor, cancellationToken))
             return MessagingMessageResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
-        if (command.ConversationId == Guid.Empty || string.IsNullOrWhiteSpace(body) ||
+        if (command.ConversationId == Guid.Empty || (string.IsNullOrWhiteSpace(body) && !command.SharedPostId.HasValue) ||
             !Fits(body, MaximumMessageBodyLength) || !Fits(clientMessageId, MaximumClientMessageIdLength))
         {
             return MessagingMessageResult.Failure("MESSAGING_MESSAGE_INVALID", "The message is invalid.");
         }
 
+        var sharedContent = command.SharedPostId is Guid sharedId
+            ? await ResolveSharedContentAsync(actor, sharedId, cancellationToken) : null;
+        if (command.SharedPostId.HasValue && sharedContent?.Status != "available")
+            return MessagingMessageResult.Failure("MESSAGING_SHARED_CONTENT_UNAVAILABLE", "This content cannot be shared.");
+        body ??= string.Empty;
         var moderation = _moderation.Evaluate(body, "MessagingMessage");
         if (!moderation.IsAllowed)
         {
@@ -2054,6 +2069,7 @@ internal sealed partial class MessagingService : IMessagingService
             if (duplicate is not null)
             {
                 if (duplicate.ConversationId == conversation.Id &&
+                    duplicate.SharedSocialPostId == command.SharedPostId &&
                     IsSameParticipant(
                         duplicate.SenderUserId,
                         duplicate.SenderType,
@@ -2075,7 +2091,8 @@ internal sealed partial class MessagingService : IMessagingService
                             duplicate.IsDeleted,
                             Array.Empty<MessagingAttachmentSummary>(),
                             duplicate.ReplyToMessageId,
-                            duplicate.Reply),
+                            duplicate.Reply) { SharedContent = duplicate.SharedSocialPostId is Guid duplicateSource
+                                ? await ResolveSharedContentAsync(actor, duplicateSource, cancellationToken) : null },
                         duplicate.ConversationId);
                 }
 
@@ -2091,6 +2108,7 @@ internal sealed partial class MessagingService : IMessagingService
             SenderUserId = actor.UserId,
             SenderType = actor.ParticipantType,
             Body = body,
+            SharedSocialPostId = command.SharedPostId,
             SenderPreferredLanguage = await _controlledResources
                 .GetCanonicalPreferredLanguageAsync(actor, cancellationToken),
             SentUtc = nowUtc,
@@ -2153,7 +2171,7 @@ internal sealed partial class MessagingService : IMessagingService
                         replyTarget.SenderUserId,
                         replyTarget.SenderType,
                         replyTarget.Body,
-                        replyTarget.IsDeleted)),
+                        replyTarget.IsDeleted)) { SharedContent = sharedContent },
             conversation.Id);
     }
 
@@ -2795,12 +2813,13 @@ internal sealed partial class MessagingService : IMessagingService
         Guid conversationId,
         string? initialMessage,
         string? clientMessageId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? sharedPostId = null)
     {
-        if (!string.IsNullOrWhiteSpace(initialMessage))
+        if (!string.IsNullOrWhiteSpace(initialMessage) || sharedPostId.HasValue)
         {
             var sendResult = await SendMessageAsync(
-                new SendMessagingMessageCommand(actor, conversationId, initialMessage, clientMessageId),
+                new SendMessagingMessageCommand(actor, conversationId, initialMessage ?? string.Empty, clientMessageId, SharedPostId: sharedPostId),
                 cancellationToken);
             if (!sendResult.Succeeded)
                 return MessagingConversationResult.Failure(sendResult.ErrorCode!, sendResult.ErrorMessage!);
@@ -4459,6 +4478,12 @@ internal sealed partial class MessagingService : IMessagingService
             cancellationToken);
         if (message is null)
             return null;
+        if (message.SharedSocialPostId is Guid sharedSource && string.IsNullOrWhiteSpace(message.Body))
+        {
+            notification.Detail = await SharedNotificationPreviewAsync(recipient, sharedSource, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+            return notification.Detail;
+        }
         var detail = message.Body;
         var targetLanguage = await _controlledResources.GetPreferredLanguageAsync(recipient, cancellationToken);
         if (targetLanguage is not null)

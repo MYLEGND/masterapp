@@ -13,7 +13,7 @@ namespace AgentPortal.Mobile;
 [Authorize(Policy = MobileApiAuthorization.PolicyName)]
 [IgnoreAntiforgeryToken]
 [TypeFilter(typeof(MobileApiExceptionFilter))]
-public sealed class MobileMessagingController : MobileApiControllerBase
+public sealed partial class MobileMessagingController : MobileApiControllerBase
 {
     private readonly IMessagingService _messaging;
     private readonly IMessageAttachmentStorage _attachmentStorage;
@@ -247,7 +247,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 request?.TargetUserId ?? string.Empty,
                 request?.TargetParticipantType ?? string.Empty,
-                InitialMessageBody: request?.InitialMessageBody),
+                InitialMessageBody: request?.InitialMessageBody, SharedPostId: request?.SharedPostId),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -691,7 +691,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 conversationId,
                 request?.Body ?? string.Empty,
                 ClientMessageId: request?.ClientMessageId,
-                ReplyToMessageId: request?.ReplyToMessageId),
+                ReplyToMessageId: request?.ReplyToMessageId, SharedPostId: request?.SharedPostId),
             cancellationToken);
         if (!result.Succeeded || result.Message is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -1111,7 +1111,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 message.Translation.OriginalLanguage,
                 message.Translation.TargetLanguage,
                 message.Translation.Provider),
-        message.OriginalBody) { Reactions = message.Reactions };
+        message.OriginalBody) { Reactions = message.Reactions, SharedContent = message.SharedContent };
 
     private static MobileAvatarDto? AvatarFor(
         MessagingParticipantSummary participant,
@@ -1309,6 +1309,7 @@ public sealed record MobileMessageDto(
     string? OriginalBody = null)
 {
     public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
+    public MessagingSharedContent? SharedContent { get; init; }
 }
 
 public sealed record MobileMessageTranslationDto(
@@ -1343,7 +1344,8 @@ public sealed record MobileMessageAttachmentDto(
 public sealed record MobileSendMessageRequest(
     string? Body,
     Guid? ReplyToMessageId = null,
-    string? ClientMessageId = null);
+    string? ClientMessageId = null,
+    Guid? SharedPostId = null);
 public sealed record MobileConversationPinnedRequest(bool? IsPinned);
 public sealed record MobileConversationMutedRequest(bool? IsMuted);
 public sealed record MobileReadReceiptRequest(bool Enabled, bool Globally);
@@ -1355,7 +1357,8 @@ public sealed record MobileConversationCallOptionsDto(
 public sealed record MobileStartConversationRequest(
     string? TargetUserId,
     string? TargetParticipantType,
-    string? InitialMessageBody);
+    string? InitialMessageBody,
+    Guid? SharedPostId = null);
 
 public sealed record MobileCreateGroupRequest(
     string? Subject,
