@@ -1933,3 +1933,88 @@ extension MobileNativeContractTests {
         XCTAssertEqual(result.reactions, [MessageReaction(emoji: "❤️", count: 2, reactedByCurrentActor: true)])
     }
 }
+
+extension MobileNativeContractTests {
+    func testRepeatedThreadOpenSharesDetailAndVisibleReadAcknowledgement() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let id = UUID()
+        store.openConversation(id)
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        store.openConversation(id)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(api.calls[id], 1)
+        api.complete(id)
+        try await waitForMessagingCondition { api.readCount == 1 }
+        store.markViewed(id)
+        store.markViewed(id)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(api.readCount, 1)
+        api.finishRead()
+        try await Task.sleep(for: .milliseconds(20))
+        store.markViewed(id)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(api.readCount, 1)
+    }
+
+    func testObsoleteThreadCompletionCannotClearOrReplaceNewRequest() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let first = UUID(), second = UUID()
+        store.openConversation(first)
+        try await waitForMessagingCondition { api.pending[first]?.count == 1 }
+        store.openConversation(second)
+        try await waitForMessagingCondition { api.pending[second]?.count == 1 }
+        store.openConversation(first)
+        try await waitForMessagingCondition { api.pending[first]?.count == 2 }
+        // The cancelled transport deliberately returns a successful stale response.
+        api.complete(first)
+        try await Task.sleep(for: .milliseconds(20))
+        store.openConversation(first)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(api.calls[first], 2, "Old cleanup must not erase the current request")
+        api.complete(first)
+        api.complete(second)
+        try await waitForMessagingCondition {
+            if case .loaded(let detail) = store.detailState { return detail.id == first }
+            return false
+        }
+        try await waitForMessagingCondition { api.readCount == 1 }
+        XCTAssertEqual(api.readCount, 1, "Only the selected successful request acknowledges reading")
+        api.finishRead()
+    }
+
+    private func waitForMessagingCondition(_ condition: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(condition(), "The controlled request did not reach the expected state")
+    }
+}
+
+private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
+    var pending: [UUID: [CheckedContinuation<ConversationDetail, Never>]] = [:]
+    var calls: [UUID: Int] = [:]
+    var readCount = 0
+    private var read: CheckedContinuation<Void, Never>?
+    private let sender = MessagingParticipant(identity: try! LogicalParticipantIdentity(userID: "other", participantType: .client),
+        profileID: "profile", displayName: "Other", roleLabel: nil, avatar: nil)
+
+    func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {
+        calls[id, default: 0] += 1
+        return await withCheckedContinuation { pending[id, default: []].append($0) }
+    }
+    func complete(_ id: UUID) {
+        guard var continuations = pending[id], !continuations.isEmpty else { return }
+        let next = continuations.removeFirst()
+        pending[id] = continuations
+        let message = ConversationMessage(id: id, conversationID: id, sender: sender, body: "Authoritative message",
+            sentUTC: .now, attachments: [], isMine: false, reply: nil)
+        next.resume(returning: ConversationDetail(id: id, conversationType: "ClientClient", title: "Thread", participants: [sender],
+            messages: [message], isMuted: false, isClosed: false, canManageMembers: false))
+    }
+    func markRead(conversationID: UUID, accessToken: String) async throws {
+        readCount += 1
+        await withCheckedContinuation { read = $0 }
+    }
+    func finishRead() { read?.resume(); read = nil }
+}
