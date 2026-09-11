@@ -24,8 +24,12 @@ The candidate starts from production `5fd2fdafc69d77e5c43b6142c2e12b682ff20808`,
 
 ## Release and live evidence still required
 
-The protected release manifest remains bound to c7856751 and the previous production base. Its acceptance cannot be transferred silently. The last production run deployed both web hosts but failed its native SQL proof; this candidate does not repair or waive that proof.
+The protected release manifest must identify the corrected runtime commit and production base while retaining exactly the authorized nine failures and four skipped tests. The last production run deployed both web hosts but failed its native SQL proof; this candidate does not repair or waive that proof.
 
 End-to-end APNs/FCM sender-photo delivery against the new server revision, including locked/background physical devices, remains unexecuted. OS layout and badge position vary by OS. The repository has no established browser push/service-worker delivery path, so browser lock-screen/background delivery is not claimed by this change; shared web chat presentation is covered.
 
 A backend deployment does not replace installed native apps. Distribute the newly signed iOS and Android artifacts from this candidate. An existing bundle with an old version code or an older installed iOS build is not evidence of this source. The final Android handoff remains Legend-Android/app/build/outputs/bundle/release/app-release.aab after signature and embedded-version verification.
+
+## Release regression correction
+
+Protected run 34641325370 stopped before build, merge, migrations or deployment. The unchanged localization contract reproduced a missing `(You, visual interface copy)` entry introduced by the Android communication notification's localized self label. Regenerating `Legend-Design/legend-application-copy.json` with `scripts/generate-application-copy-manifest.rb` adds exactly that source entry and updates the catalog version; all 5,186 existing entries remain unchanged. No test assertion or failure allowance is changed. The earlier full-suite result did not cover this final label addition and is superseded by the corrected candidate's rerun.
