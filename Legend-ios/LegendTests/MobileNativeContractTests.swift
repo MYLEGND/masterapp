@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import XCTest
 import UIKit
 @testable import Legend
@@ -1227,6 +1228,113 @@ final class MobileNativeContractTests: XCTestCase {
         throw SessionSwitchTestError.expectedSessionWasNotReached
     }
 
+    func testFounderChatConsumesProgressAndResultOnOneAuthenticatedPost() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        let wire = """
+        {"type":"accepted","operationId":"test-operation","responseAuthority":"LegendAi"}
+        {"type":"progress","progress":{"stage":"tool","message":"Reading governed evidence"}}
+        {"type":"heartbeat","elapsedSeconds":4}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Computed résultat.","responseAuthority":"LegendAi"}}
+
+        """
+        let bytes = Array(wire.utf8)
+        let split = try XCTUnwrap(bytes.firstIndex(of: 0xC3)) + 1
+        StubURLProtocol.responseChunks = [Data(bytes[..<split]), Data(bytes[split...])]
+        var updates: [String] = []
+        let observation = store.$progressMessage.compactMap { $0 }.sink { updates.append($0) }
+        defer { observation.cancel() }
+        await store.send("Use the governed record.", nativeOnly: true)
+        XCTAssertEqual(store.messages.last?.content, "Computed résultat.")
+        XCTAssertNil(store.failureMessage)
+        XCTAssertFalse(store.isSending)
+        XCTAssertTrue(updates.contains("Reading governed evidence"))
+        XCTAssertTrue(updates.contains("Reading governed evidence · 4s"))
+        XCTAssertEqual(StubURLProtocol.requests.count, 1)
+        let request = try XCTUnwrap(StubURLProtocol.requests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/api/v1/mobile/founder/legend-ai/chat")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/x-ndjson")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Agent")
+        XCTAssertNotNil(UUID(uuidString: request.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") ?? ""))
+    }
+
+    func testFounderStreamPreservesStructuredFailureDespiteSuccessfulTransport() async {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":503,"result":{"succeeded":false,"mode":"legend","error":"Evidence is unavailable.","failureKind":"governed_unavailable","reason":"source_withdrawn","reference":"safe-reference"}}
+
+        """.utf8)
+        await store.send("Read the governed record.")
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertTrue(store.failureMessage?.contains("Evidence is unavailable.") == true)
+        XCTAssertTrue(store.failureMessage?.contains("governed_unavailable") == true)
+        XCTAssertTrue(store.failureMessage?.contains("source_withdrawn") == true)
+        XCTAssertTrue(store.failureMessage?.contains("safe-reference") == true)
+    }
+
+    func testFounderStreamRequiresTerminalResultAndConsistentSuccessStatus() async {
+        for wire in [
+            "{\"type\":\"heartbeat\",\"elapsedSeconds\":4}\n",
+            "{\"type\":\"result\",\"result\":{\"succeeded\":true,\"mode\":\"legend\",\"message\":\"Unsupported success\"}}\n",
+            "{\"type\":\"result\",\"status\":503,\"result\":{\"succeeded\":true,\"mode\":\"legend\",\"message\":\"Unsupported success\"}}\n",
+            "{\"type\":\"result\",\"status\":200,\"result\":{\"succeeded\":false,\"mode\":\"legend\",\"error\":\"Refused\"}}\n"
+        ] {
+            let store = await availableFounderStore()
+            StubURLProtocol.responseBody = Data(wire.utf8)
+            await store.send("Read the governed record.")
+            XCTAssertEqual(store.messages.count, 1)
+            XCTAssertNotNil(store.failureMessage)
+            XCTAssertFalse(store.isSending)
+            resetFounderStreamStub()
+        }
+    }
+
+    func testFounderStopCancelsTheOriginalStreamingPost() async {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        let started = expectation(description: "Chat POST started")
+        let stopped = expectation(description: "Original POST cancelled")
+        StubURLProtocol.onRequest = { started.fulfill() }
+        StubURLProtocol.onStop = { stopped.fulfill() }
+        StubURLProtocol.holdOpen = true
+        StubURLProtocol.responseBody = Data("{\"type\":\"heartbeat\",\"elapsedSeconds\":4}\n".utf8)
+        let sending = Task { await store.send("Read the governed record.") }
+        await fulfillment(of: [started], timeout: 2)
+        sending.cancel()
+        await sending.value
+        await fulfillment(of: [stopped], timeout: 2)
+        XCTAssertFalse(store.isSending)
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertEqual(store.failureMessage, "Response stopped. Your next message is ready to send.")
+        XCTAssertEqual(StubURLProtocol.requests.count, 1)
+    }
+
+    private func availableFounderStore() async -> LegendFounderAiStore {
+        resetFounderStreamStub()
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.responseBody = Data("{\"available\":true}".utf8)
+        let store = LegendFounderAiStore(
+            client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()),
+            participantType: .agent, accessTokenProvider: { "test-token" })
+        await store.resolveAvailability()
+        XCTAssertTrue(store.isAvailable)
+        StubURLProtocol.requests = []
+        return store
+    }
+
+    private func resetFounderStreamStub() {
+        StubURLProtocol.responseBody = nil
+        StubURLProtocol.responseChunks = nil
+        StubURLProtocol.requests = []
+        StubURLProtocol.holdOpen = false
+        StubURLProtocol.onRequest = nil
+        StubURLProtocol.onStop = nil
+    }
+
     private func stubSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -1250,12 +1358,19 @@ private final class StubURLProtocol: URLProtocol {
     static var lastRequest: URLRequest?
     static var lastRequestTimeout: TimeInterval?
     static var lastRequestURL: URL?
+    static var requests: [URLRequest] = []
+    static var responseChunks: [Data]?
+    static var holdOpen = false
+    static var onRequest: (() -> Void)?
+    static var onStop: (() -> Void)?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         Self.lastRequest = request
+        Self.requests.append(request)
+        Self.onRequest?()
         Self.lastRequestTimeout = request.timeoutInterval
         Self.lastRequestURL = request.url
         let response = HTTPURLResponse(
@@ -1273,11 +1388,13 @@ private final class StubURLProtocol: URLProtocol {
         default:
             body = Self.responseBody ?? Data()
         }
-        client?.urlProtocol(self, didLoad: body)
-        client?.urlProtocolDidFinishLoading(self)
+        for chunk in Self.responseChunks ?? [body] {
+            client?.urlProtocol(self, didLoad: chunk)
+        }
+        if !Self.holdOpen { client?.urlProtocolDidFinishLoading(self) }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() { Self.onStop?() }
 }
 
 private final class InMemoryTokenStore: SecureTokenStoring, @unchecked Sendable {

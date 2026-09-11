@@ -10266,10 +10266,12 @@ private struct LegendFounderAiChatResponse: Decodable {
     let reason: String?
 }
 
-private struct LegendFounderAiProgressEnvelope: Decodable {
+private struct LegendFounderAiStreamEnvelope: Decodable {
     let type: String
     let elapsedSeconds: Int?
     let progress: LegendFounderAiProgressUpdate?
+    let status: Int?
+    let result: LegendFounderAiChatResponse?
 }
 
 private struct LegendFounderAiProgressUpdate: Decodable {
@@ -10378,40 +10380,48 @@ final class LegendFounderAiStore: ObservableObject {
             var chatHeaders = participantHeaders
             chatHeaders["X-Legend-Ai-Operation-Id"] = operationID.uuidString
 
-            let progressTask = Task {
-                await consumeProgress(
-                    client: client,
-                    operationID: operationID,
-                    accessToken: token)
+            var completed: (status: Int, response: LegendFounderAiChatResponse)?
+            var latestProgress: String?
+            for try await line in try client.postStreamLines(
+                "/api/v1/mobile/founder/legend-ai/chat",
+                body: LegendFounderAiChatRequest(
+                    mode: mode == "teacher" ? "teacher" : "legend",
+                    nativeOnly: mode != "teacher" && nativeOnly,
+                    // Only an explicit governed selection supplies a language.
+                    sourceLanguageCode: sourceLanguageCode,
+                    messages: messages,
+                    conversationId: conversationID.uuidString),
+                accessToken: token,
+                headers: chatHeaders)
+            {
+                try Task.checkCancellation()
+                guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                let envelope = try JSONDecoder.mobile.decode(
+                    LegendFounderAiStreamEnvelope.self, from: Data(line.utf8))
+                if envelope.type == "result" {
+                    guard let status = envelope.status, (100 ... 599).contains(status),
+                          let response = envelope.result else {
+                        throw MobileAPIError.invalidServerResponse
+                    }
+                    completed = (status, response)
+                    break
+                }
+                if envelope.type == "progress", let update = envelope.progress {
+                    let message = update.message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !message.isEmpty {
+                        latestProgress = message
+                        progressMessage = message
+                    }
+                } else if envelope.type == "heartbeat", let elapsed = envelope.elapsedSeconds {
+                    progressMessage = "\(latestProgress ?? "Working") · \(elapsed)s"
+                }
             }
+            try Task.checkCancellation()
+            // HTTP 200 acknowledges the stream, not completion of the request.
+            guard let completed else { throw MobileAPIError.invalidServerResponse }
+            let response = completed.response
 
-            defer { progressTask.cancel() }
-            await Task.yield()
-
-            let response =
-                try await client.post(
-                    "/api/v1/mobile/founder/legend-ai/chat",
-                    body:
-                        LegendFounderAiChatRequest(
-                            mode:
-                                mode == "teacher"
-                                    ? "teacher"
-                                    : "legend",
-                            nativeOnly:
-                                mode != "teacher" && nativeOnly,
-                            // This value is carried only when an upstream
-                            // governed UI selection knows it. The free-form
-                            // composer passes nil so the server identifies the
-                            // actual prompt before meaning analysis.
-                            sourceLanguageCode: sourceLanguageCode,
-                            messages: messages,
-                            conversationId: conversationID.uuidString),
-                    accessToken: token,
-                    headers: chatHeaders,
-                    response:
-                        LegendFounderAiChatResponse.self)
-
-            if response.succeeded,
+            if (200 ... 299).contains(completed.status), response.succeeded,
                let answer =
                     response.message?
                         .trimmingCharacters(
@@ -10453,40 +10463,6 @@ final class LegendFounderAiStore: ObservableObject {
         conversationID = UUID()
         progressMessage = nil
         failureMessage = nil
-    }
-
-    private func consumeProgress(
-        client: MobileHTTPClient,
-        operationID: UUID,
-        accessToken: String
-    ) async {
-        do {
-            for try await line in client.streamLines(
-                "/api/v1/mobile/founder/legend-ai/progress/\(operationID.uuidString)",
-                accessToken: accessToken,
-                headers: participantHeaders)
-            {
-                guard !Task.isCancelled,
-                      let data = line.data(using: .utf8),
-                      let envelope = try? JSONDecoder.mobile.decode(
-                        LegendFounderAiProgressEnvelope.self,
-                        from: data),
-                      let update = envelope.progress else {
-                    continue
-                }
-
-                let message = update.message.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !message.isEmpty else { continue }
-
-                if envelope.type == "heartbeat", let elapsed = envelope.elapsedSeconds {
-                    progressMessage = "\(message) · \(elapsed)s"
-                } else if envelope.type == "progress" {
-                    progressMessage = message
-                }
-            }
-        } catch {
-            // Progress is advisory; the chat POST remains authoritative.
-        }
     }
 
     private var participantHeaders:
