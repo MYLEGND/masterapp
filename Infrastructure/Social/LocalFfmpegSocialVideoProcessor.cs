@@ -19,7 +19,6 @@ internal sealed class LocalFfmpegSocialVideoProcessor
     // upload ends with a controlled Legend error instead of a dropped socket.
     private const int DefaultTimeoutSeconds = 110;
     private const int DurationProbeTimeoutSeconds = 10;
-    private const int MaximumDiagnosticLength = 2_000;
 
     private readonly string _executablePath;
     private readonly string _probeExecutablePath;
@@ -116,9 +115,8 @@ internal sealed class LocalFfmpegSocialVideoProcessor
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
             {
                 _logger.LogError(
-                    ex,
-                    "FFmpeg could not be started for local social media processing. Executable={Executable}",
-                    _executablePath);
+                    "FFmpeg could not start. Code={Code} FailureType={FailureType}",
+                    "SOCIAL_VIDEO_PROCESSING_UNAVAILABLE", ex.GetType().Name);
                 return SocialVideoProcessingResult.Failure(
                     "SOCIAL_VIDEO_PROCESSING_UNAVAILABLE",
                     "Legend video optimization is temporarily unavailable. Please try again shortly.");
@@ -143,9 +141,8 @@ internal sealed class LocalFfmpegSocialVideoProcessor
                 TryStop(process);
                 await AwaitProcessOutputAsync(standardOutput, standardError);
                 _logger.LogError(
-                    "FFmpeg timed out after {TimeoutSeconds} seconds while processing social video. Source={SourcePath}",
-                    _timeout.TotalSeconds,
-                    sourcePath);
+                    "FFmpeg timed out. Code={Code} TimeoutSeconds={TimeoutSeconds}",
+                    "SOCIAL_VIDEO_PROCESSING_TIMEOUT", _timeout.TotalSeconds);
                 return SocialVideoProcessingResult.Failure(
                     "SOCIAL_VIDEO_PROCESSING_TIMEOUT",
                     "Legend video optimization took too long. Please choose a shorter video and try again.");
@@ -157,14 +154,12 @@ internal sealed class LocalFfmpegSocialVideoProcessor
                 throw;
             }
 
-            var diagnostics = await ReadDiagnosticsAsync(standardOutput, standardError);
+            await AwaitProcessOutputAsync(standardOutput, standardError);
             if (process.ExitCode != 0 || !File.Exists(outputPath))
             {
                 _logger.LogError(
-                    "FFmpeg failed while processing social video. ExitCode={ExitCode} Source={SourcePath} Diagnostics={Diagnostics}",
-                    process.ExitCode,
-                    sourcePath,
-                    diagnostics);
+                    "FFmpeg failed. Code={Code} ExitCode={ExitCode}",
+                    "SOCIAL_VIDEO_PROCESSING_FAILED", process.ExitCode);
                 return SocialVideoProcessingResult.Failure(
                     "SOCIAL_VIDEO_PROCESSING_FAILED",
                     "Legend could not optimize this video for playback. Choose another video and try again.");
@@ -174,9 +169,8 @@ internal sealed class LocalFfmpegSocialVideoProcessor
             if (outputLength <= 0 || outputLength > _maximumOutputBytes)
             {
                 _logger.LogWarning(
-                    "FFmpeg output was outside Legend's permitted media size. Source={SourcePath} OutputBytes={OutputBytes}",
-                    sourcePath,
-                    outputLength);
+                    "FFmpeg output was outside the permitted size. Code={Code} OutputBytes={OutputBytes}",
+                    "SOCIAL_VIDEO_SIZE_INVALID", outputLength);
                 return SocialVideoProcessingResult.Failure(
                     "SOCIAL_VIDEO_SIZE_INVALID",
                     "This video is too large after optimization. Choose a shorter video and try again.");
@@ -194,9 +188,8 @@ internal sealed class LocalFfmpegSocialVideoProcessor
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogError(
-                ex,
-                "Legend could not replace a local social video with its optimized copy. Source={SourcePath}",
-                sourcePath);
+                "The optimized video could not be finalized. Code={Code} FailureType={FailureType}",
+                "SOCIAL_VIDEO_PROCESSING_FAILED", ex.GetType().Name);
             return SocialVideoProcessingResult.Failure(
                 "SOCIAL_VIDEO_PROCESSING_FAILED",
                 "Legend could not finalize this video for playback. Please try again.");
@@ -267,9 +260,8 @@ internal sealed class LocalFfmpegSocialVideoProcessor
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             _logger.LogError(
-                ex,
-                "FFprobe could not be started for local social video validation. Executable={Executable}",
-                _probeExecutablePath);
+                "FFprobe could not start. Code={Code} FailureType={FailureType}",
+                "SOCIAL_VIDEO_DURATION_INVALID", ex.GetType().Name);
             return SocialVideoDurationProbeResult.Failure(
                 "SOCIAL_VIDEO_DURATION_INVALID",
                 "Legend could not verify this video's duration.");
@@ -300,7 +292,7 @@ internal sealed class LocalFfmpegSocialVideoProcessor
         }
 
         var output = (await standardOutput).Trim();
-        var diagnostics = (await standardError).Trim();
+        _ = await standardError;
         if (process.ExitCode != 0 ||
             !double.TryParse(
                 output,
@@ -311,12 +303,8 @@ internal sealed class LocalFfmpegSocialVideoProcessor
             durationSeconds <= 0)
         {
             _logger.LogWarning(
-                "FFprobe could not read a valid social video duration. ExitCode={ExitCode} Source={SourcePath} Diagnostics={Diagnostics}",
-                process.ExitCode,
-                sourcePath,
-                diagnostics.Length <= MaximumDiagnosticLength
-                    ? diagnostics
-                    : diagnostics[..MaximumDiagnosticLength]);
+                "FFprobe could not read a valid duration. Code={Code} ExitCode={ExitCode}",
+                "SOCIAL_VIDEO_DURATION_INVALID", process.ExitCode);
             return SocialVideoDurationProbeResult.Failure(
                 "SOCIAL_VIDEO_DURATION_INVALID",
                 "Legend could not verify this video's duration.");
@@ -343,18 +331,6 @@ internal sealed class LocalFfmpegSocialVideoProcessor
         startInfo.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
         startInfo.ArgumentList.Add(sourcePath);
         return startInfo;
-    }
-
-    private static async Task<string> ReadDiagnosticsAsync(
-        Task<string> standardOutput,
-        Task<string> standardError)
-    {
-        var output = await standardOutput;
-        var error = await standardError;
-        var combined = string.Concat(error, output);
-        return combined.Length <= MaximumDiagnosticLength
-            ? combined
-            : combined[..MaximumDiagnosticLength];
     }
 
     private static async Task AwaitProcessOutputAsync(

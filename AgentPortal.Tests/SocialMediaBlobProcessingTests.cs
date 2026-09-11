@@ -12,6 +12,7 @@ using Azure.Storage.Blobs;
 using Infrastructure.Social;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -53,6 +54,30 @@ public sealed class SocialMediaBlobProcessingTests
         }
         Assert.Empty(fixture.Workspaces());
         Assert.Equal("keep", await File.ReadAllTextAsync(fixture.UnrelatedFile));
+    }
+
+    [UnixVideoTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BlobVideo_ProcessorFailuresKeepSafeCodesWithoutLoggingPathsOrMediaMetadata(bool failProbe)
+    {
+        using var fixture = new BlobFixture();
+        await fixture.PrepareProcessorAsync();
+        var executable = Path.Combine(fixture.Root, failProbe ? "probe" : "processor");
+        await File.WriteAllTextAsync(executable, "#!/bin/sh\nprintf 'metadata-do-not-log' >&2\nexit 42\n");
+        var logger = new SafeLogRecorder();
+        var result = await fixture.CreateStorage(logger: logger).ProcessAsync("originals/private-asset/source.mp4");
+        Assert.False(result.Succeeded);
+        Assert.Equal(failProbe ? "SOCIAL_VIDEO_DURATION_INVALID" : "SOCIAL_VIDEO_PROCESSING_FAILED", result.ErrorCode);
+        Assert.Contains(logger.Messages, message => message.Contains("42", StringComparison.Ordinal));
+        Assert.All(logger.Messages, message =>
+        {
+            Assert.DoesNotContain("metadata-do-not-log", message, StringComparison.Ordinal);
+            Assert.DoesNotContain(fixture.Root, message, StringComparison.Ordinal);
+            Assert.DoesNotContain("private-asset", message, StringComparison.Ordinal);
+        });
+        Assert.Empty(logger.Exceptions);
+        Assert.Empty(fixture.Workspaces());
     }
 
     [Theory]
@@ -108,7 +133,7 @@ public sealed class SocialMediaBlobProcessingTests
         }
         public IEnumerable<string> Workspaces() => Directory.Exists(Path.Combine(Root, ".processing"))
             ? Directory.EnumerateFileSystemEntries(Path.Combine(Root, ".processing")) : Array.Empty<string>();
-        public SocialMediaStorage CreateStorage(int maximumBytes = 1024)
+        public SocialMediaStorage CreateStorage(int maximumBytes = 1024, ILogger<SocialMediaStorage>? logger = null)
         {
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -121,7 +146,7 @@ public sealed class SocialMediaBlobProcessingTests
             }).Build();
             var options = new BlobClientOptions { Transport = new HttpClientTransport(Handler) };
             options.Retry.MaxRetries = 0;
-            return new SocialMediaStorage(configuration, NullLogger<SocialMediaStorage>.Instance, options);
+            return new SocialMediaStorage(configuration, logger ?? NullLogger<SocialMediaStorage>.Instance, options);
         }
         public async Task PrepareProcessorAsync()
         {
@@ -191,6 +216,20 @@ public sealed class SocialMediaBlobProcessingTests
             response.Headers.Add("x-ms-version", "2023-11-03");
             response.Headers.Date = DateTimeOffset.UtcNow;
             return response;
+        }
+    }
+
+    private sealed class SafeLogRecorder : ILogger<SocialMediaStorage>
+    {
+        public List<string> Messages { get; } = [];
+        public List<Exception> Exceptions { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Add(formatter(state, exception));
+            if (exception != null) Exceptions.Add(exception);
         }
     }
 
