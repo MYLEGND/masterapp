@@ -369,6 +369,14 @@ end
   add.call(brand, VISUAL)
 end
 
+# Installed native versions may still request copy removed from current screens.
+# Retain those identities in this same catalog; current source entries win.
+if MANIFEST.exist?
+  JSON.parse(File.read(MANIFEST)).fetch("entries").each do |entry|
+    entries[[entry.fetch("source"), entry.fetch("context")]] ||= entry
+  end
+end
+
 ordered_entries = entries.values.sort_by { |entry| [entry["context"], entry["source"]] }
 catalog_identity = ordered_entries.map do |entry|
   [

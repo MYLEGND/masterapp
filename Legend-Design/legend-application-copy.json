@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-66a0ef2a0dfdf1f5",
+  "catalogVersion": "application-copy-v1-d2334d471ec08240",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -27347,6 +27347,18 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d18b39c37951f77caf9da9db",
+      "source": "LEGEND {contentType} by {displayName}",
+      "context": "visual interface copy",
+      "sourceRevision": "b1d1d5c87b876b25",
+      "placeholders": [
+        "contentType",
+        "displayName"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2e21701a5210de3d22561f27",
       "source": "LEGEND®",
       "context": "visual interface copy",
@@ -39811,6 +39823,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.aa00505f91d7355e7b1fb30a",
+      "source": "Read",
+      "context": "visual interface copy",
+      "sourceRevision": "9b9a8d05a7ec353b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.172961240e45bdf6e851bf72",
       "source": "Read dwell time, exits, session depth, and source quality in one place before deciding where friction is actually happening.",
       "context": "visual interface copy",
@@ -44662,6 +44685,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.bf65f7c47edb18ab15030acc",
+      "source": "Sent",
+      "context": "visual interface copy",
+      "sourceRevision": "c16bc82bf1f04ede",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b58090b8d50b5f12c7ccf9c8",
       "source": "Server CAPI",
       "context": "visual interface copy",
@@ -45229,6 +45263,18 @@
       "sourceRevision": "2a9f7766212cab3a",
       "placeholders": [
 
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b4701cf6d286b3c4557883d1",
+      "source": "Shared a LEGEND {contentType} by {displayName}",
+      "context": "visual interface copy",
+      "sourceRevision": "7005de3a0563c052",
+      "placeholders": [
+        "contentType",
+        "displayName"
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
