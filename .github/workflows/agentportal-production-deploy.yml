@@ -586,6 +586,11 @@ jobs:
           Assert-NegotiateChallenge -Name 'LiveSync' -Uri 'https://portal.mylegnd.com/livesync/negotiate?negotiateVersion=1' -ExpectedStatus '302'
           Assert-NegotiateChallenge -Name 'Messaging' -Uri 'https://portal.mylegnd.com/messaginghub/negotiate?negotiateVersion=1' -ExpectedStatus '401'
 
+          # These empty requests must reach mobile authentication, not IIS StaticFile.
+          # They create no content and do not replace authenticated upload proof.
+          Assert-NegotiateChallenge -Name 'Social media ingress' -Uri 'https://portal.mylegnd.com/api/v1/mobile/social/posts/media' -ExpectedStatus '401'
+          Assert-NegotiateChallenge -Name 'Staged social media ingress' -Uri 'https://portal.mylegnd.com/api/v1/mobile/social/posts/media/stage' -ExpectedStatus '401'
+
       - name: Resolve production provider-canary authority
         shell: pwsh
         env:
