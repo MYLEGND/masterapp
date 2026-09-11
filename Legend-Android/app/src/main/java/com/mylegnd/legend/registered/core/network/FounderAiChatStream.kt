@@ -76,7 +76,9 @@ internal class FounderAiChatStream(private val client: OkHttpClient, private val
                     }
                     return result
                 }
-                else -> throw IOException("Unknown Founder chat stream frame.")
+                // Future advisory frames cannot complete the request. A typed
+                // terminal result is still mandatory, matching web and iOS.
+                else -> Unit
             }
         }
         throw IOException("Founder chat ended without a terminal result.")

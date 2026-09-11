@@ -38,6 +38,16 @@ class FounderAiChatStreamTest {
         }
     }
 
+    @Test fun unknownAdvisoryFrameStillRequiresValidTerminal() {
+        val unknown = """{"type":"future_advisory","detail":"Still working"}""" + "\n"
+        val result = reader().readResult(Buffer().writeUtf8(unknown + terminal + "\n"), {})
+        assertTrue(result.succeeded)
+        assertEquals("LegendAi", result.responseAuthority)
+        assertThrows(IOException::class.java) {
+            reader().readResult(Buffer().writeUtf8(unknown), {})
+        }
+    }
+
     @Test fun semanticFailurePreservesStructuredDto() {
         val frames = """{"type":"result","status":503,"result":{"succeeded":false,"mode":"legend","error":"Unavailable","reason":"semantic_transition_not_supported","stage":"reasoning","responseAuthority":"LegendAi"}}"""
         val result = reader().readResult(Buffer().writeUtf8(frames + "\n"), {})
