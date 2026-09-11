@@ -1,0 +1,11 @@
+{
+  "original_freeze": "evaluation-freeze.json",
+  "review": "Independent Bash3.2 reproduction by lead and evaluation specialist; explicit failure exits preserve requirements",
+  "files": {
+    "scripts/run-legend-production-shadow.sh": "d28b45a35d0756aa72f8c29eb42ae063b3b910c237c6dc5902014a18a1615f81",
+    "scripts/test-legend-production-shadow.py": "019f2f02b5b8a799ee43135ea226dfce7c182f5298de5ea0345ba86c67162ca5"
+  },
+  "full_simulation_cases": 92,
+  "full_simulation_passed": 92,
+  "sql_execution": false
+}

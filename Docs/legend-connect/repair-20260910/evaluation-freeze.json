@@ -1,0 +1,15 @@
+{
+  "source": "a7fb5809",
+  "heldout_policy": "No prompt, expected answer, threshold, or evaluation exclusion changes permitted to obtain passing results.",
+  "files": {
+    "AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs": "071ad0d2eeb3ca354b5047136e22e3ceb8230a6648b5292553ee178071e23cbc",
+    "AgentPortal.Tests/LegendFounderAiIndependentOperationRegressionTests.cs": "a282e88d952850682fce494c1730024d5fbdb796fef0501a4a4c01ec0ff21580",
+    "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs": "4c29f43f7ee78f10a96f2f26229be7f9cf93cb6ac2a8ac13b2fc3c7a38e7bfff",
+    "AgentPortal.Tests/LegendBlindComparativeBenchmarkTests.cs": "c4f74f7061caf767ccfe25e50acd4d92ae2e0109df766969ee3b7a3e16bf9a9f",
+    "AgentPortal.Tests/LegendBlindComparativeBenchmarkRunnerTests.cs": "444ca45e030c212d8f707fd47565a431b4befa272f2157ce2e8b023439215b4f",
+    "AgentPortal/Services/LegendArchitecturalTakeoverGate.cs": "8cf3152122af348cc4ab6ab6e8f748f77471912823037c12b5ce330af658c509",
+    "AgentPortal/Services/LegendBlindComparativeBenchmarkEvaluator.cs": "b423d7242a3f084309753405d4a2afd7bb94b28067eba1d9aa73bc1c2b1503f2",
+    ".github/workflows/agentportal-production-deploy.yml": "40568c83c5c9f96d1ad647dc8e87a8c8185d62745aaaae3bb6ff9cf416d30cbe",
+    "scripts/run-legend-production-shadow.sh": "73fdc39efbb810165a1a45426fbf9ef7ec9ff86f04c4bb044372fd66bde9068b"
+  }
+}

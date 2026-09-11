@@ -83,7 +83,23 @@ public sealed class LegendFounderAiController : Controller
                     "A chat request body is required."));
         }
 
+        using var transportActivity = Activity.Current is null
+            ? new Activity("LegendFounderAiController.Chat").SetIdFormat(ActivityIdFormat.W3C).Start()
+            : null;
+        var transportTraceId = Activity.Current?.TraceId.ToString();
+        var transportStarted = Stopwatch.GetTimestamp();
         var operationId = ReadOperationId();
+        Response.OnCompleted(() =>
+        {
+            // Server response completion is observable here; browser receipt
+            // and rendering still require an authenticated end-to-end check.
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} TraceId={TraceId} OperationId={OperationId} ElapsedMs={ElapsedMs} StatusCode={StatusCode}",
+                "ResponseCompleted", "LegendFounderAiController.Chat", "response_transport",
+                transportTraceId, operationId, Stopwatch.GetElapsedTime(transportStarted).TotalMilliseconds,
+                Response.StatusCode);
+            return Task.CompletedTask;
+        });
 
         // A long-running provider or governed inspection must not leave the
         // only response connection idle.  The production portal is served
@@ -139,7 +155,7 @@ public sealed class LegendFounderAiController : Controller
 
         using var writeGate = new SemaphoreSlim(1, 1);
         var started = Stopwatch.GetTimestamp();
-        var completed = new List<LegendFounderAiProgressEvent>();
+        var observations = new Dictionary<string, LegendFounderAiProgressEvent>(StringComparer.Ordinal);
 
         async ValueTask WriteFrameAsync(object value, CancellationToken token)
         {
@@ -158,8 +174,7 @@ public sealed class LegendFounderAiController : Controller
             LegendFounderAiProgressEvent update,
             CancellationToken token)
         {
-            if (update.Stage is "native_response" or "tool_complete" or "response")
-                completed.Add(update);
+            RecordWorkObservation(observations, update);
 
             await WriteFrameAsync(
                 new { type = "progress", progress = update },
@@ -202,18 +217,22 @@ public sealed class LegendFounderAiController : Controller
             }
 
             var result = await execution;
-            var completedWork = completed
-                .Select(update => update.Tool ?? update.Stage)
-                .Distinct(StringComparer.Ordinal)
+            var completedWork = observations
+                .Where(item => item.Value.Stage != "tool_unavailable")
+                .Select(item => item.Key)
                 .ToArray();
+            var remainingWork = observations
+                .Where(item => item.Value.Stage == "tool_unavailable")
+                .Select(item => item.Key)
+                .ToList();
+            if (!result.Succeeded)
+                remainingWork.Add(result.Stage ?? "unknown");
 
             result = result with
             {
                 OperationId = operationId?.ToString("D"),
                 CompletedWork = completedWork,
-                RemainingWork = result.Succeeded
-                    ? Array.Empty<string>()
-                    : [result.Stage ?? "unknown"],
+                RemainingWork = remainingWork.Distinct(StringComparer.Ordinal).ToArray(),
                 // This transport repair keeps the original operation alive;
                 // it never claims a durable resume that does not exist.
                 Resumable = false
@@ -244,6 +263,20 @@ public sealed class LegendFounderAiController : Controller
         }
     }
 
+    internal static void RecordWorkObservation(
+        IDictionary<string, LegendFounderAiProgressEvent> observations,
+        LegendFounderAiProgressEvent update)
+    {
+        if (update.Stage is not ("native_response" or "tool_complete" or "tool_unavailable" or "response"))
+            return;
+        var identity = update.Tool is null
+            ? update.Stage
+            : update.ScopeIdentity is null ? update.Tool : $"{update.Tool}:{update.ScopeIdentity}";
+        // Latest evidence owns its effective scope. An unrelated successful
+        // read cannot remove this scope's failed observation.
+        observations[identity] = update;
+    }
+
     private async Task<LegendFounderAiChatResponse> ExecuteAsync(
         LegendFounderAiChatRequest request,
         Guid? operationId,
@@ -253,7 +286,7 @@ public sealed class LegendFounderAiController : Controller
         // Reuse the server trace when present. Direct controller execution
         // still gets one identity shared by all nested runtime stages.
         using var requestActivity = Activity.Current is null
-            ? new Activity("LegendFounderAiController.ExecuteAsync").Start()
+            ? new Activity("LegendFounderAiController.ExecuteAsync").SetIdFormat(ActivityIdFormat.W3C).Start()
             : null;
         using var requestScope = _logger.BeginScope(new Dictionary<string, object?>
         {
@@ -284,7 +317,7 @@ public sealed class LegendFounderAiController : Controller
                 result.Mode,
                 result.ResponseAuthority,
                 result.Stage ?? "completed",
-                result.Reason ?? "none",
+                reasonCode,
                 result.Succeeded,
                 (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds));
 
