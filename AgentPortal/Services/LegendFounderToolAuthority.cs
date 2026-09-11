@@ -1294,7 +1294,7 @@ internal sealed class LegendFounderToolAuthority
 
     // The provider's strict schema requires nullable fields. Existing governed
     // requests with {} retain their aggregate meaning and their receipt identity.
-    private static JsonElement NormalizeOperationalDiagnosticArguments(JsonElement root)
+    internal static JsonElement NormalizeOperationalDiagnosticArguments(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object || HasDuplicateProperties(root))
             return root;
@@ -1576,6 +1576,12 @@ internal sealed class LegendFounderToolAuthority
                         : reasonCode;
                 return false;
             }
+            if ((root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False) ||
+                (root.TryGetProperty("succeeded", out var succeeded) && succeeded.ValueKind == JsonValueKind.False))
+            {
+                reasonCode = "read_only_content_binding_tool_error";
+                return false;
+            }
             if (string.Equals(request.ToolName, "legend_operational_diagnostics", StringComparison.Ordinal))
             {
                 // Stage names are the snake-case form of their serialized
@@ -1593,6 +1599,15 @@ internal sealed class LegendFounderToolAuthority
                             name.ValueKind == JsonValueKind.String &&
                             string.Equals(name.GetString(), selectedStageName, StringComparison.Ordinal)).ToArray()
                         : [];
+                // A timestamp from another stage cannot establish freshness of
+                // this value, even when both stages happened to be available.
+                if (!string.IsNullOrWhiteSpace(request.ObservedUtcPath) &&
+                    !string.Equals(request.ValuePath.Split('.')[0],
+                        request.ObservedUtcPath.Split('.')[0], StringComparison.Ordinal))
+                {
+                    reasonCode = "read_only_content_binding_source_unavailable";
+                    return false;
+                }
                 if (selectedStages.Length != 1 ||
                     !selectedStages[0].TryGetProperty("state", out var state) ||
                     state.ValueKind != JsonValueKind.String ||

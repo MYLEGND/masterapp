@@ -315,7 +315,7 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
     // reads, unrelated-read rejection and partial-read disclosure end to end.
 
     [Theory]
-    [InlineData(false, "connectivity_failure", "not_implicated")]
+    [InlineData(false, "connectivity_failure", "unknown")]
     [InlineData(true, "permission_denied", "denied")]
     public void ReadToolFailure_PreservesStructuredAuthorityAndCorrelation(
         bool permissionDenied, string expectedCategory, string expectedAuthorization)
@@ -328,6 +328,7 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
             : new HttpRequestException("controlled transport failure");
         var serialized = Assert.IsType<string>(method!.Invoke(null,
             new object[] { "legend_search_retained_knowledge", failure }));
+        Assert.DoesNotContain(failure.Message, serialized);
         using var document = JsonDocument.Parse(serialized);
         var root = document.RootElement;
         Assert.False(root.GetProperty("ok").GetBoolean());

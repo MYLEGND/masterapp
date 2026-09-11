@@ -196,6 +196,9 @@ public sealed class LegendFounderAiConversationService
     {
         ArgumentNullException.ThrowIfNull(founder);
         ArgumentNullException.ThrowIfNull(request);
+        using var requestActivity = Activity.Current is null
+            ? new Activity("LegendFounderAi.Reply").SetIdFormat(ActivityIdFormat.W3C).Start()
+            : null;
 
         if (!TryNormalizeMode(
                 request.Mode,
@@ -1171,6 +1174,19 @@ public sealed class LegendFounderAiConversationService
                             call.Name),
                         effectiveToken);
 
+                    // Provider latency and preceding calls consume the same window.
+                    remaining = TimeSpan.FromSeconds(_timeoutSeconds) - executionClock.Elapsed;
+                    if (remaining <= TimeSpan.FromSeconds(MinimumFinalSynthesisWindowSeconds))
+                    {
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(mode, "The bounded execution window closed before the next governed check."),
+                            "governed_inspection",
+                            "governed_tool",
+                            "provider_tool_execution_not_allowed");
+                    }
+                    effectiveToken.ThrowIfCancellationRequested();
+
                     var toolOutput =
                         await ExecuteFounderToolWithBudgetAsync(
                             founder,
@@ -1245,9 +1261,9 @@ public sealed class LegendFounderAiConversationService
                                         out _,
                                         out _);
                             }
-                            else if (!requiresMandatoryGovernedInspection && governedReadSucceeded)
+                            else if (!requiresMandatoryGovernedInspection)
                             {
-                                governedInspectionCompleted = true;
+                                governedInspectionCompleted = successfulGovernedReads.Count > 0;
                             }
                         }
                     }
@@ -1265,7 +1281,9 @@ public sealed class LegendFounderAiConversationService
                         progress,
                         new LegendFounderAiProgressEvent(
                             "tool_complete",
-                            $"Completed: {toolDescription}",
+                            IsSuccessfulFounderToolOutput(toolOutput)
+                                ? $"Completed: {toolDescription}"
+                                : $"Unavailable: {toolDescription}",
                             round + 1,
                             call.Name),
                         effectiveToken);
@@ -1508,6 +1526,8 @@ public sealed class LegendFounderAiConversationService
     {
         var started = Stopwatch.GetTimestamp();
         var outcome = "completed";
+        var domainOutcome = "unknown";
+        var reasonCode = "none";
         var exceptionType = "none";
         _logger.LogInformation(
             "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome}",
@@ -1515,6 +1535,7 @@ public sealed class LegendFounderAiConversationService
         try
         {
             var result = await action();
+            (domainOutcome, reasonCode) = DescribeNativeStageResult(result);
             if (result is LegendConnectUtteranceMeaningGraphSnapshot graph)
             {
                 _logger.LogInformation(
@@ -1556,13 +1577,34 @@ public sealed class LegendFounderAiConversationService
             // Fixed stage names and bounded counts expose the blocking
             // authority without recording a prompt, graph, value or actor.
             _logger.LogInformation(
-                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType}",
-                "StageEnded", authorityMethod, stage, outcome,
-                outcome == "cancelled" ? "operation_cancelled" : outcome == "failed" ? "authority_exception" : "none",
-                (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExecutionOutcome={ExecutionOutcome} DomainOutcome={DomainOutcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType} TraceId={TraceId}",
+                "StageEnded", authorityMethod, stage, outcome == "completed" ? domainOutcome : outcome, outcome, domainOutcome,
+                outcome == "cancelled" ? "operation_cancelled" : outcome == "failed" ? "authority_exception" : reasonCode,
+                (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType, Activity.Current?.TraceId.ToString());
         }
     }
 
+
+    internal static (string Outcome, string Reason) DescribeNativeStageResult(object? result)
+    {
+        var (outcome, reason) = result switch
+        {
+            TranslationDetectionResult detection => (detection.Succeeded ? "succeeded" : "failed", detection.ErrorCode),
+            FounderAiSourceLanguageResolution language => (language.Succeeded ? "succeeded" : "failed", language.Reason),
+            LegendConnectNativeInferenceSnapshot inference => (inference.Supported ? "supported" : "unsupported", inference.ReasonCode),
+            LegendConnectContentBoundResponseMeaningPlanResult plan => (plan.Supported ? "supported" : "unsupported", plan.ReasonCode),
+            LegendConnectResearchOutcome research => (research.State.ToString(),
+                research.Failure?.ReasonCode ?? research.InsufficientEvidence?.ReasonCode ??
+                research.UnresolvedConflict?.ReasonCode ?? research.Decision.ReasonCode),
+            LegendConnectReadOnlyContentBindingResult binding => (binding.Succeeded ? "succeeded" : "failed", binding.ReasonCode),
+            LegendConnectUtteranceMeaningGraphSnapshot graph => (graph.IsComposed ? "composed" : "uncomposed", graph.ReasonCode),
+            string output when output.TrimStart().StartsWith("{", StringComparison.Ordinal) =>
+                (IsSuccessfulFounderToolOutput(output) ? "succeeded" : "failed", (string?)null),
+            null => ("unavailable", (string?)null),
+            _ => ("observed", (string?)null)
+        };
+        return (outcome, LegendConnectTelemetry.NormalizeDiagnosticReason(reason));
+    }
 
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
@@ -2427,7 +2469,7 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    private static string BuildReadOnlyToolFailureOutput(
+    internal static string BuildReadOnlyToolFailureOutput(
         string tool,
         Exception exception)
     {
@@ -2454,36 +2496,19 @@ public sealed class LegendFounderAiConversationService
                 requestedResource = tool,
                 authorizationDecision = permissionDenied
                     ? "denied"
-                    : "not_implicated",
+                    : "unknown",
                 policyOrPermission = permissionDenied
                     ? exception.GetType().Name
                     : null,
                 correlationId,
                 exceptionType = exception.GetType().Name,
-                detail = NormalizeToolFailureDetail(exception.Message),
+                detail = "The governed authority did not produce a verified result.",
                 instruction = "This read failed. Continue any independent governed reads that can still execute, then report this exact failed authority without inventing unavailable state."
             },
             JsonOptions);
     }
 
-    private static string NormalizeToolFailureDetail(string? value)
-    {
-        var detail = NormalizeFailureDetail(value);
-        foreach (var sensitiveName in new[]
-                 {
-                     "password=", "pwd=", "user id=", "uid=",
-                     "api_key=", "apikey=", "access_token=", "connectionstring="
-                 })
-        {
-            var index = detail.IndexOf(sensitiveName, StringComparison.OrdinalIgnoreCase);
-            if (index >= 0)
-                return detail[..index] + "[REDACTED SENSITIVE CONFIGURATION DETAIL]";
-        }
-
-        return detail;
-    }
-
-    private static bool IsSuccessfulFounderToolOutput(string output)
+    internal static bool IsSuccessfulFounderToolOutput(string output)
     {
         if (string.IsNullOrWhiteSpace(output))
             return false;
@@ -2495,6 +2520,14 @@ public sealed class LegendFounderAiConversationService
             if (root.ValueKind == JsonValueKind.Array)
                 return true;
             if (root.ValueKind != JsonValueKind.Object || root.TryGetProperty("error", out _))
+                return false;
+            if (root.TryGetProperty("stages", out var stages) &&
+                (stages.ValueKind != JsonValueKind.Array ||
+                 !stages.EnumerateArray().Any(stage =>
+                     stage.ValueKind == JsonValueKind.Object &&
+                     stage.TryGetProperty("state", out var state) &&
+                     state.ValueKind == JsonValueKind.String &&
+                     state.GetString() == "available")))
                 return false;
             return (!root.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.False) &&
                    (!root.TryGetProperty("succeeded", out var succeeded) || succeeded.ValueKind != JsonValueKind.False);
@@ -2515,13 +2548,16 @@ public sealed class LegendFounderAiConversationService
             : answer + "\n\nSome requested governed reads remain unavailable; their state was not verified.\n" +
               "LEGEND_GOVERNED_READ_DIAGNOSTICS\n" + JsonSerializer.Serialize(failures, JsonOptions);
 
-    private static string ReadScopeIdentity(string tool, string arguments)
+    internal static string ReadScopeIdentity(string tool, string arguments)
     {
         var canonicalArguments = arguments;
         try
         {
             using var document = JsonDocument.Parse(arguments);
-            canonicalArguments = JsonSerializer.Serialize(CanonicalValue(document.RootElement), JsonOptions);
+            var effectiveArguments = tool == "legend_operational_diagnostics"
+                ? LegendFounderToolAuthority.NormalizeOperationalDiagnosticArguments(document.RootElement)
+                : document.RootElement;
+            canonicalArguments = JsonSerializer.Serialize(CanonicalValue(effectiveArguments), JsonOptions);
         }
         catch (JsonException) { }
         catch (ArgumentException) { }
