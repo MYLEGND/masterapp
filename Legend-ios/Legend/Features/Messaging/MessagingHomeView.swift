@@ -3453,10 +3453,10 @@ private struct LegendMessageDateSeparator: View {
     var body: some View {
         Text(LegendMessagingDateFormatter.threadDate(date))
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(LegendNextColor.textTertiary)
+            .foregroundStyle(LegendNextColor.chatTimestamp)
             .padding(.horizontal, 9)
             .padding(.vertical, 3)
-            .background(LegendNextColor.fill, in: Capsule())
+            .background(LegendNextColor.chatTimestamp.opacity(0.10), in: Capsule())
             .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
     }
@@ -3661,7 +3661,7 @@ private struct LegendMessageBubble: View {
                 style: .continuous
             )
         )
-        .onTapGesture(count: 2) { if !message.isDeleted { onReact("👍") } }
+        .onTapGesture(count: 2) { if !message.isDeleted { onReact("❤️") } }
         .sheet(isPresented: $emojiPicker) {
             VStack(spacing: 16) {
                 Text(LegendLocalized("Choose a reaction")).font(.headline)
@@ -3680,10 +3680,16 @@ private struct LegendMessageBubble: View {
         }
         .contextMenu {
             if !message.isDeleted {
-                ForEach(reactionOptions, id: \.self) { emoji in
-                    Button(emoji) { onReact(emoji) }
+                ControlGroup {
+                    ForEach(reactionOptions, id: \.self) { emoji in
+                        Button(emoji) { onReact(emoji) }
+                            .menuActionDismissBehavior(.enabled)
+                    }
+                    Button { emojiPicker = true } label: {
+                        Label(LegendLocalized("More reactions"), systemImage: "plus")
+                    }
                 }
-                Button { emojiPicker = true } label: { Label(LegendLocalized("More reactions"), systemImage: "plus") }
+                .controlGroupStyle(.palette)
                 if message.reactions.contains(where: { $0.reactedByCurrentActor }) {
                     Button(LegendLocalized("Remove reaction")) { onReact(nil) }
                 }
@@ -3776,14 +3782,6 @@ private struct LegendMessageBubble: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
 
-                if !message.reactions.isEmpty {
-                    HStack {
-                        ForEach(message.reactions, id: \.emoji) { reaction in
-                            Button("\(reaction.emoji) \(reaction.count)") { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) }
-                                .font(.caption).buttonStyle(.bordered)
-                        }
-                    }
-                }
                 if !message.isDeleted, let shared = message.sharedContent {
                     LegendSharedMessageCard(content: shared)
                 }
@@ -3844,12 +3842,32 @@ private struct LegendMessageBubble: View {
                 )
             )
 
+            .overlay(alignment: .topTrailing) {
+                if !message.reactions.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(message.reactions, id: \.emoji) { reaction in
+                            Button { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) } label: {
+                                HStack(spacing: 2) {
+                                    Text(reaction.emoji)
+                                    if reaction.count > 1 { Text("\(reaction.count)").font(.caption2.bold()) }
+                                }
+                                .font(.system(size: 15))
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(LegendNextColor.surface, in: Capsule())
+                                .overlay(Capsule().stroke(LegendNextColor.chatTimestamp.opacity(reaction.reactedByCurrentActor ? 1 : 0.3), lineWidth: 1))
+                            }.buttonStyle(.plain)
+                        }
+                    }.offset(x: 3, y: -13)
+                }
+            }
+            .padding(.top, message.reactions.isEmpty ? 0 : 13)
+
             Text(
                 message.sentUTC,
                 format: .dateTime.hour().minute()
             )
             .font(.system(size: 10, weight: .regular))
-            .foregroundStyle(LegendNextColor.textTertiary)
+            .foregroundStyle(LegendNextColor.chatTimestamp)
             .padding(
                 message.isMine ? .trailing : .leading,
                 3

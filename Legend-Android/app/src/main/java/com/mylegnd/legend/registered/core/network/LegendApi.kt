@@ -154,7 +154,7 @@ interface LegendApi {
 }
 
 @Serializable data class EmptyRequest(val value: String? = null)
-@Serializable data class FcmDeviceTokenRequest(val deviceToken: String)
+@Serializable data class FcmDeviceTokenRequest(val deviceToken: String, val supportsCommunicationNotifications: Boolean)
 @Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
 @Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
 @Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())

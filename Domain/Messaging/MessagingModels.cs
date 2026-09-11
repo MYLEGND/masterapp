@@ -497,7 +497,10 @@ public sealed record MessagingConversationSummary(
     string? Purpose = null,
     MessagingGroupImage? GroupImage = null,
     bool IsPinned = false,
-    bool IsMuted = false);
+    bool IsMuted = false)
+{
+    public string? DisplayTitle { get; init; }
+}
 
 /// <summary>
 /// A server-authorized native call target for a direct conversation. The app
@@ -534,6 +537,7 @@ public sealed record MessagingConversationDetail(
     bool CanManageMeeting = false,
     bool HasOlderMessages = false)
 {
+    public string? DisplayTitle { get; init; }
     public MessagingReadReceiptSettings? ReadReceipts { get; init; }
     public IReadOnlyList<string> ReactionOptions { get; init; } = MessagingReactionOptions.Defaults;
 }

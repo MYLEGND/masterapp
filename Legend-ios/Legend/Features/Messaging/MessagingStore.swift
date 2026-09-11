@@ -1249,18 +1249,51 @@ final class MessagingStore: ObservableObject {
     }
 
     private var reactionTasks: [UUID: Task<Void, Never>] = [:]
+    private var reactionVersions: [UUID: Int] = [:]
+    private var confirmedReactions: [UUID: [MessageReaction]] = [:]
     func react(to message: ConversationMessage, emoji: String?) {
-        guard !message.isDeleted, reactionTasks[message.id] == nil else { return }
+        guard !message.isDeleted, case .loaded(let conversation) = detailState,
+              conversation.id == message.conversationID,
+              let currentMessage = conversation.messages.first(where: { $0.id == message.id }) else { return }
+        let previousTask = reactionTasks[message.id]
+        let mutationVersion = (reactionVersions[message.id] ?? 0) + 1
+        reactionVersions[message.id] = mutationVersion
+        if previousTask == nil { confirmedReactions[message.id] = currentMessage.reactions }
         let revision = presentationRevision
+        let previousReactions = currentMessage.reactions
+        var pendingReactions = previousReactions.compactMap { reaction -> MessageReaction? in
+            let count = reaction.count - (reaction.reactedByCurrentActor ? 1 : 0)
+            return count > 0 ? MessageReaction(emoji: reaction.emoji, count: count, reactedByCurrentActor: false) : nil
+        }
+        if let emoji {
+            if let index = pendingReactions.firstIndex(where: { $0.emoji == emoji }) {
+                pendingReactions[index] = MessageReaction(emoji: emoji, count: pendingReactions[index].count + 1, reactedByCurrentActor: true)
+            } else { pendingReactions.append(MessageReaction(emoji: emoji, count: 1, reactedByCurrentActor: true)) }
+        }
+        let optimisticReactions = pendingReactions
+        replaceMessage(message.id) { current in
+            var updated = current
+            updated.reactions = optimisticReactions
+            return updated
+        }
         reactionTasks[message.id] = Task { [weak self] in
             guard let self else { return }
-            defer { self.reactionTasks[message.id] = nil }
+            defer {
+                if self.reactionVersions[message.id] == mutationVersion {
+                    self.reactionTasks[message.id] = nil
+                    self.confirmedReactions[message.id] = nil
+                }
+            }
+            await previousTask?.value
+            guard revision == self.presentationRevision, self.selectedConversationID == message.conversationID else { return }
             do {
                 let result = try await self.api.react(conversationID: message.conversationID, messageID: message.id,
                     emoji: emoji, accessToken: try await self.accessTokenProvider())
                 try Task.checkCancellation()
                 guard revision == self.presentationRevision, self.selectedConversationID == message.conversationID,
                       result.messageId == message.id else { return }
+                self.confirmedReactions[message.id] = result.reactions
+                guard self.reactionVersions[message.id] == mutationVersion else { return }
                 self.replaceMessage(message.id) { current in
                     var updated = current
                     updated.reactions = result.reactions
@@ -1269,6 +1302,13 @@ final class MessagingStore: ObservableObject {
             } catch {
                 guard !(error is CancellationError), !Task.isCancelled,
                     revision == self.presentationRevision, self.selectedConversationID == message.conversationID else { return }
+                guard self.reactionVersions[message.id] == mutationVersion else { return }
+                let confirmed = self.confirmedReactions[message.id] ?? previousReactions
+                self.replaceMessage(message.id) { current in
+                    var updated = current
+                    if updated.reactions == optimisticReactions { updated.reactions = confirmed }
+                    return updated
+                }
                 self.sendFailure = self.failure(for: error, title: LegendLocalized("Reaction unavailable"))
             }
         }

@@ -40,6 +40,18 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
         return Ok(ToResponse(snapshot));
     }
 
+    // A time-limited, purpose-bound capability grants only this notification's
+    // sender photo. Membership and message visibility are rechecked on every read.
+    [AllowAnonymous]
+    [HttpGet("{notificationId:guid}/sender-image")]
+    public async Task<IActionResult> SenderImage(Guid notificationId, [FromQuery] string token, CancellationToken cancellationToken)
+    {
+        var image = await _notifications.GetSenderImageAsync(notificationId, token, cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return image is null ? NotFound() : File(image.Content, image.ContentType);
+    }
+
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken cancellationToken)
     {
@@ -226,10 +238,10 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
 
         try
         {
-            await _notifications.RegisterFcmDeviceAsync(
-                resolved.Actor!.Actor,
-                request.DeviceToken,
-                cancellationToken);
+            if (request.SupportsCommunicationNotifications)
+                await _notifications.RegisterFcmCommunicationDeviceAsync(resolved.Actor!.Actor, request.DeviceToken, cancellationToken);
+            else
+                await _notifications.RegisterFcmDeviceAsync(resolved.Actor!.Actor, request.DeviceToken, cancellationToken);
         }
         catch (ArgumentException)
         {
@@ -325,7 +337,7 @@ public sealed record MobileApnsDeviceRegistrationRequest(
 
 public sealed record MobileApnsDeviceRemovalRequest(string? DeviceToken);
 
-public sealed record MobileFcmDeviceRegistrationRequest(string? DeviceToken);
+public sealed record MobileFcmDeviceRegistrationRequest(string? DeviceToken, bool SupportsCommunicationNotifications = false);
 
 public sealed record MobileFcmDeviceRemovalRequest(string? DeviceToken);
 

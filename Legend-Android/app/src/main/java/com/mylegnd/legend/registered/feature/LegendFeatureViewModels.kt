@@ -715,20 +715,56 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
      * both projections are reloaded from AgentPortal.
      */
     private val reactionJobs = mutableMapOf<String, Job>()
+    private val reactionVersions = mutableMapOf<String, Int>()
+    private val confirmedReactions = mutableMapOf<String, List<com.mylegnd.legend.registered.core.model.MessageReaction>>()
     fun react(message: ConversationMessage, emoji: String?) {
-        if (message.isDeleted || reactionJobs[message.id]?.isActive == true) return
+        if (message.isDeleted) return
+        val currentMessage = (_detail.value as? LoadState.Data)?.value?.takeIf { it.id == message.conversationId }
+            ?.messages?.firstOrNull { it.id == message.id } ?: return
+        val previousJob = reactionJobs[message.id]
+        val mutationVersion = (reactionVersions[message.id] ?: 0) + 1
+        reactionVersions[message.id] = mutationVersion
+        if (previousJob?.isActive != true) confirmedReactions[message.id] = currentMessage.reactions
         val revision = presentationRevision
+        val previousReactions = currentMessage.reactions
+        val optimisticReactions = previousReactions.mapNotNull {
+            val count = it.count - if (it.reactedByCurrentActor) 1 else 0
+            if (count > 0) it.copy(count = count, reactedByCurrentActor = false) else null
+        }.toMutableList().apply {
+            if (emoji != null) {
+                val index = indexOfFirst { it.emoji == emoji }
+                if (index >= 0) this[index] = this[index].copy(count = this[index].count + 1, reactedByCurrentActor = true)
+                else add(com.mylegnd.legend.registered.core.model.MessageReaction(emoji, 1, true))
+            }
+        }.toList()
+        (_detail.value as? LoadState.Data)?.value?.takeIf { it.id == message.conversationId }?.let { current ->
+            _detail.value = LoadState.Data(current.copy(messages = current.messages.map {
+                if (it.id == message.id) it.copy(reactions = optimisticReactions) else it
+            }))
+        }
         reactionJobs[message.id] = viewModelScope.launch {
+            previousJob?.join()
+            if (revision != presentationRevision || selectedConversationId != message.conversationId) return@launch
             when (val result = repository.react(role, message.conversationId, message.id, emoji)) {
                 is LoadState.Data -> if (revision == presentationRevision && selectedConversationId == message.conversationId) {
                     val current = (_detail.value as? LoadState.Data)?.value
                     if (current?.id == message.conversationId && result.value.messageId == message.id) {
+                        confirmedReactions[message.id] = result.value.reactions
+                        if (reactionVersions[message.id] != mutationVersion) return@launch
                         _detail.value = LoadState.Data(current.copy(messages = current.messages.map {
                             if (it.id == message.id) it.copy(reactions = result.value.reactions) else it
                         }))
                     }
                 }
-                is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == message.conversationId) _historyFailure.value = result.message
+                is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == message.conversationId && reactionVersions[message.id] == mutationVersion) {
+                    val confirmed = confirmedReactions[message.id] ?: previousReactions
+                    (_detail.value as? LoadState.Data)?.value?.let { current ->
+                        _detail.value = LoadState.Data(current.copy(messages = current.messages.map {
+                            if (it.id == message.id && it.reactions == optimisticReactions) it.copy(reactions = confirmed) else it
+                        }))
+                    }
+                    _historyFailure.value = result.message
+                }
                 else -> Unit
             }
         }

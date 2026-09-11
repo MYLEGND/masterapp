@@ -3782,21 +3782,23 @@ private fun LegendMessageBubble(
             Box(Modifier.clickable { openProfile(senderProfile) }) { LegendProtectedAvatar(message.sender.avatar, message.sender.displayName, participantType, mediaRepository, size = 28.dp) }
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
-        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("👍") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
+        Column(horizontalAlignment = Alignment.End) {
+        Box(Modifier.padding(top = if (message.reactions.isEmpty()) 0.dp else 13.dp)) {
+        Surface(color = if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = if (message.isMine) LegendColors.OnGold else LegendColors.OnNavy, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
             Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = LegendColors.GoldBright)
                 message.reply?.let { replyPreview ->
-                    Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                Text(if (message.isDeleted) legendLocalized("Message unsent") else message.body, color = if (message.isMine) LegendColors.OnNavy else LegendColors.TextPrimary)
+                Text(if (message.isDeleted) legendLocalized("Message unsent") else message.body, color = if (message.isMine) LegendColors.OnGold else LegendColors.OnNavy)
                 message.originalBody?.takeIf { it != message.body }?.let { original ->
-                    Text("${LegendCopy.value("message.original")}: $original", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary)
+                    Text("${LegendCopy.value("message.original")}: $original", style = LegendTypography.Label, color = if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }
                 message.translation?.let { translation ->
-                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary)
+                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Label, color = if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }
                 message.verificationReview?.let { review ->
-                    Text("${review.resourceType}: ${review.status}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary)
+                    Text("${review.resourceType}: ${review.status}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                     if (review.canResolve) {
                         Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                             TextButton(onClick = { resolveVerification(review, true, null) }) { Text(legendLocalized("Approve"), color = LegendColors.Success) }
@@ -3820,19 +3822,25 @@ private fun LegendMessageBubble(
                         LegendMessageAttachmentOpen(attachment, mediaRepository, participantType)
                     }
                 }
-                if (message.reactions.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    message.reactions.forEach { reaction ->
-                        TextButton(onClick = { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }) {
-                            Text("${reaction.emoji} ${reaction.count}", color = if (reaction.reactedByCurrentActor) LegendColors.Gold else LegendColors.TextSecondary)
-                        }
-                    }
-                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary, modifier = Modifier.weight(1f))
-                    IconButton(onClick = reply, modifier = Modifier.size(28.dp)) { Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary) }
-                    if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary) }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = reply, modifier = Modifier.size(28.dp)) { Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright) }
+                    if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright) }
                 }
             }
+        }
+        if (message.reactions.isNotEmpty()) Row(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-13).dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            message.reactions.forEach { reaction ->
+                Surface(shape = CircleShape, color = LegendColors.Surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.ChatTimestamp.copy(alpha = if (reaction.reactedByCurrentActor) 1f else 0.3f)),
+                    modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }) {
+                    Text(reaction.emoji + if (reaction.count > 1) " ${reaction.count}" else "",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), color = LegendColors.TextPrimary)
+                }
+            }
+        }
+        }
+        Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = LegendColors.ChatTimestamp)
         }
     }
 }

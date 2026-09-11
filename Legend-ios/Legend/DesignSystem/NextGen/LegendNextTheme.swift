@@ -25,6 +25,7 @@ enum LegendNextColor {
     static let textPrimary = LegendSharedDesign.color("textPrimary")
     static let textSecondary = LegendSharedDesign.color("textSecondary")
     static let textTertiary = LegendSharedDesign.color("textTertiary")
+    static let chatTimestamp = LegendSharedDesign.color("chatTimestamp")
     static let separator = LegendSharedDesign.color("separator")
     static let fill = LegendSharedDesign.color("fill")
     static let fillSecondary = LegendSharedDesign.color("fillSecondary")

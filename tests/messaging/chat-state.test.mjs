@@ -85,15 +85,15 @@ test('captionless shared content carries actual media and canonical protected li
   const unavailable=new Element('article');c.appendSharedContent(unavailable,{sourcePostId:'post-id',status:'unavailable',media:[{id:'secret',mediaKind:'Image'}]});
   assert.equal(unavailable.children[0].children.filter(x=>x.tagName==='img'||x.tagName==='a').length,0);
 });
-test('reaction controls consume server palette and double tap explicitly sets like',async()=>{
-  const calls=[];const c=domEnvironment(async(url,options)=>{calls.push({url,options});return {messageId:'m',reactions:[{emoji:'👍',count:1,reactedByCurrentActor:true}]};});
+test('reaction controls consume server palette and double tap explicitly sets red heart',async()=>{
+  const calls=[];const c=domEnvironment(async(url,options)=>{calls.push({url,options});return {messageId:'m',reactions:[{emoji:'❤️',count:1,reactedByCurrentActor:true}]};});
   c.state.active={id:'A',messages:[{id:'m'}]};
   const card=new Element('article');c.appendMessageInteractions(card,{id:'A',reactionOptions:['🦉']},{id:'m',reactions:[]});
-  const menu=card.children[0].children[0],palette=menu.children[1];
+  const menu=card.children[0],palette=menu.children[1];
   assert.equal(palette.children[0].textContent,'🦉');
   card.events.dblclick({target:{closest:()=>false}});
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(calls.length,1);assert.equal(calls[0].options.method,'PUT');assert.equal(JSON.parse(calls[0].options.body).emoji,'👍');
+  assert.equal(calls.length,1);assert.equal(calls[0].options.method,'PUT');assert.equal(JSON.parse(calls[0].options.body).emoji,'❤️');
   assert.equal(c.state.active.messages[0].reactions[0].count,1);
 });
 test('a held thread cannot replace a newly selected recipient draft',async()=>{
@@ -130,7 +130,7 @@ test('reaction mutations serialize per message and keep the latest explicit sele
   await flushTasks();
   assert.equal(calls.length, 2);
   assert.equal(JSON.parse(calls[1].options.body).emoji, '❤️');
-  assert.equal(c.state.active.messages[0].reactions[0].emoji, '👍');
+  assert.equal(c.state.active.messages[0].reactions[0].emoji, '❤️', 'An older acknowledgment must not replace the newer pending choice');
   second.resolve({ messageId: 'message', reactions: [{ emoji: '❤️', count: 3, reactedByCurrentActor: true }] });
   await heart;
   assert.equal(c.state.active.messages[0].reactions[0].emoji, '❤️');
@@ -286,4 +286,35 @@ test('pending attachment retry is explicit and never substitutes newly selected 
   assert.deepEqual(uploaded,['original','original']);assert.equal(messages,1);
   assert.equal(c.elements.messageBody.value,'New draft');
   assert.equal(await c.elements.files.files[0].text(),'new file');
+});
+
+// Immediate feedback is provisional; a failed server mutation must restore it.
+test('reaction appears before network completion and rolls back on failure', async () => {
+  const pending=deferred(), c=domEnvironment(()=>pending.promise);
+  const message={id:'m',reactions:[]}; c.state.active={id:'A',messages:[message]};
+  const operation=c.setMessageReaction('A',message,'❤️');
+  assert.equal(c.state.active.messages[0].reactions[0].emoji,'❤️');
+  pending.reject(new Error('offline')); await operation;
+  assert.equal(c.state.active.messages[0].reactions.length,0);
+});
+test('selecting a palette reaction dismisses the menu before response', async () => {
+  const pending=deferred(), c=domEnvironment(()=>pending.promise);
+  const message={id:'m',reactions:[]}; c.state.active={id:'A',messages:[message]};
+  const card=new Element('article'); c.appendMessageInteractions(card,{id:'A',reactionOptions:['❤️']},message);
+  const menu=card.children[0]; menu.open=true;
+  menu.children[1].children[0].events.click();
+  assert.equal(menu.open,false);
+  pending.resolve({messageId:'m',reactions:[{emoji:'❤️',count:1,reactedByCurrentActor:true}]});
+  await new Promise(resolve=>setImmediate(resolve));
+});
+
+test('two failed queued choices restore the last confirmed server reactions', async () => {
+  const first=deferred(), second=deferred(); let calls=0;
+  const c=domEnvironment(()=>++calls===1?first.promise:second.promise);
+  const message={id:'m',reactions:[]}; c.state.active={id:'A',messages:[message]};
+  const a=c.setMessageReaction('A',message,'👍');
+  const b=c.setMessageReaction('A',message,'❤️');
+  first.reject(new Error('offline')); await a;
+  second.reject(new Error('offline')); await b;
+  assert.equal(c.state.active.messages[0].reactions.length,0);
 });

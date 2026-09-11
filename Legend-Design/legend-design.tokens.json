@@ -32,7 +32,8 @@
     "fillSecondary": { "light": "#10254C", "dark": "#FFFFFF", "lightOpacity": 0.035, "darkOpacity": 0.045 },
     "contactNavy": { "light": "#142E5B" },
     "contactConnected": { "light": "#4AE28B" },
-    "verified": { "light": "#1F7AEB" }
+    "verified": { "light": "#1F7AEB" },
+    "chatTimestamp": { "light": "#0072E5", "dark": "#42BFFF" }
   },
   "platformSemanticColors": {
     "success": { "ios": "systemGreen", "android": "#34C759" },

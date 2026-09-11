@@ -32,7 +32,8 @@ internal sealed record ApplePushDeliveryRequest(
     Guid NotificationId,
     int BadgeCount,
     Guid? ConversationId,
-    Shared.Calling.LegendCallSnapshot? Call = null);
+    Shared.Calling.LegendCallSnapshot? Call = null,
+    NotificationSenderPresentation? Sender = null);
 
 internal sealed record ApplePushDeliveryResult(
     ApplePushDeliveryOutcome Outcome,
@@ -251,6 +252,7 @@ internal sealed class ApplePushGateway : IApplePushGateway
                         ["sound"] = "default",
                         ["mutable-content"] = 1
                     },
+                    sender = request.Sender,
                     notificationId = request.NotificationId,
                     conversationId = request.ConversationId,
                     unreadCount = Math.Max(0, request.BadgeCount)
@@ -625,7 +627,10 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                     presentation,
                     candidate.NotificationId,
                     badge.UnreadCount,
-                    candidate.ConversationId),
+                    candidate.ConversationId,
+                    Sender: await engine.GetSenderPresentationAsync(
+                        new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
+                        candidate.NotificationId, cancellationToken)),
                 cancellationToken);
             ApplyResult(delivery, result, now);
 
