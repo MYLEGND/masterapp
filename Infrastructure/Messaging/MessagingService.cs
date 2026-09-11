@@ -438,7 +438,8 @@ internal sealed partial class MessagingService : IMessagingService
         Guid conversationId,
         MessagingConversationMessagePageQuery? messagePage,
         CancellationToken cancellationToken,
-        bool applyTranslation = true)
+        bool applyTranslation = true,
+        Guid? acknowledgedMessageId = null)
     {
         actor = NormalizeActor(actor);
         var includeGroupImage = messagePage?.IncludeGroupImage ?? true;
@@ -500,7 +501,10 @@ internal sealed partial class MessagingService : IMessagingService
             messagesQuery = messagesQuery.Where(message => message.SentUtc < beforeUtc);
         }
 
-        var newestMessages = await messagesQuery
+        var projectionMessages = acknowledgedMessageId is Guid acknowledgmentId
+            ? messagesQuery.Where(message => message.Id == acknowledgmentId)
+            : messagesQuery;
+        var newestMessages = await projectionMessages
             .OrderByDescending(message => message.SentUtc)
             .ThenByDescending(message => message.Id)
             .Take(take ?? int.MaxValue)
@@ -2783,10 +2787,14 @@ internal sealed partial class MessagingService : IMessagingService
                 cancellationToken);
             if (!sendResult.Succeeded)
                 return MessagingConversationResult.Failure(sendResult.ErrorCode!, sendResult.ErrorMessage!);
+            // A send acknowledgment is a bounded window, never an untranslated
+            // replacement for history the recipient has already seen translated.
+            return await GetConversationProjectionAsync(actor, conversationId,
+                new MessagingConversationMessagePageQuery(Take: 1), cancellationToken,
+                applyTranslation: false, acknowledgedMessageId: sendResult.Message!.Id);
         }
 
-        return await GetConversationProjectionAsync(actor, conversationId, null, cancellationToken,
-            applyTranslation: string.IsNullOrWhiteSpace(initialMessage));
+        return await GetConversationAsync(actor, conversationId, cancellationToken);
     }
 
     private async Task<bool> IsValidActorAsync(MessagingActor actor, CancellationToken cancellationToken)

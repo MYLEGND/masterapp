@@ -372,9 +372,17 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
                 candidate.NotificationId, cancellationToken);
             if (presentation is null)
             {
-                // No gateway attempt occurred. Retain the durable delivery for retry.
-                delivery.NextAttemptUtc = DateTime.UtcNow.AddSeconds(30);
+                // Count delivery preparation against the existing bounded delivery
+                // policy; this is not a gateway attempt or provider outcome.
+                delivery.AttemptCount++;
+                var failedAt = DateTime.UtcNow;
+                delivery.NextAttemptUtc = failedAt.AddSeconds(Math.Min(300, Math.Pow(2, delivery.AttemptCount)));
                 delivery.LastError = "notification_presentation_unavailable";
+                if (delivery.AttemptCount >= MaximumAttempts)
+                {
+                    delivery.AbandonedUtc = failedAt;
+                    delivery.LastError = "notification_presentation_exhausted";
+                }
                 continue;
             }
 

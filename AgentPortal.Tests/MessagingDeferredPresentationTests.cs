@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -16,11 +17,13 @@ namespace AgentPortal.Tests;
 public sealed partial class MessagingServiceTests
 {
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task DeferredNotification_UsesRecipientAuthorityWithoutHoldingSend(bool failTranslation, bool fcm)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public async Task DeferredNotification_UsesRecipientAuthorityWithoutHoldingSend(bool failTranslation, bool fcm, bool exhaust)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -96,8 +99,26 @@ public sealed partial class MessagingServiceTests
         {
             Assert.Null(delivery.SentUtc);
             Assert.Null(delivery.AbandonedUtc);
-            Assert.Equal(0, delivery.AttemptCount);
+            Assert.Equal(1, delivery.AttemptCount);
             Assert.Equal("notification_presentation_unavailable", delivery.LastError);
+            if (exhaust)
+            {
+                for (var attempt = 1; attempt < 6; attempt++)
+                {
+                    delivery.NextAttemptUtc = DateTime.UtcNow.AddSeconds(-1);
+                    await db.SaveChangesAsync();
+                    await (Task)pass.Invoke(worker, new object[] { CancellationToken.None })!;
+                }
+                Assert.Equal(6, delivery.AttemptCount);
+                Assert.NotNull(delivery.AbandonedUtc);
+                Assert.Null(delivery.SentUtc);
+                Assert.Equal("notification_presentation_exhausted", delivery.LastError);
+                Assert.Empty(gateway.Bodies);
+                translator.Fail = false;
+                await (Task)pass.Invoke(worker, new object[] { CancellationToken.None })!;
+                Assert.Empty(gateway.Bodies);
+                return;
+            }
             translator.Fail = false;
             delivery.NextAttemptUtc = DateTime.UtcNow.AddSeconds(-1);
             await db.SaveChangesAsync();
@@ -215,6 +236,48 @@ public sealed partial class MessagingServiceTests
         Assert.Equal("Bonjou.", await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
         Assert.Equal("Bonjou.", notification.Detail);
         Assert.Single(await db.MessageTranslations.ToListAsync());
+        if (!group)
+        {
+            var senderProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == sender.UserId);
+            db.ControlledResourceGrants.Add(new ControlledResourceGrant
+            {
+                UserId = sender.UserId, ParticipantType = sender.ParticipantType,
+                ResourceType = ControlledResourceTypes.LanguageTranslation, IsActive = true,
+                GrantedUtc = DateTime.UtcNow, GrantedByUserId = "zac-founder-oid"
+            });
+            db.MobileProfileSettings.Add(new MobileProfileSettings
+            {
+                ProfileId = senderProfile.Id, ParticipantType = sender.ParticipantType,
+                PreferredCommunicationLanguage = "en"
+            });
+            var historical = new InternalMessage
+            {
+                Id = Guid.NewGuid(), ConversationId = source.ConversationId,
+                SenderUserId = recipient.UserId, SenderType = recipient.ParticipantType,
+                Body = "Mwen konfime randevou a.", OriginalLanguage = "ht",
+                SentUtc = DateTime.UtcNow.AddMinutes(-2)
+            };
+            db.InternalMessages.Add(historical);
+            db.MessageTranslations.Add(new MessageTranslation
+            {
+                Id = Guid.NewGuid(), InternalMessageId = historical.Id, TargetLanguage = "en",
+                TranslatedText = "I confirm the appointment.", Provider = "test", CreatedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+            var before = await service.GetConversationAsync(sender, source.ConversationId);
+            Assert.Equal("I confirm the appointment.",
+                before.Conversation!.Messages.Single(item => item.Id == historical.Id).Body);
+            var callsBeforeAck = translator.Calls;
+            var resumed = await service.StartConversationAsync(new StartMessagingConversationCommand(sender,
+                recipient.UserId, recipient.ParticipantType, InitialMessageBody: "Acknowledged."));
+            Assert.True(resumed.Succeeded);
+            Assert.Equal("Acknowledged.", Assert.Single(resumed.Conversation!.Messages).Body);
+            Assert.True(resumed.Conversation.HasOlderMessages);
+            Assert.Equal(callsBeforeAck, translator.Calls);
+            var after = await service.GetConversationAsync(sender, source.ConversationId);
+            Assert.Equal("I confirm the appointment.",
+                after.Conversation!.Messages.Single(item => item.Id == historical.Id).Body);
+        }
     }
 
     private sealed class DeferredPushProbe : IApplePushGateway, IFirebasePushGateway

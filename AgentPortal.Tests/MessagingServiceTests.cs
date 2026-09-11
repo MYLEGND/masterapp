@@ -142,6 +142,11 @@ public sealed partial class MessagingServiceTests
                      entry.RecipientParticipantType == client.ParticipantType &&
                      entry.ConversationId == conversation.Id);
         Assert.False(notification.IsRead);
+        var badgeEngine = new NotificationEngine(db,
+            new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance),
+            new NoopNotificationRealtimePublisher(), new ApplePushDeliverySignal(),
+            NullLogger<NotificationEngine>.Instance);
+        Assert.Equal(1, (await badgeEngine.GetBadgeSnapshotAsync(client)).UnreadCount);
         Assert.Equal(1, (await db.UserGlobalBadges.SingleAsync(
             badge => badge.UserId == client.UserId &&
                      badge.ParticipantType == client.ParticipantType)).UnreadCount);
@@ -1376,6 +1381,17 @@ public sealed partial class MessagingServiceTests
         Assert.True(started.Succeeded);
         var message = Assert.Single(await db.InternalMessages.ToListAsync());
 
+        Assert.Null(message.OriginalLanguage);
+        Assert.Empty(translator.Routes);
+        var recipientProjection = await service.GetConversationAsync(
+            new MessagingActor("client-1", MessagingParticipantTypes.Client), started.Conversation!.Id);
+        Assert.Equal("I am sending this in English. (es)",
+            Assert.Single(recipientProjection.Conversation!.Messages).Body);
+        var pendingNotification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal("I am sending this in English. (es)",
+            await service.PrepareNotificationPresentationAsync(
+                new MessagingActor("client-1", MessagingParticipantTypes.Client), pendingNotification.Id));
+
         // Preferred language describes how the sender receives communication.
         // The actual language detected from this individual body owns routing.
         Assert.Equal("en", message.SenderPreferredLanguage);
@@ -1392,7 +1408,7 @@ public sealed partial class MessagingServiceTests
             new MessagingActor("client-1", MessagingParticipantTypes.Client),
             started.Conversation!.Id);
 
-        // Reading reuses the send-time recipient presentation.
+        // Reading reuses the deferred recipient presentation.
         Assert.Single(translator.Routes);
         Assert.Single(await db.MessageTranslations.ToListAsync());
     }
