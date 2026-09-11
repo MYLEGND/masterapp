@@ -1481,14 +1481,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     .AddInterceptors(readOnlyGuard, productionSaves)
                     .Options);
 
+            // Every production proof uses a database-enforced SELECT-only
+            // principal. Keep its audited connection open for all subsequent
+            // business reads; ApplicationIntent alone is not authorization.
+            await db.Database.OpenConnectionAsync(matrixToken);
+            isolatedPhase = "sql_principal";
+            await RequireSelectOnlyPrincipalAsync(db, matrixToken);
+            isolatedPrincipalVerified = true;
             if (isolated)
             {
-                // The same authenticated SQL session carries preflight and every
-                // subsequent application SELECT. Legacy release configuration is unchanged.
-                await db.Database.OpenConnectionAsync(matrixToken);
-                isolatedPhase = "sql_principal";
-                await RequireSelectOnlyPrincipalAsync(db, matrixToken);
-                isolatedPrincipalVerified = true;
                 isolatedPhase = "sql_sources";
                 await RequireSafePhysicalSourcesAsync(db, readOnlyGuard, matrixToken);
             }

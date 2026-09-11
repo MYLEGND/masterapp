@@ -590,45 +590,15 @@ jobs:
           Assert-NegotiateChallenge -Name 'LiveSync' -Uri 'https://portal.mylegnd.com/livesync/negotiate?negotiateVersion=1' -ExpectedStatus '302'
           Assert-NegotiateChallenge -Name 'Messaging' -Uri 'https://portal.mylegnd.com/messaginghub/negotiate?negotiateVersion=1' -ExpectedStatus '401'
 
-      - name: Resolve production read-only and provider-canary authorities
+      - name: Resolve production provider-canary authority
         shell: pwsh
         env:
           LEGEND_PROVIDER_CANARY_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          $connection = ''
-          $rawConnections = az webapp config connection-string list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service connection strings.' }
-          $connections = $rawConnections | ConvertFrom-Json
-          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
-          if ($null -ne $match -and -not [string]::IsNullOrWhiteSpace([string]$match.value)) {
-            $connection = [string]$match.value
-          }
-          if ([string]::IsNullOrWhiteSpace($connection)) {
-            $rawSettings = az webapp config appsettings list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service settings.' }
-            $settings = @{}
-            foreach ($item in ($rawSettings | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
-            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
-              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) {
-                $connection = $settings[$name]
-                break
-              }
-            }
-          }
-          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
-          if ($connection -notmatch '(?i)(server=tcp:|\.database\.windows\.net|initial catalog=)') { throw 'Resolved MasterAppDb is not recognized as production SQL Server.' }
           $rawSettings = az webapp config appsettings list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to read the deployed Founder authority setting.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read the deployed provider-canary settings.' }
           $settings = @{}
           foreach ($item in ($rawSettings | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
-          $founderOid = ''
-          foreach ($name in @('FOUNDER_OID','FounderOid','Founder__Oid','Founder:Oid')) {
-            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) {
-              $founderOid = $settings[$name]
-              break
-            }
-          }
-          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'The deployed Founder OID authority is missing.' }
           $openAiApiKey = $env:LEGEND_PROVIDER_CANARY_OPENAI_API_KEY
           if ([string]::IsNullOrWhiteSpace($openAiApiKey)) {
             foreach ($name in @('OpenAI__ApiKey','OpenAI:ApiKey','OPENAI_API_KEY')) {
@@ -647,15 +617,54 @@ jobs:
               break
             }
           }
-          Write-Output "::add-mask::$connection"
-          Write-Output "::add-mask::$founderOid"
           Write-Output "::add-mask::$openAiApiKey"
-          "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LEGEND_PRODUCTION_READONLY_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "OpenAI__ApiKey=$openAiApiKey" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           if (-not [string]::IsNullOrWhiteSpace($openAiModel)) {
             "OpenAI__LegendFounderAiModel=$openAiModel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
+
+      - name: Verify provider accepts complete Founder tool catalog without execution
+        shell: pwsh
+        env:
+          LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY: 'true'
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          dotnet test './tested/AgentPortal.Tests.dll' --filter 'FullyQualifiedName~ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-founder-tool-provider-canary.txt
+          if ($LASTEXITCODE -ne 0) { throw 'The provider rejected the complete serialized Founder tool catalog.' }
+
+      - name: Upload deployed provider and readiness diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-production-provider-${{ needs.deploy.outputs.deployed_sha }}-${{ github.run_id }}
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-legend-native-sql:
+    needs:
+      - build
+      - merge
+      - deploy
+      - verify-legend-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: LEGEND-Production-ReadOnly-Validation
+    permissions:
+      contents: read
+
+    steps:
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download exact tested binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.TEST_ARTIFACT_NAME }}
+          path: ./tested
 
       - name: Bind production proof identity to exact candidate and deployed SHAs
         shell: pwsh
@@ -671,7 +680,7 @@ jobs:
           if ($candidateSha -ne '${{ github.sha }}') { throw 'Downloaded tested binaries are not bound to the exact workflow candidate SHA.' }
           if ($deployedSha -ne $mergeSha) { throw 'The deployed SHA differs from the immutable production merge SHA.' }
           [ordered]@{
-            Authority = 'agentportal-production-deploy.yml/verify-legend-native'
+            Authority = 'agentportal-production-deploy.yml/verify-legend-native-sql'
             MatrixVersion = '${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}'
             CandidateSha = $candidateSha
             CandidateTree = $candidateTree
@@ -679,20 +688,14 @@ jobs:
             RunId = '${{ github.run_id }}'
           } | ConvertTo-Json | Set-Content -Path diagnostics/legend-production-proof-identity.json -Encoding utf8
 
-      - name: Verify provider accepts complete Founder tool catalog without execution
-        shell: pwsh
-        env:
-          LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY: 'true'
-        run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          dotnet test './tested/AgentPortal.Tests.dll' --filter 'FullyQualifiedName~ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-founder-tool-provider-canary.txt
-          if ($LASTEXITCODE -ne 0) { throw 'The provider rejected the complete serialized Founder tool catalog.' }
-
       - name: Verify bounded production Founder native proof matrix
         id: native
         shell: pwsh
         env:
+          LEGEND_PRODUCTION_READONLY_CONNECTION: ${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}
+          LEGEND_PRODUCTION_READONLY_FOUNDER_OID: ${{ secrets.LEGEND_PRODUCTION_READONLY_FOUNDER_OID }}
           LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'
+          LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY: 'false'
           LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: ${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}
           # VSTest may execute from the downloaded assembly directory.
           LEGEND_PRODUCTION_PROOF_RESULT_PATH: ${{ github.workspace }}/diagnostics/legend-production-matrix-result.json
@@ -700,6 +703,7 @@ jobs:
           OpenAI__ApiKey: ''
         run: |
           New-Item -ItemType Directory -Force diagnostics | Out-Null
+          if ([string]::IsNullOrWhiteSpace($env:LEGEND_PRODUCTION_READONLY_CONNECTION) -or [string]::IsNullOrWhiteSpace($env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID)) { throw 'The existing SELECT-only validation authority is not configured.' }
           $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
           $filter = "FullyQualifiedName=$testName"
           $matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH
@@ -738,7 +742,7 @@ jobs:
           if (Test-Path $matrixResultPath) {
             try {
               $matrixResult = Get-Content $matrixResultPath -Raw | ConvertFrom-Json -ErrorAction Stop
-              $requiredResultFields = @('MatrixVersion','Status','ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount','Categories','CaseResults')
+              $requiredResultFields = @('MatrixVersion','Status','ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount','SqlPrincipalVerified','Authority','Categories','CaseResults')
               $missingResultFields = @($requiredResultFields | Where-Object { $_ -notin $matrixResult.PSObject.Properties.Name })
               if ($missingResultFields.Count -gt 0) { throw ('The SQL proof result is missing required fields: ' + ($missingResultFields -join ', ') + '.') }
               if ([string]::IsNullOrWhiteSpace([string]$matrixResult.Status) -or $null -eq $matrixResult.Categories -or $null -eq $matrixResult.CaseResults) { throw 'The SQL proof result contains null required evidence fields.' }
@@ -754,6 +758,8 @@ jobs:
               $negativePasses = [int]$matrixResult.NegativePasses
               $providerClientCount = [int]$matrixResult.ProviderClientCount
               $productionWriteCommandCount = [int]$matrixResult.ProductionWriteCommandCount
+              if ($matrixResult.SqlPrincipalVerified -isnot [bool] -or $matrixResult.SqlPrincipalVerified -ne $true) { $validationErrors.Add('The SQL proof did not verify its database-enforced SELECT-only principal.') }
+              if ($matrixResult.Authority -ne 'release_workflow_matrix') { $validationErrors.Add('Non-authoritative observation cannot satisfy the release proof.') }
               if ($matrixResult.MatrixVersion -ne '${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}') { $validationErrors.Add('The SQL proof result used an unexpected matrix version.') }
               if ($matrixStatus -ne 'passed') { $validationErrors.Add('The SQL proof result did not report a passed matrix.') }
               if ($providerClientCount -ne 0) { $validationErrors.Add('The native-only SQL proof created a provider client.') }
@@ -809,7 +815,7 @@ jobs:
             try {
               $matrixResultSha256 = (Get-FileHash -Path $matrixResultPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
               $matrixResult = Get-Content $matrixResultPath -Raw | ConvertFrom-Json -ErrorAction Stop
-              $requiredResultFields = @('MatrixVersion','Status','ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount','Categories','CaseResults')
+              $requiredResultFields = @('MatrixVersion','Status','ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount','SqlPrincipalVerified','Authority','Categories','CaseResults')
               $missingResultFields = @($requiredResultFields | Where-Object { $_ -notin $matrixResult.PSObject.Properties.Name })
               if ($missingResultFields.Count -gt 0) { throw ('The SQL proof result is missing required fields: ' + ($missingResultFields -join ', ') + '.') }
               if ([string]::IsNullOrWhiteSpace([string]$matrixResult.Status) -or $null -eq $matrixResult.Categories -or $null -eq $matrixResult.CaseResults) { throw 'The SQL proof result contains null required evidence fields.' }

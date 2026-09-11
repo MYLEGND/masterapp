@@ -1285,6 +1285,34 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void ProductionDeploymentWorkflow_KeepsSqlProofOnTheExistingRestrictedAuthority()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+        var providerStart = workflow.IndexOf("  verify-legend-native:", StringComparison.Ordinal);
+        var sqlStart = workflow.IndexOf("  verify-legend-native-sql:", StringComparison.Ordinal);
+        Assert.True(providerStart >= 0 && sqlStart > providerStart);
+        var provider = workflow[providerStart..sqlStart];
+        var sql = workflow[sqlStart..];
+
+        Assert.Contains("name: Production", provider, StringComparison.Ordinal);
+        Assert.Contains("ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog", provider, StringComparison.Ordinal);
+        Assert.DoesNotContain("LEGEND_PRODUCTION_READONLY_CONNECTION", provider, StringComparison.Ordinal);
+        Assert.DoesNotContain("connection-string list", provider, StringComparison.Ordinal);
+        Assert.DoesNotContain("MasterAppDb", provider, StringComparison.Ordinal);
+        Assert.Contains("- verify-legend-native", sql, StringComparison.Ordinal);
+        Assert.Contains("name: LEGEND-Production-ReadOnly-Validation", sql, StringComparison.Ordinal);
+        Assert.Contains("name: ${{ env.TEST_ARTIFACT_NAME }}", sql, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_READONLY_CONNECTION: ${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}", sql, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_READONLY_FOUNDER_OID: ${{ secrets.LEGEND_PRODUCTION_READONLY_FOUNDER_OID }}", sql, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY: 'false'", sql, StringComparison.Ordinal);
+        Assert.Contains("$matrixResult.SqlPrincipalVerified -isnot [bool]", sql, StringComparison.Ordinal);
+        Assert.Contains("$matrixResult.Authority -ne 'release_workflow_matrix'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("id-token: write", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/login", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("az webapp", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProductionDeploymentWorkflow_BindsProofArtifactToCandidateTreeAndDeployedSha()
     {
         var workflow = File.ReadAllText(
