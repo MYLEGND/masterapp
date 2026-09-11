@@ -5573,6 +5573,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string.Equals(item.LanguageCode, requested, StringComparison.OrdinalIgnoreCase));
         if (selected is not null)
             return selected.LanguageCode;
+        // A deliberate language selection owns the scope of this read. An
+        // unknown or disabled selection must not return another partition's
+        // evidence. Only the initial view without a selection uses a default.
+        if (!string.IsNullOrWhiteSpace(requested))
+            return null;
         return languages.FirstOrDefault(item =>
             string.Equals(item.LanguageCode, "en", StringComparison.OrdinalIgnoreCase))?.LanguageCode
             ?? languages.FirstOrDefault()?.LanguageCode;
