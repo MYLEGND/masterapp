@@ -4543,11 +4543,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(group => new { Hash = group.Key, Count = group.Count() })
             .ToArray();
         IQueryable<IndexedSemanticAnchorLexemeMatch>? indexedMatches = null;
-        foreach (var requestLexeme in requestLexemes)
+        foreach (var multiplicityGroup in requestLexemes.GroupBy(item => item.Count))
         {
-            var requestHash = requestLexeme.Hash;
-            var requestCount = requestLexeme.Count;
-            var matchesForLexeme =
+            var requestHashes = multiplicityGroup.Select(item => item.Hash).ToArray();
+            var requestCount = multiplicityGroup.Key;
+            var matchesForMultiplicity =
                 from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
                 join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
                     on lexeme.Id equals occurrence.LexemeId
@@ -4556,7 +4556,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
                     on unit.Id equals anchor.TextUnitId
                 where lexeme.LanguageCode == language &&
-                    lexeme.NormalizedHash == requestHash &&
+                    requestHashes.Contains(lexeme.NormalizedHash) &&
                     occurrence.SupersededUtc == null &&
                     unit.LanguageCode == language &&
                     unit.IsTrainingEligible &&
@@ -4578,6 +4578,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 group occurrence by new
                 {
                     AnchorId = anchor.Id,
+                    lexeme.NormalizedHash,
                     ComponentLength = anchor.ComponentLength!.Value
                 }
                 into matched
@@ -4590,12 +4591,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 };
 
             indexedMatches = indexedMatches is null
-                ? matchesForLexeme
-                : indexedMatches.Concat(matchesForLexeme);
+                ? matchesForMultiplicity
+                : indexedMatches.Concat(matchesForMultiplicity);
         }
 
-        // Each request hash is counted once, then UNION ALL is aggregated once
-        // per anchor. The unique (TextUnitId, TokenIndex) invariant means a
+        // Each hash belongs to exactly one multiplicity group and is counted
+        // separately by the inner GROUP BY. Combining hashes with the same
+        // request multiplicity keeps one SQL branch for an all-unique request
+        // instead of repeating the entire join tree for every token. UNION ALL
+        // is then aggregated once per anchor. The unique (TextUnitId, TokenIndex) invariant means a
         // length-L span can contain at most L active occurrences. A matched
         // sum of L therefore proves that every position exists and that no
         // occurrence uses a hash outside this request. The per-hash HAVING
