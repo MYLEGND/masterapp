@@ -49,6 +49,56 @@ public sealed class LegendResearchCandidateCountTests
             Assert.Equal("internet_research_search_lineage_invalid", result.FailureReason);
     }
 
+    [Theory]
+    [InlineData("null", false)]
+    [InlineData("17", false)]
+    [InlineData("[]", false)]
+    [InlineData("\"not a claim\"", false)]
+    [InlineData("null", true)]
+    [InlineData("numeric-source-url", false)]
+    [InlineData("numeric-source-url", true)]
+    public async Task MalformedClaimEntries_RetainRawCountsAndPreserveValidNeighbors(
+        string malformed, bool includeValid)
+    {
+        const string valid = """
+            {"claim_id":"public-title","statement":"The title is Public document.",
+             "evidence_language":"en","source_urls":["https://example.com/evidence"],
+             "supporting_excerpt":"Public document"}
+            """;
+        var invalid = malformed == "numeric-source-url"
+            ? valid.Replace("[\"https://example.com/evidence\"]", "[17,\"https://example.com/evidence\"]", StringComparison.Ordinal)
+            : malformed;
+        var structured = "{\"sources\":[],\"claims\":[" + invalid +
+            (includeValid ? "," + valid : string.Empty) + "],\"contradictions\":[]}";
+        var payload = JsonSerializer.Serialize(new
+        {
+            status = "completed",
+            output = new object[]
+            {
+                new { type = "web_search_call", action = new
+                { query = "public document title", sources = new[] { new { url = "https://example.com/evidence", title = "Public document" } } } },
+                new { type = "message", content = new[] { new { type = "output_text", text = structured } } }
+            }
+        });
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["LegendConnect:InternetResearch:ApiKey"] = "local-test-placeholder" }).Build();
+        var transport = new LegendConnectConfiguredReadOnlySearchTransport(
+            new Factory(payload), configuration, NullLogger<LegendConnectConfiguredReadOnlySearchTransport>.Instance);
+        var result = await transport.SearchAsync(new(Guid.NewGuid(), "en",
+            [new("query", 1, "public document title", "en", 8)], 8, 12));
+
+        // Search receipt success does not establish an answer. Malformed rows
+        // produce no candidates and can never become bound claim evidence.
+        Assert.True(result.Succeeded);
+        Assert.Equal(includeValid ? 2 : 1, result.CandidateCounts?.RawClaims);
+        Assert.Equal(includeValid ? 1 : 0, result.CandidateCounts?.AdmittedClaims);
+        Assert.Null(result.CandidateCounts?.BoundClaims);
+        if (includeValid)
+            Assert.Equal("public-title", Assert.Single(result.ClaimCandidates).ClaimIdentity);
+        else
+            Assert.Empty(result.ClaimCandidates);
+    }
+
     [Fact]
     public void BindingCounts_CountCandidateOnceAcrossMultipleDocumentsAndRetainUnknownRawCount()
     {
