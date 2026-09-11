@@ -2052,6 +2052,7 @@ internal sealed partial class MessagingService : IMessagingService
                     x.SenderUserId,
                     x.SenderType,
                     x.Body,
+                    x.SharedSocialPostId,
                     x.SentUtc,
                     x.EditedUtc,
                     x.IsDeleted,

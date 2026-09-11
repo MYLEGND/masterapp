@@ -922,7 +922,7 @@
     const palette = document.createElement('div');
     palette.className = 'messaging-reaction-palette';
     palette.setAttribute('aria-label', 'Choose a reaction');
-    ['❤️', '👍', '👎', '😂', '‼️', '❓'].forEach(emoji => {
+    (conversation.reactionOptions || []).forEach(emoji => {
       const button = createTextElement('button', 'messaging-reaction', emoji);
       button.type = 'button';
       button.setAttribute('aria-label', `React ${emoji}`);
@@ -976,6 +976,24 @@
     } else {
       shared.append(createTextElement('strong', '', content.authorDisplayName || 'Shared content'));
       if (content.body) shared.append(createTextElement('p', '', content.body));
+      (content.media || []).slice().sort((a, b) => a.displayOrder - b.displayOrder).forEach(asset => {
+        if (!['Image', 'Video'].includes(asset.mediaKind)) return;
+        const media = document.createElement(asset.mediaKind === 'Image' ? 'img' : 'video');
+        media.src = `/Social/Media/${encodeURIComponent(asset.id)}`;
+        media.className = 'messaging-shared-media';
+        if (asset.mediaKind === 'Image') {
+          media.alt = asset.accessibilityText || 'Shared image';
+          media.loading = 'lazy';
+        } else {
+          media.controls = true;
+          media.playsInline = true;
+          media.preload = 'metadata';
+        }
+        media.addEventListener('error', () => {
+          media.replaceWith(createTextElement('p', '', 'This media is unavailable.'));
+        });
+        shared.append(media);
+      });
       // The canonical resolver rechecks visibility and serves protected media.
       const link = createTextElement('a', '', `Open ${content.contentType || 'shared content'}`);
       link.href = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
@@ -1547,7 +1565,7 @@
     state.realtime = connection;
     const refreshForEvent = async (event, incomingMessage = false) => {
       try {
-        const listRefresh = refreshList();
+        const listRefresh = refreshList().catch(() => {});
         if (state.active && event?.conversationId === state.active.id &&
             (!state.requestedConversationId || state.requestedConversationId === state.active.id)) {
           const shouldScrollToBottom = isNearMessageBottom();

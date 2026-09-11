@@ -6098,6 +6098,7 @@ header .legend-global-nav .container-fluid {
 .messaging-reaction[aria-pressed="true"] { background: rgba(255, 255, 255, 0.2); }
 .messaging-message-actions summary { cursor: pointer; font-size: 0.75rem; }
 .messaging-shared-content { border-left: 3px solid currentColor; padding: 0.5rem; margin-top: 0.5rem; }
+.messaging-shared-media { display: block; max-width: 100%; max-height: 28rem; border-radius: 0.5rem; margin-block: 0.4rem; }
 .messaging-shared-content a { color: inherit; text-decoration: underline; }
 
 .messaging-message-edited {

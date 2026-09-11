@@ -59,3 +59,39 @@ test('inbox burst shares in-flight work and retains one trailing invalidation',a
   const a=c.refreshList(),b=c.refreshList(),d=c.refreshList();first.resolve({conversations:[]});await Promise.all([a,b,d]);
   assert.equal(calls,2);assert.equal(c.state.conversations[0].id,'fresh');
 });
+
+class Element {
+  constructor(tag) { this.tagName=tag;this.children=[];this.events={};this.attributes={}; }
+  append(...children) { this.children.push(...children); }
+  setAttribute(key,value) { this.attributes[key]=value; }
+  addEventListener(name,handler) { this.events[name]=handler; }
+  focus() { this.focused=true; }
+}
+function domEnvironment(request) {
+  const c=environment(request);
+  c.document={createElement:tag=>new Element(tag)};
+  c.createTextElement=(tag,cls,text)=>{ const element=new Element(tag);element.className=cls;element.textContent=text;return element; };
+  c.window={getSelection:()=>({toString:()=>''}),setTimeout,clearTimeout};
+  for(const name of ['setMessageReaction','appendMessageInteractions','appendSharedContent']) vm.runInContext(implementation(name),c);
+  return c;
+}
+test('captionless shared content carries actual media and canonical protected link',()=>{
+  const c=domEnvironment(()=>{});const card=new Element('article');
+  c.appendSharedContent(card,{sourcePostId:'post-id',status:'available',media:[{id:'asset-id',mediaKind:'Image',displayOrder:0}],contentType:'Story'});
+  const children=card.children[0].children;
+  assert.equal(children.find(x=>x.tagName==='img').src,'/Social/Media/asset-id');
+  assert.equal(children.find(x=>x.tagName==='a').href,'/Social/Posts/post-id');
+  const unavailable=new Element('article');c.appendSharedContent(unavailable,{sourcePostId:'post-id',status:'unavailable',media:[{id:'secret',mediaKind:'Image'}]});
+  assert.equal(unavailable.children[0].children.filter(x=>x.tagName==='img'||x.tagName==='a').length,0);
+});
+test('reaction controls consume server palette and double tap explicitly sets like',async()=>{
+  const calls=[];const c=domEnvironment(async(url,options)=>{calls.push({url,options});return {messageId:'m',reactions:[{emoji:'👍',count:1,reactedByCurrentActor:true}]};});
+  c.state.active={id:'A',messages:[{id:'m'}]};
+  const card=new Element('article');c.appendMessageInteractions(card,{id:'A',reactionOptions:['🦉']},{id:'m',reactions:[]});
+  const menu=card.children[0].children[0],palette=menu.children[1];
+  assert.equal(palette.children[0].textContent,'🦉');
+  card.events.dblclick({target:{closest:()=>false}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.length,1);assert.equal(calls[0].options.method,'PUT');assert.equal(JSON.parse(calls[0].options.body).emoji,'👍');
+  assert.equal(c.state.active.messages[0].reactions[0].count,1);
+});
