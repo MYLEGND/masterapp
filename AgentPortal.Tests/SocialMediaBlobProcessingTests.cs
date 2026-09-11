@@ -112,8 +112,11 @@ public sealed class SocialMediaBlobProcessingTests
     public async Task BlobVideo_CancellationDuringDownloadCleansOnlyOwnWorkspace()
     {
         using var fixture = new BlobFixture();
-        fixture.Handler.CancelDownload = true;
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.CreateStorage().ProcessAsync("originals/source.mp4"));
+        using var cancellation = new CancellationTokenSource();
+        fixture.Handler.DownloadCancellation = cancellation;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.CreateStorage()
+            .ProcessAsync("originals/source.mp4", cancellation.Token));
+        Assert.True(cancellation.IsCancellationRequested);
         Assert.Equal(0, fixture.Handler.UploadAttempts);
         Assert.Empty(fixture.Workspaces());
         Assert.True(File.Exists(fixture.UnrelatedFile));
@@ -179,7 +182,7 @@ public sealed class SocialMediaBlobProcessingTests
         public byte[] Persisted { get; set; } = [];
         public long? DeclaredLength { get; set; }
         public bool Conflict { get; set; }
-        public bool CancelDownload { get; set; }
+        public CancellationTokenSource? DownloadCancellation { get; set; }
         public int UploadAttempts { get; private set; }
         public string? IfMatch { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -187,8 +190,8 @@ public sealed class SocialMediaBlobProcessingTests
             if (request.Method == HttpMethod.Get)
             {
                 var response = Response(HttpStatusCode.OK);
-                response.Content = CancelDownload
-                    ? new StreamContent(new CancelledDownloadStream()) : new ByteArrayContent(Persisted);
+                response.Content = DownloadCancellation is { } cancellation
+                    ? new StreamContent(new CancelledDownloadStream(cancellation)) : new ByteArrayContent(Persisted);
                 response.Content.Headers.ContentLength = DeclaredLength ?? Persisted.Length;
                 response.Content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
                 response.Content.Headers.LastModified = DateTimeOffset.UtcNow;
@@ -233,11 +236,18 @@ public sealed class SocialMediaBlobProcessingTests
         }
     }
 
-    private sealed class CancelledDownloadStream : MemoryStream
+    private sealed class CancelledDownloadStream(CancellationTokenSource callerCancellation) : MemoryStream
     {
+        private OperationCanceledException CancelCaller()
+        {
+            // Model Stop/caller cancellation during the body read. An unrelated
+            // OCE with an uncancelled caller token is an Azure transport retry.
+            callerCancellation.Cancel();
+            return new OperationCanceledException(callerCancellation.Token);
+        }
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-            => ValueTask.FromException<int>(new OperationCanceledException());
+            => ValueTask.FromException<int>(CancelCaller());
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-            => Task.FromException<int>(new OperationCanceledException());
+            => Task.FromException<int>(CancelCaller());
     }
 }
