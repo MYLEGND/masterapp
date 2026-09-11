@@ -2873,6 +2873,7 @@ private fun MessagesScreen(
                     loadOlder = viewModel::loadOlder,
                     historyFailure = historyFailure,
                     delete = viewModel::deleteMessage,
+                    react = viewModel::react,
                     setReadReceipts = viewModel::setReadReceipts,
                     markViewed = viewModel::markViewed,
                     manageGroup = { managingGroup = it },
@@ -3554,11 +3555,13 @@ private fun MessageThread(
     loadOlder: () -> Unit,
     historyFailure: String?,
     delete: (ConversationMessage) -> Unit,
+    react: (ConversationMessage, String?) -> Unit,
     setReadReceipts: (String, Boolean, Boolean) -> Unit,
     markViewed: (String) -> Unit,
     manageGroup: (ConversationDetail) -> Unit,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
+    val receiptLabels = remember(conversation.messages, conversation.readReceipts) { messageReceiptLabels(conversation.messages, conversation.readReceipts?.readers.orEmpty()) }
     val openProfile = LocalLegendOpenProfile.current
     val counterparty = conversation.participants.firstOrNull { it.identity != currentIdentity }
     val context = LocalContext.current
@@ -3642,14 +3645,17 @@ private fun MessageThread(
                     participantType = participantType,
                     reply = { replyTo = message },
                     delete = { delete(message) },
+                    react = { emoji -> react(message, emoji) },
+                    reactionOptions = conversation.reactionOptions,
                     resolveVerification = resolveVerification,
                 )
-                if (message.isMine) {
-                    val read = conversation.readReceipts?.readers?.any { reader ->
-                        !(reader.userId.equals(currentIdentity.userId, true) && reader.participantType.equals(currentIdentity.participantType, true)) &&
-                            runCatching { java.time.Instant.parse(reader.readThroughUtc) >= java.time.Instant.parse(message.sentUtc) }.getOrDefault(false)
-                    } == true
-                    Text(if (read) legendLocalized("Read") else legendLocalized("Sent"), modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End, style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                receiptLabels[message.id]?.let { label ->
+                    val color = if (label == "Read") LegendColors.Success else LegendColors.Error
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        Text(legendLocalized(label), style = LegendTypography.Label, color = color,
+                            modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(50))
+                                .padding(horizontal = LegendSpacing.Sm, vertical = 2.dp))
+                    }
                 }
 
             }
@@ -3719,9 +3725,18 @@ private fun LegendMessageBubble(
     participantType: String,
     reply: () -> Unit,
     delete: () -> Unit,
+    react: (String?) -> Unit,
+    reactionOptions: List<String>,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
     var actionsOpen by remember(message.id) { mutableStateOf(false) }
+    var emojiPicker by remember(message.id) { mutableStateOf(false) }
+    var emojiDraft by remember(message.id) { mutableStateOf("") }
+    if (emojiPicker) AlertDialog(onDismissRequest = { emojiPicker = false },
+        title = { Text(legendLocalized("Choose a reaction")) },
+        text = { OutlinedTextField(value = emojiDraft, onValueChange = { emojiDraft = it.take(32) }, label = { Text(legendLocalized("Emoji")) }) },
+        confirmButton = { TextButton(onClick = { react(emojiDraft.trim()); emojiPicker = false }, enabled = emojiDraft.isNotBlank()) { Text(legendLocalized("React")) } },
+        dismissButton = { TextButton(onClick = { emojiPicker = false }) { Text(legendLocalized("Cancel")) } })
     val context = LocalContext.current
     fun copyText(text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Message", text))
@@ -3730,6 +3745,13 @@ private fun LegendMessageBubble(
     if (actionsOpen) AlertDialog(onDismissRequest = { actionsOpen = false },
         title = { Text(legendLocalized("Message actions")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                reactionOptions.forEach { emoji ->
+                    TextButton(onClick = { react(emoji); actionsOpen = false }) { Text(emoji) }
+                }
+                TextButton(onClick = { actionsOpen = false; emojiPicker = true }) { Text("+") }
+            }
+            if (message.reactions.any { it.reactedByCurrentActor }) TextButton(onClick = { react(null); actionsOpen = false }) { Text(legendLocalized("Remove reaction")) }
             androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
             Text(legendMeetingTime(message.sentUtc), style = LegendTypography.Label)
             TextButton(onClick = { actionsOpen = false; reply() }) { Text(legendLocalized("Reply")) }
@@ -3750,7 +3772,7 @@ private fun LegendMessageBubble(
             Box(Modifier.clickable { openProfile(senderProfile) }) { LegendProtectedAvatar(message.sender.avatar, message.sender.displayName, participantType, mediaRepository, size = 28.dp) }
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
-        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onLongClick = { actionsOpen = true })) {
+        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("👍") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
             Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 message.reply?.let { replyPreview ->
@@ -3774,6 +3796,13 @@ private fun LegendMessageBubble(
                 }
                 message.attachments.forEach { attachment ->
                     Text("${attachment.originalFileName} · ${attachment.scanStatus}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary)
+                }
+                if (message.reactions.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    message.reactions.forEach { reaction ->
+                        TextButton(onClick = { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }) {
+                            Text("${reaction.emoji} ${reaction.count}", color = if (reaction.reactedByCurrentActor) LegendColors.Gold else LegendColors.TextSecondary)
+                        }
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary, modifier = Modifier.weight(1f))

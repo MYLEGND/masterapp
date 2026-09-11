@@ -343,6 +343,15 @@ struct MobileHTTPClient: Sendable {
         return try await perform(request, response: response)
     }
 
+    func delete<Response: Decodable>(_ path: String, accessToken: String,
+        headers: [String: String] = [:], response: Response.Type) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        return try await perform(request, response: response)
+    }
+
     func delete(
         _ path: String,
         accessToken: String,

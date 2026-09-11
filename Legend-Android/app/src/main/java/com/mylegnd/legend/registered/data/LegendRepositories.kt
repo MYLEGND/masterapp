@@ -121,6 +121,10 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null, clientMessageId: String) = request {
         client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId, clientMessageId)).legendBody()
     }
+    suspend fun react(role: String, conversationId: String, messageId: String, emoji: String?) = request {
+        if (emoji == null) client.api.removeMessageReaction(role, conversationId, messageId).legendBody()
+        else client.api.setMessageReaction(role, conversationId, messageId, MessageReactionRequest(emoji)).legendBody()
+    }
     suspend fun uploadAttachment(context: Context, role: String, conversationId: String, messageId: String, uri: Uri) = request {
         attachmentUploader.upload(context, role, conversationId, messageId, uri)
     }

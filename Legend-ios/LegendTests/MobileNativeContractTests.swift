@@ -1903,3 +1903,33 @@ private final class AccountTestTokenStore: MultiAccountSecureTokenStoring, @unch
     }
     func removeAccount(id: String) throws { entries.removeValue(forKey: id); if selected == id { selected = nil } }
 }
+
+
+extension MobileNativeContractTests {
+    func testReceiptHierarchyUsesPageOrderAndPreservesTypedReaderIsolation() throws {
+        let sender = MessagingParticipant(identity: try LogicalParticipantIdentity(userID: "same-id", participantType: .client),
+            profileID: "profile", displayName: "Sender", roleLabel: nil, avatar: nil)
+        func message(_ seconds: Double, mine: Bool = true, deleted: Bool = false) -> ConversationMessage {
+            ConversationMessage(id: UUID(), conversationID: UUID(), sender: sender, body: "Body",
+                sentUTC: Date(timeIntervalSince1970: seconds), attachments: [], isMine: mine, isDeleted: deleted, reply: nil)
+        }
+        let older = message(1), firstTie = message(2), lastTie = message(2), incoming = message(3, mine: false)
+        let deleted = message(4, deleted: true), newer = message(5)
+        let page = [older, firstTie, lastTie, incoming, deleted, newer]
+        let reader = MessagingReadReceipt(userId: "other", participantType: "Client", readThroughUtc: Date(timeIntervalSince1970: 2))
+        XCTAssertEqual(messageReceiptLabels(messages: page, readers: [reader]), [lastTie.id: "Read", newer.id: "Sent"])
+        let own = MessagingReadReceipt(userId: "same-id", participantType: "Client", readThroughUtc: Date(timeIntervalSince1970: 6))
+        XCTAssertEqual(messageReceiptLabels(messages: [older, newer], readers: [own]), [older.id: "Sent", newer.id: "Sent"])
+        let agent = MessagingReadReceipt(userId: "same-id", participantType: "Agent", readThroughUtc: Date(timeIntervalSince1970: 6))
+        XCTAssertEqual(messageReceiptLabels(messages: [older, newer], readers: [agent]), [newer.id: "Read"])
+        XCTAssertEqual(messageReceiptLabels(messages: [older, newer], readers: []), [older.id: "Sent", newer.id: "Sent"])
+    }
+
+    func testReactionResultUsesServerCountsAndActorSelection() throws {
+        let id = UUID()
+        let data = Data("{\"messageId\":\"\(id)\",\"reactions\":[{\"emoji\":\"❤️\",\"count\":2,\"reactedByCurrentActor\":true}]}".utf8)
+        let result = try JSONDecoder().decode(MessageReactionResult.self, from: data)
+        XCTAssertEqual(result.messageId, id)
+        XCTAssertEqual(result.reactions, [MessageReaction(emoji: "❤️", count: 2, reactedByCurrentActor: true)])
+    }
+}

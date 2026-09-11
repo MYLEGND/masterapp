@@ -269,6 +269,7 @@ internal object FinancialPresentationOrder {
     @SerialName("canManageMeeting") val canManageMeeting: Boolean = false,
     @SerialName("hasOlderMessages") val hasOlderMessages: Boolean = false,
     val readReceipts: MessagingReadReceiptSettings? = null,
+    val reactionOptions: List<String> = emptyList(),
 )
 @Serializable data class MessagingGroupMeeting(
     val host: MobileParticipant,
@@ -297,6 +298,7 @@ internal object FinancialPresentationOrder {
     @SerialName("verificationReview") val verificationReview: VerificationReview? = null,
     val translation: MessageTranslation? = null,
     @SerialName("originalBody") val originalBody: String? = null,
+    val reactions: List<MessageReaction> = emptyList(),
 )
 @Serializable data class MessageReplyPreview(val id: String, val sender: MobileParticipant, val body: String, @SerialName("isDeleted") val isDeleted: Boolean)
 @Serializable data class VerificationReview(val id: String, @SerialName("requesterUserId") val requesterUserId: String, @SerialName("requesterParticipantType") val requesterParticipantType: String, val status: String, @SerialName("requestedUtc") val requestedUtc: String, @SerialName("canResolve") val canResolve: Boolean, @SerialName("resourceType") val resourceType: String)
@@ -479,3 +481,26 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
 @Serializable data class MessagingReadReceiptSettings(val globalEnabled: Boolean, val conversationEnabled: Boolean, val readers: List<MessagingReadReceipt> = emptyList())
 @Serializable data class MessagingReadReceipt(val userId: String, val participantType: String, val readThroughUtc: String)
 @Serializable data class MessagingReadReceiptRequest(val enabled: Boolean, val globally: Boolean)
+
+/** Receipt hierarchy uses the server's chronological page and privacy-filtered readers. */
+internal fun messageReceiptLabels(messages: List<ConversationMessage>, readers: List<MessagingReadReceipt>): Map<String, String> {
+    val own = messages.filter { it.isMine && !it.isDeleted }
+    val latestRead = own.indexOfLast { message ->
+        readers.any { reader ->
+            !(reader.userId.equals(message.sender.identity.userId, true) &&
+                reader.participantType.equals(message.sender.identity.participantType, true)) &&
+                runCatching { java.time.Instant.parse(reader.readThroughUtc) >= java.time.Instant.parse(message.sentUtc) }.getOrDefault(false)
+        }
+    }
+    return own.mapIndexedNotNull { index, message ->
+        when {
+            index == latestRead -> message.id to "Read"
+            index > latestRead -> message.id to "Sent"
+            else -> null
+        }
+    }.toMap()
+}
+
+@Serializable data class MessageReaction(val emoji: String, val count: Int, val reactedByCurrentActor: Boolean)
+@Serializable data class MessageReactionRequest(val emoji: String)
+@Serializable data class MessageReactionResult(val messageId: String, val reactions: List<MessageReaction> = emptyList())

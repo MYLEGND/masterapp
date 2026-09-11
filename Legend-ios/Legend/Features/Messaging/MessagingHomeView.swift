@@ -2205,6 +2205,8 @@ struct ConversationThreadView: View {
             LegendMessageTimeline(
                 messages: conversation.messages.filter { !$0.isDeleted },
                 readReceipts: conversation.readReceipts,
+                reactionOptions: conversation.reactionOptions ?? [],
+                onReact: { message, emoji in store.react(to: message, emoji: emoji) },
                 participantAvatar: { identity in
                     conversation.participants.first(where: {
                         $0.identity == identity
@@ -3302,6 +3304,8 @@ private struct LegendConversationFallbackHeader: View {
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
     var readReceipts: MessagingReadReceiptSettings? = nil
+    let reactionOptions: [String]
+    let onReact: (ConversationMessage, String?) -> Void
     let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
     let isLoadingOlderMessages: Bool
@@ -3311,6 +3315,7 @@ private struct LegendMessageTimeline: View {
     let onOpenVerificationProfile: (ConversationMessage) -> Void
 
     var body: some View {
+        let receiptLabels = messageReceiptLabels(messages: messages, readers: readReceipts?.readers ?? [])
         ScrollViewReader { proxy in
             LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(spacing: 2) {
@@ -3365,18 +3370,20 @@ private struct LegendMessageTimeline: View {
                                 onDelete: {
                                     onDelete(message)
                                 },
+                                onReact: { emoji in onReact(message, emoji) },
+                                reactionOptions: reactionOptions,
                                 onOpenVerificationProfile: message.verificationReview?.status != "Pending"
                                     ? nil
                                     : { onOpenVerificationProfile(message) }
                             )
                             .id(message.id)
-                            if message.isMine {
-                                let read = readReceipts?.readers.contains(where: {
-                                    !($0.userId.caseInsensitiveCompare(message.sender.identity.userID) == .orderedSame && $0.participantType == message.sender.identity.participantType.rawValue) && $0.readThroughUtc >= message.sentUTC
-                                }) == true
-                                Text(read ? LegendLocalized("Read") : LegendLocalized("Sent"))
-                                .font(.caption2).foregroundStyle(LegendNextColor.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            if let label = receiptLabels[message.id] {
+                                Text(LegendLocalized(label))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(label == "Read" ? LegendNextColor.success : LegendNextColor.danger)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background((label == "Read" ? LegendNextColor.success : LegendNextColor.danger).opacity(0.12), in: Capsule())
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
                             }
                         }
                     }
@@ -3609,10 +3616,14 @@ private struct LegendMessageBubble: View {
     let showsSender: Bool
     let onReply: () -> Void
     let onDelete: () -> Void
+    let onReact: (String?) -> Void
+    let reactionOptions: [String]
     let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
     @State private var isShowingOriginal = false
+    @State private var emojiPicker = false
+    @State private var emojiDraft = ""
 
     private let senderBubbleColor = LegendNextColor.gold
 
@@ -3646,8 +3657,25 @@ private struct LegendMessageBubble: View {
                 style: .continuous
             )
         )
+        .onTapGesture(count: 2) { if !message.isDeleted { onReact("👍") } }
+        .sheet(isPresented: $emojiPicker) {
+            VStack(spacing: 16) {
+                Text(LegendLocalized("Choose a reaction")).font(.headline)
+                TextField(LegendLocalized("Emoji"), text: $emojiDraft).textFieldStyle(.roundedBorder)
+                Button(LegendLocalized("React")) { onReact(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines)); emojiPicker = false }
+                    .disabled(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }.padding().presentationDetents([.height(220)])
+        }
         .contextMenu {
             if !message.isDeleted {
+                ForEach(reactionOptions, id: \.self) { emoji in
+                    Button(emoji) { onReact(emoji) }
+                }
+                Button { emojiPicker = true } label: { Label(LegendLocalized("More reactions"), systemImage: "plus") }
+                if message.reactions.contains(where: { $0.reactedByCurrentActor }) {
+                    Button(LegendLocalized("Remove reaction")) { onReact(nil) }
+                }
+                Divider()
                 Button {
                     onReply()
                 } label: {
@@ -3728,6 +3756,14 @@ private struct LegendMessageBubble: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
 
+                if !message.reactions.isEmpty {
+                    HStack {
+                        ForEach(message.reactions, id: \.emoji) { reaction in
+                            Button("\(reaction.emoji) \(reaction.count)") { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) }
+                                .font(.caption).buttonStyle(.bordered)
+                        }
+                    }
+                }
                 if !message.isDeleted {
                     ForEach(message.attachments) { attachment in
                         LegendMessageAttachmentChip(

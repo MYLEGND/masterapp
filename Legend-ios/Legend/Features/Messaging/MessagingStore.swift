@@ -432,6 +432,9 @@ final class MessagingStore: ObservableObject {
     private var presentationRevision = 0
     private var isRefreshingActivityNotifications = false
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
+    private var conversationDetailRequestIDs: [UUID: UUID] = [:]
+    private var readAcknowledgementTasks: [UUID: Task<Void, Never>] = [:]
+    private var acknowledgedVisibleMessages: [UUID: UUID] = [:]
     /// Conversation details are a bounded, account-scoped presentation cache.
     /// The API remains authoritative and every cached thread is revalidated as
     /// soon as it is selected or receives a realtime event.
@@ -534,6 +537,7 @@ final class MessagingStore: ObservableObject {
         conversationListTask = nil
         for task in conversationDetailTasks.values { task.cancel() }
         conversationDetailTasks.removeAll()
+        conversationDetailRequestIDs.removeAll()
         conversationDetailCache.removeAll()
         conversationDetailCacheOrder.removeAll()
         _ = await refresh()
@@ -543,6 +547,10 @@ final class MessagingStore: ObservableObject {
     }
 
     func openConversation(_ conversationID: UUID) {
+        for id in Array(conversationDetailTasks.keys) where id != conversationID {
+            conversationDetailTasks.removeValue(forKey: id)?.cancel()
+            conversationDetailRequestIDs.removeValue(forKey: id)
+        }
         selectedConversationID = conversationID
         sendFailure = nil
 
@@ -1224,10 +1232,53 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    private var reactionTasks: [UUID: Task<Void, Never>] = [:]
+    func react(to message: ConversationMessage, emoji: String?) {
+        guard !message.isDeleted, reactionTasks[message.id] == nil else { return }
+        let revision = presentationRevision
+        reactionTasks[message.id] = Task { [weak self] in
+            guard let self else { return }
+            defer { self.reactionTasks[message.id] = nil }
+            do {
+                let result = try await self.api.react(conversationID: message.conversationID, messageID: message.id,
+                    emoji: emoji, accessToken: try await self.accessTokenProvider())
+                try Task.checkCancellation()
+                guard revision == self.presentationRevision, self.selectedConversationID == message.conversationID,
+                      result.messageId == message.id else { return }
+                self.replaceMessage(message.id) { current in
+                    var updated = current
+                    updated.reactions = result.reactions
+                    return updated
+                }
+            } catch { self.sendFailure = self.failure(for: error, title: LegendLocalized("Reaction unavailable")) }
+        }
+    }
+
     func markViewed(_ conversationID: UUID) {
-        Task {
-            do { try await api.markRead(conversationID: conversationID, accessToken: try await accessTokenProvider()) }
-            catch { diagnostics.record(category: .messaging, summary: "Read state could not be saved.") }
+        guard case .loaded(let conversation) = detailState, conversation.id == conversationID else { return }
+        acknowledgeVisible(conversation)
+    }
+
+    private func acknowledgeVisible(_ conversation: ConversationDetail) {
+        let id = conversation.id
+        guard let latest = conversation.messages.last?.id,
+              acknowledgedVisibleMessages[id] != latest,
+              readAcknowledgementTasks[id] == nil else { return }
+        readAcknowledgementTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.api.markRead(conversationID: id, accessToken: try await self.accessTokenProvider())
+                try Task.checkCancellation()
+                self.acknowledgedVisibleMessages[id] = latest
+                self.updateUnreadCount(for: id)
+            } catch {
+                self.diagnostics.record(category: .messaging, summary: "Read state could not be saved.")
+            }
+            self.readAcknowledgementTasks[id] = nil
+            if self.selectedConversationID == id, case .loaded(let current) = self.detailState,
+               current.id == id, current.messages.last?.id != latest {
+                self.acknowledgeVisible(current)
+            }
         }
     }
 
@@ -1236,6 +1287,7 @@ final class MessagingStore: ObservableObject {
             do {
                 try await api.setReadReceipts(conversationID: conversationID, enabled: enabled,
                     globally: globally, accessToken: try await accessTokenProvider())
+                acknowledgedVisibleMessages.removeValue(forKey: conversationID)
                 conversationDetailCache.removeValue(forKey: conversationID)
                 await refreshConversation(conversationID, presentsResult: true, marksRead: false)
             } catch { sendFailure = failure(for: error, title: LegendLocalized("Privacy settings not saved")) }
@@ -1400,7 +1452,7 @@ final class MessagingStore: ObservableObject {
                     attachments: message.attachments + [attachment],
                     isMine: message.isMine,
                     reply: message.reply,
-                    verificationReview: message.verificationReview)
+                    verificationReview: message.verificationReview, translation: message.translation, originalBody: message.originalBody, reactions: message.reactions)
             }))
     }
 
@@ -1449,7 +1501,7 @@ final class MessagingStore: ObservableObject {
             canManagePromotion: conversation.canManagePromotion,
             meeting: conversation.meeting,
             canManageMeeting: conversation.canManageMeeting,
-            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages, readReceipts: conversation.readReceipts)
+            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages, readReceipts: conversation.readReceipts, reactionOptions: conversation.reactionOptions)
     }
 
     private var hasCachedConversations: Bool {
@@ -1465,6 +1517,7 @@ final class MessagingStore: ObservableObject {
         let revision = presentationRevision
         do {
             let conversation = try await conversationDetail(for: conversationID)
+            try Task.checkCancellation()
             guard revision == presentationRevision else { return }
             cacheConversationDetail(conversation)
 
@@ -1475,22 +1528,7 @@ final class MessagingStore: ObservableObject {
                 presentConversation(conversation)
             }
 
-            guard marksRead else { return }
-            // Read acknowledgement is deliberately after presentation. It is
-            // important for inbox state, but must never hold up the thread.
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await self.api.markRead(
-                        conversationID: conversationID,
-                        accessToken: try await self.accessTokenProvider())
-                    guard self.selectedConversationID == conversationID else { return }
-                    self.updateUnreadCount(for: conversationID)
-                } catch {
-                    // A later inbox refresh reconciles the read status. The
-                    // already-authorized thread remains usable either way.
-                }
-            }
+            if marksRead { acknowledgeVisible(conversation) }
         } catch {
             guard revision == presentationRevision, presentsResult, selectedConversationID == conversationID else {
                 return
@@ -1508,13 +1546,20 @@ final class MessagingStore: ObservableObject {
 
         let revision = presentationRevision
         let task = Task { [api, accessTokenProvider] in
-            try await api.conversation(
+            let result = try await api.conversation(
                 id: conversationID,
                 accessToken: try await accessTokenProvider())
+            try Task.checkCancellation()
+            return result
         }
+        let requestID = UUID()
         conversationDetailTasks[conversationID] = task
+        conversationDetailRequestIDs[conversationID] = requestID
         defer {
-            if revision == presentationRevision { conversationDetailTasks[conversationID] = nil }
+            if revision == presentationRevision && conversationDetailRequestIDs[conversationID] == requestID {
+                conversationDetailTasks[conversationID] = nil
+                conversationDetailRequestIDs[conversationID] = nil
+            }
         }
         return try await task.value
     }
