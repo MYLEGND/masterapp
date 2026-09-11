@@ -5774,6 +5774,59 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     // literal context, named node spans, role variables and directed relations
     // come from the current Founder declarations; no language grammar or
     // numeric word vocabulary is supplied by code.
+    private IQueryable<SourceSlotDeclaration> QuerySourceSlotDeclarations(
+        string language, Guid[] exampleIds, string[] lexemeHashes)
+    {
+        var indexedTextUnitIds =
+            from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
+            join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
+                on lexeme.Id equals occurrence.LexemeId
+            where lexeme.LanguageCode == language && lexemeHashes.Contains(lexeme.NormalizedHash) &&
+                occurrence.SupersededUtc == null
+            select occurrence.TextUnitId;
+        var anchorExampleIds = _db.Set<LegendCurriculumExample>().AsNoTracking()
+            .Where(example => exampleIds.Contains(example.Id))
+            .Select(example => example.Id);
+        var lexicalExampleIds =
+            from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+            join textUnitId in indexedTextUnitIds on example.TextUnitId equals textUnitId
+            select example.Id;
+        // The two existing admission routes form a set of source EXAMPLE IDs.
+        // Text-unit union would incorrectly admit sibling examples through the
+        // anchor route. UNION also removes repeated occurrences and overlap.
+        // Keep eligibility, global ordering and the single retrieval bound below.
+        var admittedExampleIds = anchorExampleIds.Union(lexicalExampleIds);
+        return (
+            from transition in _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
+            join example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                on transition.SourceCurriculumExampleId equals example.Id
+            join admittedExampleId in admittedExampleIds on example.Id equals admittedExampleId
+            join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
+                on example.CurriculumFamilyId equals family.Id
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on example.TextUnitId equals unit.Id
+            join result in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                on transition.ResultCurriculumExampleId equals result.Id
+            where result.SupersededUtc == null && result.LanguageCode == language &&
+                result.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                transition.SourceSemanticFrame.Contains("$") && example.SupersededUtc == null &&
+                example.DerivedFromCurriculumExampleId == null &&
+                example.LanguageCode == language && transition.SourceLanguageCode == language &&
+                transition.ResultLanguageCode == language && transition.SupersededUtc == null &&
+                transition.FounderSemanticExampleRelationEvidenceId == null &&
+                transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                transition.IsHumanVerifiedSupport &&
+                (transition.ContributionState == "Supported" || transition.ContributionState == "Contradictory") &&
+                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                family.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                unit.IsTrainingEligible && unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            orderby transition.Id
+            select new SourceSlotDeclaration(transition.Id, example.Id, example.CurriculumFamilyId,
+                unit.Text, transition.SourceSemanticFrame, transition.ContributionState)
+        ).TagWith("LEGEND_QUERY:source_slot_declarations")
+            .Take(MaximumSourceSlotTemplates + 1);
+    }
+
     private async Task<SourceSlotAnalysis> AnalyzeDeclaredSourceSlotsAsync(
         string language, string input, IReadOnlyList<ReusableMeaningAnchorCandidate> candidates,
         CancellationToken cancellationToken)
@@ -5808,42 +5861,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (input.Length > 8192 || inputTokens.Count is < 1 or > MaximumSemanticRequestComponents)
             return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_input_bound_exceeded"), input.Length > 8192 ? 8192 : MaximumSemanticRequestComponents);
         var lexemeHashes = inputTokens.Select(item => item.NormalizedHash).Distinct().ToArray();
-        var indexedTextUnitIds =
-            from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
-            join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
-                on lexeme.Id equals occurrence.LexemeId
-            where lexeme.LanguageCode == language && lexemeHashes.Contains(lexeme.NormalizedHash) &&
-                occurrence.SupersededUtc == null
-            select occurrence.TextUnitId;
-        var declarations = await (
-            from transition in _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
-            join example in _db.Set<LegendCurriculumExample>().AsNoTracking()
-                on transition.SourceCurriculumExampleId equals example.Id
-            join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
-                on example.CurriculumFamilyId equals family.Id
-            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
-                on example.TextUnitId equals unit.Id
-            join result in _db.Set<LegendCurriculumExample>().AsNoTracking()
-                on transition.ResultCurriculumExampleId equals result.Id
-            where result.SupersededUtc == null && result.LanguageCode == language &&
-                result.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                (exampleIds.Contains(example.Id) || indexedTextUnitIds.Contains(unit.Id)) &&
-                transition.SourceSemanticFrame.Contains("$") && example.SupersededUtc == null &&
-                example.DerivedFromCurriculumExampleId == null &&
-                example.LanguageCode == language && transition.SourceLanguageCode == language &&
-                transition.ResultLanguageCode == language && transition.SupersededUtc == null &&
-                transition.FounderSemanticExampleRelationEvidenceId == null &&
-                transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                transition.IsHumanVerifiedSupport &&
-                (transition.ContributionState == "Supported" || transition.ContributionState == "Contradictory") &&
-                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                family.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                unit.IsTrainingEligible && unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
-            orderby transition.Id
-            select new SourceSlotDeclaration(transition.Id, example.Id, example.CurriculumFamilyId,
-                unit.Text, transition.SourceSemanticFrame, transition.ContributionState)
-        ).TagWith("LEGEND_QUERY:source_slot_declarations")
-            .Take(MaximumSourceSlotTemplates + 1).ToArrayAsync(cancellationToken);
+        var declarations = await QuerySourceSlotDeclarations(language, exampleIds, lexemeHashes)
+            .ToArrayAsync(cancellationToken);
         declarationCount = declarations.Length;
         if (declarations.Length > MaximumSourceSlotTemplates)
             return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumSourceSlotTemplates);
