@@ -47,7 +47,10 @@ public sealed class LegendFounderDiagnosticExecutionTests
         var response = await Service(db, operations.Object, handler).ReplyAsync(founder, Request(),
             progress: (item, _) => { progress.Add(item); return ValueTask.CompletedTask; });
         Assert.Equal(includeUnrelated, response.Succeeded);
-        Assert.Contains(progress, item => item.Message.StartsWith("Unavailable:", StringComparison.Ordinal));
+        Assert.Contains(progress, item => item.Stage == "tool_unavailable" &&
+            item.Message.StartsWith("Unavailable:", StringComparison.Ordinal) &&
+            item.ScopeIdentity == LegendFounderAiConversationService.ReadScopeIdentity(
+                "legend_search_retained_knowledge", arguments[0]));
         if (includeUnrelated)
         {
             Assert.Equal("partial_governed_inspection", response.Reason);
@@ -89,6 +92,73 @@ public sealed class LegendFounderDiagnosticExecutionTests
             "first", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             "second", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NativeException_NeverLeaksToDiagnosticOrExternalPrompt(bool nativeOnly)
+    {
+        using var environment = new FounderEnvironment();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await SeedAsync(db);
+        var operations = Operations();
+        operations.Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                It.IsAny<string>(), It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(),
+                "en", It.IsAny<LegendConnectExternalProviderPolicy?>()))
+            .ThrowsAsync(new InvalidOperationException("private-exception-payload Bearer secret-token"));
+        using var handler = new Responses(Answer());
+        var request = new LegendFounderAiChatRequest
+        {
+            Mode = "legend", SourceLanguageCode = "en", NativeOnly = nativeOnly,
+            Messages = [new LegendFounderAiChatMessage("user", "Inspect the requested evidence.")]
+        };
+        var response = await Service(db, operations.Object, handler).ReplyAsync(founder, request);
+        Assert.DoesNotContain("private-exception-payload", JsonSerializer.Serialize(response));
+        Assert.DoesNotContain("secret-token", JsonSerializer.Serialize(response));
+        if (nativeOnly)
+        {
+            Assert.False(response.Succeeded);
+            Assert.Equal("native_inference", response.FailureKind);
+            Assert.Empty(handler.RequestBodies);
+        }
+        else
+        {
+            Assert.NotEmpty(handler.RequestBodies);
+            Assert.All(handler.RequestBodies, body =>
+            {
+                Assert.DoesNotContain("private-exception-payload", body);
+                Assert.DoesNotContain("secret-token", body);
+            });
+        }
+    }
+
+    [Theory]
+    [InlineData("transport", "provider_transport_failure")]
+    [InlineData("json", "provider_invalid_json")]
+    [InlineData("http", "provider_http_400")]
+    public async Task ProviderFailure_IsUnsuccessfulWithoutLeakingPayload(string failure, string reason)
+    {
+        using var environment = new FounderEnvironment();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await SeedAsync(db);
+        var operations = Operations();
+        using var handler = new Responses("private-provider-payload secret-token")
+        {
+            Failure = failure == "transport" ? new HttpRequestException("private-provider-payload secret-token") : null,
+            Status = failure == "http" ? HttpStatusCode.BadRequest : HttpStatusCode.OK
+        };
+        var response = await Service(db, operations.Object, handler).ReplyAsync(founder, Request());
+        Assert.False(response.Succeeded);
+        Assert.Equal(reason, response.Reason);
+        Assert.DoesNotContain("private-provider-payload", JsonSerializer.Serialize(response));
+        Assert.DoesNotContain("secret-token", JsonSerializer.Serialize(response));
+        if (failure == "http")
+        {
+            Assert.Equal(400, response.ProviderStatusCode);
+            Assert.NotNull(response.Reference);
+        }
     }
 
     private static Mock<ILegendConnectOperations> Operations()
@@ -145,9 +215,17 @@ public sealed class LegendFounderDiagnosticExecutionTests
     private sealed class Responses(params string[] responses) : HttpMessageHandler
     {
         private readonly Queue<string> _responses = new(responses);
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            { Content = new StringContent(_responses.Dequeue(), Encoding.UTF8, "application/json") });
+        public List<string> RequestBodies { get; } = [];
+        public Exception? Failure { get; init; }
+        public HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            RequestBodies.Add(await request.Content!.ReadAsStringAsync(token));
+            if (Failure is not null)
+                throw Failure;
+            return new HttpResponseMessage(Status)
+            { Content = new StringContent(_responses.Dequeue(), Encoding.UTF8, "application/json") };
+        }
     }
     private sealed class ClientFactory(Responses handler) : IHttpClientFactory
     {

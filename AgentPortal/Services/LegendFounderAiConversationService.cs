@@ -407,7 +407,7 @@ public sealed class LegendFounderAiConversationService
                 // Native inference is strictly fail-closed. A read failure
                 // cannot manufacture an answer, and any fail-closed boundary
                 // already returned by the native authority remains in force.
-                nativeFailureDetail = exception.ToString();
+                nativeFailureDetail = "The native authority failed before producing a verified result. Reason=native_inference_unavailable.";
                 _logger.LogWarning(
                     "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExceptionType={ExceptionType}",
                     "NativeInferenceException", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", "native_inference", "failed", exception.GetType().Name);
@@ -566,21 +566,20 @@ public sealed class LegendFounderAiConversationService
                 ? nativeInference is null
                     ? "native_inference_unavailable"
                     : "native_inference_unsupported"
-                : nativeInference.ReasonCode.Trim();
+                : LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode);
             var detail = !string.IsNullOrWhiteSpace(nativeFailureDetail)
                 ? NormalizeFailureDetail(nativeFailureDetail)
                 : !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
                     ? nativeInference.AuthoritySummary.Trim()
                     : "The native authority returned no additional detail.";
 
-            return new LegendFounderAiChatResponse(
-                true,
-                mode,
-                $"LEGEND could not complete this native-only response. " +
+            var diagnostic = $"LEGEND could not complete this native-only response. " +
                 $"NativeFailure={reason}; NativeDetail={detail}; " +
                 $"EvidenceCount={nativeInference?.EvidenceCount ?? 0}; " +
-                "OpenAIEscalation=blocked.",
-                null,
+                "OpenAIEscalation=blocked.";
+            return new LegendFounderAiChatResponse(
+                false, mode, diagnostic, diagnostic,
+                FailureKind: "native_inference",
                 ResponseAuthority: "SystemDiagnostic",
                 Stage: "native_only_blocked",
                 Reason: reason,
@@ -1176,7 +1175,7 @@ public sealed class LegendFounderAiConversationService
 
                     // Provider latency and preceding calls consume the same window.
                     remaining = TimeSpan.FromSeconds(_timeoutSeconds) - executionClock.Elapsed;
-                    if (remaining <= TimeSpan.FromSeconds(MinimumFinalSynthesisWindowSeconds))
+                    if (ResolveReadOnlyToolBudget(remaining) < TimeSpan.FromSeconds(MinimumReadOnlyToolSeconds))
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
                             mode,
@@ -1280,12 +1279,13 @@ public sealed class LegendFounderAiConversationService
                     await ReportProgressAsync(
                         progress,
                         new LegendFounderAiProgressEvent(
-                            "tool_complete",
+                            IsSuccessfulFounderToolOutput(toolOutput) ? "tool_complete" : "tool_unavailable",
                             IsSuccessfulFounderToolOutput(toolOutput)
                                 ? $"Completed: {toolDescription}"
                                 : $"Unavailable: {toolDescription}",
                             round + 1,
-                            call.Name),
+                            call.Name,
+                            ReadScopeIdentity(call.Name, call.Arguments)),
                         effectiveToken);
 
                     input.Add(new Dictionary<string, object?>
@@ -1332,13 +1332,13 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail,
                 $"provider_http_{exception.StatusCode}",
-                $"{exception.ProviderError} ClientRequestId={exception.ClientRequestId}; ProviderRequestId={exception.ProviderRequestId ?? "unavailable"}.") with
+                $"The provider returned HTTP {exception.StatusCode}.") with
             {
                 ProviderStatusCode = exception.StatusCode,
-                Reference = exception.ProviderRequestId ?? exception.ClientRequestId
+                Reference = SafeProviderCorrelation(exception.ProviderRequestId) ?? SafeProviderCorrelation(exception.ClientRequestId)
             };
         }
-        catch (OperationCanceledException exception)
+        catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested)
         {
             if (IsTeacherMode(mode))
@@ -1356,7 +1356,7 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail,
                 "provider_timeout",
-                exception.Message);
+                "The provider response window expired.");
         }
         catch (HttpRequestException exception)
         {
@@ -1369,7 +1369,7 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail,
                 "provider_transport_failure",
-                exception.Message);
+                "The provider transport failed.");
         }
         catch (JsonException exception)
         {
@@ -1382,7 +1382,7 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail,
                 "provider_invalid_json",
-                exception.Message);
+                "The provider returned an invalid response format.");
         }
         catch (Exception exception)
         {
@@ -1913,8 +1913,7 @@ public sealed class LegendFounderAiConversationService
             throw new LegendFounderAiProviderException(
                 (int)response.StatusCode,
                 clientRequestId,
-                providerRequestId,
-                errorBody);
+                providerRequestId);
         }
     }
 
@@ -2080,7 +2079,7 @@ public sealed class LegendFounderAiConversationService
                 update,
                 cancellationToken);
 
-    private static LegendFounderAiChatResponse NativeInferenceUnavailableResponse(
+    internal static LegendFounderAiChatResponse NativeInferenceUnavailableResponse(
         string mode,
         LegendConnectNativeInferenceSnapshot? nativeInference,
         string? nativeFailureDetail = null,
@@ -2089,9 +2088,9 @@ public sealed class LegendFounderAiConversationService
     {
         var nativeReasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
             ? nativeInference is null ? "native_inference_unavailable" : "native_inference_unsupported"
-            : nativeInference.ReasonCode.Trim();
+            : LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode);
         var nativeDetail = !string.IsNullOrWhiteSpace(nativeFailureDetail)
-            ? NormalizeFailureDetail(nativeFailureDetail)
+            ? "The native authority did not produce a verified result."
             : !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
                 ? nativeInference.AuthoritySummary.Trim()
                 : "The native authority returned no additional failure detail.";
@@ -2104,16 +2103,14 @@ public sealed class LegendFounderAiConversationService
             ? nativeInference?.RequiresEscalation == true
                 ? "provider_unavailable_without_detail"
                 : "provider_not_attempted"
-            : providerFailureCode.Trim();
+            : LegendConnectTelemetry.NormalizeDiagnosticReason(providerFailureCode);
         var providerDetail = string.IsNullOrWhiteSpace(providerFailureCode)
             ? nativeInference?.RequiresEscalation == true
                 ? "The escalation path did not expose a provider-specific failure detail."
                 : "The governed native result did not permit external escalation."
-            : NormalizeFailureDetail(providerFailureDetail);
+            : $"The provider did not produce a usable response. Reason={providerCode}.";
 
-        if (IsTeacherMode(mode))
-        {
-            var failureKind = providerCode.Contains(
+        var failureKind = providerCode.Contains(
                 "timeout",
                 StringComparison.OrdinalIgnoreCase)
                 ? "timeout"
@@ -2129,8 +2126,10 @@ public sealed class LegendFounderAiConversationService
                             "json",
                             StringComparison.OrdinalIgnoreCase)
                             ? "provider_json"
-                            : "configuration";
+                            : providerCode == "provider_not_attempted" ? "native_inference" : "configuration";
 
+        if (IsTeacherMode(mode))
+        {
             return LegendFounderAiChatResponse.ModeFailure(
                 mode,
                 $"OpenAI Teacher could not complete this request. Stage=provider; Reason={providerCode}.",
@@ -2139,14 +2138,13 @@ public sealed class LegendFounderAiConversationService
                 providerCode);
         }
 
-        return new LegendFounderAiChatResponse(
-            true,
-            mode,
-            $"LEGEND could not complete this response. " +
+        var diagnostic = $"LEGEND could not complete this response. " +
             $"NativeFailure={nativeReasonCode}; NativeDetail={nativeDetail}; " +
             $"EvidenceCount={evidenceCount}; Escalation={escalationState}; " +
-            $"ProviderFailure={providerCode}; ProviderDetail={providerDetail}",
-            null,
+            $"ProviderFailure={providerCode}; ProviderDetail={providerDetail}";
+        return new LegendFounderAiChatResponse(
+            false, mode, diagnostic, diagnostic,
+            FailureKind: failureKind,
             ResponseAuthority: "SystemDiagnostic",
             Stage: "native_or_provider_unavailable",
             Reason: providerCode,
@@ -2156,6 +2154,11 @@ public sealed class LegendFounderAiConversationService
             ModelTrainingRunId: nativeInference?.ModelAssistance?.ModelTrainingRunId,
             ModelProvenance: nativeInference?.ModelAssistance?.Provenance);
     }
+
+    internal static string? SafeProviderCorrelation(string? value) =>
+        value is { Length: > 0 and <= 128 } &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_')
+            ? value : null;
 
     private static bool IsTeacherMode(string mode) =>
         string.Equals(mode, "teacher", StringComparison.Ordinal);
@@ -3116,7 +3119,7 @@ If the Founder explicitly asks you to teach or train LEGEND:
 
         var reasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
             ? "native_inference_unavailable"
-            : nativeInference.ReasonCode.Trim();
+            : LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode);
         var authorityDetail = !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
             ? NormalizeFailureDetail(nativeInference.AuthoritySummary)
             : "The native authority returned no additional governed summary.";
@@ -3217,8 +3220,8 @@ Use the available governed tools when current LEGEND facts are needed. Successfu
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "Legend Founder AI retained-knowledge retrieval failed closed.");
+                "LEGEND RuntimeDiagnostic Event={Event} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "RetainedKnowledgeFailed", "retained_knowledge", "failed", "retained_knowledge_unavailable", exception.GetType().Name);
 
             return new LegendConnectRetainedKnowledgeSearchSnapshot(
                 query,
@@ -3483,13 +3486,14 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return Math.Clamp(dynamicRounds, MinimumToolRounds, MaximumToolRounds);
     }
 
-    private static TimeSpan ResolveReadOnlyToolBudget(TimeSpan remaining)
+    internal static TimeSpan ResolveReadOnlyToolBudget(TimeSpan remaining)
     {
         var seconds = Math.Clamp(
             remaining.TotalSeconds / 4,
             MinimumReadOnlyToolSeconds,
             MaximumReadOnlyToolSeconds);
-        return TimeSpan.FromSeconds(seconds);
+        return TimeSpan.FromSeconds(Math.Min(seconds,
+            Math.Max(0, remaining.TotalSeconds - MinimumFinalSynthesisWindowSeconds)));
     }
 
     private static int ResolveToolOutputBudget(
@@ -3858,15 +3862,14 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public LegendFounderAiProviderException(
             int statusCode,
             string clientRequestId,
-            string? providerRequestId,
-            string providerError)
+            string? providerRequestId)
             : base(
                 $"Legend Founder AI provider returned HTTP {statusCode}.")
         {
             StatusCode = statusCode;
             ClientRequestId = clientRequestId;
             ProviderRequestId = providerRequestId;
-            ProviderError = NormalizeFailureDetail(providerError);
+
         }
 
         public int StatusCode { get; }
@@ -3875,7 +3878,6 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         public string? ProviderRequestId { get; }
 
-        public string ProviderError { get; }
     }
 
     /// <summary>
@@ -3956,7 +3958,8 @@ public sealed record LegendFounderAiProgressEvent(
     string Stage,
     string Message,
     int? Round = null,
-    string? Tool = null);
+    string? Tool = null,
+    string? ScopeIdentity = null);
 
 public sealed record LegendFounderAiChatMessage(
     string? Role,

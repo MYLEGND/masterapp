@@ -1446,7 +1446,9 @@ public sealed class LegendFounderAiModeIsolationTests
             Request("legend", "Hola.", nativeOnly: true, sourceLanguageCode: "es",
                 conversationId: Guid.NewGuid().ToString("D")));
 
-        Assert.True(response.Succeeded, Describe(response));
+        Assert.False(response.Succeeded, Describe(response));
+        Assert.Equal("native_inference", response.FailureKind);
+        Assert.Equal(response.Message, response.Error);
         Assert.Equal("native_only_blocked", response.Stage);
         Assert.Equal("meaning_graph_component_unknown", response.Reason);
         Assert.Equal(0, handler.RequestCount);
@@ -1525,7 +1527,9 @@ public sealed class LegendFounderAiModeIsolationTests
             founder,
             Request("legend", "Explain the unsupported gap.", nativeOnly: true));
 
-        Assert.True(response.Succeeded, Describe(response));
+        Assert.False(response.Succeeded, Describe(response));
+        Assert.Equal("native_inference", response.FailureKind);
+        Assert.Equal(response.Message, response.Error);
         Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
         Assert.Equal("native_only_blocked", response.Stage);
         Assert.Equal("insufficient_evidence", response.Reason);

@@ -218,12 +218,14 @@ public sealed class LegendFounderAiConversationRoutingTests
                 "Provider reported no remaining credits."
             }));
 
-        Assert.True(response.Succeeded);
+        Assert.False(response.Succeeded);
+        Assert.Equal("provider_http", response.FailureKind);
+        Assert.Equal(response.Message, response.Error);
         Assert.Contains("semantic_transition_not_production_eligible", response.Message);
         Assert.Contains("production eligibility gate", response.Message);
         Assert.Contains("EvidenceCount=9", response.Message);
         Assert.Contains("provider_http_429", response.Message);
-        Assert.Contains("no remaining credits", response.Message);
+        Assert.DoesNotContain("no remaining credits", response.Message);
         Assert.DoesNotContain("does not yet have enough governed evidence", response.Message);
     }
 
