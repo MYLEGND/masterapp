@@ -155,6 +155,68 @@ public sealed partial class MessagingServiceTests
         Assert.Empty(await db.MessageTranslations.ToListAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FirstMessage_AcknowledgesOriginalBeforeRecipientTranslation(bool group)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var client = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1", ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation, IsActive = true,
+            GrantedUtc = DateTime.UtcNow, GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = client.Id, ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        if (group)
+        {
+            var secondClient = new ClientProfile
+            {
+                ClientUserId = "client-2", ExternalIdentityObjectId = "client-2",
+                FirstName = "Client", LastName = "Two", Email = "two@example.test"
+            };
+            db.ClientProfiles.Add(secondClient);
+            db.AgentClients.Add(new AgentClient
+            {
+                AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "client-2"
+            });
+            await db.SaveChangesAsync();
+            GrantClientAppAccess(db, secondClient);
+        }
+        await db.SaveChangesAsync();
+        var translator = new DeferredTranslationProbe();
+        var service = CreateService(db, translator);
+        var sender = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var recipient = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = group
+            ? await service.CreateGroupAsync(new CreateMessagingGroupCommand(sender,
+                [new MessagingParticipantReference("client-1", MessagingParticipantTypes.Client),
+                 new MessagingParticipantReference("client-2", MessagingParticipantTypes.Client)],
+                "Shared discussion", "Hello."))
+            : await service.StartConversationAsync(new StartMessagingConversationCommand(sender,
+                recipient.UserId, recipient.ParticipantType, InitialMessageBody: "Hello."));
+        Assert.True(opened.Succeeded);
+        Assert.Equal(group ? 3 : 2, opened.Conversation!.Participants.Count);
+        Assert.Equal("Hello.", Assert.Single(opened.Conversation.Messages).Body);
+        Assert.Equal(0, translator.Calls);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        var source = Assert.Single(await db.InternalMessages.ToListAsync());
+        Assert.Equal("Hello.", source.Body);
+        Assert.Null(source.OriginalLanguage);
+        var notification = await db.MobileActivityNotifications.SingleAsync(item =>
+            item.SourceMessageId == source.Id && item.RecipientUserId == recipient.UserId);
+        Assert.Equal("Hello.", notification.Detail);
+        Assert.Equal("Bonjou.", await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
+        Assert.Equal("Bonjou.", notification.Detail);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
+    }
+
     private sealed class DeferredPushProbe : IApplePushGateway, IFirebasePushGateway
     {
         public List<string> Bodies { get; } = new();

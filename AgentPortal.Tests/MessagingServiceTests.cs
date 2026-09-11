@@ -1513,10 +1513,10 @@ public sealed partial class MessagingServiceTests
             InitialMessageBody: englishBody));
 
         Assert.True(started.Succeeded);
-        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(0, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
         var englishSource = Assert.Single(await db.InternalMessages.ToListAsync());
-        Assert.Equal("en", englishSource.OriginalLanguage);
+        Assert.Null(englishSource.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         Assert.Equal(
             englishBody,
@@ -1539,10 +1539,10 @@ public sealed partial class MessagingServiceTests
             creoleBody));
 
         Assert.True(sent.Succeeded);
-        Assert.Equal(2, translator.DetectionCallCount);
+        Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
         var creoleSource = await db.InternalMessages.SingleAsync(message => message.Body == creoleBody);
-        Assert.Equal("ht", creoleSource.OriginalLanguage);
+        Assert.Null(creoleSource.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         Assert.Equal(
             creoleBody,
@@ -1605,6 +1605,12 @@ public sealed partial class MessagingServiceTests
             InitialMessageBody: original));
 
         Assert.True(started.Succeeded);
+        Assert.Equal(0, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+        var notification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal(original, notification.Detail);
+        Assert.Equal($"{original} (ht)",
+            await service.PrepareNotificationPresentationAsync(client, notification.Id));
         Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(1, translator.TranslationCallCount);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());

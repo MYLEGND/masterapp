@@ -38,7 +38,6 @@ internal sealed partial class MessagingService : IMessagingService
     private readonly ITranslationService _translation;
     private readonly ITranslationLearningPublisher _translationLearning;
     private readonly ILegendLanguageRegistry _languages;
-    private readonly Dictionary<string, TranslationLearningCandidate> _pendingTranslationLearning = new(StringComparer.Ordinal);
     private readonly INotificationEngine _notifications;
     private readonly string? _configuredFounderOid;
     private readonly ICommunitySafetyService? _communitySafety;
@@ -438,7 +437,8 @@ internal sealed partial class MessagingService : IMessagingService
         MessagingActor actor,
         Guid conversationId,
         MessagingConversationMessagePageQuery? messagePage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool applyTranslation = true)
     {
         actor = NormalizeActor(actor);
         var includeGroupImage = messagePage?.IncludeGroupImage ?? true;
@@ -602,11 +602,9 @@ internal sealed partial class MessagingService : IMessagingService
         var messageSummaries = messages
             .Select(message => ToMessageSummary(message, attachments, reviews))
             .ToList();
-        messageSummaries = await ApplyTranslationPresentationAsync(
-            actor,
-            messageSummaries,
-            messages,
-            cancellationToken);
+        if (applyTranslation)
+            messageSummaries = await ApplyTranslationPresentationAsync(
+                actor, messageSummaries, messages, cancellationToken);
 
         var isGroupOwner =
             conversation.ConversationType == MessagingConversationTypes.Group &&
@@ -869,10 +867,6 @@ internal sealed partial class MessagingService : IMessagingService
                     participant.UserId,
                     participant.ParticipantType))
                 .ToArray();
-            var notificationPresentations = await BuildNotificationPresentationsAsync(
-                message,
-                messageRecipients,
-                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
@@ -880,7 +874,6 @@ internal sealed partial class MessagingService : IMessagingService
                 message.Body,
                 nowUtc,
                 messageRecipients,
-                notificationPresentations,
                 cancellationToken);
         }
 
@@ -958,11 +951,11 @@ internal sealed partial class MessagingService : IMessagingService
                 $"We could not open this conversation. Please try again. If the issue continues, provide Diagnostic ID: {diagnosticId}.");
         }
 
-        await FlushPendingTranslationLearningAsync();
         if (notificationRecipients.Count > 0)
-            await _notifications.ReconcileAndPublishAsync(notificationRecipients, cancellationToken);
+            _notifications.NotifyCommittedMessages();
 
-        return await GetConversationAsync(actor, conversation.Id, cancellationToken);
+        return await GetConversationProjectionAsync(actor, conversation.Id, null, cancellationToken,
+            applyTranslation: false);
     }
 
     public async Task<MessagingConversationResult> CreateGroupAsync(
@@ -2792,7 +2785,8 @@ internal sealed partial class MessagingService : IMessagingService
                 return MessagingConversationResult.Failure(sendResult.ErrorCode!, sendResult.ErrorMessage!);
         }
 
-        return await GetConversationAsync(actor, conversationId, cancellationToken);
+        return await GetConversationProjectionAsync(actor, conversationId, null, cancellationToken,
+            applyTranslation: string.IsNullOrWhiteSpace(initialMessage));
     }
 
     private async Task<bool> IsValidActorAsync(MessagingActor actor, CancellationToken cancellationToken)
@@ -3424,10 +3418,6 @@ internal sealed partial class MessagingService : IMessagingService
                     participant.UserId,
                     participant.ParticipantType))
                 .ToArray();
-            var notificationPresentations = await BuildNotificationPresentationsAsync(
-                message,
-                messageRecipients,
-                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
@@ -3435,7 +3425,6 @@ internal sealed partial class MessagingService : IMessagingService
                 message.Body,
                 nowUtc,
                 messageRecipients,
-                notificationPresentations,
                 cancellationToken);
         }
 
@@ -3457,11 +3446,11 @@ internal sealed partial class MessagingService : IMessagingService
                 "We could not create this group. Please try again.");
         }
 
-        await FlushPendingTranslationLearningAsync();
         if (notificationRecipients.Count > 0)
-            await _notifications.ReconcileAndPublishAsync(notificationRecipients, cancellationToken);
+            _notifications.NotifyCommittedMessages();
 
-        return await GetConversationAsync(actor, conversation.Id, cancellationToken);
+        return await GetConversationProjectionAsync(actor, conversation.Id, null, cancellationToken,
+            applyTranslation: false);
     }
 
     private async Task<Dictionary<(string UserId, string ParticipantType), string>> LoadDisplayNamesAsync(
@@ -4467,47 +4456,6 @@ internal sealed partial class MessagingService : IMessagingService
         return notification.Detail;
     }
 
-    private async Task<IReadOnlyList<MessagingNotificationRecipient>> BuildNotificationPresentationsAsync(
-        InternalMessage message,
-        IEnumerable<MessagingActor> recipients,
-        CancellationToken cancellationToken)
-    {
-        var presentations = new List<MessagingNotificationRecipient>();
-        foreach (var recipient in recipients.Distinct())
-        {
-            if (IsSameParticipant(
-                    message.SenderUserId,
-                    message.SenderType,
-                    recipient.UserId,
-                    recipient.ParticipantType))
-            {
-                continue;
-            }
-
-            var targetLanguage = await _controlledResources.GetPreferredLanguageAsync(
-                recipient,
-                cancellationToken);
-            if (targetLanguage is null)
-                continue;
-
-            var translation = await GetOrCreateMessageTranslationAsync(
-                ToTranslationSource(message),
-                targetLanguage,
-                recipient,
-                cancellationToken,
-                persistChanges: false);
-
-            if (translation is not null)
-            {
-                presentations.Add(new MessagingNotificationRecipient(
-                    recipient,
-                    translation.TranslatedText));
-            }
-        }
-
-        return presentations;
-    }
-
     private async Task<List<MessagingMessageSummary>> ApplyTranslationPresentationAsync(
         MessagingActor actor,
         IReadOnlyList<MessagingMessageSummary> summaries,
@@ -4592,7 +4540,6 @@ internal sealed partial class MessagingService : IMessagingService
         string targetLanguage,
         MessagingActor billingAccount,
         CancellationToken cancellationToken,
-        bool persistChanges = true,
         string? resolvedSourceLanguage = null)
     {
         var sourceLanguage = resolvedSourceLanguage ?? await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
@@ -4670,18 +4617,6 @@ internal sealed partial class MessagingService : IMessagingService
             CreatedUtc = DateTime.UtcNow
         };
         _db.MessageTranslations.Add(created);
-        if (!persistChanges)
-        {
-            QueueTranslationLearning(new TranslationLearningCandidate(
-                message.Id,
-                sourceLanguage,
-                targetLanguage,
-                message.Body,
-                created.TranslatedText,
-                created.Provider));
-            return new CachedMessageTranslation(created.TranslatedText, sourceLanguage, created.Provider);
-        }
-
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
@@ -4751,29 +4686,6 @@ internal sealed partial class MessagingService : IMessagingService
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(exception, "Legend Connect group target reuse accounting failed.");
-        }
-    }
-
-    private void QueueTranslationLearning(TranslationLearningCandidate candidate) =>
-        _pendingTranslationLearning[$"{candidate.SourceMessageId:D}:{candidate.TargetLanguageCode}"] = candidate;
-
-    private async Task FlushPendingTranslationLearningAsync()
-    {
-        if (_pendingTranslationLearning.Count == 0)
-            return;
-
-        var pending = _pendingTranslationLearning.Values.ToArray();
-        _pendingTranslationLearning.Clear();
-        foreach (var candidate in pending)
-        {
-            try
-            {
-                await _translationLearning.TryPublishAsync(candidate, CancellationToken.None);
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(exception, "Legend Connect learning hand-off failed. MessageId={MessageId}", candidate.SourceMessageId);
-            }
         }
     }
 
