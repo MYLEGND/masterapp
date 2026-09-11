@@ -2,6 +2,14 @@ namespace Domain.Messaging;
 
 public interface IMessagingService
 {
+    // Null means presentation is unavailable: delivery must remain pending.
+    Task<string?> PrepareNotificationPresentationAsync(MessagingActor recipient, Guid notificationId,
+        CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
+    Task<IReadOnlyList<MessagingRealtimeRecipient>> GetConversationRealtimeRecipientsAsync(MessagingActor actor,
+        Guid conversationId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<MessagingRealtimeRecipient>>(Array.Empty<MessagingRealtimeRecipient>());
+
     Task<MessagingOperationResult> SetReadReceiptsAsync(MessagingActor actor, Guid conversationId,
         bool enabled, bool globally, CancellationToken cancellationToken = default);
     Task<MessagingGroupImage?> GetConversationImageAsync(

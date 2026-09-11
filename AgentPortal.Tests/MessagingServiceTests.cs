@@ -1673,6 +1673,12 @@ public sealed partial class MessagingServiceTests
             "Your appointment is confirmed for tomorrow."));
 
         Assert.True(sent.Succeeded);
+        Assert.Equal(0, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+        var notification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal("Your appointment is confirmed for tomorrow.", notification.Detail);
+        Assert.Equal("Your appointment is confirmed for tomorrow. (ht)",
+            await service.PrepareNotificationPresentationAsync(client, notification.Id));
         Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(1, translator.TranslationCallCount);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());

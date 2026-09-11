@@ -2099,22 +2099,11 @@ internal sealed partial class MessagingService : IMessagingService
         conversation.LastMessageUtc = nowUtc;
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
-        // Recipient presentation belongs to the existing messaging translation
-        // authority. Notification transport persists that presentation verbatim
-        // and never decides language itself.
-        var notificationPresentations = await BuildNotificationPresentationsAsync(
-            message,
-            messageRecipients,
-            cancellationToken);
-        var notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
-            actor,
-            conversation.Id,
-            message.Id,
-            message.Body,
-            nowUtc,
-            messageRecipients,
-            notificationPresentations,
-            cancellationToken);
+        // Persist the original and recipient delivery ledger in one transaction.
+        // Existing delivery workers prepare recipient presentation after commit.
+        await _notifications.StageMessageForRecipientsAsync(
+            actor, conversation.Id, message.Id, message.Body, nowUtc,
+            messageRecipients, cancellationToken);
 
         try
         {
@@ -2126,13 +2115,7 @@ internal sealed partial class MessagingService : IMessagingService
             return MessagingMessageResult.Failure("MESSAGING_MESSAGE_SAVE_FAILED", "The message could not be saved.");
         }
 
-        await FlushPendingTranslationLearningAsync();
-        if (notificationRecipients.Count > 0)
-        {
-            await _notifications.ReconcileAndPublishAsync(
-                notificationRecipients,
-                cancellationToken);
-        }
+        _notifications.NotifyCommittedMessages();
 
         return new MessagingMessageResult(
             true,
@@ -4429,6 +4412,61 @@ internal sealed partial class MessagingService : IMessagingService
             ? new MessagingGroupImage(content, contentType)
             : null;
 
+    public async Task<IReadOnlyList<MessagingRealtimeRecipient>> GetConversationRealtimeRecipientsAsync(
+        MessagingActor actor, Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (!await IsValidActorAsync(actor, cancellationToken) ||
+            !await (await AuthorizedConversationsQueryAsync(actor, cancellationToken))
+                .AnyAsync(conversation => conversation.Id == conversationId, cancellationToken))
+            return Array.Empty<MessagingRealtimeRecipient>();
+        return await _db.MessageConversationParticipants.AsNoTracking()
+            .Where(participant => participant.ConversationId == conversationId && participant.IsActive)
+            .Select(participant => new MessagingRealtimeRecipient(participant.UserId, participant.ParticipantType))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<string?> PrepareNotificationPresentationAsync(
+        MessagingActor recipient, Guid notificationId, CancellationToken cancellationToken = default)
+    {
+        recipient = NormalizeActor(recipient);
+        var notification = await _db.MobileActivityNotifications.SingleOrDefaultAsync(
+            item => item.Id == notificationId && item.RecipientUserId == recipient.UserId &&
+                item.RecipientParticipantType == recipient.ParticipantType, cancellationToken);
+        if (notification is null || notification.IsCleared)
+            return null;
+        if (notification.SourceMessageId is not Guid messageId)
+            return notification.Detail;
+        if (notification.ConversationId is not Guid conversationId ||
+            (await GetConversationRealtimeRecipientsAsync(recipient, conversationId, cancellationToken)).Count == 0)
+            return null;
+        var message = await _db.InternalMessages.SingleOrDefaultAsync(
+            item => item.Id == messageId && item.ConversationId == conversationId && !item.IsDeleted,
+            cancellationToken);
+        if (message is null)
+            return null;
+        var detail = message.Body;
+        var targetLanguage = await _controlledResources.GetPreferredLanguageAsync(recipient, cancellationToken);
+        if (targetLanguage is not null)
+        {
+            var source = ToTranslationSource(message);
+            var sourceLanguage = await ResolveRoutingSourceLanguageAsync(source, cancellationToken);
+            if (sourceLanguage is null)
+                return null;
+            if (!string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                var translated = await GetOrCreateMessageTranslationAsync(source, targetLanguage,
+                    recipient, cancellationToken, resolvedSourceLanguage: sourceLanguage);
+                if (translated is null)
+                    return null;
+                detail = translated.TranslatedText;
+            }
+        }
+        notification.Detail = detail.Length > 1_000 ? detail[..1_000] : detail;
+        await _db.SaveChangesAsync(cancellationToken);
+        return notification.Detail;
+    }
+
     private async Task<IReadOnlyList<MessagingNotificationRecipient>> BuildNotificationPresentationsAsync(
         InternalMessage message,
         IEnumerable<MessagingActor> recipients,
@@ -4554,9 +4592,10 @@ internal sealed partial class MessagingService : IMessagingService
         string targetLanguage,
         MessagingActor billingAccount,
         CancellationToken cancellationToken,
-        bool persistChanges = true)
+        bool persistChanges = true,
+        string? resolvedSourceLanguage = null)
     {
-        var sourceLanguage = await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
+        var sourceLanguage = resolvedSourceLanguage ?? await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
         if (sourceLanguage is null)
             return null;
 
