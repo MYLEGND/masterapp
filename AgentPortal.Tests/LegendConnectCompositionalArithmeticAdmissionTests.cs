@@ -136,7 +136,7 @@ public sealed class LegendConnectCompositionalArithmeticAdmissionTests
                 new([new("total", "total", total, total), new("function", "conversation_function", "measurement_answer", "The measured total is")], [])));
         }
         return new("arithmetic.measurement-chain." + family, "Measured rate, quantity and fee with two computed operations", examples,
-            [new(new(Values(("rate", "$numeric_left"), ("quantity", "$numeric_right"), ("fee", "$fee"))), new(Values(("subtotal", "$numeric_result")))),
+            [new(new(Values(("rate", "$numeric_left"), ("quantity", "$numeric_right"), ("fee", "$fee"))), new(Values(("subtotal", "$numeric_result"), ("fee", "$fee")))),
              new(new(Values(("subtotal", "$numeric_left"), ("fee", "$numeric_right"))), new(Values(("total", "$numeric_result")))),
              new(new(Values(("total", "$value"))), new(Values(("total", "$value"), ("conversation_function", "measurement_answer"))))]);
     }
