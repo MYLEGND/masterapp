@@ -21,8 +21,8 @@ public sealed class LegendFounderProgressEvidenceTests
         LegendFounderAiController.RecordWorkObservation(observations,
             new("tool_complete", "Other scope available", Tool: "legend_operational_diagnostics", ScopeIdentity: "independent"));
         Assert.Equal(2, observations.Count);
-        Assert.Equal("tool_unavailable", observations[$"legend_operational_diagnostics:{scope}"].Stage);
-        Assert.Equal("tool_complete", observations["legend_operational_diagnostics:independent"].Stage);
+        Assert.Equal("tool_unavailable", observations[scope].Stage);
+        Assert.Equal("tool_complete", observations["independent"].Stage);
     }
 
     [Fact]

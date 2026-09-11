@@ -271,7 +271,7 @@ public sealed class LegendFounderAiController : Controller
             return;
         var identity = update.Tool is null
             ? update.Stage
-            : update.ScopeIdentity is null ? update.Tool : $"{update.Tool}:{update.ScopeIdentity}";
+            : update.ScopeIdentity ?? update.Tool;
         // Latest evidence owns its effective scope. An unrelated successful
         // read cannot remove this scope's failed observation.
         observations[identity] = update;
