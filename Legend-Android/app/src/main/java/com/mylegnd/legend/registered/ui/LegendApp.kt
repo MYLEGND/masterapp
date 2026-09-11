@@ -2870,7 +2870,9 @@ private fun MessagesScreen(
                     participantType = participantType,
                     isSending = viewModel.isSending.collectAsStateWithLifecycle().value,
                     back = { selectedConversationId = null },
-                    send = viewModel::send,
+                    send = { context, id, body, replyId, attachments, completed ->
+                        viewModel.send(context, id, body, replyId, attachments, completed = completed)
+                    },
                     loadOlder = viewModel::loadOlder,
                     historyFailure = historyFailure,
                     delete = viewModel::deleteMessage,

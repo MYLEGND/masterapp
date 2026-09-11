@@ -79,16 +79,6 @@ extension EnvironmentValues {
     }
 }
 
-struct LegendSocialStoreEnvironmentKey: EnvironmentKey {
-    static let defaultValue: MobileSocialStore? = nil
-}
-extension EnvironmentValues {
-    var legendSocialStore: MobileSocialStore? {
-        get { self[LegendSocialStoreEnvironmentKey.self] }
-        set { self[LegendSocialStoreEnvironmentKey.self] = newValue }
-    }
-}
-
 /// ONE application-wide sharing control for Legend social content.
 ///
 /// Every Story, Post, and Hac share button routes here.

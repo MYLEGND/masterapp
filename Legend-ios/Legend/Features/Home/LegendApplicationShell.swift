@@ -139,7 +139,6 @@ struct LegendApplicationShell: View {
         // owns the Messages tab. This environment value is a reference only:
         // it creates no second store, recipient directory, inbox, or send path.
         .environment(\.legendMessagingStore, messages)
-        .environment(\.legendSocialStore, social)
         .background {
             if let calling = messages.calling { LegendCallPresentation(store: calling) }
         }
