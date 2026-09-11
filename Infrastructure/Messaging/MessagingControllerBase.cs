@@ -2,6 +2,8 @@ using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Shared.Messaging;
 
 namespace Infrastructure.Messaging;
@@ -183,12 +185,24 @@ public abstract class MessagingControllerBase : Controller
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
 
-        await PublishConversationEventAsync(
-            actor,
-            conversationId,
-            "messageReceived",
-            result.Message!.Id,
-            HttpContext.RequestAborted);
+        try
+        {
+            await PublishConversationEventAsync(
+                actor,
+                conversationId,
+                "messageReceived",
+                result.Message!.Id,
+                HttpContext.RequestAborted);
+        }
+        catch (Exception exception)
+        {
+            // The message and delivery outbox have committed. Realtime is an
+            // advisory wake-up; the existing poller retries from persisted rows.
+            // A transport failure must not relabel that committed send as failed.
+            HttpContext.RequestServices.GetService<ILogger<MessagingControllerBase>>()?
+                .LogWarning("Messaging realtime wake-up failed after commit. ExceptionType={ExceptionType}",
+                    exception.GetType().Name);
+        }
         return Ok(result);
     }
 
@@ -323,9 +337,13 @@ public abstract class MessagingControllerBase : Controller
         Guid? messageId,
         CancellationToken cancellationToken)
     {
-        var conversation = await _messagingService.GetConversationAsync(actor, conversationId, cancellationToken);
-        if (conversation.Succeeded && conversation.Conversation is not null)
-            await PublishConversationEventAsync(conversation.Conversation, eventType, messageId, cancellationToken);
+        var recipients = await _messagingService.GetConversationRealtimeRecipientsAsync(
+            actor, conversationId, cancellationToken);
+        if (recipients.Count > 0)
+        {
+            await _realtimePublisher.PublishAsync(new MessagingRealtimeEvent(
+                eventType, conversationId, messageId, DateTime.UtcNow, recipients), cancellationToken);
+        }
     }
 
     private Task PublishConversationEventAsync(
