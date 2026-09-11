@@ -1385,16 +1385,30 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void UnifiedProductionFlow_RecognizesBothCurrentDotnetTestSuccessFormats()
+    public void UnifiedProductionFlow_ValidatesStructuredResultsIndependentlyOfConsoleSuccessFormats()
     {
         var workflow = File.ReadAllText(
             Path.Combine(
                 AppContext.BaseDirectory,
                 "agentportal-production-deploy.yml"));
 
-        Assert.Contains("Test Run Successful", workflow, StringComparison.Ordinal);
-        Assert.Contains("Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0", workflow, StringComparison.Ordinal);
-        Assert.Contains("Failed:[[:space:]]*[1-9][0-9]*", workflow, StringComparison.Ordinal);
+        var start = workflow.IndexOf("      - name: Test full suite including security regressions", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var end = workflow.IndexOf("      - name:", start + 1, StringComparison.Ordinal);
+        Assert.True(end > start);
+        var regression = workflow[start..end];
+        Assert.Contains("--logger 'trx;LogFileName=full-regression.trx'", regression, StringComparison.Ordinal);
+        Assert.Contains("runner_exit=$?", regression, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/legend-baseline-regression.py", regression, StringComparison.Ordinal);
+        Assert.Contains("--manifest .github/legend-baseline-release.json", regression, StringComparison.Ordinal);
+        Assert.Contains("--source-root \"$GITHUB_WORKSPACE\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--results-directory \"$results_dir\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--runner-exit-code \"$runner_exit\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--run-start-utc \"$run_start\"", regression, StringComparison.Ordinal);
+        Assert.Contains("--production-base-sha \"$LEGEND_BASELINE_PRODUCTION_BASE\"", regression, StringComparison.Ordinal);
+        Assert.DoesNotContain("continue-on-error", regression, StringComparison.Ordinal);
+        Assert.DoesNotContain("--filter", regression, StringComparison.Ordinal);
+        Assert.DoesNotContain("|| true", regression, StringComparison.Ordinal);
     }
 
     [Fact]
