@@ -64,6 +64,7 @@
     detailFlights: new Map(),
     detailRevisions: new Map(),
     readFlights: new Map(),
+    reactionFlights: new Map(),
     readAcknowledged: new Map(),
     requestedConversationId: null,
     navigationVersion: 0,
@@ -892,16 +893,25 @@
   }
 
   async function setMessageReaction(conversationId, message, emoji) {
+    const key = `${conversationId}:${message.id}`;
+    const version = state.navigationVersion;
+    const previous = state.reactionFlights.get(key) || Promise.resolve();
+    const flight = previous.catch(() => {}).then(() => request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Messages/${encodeURIComponent(message.id)}/Reaction`, {
+      method: emoji ? 'PUT' : 'DELETE',
+      ...(emoji ? { body: JSON.stringify({ emoji }) } : {})
+    }));
+    state.reactionFlights.set(key, flight);
     try {
-      const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Messages/${encodeURIComponent(message.id)}/Reaction`, {
-        method: emoji ? 'PUT' : 'DELETE',
-        ...(emoji ? { body: JSON.stringify({ emoji }) } : {})
-      });
-      if (state.active?.id !== conversationId) return;
+      const result = await flight;
+      if (state.active?.id !== conversationId || version !== state.navigationVersion) return;
       state.active = { ...state.active, messages: state.active.messages.map(item =>
         item.id === message.id ? { ...item, reactions: result.reactions || [] } : item) };
       renderConversation();
-    } catch (error) { showError(error.message); }
+    } catch (error) {
+      if (state.active?.id === conversationId && version === state.navigationVersion) showError(error.message);
+    } finally {
+      if (state.reactionFlights.get(key) === flight) state.reactionFlights.delete(key);
+    }
   }
 
   function appendMessageInteractions(card, conversation, message) {
@@ -1360,7 +1370,7 @@
     writeSession('last-conversation', conversationId);
     renderConversation(shouldScrollToBottom);
     renderConversations();
-    if (markRead) {
+    if (markRead && state.isOpen && !document.hidden) {
       try { await acknowledgeVisibleConversation(state.active); }
       catch (error) { if (version === state.navigationVersion) showError(error.message); }
     }
@@ -1451,7 +1461,10 @@
   function createSubmission(body) {
     const key = activeDraftKey();
     const retained = state.pendingSubmissions.get(key);
-    if (retained && retained.body === body) return retained;
+    const files = Array.from(elements.files.files || []);
+    const sameFiles = retained && files.length === retained.files.length && files.every((file, index) => file === retained.files[index]);
+    if (retained && retained.body === body && (sameFiles || retained.messageId)) return retained;
+    if (retained?.sending) throw new Error('The current message is still sending.');
     if (retained?.messageId && retained.uploadedFileIndexes.length < retained.files.length)
       throw new Error('Retry the pending attachment delivery before sending another message.');
     state.pendingSubmission = {
@@ -1476,6 +1489,8 @@
     let submission;
     try { submission = createSubmission(body); }
     catch (error) { showError(error.message); return; }
+    if (submission.sending) return;
+    submission.sending = true;
     const navigationVersion = state.navigationVersion;
     elements.sendButton.disabled = true;
     showError('');
@@ -1509,13 +1524,15 @@
             .reverse()
             .find(message => isCurrentParticipant(message.senderUserId, message.senderType) && message.body === body)?.id || null;
           submission.conversationId = created?.id;
+          if (created?.id) {
+            submission.key = `conversation:${created.id}`;
+            state.pendingSubmissions.set(submission.key, submission);
+            if (!submission.draftKeys.includes(submission.key)) submission.draftKeys.push(submission.key);
+          }
           if (navigationVersion === state.navigationVersion && state.draftTarget === target) {
             state.active = created;
             state.draftTarget = null;
             state.requestedConversationId = created?.id;
-            submission.key = activeDraftKey();
-            state.pendingSubmissions.set(submission.key, submission);
-            if (!submission.draftKeys.includes(submission.key)) submission.draftKeys.push(submission.key);
           }
         }
       }
@@ -1544,6 +1561,7 @@
     } catch (error) {
       showError(error.message);
     } finally {
+      submission.sending = false;
       elements.sendButton.disabled = Boolean(state.active?.isClosed) || (!state.active && !state.draftTarget);
     }
   }
@@ -1654,6 +1672,8 @@
     document.body.classList.remove('messaging-command-center-open');
     unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'false'));
     state.isOpen = false;
+    state.navigationVersion += 1;
+    state.requestedConversationId = null;
     clearCommandCenterOpenMark();
     state.lastTrigger?.focus?.({ preventScroll: true });
   }

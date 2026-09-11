@@ -13,7 +13,8 @@ function implementation(name) {
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a;reject=b; }); return {promise,resolve,reject}; };
 function environment(request) {
   const context = {
-    state: { active:null, requestedConversationId:null, navigationVersion:0, detailFlights:new Map(), detailRevisions:new Map(), readFlights:new Map(), readAcknowledged:new Map(), scrollPositions:{}, inboxDirty:false, inboxFlight:null },
+    state: { active:null, requestedConversationId:null, navigationVersion:0, detailFlights:new Map(), detailRevisions:new Map(), readFlights:new Map(), reactionFlights:new Map(), isOpen:true, readAcknowledged:new Map(), scrollPositions:{}, inboxDirty:false, inboxFlight:null },
+    document:{hidden:false},
     elements:{newMessages:{hidden:false},messages:{scrollTop:0}}, request,
     writeSession(){},renderConversation(){},renderConversations(){},renderSearchResults(){},setUnreadCount(){},showError(){},
     isCurrentParticipant:(id,type)=>id==='self'&&type==='Client',parseUtcTimestamp:value=>value?new Date(value):null
