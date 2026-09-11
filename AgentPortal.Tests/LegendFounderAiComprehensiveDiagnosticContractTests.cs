@@ -374,7 +374,11 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
 
         Assert.Contains("inputLexemeHashes", source, StringComparison.Ordinal);
         Assert.Contains("join lexeme in _db.Set<LegendLanguageLexeme>()", source, StringComparison.Ordinal);
-        Assert.Contains("lexeme.NormalizedHash == requestHash", source, StringComparison.Ordinal);
+        // Hashes sharing a request multiplicity now share a SQL branch; each
+        // hash must still be grouped separately before the unchanged span sum.
+        Assert.Contains("requestHashes.Contains(lexeme.NormalizedHash)", source, StringComparison.Ordinal);
+        Assert.Contains("requestLexemes.GroupBy(item => item.Count)", source, StringComparison.Ordinal);
+        Assert.Matches(@"group occurrence by new\s*\{\s*AnchorId = anchor.Id,\s*lexeme.NormalizedHash,", source);
         Assert.Contains("candidate.Sum(item => item.MatchedOccurrenceCount)", source, StringComparison.Ordinal);
         Assert.Contains("anchor.ComponentStartTokenIndex != null", source, StringComparison.Ordinal);
         Assert.Contains("anchor.ComponentStartTokenIndex >= 0", source, StringComparison.Ordinal);
