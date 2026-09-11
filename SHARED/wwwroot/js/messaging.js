@@ -62,6 +62,7 @@
     inboxFlight: null,
     inboxDirty: false,
     detailFlights: new Map(),
+    detailRevisions: new Map(),
     readFlights: new Map(),
     readAcknowledged: new Map(),
     requestedConversationId: null,
@@ -1242,9 +1243,7 @@
             loadConversation(recipient.existingConversationId, true).catch(error => showError(error.message));
             return;
           }
-          state.active = null;
-          state.draftTarget = recipient;
-          state.pendingSubmission = null;
+          selectDraftRecipient(recipient);
           elements.search.value = '';
           renderSearchResults();
           renderConversations();
@@ -1282,6 +1281,14 @@
     elements.searchResults.hidden = false;
   }
 
+  function selectDraftRecipient(recipient) {
+    state.navigationVersion += 1;
+    state.requestedConversationId = null;
+    state.active = null;
+    state.draftTarget = recipient;
+    state.pendingSubmission = null;
+  }
+
   async function refreshList() {
     state.inboxDirty = true;
     if (state.inboxFlight) return state.inboxFlight;
@@ -1308,7 +1315,7 @@
       if (state.active?.id === id) return acknowledgeVisibleConversation(state.active);
       return;
     }
-    const flight = request(`/Messaging/Conversations/${encodeURIComponent(id)}/Read`, { method: 'POST' });
+    const flight = request(`/Messaging/Conversations/${encodeURIComponent(id)}/Read?readThroughMessageId=${encodeURIComponent(latest)}`, { method: 'POST' });
     state.readFlights.set(id, flight);
     try {
       await flight;
@@ -1316,7 +1323,7 @@
     } finally { state.readFlights.delete(id); }
   }
 
-  async function loadConversation(conversationId, markRead, shouldScrollToBottom = false) {
+  async function loadConversation(conversationId, markRead, shouldScrollToBottom = false, invalidate = false) {
     if (state.requestedConversationId !== conversationId) {
       state.requestedConversationId = conversationId;
       state.navigationVersion += 1;
@@ -1328,6 +1335,15 @@
       writeSession('scroll-positions', state.scrollPositions);
     }
     let flight = state.detailFlights.get(conversationId);
+    if (invalidate) state.detailRevisions.set(conversationId, (state.detailRevisions.get(conversationId) || 0) + 1);
+    const detailRevision = state.detailRevisions.get(conversationId) || 0;
+    if (invalidate && flight) {
+      // An event can arrive after the server captured the in-flight snapshot.
+      // Coalesce the burst into a fresh read after that snapshot completes.
+      try { await flight; } catch (_) { }
+      if (version !== state.navigationVersion || state.requestedConversationId !== conversationId) return;
+      return loadConversation(conversationId, markRead, shouldScrollToBottom);
+    }
     if (!flight) {
       flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`);
       state.detailFlights.set(conversationId, flight);
@@ -1336,7 +1352,8 @@
       }).catch(() => {});
     }
     const result = await flight;
-    if (version !== state.navigationVersion || state.requestedConversationId !== conversationId) return;
+    if (version !== state.navigationVersion || state.requestedConversationId !== conversationId ||
+        detailRevision !== (state.detailRevisions.get(conversationId) || 0)) return;
     state.active = result.conversation;
     state.draftTarget = null;
     // A refresh cannot acknowledge or discard an uncertain send transaction.
@@ -1521,7 +1538,7 @@
       if (stillSelected) {
         saveDraft();
         renderConversation(true);
-        loadConversation(submission.conversationId, false).catch(error => showError(error.message));
+        loadConversation(submission.conversationId, false, false, true).catch(error => showError(error.message));
       }
       refreshList().catch(() => {});
     } catch (error) {
@@ -1570,7 +1587,7 @@
             (!state.requestedConversationId || state.requestedConversationId === state.active.id)) {
           const shouldScrollToBottom = isNearMessageBottom();
           const viewed = incomingMessage && state.isOpen && !document.hidden && shouldScrollToBottom;
-          await loadConversation(state.active.id, viewed, shouldScrollToBottom);
+          await loadConversation(state.active.id, viewed, shouldScrollToBottom, true);
           if (!shouldScrollToBottom) elements.newMessages.hidden = false;
         }
         await listRefresh;

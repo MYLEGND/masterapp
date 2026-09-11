@@ -13,13 +13,13 @@ function implementation(name) {
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a;reject=b; }); return {promise,resolve,reject}; };
 function environment(request) {
   const context = {
-    state: { active:null, requestedConversationId:null, navigationVersion:0, detailFlights:new Map(), readFlights:new Map(), readAcknowledged:new Map(), scrollPositions:{}, inboxDirty:false, inboxFlight:null },
+    state: { active:null, requestedConversationId:null, navigationVersion:0, detailFlights:new Map(), detailRevisions:new Map(), readFlights:new Map(), readAcknowledged:new Map(), scrollPositions:{}, inboxDirty:false, inboxFlight:null },
     elements:{newMessages:{hidden:false},messages:{scrollTop:0}}, request,
     writeSession(){},renderConversation(){},renderConversations(){},renderSearchResults(){},setUnreadCount(){},showError(){},
     isCurrentParticipant:(id,type)=>id==='self'&&type==='Client',parseUtcTimestamp:value=>value?new Date(value):null
   };
   vm.createContext(context);
-  for (const name of ['latestReadMessageIndex','refreshList','acknowledgeVisibleConversation','loadConversation']) vm.runInContext(implementation(name), context);
+  for (const name of ['selectDraftRecipient','latestReadMessageIndex','refreshList','acknowledgeVisibleConversation','loadConversation']) vm.runInContext(implementation(name), context);
   return context;
 }
 test('latest read boundary ignores self and distinguishes newer sent messages', () => {
@@ -41,7 +41,7 @@ test('late A cannot replace selected B; refresh preserves uncertain send identit
 });
 test('simultaneous opens share one detail and one read acknowledgement',async()=>{
   const detail=deferred(),read=deferred();let reads=0,details=0;
-  const c=environment(url=>{if(url.endsWith('/Read')){reads++;return read.promise;}details++;return detail.promise;});
+  const c=environment(url=>{if(url.includes('/Read?')){reads++;return read.promise;}details++;return detail.promise;});
   const first=c.loadConversation('A',true),second=c.loadConversation('A',true);
   detail.resolve({conversation:{id:'A',messages:[{id:'m1'}]}});
   await new Promise(resolve=>setImmediate(resolve));assert.equal(details,1);assert.equal(reads,1);
@@ -94,4 +94,17 @@ test('reaction controls consume server palette and double tap explicitly sets li
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(calls.length,1);assert.equal(calls[0].options.method,'PUT');assert.equal(JSON.parse(calls[0].options.body).emoji,'👍');
   assert.equal(c.state.active.messages[0].reactions[0].count,1);
+});
+test('a held thread cannot replace a newly selected recipient draft',async()=>{
+  const old=deferred(),c=environment(()=>old.promise);
+  const opening=c.loadConversation('A',false);c.selectDraftRecipient({userId:'B'});
+  old.resolve({conversation:{id:'A',messages:[]}});await opening;
+  assert.equal(c.state.active,null);assert.equal(c.state.draftTarget.userId,'B');
+});
+test('realtime invalidation during a snapshot queues a fresh coalesced read',async()=>{
+  const old=deferred();let calls=0;const c=environment(()=>++calls===1?old.promise:Promise.resolve({conversation:{id:'A',messages:[{id:'new'}]}}));
+  const opening=c.loadConversation('A',false);
+  const first=c.loadConversation('A',false,false,true),second=c.loadConversation('A',false,false,true);
+  old.resolve({conversation:{id:'A',messages:[]}});await Promise.all([opening,first,second]);
+  assert.equal(calls,2);assert.equal(c.state.active.messages[0].id,'new');
 });
