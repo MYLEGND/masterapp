@@ -16,9 +16,12 @@ on:
     types:
       - synchronize
 
+# Both hosts and the database are shared production resources. A later PR
+# must wait until the current release and its verification finish; it must
+# never restart a host while another release is verifying that host.
 concurrency:
-  group: agentportal-production-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: agentportal-production
+  cancel-in-progress: false
 
 permissions:
   contents: read

@@ -7,6 +7,20 @@ namespace AgentPortal.Tests;
 public sealed class ClientAppDeploymentWorkflowTests
 {
     [Fact]
+    public void ProductionReleasesShareOneNonCancellingConcurrencyGroup()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+        var start = workflow.IndexOf("\nconcurrency:", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var end = workflow.IndexOf("\npermissions:", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+        var concurrency = workflow[start..end];
+        Assert.Contains("group: agentportal-production\n", concurrency, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: false", concurrency, StringComparison.Ordinal);
+        Assert.DoesNotContain("${{", concurrency, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BothHostsUseOneValidatedBuildAndMigrationGateWithMatchedSharedAssemblies()
     {
         var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
