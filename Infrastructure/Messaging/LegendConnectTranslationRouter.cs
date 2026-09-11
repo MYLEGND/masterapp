@@ -637,12 +637,14 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         var incomplete = 0;
         TranslationDetectionResult Finish(TranslationDetectionResult result)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             outcome = result.Succeeded ? "resolved" : "unresolved";
             reason = LegendConnectTelemetry.NormalizeDiagnosticReason(result.ErrorCode);
             return result;
         }
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (_structuralComposition is not null &&
                 !string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(text)))
             {
@@ -654,6 +656,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 var languages = await _languages
                     .ListEnabledTranslationLanguagesReadOnlyAsync(
                         cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 considered = languages.Count;
                 candidateCount = considered;
                 _logger.LogInformation(
@@ -694,6 +697,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 }
                 catch (Exception exception)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     // An optional exclusion read cannot weaken the ordinary
                     // graph analysis or turn an unavailable read into no match.
                     _logger.LogWarning(
@@ -703,6 +707,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 }
                 foreach (var candidate in languages)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     authorityMethod = _structuralComposition.GetType().Name + "." + nameof(ILegendConnectStructuralCompositionGate.AnalyzeReusableMeaningGraphAsync);
                     stage = "language_graph";
                     var graphStarted = Stopwatch.GetTimestamp();
@@ -711,6 +716,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             candidate.Code,
                             text,
                             cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
                     analyzed++;
                     if (understanding.IsComposed)
                         composed++;
@@ -754,6 +760,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             // authority a native-only request may use. When it cannot name exactly
             // one governed language the request fails closed here: the external
             // detection provider is not consulted and no client is constructed.
+            cancellationToken.ThrowIfCancellationRequested();
             if (policy.ForbidsExternalProviders)
             {
                 _logger.LogInformation(
@@ -775,6 +782,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 text,
                 cancellationToken,
                 policy);
+            cancellationToken.ThrowIfCancellationRequested();
             _logger.LogInformation(
                 "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs}",
                 "TranslationProviderCompleted", authorityMethod, stage, result.Succeeded ? "resolved" : "unresolved",
