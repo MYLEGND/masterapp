@@ -4495,6 +4495,7 @@ internal sealed partial class MessagingService : IMessagingService
             .Where(row => translationIds.Contains(row.InternalMessageId) && row.TargetLanguage == targetLanguage)
             .ToDictionaryAsync(row => row.InternalMessageId, cancellationToken);
         var presentationCache = new Dictionary<Guid, CachedMessageTranslation?>();
+        var normalizedLanguages = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var sources = sourceMessages.ToDictionary(message => message.Id);
         var presented = new List<MessagingMessageSummary>(summaries.Count);
         foreach (var summary in summaries)
@@ -4502,6 +4503,7 @@ internal sealed partial class MessagingService : IMessagingService
             var presentation = summary;
             if (sources.TryGetValue(summary.Id, out var source) &&
                 !summary.IsDeleted &&
+                !string.IsNullOrWhiteSpace(source.Body) &&
                 summary.VerificationReview is null &&
                 !IsSameParticipant(summary.SenderUserId, summary.SenderType, actor.UserId, actor.ParticipantType))
             {
@@ -4511,7 +4513,8 @@ internal sealed partial class MessagingService : IMessagingService
                     actor,
                     cancellationToken,
                     pageCache: pageCache,
-                    presentationCache: presentationCache);
+                    presentationCache: presentationCache,
+                    normalizedLanguages: normalizedLanguages);
                 if (translation is not null)
                 {
                     presentation = presentation with
@@ -4533,7 +4536,8 @@ internal sealed partial class MessagingService : IMessagingService
                 targetLanguage,
                 cancellationToken,
                 pageCache,
-                presentationCache));
+                presentationCache,
+                normalizedLanguages));
         }
 
         return presented;
@@ -4546,10 +4550,12 @@ internal sealed partial class MessagingService : IMessagingService
         string targetLanguage,
         CancellationToken cancellationToken,
         IReadOnlyDictionary<Guid, MessageTranslation> pageCache,
-        Dictionary<Guid, CachedMessageTranslation?> presentationCache)
+        Dictionary<Guid, CachedMessageTranslation?> presentationCache,
+        Dictionary<string, string?> normalizedLanguages)
     {
         if (summary.Reply is null ||
             source?.Reply is null ||
+            string.IsNullOrWhiteSpace(source.Reply.Body) ||
             summary.Reply.IsDeleted ||
             IsSameParticipant(
                 summary.Reply.SenderUserId,
@@ -4566,7 +4572,8 @@ internal sealed partial class MessagingService : IMessagingService
             actor,
             cancellationToken,
             pageCache: pageCache,
-            presentationCache: presentationCache);
+            presentationCache: presentationCache,
+            normalizedLanguages: normalizedLanguages);
         return translation is null
             ? summary
             : summary with { Reply = summary.Reply with { Body = translation.TranslatedText } };
@@ -4579,10 +4586,23 @@ internal sealed partial class MessagingService : IMessagingService
         CancellationToken cancellationToken,
         string? resolvedSourceLanguage = null,
         IReadOnlyDictionary<Guid, MessageTranslation>? pageCache = null,
-        Dictionary<Guid, CachedMessageTranslation?>? presentationCache = null)
+        Dictionary<Guid, CachedMessageTranslation?>? presentationCache = null,
+        Dictionary<string, string?>? normalizedLanguages = null)
     {
         if (presentationCache is not null && presentationCache.TryGetValue(message.Id, out var presented))
             return presented;
+        // Revalidate authoritative metadata once per distinct language within this
+        // projection. No process-wide cache can outlive a registry/policy change.
+        if (resolvedSourceLanguage is null && normalizedLanguages is not null &&
+            !string.IsNullOrWhiteSpace(message.DetectedMessageLanguage))
+        {
+            var candidate = message.DetectedMessageLanguage.Trim();
+            if (!normalizedLanguages.TryGetValue(candidate, out resolvedSourceLanguage))
+            {
+                resolvedSourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(candidate, cancellationToken);
+                normalizedLanguages[candidate] = resolvedSourceLanguage;
+            }
+        }
         var result = await GetOrCreateMessageTranslationCoreAsync(message, targetLanguage,
             billingAccount, cancellationToken, resolvedSourceLanguage, pageCache);
         if (presentationCache is not null)
