@@ -66,9 +66,11 @@
         "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier"
       ]
     },
-    "live_rerun": "blocked_pending_public_repository_publication_approval",
+    "live_rerun": "completed_failed_run_34558337071",
     "performance_improvement_verified": false,
     "deployment_performed": false,
-    "source_pushed": false
+    "source_pushed": true,
+    "published_candidate": "16388fe014310388d73ba16f684b010c8eb8ad88",
+    "live_result_file": "github-observation-34558337071.json"
   }
 }
