@@ -1519,7 +1519,12 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     private async Task<(long Approved, long PendingEligible, long RejectedOrIneligible, long Deduplicated, long AwaitingKnowledgePairs)> CandidateReadinessAsync(
         CancellationToken cancellationToken)
     {
-        var candidates = await _db.Set<LegendCorpusCandidate>().AsNoTracking().ToListAsync(cancellationToken);
+        var candidates = await _db.Set<LegendCorpusCandidate>().AsNoTracking()
+            .Select(item => new
+            {
+                item.IsApproved, item.ProcessingState, item.SourceLanguageCode, item.TargetLanguageCode
+            })
+            .ToListAsync(cancellationToken);
         var approved = candidates.LongCount(item => item.IsApproved);
         var pending = candidates.LongCount(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing");
         var rejected = candidates.LongCount(item => !item.IsApproved || item.ProcessingState == "Rejected");
