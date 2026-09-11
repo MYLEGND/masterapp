@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "authorization": "Repository owner authorized publishing and deploying this messaging/social candidate through production on 2026-09-11 after disclosure of the same nine native failures and four unexecuted cases. The original nine failure expectations and frozen evaluation files are unchanged. This is not autonomous-readiness acceptance.",
-  "sourceCommit": "9a42c4578d4bf11fe18d68d987af422ad5e0ec45",
+  "sourceCommit": "c785675100adaa464f748c48c494fe4f8fb0d2b7",
   "productionBaseCommit": "262428f38c8e1dd0ee72a362983b277f493fd362",
   "allowedPolicyPaths": [
     ".github/workflows/agentportal-production-deploy.yml",
@@ -9538,6 +9538,30 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.SocialMediaBlobRangeTests.BlobDelivery_CancelledCallerNeverStartsBodyDownload",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SocialMediaBlobRangeTests.BlobDelivery_DefersBoundedReadsAndRefusesChangedVersion",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SocialMediaBlobRangeTests.BlobDelivery_FileStreamExecutorHonorsRangeOverNonSeekableHttpBody",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SocialMediaBlobRangeTests.BlobDelivery_LegacyMigrationSuccessOrRaceReturnsSeekableReaderAndRetainsOriginal(raced: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SocialMediaBlobRangeTests.BlobDelivery_LegacyMigrationSuccessOrRaceReturnsSeekableReaderAndRetainsOriginal(raced: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SocialMediaBlobRangeTests.BlobDelivery_MissingWithoutLegacyFileDoesNotCreateObject",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.SocialMediaProcessingWorkerTests.QueuedVideos_AreProcessedSequentiallyAfterEarlierQueueWakeups",
       "outcome": "Passed"
     },
@@ -9818,5 +9842,5 @@
       "outcome": "Passed"
     }
   ],
-  "rosterSha256": "01783c5fdf56663bb88c84481a0d33730158498715044e9fb794827af031399c"
+  "rosterSha256": "4cb6ec7fced4a39733b4d8bed16d3b9082da792f8d6202903696833a38fe7184"
 }
