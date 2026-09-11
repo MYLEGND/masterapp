@@ -484,12 +484,15 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
 
 /** Receipt hierarchy uses the server's chronological page and privacy-filtered readers. */
 internal fun messageReceiptLabels(messages: List<ConversationMessage>, readers: List<MessagingReadReceipt>): Map<String, String> {
+    // Both fields are explicitly UTC in the server contract; ASP.NET may omit the zone.
+    fun utc(value: String): java.time.Instant = runCatching { java.time.Instant.parse(value) }
+        .getOrElse { java.time.LocalDateTime.parse(value).toInstant(java.time.ZoneOffset.UTC) }
     val own = messages.filter { it.isMine && !it.isDeleted }
     val latestRead = own.indexOfLast { message ->
         readers.any { reader ->
             !(reader.userId.equals(message.sender.identity.userId, true) &&
                 reader.participantType.equals(message.sender.identity.participantType, true)) &&
-                runCatching { java.time.Instant.parse(reader.readThroughUtc) >= java.time.Instant.parse(message.sentUtc) }.getOrDefault(false)
+                runCatching { utc(reader.readThroughUtc) >= utc(message.sentUtc) }.getOrDefault(false)
         }
     }
     return own.mapIndexedNotNull { index, message ->

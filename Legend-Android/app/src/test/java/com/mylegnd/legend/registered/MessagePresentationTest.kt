@@ -26,6 +26,12 @@ class MessagePresentationTest {
         assertEquals(expected, messageReceiptLabels(page, listOf(MessagingReadReceipt("other", "Client", "invalid"))))
     }
 
+    @Test fun serverZoneLessUtcDatesRetainReadHierarchy() {
+        val page = listOf(message("earlier", 1).copy(sentUtc = "2026-09-11T00:00:01.1234567"), message("newer", 3))
+        val reader = MessagingReadReceipt("other", "Client", "2026-09-11T00:00:02.1234567")
+        assertEquals(mapOf("earlier" to "Read", "newer" to "Sent"), messageReceiptLabels(page, listOf(reader)))
+    }
+
     @Test fun reactionCountsAndActorSelectionAreDecodedFromServer() {
         val result = Json.decodeFromString<MessageReactionResult>("""{"messageId":"message","reactions":[{"emoji":"❤️","count":2,"reactedByCurrentActor":true}]}""")
         assertEquals("message", result.messageId)
