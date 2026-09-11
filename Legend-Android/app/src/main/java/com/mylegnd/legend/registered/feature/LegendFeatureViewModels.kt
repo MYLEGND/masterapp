@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -89,16 +90,6 @@ class FounderAiViewModel(
             failure = null,
         )
         operation = viewModelScope.launch {
-            val progressJob = launch {
-                repository.progress(role, operationId).collect { envelope ->
-                    val update = envelope.progress?.message?.trim().orEmpty()
-                    if (update.isNotBlank() && _state.value.operationId == operationId) {
-                        _state.value = _state.value.copy(
-                            progress = envelope.elapsedSeconds?.let { "$update · ${it}s" } ?: update,
-                        )
-                    }
-                }
-            }
             try {
                 when (val result = repository.chat(
                     role = role,
@@ -113,6 +104,16 @@ class FounderAiViewModel(
                         messages = submitted.map { FounderAiChatMessage(it.role, it.content) },
                         conversationId = conversationId,
                     ),
+                    onProgress = { envelope ->
+                        val update = envelope.progress?.message?.trim().orEmpty()
+                        if (update.isNotBlank()) {
+                            _state.update { current ->
+                                if (current.operationId != operationId) current else current.copy(
+                                    progress = envelope.elapsedSeconds?.let { "$update · ${it}s" } ?: update,
+                                )
+                            }
+                        }
+                    },
                 )) {
                     is LoadState.Data -> {
                         val response = result.value
@@ -138,7 +139,6 @@ class FounderAiViewModel(
                 // cancel() has already returned a truthful local status. The
                 // server receives the cancelled mobile request and stops work.
             } finally {
-                progressJob.cancel()
                 if (_state.value.operationId == operationId) {
                     _state.value = _state.value.copy(isSending = false, operationId = null, progress = null)
                 }

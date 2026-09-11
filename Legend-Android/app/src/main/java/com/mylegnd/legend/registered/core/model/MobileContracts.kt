@@ -62,6 +62,8 @@ import kotlinx.serialization.Serializable
     val type: String,
     @SerialName("elapsedSeconds") val elapsedSeconds: Int? = null,
     val progress: FounderAiProgressUpdate? = null,
+    val status: Int? = null,
+    val result: FounderAiChatResponse? = null,
 )
 @Serializable data class FounderAiProgressUpdate(
     val stage: String,
