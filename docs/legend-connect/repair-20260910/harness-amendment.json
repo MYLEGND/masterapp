@@ -7,5 +7,24 @@
   },
   "full_simulation_cases": 92,
   "full_simulation_passed": 92,
-  "sql_execution": false
+  "sql_execution": false,
+  "additional_reviewed_amendments": [
+    {
+      "commits": [
+        "8d58a0c0",
+        "19f56e24"
+      ],
+      "file": "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+      "sha256": "ec10222436aaec7d6728f918075022fc8871bacf81f920b8dd5dd2168b4b2801",
+      "cause": "Real Azure SQL451 on UNION column2; then required VIEW DEFINITION implied DATABASE VIEW SECURITY DEFINITION and VIEW PERFORMANCE DEFINITION. SQL fn_builtin_permissions confirmed both covering permissions.",
+      "repair": "Normalize metadata UNION string collations; recognize only the two observed database-level metadata subpermissions without grant option. Preserve all write, delegation, unknown-permission, physical-source and held-out requirements.",
+      "review": "Lead live security-catalog reproduction plus independent diagnostic specialist source/docs review; added negative scope/delegation/state-permission cases."
+    },
+    {
+      "commit": "377251c0",
+      "cause": "Three negative behavioral cases expected unsupported/no admitted result, but their old unconditional Succeeded=true assertions contradicted corrected domain-failure status.",
+      "repair": "Require failure for the same unsupported inputs; preserve positive ordinal branch, expected answers, grounding, privacy, certificates, and provider isolation.",
+      "review": "Independent evaluation specialist reviewed each failing case against its direct native contract. Nine positive capability gates unchanged."
+    }
+  ]
 }

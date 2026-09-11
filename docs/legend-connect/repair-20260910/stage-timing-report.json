@@ -1,0 +1,144 @@
+{
+  "candidate": "19f56e244f18cc63774c1ce27c8215c5e6b0c746",
+  "environment": "Local exact-candidate assemblies with live Azure MasterAppDb, contained SELECT-only principal",
+  "sampling": "One observation process; mixed first/repeated service calls. No controlled cold/warm workload or distributions.",
+  "production_http_samples": 0,
+  "browser_completed_response_samples": 0,
+  "observation_elapsed_ms": 76492.7947,
+  "case_timings": [
+    {
+      "Category": "learning",
+      "Status": "passed",
+      "ElapsedMilliseconds": 265.4717,
+      "FailureCode": null
+    },
+    {
+      "Category": "machine-learning-lifecycle",
+      "Status": "passed",
+      "ElapsedMilliseconds": 972.2006,
+      "FailureCode": null
+    },
+    {
+      "Category": "governed_cohort",
+      "Status": "passed",
+      "ElapsedMilliseconds": 98.069,
+      "FailureCode": null
+    },
+    {
+      "Category": "held-out-competing-hypotheses",
+      "Status": "failed",
+      "ElapsedMilliseconds": 20304.2207,
+      "FailureCode": "sql_error_-2"
+    },
+    {
+      "Category": "held-out-discriminating-check",
+      "Status": "failed",
+      "ElapsedMilliseconds": 20158.5063,
+      "FailureCode": "sql_error_-2"
+    },
+    {
+      "Category": "native-only-provider-isolation",
+      "Status": "passed",
+      "ElapsedMilliseconds": 16833.0177,
+      "FailureCode": null
+    }
+  ],
+  "observed_stages": [
+    {
+      "case": "learning",
+      "authority": "LegendConnectOperations.GetFounderSectionPageAsync",
+      "stage": "founder_section",
+      "domain_outcome": "completed",
+      "elapsed_ms": 136,
+      "reason": null
+    },
+    {
+      "case": "machine-learning-lifecycle",
+      "authority": "LegendConnectOperations.GetFounderSectionPageAsync",
+      "stage": "founder_section",
+      "domain_outcome": "completed",
+      "elapsed_ms": 922,
+      "reason": null
+    },
+    {
+      "case": "held-out-competing-hypotheses",
+      "authority": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+      "stage": "meaning_candidates",
+      "domain_outcome": "completed",
+      "elapsed_ms": 3910,
+      "reason": "none"
+    },
+    {
+      "case": "held-out-competing-hypotheses",
+      "authority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+      "stage": "source_slots",
+      "domain_outcome": "failed",
+      "elapsed_ms": 15417,
+      "reason": "authority_call_failed"
+    },
+    {
+      "case": "held-out-discriminating-check",
+      "authority": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+      "stage": "meaning_candidates",
+      "domain_outcome": "failed",
+      "elapsed_ms": 15904,
+      "reason": "authority_call_failed"
+    },
+    {
+      "case": "native-only-provider-isolation",
+      "authority": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+      "stage": "meaning_candidates",
+      "domain_outcome": "completed",
+      "elapsed_ms": 2424,
+      "reason": "none"
+    },
+    {
+      "case": "native-only-provider-isolation",
+      "authority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+      "stage": "source_slots",
+      "domain_outcome": "completed",
+      "elapsed_ms": 12824,
+      "reason": "none"
+    },
+    {
+      "case": "native-only-provider-isolation",
+      "authority": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+      "stage": "meaning_graph",
+      "domain_outcome": "rejected",
+      "elapsed_ms": 15387,
+      "reason": "meaning_graph_component_unknown"
+    },
+    {
+      "case": "native-only-provider-isolation",
+      "authority": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+      "stage": "meaning_candidates",
+      "domain_outcome": "completed",
+      "elapsed_ms": 360,
+      "reason": "none"
+    },
+    {
+      "case": "native-only-provider-isolation",
+      "authority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+      "stage": "source_slots",
+      "domain_outcome": "completed",
+      "elapsed_ms": 619,
+      "reason": "none"
+    },
+    {
+      "case": "native-only-provider-isolation",
+      "authority": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+      "stage": "meaning_graph",
+      "domain_outcome": "rejected",
+      "elapsed_ms": 1223,
+      "reason": "meaning_graph_component_unknown"
+    }
+  ],
+  "sql_failed_commands": 2,
+  "sql_succeeded_commands": 34,
+  "limitations": [
+    "Native greeting completed-response gate unmeasured",
+    "Unsupported negative case took16833ms; does not satisfy500ms latency target",
+    "Two SQL command timeouts near15.3s; locks/queryplan/row-volume cause not established",
+    "No authenticated Founder HTTP reproduction or deployed-revision evidence"
+  ]
+}

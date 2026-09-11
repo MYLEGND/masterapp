@@ -1,0 +1,1884 @@
+{
+  "Version": "candidate-select-observation-v2",
+  "CandidateSha": "19f56e244f18cc63774c1ce27c8215c5e6b0c746",
+  "DiagnosticsVersion": "legend-runtime-diagnostic-v1",
+  "DiagnosticWindows": [
+    {
+      "StageEvents": {
+        "ObservedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 0,
+        "SqlFailureEvents": 0,
+        "Records": []
+      },
+      "SqlCommands": {
+        "EventsObserved": 5,
+        "SucceededEvents": 5,
+        "FailedEvents": 0,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "03babecd876db116f2825835983c0093e8746f125af18a71958ccb7a9c10dced",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 464.2341,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 2,
+            "QueryFingerprint": "f0d1d6877a6a8bae352a9acf87524e830350868476e1ffa75237d21e7524d85e",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 2295.6808,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 3,
+            "QueryFingerprint": "ef849b588f806b80304e5f49deb409fc543e02f8df83e31e7e08632c9bf6542c",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 1851.6009,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 4,
+            "QueryFingerprint": "77b6773366c62972cf89349257f34a768f5b9731357669adc4c5621243b7123f",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 61.3179,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 5,
+            "QueryFingerprint": "5015519e91193a543652b7e790cd771c4ecd63c095b3a1b93b2896361cccc095",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 53.3364,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          }
+        ]
+      },
+      "SqlSnapshotReference": "observation-preflight/sql",
+      "EvidencePrerequisites": {}
+    },
+    {
+      "StageEvents": {
+        "ObservedEvents": 2,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 0,
+        "SqlFailureEvents": 0,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "Event": "StageStarted",
+            "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+            "Stage": "founder_section",
+            "Outcome": "started",
+            "ReasonCode": null,
+            "ElapsedMs": null,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 2,
+            "Event": "StageEnded",
+            "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+            "Stage": "founder_section",
+            "Outcome": "completed",
+            "ReasonCode": null,
+            "ElapsedMs": 136,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          }
+        ]
+      },
+      "SqlCommands": {
+        "EventsObserved": 3,
+        "SucceededEvents": 3,
+        "FailedEvents": 0,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "2f66f139b58b4d4ae1a1aa5269ce52f538e9350b3682b4202cd579fc608ec1de",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 113.9884,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 2,
+            "QueryFingerprint": "34b6439869d618f6a7a3910c3e391a87de20ca81b79ee27ab93e1b0413fc6025",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 50.2417,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 3,
+            "QueryFingerprint": "554f208d8b833264f4bdcb6727fa38e754cbd3129201d73a79f4d817142cf744",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 52.3303,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          }
+        ]
+      },
+      "SqlSnapshotReference": "learning/sql",
+      "EvidencePrerequisites": {
+        "MinimumRows": 0,
+        "EnabledLanguageCount": 1,
+        "ObservedRows": 2
+      }
+    },
+    {
+      "StageEvents": {
+        "ObservedEvents": 2,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 0,
+        "SqlFailureEvents": 0,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "Event": "StageStarted",
+            "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+            "Stage": "founder_section",
+            "Outcome": "started",
+            "ReasonCode": null,
+            "ElapsedMs": null,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 2,
+            "Event": "StageEnded",
+            "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+            "Stage": "founder_section",
+            "Outcome": "completed",
+            "ReasonCode": null,
+            "ElapsedMs": 922,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          }
+        ]
+      },
+      "SqlCommands": {
+        "EventsObserved": 3,
+        "SucceededEvents": 3,
+        "FailedEvents": 0,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "2f66f139b58b4d4ae1a1aa5269ce52f538e9350b3682b4202cd579fc608ec1de",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 47.6144,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 2,
+            "QueryFingerprint": "34b6439869d618f6a7a3910c3e391a87de20ca81b79ee27ab93e1b0413fc6025",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 52.3113,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 3,
+            "QueryFingerprint": "1edfd8f40e2a48997e9c59535abad54ee8b6d904106afdfbe459dcf5dc40ced7",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 818.0918,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          }
+        ]
+      },
+      "SqlSnapshotReference": "machine-learning-lifecycle/sql",
+      "EvidencePrerequisites": {
+        "MinimumRows": 1,
+        "EnabledLanguageCount": 1,
+        "ObservedRows": 50
+      }
+    },
+    {
+      "StageEvents": {
+        "ObservedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 0,
+        "SqlFailureEvents": 0,
+        "Records": []
+      },
+      "SqlCommands": {
+        "EventsObserved": 1,
+        "SucceededEvents": 1,
+        "FailedEvents": 0,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "fcb886dff9c3024bba663aab6ea5beef704c12a7ff048a5ee61f38b216b15946",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 95.637,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          }
+        ]
+      },
+      "SqlSnapshotReference": "governed_cohort/sql",
+      "EvidencePrerequisites": {
+        "ActiveFounderGovernedExamples": 3357
+      }
+    },
+    {
+      "StageEvents": {
+        "ObservedEvents": 4,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 2,
+        "SqlFailureEvents": 2,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "meaning_candidates",
+            "Outcome": "completed",
+            "ReasonCode": "none",
+            "ElapsedMs": 3910,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 6,
+              "CandidateCount": 26,
+              "NodeCount": 26
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 2,
+            "Event": "QueryIterationFailed",
+            "AuthorityMethod": "unresolved_from_capture",
+            "SourcePath": "unmapped_runtime_authority",
+            "Stage": "sql_row_materialization",
+            "Outcome": "failed",
+            "ReasonCode": "query_iteration_failed",
+            "ElapsedMs": null,
+            "ExceptionType": "SqlException",
+            "HResult": -2146232060,
+            "SqlErrorNumber": -2,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 3,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "source_slots",
+            "Outcome": "failed",
+            "ReasonCode": "authority_call_failed",
+            "ElapsedMs": 15417,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 4,
+            "Event": "CaseAssertionFailed",
+            "AuthorityMethod": "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation",
+            "SourcePath": "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+            "Stage": "case_assertions",
+            "Outcome": "failed",
+            "ReasonCode": "case_execution_failed",
+            "ElapsedMs": null,
+            "ExceptionType": "SqlException",
+            "HResult": -2146232060,
+            "SqlErrorNumber": -2,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          }
+        ]
+      },
+      "SqlCommands": {
+        "EventsObserved": 7,
+        "SucceededEvents": 6,
+        "FailedEvents": 1,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "3645d6724227f31374dabfdace8d02b8a6842acc9c29119640c34729af510d66",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 881.7504,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 2,
+            "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 62.7156,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 3,
+            "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 49.384,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 4,
+            "QueryFingerprint": "4d5578d344dfcc254d406380ac910286ebd66a392fd0f8ac21ecbc92d6cb8391",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 3581.9191,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 5,
+            "QueryFingerprint": "31af49a77585992b0d4ed7ddb1617b238c5689b70eb089dd8f6d8eeeb66f8caf",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 160.9406,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 6,
+            "QueryFingerprint": "a7075401e6ee9125dd22b5cdf30b567573a1ff9c7c7393efb0e82dc1a8f1a19a",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 54.3234,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 7,
+            "QueryFingerprint": "e396919415f19101b1d0a343d0dd720c07b406e893eeaf0041fe61d2c38c1e82",
+            "Outcome": "failed",
+            "ElapsedMilliseconds": 15316.7326,
+            "ExceptionType": "Microsoft.Data.SqlClient.SqlException",
+            "HResult": -2146232060,
+            "SqlErrorNumber": -2
+          }
+        ]
+      },
+      "SqlSnapshotReference": "held-out-competing-hypotheses/sql",
+      "EvidencePrerequisites": {}
+    },
+    {
+      "StageEvents": {
+        "ObservedEvents": 3,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 2,
+        "SqlFailureEvents": 2,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "Event": "QueryIterationFailed",
+            "AuthorityMethod": "unresolved_from_capture",
+            "SourcePath": "unmapped_runtime_authority",
+            "Stage": "sql_row_materialization",
+            "Outcome": "failed",
+            "ReasonCode": "query_iteration_failed",
+            "ElapsedMs": null,
+            "ExceptionType": "SqlException",
+            "HResult": -2146232060,
+            "SqlErrorNumber": -2,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 2,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "meaning_candidates",
+            "Outcome": "failed",
+            "ReasonCode": "authority_call_failed",
+            "ElapsedMs": 15904,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 3,
+            "Event": "CaseAssertionFailed",
+            "AuthorityMethod": "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation",
+            "SourcePath": "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+            "Stage": "case_assertions",
+            "Outcome": "failed",
+            "ReasonCode": "case_execution_failed",
+            "ElapsedMs": null,
+            "ExceptionType": "SqlException",
+            "HResult": -2146232060,
+            "SqlErrorNumber": -2,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {},
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          }
+        ]
+      },
+      "SqlCommands": {
+        "EventsObserved": 4,
+        "SucceededEvents": 3,
+        "FailedEvents": 1,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "3645d6724227f31374dabfdace8d02b8a6842acc9c29119640c34729af510d66",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 4075.6891,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 2,
+            "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 172.572,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 3,
+            "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 608.5488,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 4,
+            "QueryFingerprint": "8e457d8d166e9fc4db882a684ed07d2a01b7e93c12dc75b4677ba4d19431b119",
+            "Outcome": "failed",
+            "ElapsedMilliseconds": 15247.4728,
+            "ExceptionType": "Microsoft.Data.SqlClient.SqlException",
+            "HResult": -2146232060,
+            "SqlErrorNumber": -2
+          }
+        ]
+      },
+      "SqlSnapshotReference": "held-out-discriminating-check/sql",
+      "EvidencePrerequisites": {}
+    },
+    {
+      "StageEvents": {
+        "ObservedEvents": 6,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "ExceptionEvents": 0,
+        "SqlFailureEvents": 0,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "meaning_candidates",
+            "Outcome": "completed",
+            "ReasonCode": "none",
+            "ElapsedMs": 2424,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 3,
+              "CandidateCount": 0,
+              "NodeCount": 0
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 2,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "source_slots",
+            "Outcome": "completed",
+            "ReasonCode": "none",
+            "ElapsedMs": 12824,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 3,
+              "CandidateCount": 0,
+              "NodeCount": 64,
+              "RelationCount": 44,
+              "DeclarationCount": 86,
+              "TemplateCount": 64,
+              "MatchCount": 0
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 3,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "meaning_graph",
+            "Outcome": "rejected",
+            "ReasonCode": "meaning_graph_component_unknown",
+            "ElapsedMs": 15387,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 3,
+              "CandidateCount": 0,
+              "NodeCount": 0,
+              "RelationCount": 0,
+              "UnknownCount": 3
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 4,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "meaning_candidates",
+            "Outcome": "completed",
+            "ReasonCode": "none",
+            "ElapsedMs": 360,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 3,
+              "CandidateCount": 0,
+              "NodeCount": 0
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 5,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "source_slots",
+            "Outcome": "completed",
+            "ReasonCode": "none",
+            "ElapsedMs": 619,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 3,
+              "CandidateCount": 0,
+              "NodeCount": 64,
+              "RelationCount": 44,
+              "DeclarationCount": 86,
+              "TemplateCount": 64,
+              "MatchCount": 0
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          },
+          {
+            "Ordinal": 6,
+            "Event": "stage_completed",
+            "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+            "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+            "Stage": "meaning_graph",
+            "Outcome": "rejected",
+            "ReasonCode": "meaning_graph_component_unknown",
+            "ElapsedMs": 1223,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null,
+            "ProviderPolicy": null,
+            "Supported": null,
+            "RequiresEscalation": null,
+            "Counts": {
+              "TokenCount": 3,
+              "CandidateCount": 0,
+              "NodeCount": 0,
+              "RelationCount": 0,
+              "UnknownCount": 3
+            },
+            "ResearchRequired": null,
+            "RequiresGovernedReadReceipt": null,
+            "ReadScopeEstablished": null
+          }
+        ]
+      },
+      "SqlCommands": {
+        "EventsObserved": 13,
+        "SucceededEvents": 13,
+        "FailedEvents": 0,
+        "CanceledEvents": 0,
+        "BlockedEvents": 0,
+        "RecordsDropped": 0,
+        "Truncated": false,
+        "Records": [
+          {
+            "Ordinal": 1,
+            "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 128.9811,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 2,
+            "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 140.3557,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 3,
+            "QueryFingerprint": "f01e801379a37e7fc732681ea8d11b507263b047ad9a9fdedaa555d71d888516",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 2265.0549,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 4,
+            "QueryFingerprint": "964e11f2ba74da88c5b56e582cce9930e68469411a71dccdff0ad24bc48beada",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 2824.0978,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 5,
+            "QueryFingerprint": "29d278edd6015862618deb8b6c5a53b7a3c1a1b2f350749f41b85121f85fd1c6",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 2573.5729,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 6,
+            "QueryFingerprint": "d85a098890c9a6875956d05cd8d1b1002f7688b78303ac594e45702de3c257cc",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 7213.1158,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 7,
+            "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 244.1792,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 8,
+            "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 170.2267,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 9,
+            "QueryFingerprint": "f01e801379a37e7fc732681ea8d11b507263b047ad9a9fdedaa555d71d888516",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 187.2554,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 10,
+            "QueryFingerprint": "964e11f2ba74da88c5b56e582cce9930e68469411a71dccdff0ad24bc48beada",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 336.4998,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 11,
+            "QueryFingerprint": "29d278edd6015862618deb8b6c5a53b7a3c1a1b2f350749f41b85121f85fd1c6",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 74.3689,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 12,
+            "QueryFingerprint": "d85a098890c9a6875956d05cd8d1b1002f7688b78303ac594e45702de3c257cc",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 194.9351,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          },
+          {
+            "Ordinal": 13,
+            "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+            "Outcome": "succeeded",
+            "ElapsedMilliseconds": 209.0992,
+            "ExceptionType": null,
+            "HResult": null,
+            "SqlErrorNumber": null
+          }
+        ]
+      },
+      "SqlSnapshotReference": "native-only-provider-isolation/sql",
+      "EvidencePrerequisites": {
+        "GraphNodes": 0,
+        "GraphRelations": 0,
+        "UnknownComponents": 3,
+        "NativeEvidenceCount": 0
+      }
+    }
+  ],
+  "FailureDiagnosis": {
+    "ObservedStage": "sql_row_materialization",
+    "ObservedReason": "query_iteration_failed",
+    "AuthorityMethod": "unresolved_from_capture",
+    "Classification": "observed_sql_failure",
+    "RootCauseStatus": "observed_failure_only",
+    "NextVerification": "The SQL snapshot and runtime trace share a case window, not a command-to-stage correlation. Reproduce the failed fingerprint or materialization event in its existing query before assigning a code repair."
+  },
+  "SqlFailureCount": 6,
+  "DiagnosticsTruncated": false,
+  "RunIdentity": "local-restricted:52cd26af-e730-4844-bfd8-a52ce47806d4",
+  "StartedUtc": "2026-09-11T01:36:07.271939Z",
+  "CompletedUtc": "2026-09-11T01:37:23.765336Z",
+  "Status": "failed",
+  "FailureCode": "observation_native-only-provider-isolation_failed",
+  "FailedPhase": "native-only-provider-isolation",
+  "Authority": "non-authoritative",
+  "DeployedSha": "unavailable",
+  "Coverage": [
+    "learning",
+    "machine-learning-lifecycle",
+    "governed_cohort",
+    "held-out-competing-hypotheses",
+    "held-out-discriminating-check",
+    "native-only-provider-isolation"
+  ],
+  "CapabilityLimitations": [
+    "no_chat_or_durable_discourse_execution",
+    "no_device_or_concurrency_proof",
+    "no_deployed_sha_proof"
+  ],
+  "ProviderClientCount": 0,
+  "ProviderHttpCallCount": 0,
+  "ExecutedCases": 6,
+  "CaseResults": [
+    {
+      "Category": "learning",
+      "Status": "passed",
+      "FailureCode": null,
+      "Rows": 2,
+      "LanguageCode": "ar",
+      "MinimumRows": 0,
+      "DiagnosticEvidence": {
+        "StageEvents": {
+          "ObservedEvents": 2,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "ExceptionEvents": 0,
+          "SqlFailureEvents": 0,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "Event": "StageStarted",
+              "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+              "Stage": "founder_section",
+              "Outcome": "started",
+              "ReasonCode": null,
+              "ElapsedMs": null,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 2,
+              "Event": "StageEnded",
+              "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+              "Stage": "founder_section",
+              "Outcome": "completed",
+              "ReasonCode": null,
+              "ElapsedMs": 136,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            }
+          ]
+        },
+        "SqlCommands": {
+          "EventsObserved": 3,
+          "SucceededEvents": 3,
+          "FailedEvents": 0,
+          "CanceledEvents": 0,
+          "BlockedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "QueryFingerprint": "2f66f139b58b4d4ae1a1aa5269ce52f538e9350b3682b4202cd579fc608ec1de",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 113.9884,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 2,
+              "QueryFingerprint": "34b6439869d618f6a7a3910c3e391a87de20ca81b79ee27ab93e1b0413fc6025",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 50.2417,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 3,
+              "QueryFingerprint": "554f208d8b833264f4bdcb6727fa38e754cbd3129201d73a79f4d817142cf744",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 52.3303,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            }
+          ]
+        },
+        "SqlSnapshotReference": "learning/sql",
+        "EvidencePrerequisites": {
+          "MinimumRows": 0,
+          "EnabledLanguageCount": 1,
+          "ObservedRows": 2
+        }
+      },
+      "FailureDiagnosis": {
+        "ObservedStage": "case_assertions",
+        "ObservedReason": null,
+        "AuthorityMethod": "ProductionReadOnlyNativeProofMatrix",
+        "Classification": "observed_read_only_result",
+        "RootCauseStatus": "no_failure_observed",
+        "NextVerification": "This result covers the exercised in-process SQL path; verify authenticated HTTP and production latency separately."
+      },
+      "ElapsedMilliseconds": 265.4717
+    },
+    {
+      "Category": "machine-learning-lifecycle",
+      "Status": "passed",
+      "FailureCode": null,
+      "Rows": 50,
+      "LanguageCode": "en",
+      "MinimumRows": 1,
+      "DiagnosticEvidence": {
+        "StageEvents": {
+          "ObservedEvents": 2,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "ExceptionEvents": 0,
+          "SqlFailureEvents": 0,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "Event": "StageStarted",
+              "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+              "Stage": "founder_section",
+              "Outcome": "started",
+              "ReasonCode": null,
+              "ElapsedMs": null,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 2,
+              "Event": "StageEnded",
+              "AuthorityMethod": "LegendConnectOperations.GetFounderSectionPageAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectOperations.cs",
+              "Stage": "founder_section",
+              "Outcome": "completed",
+              "ReasonCode": null,
+              "ElapsedMs": 922,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            }
+          ]
+        },
+        "SqlCommands": {
+          "EventsObserved": 3,
+          "SucceededEvents": 3,
+          "FailedEvents": 0,
+          "CanceledEvents": 0,
+          "BlockedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "QueryFingerprint": "2f66f139b58b4d4ae1a1aa5269ce52f538e9350b3682b4202cd579fc608ec1de",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 47.6144,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 2,
+              "QueryFingerprint": "34b6439869d618f6a7a3910c3e391a87de20ca81b79ee27ab93e1b0413fc6025",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 52.3113,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 3,
+              "QueryFingerprint": "1edfd8f40e2a48997e9c59535abad54ee8b6d904106afdfbe459dcf5dc40ced7",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 818.0918,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            }
+          ]
+        },
+        "SqlSnapshotReference": "machine-learning-lifecycle/sql",
+        "EvidencePrerequisites": {
+          "MinimumRows": 1,
+          "EnabledLanguageCount": 1,
+          "ObservedRows": 50
+        }
+      },
+      "FailureDiagnosis": {
+        "ObservedStage": "case_assertions",
+        "ObservedReason": null,
+        "AuthorityMethod": "ProductionReadOnlyNativeProofMatrix",
+        "Classification": "observed_read_only_result",
+        "RootCauseStatus": "no_failure_observed",
+        "NextVerification": "This result covers the exercised in-process SQL path; verify authenticated HTTP and production latency separately."
+      },
+      "ElapsedMilliseconds": 972.2006
+    },
+    {
+      "Category": "governed_cohort",
+      "Status": "passed",
+      "Rows": 3357,
+      "DiagnosticEvidence": {
+        "StageEvents": {
+          "ObservedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "ExceptionEvents": 0,
+          "SqlFailureEvents": 0,
+          "Records": []
+        },
+        "SqlCommands": {
+          "EventsObserved": 1,
+          "SucceededEvents": 1,
+          "FailedEvents": 0,
+          "CanceledEvents": 0,
+          "BlockedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "QueryFingerprint": "fcb886dff9c3024bba663aab6ea5beef704c12a7ff048a5ee61f38b216b15946",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 95.637,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            }
+          ]
+        },
+        "SqlSnapshotReference": "governed_cohort/sql",
+        "EvidencePrerequisites": {
+          "ActiveFounderGovernedExamples": 3357
+        }
+      },
+      "FailureDiagnosis": {
+        "ObservedStage": "case_assertions",
+        "ObservedReason": null,
+        "AuthorityMethod": "ProductionReadOnlyNativeProofMatrix",
+        "Classification": "observed_read_only_result",
+        "RootCauseStatus": "no_failure_observed",
+        "NextVerification": "This result covers the exercised in-process SQL path; verify authenticated HTTP and production latency separately."
+      },
+      "ElapsedMilliseconds": 98.069
+    },
+    {
+      "DiagnosticEvidence": {
+        "StageEvents": {
+          "ObservedEvents": 4,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "ExceptionEvents": 2,
+          "SqlFailureEvents": 2,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "meaning_candidates",
+              "Outcome": "completed",
+              "ReasonCode": "none",
+              "ElapsedMs": 3910,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 6,
+                "CandidateCount": 26,
+                "NodeCount": 26
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 2,
+              "Event": "QueryIterationFailed",
+              "AuthorityMethod": "unresolved_from_capture",
+              "SourcePath": "unmapped_runtime_authority",
+              "Stage": "sql_row_materialization",
+              "Outcome": "failed",
+              "ReasonCode": "query_iteration_failed",
+              "ElapsedMs": null,
+              "ExceptionType": "SqlException",
+              "HResult": -2146232060,
+              "SqlErrorNumber": -2,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 3,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "source_slots",
+              "Outcome": "failed",
+              "ReasonCode": "authority_call_failed",
+              "ElapsedMs": 15417,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 4,
+              "Event": "CaseAssertionFailed",
+              "AuthorityMethod": "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation",
+              "SourcePath": "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+              "Stage": "case_assertions",
+              "Outcome": "failed",
+              "ReasonCode": "case_execution_failed",
+              "ElapsedMs": null,
+              "ExceptionType": "SqlException",
+              "HResult": -2146232060,
+              "SqlErrorNumber": -2,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            }
+          ]
+        },
+        "SqlCommands": {
+          "EventsObserved": 7,
+          "SucceededEvents": 6,
+          "FailedEvents": 1,
+          "CanceledEvents": 0,
+          "BlockedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "QueryFingerprint": "3645d6724227f31374dabfdace8d02b8a6842acc9c29119640c34729af510d66",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 881.7504,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 2,
+              "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 62.7156,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 3,
+              "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 49.384,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 4,
+              "QueryFingerprint": "4d5578d344dfcc254d406380ac910286ebd66a392fd0f8ac21ecbc92d6cb8391",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 3581.9191,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 5,
+              "QueryFingerprint": "31af49a77585992b0d4ed7ddb1617b238c5689b70eb089dd8f6d8eeeb66f8caf",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 160.9406,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 6,
+              "QueryFingerprint": "a7075401e6ee9125dd22b5cdf30b567573a1ff9c7c7393efb0e82dc1a8f1a19a",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 54.3234,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 7,
+              "QueryFingerprint": "e396919415f19101b1d0a343d0dd720c07b406e893eeaf0041fe61d2c38c1e82",
+              "Outcome": "failed",
+              "ElapsedMilliseconds": 15316.7326,
+              "ExceptionType": "Microsoft.Data.SqlClient.SqlException",
+              "HResult": -2146232060,
+              "SqlErrorNumber": -2
+            }
+          ]
+        },
+        "SqlSnapshotReference": "held-out-competing-hypotheses/sql",
+        "EvidencePrerequisites": {}
+      },
+      "FailureDiagnosis": {
+        "ObservedStage": "sql_row_materialization",
+        "ObservedReason": "query_iteration_failed",
+        "AuthorityMethod": "unresolved_from_capture",
+        "Classification": "observed_sql_failure",
+        "RootCauseStatus": "observed_failure_only",
+        "NextVerification": "The SQL snapshot and runtime trace share a case window, not a command-to-stage correlation. Reproduce the failed fingerprint or materialization event in its existing query before assigning a code repair."
+      },
+      "Category": "held-out-competing-hypotheses",
+      "Status": "failed",
+      "FailureCode": "sql_error_-2",
+      "ExpectedNative": true,
+      "NativeSupported": null,
+      "NativeReason": null,
+      "EvidenceCount": null,
+      "EvidenceStandard": null,
+      "ArticulationMode": null,
+      "GraphComposed": null,
+      "GraphReason": null,
+      "GraphNodeCount": null,
+      "GraphRelationCount": null,
+      "UnknownComponentCount": null,
+      "AnswerSha256": null,
+      "ProviderClientCount": 0,
+      "ProviderHttpCallCount": 0,
+      "ElapsedMilliseconds": 20304.2207
+    },
+    {
+      "DiagnosticEvidence": {
+        "StageEvents": {
+          "ObservedEvents": 3,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "ExceptionEvents": 2,
+          "SqlFailureEvents": 2,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "Event": "QueryIterationFailed",
+              "AuthorityMethod": "unresolved_from_capture",
+              "SourcePath": "unmapped_runtime_authority",
+              "Stage": "sql_row_materialization",
+              "Outcome": "failed",
+              "ReasonCode": "query_iteration_failed",
+              "ElapsedMs": null,
+              "ExceptionType": "SqlException",
+              "HResult": -2146232060,
+              "SqlErrorNumber": -2,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 2,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "meaning_candidates",
+              "Outcome": "failed",
+              "ReasonCode": "authority_call_failed",
+              "ElapsedMs": 15904,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 3,
+              "Event": "CaseAssertionFailed",
+              "AuthorityMethod": "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation",
+              "SourcePath": "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+              "Stage": "case_assertions",
+              "Outcome": "failed",
+              "ReasonCode": "case_execution_failed",
+              "ElapsedMs": null,
+              "ExceptionType": "SqlException",
+              "HResult": -2146232060,
+              "SqlErrorNumber": -2,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {},
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            }
+          ]
+        },
+        "SqlCommands": {
+          "EventsObserved": 4,
+          "SucceededEvents": 3,
+          "FailedEvents": 1,
+          "CanceledEvents": 0,
+          "BlockedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "QueryFingerprint": "3645d6724227f31374dabfdace8d02b8a6842acc9c29119640c34729af510d66",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 4075.6891,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 2,
+              "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 172.572,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 3,
+              "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 608.5488,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 4,
+              "QueryFingerprint": "8e457d8d166e9fc4db882a684ed07d2a01b7e93c12dc75b4677ba4d19431b119",
+              "Outcome": "failed",
+              "ElapsedMilliseconds": 15247.4728,
+              "ExceptionType": "Microsoft.Data.SqlClient.SqlException",
+              "HResult": -2146232060,
+              "SqlErrorNumber": -2
+            }
+          ]
+        },
+        "SqlSnapshotReference": "held-out-discriminating-check/sql",
+        "EvidencePrerequisites": {}
+      },
+      "FailureDiagnosis": {
+        "ObservedStage": "sql_row_materialization",
+        "ObservedReason": "query_iteration_failed",
+        "AuthorityMethod": "unresolved_from_capture",
+        "Classification": "observed_sql_failure",
+        "RootCauseStatus": "observed_failure_only",
+        "NextVerification": "The SQL snapshot and runtime trace share a case window, not a command-to-stage correlation. Reproduce the failed fingerprint or materialization event in its existing query before assigning a code repair."
+      },
+      "Category": "held-out-discriminating-check",
+      "Status": "failed",
+      "FailureCode": "sql_error_-2",
+      "ExpectedNative": true,
+      "NativeSupported": null,
+      "NativeReason": null,
+      "EvidenceCount": null,
+      "EvidenceStandard": null,
+      "ArticulationMode": null,
+      "GraphComposed": null,
+      "GraphReason": null,
+      "GraphNodeCount": null,
+      "GraphRelationCount": null,
+      "UnknownComponentCount": null,
+      "AnswerSha256": null,
+      "ProviderClientCount": 0,
+      "ProviderHttpCallCount": 0,
+      "ElapsedMilliseconds": 20158.5063
+    },
+    {
+      "DiagnosticEvidence": {
+        "StageEvents": {
+          "ObservedEvents": 6,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "ExceptionEvents": 0,
+          "SqlFailureEvents": 0,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "meaning_candidates",
+              "Outcome": "completed",
+              "ReasonCode": "none",
+              "ElapsedMs": 2424,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 3,
+                "CandidateCount": 0,
+                "NodeCount": 0
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 2,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "source_slots",
+              "Outcome": "completed",
+              "ReasonCode": "none",
+              "ElapsedMs": 12824,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 3,
+                "CandidateCount": 0,
+                "NodeCount": 64,
+                "RelationCount": 44,
+                "DeclarationCount": 86,
+                "TemplateCount": 64,
+                "MatchCount": 0
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 3,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "meaning_graph",
+              "Outcome": "rejected",
+              "ReasonCode": "meaning_graph_component_unknown",
+              "ElapsedMs": 15387,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 3,
+                "CandidateCount": 0,
+                "NodeCount": 0,
+                "RelationCount": 0,
+                "UnknownCount": 3
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 4,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "meaning_candidates",
+              "Outcome": "completed",
+              "ReasonCode": "none",
+              "ElapsedMs": 360,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 3,
+                "CandidateCount": 0,
+                "NodeCount": 0
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 5,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "source_slots",
+              "Outcome": "completed",
+              "ReasonCode": "none",
+              "ElapsedMs": 619,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 3,
+                "CandidateCount": 0,
+                "NodeCount": 64,
+                "RelationCount": 44,
+                "DeclarationCount": 86,
+                "TemplateCount": 64,
+                "MatchCount": 0
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            },
+            {
+              "Ordinal": 6,
+              "Event": "stage_completed",
+              "AuthorityMethod": "LegendConnectCurriculumService.AnalyzeReusableMeaningGraphAsync",
+              "SourcePath": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+              "Stage": "meaning_graph",
+              "Outcome": "rejected",
+              "ReasonCode": "meaning_graph_component_unknown",
+              "ElapsedMs": 1223,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null,
+              "ProviderPolicy": null,
+              "Supported": null,
+              "RequiresEscalation": null,
+              "Counts": {
+                "TokenCount": 3,
+                "CandidateCount": 0,
+                "NodeCount": 0,
+                "RelationCount": 0,
+                "UnknownCount": 3
+              },
+              "ResearchRequired": null,
+              "RequiresGovernedReadReceipt": null,
+              "ReadScopeEstablished": null
+            }
+          ]
+        },
+        "SqlCommands": {
+          "EventsObserved": 13,
+          "SucceededEvents": 13,
+          "FailedEvents": 0,
+          "CanceledEvents": 0,
+          "BlockedEvents": 0,
+          "RecordsDropped": 0,
+          "Truncated": false,
+          "Records": [
+            {
+              "Ordinal": 1,
+              "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 128.9811,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 2,
+              "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 140.3557,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 3,
+              "QueryFingerprint": "f01e801379a37e7fc732681ea8d11b507263b047ad9a9fdedaa555d71d888516",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 2265.0549,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 4,
+              "QueryFingerprint": "964e11f2ba74da88c5b56e582cce9930e68469411a71dccdff0ad24bc48beada",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 2824.0978,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 5,
+              "QueryFingerprint": "29d278edd6015862618deb8b6c5a53b7a3c1a1b2f350749f41b85121f85fd1c6",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 2573.5729,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 6,
+              "QueryFingerprint": "d85a098890c9a6875956d05cd8d1b1002f7688b78303ac594e45702de3c257cc",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 7213.1158,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 7,
+              "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 244.1792,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 8,
+              "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 170.2267,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 9,
+              "QueryFingerprint": "f01e801379a37e7fc732681ea8d11b507263b047ad9a9fdedaa555d71d888516",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 187.2554,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 10,
+              "QueryFingerprint": "964e11f2ba74da88c5b56e582cce9930e68469411a71dccdff0ad24bc48beada",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 336.4998,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 11,
+              "QueryFingerprint": "29d278edd6015862618deb8b6c5a53b7a3c1a1b2f350749f41b85121f85fd1c6",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 74.3689,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 12,
+              "QueryFingerprint": "d85a098890c9a6875956d05cd8d1b1002f7688b78303ac594e45702de3c257cc",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 194.9351,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            },
+            {
+              "Ordinal": 13,
+              "QueryFingerprint": "ac91f2e32d9a9e325d9ef3e5a09d272bb5c61763756306f668fad4ce3c50816b",
+              "Outcome": "succeeded",
+              "ElapsedMilliseconds": 209.0992,
+              "ExceptionType": null,
+              "HResult": null,
+              "SqlErrorNumber": null
+            }
+          ]
+        },
+        "SqlSnapshotReference": "native-only-provider-isolation/sql",
+        "EvidencePrerequisites": {
+          "GraphNodes": 0,
+          "GraphRelations": 0,
+          "UnknownComponents": 3,
+          "NativeEvidenceCount": 0
+        }
+      },
+      "FailureDiagnosis": {
+        "ObservedStage": "case_assertions",
+        "ObservedReason": null,
+        "AuthorityMethod": "ProductionReadOnlyNativeProofMatrix",
+        "Classification": "expected_negative",
+        "RootCauseStatus": "no_failure_observed",
+        "NextVerification": "This result covers the exercised in-process SQL path; verify authenticated HTTP and production latency separately."
+      },
+      "Category": "native-only-provider-isolation",
+      "Status": "passed",
+      "FailureCode": null,
+      "ExpectedNative": false,
+      "NativeSupported": false,
+      "NativeReason": "meaning_graph_component_unknown",
+      "EvidenceCount": 0,
+      "EvidenceStandard": "Unavailable",
+      "ArticulationMode": "Unavailable",
+      "GraphComposed": false,
+      "GraphReason": "meaning_graph_component_unknown",
+      "GraphNodeCount": 0,
+      "GraphRelationCount": 0,
+      "UnknownComponentCount": 3,
+      "AnswerSha256": null,
+      "ProviderClientCount": 0,
+      "ProviderHttpCallCount": 0,
+      "ElapsedMilliseconds": 16833.0177
+    }
+  ],
+  "SqlPrincipalVerified": true,
+  "SelectCommandCount": 36,
+  "BlockedCommandCount": 0,
+  "SaveChangesAttempts": 0,
+  "QueryTimeoutSeconds": 15,
+  "ObservationTimeoutSeconds": 120,
+  "ElapsedMilliseconds": 76492.7947
+}
