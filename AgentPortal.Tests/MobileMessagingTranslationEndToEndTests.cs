@@ -170,6 +170,59 @@ public sealed class MobileMessagingTranslationEndToEndTests
             Assert.IsType<OkObjectResult>(restored).Value));
         Assert.Equal("Bonjou, kijan ou ye?", localized.Body);
         Assert.Equal("ht", localized.Translation!.TargetLanguage);
+        // Routing contract only: provider responses are controlled here. This
+        // checks every enabled target in both directions, not Azure quality.
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = agent.AgentUserId,
+            ParticipantType = MessagingParticipantTypes.Agent,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "founder"
+        });
+        var agentSettings = new MobileProfileSettings
+        {
+            ProfileId = agent.Id,
+            ParticipantType = MessagingParticipantTypes.Agent,
+            PreferredCommunicationLanguage = "en"
+        };
+        db.MobileProfileSettings.Add(agentSettings);
+        await db.SaveChangesAsync();
+        var registry = new LegendLanguageRegistry(db, new ConfigurationBuilder().Build());
+        var enabled = await registry.ListEnabledTranslationLanguagesAsync();
+        Assert.True(enabled.Count > 1);
+        foreach (var recipientType in new[] { MessagingParticipantTypes.Client, MessagingParticipantTypes.Agent })
+        {
+            var receivingAgent = recipientType == MessagingParticipantTypes.Agent;
+            var recipientId = receivingAgent ? agent.AgentUserId : client.ClientUserId;
+            var sender = receivingAgent
+                ? new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client)
+                : new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent);
+            controller.ControllerContext.HttpContext.User = ControllerTestHelpers.BuildUser(recipientId);
+            foreach (var target in enabled)
+            {
+                var sourceCode = enabled.First(language => language.Code != target.Code).Code;
+                var body = $"routing evidence {recipientType} {target.Code}";
+                var rendered = $"recipient presentation {recipientType} {target.Code}";
+                (receivingAgent ? agentSettings : settings).PreferredCommunicationLanguage = target.Code;
+                await db.SaveChangesAsync();
+                translator.Setup(value => value.DetectLanguageAsync(body, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new TranslationDetectionResult(true, sourceCode));
+                translator.Setup(value => value.TranslateAsync(body, target.Code, sourceCode, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new TranslationProviderResult(true, rendered, sourceCode, "TestTranslator"));
+                var sent = await service.SendMessageAsync(new SendMessagingMessageCommand(
+                    sender, conversation.Conversation.Id, body, ClientMessageId: Guid.NewGuid().ToString("N")));
+                Assert.True(sent.Succeeded, sent.ErrorCode);
+                var view = await controller.Messages(conversation.Conversation.Id, null, null, CancellationToken.None);
+                var rows = Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(Assert.IsType<OkObjectResult>(view).Value);
+                var received = Assert.Single(rows.Where(row => row.Id == sent.Message!.Id));
+                Assert.Equal(rendered, received.Body);
+                Assert.Equal(body, received.OriginalBody);
+                Assert.Equal(target.Code, received.Translation!.TargetLanguage);
+                Assert.Equal(sourceCode, received.Translation.OriginalLanguage);
+            }
+        }
         translator.VerifyAll();
     }
 

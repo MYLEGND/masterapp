@@ -610,12 +610,13 @@ public sealed class MobileIntegrationTests
             .ReturnsAsync(MessagingMessageResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "Not available."));
         var controller = CreateController(db, messaging.Object, Principal("agent-oid"));
 
-        var result = await controller.SendMessage(conversationId, new MobileSendMessageRequest("server-owned actor only"), CancellationToken.None);
+        var result = await controller.SendMessage(conversationId, new MobileSendMessageRequest("server-owned actor only", ClientMessageId: "stable-send-attempt"), CancellationToken.None);
         var response = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, response.StatusCode);
         Assert.NotNull(sent);
         Assert.Equal(new MessagingActor("agent-oid", MessagingParticipantTypes.Agent), sent!.Actor);
         Assert.Equal("server-owned actor only", sent.Body);
+        Assert.Equal("stable-send-attempt", sent.ClientMessageId);
     }
 
     [Fact]

@@ -666,6 +666,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 conversationId,
                 request?.Body ?? string.Empty,
+                ClientMessageId: request?.ClientMessageId,
                 ReplyToMessageId: request?.ReplyToMessageId),
             cancellationToken);
         if (!result.Succeeded || result.Message is null)
@@ -1312,7 +1313,8 @@ public sealed record MobileMessageAttachmentDto(
 
 public sealed record MobileSendMessageRequest(
     string? Body,
-    Guid? ReplyToMessageId = null);
+    Guid? ReplyToMessageId = null,
+    string? ClientMessageId = null);
 public sealed record MobileConversationPinnedRequest(bool? IsPinned);
 public sealed record MobileConversationMutedRequest(bool? IsMuted);
 public sealed record MobileReadReceiptRequest(bool Enabled, bool Globally);
