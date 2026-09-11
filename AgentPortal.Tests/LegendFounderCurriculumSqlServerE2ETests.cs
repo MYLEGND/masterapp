@@ -1252,8 +1252,36 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     private static bool IsReadOnlyPermission(ObservationPermission permission) =>
-        !permission.GrantOption && permission.PermissionName is "SELECT" or "CONNECT" or "VIEW DEFINITION"
-            or "VIEW ANY COLUMN MASTER KEY DEFINITION" or "VIEW ANY COLUMN ENCRYPTION KEY DEFINITION";
+        !permission.GrantOption &&
+        (permission.PermissionName is "SELECT" or "CONNECT" or "VIEW DEFINITION"
+            or "VIEW ANY COLUMN MASTER KEY DEFINITION" or "VIEW ANY COLUMN ENCRYPTION KEY DEFINITION" ||
+         // Current Azure SQL reports these read-only metadata subpermissions
+         // with the required database VIEW DEFINITION. Admit only the observed
+         // database scope; this does not grant permissions or admit delegation.
+         (permission.Scope == "DATABASE" && permission.PermissionName is
+             "VIEW SECURITY DEFINITION" or "VIEW PERFORMANCE DEFINITION"));
+
+    [Theory]
+    [InlineData("VIEW SECURITY DEFINITION")]
+    [InlineData("VIEW PERFORMANCE DEFINITION")]
+    public void ReadOnlyPrincipalGuard_AdmitsMetadataSubpermissionsOnlyAtDatabaseWithoutDelegation(string permission)
+    {
+        Assert.True(IsReadOnlyPermission(new ObservationPermission
+            { Scope = "DATABASE", PermissionName = permission }));
+        Assert.False(IsReadOnlyPermission(new ObservationPermission
+            { Scope = "DATABASE", PermissionName = permission, GrantOption = true }));
+        foreach (var scope in new[] { "SCHEMA", "OBJECT", "COLUMN", "EXPLICIT_GRANT", "OWNERSHIP", "SERVER", "", "database" })
+        {
+            Assert.False(IsReadOnlyPermission(new ObservationPermission
+                { Scope = scope, PermissionName = permission }));
+            Assert.False(IsReadOnlyPermission(new ObservationPermission
+                { Scope = scope, PermissionName = permission, GrantOption = true }));
+        }
+        foreach (var rejected in new[] { "INSERT", "UPDATE", "DELETE", "ALTER", "EXECUTE", "CONTROL", "IMPERSONATE",
+                     "VIEW DATABASE SECURITY STATE", "VIEW DATABASE PERFORMANCE STATE", "FUTURE_PERMISSION" })
+            Assert.False(IsReadOnlyPermission(new ObservationPermission
+                { Scope = "DATABASE", PermissionName = rejected }));
+    }
 
     [Fact]
     public void ReadOnlyObservationGuards_RetainCaughtWriteAttempts()
