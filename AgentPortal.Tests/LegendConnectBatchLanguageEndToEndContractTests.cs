@@ -24,7 +24,14 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectBatchLanguageEndToEndContractTests
 {
     [Fact]
-    public async Task UnseenWorkload_ProducesTheExactAllocationCertificateThroughReplyAsync()
+    public Task UnseenWorkload_ProducesTheExactAllocationCertificateThroughReplyAsync() =>
+        VerifyAllocationCertificateAsync(combinedFoundation: false);
+
+    [Fact]
+    public Task CombinedFoundation_PreservesOriginalAllocationCertificateControl() =>
+        VerifyAllocationCertificateAsync(combinedFoundation: true);
+
+    private static async Task VerifyAllocationCertificateAsync(bool combinedFoundation)
     {
         await WithTeachingAsync(async (services, db) =>
         {
@@ -102,7 +109,7 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
                 Assert.InRange(step.FirstResourceUnit + step.ResourceUnitCount - 1, 1, 6);
                 Assert.InRange(step.EndMinute, 1, 40);
             }
-        });
+        }, combinedFoundation);
     }
 
     [Fact]
@@ -130,7 +137,7 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
         });
     }
 
-    private static async Task WithTeachingAsync(Func<IServiceProvider, MasterAppDbContext, Task> verify)
+    private static async Task WithTeachingAsync(Func<IServiceProvider, MasterAppDbContext, Task> verify, bool combinedFoundation = false)
     {
         using var founderScope = new FounderScope();
         await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(async (services, db, externalCounts) =>
@@ -143,7 +150,10 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
             });
             await db.SaveChangesAsync();
             var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
-            await SeedTeachingAsync(curriculum);
+            if (combinedFoundation)
+                await LegendHeldOutFoundationPrerequisite.AdmitAsync(db, []);
+            else
+                await SeedTeachingAsync(curriculum);
             await verify(services, db);
             Assert.Equal((0, 0), externalCounts());
         });

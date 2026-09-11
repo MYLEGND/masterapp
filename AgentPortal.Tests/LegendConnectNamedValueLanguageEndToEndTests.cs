@@ -21,7 +21,14 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectNamedValueLanguageEndToEndTests
 {
     [Fact]
-    public async Task UnseenNameAndOpaqueDate_PreserveExactSpellingInReplyAndConversationRecall()
+    public Task UnseenNameAndOpaqueDate_PreserveExactSpellingInReplyAndConversationRecall() =>
+        VerifyNameAndRecallAsync(combinedFoundation: false);
+
+    [Fact]
+    public Task CombinedFoundation_PreservesOriginalNamedValueAndRecallControl() =>
+        VerifyNameAndRecallAsync(combinedFoundation: true);
+
+    private static async Task VerifyNameAndRecallAsync(bool combinedFoundation)
     {
         using var founderScope = new FounderScope();
         await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(async (services, db, externalCounts) =>
@@ -34,7 +41,10 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
             });
             await db.SaveChangesAsync();
             var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
-            await SeedTeachingAsync(curriculum);
+            if (combinedFoundation)
+                await LegendHeldOutFoundationPrerequisite.AdmitAsync(db, []);
+            else
+                await SeedTeachingAsync(curriculum);
             const string newOwner = "Dr. Mireya D'Arcy";
             const string newDate = "9 November 2032";
             var request = Source(newOwner, newDate);

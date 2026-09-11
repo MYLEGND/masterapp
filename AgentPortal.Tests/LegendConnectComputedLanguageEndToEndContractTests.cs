@@ -143,7 +143,11 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
         });
     }
 
-    private static async Task VerifyResponseAsync(string teachingKind, string left, string right, string expected, bool requireUnseenOperands)
+    [Fact]
+    public Task CombinedFoundation_PreservesOriginalNumericRecombinationControl() =>
+        VerifyResponseAsync("integer", "83", "35", "48", requireUnseenOperands: false, combinedFoundation: true);
+
+    private static async Task VerifyResponseAsync(string teachingKind, string left, string right, string expected, bool requireUnseenOperands, bool combinedFoundation = false)
     {
         using var founderScope = new FounderScope();
         await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(async (services, db, externalCounts) =>
@@ -156,7 +160,10 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
             });
             await db.SaveChangesAsync();
             var curriculum = services.GetRequiredService<LegendConnectCurriculumService>();
-            await SeedTeachingAsync(curriculum, teachingKind);
+            if (combinedFoundation)
+                await LegendHeldOutFoundationPrerequisite.AdmitAsync(db, []);
+            else
+                await SeedTeachingAsync(curriculum, teachingKind);
 
             var request = Source(left, right);
             var corpus = await db.LegendLanguageTextUnits.Select(unit => unit.Text).ToArrayAsync();
