@@ -490,6 +490,15 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func recipientScopeTitle(_ scope: MessagingRecipientScope) -> String {
+        guard actorParticipantType == .client else { return scope.title }
+        switch scope {
+        case .clients: return LegendLocalized("My Circle")
+        case .agents: return LegendLocalized("LEGEND guides")
+        case .leads: return LegendLocalized("My Network")
+        }
+    }
+
     var availableRecipientScopes: [MessagingRecipientScope] {
         actorParticipantType == .agent
             ? [.clients, .agents]

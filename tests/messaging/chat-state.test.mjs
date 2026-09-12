@@ -69,6 +69,16 @@ class Element {
   setAttribute(key,value) { this.attributes[key]=value; }
   addEventListener(name,handler) { this.events[name]=handler; }
   focus() { this.focused=true; }
+  // Match the DOM operations used to anchor reactions inside shared content.
+  querySelector(selector) {
+    const name=selector.slice(1);
+    for(const child of this.children) {
+      if ((child.className || '').split(' ').includes(name)) return child;
+      const nested=child.querySelector?.(selector); if(nested) return nested;
+    }
+    return null;
+  }
+  get classList() { return {add: name => { this.className = `${this.className || ''} ${name}`.trim(); }}; }
 }
 function domEnvironment(request) {
   const c=environment(request);
@@ -488,4 +498,12 @@ test('safe text links preserve internal navigation and isolate external destinat
   const links=content.children.filter(node=>node.tagName==='a');
   assert.equal(links.length,2);assert.equal(links[0].target,undefined);assert.equal(links[1].target,'_blank');assert.equal(links[1].rel,'noopener noreferrer');
   assert.equal(links[1].href,'https://outside.example/path');
+});
+
+test('shared content owns its reaction badges rather than the surrounding message row', () => {
+  const c=domEnvironment(()=>{}), card=new Element('article'), shared=new Element('div');
+  shared.className='messaging-shared-content';card.append(shared);
+  c.appendMessageInteractions(card,{id:'A',reactionOptions:['❤️']},{id:'m',reactions:[{emoji:'❤️',count:1}]});
+  assert.equal(shared.children.at(-1).className,'messaging-reactions');
+  assert.equal(card.children.some(x=>x.className==='messaging-reactions'),false);
 });

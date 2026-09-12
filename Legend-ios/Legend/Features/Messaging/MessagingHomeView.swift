@@ -1261,7 +1261,7 @@ private struct LegendGroupMemberPicker: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: LegendNextSpacing.xs) {
                 ForEach(store.availableRecipientScopes) { scope in
-                    Button(scope.rawValue) {
+                    Button(store.recipientScopeTitle(scope)) {
                         search = ""
                         store.selectRecipientScope(scope)
                     }
@@ -3659,6 +3659,7 @@ private struct LegendMessageBubble: View {
     @State private var isShowingOriginal = false
     @State private var emojiPicker = false
     @State private var emojiDraft = ""
+    @State private var actionMenu = false
 
     private let senderBubbleColor = LegendNextColor.gold
 
@@ -3709,24 +3710,33 @@ private struct LegendMessageBubble: View {
                 .navigationTitle(LegendLocalized("Open or share attachments"))
             }
         }
-        .contextMenu {
+        .onLongPressGesture(minimumDuration: 0.35) { if !message.isDeleted { actionMenu = true } }
+        .popover(isPresented: $actionMenu) {
+          VStack(alignment: .leading, spacing: 12) {
+            LegendMessageContextPreview(message: message).frame(maxHeight: 90).clipped()
             if !message.isDeleted {
-                ControlGroup {
+                ScrollView(.horizontal, showsIndicators: false) {
+                  HStack(spacing: 6) {
                     ForEach(reactionOptions, id: \.self) { emoji in
-                        Button(emoji) { onReact(emoji) }
-                            .menuActionDismissBehavior(.enabled)
+                        Button { actionMenu = false; onReact(emoji) } label: {
+                            Text(emoji).font(.system(size: 25))
+                                .frame(width: 40, height: 44)
+                                .background(message.reactions.contains { $0.emoji == emoji && $0.reactedByCurrentActor }
+                                            ? LegendNextColor.gold.opacity(0.22) : LegendNextColor.surface, in: RoundedRectangle(cornerRadius: 14))
+                        }.buttonStyle(.plain)
                     }
-                    Button { emojiPicker = true } label: {
-                        Label(LegendLocalized("More reactions"), systemImage: "plus")
+                    Button { actionMenu = false; emojiPicker = true } label: {
+                        Image(systemName: "plus.circle.fill").font(.title2).frame(width: 40, height: 44)
+                            .accessibilityLabel(LegendLocalized("More reactions"))
                     }
+                  }
                 }
-                .controlGroupStyle(.palette)
                 if message.reactions.contains(where: { $0.reactedByCurrentActor }) {
-                    Button(LegendLocalized("Remove reaction")) { onReact(nil) }
+                    Button(LegendLocalized("Remove reaction")) { actionMenu = false; onReact(nil) }
                 }
                 Divider()
                 Button {
-                    onReply()
+                    actionMenu = false; onReply()
                 } label: {
                     Label(
                         LegendLocalized("Reply"),
@@ -3735,6 +3745,7 @@ private struct LegendMessageBubble: View {
                 }
 
                 Button {
+                    actionMenu = false
                     UIPasteboard.general.string = message.body
                     copyFeedbackTrigger += 1
                 } label: {
@@ -3762,13 +3773,17 @@ private struct LegendMessageBubble: View {
                 }
                 if message.isMine {
                     Divider()
-                    Button(role: .destructive, action: onDelete) {
+                    Button(role: .destructive) { actionMenu = false; onDelete() } label: {
                         Label(LegendLocalized("Unsend"), systemImage: "trash")
                     }
                 }
             }
-        } preview: {
-            LegendMessageContextPreview(message: message)
+          }
+          .font(.subheadline.weight(.semibold))
+          .buttonStyle(.plain)
+          .foregroundStyle(LegendNextColor.textPrimary)
+          .padding(16).frame(width: 340)
+          .presentationCompactAdaptation(.popover)
         }
         .sensoryFeedback(
             .success,
@@ -3814,7 +3829,7 @@ private struct LegendMessageBubble: View {
 
                 }
                 if !message.isDeleted, let shared = message.sharedContent {
-                    LegendSharedMessageCard(content: shared, open: { openSharedPost(shared.sourcePostId) })
+                    LegendSharedMessageCard(content: shared, reactionBadge: AnyView(reactionBadges), open: { openSharedPost(shared.sourcePostId) })
                 }
                 if !message.isDeleted {
                     ForEach(message.attachments) { attachment in
@@ -3871,25 +3886,12 @@ private struct LegendMessageBubble: View {
                 )
             )
 
-            .overlay(alignment: .topTrailing) {
-                if !message.reactions.isEmpty {
-                    HStack(spacing: 3) {
-                        ForEach(message.reactions, id: \.emoji) { reaction in
-                            Button { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) } label: {
-                                HStack(spacing: 2) {
-                                    Text(reaction.emoji)
-                                    if reaction.count > 1 { Text("\(reaction.count)").font(.caption2.bold()) }
-                                }
-                                .font(.system(size: 15))
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(LegendNextColor.surface, in: Capsule())
-                                .overlay(Capsule().stroke(LegendNextColor.chatTimestamp.opacity(reaction.reactedByCurrentActor ? 1 : 0.3), lineWidth: 1))
-                            }.buttonStyle(.plain)
-                        }
-                    }.offset(x: 3, y: -13)
+            .overlay(alignment: isMediaMessage ? .bottomTrailing : .topTrailing) {
+                if !message.reactions.isEmpty && message.sharedContent == nil {
+                    reactionBadges.offset(x: isMediaMessage ? -8 : 3, y: isMediaMessage ? -8 : -13)
                 }
             }
-            .padding(.top, message.reactions.isEmpty ? 0 : 13)
+            .padding(.top, message.reactions.isEmpty || isMediaMessage ? 0 : 13)
 
             Text(
                 message.sentUTC,
@@ -3903,6 +3905,23 @@ private struct LegendMessageBubble: View {
             )
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var reactionBadges: some View {
+                    HStack(spacing: 3) {
+                        ForEach(message.reactions, id: \.emoji) { reaction in
+                            Button { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) } label: {
+                                HStack(spacing: 2) {
+                                    Text(reaction.emoji)
+                                    if reaction.count > 1 { Text("\(reaction.count)").font(.caption2.bold()) }
+                                }
+                                .font(.system(size: 15))
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(LegendNextColor.surface, in: Capsule())
+                                .overlay(Capsule().stroke(LegendNextColor.chatTimestamp.opacity(reaction.reactedByCurrentActor ? 1 : 0.3), lineWidth: 1))
+                            }.buttonStyle(.plain)
+                        }
+                    }
     }
 
     private var isMediaMessage: Bool { !message.isDeleted && (message.sharedContent != nil || !message.attachments.isEmpty) }
@@ -4516,12 +4535,20 @@ private struct LegendMessagingSearchField: View {
 
 private struct LegendSharedMessageCard: View {
     let content: MessagingSharedContent
+    let reactionBadge: AnyView
     let open: () -> Void
     @Environment(\.legendSocialStore) private var social
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if content.status == "available", let social {
-                Button(action: open) { Label(content.authorDisplayName ?? LegendLocalized("Open shared content"), systemImage: "arrow.up.right") }.font(.headline)
+                Button(action: open) {
+                    Label(content.authorDisplayName ?? LegendLocalized("Open shared content"), systemImage: "person.crop.circle.fill")
+                        .font(.caption.weight(.semibold)).lineLimit(1)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .background(LegendNextColor.gold.opacity(0.12), in: Capsule())
+                }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 6) {
                 if let body = content.body, !body.isEmpty { Text(body) }
                 ForEach(content.media.sorted { $0.displayOrder < $1.displayOrder }) { media in
                     if media.mediaKind == "Image" {
@@ -4530,7 +4557,14 @@ private struct LegendSharedMessageCard: View {
                         LegendSocialMediaVideo(postID: content.sourcePostId, media: media, music: nil, social: social)
                     }
                 }
-                Button(LegendLocalized("Open original"), action: open).buttonStyle(.plain)
+                }.overlay(alignment: .bottomTrailing) { reactionBadge.padding(8) }
+                Button(action: open) {
+                    Label(LegendLocalized("Open original"), systemImage: "arrow.up.right")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(LegendNextColor.chatTimestamp)
+                        .background(LegendNextColor.chatTimestamp.opacity(0.09), in: Capsule())
+                }.buttonStyle(.plain).padding(.trailing, 64)
             } else { Text(LegendLocalized("Shared content is unavailable.")) }
         }
     }

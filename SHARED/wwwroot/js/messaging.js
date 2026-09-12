@@ -990,7 +990,12 @@
     });
     palette.append(plus, picker);
     menu.append(palette);
-    card.append(menu, reactions);
+    const content = card.querySelector('.messaging-shared-content') || card.querySelector('.messaging-attachments');
+    if (content) {
+      content.classList.add('messaging-reacted-content');
+      content.append(reactions);
+      card.append(menu);
+    } else { card.append(menu, reactions); }
     card.addEventListener('dblclick', event => {
       if (event.target.closest('a, button, input, summary, video, audio')) return;
       setMessageReaction(conversation.id, message, '❤️');
