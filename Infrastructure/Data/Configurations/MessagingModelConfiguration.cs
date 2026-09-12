@@ -1568,6 +1568,16 @@ internal static class MessagingModelConfiguration
         ModelBuilder modelBuilder,
         string? providerName)
     {
+        modelBuilder.Entity<LegendTranslationGlobalPolicy>(entity =>
+        {
+            entity.ToTable("LegendTranslationGlobalPolicies", table => table.HasCheckConstraint(
+                "CK_LegendTranslationGlobalPolicies_Singleton", "[Id] = 1 AND [MonthlyCharacterAllowance] >= 0"));
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).ValueGeneratedNever();
+            entity.Property(item => item.Version).IsConcurrencyToken();
+            entity.Property(item => item.UpdatedByUserId).IsRequired().HasMaxLength(450);
+        });
+
         modelBuilder.Entity<LegendTranslationEntitlement>(entity =>
         {
             entity.ToTable("LegendTranslationEntitlements");

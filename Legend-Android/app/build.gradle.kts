@@ -9,7 +9,6 @@ import java.security.cert.CertificateFactory
 import java.util.Base64
 import java.util.Properties
 import java.io.RandomAccessFile
-import java.time.Instant
 import org.gradle.api.provider.ValueSource
 import org.gradle.api.provider.ValueSourceParameters
 import org.gradle.api.file.RegularFileProperty
@@ -40,13 +39,13 @@ abstract class LegendReleaseVersionCode : ValueSource<Int, LegendReleaseVersionC
         file.parentFile.mkdirs()
         return RandomAccessFile(file, "rw").use { state ->
             state.channel.lock().use {
-                val saved = if (state.length() == 0L) 7L else {
-                    state.readLine().trim().toLongOrNull()
-                        ?: error("Invalid Android release version reservation: $file")
+                check(state.length() > 0L) {
+                    "Android release version history is missing: $file. Restore the verified release reservation before building; refusing to guess a Play version code."
                 }
-                // UTC seconds since 2020 also advance on fresh CI runners.
-                val clockCode = Instant.now().epochSecond - 1_577_836_800L
-                val next = maxOf(saved + 1L, clockCode)
+                val saved = state.readLine().trim().toLongOrNull()
+                    ?: error("Invalid Android release version reservation: $file")
+                // Advance by one; wall-clock timestamps cause large Play version jumps.
+                val next = saved + 1L
                 check(saved in 7L..2_100_000_000L && next in 8L..2_100_000_000L) {
                     "Android release version code is outside the Google Play range."
                 }

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "authorization": "Owner authorized the shared Founder unlimited translation correction on 2026-09-11. Retain exactly the existing nine native failures and four skipped tests; add four passing Founder identity and quota regressions. No other release check or held-out expectation is changed.",
-  "sourceCommit": "cf6b5085de64977874f78f8f31c63dcc5273a98c",
-  "productionBaseCommit": "cbcb19353dede03704fa4a1d88a9a97758da2090",
+  "authorization": "Owner authorized release of remaining Founder translation management, production serialization, and mobile release automation on 2026-09-11. Retain exactly the existing nine failures and four skipped tests. No held-out assertions or SQL proof requirements are changed.",
+  "sourceCommit": "bc97a3851b1bf8c9280aecd98cb60e72b53bc5fe",
+  "productionBaseCommit": "58ea8df31ed6152b2969eb5f542c4885bd7f32c5",
   "allowedPolicyPaths": [
     ".github/workflows/agentportal-production-deploy.yml",
     ".github/legend-baseline-release.json",
@@ -793,6 +793,10 @@
     },
     {
       "name": "AgentPortal.Tests.ClientAppDeploymentWorkflowTests.ClientSmokeIsNonMutatingAndDoesNotClaimAuthenticatedContentProof",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ClientAppDeploymentWorkflowTests.ProductionReleasesShareOneNonCancellingConcurrencyGroup",
       "outcome": "Passed"
     },
     {
@@ -9774,6 +9778,22 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.TranslationGlobalPolicyTests.FounderSearch_IncludesActiveAgents_AndExcludesClosedAgents",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.TranslationGlobalPolicyTests.GlobalPolicy_IsSharedAcrossScopes_AndRetainsConsumedUsageWhenReduced",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.TranslationGlobalPolicyTests.GlobalPolicy_RejectsNonFounderAndStaleEdits",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.TranslationGlobalPolicyTests.IndividualAllowance_RemainsIndependent_AndCanReturnToGlobalPolicy",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.UnifiedEventMapperTests.ToAnalytics_CarriesBehaviorFieldsThroughUnifiedPipeline",
       "outcome": "Passed"
     },
@@ -9906,5 +9926,5 @@
       "outcome": "Passed"
     }
   ],
-  "rosterSha256": "2aa4913e80e6a6ccec46772305aba908082d1158332fe63f444d12cd1e6fa071"
+  "rosterSha256": "e496fdad709989eb69282188e2bd97d0ddf28609520d1081082b69703d8752a6"
 }
