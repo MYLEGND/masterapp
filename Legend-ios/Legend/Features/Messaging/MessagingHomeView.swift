@@ -1,3 +1,4 @@
+import ImageIO
 import QuickLook
 import SwiftUI
 import UIKit
@@ -2032,6 +2033,7 @@ struct ConversationThreadView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismissThread
     @Environment(\.scenePhase) private var scenePhase
+    @State private var sharedPostID: UUID?
     @State private var isThreadVisible = false
     @FocusState private var composerIsFocused: Bool
     @State private var draft = ""
@@ -2053,6 +2055,22 @@ struct ConversationThreadView: View {
             LegendNextCanvas()
 
             threadContent
+        }
+        .sheet(isPresented: Binding(get: { sharedPostID != nil }, set: { if !$0 { sharedPostID = nil; social.closePost() } })) {
+            if let sharedPostID {
+                NavigationStack {
+                    if let post = social.focusedPost, post.id == sharedPostID {
+                        LegendPostDetailView(post: post, currentIdentity: currentIdentity, social: social)
+                    } else {
+                        VStack(spacing: 16) {
+                            Text(social.focusedPostFailure?.message ?? LegendLocalized("Opening shared content…"))
+                            if social.focusedPostFailure != nil {
+                                Button(LegendLocalized("Retry")) { Task { await social.loadPost(sharedPostID) } }
+                            }
+                        }.padding()
+                    }
+                }.task(id: sharedPostID) { await social.loadPost(sharedPostID) }
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .onAppear { isThreadVisible = true }
@@ -2150,14 +2168,23 @@ struct ConversationThreadView: View {
         }
     }
 
+    private var selectedTitle: String? {
+        guard case .loaded(let summaries) = store.state else { return nil }
+        return summaries.first(where: { $0.id == conversationID })?.title
+    }
+
     @ViewBuilder
     private var threadContent: some View {
         switch store.detailState {
         case .idle, .loading:
-            LegendConversationLoadingView()
+            LegendConversationLoadingView(title: selectedTitle)
 
         case .loaded(let conversation):
-            conversationView(conversation)
+            if conversation.id == conversationID {
+                conversationView(conversation)
+            } else {
+                LegendConversationLoadingView(title: selectedTitle)
+            }
 
         case .unavailable(let message):
             conversationFailure(
@@ -2207,6 +2234,7 @@ struct ConversationThreadView: View {
                 messages: conversation.messages.filter { !$0.isDeleted },
                 readReceipts: conversation.readReceipts,
                 reactionOptions: conversation.reactionOptions ?? [],
+                openSharedPost: { sharedPostID = $0 },
                 onReact: { message, emoji in store.react(to: message, emoji: emoji) },
                 participantAvatar: { identity in
                     conversation.participants.first(where: {
@@ -3264,6 +3292,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
 }
 
 private struct LegendConversationFallbackHeader: View {
+    var title: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -3280,7 +3309,7 @@ private struct LegendConversationFallbackHeader: View {
             .buttonStyle(LegendMessagingPressButtonStyle())
             .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
 
-            Text(LegendLocalized("Conversation"))
+            Text(title ?? LegendLocalized("Conversation"))
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(.white)
 
@@ -3306,6 +3335,7 @@ private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
     var readReceipts: MessagingReadReceiptSettings? = nil
     let reactionOptions: [String]
+    let openSharedPost: (UUID) -> Void
     let onReact: (ConversationMessage, String?) -> Void
     let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
@@ -3323,8 +3353,7 @@ private struct LegendMessageTimeline: View {
                     if hasOlderMessages {
                         Button(action: loadOlderMessages) {
                             if isLoadingOlderMessages {
-                                ProgressView()
-                                    .controlSize(.small)
+                                Text(LegendLocalized("Loading earlier messages…"))
                             } else {
                                 Label(LegendLocalized("Load earlier messages"), systemImage: "arrow.up.circle")
                                     .font(.caption.weight(.semibold))
@@ -3373,6 +3402,7 @@ private struct LegendMessageTimeline: View {
                                 },
                                 onReact: { emoji in onReact(message, emoji) },
                                 reactionOptions: reactionOptions,
+                                openSharedPost: openSharedPost,
                                 onOpenVerificationProfile: message.verificationReview?.status != "Pending"
                                     ? nil
                                     : { onOpenVerificationProfile(message) }
@@ -3622,6 +3652,7 @@ private struct LegendMessageBubble: View {
     let onDelete: () -> Void
     let onReact: (String?) -> Void
     let reactionOptions: [String]
+    let openSharedPost: (UUID) -> Void
     let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
@@ -3768,22 +3799,22 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
+                if !displayedMessageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(displayedMessageBody)
                     .textSelection(.enabled)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)
                     .foregroundStyle(
-                        message.isMine
-                            ? LegendNextColor.midnight
-                            : Color.white
+                        isMediaMessage ? LegendNextColor.textPrimary : message.isMine ? LegendNextColor.midnight : Color.white
                     )
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
 
+                }
                 if !message.isDeleted, let shared = message.sharedContent {
-                    LegendSharedMessageCard(content: shared)
+                    LegendSharedMessageCard(content: shared, open: { openSharedPost(shared.sourcePostId) })
                 }
                 if !message.isDeleted {
                     ForEach(message.attachments) { attachment in
@@ -3805,9 +3836,7 @@ private struct LegendMessageBubble: View {
                                 : "Translated from \(languageName(translation.originalLanguage)) · View original",
                             systemImage: "character.bubble")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(message.isMine
-                                             ? LegendNextColor.midnight
-                                             : LegendNextColor.goldBright)
+                            .foregroundStyle(isMediaMessage ? LegendNextColor.textPrimary : message.isMine ? LegendNextColor.midnight : LegendNextColor.goldBright)
                             .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
@@ -3835,7 +3864,7 @@ private struct LegendMessageBubble: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
-                bubbleColor,
+                isMediaMessage ? Color.clear : bubbleColor,
                 in: RoundedRectangle(
                     cornerRadius: 16,
                     style: .continuous
@@ -3875,6 +3904,8 @@ private struct LegendMessageBubble: View {
         }
         .fixedSize(horizontal: false, vertical: true)
     }
+
+    private var isMediaMessage: Bool { !message.isDeleted && (message.sharedContent != nil || !message.attachments.isEmpty) }
 
     private var displayedMessageBody: String {
         isShowingOriginal ? (message.originalBody ?? message.body) : message.body
@@ -3996,6 +4027,7 @@ private struct LegendMessageBubble: View {
 
 private struct LegendMessageAttachmentChip: View {
     @Environment(\.legendMessagingStore) private var messaging
+    @State private var inlineImage: UIImage?
     @State private var previewURL: URL?
     @State private var downloadedURL: URL?
     @State private var isLoading = false
@@ -4015,13 +4047,19 @@ private struct LegendMessageAttachmentChip: View {
     var body: some View {
         Button {
             guard let messaging, attachment.canDownload, !isLoading else { return }
+            failed = false
             isLoading = true
             Task {
                 defer { isLoading = false }
-                do { let url = try await messaging.downloadAttachment(attachment); downloadedURL = url; previewURL = url }
+                do { let url: URL
+                    if let downloadedURL { url = downloadedURL } else { url = try await messaging.downloadAttachment(attachment) }; downloadedURL = url; previewURL = url }
                 catch { failed = true }
             }
         } label: {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+        if let inlineImage {
+            Image(uiImage: inlineImage).resizable().scaledToFit().frame(maxWidth: 300, maxHeight: 320).clipShape(RoundedRectangle(cornerRadius: 12))
+        }
         HStack(spacing: LegendNextSpacing.xs) {
             Image(systemName: isImage ? "photo.fill" : "doc.fill")
                 .font(.caption.weight(.semibold))
@@ -4033,16 +4071,13 @@ private struct LegendMessageAttachmentChip: View {
                 .font(.caption2.weight(.semibold))
                 .opacity(0.78)
         }
+        }
         .font(.caption.weight(.medium))
-        .foregroundStyle(
-            isMine
-                ? LegendNextColor.midnight
-                : Color.white
-        )
+        .foregroundStyle(LegendNextColor.textPrimary)
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, 6)
         .background(
-            isMine
+            inlineImage != nil ? Color.clear : isMine
                 ? LegendNextColor.midnight.opacity(0.09)
                 : Color.white.opacity(0.14),
             in: Capsule()
@@ -4050,7 +4085,7 @@ private struct LegendMessageAttachmentChip: View {
         .overlay {
             Capsule()
                 .stroke(
-                    isMine
+                    inlineImage != nil ? Color.clear : isMine
                         ? LegendNextColor.midnight.opacity(0.12)
                         : Color.white.opacity(0.12),
                     lineWidth: 0.75
@@ -4061,6 +4096,21 @@ private struct LegendMessageAttachmentChip: View {
         )
         }
         .disabled(!attachment.canDownload || isLoading)
+        .task(id: attachment.id) {
+            guard isImage, attachment.canDownload, attachment.sizeBytes <= 8 * 1_024 * 1_024, let messaging else { return }
+            do {
+                let url = try await messaging.downloadAttachment(attachment)
+                guard !Task.isCancelled else { try? FileManager.default.removeItem(at: url); return }
+                downloadedURL = url
+                if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                   let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 1024, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) {
+                    inlineImage = UIImage(cgImage: image)
+                }
+            } catch { if !Task.isCancelled { failed = true } }
+        }
+        .onDisappear {
+            if previewURL == nil, let downloadedURL { try? FileManager.default.removeItem(at: downloadedURL.deletingLastPathComponent()); self.downloadedURL = nil }
+        }
         .quickLookPreview($previewURL)
         .onChange(of: previewURL) { _, current in
             if current == nil, let downloadedURL {
@@ -4076,9 +4126,10 @@ private struct LegendMessageAttachmentChip: View {
 }
 
 private struct LegendConversationLoadingView: View {
+    var title: String? = nil
     var body: some View {
         VStack(spacing: 0) {
-            LegendConversationFallbackHeader()
+            LegendConversationFallbackHeader(title: title)
 
             VStack(spacing: LegendNextSpacing.sm) {
                 ForEach(0..<5, id: \.self) { index in
@@ -4465,19 +4516,21 @@ private struct LegendMessagingSearchField: View {
 
 private struct LegendSharedMessageCard: View {
     let content: MessagingSharedContent
+    let open: () -> Void
     @Environment(\.legendSocialStore) private var social
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if content.status == "available", let social {
-                Text(content.authorDisplayName ?? "").font(.headline)
+                Button(action: open) { Label(content.authorDisplayName ?? LegendLocalized("Open shared content"), systemImage: "arrow.up.right") }.font(.headline)
                 if let body = content.body, !body.isEmpty { Text(body) }
                 ForEach(content.media.sorted { $0.displayOrder < $1.displayOrder }) { media in
                     if media.mediaKind == "Image" {
-                        LegendSocialMediaImage(media: media, social: social)
+                        LegendSocialMediaImage(media: media, social: social).onTapGesture(perform: open)
                     } else if media.mediaKind == "Video" {
                         LegendSocialMediaVideo(postID: content.sourcePostId, media: media, music: nil, social: social)
                     }
                 }
+                Button(LegendLocalized("Open original"), action: open).buttonStyle(.plain)
             } else { Text(LegendLocalized("Shared content is unavailable.")) }
         }
     }

@@ -348,7 +348,8 @@ end
 # Static authenticated web interface copy joins the same retained source IDs.
 # Razor expressions and user content are never sent to the provider here.
 Dir.glob([ROOT.join("AgentPortal/Views/**/*.cshtml").to_s,
-          ROOT.join("Shared/Views/**/*.cshtml").to_s]).sort.each do |path|
+          ROOT.join("ClientApp/Views/**/*.cshtml").to_s,
+          ROOT.join("SHARED/Views/**/*.cshtml").to_s]).sort.each do |path|
   html = File.read(path).gsub(/<(script|style)\b[^>]*>.*?<\/\1>/mi, "")
   html.scan(/>([^<>]+)</m).flatten.each do |text|
     next if text.match?(/[@{}]/)
@@ -358,6 +359,15 @@ Dir.glob([ROOT.join("AgentPortal/Views/**/*.cshtml").to_s,
   html.scan(/\b(placeholder|title|aria-label|alt)="([^"@{}]+)"/).each do |name, text|
     value = CGI.unescapeHTML(text).gsub(/\s+/, " ").strip
     add.call(value, %w[aria-label alt].include?(name) ? ACCESSIBILITY : VISUAL)
+  end
+end
+
+# Browser source markers return the literal unchanged. The same catalog and
+# existing DOM presenter resolve it; user content is never extracted here.
+Dir.glob([ROOT.join("AgentPortal/wwwroot/js/**/*.js").to_s,
+          ROOT.join("SHARED/wwwroot/js/**/*.js").to_s]).sort.each do |path|
+  File.read(path).scan(/\bapplicationCopy\(\s*(#{LITERAL})/) do |token|
+    add.call(literal_value(token[0]), VISUAL)
   end
 end
 

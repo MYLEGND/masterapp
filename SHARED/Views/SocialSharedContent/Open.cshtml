@@ -1,0 +1,86 @@
+@using Shared.Social
+@using System
+@using System.Linq
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@model SharedSocialPostViewModel
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var contentName = Model.ContentType == "Reel" ? "Hac" : Model.ContentType;
+    ViewData["Title"] = $"{contentName} · {Model.Author.DisplayName}";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/_content/Shared/css/social-post.css" asp-append-version="true" />
+}
+<main class="social-original" data-social-original data-post-id="@Model.Id" aria-labelledby="social-original-title">
+    <header class="social-original-header">
+        <div class="social-original-identity">
+            @if (!string.IsNullOrWhiteSpace(Model.Author.AvatarUrl)) { <img class="social-original-avatar" data-user-content src="@Model.Author.AvatarUrl" alt="@Model.Author.DisplayName" width="52" height="52" /> }
+            <div><span class="social-original-type"><span>Original</span> <span>@contentName</span></span><h1 id="social-original-title" data-user-content>@Model.Author.DisplayName</h1><time datetime="@Model.PostedUtc.ToString("O")">@Model.PostedUtc.ToString("MMM d, yyyy · HH:mm 'UTC'")</time></div>
+        </div>
+        <a href="/Messaging?openMessages=1" class="social-original-back">Back to messages</a>
+    </header>
+    <p class="social-original-status" data-social-status role="status" aria-live="polite"></p>
+    <article class="social-original-post" data-social-post>
+        <p class="social-original-body" data-social-body data-social-post-body data-user-content hidden="@string.IsNullOrWhiteSpace(Model.Body)">@Model.Body</p>
+        @if (!string.IsNullOrWhiteSpace(Model.Location)) { <p class="social-original-location" data-user-content>@Model.Location</p> }
+        <div class="social-original-media" data-social-media>
+        @foreach (var media in Model.Media.OrderBy(asset => asset.DisplayOrder))
+        {
+            if (media.MediaKind == "Image")
+            {
+                <img data-social-media-id="@media.Id" data-user-content src="/Social/Media/@media.Id" alt="@(media.AccessibilityText ?? $"{contentName} image")" loading="lazy" />
+            }
+            else if (media.MediaKind == "Video")
+            {
+                <video data-social-media-id="@media.Id" data-user-content src="/Social/Media/@media.Id" controls playsinline preload="metadata" aria-label="@(media.AccessibilityText ?? $"{contentName} video")"></video>
+            }
+        }
+        </div>
+        @if (Model.Music is { } music)
+        {
+            <div class="social-original-music"><strong data-user-content>@music.TrackTitle</strong><span data-user-content>@music.ArtistName</span>
+            @if (Uri.TryCreate(music.AudioUrl, UriKind.Absolute, out var musicUri) && musicUri.Scheme == Uri.UriSchemeHttps)
+            {
+                <audio data-user-content controls preload="none" src="@musicUri.AbsoluteUri" aria-label="@music.TrackTitle"></audio>
+            }
+            </div>
+        }
+        <div class="social-original-actions" aria-label="Post actions">
+            <form method="post" action="/Social/Posts/@Model.Id/reaction" data-social-action="reaction">@Html.AntiForgeryToken()<button type="submit" aria-pressed="@Model.ReactedByCurrentActor.ToString().ToLowerInvariant()" data-social-react><span aria-hidden="true">♡</span> <span data-social-reaction-label>@(Model.ReactedByCurrentActor ? "Liked" : "Like")</span> <span data-social-reactions>@Model.ReactionCount</span></button></form>
+            <a href="#social-original-comments">Comments <span data-social-comment-count>@Model.CommentCount</span></a>
+            <form method="post" action="/Social/Posts/@Model.Id/save" data-social-action="save">@Html.AntiForgeryToken()<button type="submit" aria-pressed="@Model.SavedByCurrentActor.ToString().ToLowerInvariant()" data-social-save>@(Model.SavedByCurrentActor ? "Saved" : "Save")</button></form>
+            <form method="post" action="/Social/Posts/@Model.Id/repost" data-social-action="repost">@Html.AntiForgeryToken()<button type="submit" aria-pressed="@Model.RepostedByCurrentActor.ToString().ToLowerInvariant()" data-social-repost>@(Model.RepostedByCurrentActor ? "Reposted" : "Repost")</button></form>
+            <button type="button" data-social-share>Share</button>
+        </div>
+        <p class="social-original-counts"><span data-social-share-count>@Model.Metrics.ShareCount</span> shares · <span data-social-repost-count>@Model.Metrics.RepostCount</span> reposts</p>
+    </article>
+    <section id="social-original-comments" class="social-original-comments" aria-labelledby="social-comments-title" data-social-comments-section>
+        <h2 id="social-comments-title">Comments</h2>
+        <div class="social-original-comment-list" data-social-comments>
+        @foreach (var comment in Model.Comments.OrderBy(comment => comment.CreatedUtc))
+        {
+            <article class="social-original-comment @(comment.ParentCommentId.HasValue ? "is-reply" : "")" id="social-comment-@comment.Id">
+                <header><strong data-user-content>@comment.Author.DisplayName</strong><time datetime="@comment.CreatedUtc.ToString("O")">@comment.CreatedUtc.ToString("MMM d · HH:mm 'UTC'")</time></header>
+                @if (comment.ParentCommentId is { } parentId) { <a class="social-original-reply-context" href="#social-comment-@parentId">View parent comment</a> }
+                <p data-social-body data-user-content>@comment.Body</p>
+                @if (Model.CommentsEnabled) { <button type="button" data-social-reply="@comment.Id" data-author="@comment.Author.DisplayName">Reply</button> }
+            </article>
+        }
+        </div>
+        @if (Model.Comments.Count == 0) { <p data-social-no-comments>No comments yet.</p> }
+        @if (Model.CommentsEnabled)
+        {
+            <form method="post" action="/Social/Posts/@Model.Id/comments" data-social-action="comments" class="social-original-comment-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ParentCommentId" value="" />
+                <div class="social-original-replying" data-social-replying hidden><span></span><button type="button" data-social-cancel-reply>Cancel reply</button></div>
+                <label for="social-comment-body">Add a comment</label><textarea id="social-comment-body" name="Body" required maxlength="4000" rows="3"></textarea>
+                <button type="submit">Post comment</button>
+            </form>
+        }
+        else { <p>Comments are turned off for this post.</p> }
+    </section>
+</main>
+@section Scripts {
+    <script src="~/_content/Shared/js/social-post.js" asp-append-version="true"></script>
+}

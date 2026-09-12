@@ -15,6 +15,23 @@ namespace AgentPortal.Tests;
 public sealed partial class MessagingServiceTests
 {
     [Fact]
+    public async Task DirectCalls_RepeatedInviteRechecksRevokedCallerMembership()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, true, false);
+        var service = CreateService(db);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(new("agent-1", "Agent"), "client-1", "Client", InitialMessageBody: "Call"))).Conversation!;
+        var device = Guid.NewGuid(); var id = Guid.NewGuid();
+        Assert.True((await service.ExecuteAsync("agent-1", "Agent", new("invite", device, id, conversation.Id), default)).Succeeded);
+        var membership = await db.MessageConversationParticipants.SingleAsync(p => p.ConversationId == conversation.Id && p.UserId == "agent-1");
+        membership.IsActive = false;
+        await db.SaveChangesAsync();
+        var result = await service.ExecuteAsync("agent-1", "Agent", new("invite", device, id, conversation.Id), default);
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Policy);
+    }
+
+    [Fact]
     public async Task DirectCalls_SameOwnerProfilesKeepRecipientReceiptSeparateFromCaller()
     {
         await using var db = ControllerTestHelpers.BuildDb();

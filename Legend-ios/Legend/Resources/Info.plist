@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSUserActivityTypes</key>
-	<array><string>INSendMessageIntent</string></array>
+	<array><string>INSendMessageIntent</string><string>INStartCallIntent</string></array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

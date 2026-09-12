@@ -9,9 +9,35 @@ namespace Infrastructure.Messaging;
 
 internal sealed partial class MessagingService : ILegendCallingAuthority
 {
-    // Shared policy, consumed by every platform; no TURN credentials or paid fallback.
+    // Shared media policy; optional relay credentials are minted only on authenticated call requests.
     internal static readonly LegendCallPolicy DirectCallPolicy = new(
-        ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]);
+        ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"], Adaptation: new());
+
+    private static LegendCallPolicy CurrentCallPolicy(LegendCallSession call, LegendCallPolicy policy) =>
+        call.ExpiresUtc > DateTime.UtcNow && call.Status is "ringing" or "connecting" or "active"
+            ? policy : DirectCallPolicy;
+
+    internal static LegendCallPolicy BuildCallPolicy(Microsoft.Extensions.Configuration.IConfiguration? configuration)
+    {
+        var (urls, secret) = ValidateRelayConfiguration(configuration);
+        if (urls.Length == 0) return DirectCallPolicy;
+        var expires = DateTimeOffset.UtcNow.AddHours(12);
+        var username = expires.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + Guid.NewGuid().ToString("N");
+        var credential = Convert.ToBase64String(System.Security.Cryptography.HMACSHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(secret!), System.Text.Encoding.UTF8.GetBytes(username)));
+        return DirectCallPolicy with { Relay = new(urls, username, credential, expires.UtcDateTime) };
+    }
+
+    internal static (string[] Urls, string? Secret) ValidateRelayConfiguration(Microsoft.Extensions.Configuration.IConfiguration? configuration)
+    {
+        var urls = configuration?.GetSection("Calling:Relay:Urls").GetChildren()
+            .Select(entry => entry.Value?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).ToArray() ?? [];
+        var secret = configuration?["Calling:Relay:SharedSecret"];
+        if (urls.Length == 0 && string.IsNullOrWhiteSpace(secret)) return (urls, secret);
+        if (!LegendCallRelay.IsConfigurationValid(urls, secret))
+            throw new InvalidOperationException("Calling relay configuration is incomplete or invalid.");
+        return (urls, secret);
+    }
 
     public async Task<LegendCallResult> ExecuteAsync(string userId, string participantType,
         LegendCallCommand command, CancellationToken cancellationToken)
@@ -31,6 +57,17 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
             else await _notifications.DeactivateVoipDeviceAsync(actor, command.PushToken, cancellationToken);
             return new(true, null);
         }
+        // Reject invalid infrastructure before creating or advancing a call. Ending a call
+        // must remain available even while relay configuration is being repaired.
+        var policy = DirectCallPolicy;
+        if (command.Action is not ("cancel" or "end" or "decline"))
+        {
+            try { policy = BuildCallPolicy(_callConfiguration); }
+            catch (InvalidOperationException)
+            {
+                return new(false, "The call relay configuration is unavailable. Please try again later.");
+            }
+        }
         try
         {
             if (command.Action is "invite" or "cancel")
@@ -39,7 +76,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                 {
                     await using var transaction = _db.Database.IsRelational()
                         ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken) : null;
-                    var result = await InviteCallAsync(actor, command, cancellationToken);
+                    var result = await InviteCallAsync(actor, command, policy, cancellationToken);
                     if (transaction != null) await transaction.CommitAsync(cancellationToken);
                     // Notify only after commit: the other device can immediately fetch the saved call.
                     if (result.Succeeded && result.Call?.Status == "ringing")
@@ -49,21 +86,21 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                     return result;
                 });
             }
-            return await HandleCallAsync(actor, command, cancellationToken);
+            return await HandleCallAsync(actor, command, policy, cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             if (command.Action is "heartbeat" or "connected" or "received")
             {
                 _db.ChangeTracker.Clear();
-                try { return await HandleCallAsync(actor, command, cancellationToken); }
+                try { return await HandleCallAsync(actor, command, policy, cancellationToken); }
                 catch (DbUpdateConcurrencyException) { }
             }
             return new(false, "This call changed on another device. Refresh the call status.");
         }
     }
 
-    private async Task<LegendCallResult> InviteCallAsync(MessagingActor actor, LegendCallCommand command, CancellationToken ct)
+    private async Task<LegendCallResult> InviteCallAsync(MessagingActor actor, LegendCallCommand command, LegendCallPolicy policy, CancellationToken ct)
     {
         if (command.CallId == null || command.CallId == Guid.Empty || command.ConversationId == null)
             return new(false, "A call and conversation are required.");
@@ -72,12 +109,15 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         {
             if (!IsSameParticipant(prior.CallerUserId, prior.CallerType, actor.UserId, actor.ParticipantType) || prior.CallerDeviceId != command.DeviceId)
                 return new(false, "Call unavailable.");
+            if (command.Action != "cancel" && !await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking()
+                .AnyAsync(c => c.Id == prior.ConversationId && !c.IsClosed, ct))
+                return new(false, "Call unavailable.");
             if (command.Action == "cancel" && prior.Status is "ringing" or "connecting" or "active")
             {
                 prior.Status = "ended";
                 await SaveCallAsync(prior, ct);
             }
-            return new(true, null, await SnapshotAsync(prior, ct), Policy: DirectCallPolicy);
+            return new(true, null, await SnapshotAsync(prior, ct), Policy: CurrentCallPolicy(prior, policy));
         }
         var conversation = await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == command.ConversationId && !c.IsClosed, ct);
@@ -122,10 +162,10 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         _db.LegendCallSessions.Add(call);
         await _db.SaveChangesAsync(ct);
         await PublishCallAsync(new(await SnapshotAsync(call, ct)), ct);
-        return new(true, null, await SnapshotAsync(call, ct), Policy: DirectCallPolicy);
+        return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
     }
 
-    private async Task<LegendCallResult> HandleCallAsync(MessagingActor actor, LegendCallCommand command, CancellationToken ct)
+    private async Task<LegendCallResult> HandleCallAsync(MessagingActor actor, LegendCallCommand command, LegendCallPolicy policy, CancellationToken ct)
     {
         var actorIds = await ParticipantUserIdFormsAsync(actor, ct);
         var query = _db.LegendCallSessions.Where(c =>
@@ -142,7 +182,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                 .Where(c => !c.IsClosed).Select(c => c.Id).ToArrayAsync(ct);
             var snapshots = new List<LegendCallSnapshot>();
             foreach (var item in calls.Where(c => allowed.Contains(c.ConversationId))) snapshots.Add(await SnapshotAsync(item, ct));
-            return new(true, null, ActiveCalls: snapshots.ToArray(), Policy: DirectCallPolicy);
+            return new(true, null, ActiveCalls: snapshots.ToArray(), Policy: snapshots.Count == 0 ? DirectCallPolicy : CurrentCallPolicy(calls.First(c => c.Id == snapshots[0].Id), policy));
         }
         var call = await query.SingleOrDefaultAsync(c => c.Id == command.CallId, ct);
         if (call == null) return new(false, "Call unavailable.");
@@ -155,7 +195,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
             call.Status = call.Status == "ringing" ? "missed" : "ended";
             await SaveCallAsync(call, ct);
         }
-        if (command.Action == "get") return new(true, null, await SnapshotAsync(call, ct), Policy: DirectCallPolicy);
+        if (command.Action == "get") return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
         if (call.Status is "ended" or "declined" or "missed")
             return command.Action == "end" ? new(true, null, await SnapshotAsync(call, ct)) : new(false, "This call has ended.", await SnapshotAsync(call, ct));
         if (command.Action == "received")
@@ -219,7 +259,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                 default: return new(false, "Unknown call action.");
             }
         }
-        return new(true, null, await SnapshotAsync(call, ct), Policy: DirectCallPolicy);
+        return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
     }
 
     private async Task SaveCallAsync(LegendCallSession call, CancellationToken ct, bool publish = true)
@@ -248,7 +288,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     {
         var callerIds = await ParticipantUserIdFormsAsync(new(call.CallerUserId, call.CallerType), ct);
         var calleeIds = await ParticipantUserIdFormsAsync(new(call.CalleeUserId, call.CalleeType), ct);
-        return CallSnapshot(call) with { CallerUserIds = callerIds, CalleeUserIds = calleeIds };
+        return CallSnapshot(call) with { CallerUserIds = callerIds, CalleeUserIds = calleeIds, CallerImagePath = call.Status == "ringing" ? await _notifications.GetCallSenderImagePathAsync(call.Id, ct) : null };
     }
 
     internal static LegendCallSnapshot CallSnapshot(LegendCallSession call) => new(

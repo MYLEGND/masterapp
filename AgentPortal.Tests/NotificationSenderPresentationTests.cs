@@ -19,6 +19,47 @@ namespace AgentPortal.Tests;
 public sealed class NotificationSenderPresentationTests
 {
     [Fact]
+    public async Task Call_photo_capability_rechecks_call_scope_membership_and_expiry()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var actor = new MessagingActor("receiver", "Client");
+        var call = new LegendCallSession { Id = Guid.NewGuid(), ConversationId = Guid.NewGuid(),
+            CallerUserId = "sender", CallerType = "Agent", CalleeUserId = actor.UserId,
+            CalleeType = actor.ParticipantType, ExpiresUtc = DateTime.UtcNow.AddMinutes(1) };
+        db.LegendCallSessions.Add(call); await db.SaveChangesAsync();
+        var identity = new MessagingParticipantIdentity("sender", "Agent", Guid.NewGuid(), "Sender", null, "S");
+        var photo = new MessagingProfileImage(new byte[] { 1, 2, 3 }, "image/png");
+        var images = new Mock<IMessagingProfileImageResolver>();
+        images.Setup(x => x.ResolveIdentitiesAsync(It.IsAny<IEnumerable<MessagingParticipantReference>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<(string, string), MessagingParticipantIdentity> { [("sender", "Agent")] = identity });
+        images.Setup(x => x.ResolveAsync(identity, It.IsAny<CancellationToken>())).ReturnsAsync(photo);
+        var messaging = new Mock<IMessagingService>();
+        messaging.Setup(x => x.GetConversationRealtimeRecipientsAsync(actor, call.ConversationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new MessagingRealtimeRecipient(actor.UserId, actor.ParticipantType) });
+        using var services = new ServiceCollection().AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider())
+            .AddSingleton(messaging.Object).BuildServiceProvider();
+        var engine = new NotificationEngine(db, images.Object, Mock.Of<INotificationRealtimePublisher>(),
+            new ApplePushDeliverySignal(), NullLogger<NotificationEngine>.Instance, services);
+        var path = await engine.GetCallSenderImagePathAsync(call.Id);
+        Assert.NotNull(path);
+        var token = Uri.UnescapeDataString(path.Split("?token=")[1]);
+        Assert.Same(photo, await engine.GetSenderImageAsync(call.Id, token));
+        Assert.Null(await engine.GetSenderImageAsync(Guid.NewGuid(), token));
+        Assert.Null(await engine.GetSenderImageAsync(call.Id, token + "tampered"));
+        call.CalleeType = "Agent"; await db.SaveChangesAsync();
+        Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
+        call.CalleeType = "Client"; call.Status = "ended"; await db.SaveChangesAsync();
+        Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
+        call.Status = "ringing"; call.ExpiresUtc = DateTime.UtcNow.AddSeconds(-1); await db.SaveChangesAsync();
+        Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
+        Assert.Null(await engine.GetCallSenderImagePathAsync(call.Id));
+        call.ExpiresUtc = DateTime.UtcNow.AddMinutes(1); await db.SaveChangesAsync();
+        messaging.Setup(x => x.GetConversationRealtimeRecipientsAsync(actor, call.ConversationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<MessagingRealtimeRecipient>());
+        Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
+    }
+
+    [Fact]
     public async Task Sender_photo_capability_is_scoped_expiring_and_revoked_with_membership()
     {
         await using var db = ControllerTestHelpers.BuildDb();

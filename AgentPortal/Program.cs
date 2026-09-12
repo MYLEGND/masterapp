@@ -133,6 +133,8 @@ builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
+builder.Services.AddScoped<FounderCallRelayService>();
+builder.Services.AddHttpClient("FounderCallRelay").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendIntelligenceEvaluationService>();
 builder.Services.AddScoped<ILegendIntelligenceEvaluationService>(provider =>
     provider.GetRequiredService<LegendIntelligenceEvaluationService>());

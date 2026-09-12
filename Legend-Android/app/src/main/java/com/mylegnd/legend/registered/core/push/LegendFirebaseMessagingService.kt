@@ -99,7 +99,7 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
         val senderId = sender?.optString("id").orEmpty()
         if (senderName.isNotBlank() && senderId.isNotBlank()) {
             val person = androidx.core.app.Person.Builder().setName(senderName).setKey(senderId)
-            loadSenderAvatar(sender?.optString("imagePath").orEmpty())?.let {
+            loadLegendSenderAvatar(this, sender?.optString("imagePath").orEmpty())?.let {
                 person.setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(it))
                 builder.setLargeIcon(it)
             }
@@ -113,10 +113,26 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
         )
     }
 
+    private fun notificationManager(): NotificationManager = getSystemService(NotificationManager::class.java).also {
+        ensureNotificationChannel(this)
+    }
+
+    companion object {
+        const val CHANNEL = "legend_activity"
+
+        /** Creates the channel before either foreground or system-tray FCM presentation. */
+        fun ensureNotificationChannel(context: Context) {
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL, "LEGEND activity", NotificationManager.IMPORTANCE_DEFAULT),
+            )
+        }
+    }
+}
+
     /** Only the server-issued relative capability on our configured origin is fetched. */
-    private fun loadSenderAvatar(path: String): android.graphics.Bitmap? = runCatching {
+internal fun loadLegendSenderAvatar(context: Context, path: String): android.graphics.Bitmap? = runCatching {
         if (!path.startsWith("/api/v1/mobile/notifications/") || path.contains('\\')) return null
-        val base = java.net.URI(com.mylegnd.legend.registered.core.config.LegendRuntimeConfigurationLoader.load(this).apiBaseUrl)
+        val base = java.net.URI(com.mylegnd.legend.registered.core.config.LegendRuntimeConfigurationLoader.load(context).apiBaseUrl)
         val uri = base.resolve(path)
         if (uri.scheme != "https" || uri.host != base.host || uri.port != base.port) return null
         val connection = uri.toURL().openConnection() as java.net.HttpURLConnection
@@ -149,19 +165,3 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
             android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         } finally { connection.disconnect() }
     }.getOrNull()
-
-    private fun notificationManager(): NotificationManager = getSystemService(NotificationManager::class.java).also {
-        ensureNotificationChannel(this)
-    }
-
-    companion object {
-        const val CHANNEL = "legend_activity"
-
-        /** Creates the channel before either foreground or system-tray FCM presentation. */
-        fun ensureNotificationChannel(context: Context) {
-            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL, "LEGEND activity", NotificationManager.IMPORTANCE_DEFAULT),
-            )
-        }
-    }
-}

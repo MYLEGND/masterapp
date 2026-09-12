@@ -20,6 +20,7 @@ import com.mylegnd.legend.registered.R
 object LegendCallPlatform {
     var store: LegendCallViewModel? = null
     var connection: Connection? = null
+    private var avatarJob: Job? = null
     const val CHANNEL = "legend_calls"
     const val NOTIFICATION = 7042
     private fun handle(context: Context) = PhoneAccountHandle(ComponentName(context, LegendConnectionService::class.java), "legend")
@@ -65,11 +66,25 @@ object LegendCallPlatform {
             .setOngoing(true).setOnlyAlertOnce(true).setTimeoutAfter((java.time.Instant.parse(call.expiresUtc).toEpochMilli() - System.currentTimeMillis()).coerceAtLeast(1)).addAction(0, "Decline", decline).addAction(0, "Open call", launch).build()
         notification.flags = notification.flags or Notification.FLAG_INSISTENT
         manager.notify(NOTIFICATION, notification)
+        avatarJob?.cancel()
+        call.callerImagePath?.let { path ->
+            avatarJob = CoroutineScope(Dispatchers.IO).launch {
+                val bitmap = com.mylegnd.legend.registered.core.push.loadLegendSenderAvatar(context, path) ?: return@launch
+                withContext(Dispatchers.Main) {
+                    if (java.time.Instant.parse(call.expiresUtc).isAfter(java.time.Instant.now()) &&
+                        manager.activeNotifications.any { it.id == NOTIFICATION }) {
+                        manager.notify(NOTIFICATION, NotificationCompat.Builder(context, notification)
+                            .setLargeIcon(bitmap).setOnlyAlertOnce(true).build())
+                    }
+                }
+            }
+        }
     }
     fun foreground(context: Context, video: Boolean) {
         context.startForegroundService(Intent(context, LegendCallForegroundService::class.java).putExtra("video", video))
     }
     fun ended(context: Context) {
+        avatarJob?.cancel(); avatarJob = null
         connection?.setDisconnected(DisconnectCause(DisconnectCause.LOCAL)); connection?.destroy(); connection = null
         context.stopService(Intent(context, LegendCallForegroundService::class.java))
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)

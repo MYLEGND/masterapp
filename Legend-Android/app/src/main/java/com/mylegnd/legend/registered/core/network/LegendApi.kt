@@ -68,7 +68,7 @@ interface LegendApi {
 
     @GET("api/v1/mobile/messaging/conversations") suspend fun conversations(@Header("X-Legend-Participant-Type") participantType: String, @Query("take") take: Int = 24, @Query("skip") skip: Int = 0): Response<List<ConversationSummary>>
     @GET("api/v1/mobile/messaging/recipients") suspend fun recipients(@Header("X-Legend-Participant-Type") participantType: String, @Query("search") search: String? = null, @Query("scope") scope: String? = null): Response<List<MessagingRecipient>>
-    @GET("api/v1/mobile/messaging/conversations/{id}") suspend fun conversation(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60): Response<ConversationDetail>
+    @GET("api/v1/mobile/messaging/conversations/{id}") suspend fun conversation(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60, @Query("beforeMessageId") beforeMessageId: String? = null): Response<ConversationDetail>
     @GET("api/v1/mobile/messaging/conversations/{id}/messages") suspend fun messages(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60): Response<List<ConversationMessage>>
     @POST("api/v1/mobile/messaging/conversations/{id}/messages") suspend fun sendMessage(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SendMessageRequest): Response<ConversationMessage>
     @PUT("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/reaction") suspend fun setMessageReaction(@Header("X-Legend-Participant-Type") role: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String, @Body request: MessageReactionRequest): Response<MessageReactionResult>
@@ -97,6 +97,7 @@ interface LegendApi {
     @GET("api/v1/mobile/messaging/activity") suspend fun messagingActivity(@Header("X-Legend-Participant-Type") participantType: String, @Query("take") take: Int = 50): Response<List<MessagingActivityNotification>>
     @GET("api/v1/mobile/messaging/controlled-resources/languages") suspend fun communicationLanguages(@Header("X-Legend-Participant-Type") participantType: String): Response<List<CommunicationLanguage>>
 
+    @GET("api/v1/mobile/social/posts/{postId}") suspend fun socialPost(@Header("X-Legend-Participant-Type") role: String, @Path("postId") postId: String): Response<SocialPost>
     @GET("api/v1/mobile/social/feed") suspend fun socialFeed(@Header("X-Legend-Participant-Type") participantType: String): Response<SocialSnapshot>
     @GET("api/v1/mobile/social/profile/posts") suspend fun currentProfilePosts(@Header("X-Legend-Participant-Type") participantType: String): Response<List<SocialPost>>
     @GET("api/v1/mobile/social/profiles/posts") suspend fun publicProfilePosts(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String, @Query("participantType") profileParticipantType: String, @Query("profileId") profileId: String? = null): Response<List<SocialPost>>

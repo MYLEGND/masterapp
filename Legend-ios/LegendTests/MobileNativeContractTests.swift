@@ -46,6 +46,42 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(pixel[0], 0, "Zooming out must reveal the canvas instead of being clamped back to fill.")
     }
 
+    func testSharedPostOpenUsesAuthenticatedCanonicalSinglePostRoute() async throws {
+        StubURLProtocol.responseStatus = 404
+        defer { StubURLProtocol.responseStatus = 200 }
+        let api: any MobileSocialAPI = URLSessionMobileSocialAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
+        let id = UUID()
+        _ = try? await api.post(id: id, accessToken: "test-token")
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/api/v1/mobile/social/posts/\(id.uuidString)")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Agent")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+    }
+
+    func testMessagingExistentialDispatchPreservesBoundedInboxAndHistoryCursor() async throws {
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.responseBody = Data("[]".utf8)
+        defer { StubURLProtocol.responseBody = nil }
+        let api: any MessagingAPI = URLSessionMessagingAPI(
+            client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
+        _ = try await api.conversations(offset: 24, limit: 24, accessToken: "test-token")
+        var request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        var items = try XCTUnwrap(URLComponents(url: XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems)
+        var query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["skip"], "24")
+        XCTAssertEqual(query["take"], "24")
+        let id = UUID(), cursor = UUID()
+        // Response decoding is immaterial here: inspect the actual request made
+        // through the same existential API used by MessagingStore.
+        _ = try? await api.conversation(id: id, beforeUTC: Date(timeIntervalSince1970: 100), beforeMessageID: cursor, accessToken: "test-token")
+        request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        items = try XCTUnwrap(URLComponents(url: XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems)
+        query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["beforeMessageId"], cursor.uuidString)
+        XCTAssertNotNil(query["beforeUtc"])
+        XCTAssertEqual(query["take"], "60")
+    }
+
     func testOtherProfileNetworkUsesCanonicalTargetAndAuthenticatedRole() async throws {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = Data("[]".utf8)
@@ -1935,6 +1971,124 @@ extension MobileNativeContractTests {
 }
 
 extension MobileNativeContractTests {
+    func testSelectingAnotherChatCancelsObsoleteHistoryWithoutClearingNewHistory() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let first = UUID(), second = UUID()
+        store.openConversation(first)
+        try await waitForMessagingCondition { api.pending[first]?.count == 1 }
+        api.complete(first, hasOlder: true)
+        try await waitForMessagingCondition { api.readCount == 1 }; api.finishRead()
+        store.loadOlderMessages()
+        try await waitForMessagingCondition { api.pending[first]?.count == 1 }
+        store.openConversation(second)
+        XCTAssertFalse(store.isLoadingOlderMessages)
+        try await waitForMessagingCondition { api.pending[second]?.count == 1 }
+        api.complete(second, hasOlder: true)
+        try await waitForMessagingCondition { api.readCount == 2 }; api.finishRead()
+        store.loadOlderMessages()
+        try await waitForMessagingCondition { api.pending[second]?.count == 1 }
+        api.complete(first)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertTrue(store.isLoadingOlderMessages, "Obsolete history cleanup must not clear the newly selected request")
+        api.complete(second)
+        try await waitForMessagingCondition { !store.isLoadingOlderMessages }
+    }
+
+    func testOlderPageKeepsCurrentDuplicateContentAndServerTieOrder() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let id = UUID(), olderID = UUID(), firstID = UUID(), lastID = UUID()
+        let sender = MessagingParticipant(identity: try LogicalParticipantIdentity(userID: "other", participantType: .client), profileID: "profile", displayName: "Other", roleLabel: nil, avatar: nil)
+        func message(_ messageID: UUID, _ body: String) -> ConversationMessage {
+            ConversationMessage(id: messageID, conversationID: id, sender: sender, body: body, sentUTC: Date(timeIntervalSince1970: 100), attachments: [], isMine: false, reply: nil)
+        }
+        func page(_ messages: [ConversationMessage], more: Bool) -> ConversationDetail {
+            ConversationDetail(id: id, conversationType: "ClientClient", title: "Thread", participants: [sender], messages: messages, isMuted: false, isClosed: false, canManageMembers: false, hasOlderMessages: more)
+        }
+        store.openConversation(id)
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        api.complete(id, detail: page([message(firstID, "Current edit"), message(lastID, "Last")], more: true))
+        try await waitForMessagingCondition { api.readCount == 1 }
+        api.finishRead()
+        store.loadOlderMessages()
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        api.complete(id, detail: page([message(olderID, "Older"), message(firstID, "Stale edit")], more: false))
+        try await waitForMessagingCondition { !store.isLoadingOlderMessages }
+        guard case .loaded(let result) = store.detailState else { return XCTFail("Expected merged thread") }
+        XCTAssertEqual(result.messages.map(\.id), [olderID, firstID, lastID])
+        XCTAssertEqual(result.messages.map(\.body), ["Older", "Current edit", "Last"])
+    }
+
+    func testRemovedConversationEvictsCacheButTemporaryFailureKeepsIt() async throws {
+        for status in [503, 401, 403, 404, 410] {
+          for fromHistory in [false, true] {
+            let api = OwnedDetailMessagingAPI()
+            let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+            let id = UUID()
+            store.openConversation(id)
+            try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+            api.complete(id, hasOlder: true)
+            try await waitForMessagingCondition { api.readCount == 1 }
+            api.finishRead()
+            if fromHistory { store.loadOlderMessages() } else { store.openConversation(id) }
+            try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+            let error: MobileAPIError = status == 401 ? .unauthorized(correlationID: nil) : status == 403 ? .forbidden(correlationID: nil) : .apiServer(statusCode: status, code: nil, message: nil, correlationID: nil)
+            api.pending[id]?.removeFirst().resume(throwing: error)
+            try await Task.sleep(for: .milliseconds(20))
+            if status == 503 {
+                guard case .loaded = store.detailState else { return XCTFail("Temporary failure discarded available content") }
+            } else {
+                if case .loaded = store.detailState { return XCTFail("Removed content remained visible") }
+                store.openConversation(id)
+                XCTAssertEqual(store.detailState, .loading)
+                try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+                api.pending[id]?.removeFirst().resume(throwing: MobileAPIError.server(statusCode: status, correlationID: nil))
+            }
+        }
+    }
+        }
+
+    func testRevokedConversationCannotContinueDisplayingCachedMessages() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let id = UUID()
+        store.openConversation(id)
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        api.complete(id)
+        try await waitForMessagingCondition { api.readCount == 1 }
+        api.finishRead()
+        store.openConversation(id)
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        api.pending[id]?.removeFirst().resume(throwing: MobileAPIError.forbidden(correlationID: nil))
+        try await waitForMessagingCondition { if case .forbidden = store.detailState { return true }; return false }
+        store.openConversation(id)
+        XCTAssertEqual(store.detailState, .loading, "Revoked cached content must not return on a new tap")
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        api.pending[id]?.removeFirst().resume(throwing: MobileAPIError.forbidden(correlationID: nil))
+    }
+
+    func testReturningToThreadShowsCachedContentBeforeHeldRevalidation() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let first = UUID(), second = UUID()
+        store.openConversation(first)
+        try await waitForMessagingCondition { api.pending[first]?.count == 1 }
+        api.complete(first)
+        try await waitForMessagingCondition { api.readCount == 1 }
+        api.finishRead()
+        store.openConversation(second)
+        try await waitForMessagingCondition { api.pending[second]?.count == 1 }
+        store.openConversation(first)
+        XCTAssertEqual(store.selectedConversationID, first)
+        guard case .loaded(let cached) = store.detailState else { return XCTFail("A return tap must present cached content synchronously") }
+        XCTAssertEqual(cached.id, first)
+        XCTAssertFalse(cached.messages.isEmpty)
+        try await waitForMessagingCondition { api.calls[first] == 2 }
+        api.complete(second)
+        api.complete(first)
+    }
+
     func testRepeatedThreadOpenSharesDetailAndVisibleReadAcknowledgement() async throws {
         let api = OwnedDetailMessagingAPI()
         let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
@@ -2004,7 +2158,7 @@ private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
         continuation?.resume(with: result)
     }
 
-    var pending: [UUID: [CheckedContinuation<ConversationDetail, Never>]] = [:]
+    var pending: [UUID: [CheckedContinuation<ConversationDetail, Error>]] = [:]
     var calls: [UUID: Int] = [:]
     var readCount = 0
     private var read: CheckedContinuation<Void, Never>?
@@ -2020,16 +2174,17 @@ private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {
         calls[id, default: 0] += 1
-        return await withCheckedContinuation { pending[id, default: []].append($0) }
+        return try await withCheckedThrowingContinuation { pending[id, default: []].append($0) }
     }
-    func complete(_ id: UUID) {
+    func complete(_ id: UUID, detail: ConversationDetail? = nil, hasOlder: Bool = false) {
         guard var continuations = pending[id], !continuations.isEmpty else { return }
         let next = continuations.removeFirst()
         pending[id] = continuations
+        if let detail { next.resume(returning: detail); return }
         let message = ConversationMessage(id: id, conversationID: id, sender: sender, body: "Authoritative message",
             sentUTC: .now, attachments: [], isMine: false, reply: nil)
         next.resume(returning: ConversationDetail(id: id, conversationType: "ClientClient", title: "Thread", participants: [sender],
-            messages: [message], isMuted: false, isClosed: false, canManageMembers: false))
+            messages: [message], isMuted: false, isClosed: false, canManageMembers: false, hasOlderMessages: hasOlder))
     }
     func markRead(conversationID: UUID, accessToken: String) async throws {
         readCount += 1

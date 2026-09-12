@@ -28,6 +28,8 @@ import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
 import com.mylegnd.legend.registered.core.design.legendLocalized
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resumeWithException
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -47,13 +49,28 @@ class AuthenticatedMediaRepository(private val context: Context, private val cli
         val target = File(directory, "${java.util.UUID.randomUUID()}-$safeName")
         val request = Request.Builder().url("${client.baseUrl}/api/v1/mobile/messaging/attachments/${attachment.id}")
             .header("X-Legend-Participant-Type", participantType).build()
-        try {
-            client.httpClient.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "Attachment is unavailable." }
-                response.body.byteStream().use { input -> target.outputStream().use { input.copyTo(it) } }
-            }
-            target
-        } catch (failure: Exception) { target.delete(); throw failure }
+        suspendCancellableCoroutine { continuation ->
+            val call = client.httpClient.newCall(request)
+            continuation.invokeOnCancellation { call.cancel(); target.delete() }
+            call.enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, failure: java.io.IOException) {
+                    target.delete()
+                    if (continuation.isActive) continuation.resumeWithException(failure)
+                }
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    try {
+                        response.use {
+                            check(it.isSuccessful) { "Attachment is unavailable." }
+                            it.body.byteStream().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+                        }
+                        continuation.resume(target) { _, file, _ -> file.delete() }
+                    } catch (failure: Exception) {
+                        target.delete()
+                        if (continuation.isActive) continuation.resumeWithException(failure)
+                    }
+                }
+            })
+        }
     }
 
     /**

@@ -1,4 +1,6 @@
 (() => {
+  // Source marker; translation still comes from the shared application catalog.
+  const applicationCopy = value => value;
   const root = document.querySelector('[data-messaging-command-center]');
   if (!root) return;
 
@@ -60,6 +62,7 @@
     searchRequestId: 0,
     inboxRequestId: 0,
     inboxFlight: null,
+    inboxController: null,
     inboxDirty: false,
     detailFlights: new Map(),
     detailRevisions: new Map(),
@@ -215,7 +218,7 @@
 
   function isConversationInRecipientScope(conversation) {
     const participantType = recipientScopeParticipantType();
-    return !participantType || conversation?.counterparty?.participantType === participantType;
+    return !participantType || (conversation?.counterparty || currentCounterparty(conversation))?.participantType === participantType;
   }
 
   function syncRecipientScopeControls() {
@@ -241,6 +244,7 @@
     state.searchRequestId += 1;
     state.navigationVersion += 1;
     state.requestedConversationId = null;
+    cancelDetailRequests();
     state.pendingSubmission = null;
     elements.search.value = '';
     elements.newMessages.hidden = true;
@@ -398,7 +402,9 @@
     let data = null;
     try { data = await response.json(); } catch (_) { }
     if (!response.ok) {
-      throw new Error(data?.errorMessage || 'The messaging request could not be completed.');
+      const error = new Error(data?.errorMessage || 'The messaging request could not be completed.');
+      error.status = response.status;
+      throw error;
     }
     return data;
   }
@@ -852,7 +858,7 @@
 
   function currentCounterparty(conversation) {
     return conversation?.participants?.find(participant =>
-      !isCurrentParticipant(participant.userId, participant.participantType)) || null;
+      !isCurrentParticipant(participant.userId, participant.participantType)) || conversation?.counterparty || null;
   }
 
   function setComposerState(target, isClosed) {
@@ -860,7 +866,8 @@
     const isAvailable =
       Boolean(target?.contactKey || state.active?.id) &&
       !isClosed &&
-      !isArchivedMembership;
+      !isArchivedMembership &&
+      state.active?.isDetailPending !== true;
 
     elements.messageBody.disabled = !isAvailable;
     elements.files.disabled = !isAvailable;
@@ -1002,36 +1009,70 @@
     ['pointerup', 'pointercancel', 'pointermove'].forEach(name => card.addEventListener(name, () => window.clearTimeout(hold)));
   }
 
+  function appendLinkedText(container, text) {
+    const value = String(text || '');
+    const pattern = /https?:\/\/[^\s<>]+/gi;
+    let offset = 0;
+    for (const match of value.matchAll(pattern)) {
+      const urlText = match[0].replace(/[.,!?;:)]+$/, '');
+      container.append(document.createTextNode(value.slice(offset, match.index)));
+      const link = createTextElement('a', '', urlText);
+      try {
+        const url = new URL(urlText, window.location.href);
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported link');
+        link.href = url.href;
+        if (url.origin !== window.location.origin) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+        container.append(link);
+      } catch (_) { container.append(document.createTextNode(urlText)); }
+      offset = match.index + urlText.length;
+    }
+    container.append(document.createTextNode(value.slice(offset)));
+  }
+
   function appendSharedContent(card, content) {
     if (!content) return;
     const shared = document.createElement('div');
     shared.className = 'messaging-shared-content';
     if (content.status !== 'available') {
-      shared.append(createTextElement('p', '', 'This shared content is unavailable.'));
+      shared.append(createTextElement('p', '', applicationCopy("This shared content is unavailable.")));
     } else {
-      shared.append(createTextElement('strong', '', content.authorDisplayName || 'Shared content'));
-      if (content.body) shared.append(createTextElement('p', '', content.body));
+      const originalUrl = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
+      const contentName = content.contentType === 'Reel' ? 'Hac' : content.contentType || 'post';
+      const author = createTextElement('a', 'messaging-shared-author', content.authorDisplayName || `Shared ${contentName}`);
+      author.href = originalUrl;
+      author.dataset.userContent = '';
+      shared.append(author);
+      if (content.body) {
+        const body = createTextElement('p', 'messaging-message-body', '');
+        appendLinkedText(body, content.body);
+        shared.append(body);
+      }
       (content.media || []).slice().sort((a, b) => a.displayOrder - b.displayOrder).forEach(asset => {
         if (!['Image', 'Video'].includes(asset.mediaKind)) return;
         const media = document.createElement(asset.mediaKind === 'Image' ? 'img' : 'video');
         media.src = `/Social/Media/${encodeURIComponent(asset.id)}`;
         media.className = 'messaging-shared-media';
         if (asset.mediaKind === 'Image') {
-          media.alt = asset.accessibilityText || 'Shared image';
+          media.alt = asset.accessibilityText || `Shared ${contentName} image`;
           media.loading = 'lazy';
+          const open = createTextElement('a', 'messaging-shared-original', '');
+          open.href = originalUrl;
+          open.setAttribute('aria-label', `Open original ${contentName}`);
+          open.append(media);
+          shared.append(open);
         } else {
           media.controls = true;
           media.playsInline = true;
           media.preload = 'metadata';
+          shared.append(media);
         }
         media.addEventListener('error', () => {
-          media.replaceWith(createTextElement('p', '', 'This media is unavailable.'));
+          media.replaceWith(createTextElement('p', '', applicationCopy("This media is unavailable. Open the original to check access.")));
         });
-        shared.append(media);
       });
-      // The canonical resolver rechecks visibility and serves protected media.
-      const link = createTextElement('a', '', `Open ${content.contentType || 'shared content'}`);
-      link.href = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
+      const openLabel = { Post: applicationCopy("Open original post"), Story: applicationCopy("Open original story"), Reel: applicationCopy("Open original Hac") }[content.contentType] || applicationCopy("Open original post");
+      const link = createTextElement('a', 'messaging-shared-open', openLabel);
+      link.href = originalUrl;
       shared.append(link);
     }
     card.append(shared);
@@ -1059,8 +1100,8 @@
     elements.threadEmpty.hidden = Boolean(conversation || isDraft);
     elements.threadContent.hidden = !(conversation || isDraft);
     elements.messages.replaceChildren();
-    elements.mute.hidden = !conversation;
-    elements.closeConversation.hidden = !conversation;
+    elements.mute.hidden = !conversation || conversation.isDetailPending === true;
+    elements.closeConversation.hidden = !conversation || conversation.isDetailPending === true;
 
     if (!conversation && !isDraft) {
       setComposerState(null, false);
@@ -1085,6 +1126,15 @@
         older.addEventListener('click', () => loadOlderMessages(older));
         elements.messages.append(older);
       }
+      if (conversation.isDetailPending) {
+        elements.messages.append(createTextElement('p', 'messaging-draft-intro', conversation.detailLoadFailed ? applicationCopy("Recent messages could not be loaded.") : applicationCopy("Loading recent messages…")));
+        if (conversation.detailLoadFailed) {
+          const retry = createTextElement('button', 'messaging-history-button', applicationCopy("Retry recent messages"));
+          retry.type = 'button';
+          retry.addEventListener('click', () => loadConversation(conversation.id, false).catch(error => showError(error.message)));
+          elements.messages.append(retry);
+        }
+      }
       const visibleMessages = (conversation.messages || []).filter(message => !message.isDeleted);
       const latestReadIndex = latestReadMessageIndex(conversation, visibleMessages);
       let previousDay = '';
@@ -1096,7 +1146,7 @@
         }
 
         const card = document.createElement('article');
-        card.className = 'messaging-message';
+        card.className = message.sharedContent ? 'messaging-message messaging-message-share' : 'messaging-message';
         const isOwn = isCurrentParticipant(message.senderUserId, message.senderType);
         if (isOwn) card.classList.add('is-own');
         const meta = document.createElement('div');
@@ -1109,7 +1159,11 @@
         }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
         card.append(meta);
-        card.append(createTextElement('p', 'messaging-message-body', message.body));
+        if (message.body) {
+          const body = createTextElement('p', 'messaging-message-body', '');
+          appendLinkedText(body, message.body);
+          card.append(body);
+        }
         appendSharedContent(card, message.sharedContent);
 
         if (message.attachments?.length) {
@@ -1315,12 +1369,30 @@
     elements.searchResults.hidden = false;
   }
 
+  function cancelDetailRequests(exceptId = null) {
+    state.detailFlights.forEach((flight, id) => {
+      if (id === exceptId) return;
+      flight.controller?.abort();
+      state.detailFlights.delete(id);
+    });
+  }
+
   function selectDraftRecipient(recipient) {
+    cancelDetailRequests();
     state.navigationVersion += 1;
     state.requestedConversationId = null;
     state.active = null;
     state.draftTarget = recipient;
     state.pendingSubmission = null;
+  }
+
+  async function waitForSelectedDetail() {
+    while (state.isOpen && state.requestedConversationId) {
+      const selected = state.detailFlights.get(state.requestedConversationId);
+      if (!selected) return;
+      try { await selected; } catch (_) { }
+      if (state.detailFlights.get(state.requestedConversationId) === selected) return;
+    }
   }
 
   async function refreshList() {
@@ -1329,7 +1401,19 @@
     state.inboxFlight = (async () => {
       do {
         state.inboxDirty = false;
-        const result = await request('/Messaging/Conversations');
+        await waitForSelectedDetail();
+        const controller = new AbortController();
+        state.inboxController = controller;
+        let result;
+        try { result = await request('/Messaging/Conversations', { signal: controller.signal, priority: 'low' }); }
+        catch (error) {
+          if (!controller.signal.aborted) throw error;
+          state.inboxDirty = true;
+          continue;
+        } finally {
+          if (state.inboxController === controller) state.inboxController = null;
+        }
+        if (controller.signal.aborted) { state.inboxDirty = true; continue; }
         state.conversations = result.conversations || [];
         setUnreadCount();
         renderConversations();
@@ -1357,16 +1441,45 @@
     } finally { state.readFlights.delete(id); }
   }
 
+  function clearUnavailableConversation(conversationId, error) {
+    if (![401, 403, 404, 410].includes(error?.status) || state.active?.id !== conversationId) return false;
+    state.active = null;
+    state.draftTarget = null;
+    state.requestedConversationId = null;
+    state.navigationVersion += 1;
+    cancelDetailRequests();
+    state.conversations = state.conversations.filter(conversation => conversation.id !== conversationId);
+    state.readAcknowledged.delete(conversationId);
+    removeSession('last-conversation');
+    renderConversation();
+    renderConversations();
+    renderSearchResults();
+    setUnreadCount();
+    return true;
+  }
+
   async function loadConversation(conversationId, markRead, shouldScrollToBottom = false, invalidate = false) {
     if (state.requestedConversationId !== conversationId) {
       state.requestedConversationId = conversationId;
       state.navigationVersion += 1;
+      cancelDetailRequests(conversationId);
     }
     const version = state.navigationVersion;
     if (state.active?.id !== conversationId) elements.newMessages.hidden = true;
     if (state.active?.id) {
       state.scrollPositions[state.active.id] = elements.messages.scrollTop;
       writeSession('scroll-positions', state.scrollPositions);
+    }
+    if (state.active?.id !== conversationId) {
+      saveDraft();
+      const summary = state.conversations.find(conversation => conversation.id === conversationId);
+      state.active = { ...summary, id: conversationId, messages: [], isDetailPending: true };
+      state.draftTarget = null;
+      renderConversation(shouldScrollToBottom);
+      renderConversations();
+    } else if (state.active.detailLoadFailed) {
+      state.active.detailLoadFailed = false;
+      renderConversation();
     }
     let flight = state.detailFlights.get(conversationId);
     if (invalidate) state.detailRevisions.set(conversationId, (state.detailRevisions.get(conversationId) || 0) + 1);
@@ -1379,15 +1492,35 @@
       return loadConversation(conversationId, markRead, shouldScrollToBottom);
     }
     if (!flight) {
-      flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`);
+      if (state.isOpen) state.inboxController?.abort();
+      const controller = new AbortController();
+      flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`, { signal: controller.signal, priority: 'high' });
+      flight.controller = controller;
       state.detailFlights.set(conversationId, flight);
       flight.finally(() => {
         if (state.detailFlights.get(conversationId) === flight) state.detailFlights.delete(conversationId);
       }).catch(() => {});
     }
-    const result = await flight;
+    let result;
+    try { result = await flight; }
+    catch (error) {
+      if (flight.controller?.signal.aborted || version !== state.navigationVersion ||
+          state.requestedConversationId !== conversationId || detailRevision !== (state.detailRevisions.get(conversationId) || 0)) return;
+      if (clearUnavailableConversation(conversationId, error)) throw error;
+      if (state.active?.id === conversationId && state.active.isDetailPending) {
+        state.active.detailLoadFailed = true;
+        renderConversation();
+      }
+      throw error;
+    }
     if (version !== state.navigationVersion || state.requestedConversationId !== conversationId ||
         detailRevision !== (state.detailRevisions.get(conversationId) || 0)) return;
+    if (!isConversationInRecipientScope(result.conversation)) {
+      state.active = null;
+      state.requestedConversationId = null;
+      renderConversation();
+      return;
+    }
     state.active = result.conversation;
     state.draftTarget = null;
     // A refresh cannot acknowledge or discard an uncertain send transaction.
@@ -1402,12 +1535,13 @@
 
   async function loadOlderMessages(button) {
     const conversation = state.active;
-    const oldest = conversation?.messages?.[0]?.sentUtc;
+    const oldestMessage = conversation?.messages?.[0];
+    const oldest = oldestMessage?.sentUtc;
     if (!oldest || !conversation.hasOlderMessages) return;
     const version = state.navigationVersion;
     button.disabled = true;
     try {
-      const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversation.id)}?take=60&beforeUtc=${encodeURIComponent(oldest)}`);
+      const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversation.id)}?take=60&beforeUtc=${encodeURIComponent(oldest)}&beforeMessageId=${encodeURIComponent(oldestMessage.id)}`);
       if (version !== state.navigationVersion || state.active?.id !== conversation.id) return;
       const existing = state.active.messages || [];
       const ids = new Set(existing.map(message => message.id));
@@ -1417,13 +1551,21 @@
       state.active = { ...state.active, messages: [...older, ...existing], hasOlderMessages: result.conversation.hasOlderMessages };
       renderConversation();
       elements.messages.scrollTop = top + elements.messages.scrollHeight - height;
-    } catch (error) { showError(error.message); }
+    } catch (error) {
+      if (version !== state.navigationVersion || state.active?.id !== conversation.id) return;
+      clearUnavailableConversation(conversation.id, error);
+      showError(error.message);
+    }
     finally { button.disabled = false; }
   }
 
   async function loadRecipients() {
     if (state.recipientsLoaded) return;
-    const result = await request(recipientRequestUrl());
+    const scope = state.recipientScope;
+    await waitForSelectedDetail();
+    if (scope !== state.recipientScope) return;
+    const result = await request(recipientRequestUrl(), { priority: 'low' });
+    if (scope !== state.recipientScope) return;
     state.recipients = result.recipients || [];
     if (!state.recipientMatchesQuery) state.recipientMatches = state.recipients;
     state.recipientsLoaded = true;
@@ -1618,7 +1760,10 @@
   function startPolling() {
     if (state.pollTimer) return;
     state.pollTimer = window.setInterval(() => {
-      refreshList().catch(() => { });
+      const refresh = state.isOpen && !document.hidden && state.active?.id
+        ? loadConversation(state.active.id, false)
+        : Promise.resolve();
+      refresh.catch(() => {}).then(() => refreshList()).catch(() => {});
     }, 45000);
   }
 
@@ -1630,6 +1775,10 @@
 
   async function startRealtime() {
     if (state.realtimeStarted) return;
+    if (!window.signalR?.HubConnectionBuilder) {
+      startPolling();
+      return;
+    }
     state.realtimeStarted = true;
 
     const connection = new window.signalR.HubConnectionBuilder()
@@ -1639,7 +1788,6 @@
     state.realtime = connection;
     const refreshForEvent = async (event, incomingMessage = false) => {
       try {
-        const listRefresh = refreshList().catch(() => {});
         if (state.active && event?.conversationId === state.active.id &&
             (!state.requestedConversationId || state.requestedConversationId === state.active.id)) {
           const shouldScrollToBottom = isNearMessageBottom();
@@ -1647,7 +1795,7 @@
           await loadConversation(state.active.id, viewed, shouldScrollToBottom, true);
           if (!shouldScrollToBottom) elements.newMessages.hidden = false;
         }
-        await listRefresh;
+        await refreshList();
       } catch (_) { }
     };
     connection.on('messageReceived', event => refreshForEvent(event, true));
@@ -1678,12 +1826,22 @@
       markCommandCenterOpen();
       showError('');
       elements.window.focus({ preventScroll: true });
-      await Promise.all([refreshList(), loadRecipients()]);
-      const lastConversationId = readSession('last-conversation', '');
-      if (!state.active && lastConversationId && state.conversations.some(conversation =>
-        conversation.id === lastConversationId && isConversationInRecipientScope(conversation))) {
-        await loadConversation(lastConversationId, false);
+      // The retained thread and shell are already visible. Detail does not wait
+      // for inbox enumeration or the authorized-contact directory.
+      const version = state.navigationVersion;
+      const lastConversationId = state.active?.id || readSession('last-conversation', '');
+      const known = state.conversations.find(conversation => conversation.id === lastConversationId);
+      if (lastConversationId && (!known || isConversationInRecipientScope(known)) && !state.draftTarget) {
+        loadConversation(lastConversationId, false).catch(error => {
+          if (state.isOpen && state.requestedConversationId === lastConversationId) showError(error.message);
+        });
       }
+      refreshList().catch(error => {
+        if (state.isOpen && version === state.navigationVersion) showError(error.message);
+      });
+      loadRecipients().catch(error => {
+        if (state.isOpen && version === state.navigationVersion) showError(error.message);
+      });
     } catch (error) {
       showError(error.message);
     } finally {
@@ -1711,6 +1869,7 @@
     document.body.classList.remove('messaging-command-center-open');
     unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'false'));
     state.isOpen = false;
+    cancelDetailRequests();
     state.navigationVersion += 1;
     state.requestedConversationId = null;
     clearCommandCenterOpenMark();
@@ -1871,5 +2030,6 @@
         if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-receipt-${status}`, color);
       }
     }).catch(() => {});
+  window.addEventListener('legend-signalr-ready', startRealtime);
   startRealtime();
 })();

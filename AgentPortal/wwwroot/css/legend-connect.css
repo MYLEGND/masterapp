@@ -20,7 +20,8 @@
     --lc-gold-border: rgba(215, 178, 76, .33);
 
     display: grid;
-    gap: .9rem;
+    gap: .75rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
     align-content: start;
 }
 
@@ -28,6 +29,50 @@
     min-width: 0;
     margin: 0;
 }
+
+/* Compact command grid and its single modal presentation authority. */
+.lc-hero-controls { display: grid; align-content: start; gap: .65rem; }
+.lc-limits-launch { justify-content: center; gap: .55rem; }
+.legend-connect-page > .lc-notice { grid-column: 1 / -1; }
+.lc-section-launch {
+    --lc-command-color: var(--lc-gold-light);
+    display: flex; align-items: center; gap: .65rem; min-width: 0;
+    padding: 1rem; border: 1px solid var(--lc-border);
+    border-left: 3px solid var(--lc-command-color); border-radius: 14px;
+    background: var(--lc-navy-900); color: var(--lc-white); text-align: left;
+}
+.lc-section-launch:hover { background: var(--lc-navy-800); }
+.lc-section-launch:focus-visible { outline: 3px solid var(--lc-command-color); outline-offset: 3px; }
+.lc-command-icon { width: 1.4rem; height: 1.4rem; flex: 0 0 1.4rem; color: var(--lc-command-color, var(--lc-gold-light)); }
+.lc-section-launch .lc-status { white-space: normal; font-size: .6rem; }
+.lc-section-blue { --lc-command-color: #8bc7fa; }
+.lc-section-green { --lc-command-color: var(--lc-green); }
+.lc-section-modal .modal-dialog { width: calc(100% - 2rem); max-width: 1380px; margin: 1rem auto; }
+.lc-section-modal[data-limit-editor] .modal-dialog { max-width: 640px; }
+.lc-section-modal .modal-dialog-scrollable { height: calc(100% - 2rem); }
+.lc-section-modal .modal-title { font-size: clamp(1.1rem, 2vw, 1.55rem); }
+.lc-section-modal .modal-footer { border-color: var(--lc-border); }
+.lc-section-modal .modal-body { padding: 1rem; }
+.lc-section-modal .lc-panel-body { padding: 0; }
+.translation-limits { display: grid; gap: .9rem; }
+.translation-limits-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .75rem; }
+.translation-limits .dashboard-analytics-panel { background: var(--lc-navy-850); color: var(--lc-white); border: 1px solid var(--lc-gold-border); border-radius: 14px; padding: 1rem; }
+.translation-limits .dashboard-section-kicker { color: var(--lc-gold-light); }
+.translation-limit-value { display: block; margin: .5rem 0; font-size: 1.7rem; color: var(--lc-gold-light); }
+.translation-limit-value small { font-size: .75rem; }
+.translation-limits p, .translation-account-row small { color: var(--lc-muted); font-size: .8rem; }
+.translation-limits .translation-founder-card { border-color: var(--lc-green); }
+.translation-founder-card .translation-limit-value { color: var(--lc-green); }
+.translation-limit-search { display: flex; flex-wrap: wrap; gap: .6rem; margin: .75rem 0; }
+.translation-limit-search input { flex: 1 1 220px; }
+.translation-account-list { display: grid; gap: .6rem; }
+.translation-account-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .7rem; background: var(--lc-navy-950); border-radius: 10px; }
+.translation-account-row > div { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.translation-account-row small { display: block; }
+.translation-limit-badge { border: 1px solid var(--lc-gold-border); border-radius: 20px; padding: .3rem .55rem; color: var(--lc-gold-light); font-size: .7rem; }
+.lc-relay-card { border-left: 3px solid #ba9aff; padding: 1rem; background: var(--lc-navy-850); border-radius: 14px; }
+.lc-relay-card h3, .lc-relay-card .lc-kicker { color: #cfb7ff; }
+.lc-relay-card .lc-actions { flex-wrap: wrap; }
 
 .lc-hero,
 .lc-panel {
@@ -71,10 +116,11 @@
 }
 
 .lc-hero {
+    grid-column: 1 / -1;
     display: grid;
     grid-template-columns:
-        minmax(0, 1.05fr)
-        minmax(360px, .95fr);
+        minmax(0, 1fr)
+        minmax(260px, .55fr);
     gap: 1rem;
     padding: 1.2rem;
 }
@@ -220,8 +266,9 @@
 }
 
 .lc-hero-metrics {
+    grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: .55rem;
 }
 
@@ -237,7 +284,6 @@
 }
 
 .lc-hero-metric-primary {
-    grid-column: 1 / -1;
     border-color: var(--lc-gold-border);
     background:
         linear-gradient(
@@ -282,44 +328,8 @@
     padding: .95rem 1rem 1.05rem;
 }
 
-.lc-panel-collapse {
-    padding: 0;
-}
-
-.lc-panel-summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto 32px;
-    align-items: center;
-    gap: .8rem;
-    min-height: 92px;
-    padding: .95rem 1rem;
-    list-style: none;
-    cursor: pointer;
-    background: linear-gradient(90deg, rgba(215, 178, 76, .055), transparent 58%);
-}
-
-.lc-panel-summary::-webkit-details-marker {
-    display: none;
-}
-
-.lc-panel-summary::after {
-    content: "+";
-    display: grid;
-    place-items: center;
-    width: 31px;
-    height: 31px;
-    border: 1px solid var(--lc-gold-border);
-    border-radius: 50%;
-    color: var(--lc-gold-light);
-    font-size: 1rem;
-    font-weight: 820;
-}
-
-.lc-panel-collapse[open] > .lc-panel-summary::after {
-    content: "−";
-}
-
 .lc-panel-summary-copy {
+    flex: 1;
     display: grid;
     gap: .22rem;
     min-width: 0;
@@ -327,24 +337,9 @@
 
 .lc-panel-summary-copy > strong {
     color: var(--lc-white);
-    font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+    font-size: .92rem;
     font-weight: 800;
     letter-spacing: -.025em;
-}
-
-.lc-panel-summary-description {
-    max-width: 820px;
-    color: var(--lc-muted);
-    font-size: .82rem;
-    line-height: 1.5;
-}
-
-.lc-panel-toggle-label {
-    color: var(--lc-gold-light);
-    font-size: .65rem;
-    font-weight: 800;
-    letter-spacing: .04em;
-    text-transform: uppercase;
 }
 
 .lc-panel-body {
@@ -359,7 +354,7 @@
 .lc-panel-header h2 {
     margin: .23rem 0 0;
     color: var(--lc-white);
-    font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+    font-size: .92rem;
     font-weight: 800;
     letter-spacing: -.025em;
 }
@@ -729,21 +724,6 @@
         padding: .78rem;
     }
 
-    .lc-panel-collapse {
-        padding: 0;
-    }
-
-    .lc-panel-summary {
-        grid-template-columns: minmax(0, 1fr) 30px;
-        min-height: 78px;
-        padding: .78rem;
-    }
-
-    .lc-panel-summary > .lc-status,
-    .lc-panel-toggle-label {
-        display: none;
-    }
-
     .lc-panel-body {
         padding: .78rem;
     }
@@ -758,7 +738,6 @@
         font-size: 2rem;
     }
 
-    .lc-hero-metrics,
     .lc-metric-grid,
     .lc-capacity-grid,
     .lc-form-grid {

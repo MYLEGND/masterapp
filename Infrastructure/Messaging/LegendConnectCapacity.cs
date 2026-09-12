@@ -92,22 +92,23 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy)
     {
-        var now = DateTime.UtcNow;
-        var billingPeriodStart = CurrentPeriod();
-        var billingStartUtc = billingPeriodStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var hourlyWindowStart = now.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes);
         var normalizedProvider = provider?.Trim() ?? string.Empty;
         var settings = await SettingsForAsync(normalizedProvider, cancellationToken, providerPolicy);
-        var monthlyUsage = await GetWindowUsageAsync(normalizedProvider, billingStartUtc, now, cancellationToken);
+        var now = DateTime.UtcNow;
+        var billingPeriodStart = new DateOnly(now.Year, now.Month, 1);
+        var billingStartUtc = billingPeriodStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var hourlyWindowStart = now.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes);
+        var monthlyUsage = await GetWindowUsageAsync(normalizedProvider, billingStartUtc, now, cancellationToken, settings.AzureUsageQueryEndUtc);
         var hourlyUsage = await GetWindowUsageAsync(normalizedProvider, hourlyWindowStart, now, cancellationToken);
-        var monthlyRemaining = Remaining(settings.MonthlyCapacityCharacters, monthlyUsage);
+        var protectedMonthlyUsage = WithProviderObservation(monthlyUsage, settings);
+        var monthlyRemaining = Remaining(settings.MonthlyCapacityCharacters, protectedMonthlyUsage);
         var hourlyCapacity = settings.IsAvailable ? (long?)settings.CapacityCharacters : null;
         var hourlyRemaining = Remaining(hourlyCapacity, hourlyUsage);
         var monthlyAcquisition = SafeAcquisitionRemaining(
             settings.MonthlyCapacityCharacters,
             settings.MonthlyLiveReserveCharacters,
             settings.MaximumSafeMonthlyCorpusCharacters,
-            monthlyUsage);
+            protectedMonthlyUsage);
         var hourlyAcquisition = SafeAcquisitionRemaining(
             hourlyCapacity,
             settings.LiveReserveCharacters,
@@ -140,7 +141,14 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             settings.CapacityCharacters > 0 ? settings.LiveReserveCharacters : null,
             safeAcquisition,
             settings.RefreshedUtc,
-            settings.Detail);
+            settings.Detail)
+        {
+            UsageRefreshedUtc = now,
+            MonthlyCapacityAccountedCharacters = protectedMonthlyUsage.CompletedCharacters,
+            MonthlyAzureReportedCharacters = settings.MonthlyAzureReportedCharacters,
+            AzureUsageRetrievedUtc = settings.AzureUsageRetrievedUtc,
+            UsageDetail = settings.UsageDetail ?? "Usage includes completed and in-flight Legend reservations. Azure resource SKU synchronization does not verify provider-side character consumption or calls outside Legend."
+        };
     }
 
     public async Task<TranslationCapacityReservation?> TryReserveAsync(
@@ -198,6 +206,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             if (locked != 1)
                 return null;
 
+            now = DateTime.UtcNow;
             var hourlyUsage = await GetWindowUsageAsync(
                 provider,
                 now.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes),
@@ -207,7 +216,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 provider,
                 period.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
                 now,
-                cancellationToken);
+                cancellationToken,
+                settings.AzureUsageQueryEndUtc);
             if (!CanReserveAzureCapacity(hourlyUsage, monthlyUsage, characters, purpose, settings))
                 return null;
 
@@ -318,6 +328,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             .SingleAsync(item => item.Provider == provider && item.BillingPeriodStart == period, cancellationToken);
         if (settings.EnforcesRollingWindow)
         {
+            now = DateTime.UtcNow;
             var hourlyUsage = await GetWindowUsageAsync(
                 provider,
                 now.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes),
@@ -327,7 +338,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 provider,
                 period.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
                 now,
-                cancellationToken);
+                cancellationToken,
+                settings.AzureUsageQueryEndUtc);
             if (!CanReserveAzureCapacity(hourlyUsage, monthlyUsage, characters, purpose, settings))
                 return null;
         }
@@ -522,13 +534,24 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
 
         return settings.MonthlyCapacityCharacters is not { } monthlyCapacity ||
                CanReserveWindow(
-                   monthlyUsage,
+                   WithProviderObservation(monthlyUsage, settings),
                    monthlyCapacity,
                    settings.MonthlyLiveReserveCharacters ?? 0,
                    settings.MaximumSafeMonthlyCorpusCharacters ?? 0,
                    characters,
                    purpose);
     }
+
+    private static RollingUsage WithProviderObservation(RollingUsage usage, CapacitySettings settings) =>
+        settings.MonthlyAzureReportedCharacters is { } reported
+            ? usage with
+            {
+                CompletedCharacters = Math.Max(usage.CompletedCharacters,
+                    reported > long.MaxValue - usage.CompletedAfterProviderQueryCharacters
+                        ? long.MaxValue
+                        : reported + usage.CompletedAfterProviderQueryCharacters)
+            }
+            : usage;
 
     private static bool CanReserveWindow(
         RollingUsage usage,
@@ -541,13 +564,16 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         if (capacity <= 0)
             return false;
 
+        if (usage.CompletedCharacters > capacity ||
+            usage.ReservedCharacters > capacity - usage.CompletedCharacters)
+            return false;
         var used = usage.CompletedCharacters + usage.ReservedCharacters;
         if (purpose == TranslationCapacityPurpose.Live)
-            return used + characters <= capacity;
+            return characters <= capacity - used;
 
         return maximumSafeCorpus > 0 &&
-               used + characters <= capacity - liveReserve &&
-               usage.CompletedCorpusCharacters + usage.ReservedCorpusCharacters + characters <= maximumSafeCorpus;
+               characters <= capacity - used - liveReserve &&
+               characters <= RemainingAfterDebt(maximumSafeCorpus, usage.CompletedCorpusCharacters, usage.ReservedCorpusCharacters);
     }
 
     private async Task<CapacitySettings> SettingsForAsync(
@@ -576,6 +602,12 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                     azure.Tier,
                     azure.RefreshedUtc,
                     azure.Detail)
+                {
+                    MonthlyAzureReportedCharacters = azure.MonthlyAzureReportedCharacters,
+                    AzureUsageRetrievedUtc = azure.AzureUsageRetrievedUtc,
+                    AzureUsageQueryEndUtc = azure.AzureUsageQueryEndUtc,
+                    UsageDetail = azure.UsageDetail
+                }
                 : new CapacitySettings(
                     0, 0, 0, null, null, null, false, true, azure.Status, azure.ResourceId,
                     azure.ResourceName, azure.Tier, azure.RefreshedUtc, azure.Detail);
@@ -610,14 +642,18 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         string provider,
         DateTime windowStartUtc,
         DateTime now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTime? providerQueryEndUtc = null)
     {
+        // Completed/held debt must not disappear because another writer's
+        // timestamp is later than a clock captured before a lock or refresh.
+        // Future-clock debt is conservatively counted until it ages out.
         var rows = await _db.Set<LegendTranslationProviderReservation>()
             .AsNoTracking()
             .Where(item => item.Provider == provider &&
                 ((item.State == CompletedState && item.CompletedUtc != null && item.CompletedUtc >= windowStartUtc) ||
                  (item.State == ReservedState && item.ReservationExpiresUtc >= now)))
-            .Select(item => new { item.Characters, item.Purpose, item.State })
+            .Select(item => new { item.Characters, item.Purpose, item.State, item.CompletedUtc })
             .ToListAsync(cancellationToken);
         var completed = rows.Where(item => item.State == CompletedState).ToArray();
         var reserved = rows.Where(item => item.State == ReservedState).ToArray();
@@ -625,12 +661,23 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             completed.Sum(item => item.Characters),
             reserved.Sum(item => item.Characters),
             completed.Where(item => item.Purpose == TranslationCapacityPurpose.Bootstrap.ToString()).Sum(item => item.Characters),
-            reserved.Where(item => item.Purpose == TranslationCapacityPurpose.Bootstrap.ToString()).Sum(item => item.Characters));
+            reserved.Where(item => item.Purpose == TranslationCapacityPurpose.Bootstrap.ToString()).Sum(item => item.Characters),
+            providerQueryEndUtc is { } anchor
+                ? completed.Where(item => item.CompletedUtc > anchor).Sum(item => item.Characters)
+                : 0);
     }
 
     private static long? Remaining(long? capacity, RollingUsage usage) => capacity is { } limit
-        ? Math.Max(0, limit - usage.CompletedCharacters - usage.ReservedCharacters)
+        ? RemainingAfterDebt(limit, usage.CompletedCharacters, usage.ReservedCharacters)
         : null;
+
+    private static long RemainingAfterDebt(long capacity, long completed, long reserved)
+    {
+        if (capacity <= 0 || completed >= capacity)
+            return 0;
+        var afterCompleted = capacity - completed;
+        return reserved >= afterCompleted ? 0 : afterCompleted - reserved;
+    }
 
     private static long? SafeAcquisitionRemaining(
         long? capacity,
@@ -642,9 +689,10 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             maximumSafeCorpus is not { } corpusCapacity)
             return null;
 
-        return Math.Max(0, Math.Min(
-            providerCapacity - (liveReserve ?? 0) - usage.CompletedCharacters - usage.ReservedCharacters,
-            corpusCapacity - usage.CompletedCorpusCharacters - usage.ReservedCorpusCharacters));
+        var providerRemaining = RemainingAfterDebt(providerCapacity, usage.CompletedCharacters, usage.ReservedCharacters);
+        var protectedRemaining = Math.Max(0, providerRemaining - Math.Min(providerRemaining, Math.Max(0, liveReserve ?? 0)));
+        return Math.Min(protectedRemaining,
+            RemainingAfterDebt(corpusCapacity, usage.CompletedCorpusCharacters, usage.ReservedCorpusCharacters));
     }
 
     private static long? MinimumAvailable(long? first, long? second) => (first, second) switch
@@ -731,7 +779,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         long CompletedCharacters,
         long ReservedCharacters,
         long CompletedCorpusCharacters,
-        long ReservedCorpusCharacters);
+        long ReservedCorpusCharacters,
+        long CompletedAfterProviderQueryCharacters = 0);
 
     private sealed record CapacitySettings(
         long CapacityCharacters,
@@ -747,5 +796,11 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         string? ResourceName,
         string? Tier,
         DateTime RefreshedUtc,
-        string? Detail);
+        string? Detail)
+    {
+        public long? MonthlyAzureReportedCharacters { get; init; }
+        public DateTime? AzureUsageRetrievedUtc { get; init; }
+        public DateTime? AzureUsageQueryEndUtc { get; init; }
+        public string? UsageDetail { get; init; }
+    }
 }

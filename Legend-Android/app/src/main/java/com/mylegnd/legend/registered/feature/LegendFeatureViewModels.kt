@@ -295,6 +295,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         inboxTask = null
         readJobs.clear()
         readAcknowledgements.clear()
+        detailCache.clear()
         presentationRevision++
         inboxRequestRevision++
         _conversations.value = LoadState.Idle
@@ -332,6 +333,10 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
+    // Presentation snapshots belong to this account/profile ViewModel only.
+    private val detailCache = object : LinkedHashMap<String, ConversationDetail>(12, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ConversationDetail>?) = size > 12
+    }
     private var detailJob: Job? = null
     private var detailRefreshPending = false
     private var detailMarksRead = false
@@ -343,17 +348,21 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     fun open(id: String, beforeUtc: String? = null): Job = requestDetail(id, beforeUtc, marksRead = true)
 
     private fun requestDetail(id: String, beforeUtc: String? = null, marksRead: Boolean, newerActivity: Boolean = false): Job {
+        if (newerActivity) detailCache.remove(id)
         if (selectedConversationId == id && detailJob?.isActive == true) {
             detailMarksRead = detailMarksRead || marksRead
             detailRefreshPending = detailRefreshPending || newerActivity
             return requireNotNull(detailJob)
         }
         detailJob?.cancel()
+        if (selectedConversationId != id) { historyJob?.cancel(); historyJob = null }
         selectedConversationId = id
         _historyFailure.value = null
         val revision = ++presentationRevision
         detailMarksRead = marksRead
-        if ((_detail.value as? LoadState.Data)?.value?.id != id) _detail.value = LoadState.Loading
+        if ((_detail.value as? LoadState.Data)?.value?.id != id) {
+            _detail.value = detailCache[id]?.let { LoadState.Data(it) } ?: LoadState.Loading
+        }
         return viewModelScope.launch {
             do {
                 detailRefreshPending = false
@@ -361,8 +370,12 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
                 ensureActive()
                 if (revision != presentationRevision || selectedConversationId != id) return@launch
                 if (result is LoadState.Data) {
+                    detailCache[id] = result.value
                     _detail.value = result
                     if (detailMarksRead) acknowledgeVisible(id, result.value)
+                } else if (result is LoadState.Error && result.status in setOf(401, 403, 404, 410)) {
+                    detailCache.remove(id)
+                    _detail.value = result
                 } else if (_detail.value !is LoadState.Data) _detail.value = result
             } while (detailRefreshPending)
         }.also { detailJob = it }
@@ -393,19 +406,27 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         if (historyJob?.isActive == true) return
         _historyFailure.value = null
         val current = (_detail.value as? LoadState.Data)?.value ?: return
-        val oldest = current.messages.minByOrNull { it.sentUtc }?.sentUtc ?: return
+        val oldest = current.messages.firstOrNull() ?: return
         if (!current.hasOlderMessages) return
         historyJob = viewModelScope.launch {
             val revision = presentationRevision
-            when (val page = repository.conversation(role, current.id, oldest)) {
+            when (val page = repository.conversation(role, current.id, oldest.sentUtc, oldest.id)) {
                 is LoadState.Data -> {
                     if (revision != presentationRevision || selectedConversationId != current.id) return@launch
-                    val merged = (page.value.messages + current.messages)
+                    val latest = (_detail.value as? LoadState.Data)?.value?.takeIf { it.id == current.id } ?: return@launch
+                    val currentById = latest.messages.associateBy { it.id }
+                    val merged = (page.value.messages + latest.messages)
                         .distinctBy { it.id }
+                        .map { currentById[it.id] ?: it }
                         .sortedBy { it.sentUtc }
-                    _detail.value = LoadState.Data(page.value.copy(messages = merged))
+                    _detail.value = LoadState.Data(latest.copy(messages = merged, hasOlderMessages = page.value.hasOlderMessages))
                 }
-                is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == current.id) _historyFailure.value = page.message
+                is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == current.id) {
+                    if (page.status in setOf(401, 403, 404, 410)) {
+                        detailCache.remove(current.id)
+                        _detail.value = page
+                    } else _historyFailure.value = page.message
+                }
                 else -> Unit
             }
         }
@@ -526,8 +547,9 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
             when (val result = repository.createGroup(role, request)) {
                 is LoadState.Data -> {
                     _detail.value = result
-                    refreshInboxSilently()
+                    detailCache[result.value.id] = result.value
                     opened(result.value.id)
+                    launch { refreshInboxSilently() }
                 }
                 is LoadState.Error -> _recipients.value = LoadState.Error(result.message)
                 else -> Unit
@@ -538,15 +560,18 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     fun addGroupParticipant(conversationId: String, recipient: MessagingRecipient) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         if (repository.addParticipant(role, conversationId, MessagingGroupParticipantRequest(recipient.identity.userId, recipient.identity.participantType)) is LoadState.Data) open(conversationId)
     }
 
     fun updateGroup(conversationId: String, subject: String, meeting: MessagingGroupMeetingRequest? = null) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         val normalizedSubject = subject.trim()
         if (normalizedSubject.isNotBlank() && repository.updateGroup(role, conversationId, UpdateMessagingGroupRequest(normalizedSubject, meeting = meeting)) is LoadState.Data) open(conversationId)
     }
 
     fun updateGroupImage(context: Context, conversationId: String, subject: String, image: Uri) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         _isSending.value = true
         try {
             val prepared = runCatching {
@@ -571,10 +596,12 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     fun setGroupManager(conversationId: String, participant: MobileParticipant, isManager: Boolean) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         if (repository.setGroupCollaborator(role, conversationId, participant, isManager) is LoadState.Data) open(conversationId)
     }
 
     fun setGroupPromotion(conversationId: String, isPromoted: Boolean) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         when (val result = repository.setGroupPromotion(role, conversationId, isPromoted)) {
             is LoadState.Data -> { _detail.value = result; refreshInboxSilently() }
             is LoadState.Error -> _detail.value = LoadState.Error(result.message)
@@ -583,6 +610,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     fun deleteGroup(conversationId: String, completed: () -> Unit) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         if (repository.deleteGroup(role, conversationId) is LoadState.Data) {
             updateInbox(conversationId) { null }
             _detail.value = LoadState.Idle
@@ -667,6 +695,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     fun setReadReceipts(id: String, enabled: Boolean, globally: Boolean) = viewModelScope.launch {
+        if (globally) detailCache.clear() else detailCache.remove(id)
         when (val result = repository.setReadReceipts(role, id, enabled, globally)) {
             is LoadState.Data -> refreshOpenConversation(id)
             is LoadState.Error -> _historyFailure.value = result.message
@@ -682,6 +711,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     fun setMuted(conversation: ConversationSummary, isMuted: Boolean) = viewModelScope.launch {
+        detailCache.remove(conversation.id)
         if (repository.setMuted(role, conversation.id, isMuted) is LoadState.Data) {
             updateInbox(conversation.id) { it.copy(isMuted = isMuted) }
             val open = (_detail.value as? LoadState.Data)?.value
@@ -690,6 +720,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     fun remove(conversationId: String, completed: () -> Unit) = viewModelScope.launch {
+        detailCache.remove(conversationId)
         if (repository.remove(role, conversationId) is LoadState.Data) {
             updateInbox(conversationId) { null }
             _detail.value = LoadState.Idle
@@ -706,6 +737,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     private suspend fun refreshOpenConversation(id: String) {
+        detailCache.remove(id)
         if (selectedConversationId == id) requestDetail(id, marksRead = false, newerActivity = true).join()
     }
 
@@ -718,6 +750,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     private val reactionVersions = mutableMapOf<String, Int>()
     private val confirmedReactions = mutableMapOf<String, List<com.mylegnd.legend.registered.core.model.MessageReaction>>()
     fun react(message: ConversationMessage, emoji: String?) {
+        detailCache.remove(message.conversationId)
         if (message.isDeleted) return
         val currentMessage = (_detail.value as? LoadState.Data)?.value?.takeIf { it.id == message.conversationId }
             ?.messages?.firstOrNull { it.id == message.id } ?: return
@@ -773,11 +806,13 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     fun reconcileRealtime(event: LegendMessagingRealtimeEvent) {
         if (event.requiresResync) { refreshPresentation(); return }
         val conversationId = event.conversationId ?: return
+        detailCache.remove(conversationId)
         viewModelScope.launch { refreshInboxSilently() }
         if (selectedConversationId == conversationId) requestDetail(conversationId, marksRead = false, newerActivity = true)
     }
 
     fun refreshPresentation() = viewModelScope.launch {
+        detailCache.clear()
         detailJob?.cancel()
         detailJob = null
         readAcknowledgements.clear()
@@ -788,6 +823,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     private suspend fun refreshInboxSilently() {
         inboxTask?.takeIf { it.isActive }?.let {
             inboxRefreshPending = true
+            inboxRequestRevision++
             it.await()
             return
         }
@@ -814,6 +850,32 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 }
 class SocialViewModel(private val repository: SocialRepository, private val role: String) : ViewModel() {
+    private val _postActionFailure = MutableStateFlow<String?>(null)
+    val postActionFailure = _postActionFailure.asStateFlow()
+    private fun postAction(id: String, action: suspend () -> LoadState<*>) = viewModelScope.launch {
+        if (openedPostId == id) _postActionFailure.value = null
+        when (val result = action()) {
+            is LoadState.Data -> { refreshOpenedPost(id); load() }
+            is LoadState.Error -> if (openedPostId == id) _postActionFailure.value = result.message
+            else -> Unit
+        }
+    }
+    private val _openedPost = MutableStateFlow<LoadState<SocialPost>>(LoadState.Idle)
+    val openedPost = _openedPost.asStateFlow()
+    private var openedPostId: String? = null
+    private var openedPostJob: Job? = null
+    fun openPost(id: String) {
+        openedPostJob?.cancel()
+        openedPostId = id
+        if ((_openedPost.value as? LoadState.Data)?.value?.id != id) _openedPost.value = LoadState.Loading
+        openedPostJob = viewModelScope.launch {
+            val result = repository.post(role, id)
+            ensureActive()
+            if (openedPostId == id) _openedPost.value = result
+        }
+    }
+    fun closePost() { _postActionFailure.value = null; openedPostJob?.cancel(); openedPostId = null; _openedPost.value = LoadState.Idle }
+    private fun refreshOpenedPost(id: String) { if (openedPostId == id) openPost(id) }
     suspend fun network(profile: SocialAuthor, list: String) = repository.follows(role, list, profile)
     private val _state = MutableStateFlow<LoadState<SocialSnapshot>>(LoadState.Idle); val state: StateFlow<LoadState<SocialSnapshot>> = _state.asStateFlow()
     private val _profilePosts = MutableStateFlow<LoadState<List<SocialPost>>>(LoadState.Idle); val profilePosts: StateFlow<LoadState<List<SocialPost>>> = _profilePosts.asStateFlow()
@@ -839,14 +901,20 @@ class SocialViewModel(private val repository: SocialRepository, private val role
     fun dismissPublication() { if (_publication.value !is LoadState.Loading) { pendingPublication = null; _publication.value = LoadState.Idle } }
     fun create(request: CreateSocialPostRequest) = publish { repository.createPost(role, request) }
     fun createMedia(context: Context, uris: List<Uri>, options: SocialMediaPublishOptions, previewUri: Uri? = null) = publish { repository.createMediaPost(context.applicationContext, role, uris, options, previewUri) }
-    fun react(id: String) = viewModelScope.launch { repository.react(role, id); load() }
-    fun comment(id: String, body: String, parentCommentId: String? = null) = viewModelScope.launch { repository.comment(role, id, body, parentCommentId); load() }
-    fun updatePost(id: String, body: String) = viewModelScope.launch { repository.updatePost(role, id, body); load() }
-    fun deletePost(id: String) = viewModelScope.launch { repository.deletePost(role, id); load() }
-    fun toggleFollow(post: SocialPost) = viewModelScope.launch { repository.toggleFollow(role, post.author, post.id); load() }
+    fun react(id: String) = postAction(id) { repository.react(role, id) }
+    fun comment(id: String, body: String, parentCommentId: String? = null) = postAction(id) { repository.comment(role, id, body, parentCommentId) }
+    fun updatePost(id: String, body: String) = postAction(id) { repository.updatePost(role, id, body) }
+    fun deletePost(id: String) = viewModelScope.launch {
+        when (val result = repository.deletePost(role, id)) {
+            is LoadState.Data -> { if (openedPostId == id) _openedPost.value = LoadState.Error("This shared content is no longer available.", 404); load() }
+            is LoadState.Error -> if (openedPostId == id) _postActionFailure.value = result.message
+            else -> Unit
+        }
+    }
+    fun toggleFollow(post: SocialPost) = postAction(post.id) { repository.toggleFollow(role, post.author, post.id) }
     fun toggleFollow(author: SocialAuthor) = viewModelScope.launch { repository.toggleFollow(role, author); load() }
-    fun toggleSave(id: String) = viewModelScope.launch { repository.toggleSave(role, id); load() }
-    fun toggleRepost(id: String) = viewModelScope.launch { repository.toggleRepost(role, id); load() }
+    fun toggleSave(id: String) = postAction(id) { repository.toggleSave(role, id) }
+    fun toggleRepost(id: String) = postAction(id) { repository.toggleRepost(role, id) }
     fun recordShare(id: String) = viewModelScope.launch { repository.recordShare(role, id) }
     fun recordView(id: String, watchDurationSeconds: Double? = null, completion: Double? = null, storyInteractionType: String? = null) = viewModelScope.launch { repository.recordView(role, id, SocialViewRequest(watchDurationSeconds, completion, storyInteractionType)) }
     fun loadCurrentProfile() = viewModelScope.launch { _profilePosts.value = LoadState.Loading; _profileMetrics.value = LoadState.Loading; _profilePosts.value = repository.currentProfilePosts(role); _profileMetrics.value = repository.profileMetrics(role) }

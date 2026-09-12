@@ -15,6 +15,7 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
 {
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _configuration;
+    private bool _baselineEnsured;
 
     public LegendLanguageRegistry(MasterAppDbContext db, IConfiguration configuration)
     {
@@ -69,9 +70,17 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
 
         if (provisionBaseline)
             await EnsureBaselineAsync(cancellationToken);
+        var definition = await EnabledLanguageQuery(candidate, requireTranslation, requireLearning)
+            .FirstOrDefaultAsync(cancellationToken);
+        return definition is null ? null : ToSnapshot(definition);
+    }
+
+    private IQueryable<LegendLanguageDefinition> EnabledLanguageQuery(
+        string candidate, bool requireTranslation, bool requireLearning)
+    {
         var hasNormalizedCode = LegendLanguageIdentity.TryNormalize(candidate, out var normalized);
         var baseCode = hasNormalizedCode ? LegendLanguageIdentity.BaseCode(normalized) : string.Empty;
-        var definition = await _db.Set<LegendLanguageDefinition>()
+        return _db.Set<LegendLanguageDefinition>()
             .AsNoTracking()
             .Where(item =>
                 item.IsEnabled &&
@@ -82,9 +91,7 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
                 item.NativeName == candidate ||
                 (hasNormalizedCode && (item.LanguageCode == normalized ||
                     (item.LanguageCode == item.BaseLanguageCode && item.BaseLanguageCode == baseCode))))
-            .OrderByDescending(item => hasNormalizedCode && item.LanguageCode == normalized)
-            .FirstOrDefaultAsync(cancellationToken);
-        return definition is null ? null : ToSnapshot(definition);
+            .OrderByDescending(item => hasNormalizedCode && item.LanguageCode == normalized);
     }
 
     public async Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>> ListEnabledTranslationLanguagesAsync(
@@ -167,29 +174,35 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         string targetLanguage,
         CancellationToken cancellationToken = default)
     {
-        var source = await NormalizeEnabledTranslationLanguageAsync(
-            sourceLanguage,
-            cancellationToken);
-        var target = await NormalizeEnabledTranslationLanguageAsync(
-            targetLanguage,
-            cancellationToken);
-        if (source is null || target is null ||
-            string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
-        {
+        var sourceCandidate = sourceLanguage?.Trim();
+        var targetCandidate = targetLanguage?.Trim();
+        if (string.IsNullOrWhiteSpace(sourceCandidate) || string.IsNullOrWhiteSpace(targetCandidate))
             return null;
-        }
-
-        var pairKey = LegendLanguageIdentity.PairKey(source, target);
-        var pair = await _db.Set<LegendLanguagePair>()
-            .AsNoTracking()
-            .SingleOrDefaultAsync(
-                item => item.PairKey == pairKey && item.IsEnabled,
-                cancellationToken);
+        await EnsureBaselineAsync(cancellationToken);
+        var pair = await EnabledPairQuery(sourceCandidate, targetCandidate).SingleOrDefaultAsync(cancellationToken);
         return pair is null ? null : ToSnapshot(pair);
+    }
+
+    internal IQueryable<LegendLanguagePair> EnabledPairQuery(string sourceCandidate, string targetCandidate)
+    {
+        // Resolve both languages and directional eligibility in one current
+        // database read. The ordered singleton subqueries preserve canonical,
+        // name and base-language fallback semantics without a policy cache.
+        var sources = EnabledLanguageQuery(sourceCandidate, requireTranslation: true, requireLearning: false).Take(1);
+        var targets = EnabledLanguageQuery(targetCandidate, requireTranslation: true, requireLearning: false).Take(1);
+        return
+            from source in sources
+            from target in targets
+            from candidate in _db.Set<LegendLanguagePair>().AsNoTracking()
+            where source.LanguageCode != target.LanguageCode && candidate.IsEnabled &&
+                candidate.PairKey == source.LanguageCode + ":" + target.LanguageCode
+            select candidate;
     }
 
     private async Task EnsureBaselineAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_baselineEnsured) return;
         // Runtime is intentionally idempotent. Migrations seed this data for
         // production; this provisioner keeps isolated test/dev databases and a
         // newly initialized deployment on the same authority.
@@ -222,12 +235,16 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
             })
             .ToArray();
         if (additions.Length == 0)
+        {
+            _baselineEnsured = true;
             return;
+        }
 
         _db.Set<LegendLanguageDefinition>().AddRange(additions);
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
+            _baselineEnsured = true;
         }
         catch (DbUpdateException)
         {

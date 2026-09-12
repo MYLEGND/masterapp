@@ -15,6 +15,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     private var capturer: RTCCameraVideoCapturer?
     private var videoSource: RTCVideoSource?
     private var sharingScreen = false
+    private var screenGeneration = 0
     private var cameraWasEnabled = true
     var onScreenSharingEnded: (() -> Void)?
     private var audio: RTCAudioTrack?
@@ -31,6 +32,11 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     private var cellular = false
     private var frontCamera = true
     private var recoveryTask: Task<Void, Never>?
+    private var qualityMonitor: Task<Void, Never>?
+    private var quality = 2
+    private var healthySamples = 0
+    private var qualitySample = 0
+    private var completedQualitySample = 0
     private var connected = false
     private var observers: [NSObjectProtocol] = []
 
@@ -40,6 +46,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         super.init()
         let config = RTCConfiguration()
         config.iceServers = policy.stunUrls.map { RTCIceServer(urlStrings: [$0]) }
+        if let relay = policy.relay { config.iceServers.append(RTCIceServer(urlStrings: relay.urls, username: relay.username, credential: relay.credential)) }
         config.sdpSemantics = .unifiedPlan
         config.bundlePolicy = .maxBundle
         config.continualGatheringPolicy = .gatherContinually
@@ -59,9 +66,35 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
             configureCamera()
         }
         applyBitrates()
+        if let tuning = policy.adaptation {
+            qualityMonitor = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(max(1, tuning.sampleSeconds))) } catch { return }
+                    guard let self, !self.closed else { return }
+                    if self.completedQualitySample != self.qualitySample { self.healthySamples = 0 }
+                    self.qualitySample += 1
+                    let sample = self.qualitySample
+                    if self.connected { self.peer?.statistics { [weak self] report in
+                        let selected = report.statistics.values.first(where: { $0.type == "transport" && $0.values["selectedCandidatePairId"] != nil })?.values["selectedCandidatePairId"] as? String
+                        let pair = selected.flatMap { report.statistics[$0] }
+                        let bandwidth = (pair?.values["availableOutgoingBitrate"] as? NSNumber)?.doubleValue
+                        let latency = (pair?.values["currentRoundTripTime"] as? NSNumber)?.doubleValue
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.closed, self.connected, sample == self.qualitySample else { return }
+                            self.completedQualitySample = sample
+                            guard let target = tuning.targetQuality(bandwidth: bandwidth, latency: latency) else { self.healthySamples = 0; return }
+                            if target < self.quality { self.quality = target; self.healthySamples = 0; self.configureCamera(); self.applyBitrates() }
+                            else if target > self.quality { self.healthySamples += 1; if self.healthySamples >= tuning.recoverySamples { self.quality += 1; self.healthySamples = 0; self.configureCamera(); self.applyBitrates() } }
+                            else { self.healthySamples = 0 }
+                        }
+                    } }
+                }
+            }
+        }
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self, !self.closed else { return }
+                self.qualitySample += 1; self.healthySamples = 0
                 let changed = self.cellular != path.usesInterfaceType(.cellular)
                 self.cellular = path.usesInterfaceType(.cellular)
                 self.applyBitrates()
@@ -132,6 +165,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
 
     func recover() {
         guard !closed, recoveryTask == nil else { return }
+        qualitySample += 1; healthySamples = 0
         onState?("Reconnecting")
         recoveryTask = Task { [weak self] in
             guard let self else { return }
@@ -154,19 +188,31 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     func startScreenSharing() async throws {
         guard !closed, !sharingScreen, let source = videoSource else { return }
         sharingScreen = true
+        screenGeneration += 1
+        let generation = screenGeneration
         cameraWasEnabled = localVideo?.isEnabled ?? true
         localVideo?.isEnabled = true
-        source.adaptOutputFormat(toWidth: Int32(cellular ? policy.cellularWidth : policy.wifiWidth), height: Int32(cellular ? policy.cellularHeight : policy.wifiHeight), fps: 15)
         await capturer?.stopCapture()
         let capture = RTCVideoCapturer(delegate: source)
         do {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 RPScreenRecorder.shared().startCapture(handler: { [weak self] buffer, type, error in
                     if error != nil {
-                        Task { @MainActor in self?.stopScreenSharing() }
+                        Task { @MainActor in
+                            guard let self, self.screenGeneration == generation else { return }
+                            self.stopScreenSharing()
+                        }
                         return
                     }
                     guard type == .video, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
+                    Task { @MainActor [weak self] in
+                    guard let self, !self.closed, self.sharingScreen, self.screenGeneration == generation else { return }
+                    let limits = self.captureLimits
+                    let maxEdge = max(limits.width, limits.height)
+                    let width = CVPixelBufferGetWidth(pixels), height = CVPixelBufferGetHeight(pixels)
+                    let scale = min(1.0, Double(maxEdge) / Double(max(width, height)))
+                    source.adaptOutputFormat(toWidth: Int32(max(2, Int(Double(width) * scale) / 2 * 2)),
+                        height: Int32(max(2, Int(Double(height) * scale) / 2 * 2)), fps: Int32(min(15, limits.fps)))
                     let time = Int64(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(buffer)) * 1_000_000_000)
                     let orientation = (CMGetAttachment(buffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber)?.uint32Value ?? 1
                     let rotation: RTCVideoRotation = switch CGImagePropertyOrientation(rawValue: orientation) {
@@ -176,6 +222,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
                     default: ._0
                     }
                     source.capturer(capture, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixels), rotation: rotation, timeStampNs: time))
+                    }
                 }, completionHandler: { error in
                     if let error { continuation.resume(throwing: error) } else { continuation.resume() }
                 })
@@ -191,6 +238,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     func stopScreenSharing() {
         guard sharingScreen else { return }
         sharingScreen = false
+        screenGeneration += 1
         localVideo?.isEnabled = cameraWasEnabled
         RPScreenRecorder.shared().stopCapture { _ in }
         configureCamera()
@@ -205,6 +253,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     func close() {
         guard !closed else { return }
         closed = true
+        qualityMonitor?.cancel(); qualityMonitor = nil
         stopScreenSharing()
         recoveryTask?.cancel(); recoveryTask = nil
         monitor.cancel()
@@ -215,19 +264,30 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         remoteCandidates.removeAll(); localCandidates.removeAll()
     }
 
+    private var captureLimits: (width: Int, height: Int, fps: Int) {
+        let tuning = policy.adaptation
+        let width = quality == 0 ? (tuning?.lowWidth ?? policy.cellularWidth) : quality == 1 ? (tuning?.mediumWidth ?? policy.cellularWidth) : cellular ? policy.cellularWidth : policy.wifiWidth
+        let height = quality == 0 ? (tuning?.lowHeight ?? policy.cellularHeight) : quality == 1 ? (tuning?.mediumHeight ?? policy.cellularHeight) : cellular ? policy.cellularHeight : policy.wifiHeight
+        let fps = quality == 0 ? (tuning?.lowFps ?? policy.cellularFps) : quality == 1 ? (tuning?.mediumFps ?? policy.cellularFps) : cellular ? policy.cellularFps : policy.wifiFps
+        return (min(width, cellular ? policy.cellularWidth : policy.wifiWidth), min(height, cellular ? policy.cellularHeight : policy.wifiHeight), min(fps, cellular ? policy.cellularFps : policy.wifiFps))
+    }
+
     private func configureCamera() {
         guard !closed, !sharingScreen, let capturer, localVideo?.isEnabled == true, UIApplication.shared.applicationState != .background else { return }
         let position: AVCaptureDevice.Position = frontCamera ? .front : .back
         guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == position }) else { return }
-        let width = cellular ? policy.cellularWidth : policy.wifiWidth
-        let height = cellular ? policy.cellularHeight : policy.wifiHeight
-        let fps = cellular ? policy.cellularFps : policy.wifiFps
+        let (width, height, fps) = captureLimits
         videoSource?.adaptOutputFormat(toWidth: Int32(width), height: Int32(height), fps: Int32(fps))
         let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
+        // Some cameras expose no native low resolution; the video source still downscales.
         guard let format = formats.filter({
             let size = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
             return size.width <= width && size.height <= height
         }).max(by: {
+            let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+            let b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
+            return a.width * a.height < b.width * b.height
+        }) ?? formats.min(by: {
             let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
             let b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
             return a.width * a.height < b.width * b.height
@@ -240,7 +300,9 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         for sender in peer?.senders ?? [] {
             let parameters = sender.parameters
             for encoding in parameters.encodings {
-                encoding.maxBitrateBps = NSNumber(value: sender.track?.kind == "audio" ? policy.audioBitrate : policy.videoBitrate)
+                encoding.bitratePriority = sender.track?.kind == "audio" ? (policy.adaptation?.audioPriority ?? 1) : 1
+                let videoBitrate = quality == 0 ? (policy.adaptation?.lowBitrate ?? policy.videoBitrate) : quality == 1 ? (policy.adaptation?.mediumBitrate ?? policy.videoBitrate) : policy.videoBitrate
+                encoding.maxBitrateBps = NSNumber(value: sender.track?.kind == "audio" ? policy.audioBitrate : videoBitrate)
             }
             sender.parameters = parameters
         }
@@ -291,7 +353,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
             case .connected, .completed:
                 self.connected = true; self.recoveryTask?.cancel(); self.recoveryTask = nil; self.onState?("Connected")
             case .disconnected, .failed: self.connected = false; self.recover()
-            case .closed: self.connected = false
+            case .closed: self.connected = false; self.qualitySample += 1; self.healthySamples = 0
             default: break
             }
         }

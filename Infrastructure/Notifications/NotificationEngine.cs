@@ -75,6 +75,7 @@ public interface INotificationEngine
 {
     void NotifyCommittedMessages() { }
 
+    Task<string?> GetCallSenderImagePathAsync(Guid callId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     Task<NotificationSenderPresentation?> GetSenderPresentationAsync(MessagingActor recipient, Guid notificationId, CancellationToken cancellationToken = default) => Task.FromResult<NotificationSenderPresentation?>(null);
     Task<MessagingProfileImage?> GetSenderImageAsync(Guid notificationId, string token, CancellationToken cancellationToken = default) => Task.FromResult<MessagingProfileImage?>(null);
 
@@ -227,7 +228,7 @@ internal sealed class NotificationEngine : INotificationEngine
 
     public void NotifyCommittedMessages() => _deliverySignal.Notify();
 
-    private sealed record SenderImageGrant(Guid NotificationId, string RecipientUserId, string RecipientType);
+    private sealed record SenderImageGrant(Guid NotificationId, string RecipientUserId, string RecipientType, bool IsCall = false);
 
     private async Task<MessagingParticipantIdentity?> ResolveNotificationSenderAsync(MessagingActor recipient, Guid notificationId, CancellationToken cancellationToken)
     {
@@ -259,6 +260,16 @@ internal sealed class NotificationEngine : INotificationEngine
             "/api/v1/mobile/notifications/" + notificationId.ToString("D") + "/sender-image?token=" + Uri.EscapeDataString(token));
     }
 
+    public async Task<string?> GetCallSenderImagePathAsync(Guid callId, CancellationToken cancellationToken = default)
+    {
+        var call = await _db.LegendCallSessions.AsNoTracking().SingleOrDefaultAsync(c => c.Id == callId && c.ExpiresUtc > DateTime.UtcNow && c.Status == "ringing", cancellationToken);
+        var protection = _services?.GetService<IDataProtectionProvider>();
+        if (call is null || protection is null) return null;
+        var token = protection.CreateProtector("Legend.NotificationSenderImage.v1").ToTimeLimitedDataProtector()
+            .Protect(JsonSerializer.Serialize(new SenderImageGrant(call.Id, call.CalleeUserId, call.CalleeType, true)), TimeSpan.FromMinutes(2));
+        return "/api/v1/mobile/notifications/" + call.Id.ToString("D") + "/sender-image?token=" + Uri.EscapeDataString(token);
+    }
+
     public async Task<MessagingProfileImage?> GetSenderImageAsync(Guid notificationId, string token, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 4096) return null;
@@ -270,6 +281,18 @@ internal sealed class NotificationEngine : INotificationEngine
                 .ToTimeLimitedDataProtector().Unprotect(token));
         } catch (Exception exception) when (exception is CryptographicException or JsonException or FormatException) { return null; }
         if (grant is null || grant.NotificationId != notificationId) return null;
+        if (grant.IsCall)
+        {
+            var call = await _db.LegendCallSessions.AsNoTracking().SingleOrDefaultAsync(c => c.Id == notificationId &&
+                c.CalleeUserId == grant.RecipientUserId && c.CalleeType == grant.RecipientType && c.ExpiresUtc > DateTime.UtcNow &&
+                (c.Status == "ringing" || c.Status == "connecting" || c.Status == "active"), cancellationToken);
+            if (call is null) return null;
+            var messaging = _services?.GetService<IMessagingService>();
+            if (messaging is null || (await messaging.GetConversationRealtimeRecipientsAsync(new(grant.RecipientUserId, grant.RecipientType), call.ConversationId, cancellationToken)).Count == 0) return null;
+            var identities = await _participantIdentities.ResolveIdentitiesAsync([new(call.CallerUserId, call.CallerType)], cancellationToken);
+            var caller = identities.Values.FirstOrDefault();
+            return caller is null ? null : await _participantIdentities.ResolveAsync(caller, cancellationToken);
+        }
         var identity = await ResolveNotificationSenderAsync(new MessagingActor(grant.RecipientUserId, grant.RecipientType), notificationId, cancellationToken);
         return identity is null ? null : await _participantIdentities.ResolveAsync(identity, cancellationToken);
     }
@@ -454,7 +477,7 @@ internal sealed class NotificationEngine : INotificationEngine
         CancellationToken cancellationToken = default)
     {
         var recipient = Normalize(actor);
-        var notifications = await _db.MobileActivityNotifications
+        var rows = await _db.MobileActivityNotifications
             .AsNoTracking()
             .Where(notification =>
                 notification.RecipientUserId == recipient.UserId &&
@@ -463,7 +486,7 @@ internal sealed class NotificationEngine : INotificationEngine
             .OrderByDescending(notification => notification.OccurredUtc)
             .ThenByDescending(notification => notification.Id)
             .Take(Math.Clamp(take, 1, 100))
-            .Select(notification => new NotificationLedgerItem(
+            .Select(notification => new { Item = new NotificationLedgerItem(
                 notification.Id,
                 notification.Kind,
                 notification.Title,
@@ -471,13 +494,18 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.ConversationId,
                 notification.OccurredUtc,
                 notification.IsRead,
-                notification.IsCleared))
+                notification.IsCleared), notification.SourceMessageId })
             .ToListAsync(cancellationToken);
 
+        var notifications = rows.Select(row => row.Item).ToList();
+        var messaging = _services?.GetService<IMessagingService>();
+        // The list already read each notice. Avoid a redundant point query for
+        // every row; message presentation still rechecks its own authorization.
         // Activity presentation also runs without a registered push device.
         for (var index = 0; index < notifications.Count; index++)
         {
-            var detail = await PrepareDeliveryPresentationAsync(recipient, notifications[index].Id, cancellationToken);
+            if (rows[index].SourceMessageId is null || messaging is null) continue;
+            var detail = await messaging.PrepareNotificationPresentationAsync(recipient, notifications[index].Id, cancellationToken);
             if (detail is not null)
                 notifications[index] = notifications[index] with { Detail = detail };
         }

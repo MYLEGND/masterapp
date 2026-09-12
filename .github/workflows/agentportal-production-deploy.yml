@@ -41,6 +41,7 @@ env:
   CLIENT_ARTIFACT_NAME: clientapp-production-candidate-${{ github.run_id }}
   ARTIFACT_NAME: agentportal-production-candidate-${{ github.run_id }}
   TEST_ARTIFACT_NAME: agentportal-tested-binaries-${{ github.run_id }}
+  MIGRATION_ARTIFACT_NAME: agentportal-migration-binaries-${{ github.run_id }}
   LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: lai-027-029-v1
 
 jobs:
@@ -305,6 +306,34 @@ jobs:
             SharedAssemblySha256 = $sharedHashes
           } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path '${{ env.CLIENT_PUBLISH_DIR }}' '_deployment-provenance.json')
 
+      - name: Bind already-built EF startup binaries to validated candidate
+        id: migration-binaries
+        shell: pwsh
+        run: |
+          $targetDirectory = ((dotnet msbuild '${{ env.PROJECT_PATH }}' -nologo -getProperty:TargetDir -property:Configuration=Release) | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $targetDirectory -PathType Container)) { throw 'Unable to locate the already-built EF startup directory.' }
+          $hashes = [ordered]@{}
+          foreach ($assembly in @('AgentPortal.dll', 'Infrastructure.dll', 'Domain.dll', 'Shared.dll')) {
+            $builtHash = (Get-FileHash -Algorithm SHA256 (Join-Path $targetDirectory $assembly)).Hash
+            $publishedHash = (Get-FileHash -Algorithm SHA256 (Join-Path '${{ env.PUBLISH_DIR }}' $assembly)).Hash
+            if ($builtHash -ne $publishedHash) { throw 'EF startup binaries differ from the validated deployment package.' }
+            $hashes[$assembly] = $builtHash
+          }
+          [ordered]@{
+            CandidateSha = '${{ steps.tree.outputs.candidate_sha }}'
+            TestedTree = '${{ steps.tree.outputs.tested_tree }}'
+            AssemblySha256 = $hashes
+          } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $targetDirectory '_migration-provenance.json')
+          "path=$targetDirectory" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Preserve exact EF startup binaries without a second compilation
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MIGRATION_ARTIFACT_NAME }}
+          path: ${{ steps.migration-binaries.outputs.path }}
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Verify packaged FFmpeg runtime
         shell: pwsh
         run: |
@@ -431,11 +460,28 @@ jobs:
           dotnet restore '${{ env.PROJECT_PATH }}'
           if ($LASTEXITCODE -ne 0) { throw 'AgentPortal restore failed.' }
 
-      - name: Build EF startup project
+      - name: Download exact validated EF startup binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.MIGRATION_ARTIFACT_NAME }}
+          path: ./migration-package
+
+      - name: Verify and restore immutable EF startup binaries
         shell: pwsh
         run: |
-          dotnet build '${{ env.PROJECT_PATH }}' --configuration Release --no-restore
-          if ($LASTEXITCODE -ne 0) { throw 'EF startup build failed.' }
+          $manifest = Get-Content './migration-package/_migration-provenance.json' -Raw | ConvertFrom-Json
+          if ($manifest.CandidateSha -ne '${{ needs.build.outputs.candidate_sha }}' -or $manifest.TestedTree -ne '${{ needs.build.outputs.tested_tree }}') {
+            throw 'EF startup artifact does not match the exact validated candidate.'
+          }
+          foreach ($assembly in @('AgentPortal.dll', 'Infrastructure.dll', 'Domain.dll', 'Shared.dll')) {
+            if ((Get-FileHash -Algorithm SHA256 (Join-Path './migration-package' $assembly)).Hash -ne $manifest.AssemblySha256.$assembly) {
+              throw 'EF startup artifact failed its candidate assembly hash check.'
+            }
+          }
+          $targetDirectory = ((dotnet msbuild '${{ env.PROJECT_PATH }}' -nologo -getProperty:TargetDir -property:Configuration=Release) | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($targetDirectory)) { throw 'Unable to resolve the immutable EF startup target directory.' }
+          New-Item -ItemType Directory -Force -Path $targetDirectory | Out-Null
+          Copy-Item -Path './migration-package/*' -Destination $targetDirectory -Recurse -Force -ErrorAction Stop
 
       - name: Login to Azure with OIDC
         uses: azure/login@v2

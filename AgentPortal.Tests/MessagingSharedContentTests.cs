@@ -18,9 +18,13 @@ namespace AgentPortal.Tests;
 public sealed partial class MessagingServiceTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SharedPost_PersistsReferenceAndRechecksRecipientVisibility(bool firstMessage)
+    [InlineData(false, SocialPostContentTypes.Post)]
+    [InlineData(true, SocialPostContentTypes.Post)]
+    [InlineData(false, SocialPostContentTypes.Story)]
+    [InlineData(true, SocialPostContentTypes.Story)]
+    [InlineData(false, SocialPostContentTypes.Reel)]
+    [InlineData(true, SocialPostContentTypes.Reel)]
+    public async Task SharedPost_PersistsReferenceAndRechecksRecipientVisibility(bool firstMessage, string contentType)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, true, false);
@@ -32,7 +36,8 @@ public sealed partial class MessagingServiceTests
         var source = new SocialPost
         {
             Id = Guid.NewGuid(), AuthorUserId = author.AgentUserId, AuthorParticipantType = MessagingParticipantTypes.Agent,
-            AuthorProfileId = author.Id, ContentType = SocialPostContentTypes.Post, Body = string.Empty,
+            AuthorProfileId = author.Id, ContentType = contentType, Body = string.Empty,
+            ExpiresUtc = contentType == SocialPostContentTypes.Story ? DateTime.UtcNow.AddHours(1) : null,
             PublicationState = SocialPostPublicationStates.Published, PostedUtc = DateTime.UtcNow
         };
         db.SocialPosts.Add(source);
@@ -64,6 +69,7 @@ public sealed partial class MessagingServiceTests
         var read = await messaging.GetConversationAsync(recipient, started.Conversation!.Id);
         var card = Assert.Single(read.Conversation!.Messages).SharedContent!;
         Assert.Equal("available", card.Status);
+        Assert.Equal(contentType, card.ContentType);
         Assert.Equal(media.Id, Assert.Single(card.Media).Id);
         Assert.Equal(string.Empty, card.Body);
         Assert.Equal($"/Social/Posts/{source.Id:D}", card.Url);
@@ -86,6 +92,14 @@ public sealed partial class MessagingServiceTests
         await db.SaveChangesAsync();
         // Revocation is checked on the same source at each projection; the
         // persisted message does not turn source visibility into a new grant.
+        if (contentType == SocialPostContentTypes.Story)
+        {
+            source.ExpiresUtc = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+            var expired = await messaging.GetConversationAsync(recipient, started.Conversation.Id);
+            Assert.Equal("unavailable", Assert.Single(expired.Conversation!.Messages).SharedContent!.Status);
+            source.ExpiresUtc = DateTime.UtcNow.AddHours(1);
+        }
         source.DeletedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync();
         var revoked = await messaging.GetConversationAsync(recipient, started.Conversation.Id);

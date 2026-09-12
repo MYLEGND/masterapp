@@ -1,23 +1,10 @@
 using Domain.Messaging;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+using Infrastructure.Messaging;
 using Shared.Messaging;
 
 namespace AgentPortal.Controllers;
 
-[Authorize]
-[Route("localization")]
 public sealed class ApplicationLocalizationController(
     IMessagingActorContextResolver actors,
-    IApplicationLocalizationService localization) : Controller
-{
-    [HttpGet("catalog")]
-    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public async Task<IActionResult> Catalog(CancellationToken cancellationToken)
-    {
-        var actor = await actors.ResolveAsync(HttpContext, cancellationToken);
-        if (actor is null) return Forbid();
-        return Ok(await localization.GetCatalogAsync(
-            new MessagingActor(actor.Value.UserId, actor.Value.ParticipantType), cancellationToken));
-    }
-}
+    IApplicationLocalizationService localization)
+    : ApplicationLocalizationControllerBase(actors, localization);

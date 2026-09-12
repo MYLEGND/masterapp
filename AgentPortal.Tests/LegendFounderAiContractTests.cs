@@ -1412,21 +1412,28 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void LegendConnectPage_KeepsFounderIntelligenceOpenAndCollapsesEveryOtherPanel()
+    public void LegendConnectPage_KeepsHeroVisibleAndOpensSectionsInAccessibleModals()
     {
         var page = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "legend-connect-index.cshtml"));
 
+        // The Founder requested compact modal launchers in place of seven accordion rows.
+        // This checks presentation only; intelligence evidence and native gates are unchanged.
         Assert.Contains("<section class=\"lc-hero\"", page, StringComparison.Ordinal);
         Assert.Contains("FOUNDER LANGUAGE INTELLIGENCE", page, StringComparison.Ordinal);
         Assert.DoesNotContain("<details class=\"lc-hero", page, StringComparison.Ordinal);
-        Assert.Equal(
-            7,
-            page.Split("<details class=\"lc-panel lc-panel-collapse", StringSplitOptions.None).Length - 1);
-        Assert.Equal(
-            7,
-            page.Split("<summary class=\"lc-panel-summary\"", StringSplitOptions.None).Length - 1);
-        Assert.DoesNotContain("<section class=\"lc-panel", page, StringComparison.Ordinal);
+        Assert.Equal(7, page.Split("class=\"lc-section-launch ", StringSplitOptions.None).Length - 1);
+        for (var index = 0; index < 7; index++)
+        {
+            Assert.Contains($"data-bs-target=\"#lcSection{index}\"", page, StringComparison.Ordinal);
+            Assert.Contains($"id=\"lcSection{index}\" tabindex=\"-1\" aria-labelledby=\"lcSection{index}Title\" aria-hidden=\"true\"", page, StringComparison.Ordinal);
+            Assert.Contains($"id=\"lcSection{index}Title\"", page, StringComparison.Ordinal);
+        }
+        Assert.Contains("data-bs-target=\"#translationLimitsModal\"", page, StringComparison.Ordinal);
+        Assert.Contains("id=\"translationLimitsModal\" tabindex=\"-1\" aria-labelledby=\"translationLimitsTitle\" aria-hidden=\"true\"", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<details class=\"lc-panel lc-panel-collapse", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<summary class=\"lc-panel-summary\"", page, StringComparison.Ordinal);
+        Assert.False(System.Text.RegularExpressions.Regex.IsMatch(page, @"<details\b[^>]*\bopen(?:\s|=|>)"));
     }
 
     [Fact]

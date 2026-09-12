@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "authorization": "Owner authorized release of remaining Founder translation management, production serialization, and mobile release automation on 2026-09-11. Retain exactly the existing nine failures and four skipped tests. No held-out assertions or SQL proof requirements are changed.",
-  "sourceCommit": "bc97a3851b1bf8c9280aecd98cb60e72b53bc5fe",
-  "productionBaseCommit": "58ea8df31ed6152b2969eb5f542c4885bd7f32c5",
+  "authorization": "Owner explicitly authorized publication of candidate f7d8914b to MYLEGND/masterapp and renewal of its exact nine-failure/four-skip baseline for protected production release on 2026-09-11. The reviewed modal UI contract is bound to this candidate; native held-out requirements and separate SQL proof requirements remain unchanged.",
+  "sourceCommit": "f7d8914b96cb6e987962b9a858a0305adf6634b5",
+  "productionBaseCommit": "b3eeef29163e0101838fac9aace63a4f27cb84ad",
   "allowedPolicyPaths": [
     ".github/workflows/agentportal-production-deploy.yml",
     ".github/legend-baseline-release.json",
@@ -15,7 +15,7 @@
   "frozenFiles": {
     "AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs": "c83e1007f394c895635547c11366e8121473e6e32733aa33d821cde614eec9ec",
     "AgentPortal.Tests/LegendHeldOutFoundationPrerequisite.cs": "0190f448dea1590d974bdee56019123f04b8b0fc158a961c3afca90c98e26630",
-    "AgentPortal.Tests/LegendFounderAiContractTests.cs": "44c5fe16993b18114d60833fef6795cc629097e0cabc05546a2baf78c93d8da5",
+    "AgentPortal.Tests/LegendFounderAiContractTests.cs": "f50c0e79b22612e13c0d5f5e48daf66ac390ad3a08c6dd988728a63899482f56",
     "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs": "1a74542940d5f9f65fd4575a665b16d3bda97e34a5bc9773411dadeaf4eb4210"
   },
   "tests": [
@@ -424,11 +424,19 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.ApplicationLocalizationWebContractTests.WebCatalog_RequiresAnAuthorizedActorBeforeTranslation",
+      "name": "AgentPortal.Tests.ApplicationLocalizationWebContractTests.WebCatalog_RequiresAnAuthorizedActorBeforeTranslation(clientHost: False)",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.ApplicationLocalizationWebContractTests.WebCatalog_UsesResolvedActorAndTheSameApplicationService",
+      "name": "AgentPortal.Tests.ApplicationLocalizationWebContractTests.WebCatalog_RequiresAnAuthorizedActorBeforeTranslation(clientHost: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationWebContractTests.WebCatalog_UsesResolvedActorAndTheSameApplicationService(clientHost: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationWebContractTests.WebCatalog_UsesResolvedActorAndTheSameApplicationService(clientHost: True)",
       "outcome": "Passed"
     },
     {
@@ -520,6 +528,34 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[]}\", expected: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[{\\\"name\\\":{\\\"value\\\":\\\"TextCharactersT\"\u00b7\u00b7\u00b7, expected: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[{\\\"name\\\":{\\\"value\\\":\\\"TextCharactersT\"\u00b7\u00b7\u00b7, expected: 42)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[{\\\"name\\\":{\\\"value\\\":\\\"TextCharactersT\"\u00b7\u00b7\u00b7, expected: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[{\\\"name\\\":{\\\"value\\\":\\\"TextCharactersT\"\u00b7\u00b7\u00b7, expected: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[{\\\"name\\\":{\\\"value\\\":\\\"TextCharactersT\"\u00b7\u00b7\u00b7, expected: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(json: \"{\\\"value\\\":[{\\\"name\\\":{\\\"value\\\":\\\"TextCharactersT\"\u00b7\u00b7\u00b7, expected: null)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.NativeCapacity_ColdFreshAndExpiredCacheNeverRefreshesOrReplacesProviderState",
       "outcome": "Passed"
     },
@@ -536,11 +572,27 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.RecognizedTier_ObservesMonitorWithoutAddingProviderTotalsToLedger(sku: \"F0\", reported: 1932766, remaining: 67234)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.RecognizedTier_ObservesMonitorWithoutAddingProviderTotalsToLedger(sku: \"S1\", reported: 4500, remaining: null)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.Router_RetainsAttemptedAzureCharactersWhenTheResponseIsUnavailable",
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.SaturatedProviderConsumptionWithReservationsNeverWrapsRemainingPositive",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.SlowAzureLookup_IsBoundedAndFailsClosed",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.Snapshot_CountsDebtDespiteFutureTimestampsAndMarksLedgerAsEstimate",
       "outcome": "Passed"
     },
     {
@@ -768,6 +820,34 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.PartialOrInvalidRelayConfiguration_IsRejected(url: \"https://relay.example.invalid\", secret: \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.PartialOrInvalidRelayConfiguration_IsRejected(url: \"turn:\", secret: \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.PartialOrInvalidRelayConfiguration_IsRejected(url: \"turns:?transport=tcp\", secret: \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.PartialOrInvalidRelayConfiguration_IsRejected(url: \"turns:relay.example.invalid:443\", secret: \"\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.PartialOrInvalidRelayConfiguration_IsRejected(url: null, secret: \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.RelayCredentials_AreExpiringUniqueAndDoNotExposeSigningSecret",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.CallingNetworkPolicyTests.SharedPolicy_ProvidesConservativeMeasuredNetworkThresholds",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.ClientAccountManagementTests.ClientCreationForm_LeavesRelationshipTrackingToQuickView_AndRequiresFounderTrialDecision",
       "outcome": "Passed"
     },
@@ -793,6 +873,10 @@
     },
     {
       "name": "AgentPortal.Tests.ClientAppDeploymentWorkflowTests.ClientSmokeIsNonMutatingAndDoesNotClaimAuthenticatedContentProof",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ClientAppDeploymentWorkflowTests.MigrationReusesCandidateBoundStartupBinariesWithoutWeakeningReleaseGates",
       "outcome": "Passed"
     },
     {
@@ -1484,6 +1568,38 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.AcceptedStartIsNotReportedAsCompleted",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.ArbitraryResourceDestinationsRejected(value: \"/subscriptions/11111111-1111-1111-1111-11111111111\"\u00b7\u00b7\u00b7)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.ArbitraryResourceDestinationsRejected(value: \"/subscriptions/11111111-1111-1111-1111-11111111111\"\u00b7\u00b7\u00b7)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.ArbitraryResourceDestinationsRejected(value: \"https://attacker.invalid\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.InvalidRelayEndpointCannotStartBillableHosting",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.MissingSetupNeverConstructsAzureRequest",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.UnavailableAzureStateCannotAuthorizeStart",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderCallRelayTests.UnconfirmedMutationMakesNoAzureRequest",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.FounderLegendConnectLiveMetricsTests.Create_UsesCanonicalSnapshotsForAllFounderAggregateCounters",
       "outcome": "Passed"
     },
@@ -1633,6 +1749,14 @@
     },
     {
       "name": "AgentPortal.Tests.JourneyCirclesServiceTests.Recommendations_UseOneComparableCategory_AndKeepPrivacyPreferencesIndependent",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LanguageRegistryRequestScopeTests.PairReadPreservesAliasesAndImmediatelyReflectsLanguageAndPairEligibility",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LanguageRegistryRequestScopeTests.ReusingRegistryStillReadsCurrentLanguageEligibility",
       "outcome": "Passed"
     },
     {
@@ -5528,7 +5652,7 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiContractTests.LegendConnectPage_KeepsFounderIntelligenceOpenAndCollapsesEveryOtherPanel",
+      "name": "AgentPortal.Tests.LegendFounderAiContractTests.LegendConnectPage_KeepsHeroVisibleAndOpensSectionsInAccessibleModals",
       "outcome": "Passed"
     },
     {
@@ -7706,6 +7830,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.MessagingHistoryCursorTests.CompositeCursorTranslatesRelationallyAndPreservesEqualTimestampHistory(sqlServer: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingHistoryCursorTests.CompositeCursorTranslatesRelationallyAndPreservesEqualTimestampHistory(sqlServer: True)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.MessagingHubActorBindingTests.FailedBearerCannotFallThroughToCookieAgent",
       "outcome": "Passed"
     },
@@ -7858,7 +7990,15 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.MessagingServiceTests.ConversationDetail_BoundsOpenAndResumeWithoutDiscardingOlderHistory",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.MessagingServiceTests.ConversationInboxControls_AreScopedToTheActorAndRestoreOnANewMessage",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.ConversationPage_DoesNotTranslateLookaheadAndStillReflectsNewMessages",
       "outcome": "Passed"
     },
     {
@@ -7943,6 +8083,10 @@
     },
     {
       "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_ReloadedTimestampsRemainUtcInStatusAndPushSnapshots",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_RepeatedInviteRechecksRevokedCallerMembership",
       "outcome": "Passed"
     },
     {
@@ -8250,11 +8394,27 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: False)",
+      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: False, contentType: \"Post\")",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: True)",
+      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: False, contentType: \"Reel\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: False, contentType: \"Story\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: True, contentType: \"Post\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: True, contentType: \"Reel\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.SharedPost_PersistsReferenceAndRechecksRecipientVisibility(firstMessage: True, contentType: \"Story\")",
       "outcome": "Passed"
     },
     {
@@ -8343,6 +8503,10 @@
     },
     {
       "name": "AgentPortal.Tests.MiddlewareTests.AssistantMiddleware_ActiveAssistant_ForbiddenRoute_Redirects",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MiddlewareTests.AssistantMiddleware_BoundIdentityIsUsedAndDisabledAccessIsRecheckedNextRequest",
       "outcome": "Passed"
     },
     {
@@ -8674,7 +8838,11 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.MobileIntegrationTests.MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor",
+      "name": "AgentPortal.Tests.MobileIntegrationTests.MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor(historyPage: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MobileIntegrationTests.MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor(historyPage: True)",
       "outcome": "Passed"
     },
     {
@@ -8839,6 +9007,10 @@
     },
     {
       "name": "AgentPortal.Tests.MobileProfilePresentationContractTests.MobileSignIn_UsesOneSecureActionForStandardAndProvidedCredentials",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.NotificationSenderPresentationTests.Call_photo_capability_rechecks_call_scope_membership_and_expiry",
       "outcome": "Passed"
     },
     {
@@ -9359,6 +9531,26 @@
     },
     {
       "name": "AgentPortal.Tests.SharedSocialHostTests.ClientReadRegistration_ResolvesBothAuthoritiesWithoutAnotherMediaWorker",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SharedSocialHostTests.SharedSourceActionsUseExistingAuthorityAndExcludeInternalContactData(clientHost: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SharedSocialHostTests.SharedSourceActionsUseExistingAuthorityAndExcludeInternalContactData(clientHost: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SharedSocialHostTests.SharedSourceCommentRetainsModerationFailureAndAllMutationsRequireAntiforgery",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SharedSocialHostTests.SharedSourceDenialHasAuthoritativeStatusForContentEviction(code: \"social_actor_invalid\", status: 403)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.SharedSocialHostTests.SharedSourceDenialHasAuthoritativeStatusForContentEviction(code: \"social_post_unavailable\", status: 404)",
       "outcome": "Passed"
     },
     {
@@ -9926,5 +10118,5 @@
       "outcome": "Passed"
     }
   ],
-  "rosterSha256": "e496fdad709989eb69282188e2bd97d0ddf28609520d1081082b69703d8752a6"
+  "rosterSha256": "e3780eb0d952bca8ece20558272d61dd916e77d79b00f8ccf4f479c2806c8586"
 }
