@@ -45,7 +45,7 @@ class LegendCallingCoordinator : ViewModel() {
 }
 
 // This survives Activity recreation and shares the existing messaging socket.
-data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null, val starting: Boolean = false)
+data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val remoteScreenSharing: Boolean = false, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null, val starting: Boolean = false)
 class LegendCallViewModel(private val app: Application, val transport: MobileMessagingRealtimeClient, private val identity: MobileIdentity) : ViewModel() {
     private val mutableState = MutableStateFlow(LegendCallUiState())
     val state = mutableState.asStateFlow()
@@ -64,8 +64,24 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     private val finished = mutableSetOf<String>()
     private val audio = app.getSystemService(AudioManager::class.java)
     private var proximity: PowerManager.WakeLock? = null
+    private var audioFocusGranted = false
+    private var statusBeforeAudioInterruption: String? = null
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()).setOnAudioFocusChangeListener { change ->
-        viewModelScope.launch { if (state.value.call != null) { if (change < 0) update { it.copy(status = "Audio interrupted") } else peer?.recover() } }
+        viewModelScope.launch {
+            audioFocusGranted = change == AudioManager.AUDIOFOCUS_GAIN
+            if (state.value.call != null) {
+                if (!audioFocusGranted) {
+                    if (state.value.status != "Audio interrupted") statusBeforeAudioInterruption = state.value.status
+                    update { it.copy(status = "Audio interrupted") }
+                } else {
+                    audio.mode = AudioManager.MODE_IN_COMMUNICATION
+                    statusBeforeAudioInterruption?.let { previous ->
+                        if (state.value.status == "Audio interrupted") update { it.copy(status = previous) }
+                    }
+                    statusBeforeAudioInterruption = null
+                }
+            }
+        }
     }.build()
     val pendingCallId get() = pending?.first
     val inCall get() = state.value.call != null || pending != null
@@ -289,7 +305,10 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         checkPermissions(call.video)
         ringback?.release(); ringback = null
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        audio.requestAudioFocus(focus)
+        audioFocusGranted = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        check(audioFocusGranted) {
+            "Android could not grant call audio. Finish the other call or audio session and try again."
+        }
         update { it.copy(speaker = call.video, status = "Connecting") }
         if (call.video) routeSpeaker(true)
         LegendCallPlatform.foreground(app, call.video)
@@ -302,10 +321,29 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
                         deadline?.cancel(); LegendCallPlatform.connection?.setActive()
                         viewModelScope.launch { runCatching { command(LegendCallCommand("connected", deviceId, call.id)) } }
                         startHeartbeat(call.id)
+                    } else if (value == "Microphone unavailable" || value == "Call playback unavailable") {
+                        fail("$value. Check microphone permission and your audio device, then call again.")
+                    } else if (value == "Video capture unavailable") {
+                        update { it.copy(controlError = "The camera could not resume after screen sharing.") }
                     } else if (value == "Direct connection unavailable") fail("This network could not establish a direct call. Try another Wi-Fi or mobile connection.")
                 }
-            }, remoteVideo = { track -> update { it.copy(remoteVideo = track) } })
-        peer = engine; update { it.copy(localVideo = engine.localVideo) }; updateProximity()
+            }, remoteVideo = { track -> if (state.value.call?.id == call.id) update { it.copy(remoteVideo = track) } },
+            remoteScreenSharing = { sharing -> if (state.value.call?.id == call.id) update { it.copy(remoteScreenSharing = sharing) } },
+            audioObservation = { observation ->
+                if (state.value.call?.id == call.id) {
+                    val route = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) when (audio.communicationDevice?.type) {
+                        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "earpiece"
+                        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+                        null -> "unknown"
+                        else -> "external"
+                    } else if (state.value.speaker) "speaker" else "receiver-or-external"
+                    android.util.Log.i("LegendCallMedia", "$observation audioFocusGranted=$audioFocusGranted route=$route")
+                }
+            })
+        peer = engine
+        engine.muted(state.value.muted)
+        if (call.video) engine.camera(state.value.camera)
+        update { it.copy(localVideo = engine.localVideo) }; updateProximity()
         armDeadline(call.id, System.currentTimeMillis() + settings.connectSeconds * 1000L)
     }
     private fun startHeartbeat(id: String) {
@@ -346,6 +384,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         val oldPeer = peer; peer = null; update { LegendCallUiState(failure = it.failure) }; oldPeer?.close()
         if (proximity?.isHeld == true) proximity?.release(); proximity = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.clearCommunicationDevice() else routeSpeaker(false)
+        audioFocusGranted = false; statusBeforeAudioInterruption = null
         audio.abandonAudioFocusRequest(focus); audio.mode = AudioManager.MODE_NORMAL
         LegendCallPlatform.ended(app)
     }

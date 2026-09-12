@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.webrtc.*
+import org.webrtc.audio.JavaAudioDeviceModule
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -20,9 +21,12 @@ class LegendRTCPeer(
     private val signal: suspend (String, String, Int) -> Unit,
     private val state: (String) -> Unit,
     private val remoteVideo: (VideoTrack) -> Unit,
+    private val remoteScreenSharing: (Boolean) -> Unit = {},
+    private val audioObservation: (String) -> Unit = {},
 ) {
     val egl: EglBase = EglBase.create()
     private val app = context.applicationContext
+    private val audioDeviceModule: JavaAudioDeviceModule
     private val factory: PeerConnectionFactory
     private val peer: PeerConnection
     private val audioSource: AudioSource
@@ -32,6 +36,8 @@ class LegendRTCPeer(
     private var capturer: CameraVideoCapturer? = null
     private var screenCapturer: ScreenCapturerAndroid? = null
     private var screenHelper: SurfaceTextureHelper? = null
+    private var screenSource: VideoSource? = null
+    private var screenTrack: VideoTrack? = null
     private var screenDimensions: Pair<Int, Int>? = null
     private var cameraWasEnabled = true
     var onScreenSharingEnded: (() -> Unit)? = null
@@ -49,11 +55,14 @@ class LegendRTCPeer(
     private var recovery: Job? = null
     private var qualityMonitor: Job? = null
     private var quality = 2
+    private var availableBandwidth: Double? = null
     private var healthySamples = 0
     private var qualitySample = 0L
     private var completedQualitySample = 0L
     private var screenContentSize: Pair<Int, Int>? = null
     private var screenGeneration = 0L
+    private var audioObservationCount = 0
+    private var previousAudioCounters: Map<String, Long>? = null
     private val candidates = mutableListOf<Pair<Int, IceCandidate>>()
     private val outgoing = mutableListOf<IceCandidate>()
     private val json = Json { ignoreUnknownKeys = true }
@@ -70,7 +79,19 @@ class LegendRTCPeer(
     }
     init {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(app).createInitializationOptions())
+        audioDeviceModule = JavaAudioDeviceModule.builder(app)
+            .setAudioRecordErrorCallback(object : JavaAudioDeviceModule.AudioRecordErrorCallback {
+                override fun onWebRtcAudioRecordInitError(error: String) = audioFailure("Microphone unavailable")
+                override fun onWebRtcAudioRecordStartError(code: JavaAudioDeviceModule.AudioRecordStartErrorCode, error: String) = audioFailure("Microphone unavailable")
+                override fun onWebRtcAudioRecordError(error: String) = audioFailure("Microphone unavailable")
+            })
+            .setAudioTrackErrorCallback(object : JavaAudioDeviceModule.AudioTrackErrorCallback {
+                override fun onWebRtcAudioTrackInitError(error: String) = audioFailure("Call playback unavailable")
+                override fun onWebRtcAudioTrackStartError(code: JavaAudioDeviceModule.AudioTrackStartErrorCode, error: String) = audioFailure("Call playback unavailable")
+                override fun onWebRtcAudioTrackError(error: String) = audioFailure("Call playback unavailable")
+            }).createAudioDeviceModule()
         factory = PeerConnectionFactory.builder()
+            .setAudioDeviceModule(audioDeviceModule)
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext)).createPeerConnectionFactory()
         val servers = policy.stunUrls.map { PeerConnection.IceServer.builder(it).createIceServer() }.toMutableList()
@@ -85,12 +106,16 @@ class LegendRTCPeer(
             override fun onIceConnectionChange(value: PeerConnection.IceConnectionState) { scope.launch {
                 if (closed) return@launch
                 when (value) {
-                    PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> { connected = true; recovery?.cancel(); recovery = null; state("Connected") }
+                    PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
+                        val newlyConnected = !connected
+                        connected = true; recovery?.cancel(); recovery = null; state("Connected")
+                        if (newlyConnected) sendMediaState(request = true)
+                    }
                     PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> { connected = false; recover() }
                     else -> Unit
                 }
             } }
-            override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) { (receiver.track() as? VideoTrack)?.let { scope.launch { remoteVideo(it) } } }
+            override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) { (receiver.track() as? VideoTrack)?.let { scope.launch { if (!closed) remoteVideo(it) } } }
             override fun onSignalingChange(value: PeerConnection.SignalingState) {}
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
             override fun onIceGatheringChange(value: PeerConnection.IceGatheringState) {}
@@ -129,6 +154,11 @@ class LegendRTCPeer(
                         scope.launch sampleResult@{
                             if (closed || !connected || sample != qualitySample) return@sampleResult
                             completedQualitySample = sample
+                            observeAudio(report)
+                            if (bandwidth != null && bandwidth.isFinite() && bandwidth >= 0) {
+                                availableBandwidth = bandwidth
+                                applyBitrates()
+                            }
                             val target = tuning.targetQuality(bandwidth, latency)
                             if (target == null) { healthySamples = 0; return@sampleResult }
                             if (target < quality) { quality = target; healthySamples = 0; configureCapture(); applyBitrates() }
@@ -149,6 +179,7 @@ class LegendRTCPeer(
             val constraints = MediaConstraints().apply { if (restart) mandatory.add(MediaConstraints.KeyValuePair("IceRestart", "true")) }
             val description = createDescription(true, constraints)
             setDescription(description, true)
+            applyBitrates()
             signal("offer", description.description, epoch)
             readyToSignal = true
             flushCandidates()
@@ -158,6 +189,12 @@ class LegendRTCPeer(
         if (closed) return
         if (kind == "restart") { if (caller) recover(); return }
         if (incomingEpoch < epoch) return
+        if (kind == "media-state") {
+            val media = json.callMediaState(data) ?: return
+            remoteScreenSharing(media.screenSharing)
+            if (media.request) sendMediaState()
+            return
+        }
         if (kind == "candidate") {
             val value = json.decodeFromString<Candidate>(data)
             val candidate = IceCandidate(value.sdpMid, value.sdpMLineIndex, value.candidate)
@@ -171,10 +208,12 @@ class LegendRTCPeer(
             drainRemote()
             val answer = createDescription(false, MediaConstraints())
             setDescription(answer, true)
+            applyBitrates()
             signal("answer", answer.description, epoch)
             readyToSignal = true; flushCandidates()
         } else if (kind == "answer" && caller) {
             setDescription(SessionDescription(SessionDescription.Type.ANSWER, data), false)
+            applyBitrates()
             drainRemote()
         }
     }
@@ -198,10 +237,8 @@ class LegendRTCPeer(
     fun background(value: Boolean) { background = value; if (value) runCatching { capturer?.stopCapture(); captureStarted = false } else configureCapture() }
     fun startScreenSharing(permission: android.content.Intent) {
         check(!closed && video && screenCapturer == null)
-        val source = requireNotNull(videoSource)
         val generation = ++screenGeneration
         cameraWasEnabled = localVideo?.enabled() ?: true
-        localVideo?.setEnabled(true)
         val screen = ScreenCapturerAndroid(permission, object : android.media.projection.MediaProjection.Callback() {
             override fun onStop() { scope.launch { if (generation == screenGeneration) stopScreenSharing() } }
             override fun onCapturedContentResize(width: Int, height: Int) {
@@ -211,30 +248,37 @@ class LegendRTCPeer(
                         val size = screenSize(width, height)
                         if (size != screenDimensions && screenCapturer != null) {
                             screenDimensions = size
-                            screenCapturer?.changeCaptureFormat(size.first, size.second, minOf(15, captureLimits.third))
+                            screenCapturer?.changeCaptureFormat(size.first, size.second, screenLimits.fps)
                         }
                     }
                 }
             }
         })
         try {
-            capturer?.stopCapture(); captureStarted = false
-            screenHelper = SurfaceTextureHelper.create("LegendCallScreen", egl.eglBaseContext)
             screenCapturer = screen
-            screen.initialize(screenHelper, app, source.capturerObserver)
+            capturer?.stopCapture(); captureStarted = false
+            screenSource = factory.createVideoSource(true)
+            screenTrack = factory.createVideoTrack("legend-screen", screenSource)
+            screenHelper = SurfaceTextureHelper.create("LegendCallScreen", egl.eglBaseContext)
+            screen.initialize(screenHelper, app, screenSource?.capturerObserver)
+            check(peer.senders.firstOrNull { it.track()?.kind() == "video" }?.setTrack(screenTrack, false) == true) {
+                "Screen sharing could not replace the camera track."
+            }
+            applyBitrates()
             val display = app.resources.displayMetrics
             screenContentSize = display.widthPixels to display.heightPixels
             val size = screenSize(display.widthPixels, display.heightPixels)
             screenDimensions = size
-            screen.startCapture(size.first, size.second, minOf(15, captureLimits.third))
+            screen.startCapture(size.first, size.second, screenLimits.fps)
+            scope.launch { sendMediaState() }
         } catch (error: Exception) { stopScreenSharing(); throw error }
     }
-    private fun screenSize(width: Int, height: Int): Pair<Int, Int> {
-        val limits = captureLimits
-        val maxEdge = maxOf(limits.first, limits.second)
-        val scale = minOf(1.0, maxEdge.toDouble() / maxOf(width, height))
-        return ((width * scale).toInt() / 2 * 2).coerceAtLeast(2) to ((height * scale).toInt() / 2 * 2).coerceAtLeast(2)
-    }
+    private val screenLimits: LegendScreenCaptureLimits get() =
+        policy.screenShare?.limits(quality, cellular) ?: captureLimits.let {
+            // Older servers retain their advertised camera limits; no client-only quota policy.
+            LegendScreenCaptureLimits(it.first, it.second, minOf(15, it.third), videoBitrate)
+        }
+    private fun screenSize(width: Int, height: Int): Pair<Int, Int> = screenLimits.dimensions(width, height)
     fun stopScreenSharing() {
         val screen = screenCapturer ?: return
         screenCapturer = null
@@ -242,10 +286,18 @@ class LegendRTCPeer(
         screenDimensions = null
         screenContentSize = null
         localVideo?.setEnabled(cameraWasEnabled)
-        runCatching { screen.stopCapture() }; screen.dispose()
+        runCatching { screen.stopCapture() }; runCatching { screen.dispose() }
+        val sender = peer.senders.firstOrNull { it.track()?.kind() == "video" }
+        val restored = sender?.setTrack(localVideo, false) == true
+        if (!restored) sender?.setTrack(null, false)
+        screenTrack?.dispose(); screenTrack = null
+        screenSource?.dispose(); screenSource = null
         screenHelper?.dispose(); screenHelper = null
+        if (!closed && !restored) state("Video capture unavailable")
         configureCapture()
+        applyBitrates()
         onScreenSharingEnded?.invoke()
+        if (!closed) scope.launch { sendMediaState() }
     }
     fun flipCamera() { capturer?.switchCamera(null) }
     private val captureLimits: Triple<Int, Int, Int> get() {
@@ -261,7 +313,7 @@ class LegendRTCPeer(
             screenContentSize?.let { (width, height) ->
                 val size = screenSize(width, height)
                 screenDimensions = size
-                screenCapturer?.changeCaptureFormat(size.first, size.second, minOf(15, captureLimits.third))
+                screenCapturer?.changeCaptureFormat(size.first, size.second, screenLimits.fps)
             }
             return
         }
@@ -270,12 +322,55 @@ class LegendRTCPeer(
         if (captureStarted) capturer?.changeCaptureFormat(width, height, fps)
         else { capturer?.startCapture(width, height, fps); captureStarted = capturer != null }
     }
+    private val videoBitrate: Int get() = when (quality) {
+        0 -> policy.adaptation?.lowBitrate ?: policy.videoBitrate
+        1 -> policy.adaptation?.mediumBitrate ?: policy.videoBitrate
+        else -> policy.videoBitrate
+    }
     private fun applyBitrates() {
         peer.senders.forEach { sender ->
+            val audio = sender.track()?.kind() == "audio"
             val parameters = sender.parameters
-            parameters.encodings.forEach { it.bitratePriority = if (sender.track()?.kind() == "audio") policy.adaptation?.audioPriority ?: 1.0 else 1.0; it.maxBitrateBps = if (sender.track()?.kind() == "audio") policy.audioBitrate else when (quality) { 0 -> policy.adaptation?.lowBitrate ?: policy.videoBitrate; 1 -> policy.adaptation?.mediumBitrate ?: policy.videoBitrate; else -> policy.videoBitrate } }
+            if (!audio) parameters.degradationPreference = if (screenCapturer != null)
+                RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION else RtpParameters.DegradationPreference.BALANCED
+            parameters.encodings.forEach {
+                it.bitratePriority = if (audio) policy.adaptation?.audioPriority ?: 1.0 else 1.0
+                val sharing = screenCapturer != null
+                val videoBudget = if (sharing) policy.screenShare?.videoBudget(screenLimits.bitrate, availableBandwidth, policy.audioBitrate)
+                    ?: screenLimits.bitrate else videoBitrate
+                it.active = audio || videoBudget > 0
+                it.maxBitrateBps = if (audio) policy.audioBitrate else videoBudget.coerceAtLeast(1)
+                if (!audio) it.maxFramerate = if (sharing) screenLimits.fps else captureLimits.third
+            }
             sender.parameters = parameters
         }
+    }
+    private fun audioFailure(message: String) { scope.launch { if (!closed) state(message) } }
+    private suspend fun sendMediaState(request: Boolean = false) {
+        if (closed || !connected || policy.screenShare == null) return
+        runCatching { signal("media-state", json.encodeToString(LegendCallMediaState(screenCapturer != null, request)), epoch) }
+    }
+    private fun observeAudio(report: RTCStatsReport) {
+        if (audioObservationCount >= 6) return
+        val counters = mutableMapOf<String, Long>()
+        for (stat in report.statsMap.values) {
+            if (stat.members["kind"] != "audio" && stat.members["mediaType"] != "audio") continue
+            val incoming = stat.type == "inbound-rtp"
+            if (!incoming && stat.type != "outbound-rtp") continue
+            for ((field, label) in if (incoming) listOf("bytesReceived" to "audioInboundBytesDelta", "packetsReceived" to "audioInboundPacketsDelta")
+                else listOf("bytesSent" to "audioOutboundBytesDelta", "packetsSent" to "audioOutboundPacketsDelta")) {
+                (stat.members[field] as? Number)?.toLong()?.let { counters[label] = (counters[label] ?: 0L) + it }
+            }
+        }
+        val previous = previousAudioCounters
+        previousAudioCounters = counters
+        if (previous == null) return
+        audioObservationCount++
+        val deltas = listOf("audioInboundBytesDelta", "audioOutboundBytesDelta", "audioInboundPacketsDelta", "audioOutboundPacketsDelta").joinToString(" ") { name ->
+            val current = counters[name]; val old = previous[name]
+            "$name=${if (current != null && old != null && current >= old) (current - old).toString() else "unknown"}"
+        }
+        audioObservation("$deltas localAudioTrackEnabled=${audioTrack.enabled()}")
     }
     private suspend fun flushCandidates() { val batch = outgoing.toList(); outgoing.clear(); batch.forEach { sendCandidate(it) } }
     private suspend fun sendCandidate(candidate: IceCandidate) {
@@ -310,7 +405,7 @@ class LegendRTCPeer(
         runCatching { capturer?.stopCapture() }; capturer?.dispose(); capturer = null
         peer.close(); peer.dispose()
         audioTrack.dispose(); audioSource.dispose(); localVideo?.dispose(); videoSource?.dispose(); surfaceHelper?.dispose()
-        factory.dispose(); egl.release()
+        factory.dispose(); audioDeviceModule.release(); egl.release()
         candidates.clear(); outgoing.clear()
     }
     @Serializable private data class Candidate(val candidate: String, val sdpMid: String? = null, val sdpMLineIndex: Int)
