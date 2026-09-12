@@ -130,6 +130,13 @@ final class MobileDiscoveryStore: ObservableObject {
         self.actorParticipantType = actorParticipantType
     }
 
+    /// Professional directory copy belongs only to the active agent workspace.
+    /// The server scope still controls directory data; it cannot relabel a
+    /// member's interface as CRM when a cached projection changes.
+    var showsProfessionalDirectory: Bool {
+        actorParticipantType == .agent && scope == .ownedClients
+    }
+
     var results: [MobileDiscoveryResult] {
         if case .loaded(let results) = state { return results }
         return []

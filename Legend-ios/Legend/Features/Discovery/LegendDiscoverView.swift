@@ -70,7 +70,7 @@ struct LegendDiscoverView: View {
     }
 
     private var searchPrompt: String {
-        store.scope == .ownedClients
+        store.showsProfessionalDirectory
             ? LegendLocalized("Search clients and agents")
             : LegendLocalized("Search people, goals, interests")
     }
@@ -190,7 +190,7 @@ struct LegendDiscoverView: View {
                     }
 
                     if !directoryResults.isEmpty {
-                        if store.scope == .ownedClients {
+                        if store.showsProfessionalDirectory {
                             let clients = directoryResults.filter {
                                 $0.identity.participantType == .client
                             }
@@ -261,7 +261,7 @@ struct LegendDiscoverView: View {
         if !store.searchText.isEmpty {
             return "\(count) \(noun) matching your search"
         }
-        return store.scope == .ownedClients
+        return store.showsProfessionalDirectory
             ? "\(count) \(noun) across your clients and Legend agents"
             : "\(count) \(noun) in your Legend community"
     }
@@ -277,7 +277,7 @@ struct LegendDiscoverView: View {
         if !store.searchText.isEmpty {
             return LegendLocalized("Try another name, goal, interest, or location.")
         }
-        return store.scope == .ownedClients
+        return store.showsProfessionalDirectory
             ? LegendLocalized("Your clients and active Legend agents will appear here.")
             : LegendLocalized("People in the LEGEND network will appear here.")
     }
