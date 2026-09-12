@@ -3834,7 +3834,7 @@ private fun LegendMessageBubble(
         }
         Column(horizontalAlignment = Alignment.End) {
         Box(Modifier.padding(bottom = if (message.reactions.isEmpty()) 0.dp else 12.dp)) {
-        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
+        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
             Column(Modifier.padding(if (isMediaMessage) 0.dp else LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
                 message.reply?.let { replyPreview ->
