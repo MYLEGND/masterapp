@@ -63,6 +63,12 @@ web.config
 # =========================
 *.log
 *.cache
+*.trx
+*.coverage
+*.coveragexml
+*.preclean
+**/TestResults/
+**/coverage/
 clientlogs/
 webapp_logs.zip
 delete_candidates.csv
@@ -70,6 +76,8 @@ audit.txt
 codex-findings-verification.txt
 inspect-health-disability-parity-output.txt
 diagnostics/legend-production-readonly-*.txt
+diagnostics/*.txt
+Infrastructure/MigrationAudit/*.txt
 **/DEPLOYMENT_TRIGGER_*.md
 
 # =========================
@@ -109,6 +117,7 @@ backups/
 *.old
 *.orig
 *.tmp
+/=
 
 # Local DB backups
 *.db.backup*
