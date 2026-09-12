@@ -44,7 +44,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.Equal(12L, snapshot.MonthlyCharactersConsumed);
         Assert.False(snapshot.IsAzureUsageVerified);
         Assert.True(snapshot.RemainingIsEstimate);
-        Assert.NotNull(snapshot.AzureUsageObservedThroughUtc);
+        Assert.NotNull(snapshot.AzureUsageRetrievedUtc);
         Assert.Equal(2, handler.SendAttempts);
     }
 
@@ -53,6 +53,9 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":null}]}]}]}", null)]
     [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":0}]}]}]}", 0L)]
     [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":30}]}]}]}", 42L)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":null}]}]}]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12}]},{}]}]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":-1}]}]}]}", null)]
     public void MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(string json, long? expected)
     {
         using var document = JsonDocument.Parse(json);

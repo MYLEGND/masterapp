@@ -144,7 +144,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         {
             UsageRefreshedUtc = now,
             MonthlyAzureReportedCharacters = settings.MonthlyAzureReportedCharacters,
-            AzureUsageObservedThroughUtc = settings.AzureUsageObservedThroughUtc,
+            AzureUsageRetrievedUtc = settings.AzureUsageRetrievedUtc,
             UsageDetail = settings.UsageDetail ?? "Usage includes completed and in-flight Legend reservations. Azure resource SKU synchronization does not verify provider-side character consumption or calls outside Legend."
         };
     }
@@ -584,7 +584,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                     azure.Detail)
                 {
                     MonthlyAzureReportedCharacters = azure.MonthlyAzureReportedCharacters,
-                    AzureUsageObservedThroughUtc = azure.AzureUsageObservedThroughUtc,
+                    AzureUsageRetrievedUtc = azure.AzureUsageRetrievedUtc,
                     UsageDetail = azure.UsageDetail
                 }
                 : new CapacitySettings(
@@ -761,7 +761,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         string? Detail)
     {
         public long? MonthlyAzureReportedCharacters { get; init; }
-        public DateTime? AzureUsageObservedThroughUtc { get; init; }
+        public DateTime? AzureUsageRetrievedUtc { get; init; }
         public string? UsageDetail { get; init; }
     }
 }

@@ -40,7 +40,7 @@ internal sealed record AzureTranslatorSubscriptionCapacity(
     string? Detail)
 {
     public long? MonthlyAzureReportedCharacters { get; init; }
-    public DateTime? AzureUsageObservedThroughUtc { get; init; }
+    public DateTime? AzureUsageRetrievedUtc { get; init; }
     public string? UsageDetail { get; init; }
 
     public const int CapacityWindowMinutes = 60;
@@ -244,7 +244,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
             return capacity with
             {
                 MonthlyAzureReportedCharacters = total,
-                AzureUsageObservedThroughUtc = total.HasValue ? now : null,
+                AzureUsageRetrievedUtc = total.HasValue ? _timeProvider.GetUtcNow().UtcDateTime : null,
                 UsageDetail = total.HasValue
                     ? "Azure Monitor reports delayed month-to-date text-character telemetry separately from live Legend reservations. It is not an invoice balance and is not added to the ledger. Remaining capacity uses the Legend ledger; external usage may differ."
                     : "Azure Monitor returned no character observations. Usage is unknown, not zero; Legend ledger remaining capacity is an estimate."
@@ -264,20 +264,32 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
         var observed = false;
         foreach (var metric in metrics.EnumerateArray())
         {
-            if (!metric.TryGetProperty("name", out var name) ||
-                !name.TryGetProperty("value", out var metricName) ||
-                metricName.GetString() != "TextCharactersTranslated" ||
-                !metric.TryGetProperty("timeseries", out var series) || series.ValueKind != JsonValueKind.Array)
+            if (metric.ValueKind != JsonValueKind.Object ||
+                !metric.TryGetProperty("name", out var name) || name.ValueKind != JsonValueKind.Object ||
+                !name.TryGetProperty("value", out var metricName) || metricName.ValueKind != JsonValueKind.String)
+                return null;
+            if (metricName.GetString() != "TextCharactersTranslated")
                 continue;
+            if (!metric.TryGetProperty("timeseries", out var series) ||
+                series.ValueKind != JsonValueKind.Array || series.GetArrayLength() == 0)
+                return null;
             foreach (var item in series.EnumerateArray())
             {
-                if (!item.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-                    continue;
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !item.TryGetProperty("data", out var data) ||
+                    data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
+                    return null;
                 foreach (var point in data.EnumerateArray())
                 {
-                    if (!point.TryGetProperty("total", out var value) || value.ValueKind != JsonValueKind.Number ||
+                    // A partial sum would masquerade as a complete monthly
+                    // observation. Missing, fractional or invalid points make
+                    // the provider total unknown, even if other points are valid.
+                    if (point.ValueKind != JsonValueKind.Object ||
+                        !point.TryGetProperty("total", out var value) || value.ValueKind != JsonValueKind.Number ||
                         !value.TryGetDecimal(out var count) || count < 0 || count != decimal.Truncate(count))
-                        continue;
+                        return null;
+                    if (count > long.MaxValue - total)
+                        return null;
                     total += count;
                     observed = true;
                 }
