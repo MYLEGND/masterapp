@@ -2773,7 +2773,8 @@ public interface ILegendConnectOperations
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
         CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null);
+        LegendConnectExternalProviderPolicy? providerPolicy = null,
+            bool foundationRequestedVerification = false);
 
     Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,

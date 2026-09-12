@@ -1071,7 +1071,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 cancellationToken);
             ApplicationLocalizationTelemetry.ProviderPersisted(source, target);
             return ToRetainedResult(stored, source, target, reused: false);
-        });
+        }, cancellationToken);
 
         if (coalesced.JoinedExistingRequest)
             ApplicationLocalizationTelemetry.Coalesced(source, target);
@@ -1119,9 +1119,9 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             target,
             _azure.ProviderName,
             _azure.ProviderVersion)).ToArray();
-        var batchIdentity = "retained-batch:" + maximumProviderBatches + ":" + Hash(string.Join('\n', identities.Order(StringComparer.Ordinal)));
+        var batchIdentity = "retained-batch:" + maximumProviderBatches + ":" + Hash(string.Join('\n', identities));
         var coalesced = await _coalescer.ExecuteAsync(batchIdentity, () =>
-            TranslateRetainedBatchCoreAsync(requests, identities, source, target, maximumProviderBatches, cancellationToken));
+            TranslateRetainedBatchCoreAsync(requests, identities, source, target, maximumProviderBatches, cancellationToken), cancellationToken);
         if (coalesced.JoinedExistingRequest)
             ApplicationLocalizationTelemetry.Coalesced(source, target);
         return coalesced.Result;

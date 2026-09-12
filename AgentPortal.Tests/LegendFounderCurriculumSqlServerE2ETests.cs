@@ -5331,7 +5331,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "LanguageDetectionCompleted" or "LanguageGraphAnalyzed" or "LanguageCandidatesRead" or
                 "SourceLanguageResolved" or "NativeInferenceCompleted" or "ResearchDecision" or "ProviderEscalation" or
                 "CaseAssertionFailed" or "stage_completed" or "MeaningGraphObserved" or "DiscourseStateObserved" or "OwnedRecordClassified" or
-                "ProviderRetry" or "ProviderRejected" or "ProviderEscalationRejected" or "ProviderTransportFailed" or "ProviderJsonInvalid" or
+                "ProviderRetry" or "ProviderRejected" or "FoundationProviderRejected" or "ProviderTransportFailed" or "ProviderJsonInvalid" or
                 "OwnedRecordClassificationException" or "DiscourseObservationException" or "SourceLanguageException" or "LanguageRegistryRead" or "ResearchCompleted" or
                 "TranslationProviderBoundary" or "TranslationProviderCompleted" or "NativeInferenceException" or "NativeAnswer" or "GovernedExecutionFailed" or
                 "TranslationStageStarted" or "TranslationStageEnded" or "TranslationCompleted" or "TranslationBoundaryFailed" or

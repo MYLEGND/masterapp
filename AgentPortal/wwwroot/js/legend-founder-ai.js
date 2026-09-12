@@ -806,7 +806,8 @@
                     message.content,
                     false,
                     message.responseAuthority,
-                    message.stage
+                    message.stage,
+                    message
                 );
             }
         }
@@ -823,7 +824,8 @@
         content,
         scroll = true,
         responseAuthority = null,
-        stage = null
+        stage = null,
+        metadata = null
     ) {
         if (!transcript) {
             return;
@@ -868,7 +870,13 @@
         bubble.className =
             'legend-founder-ai-bubble';
 
-        bubble.textContent = content;
+        // Conversation content already carries the server's response language.
+        // The app-copy catalog may translate the authority label, never user
+        // text or a completed/streamed model response that happens to match it.
+        const body = document.createElement('span');
+        body.setAttribute('data-user-content', '');
+        body.textContent = content;
+        bubble.appendChild(body);
 
         if (role !== 'user') {
             const authority =
@@ -879,6 +887,7 @@
 
             const hasNamedAuthority =
                 responseAuthority === 'LegendAi' ||
+                responseAuthority === 'HostedFoundation' ||
                 responseAuthority === 'GovernedResearch' ||
                 responseAuthority === 'OpenAITeacher' ||
                 responseAuthority === 'SystemDiagnostic';
@@ -887,6 +896,9 @@
                 authority.classList.add('is-native');
                 authority.textContent =
                     'Legend® Ai';
+            } else if (responseAuthority === 'HostedFoundation') {
+                authority.classList.add('is-provider');
+                authority.textContent = 'LEGEND · hosted foundation';
             } else if (
                 responseAuthority === 'GovernedResearch'
             ) {
@@ -908,6 +920,35 @@
 
             if (hasNamedAuthority) {
                 bubble.appendChild(authority);
+            }
+        }
+
+        if (role !== 'user' && metadata) {
+            const labels = [];
+            const researchLabels = {
+                Conclusion: 'Research completed',
+                InsufficientEvidence: 'Research found insufficient evidence',
+                UnresolvedConflict: 'Research found conflicting evidence',
+                Failure: 'Research could not be completed'
+            };
+            const learningLabels = {
+                Submitted: 'Teaching submitted for review',
+                AwaitingCritic: 'Teaching submitted for review',
+                InsufficientEvidence: 'Teaching needs more evidence'
+            };
+            if (Object.hasOwn(researchLabels, metadata.researchState)) labels.push(researchLabels[metadata.researchState]);
+            if (metadata.escalationUsed === true) labels.push('Escalation used');
+            if (Object.hasOwn(learningLabels, metadata.learningState)) labels.push(learningLabels[metadata.learningState]);
+            if (labels.length) {
+                const status = document.createElement('div');
+                status.className = 'legend-founder-ai-response-authority';
+                for (const [index, label] of labels.entries()) {
+                    if (index) status.appendChild(document.createTextNode(' · '));
+                    const part = document.createElement('span');
+                    part.textContent = label;
+                    status.appendChild(part);
+                }
+                bubble.appendChild(status);
             }
         }
 
@@ -1341,7 +1382,13 @@
                         'SystemDiagnostic',
                     stage:
                         result.stage ||
-                        'unclassified'
+                        'unclassified',
+                    foundationModel: result.foundationModel ?? null,
+                    foundationHosting: result.foundationHosting ?? null,
+                    externalAnsweringUsed: result.externalAnsweringUsed ?? null,
+                    escalationUsed: result.escalationUsed ?? null,
+                    researchState: result.researchState ?? null,
+                    learningState: result.learningState ?? null
                 });
 
                 if (

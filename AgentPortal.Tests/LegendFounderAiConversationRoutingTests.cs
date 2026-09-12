@@ -141,29 +141,29 @@ public sealed class LegendFounderAiConversationRoutingTests
     }
 
     [Fact]
-    public void CasualNativeEscalation_EntersGovernedDiagnosticTeacherPath()
+    public void MissingSemanticFamily_DoesNotForceGovernedInspection()
     {
         var method = typeof(LegendFounderAiConversationService)
-            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+            .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             false, 0m, null, "meaning_graph_component_unknown", 0,
             "A required governed meaning component is not available.", true);
-        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent(), snapshot, null })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent() })));
     }
 
     [Fact]
     public void CasualNativeSuccess_DoesNotEnterProviderInspectionPath()
     {
         var method = typeof(LegendFounderAiConversationService)
-            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+            .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "How are you?")];
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             true, 1m, "I'm doing great, thanks.", "supported", 4,
             "Governed native response selected.", false);
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent(), snapshot, null })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent() })));
     }
 
     [Fact]

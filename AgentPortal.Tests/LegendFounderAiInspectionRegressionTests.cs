@@ -66,10 +66,10 @@ public sealed class LegendFounderAiInspectionRegressionTests
     }
 
     [Fact]
-    public void CasualInstructions_PreserveResponderIdentity()
+    public void UnifiedInstructions_PreserveResponderIdentityAndExternalDependency()
     {
         var method = typeof(LegendFounderAiConversationService)
-            .GetMethod("BuildCasualInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+            .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.NotNull(method);
 
@@ -81,7 +81,8 @@ public sealed class LegendFounderAiInspectionRegressionTests
         Assert.DoesNotContain("You are Legend® Ai speaking", teacher, StringComparison.Ordinal);
 
         Assert.Contains("You are Legend® Ai speaking", legend, StringComparison.Ordinal);
-        Assert.DoesNotContain("external OpenAI Teacher", legend, StringComparison.Ordinal);
+        Assert.Contains("externally hosted pretrained foundation", legend, StringComparison.Ordinal);
+        Assert.Contains("not native or provider-independent", legend, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -102,14 +103,14 @@ public sealed class LegendFounderAiInspectionRegressionTests
     }
 
     [Fact]
-    public void CasualProviderReasoning_UsesPortableLowEffort()
+    public void ConfiguredProviderReasoning_PreservesSupportedMaximumEffort()
     {
         var method = typeof(LegendFounderAiConversationService)
-            .GetMethod("ResolveReasoningEffortForRound", BindingFlags.NonPublic | BindingFlags.Static);
+            .GetMethod("NormalizeReasoningEffort", BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.NotNull(method);
-        Assert.Equal("low", Assert.IsType<string>(
-            method!.Invoke(null, new object[] { 0, false, "medium" })));
+        Assert.Equal("max", Assert.IsType<string>(
+            method!.Invoke(null, new object[] { "max" })));
     }
 
     [Fact]

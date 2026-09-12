@@ -169,8 +169,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.IsType<EmptyResult>(result);
         var transcript = Encoding.UTF8.GetString(body.ToArray());
         Assert.Contains("\"type\":\"heartbeat\"", transcript, StringComparison.Ordinal);
-        Assert.Contains("OpenAITeacher", transcript, StringComparison.Ordinal);
-        Assert.Contains("provider_response", transcript, StringComparison.Ordinal);
+        Assert.Contains("HostedFoundation", transcript, StringComparison.Ordinal);
+        Assert.Contains("foundation_response", transcript, StringComparison.Ordinal);
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(1, NativeInferenceCalls(operations));
     }
@@ -777,7 +777,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             Request("legend", "Translate this unsupported distinction."));
 
         Assert.True(response.Succeeded, Describe(response));
-        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal("HostedFoundation", response.ResponseAuthority);
         Assert.DoesNotContain("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
@@ -1208,7 +1208,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
         var handler = new FounderAiScenarioHandler(
             ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"),
-            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"),
+            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"independent authority\"}"),
             ProviderText("The second governed read succeeded and supports this assessment."));
         var service = CreateService(db, operations.Object, handler);
 
@@ -1217,16 +1217,14 @@ public sealed partial class LegendFounderAiModeIsolationTests
             Request("teacher", "Inspect the current authority."));
 
         Assert.True(response.Succeeded, Describe(response));
-        Assert.Equal(
-            "The second governed read succeeded and supports this assessment.",
-            response.Message);
+        Assert.StartsWith("The second governed read succeeded and supports this assessment.", response.Message);
+        Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message);
+        Assert.Equal("partial_governed_inspection", response.Reason);
         Assert.Equal(3, handler.RequestCount);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
-            "authority",
-            null,
-            null,
-            It.IsAny<int>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
+            "authority", null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
+            "independent authority", null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
 
@@ -1598,8 +1596,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("legend", response.Mode);
-        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
-        Assert.Equal("provider_response", response.Stage);
+        Assert.Equal("HostedFoundation", response.ResponseAuthority);
+        Assert.Equal("foundation_response", response.Stage);
         Assert.Equal(1, NativeInferenceCalls(operations));
         Assert.Equal(1, handler.RequestCount);
     }
@@ -1658,6 +1656,15 @@ public sealed partial class LegendFounderAiModeIsolationTests
     [Fact]
     public async Task ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog()
     {
+        // The existing opt-in resource canary also owns the deeper real
+        // foundation executor probe. Its artifact explicitly distinguishes
+        // synthetic data, configured execution and actual provider calls.
+        if (string.Equals(Environment.GetEnvironmentVariable("LEGEND_FOUNDATION_PROVIDER_CANARY"),
+                "true", StringComparison.OrdinalIgnoreCase))
+        {
+            await VerifyFoundationProviderAnswersHeldOutCreoleWithEmptyCurriculumAsync();
+            return;
+        }
         var resourceMode = string.Equals(Environment.GetEnvironmentVariable("LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED"),
             "true", StringComparison.OrdinalIgnoreCase);
         if (!resourceMode && !string.Equals(
@@ -1890,7 +1897,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
-    public async Task TeacherMode_UnavailableMeaningAnalysisCannotBeTreatedAsNoOwnedRecordIntent()
+    public async Task TeacherMode_UnavailableMeaningAnalysisRetainsToolAuthorizationWithoutBlockingConversation()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1905,10 +1912,13 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
         var response = await service.ReplyAsync(founder, Request("teacher", "Show the relevant information."));
 
-        Assert.False(response.Succeeded);
-        Assert.Equal("governed_request_classification", response.Stage);
-        Assert.Contains("governed_meaning_graph_analysis_unavailable", response.Reason);
-        Assert.Equal(0, handler.RequestCount);
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal(1, handler.RequestCount);
+        using var body = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+        Assert.Equal("auto", body.RootElement.GetProperty("tool_choice").GetString());
+        Assert.Contains("Organization-specific claims require applicable approved evidence",
+            body.RootElement.GetProperty("instructions").GetString());
     }
 
     [Theory]
@@ -1938,7 +1948,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             Assert.Equal(503, StatusFor(response));
         else
         {
-            Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+            Assert.Equal(mode == "teacher" ? "OpenAITeacher" : "HostedFoundation", response.ResponseAuthority);
             Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
         }
     }
@@ -2067,13 +2077,24 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var response = await service.ReplyAsync(founder,
             Request("teacher", "Inspect the available evidence."));
 
-        Assert.True(response.Succeeded, Describe(response));
         Assert.Equal(3, handler.RequestCount);
-        Assert.Equal(expectsPartial,
-            response.Message!.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", StringComparison.Ordinal));
-        Assert.Equal(expectsPartial ? "partial_governed_inspection" : null, response.Reason);
-        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
-        Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
+        operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(expectsPartial ? 2 : 1));
+        if (!expectsPartial)
+        {
+            Assert.False(response.Succeeded);
+            Assert.Equal("required_governed_inspection_missing", response.Reason);
+            Assert.Null(response.Message);
+        }
+        else
+        {
+            Assert.True(response.Succeeded, Describe(response));
+            Assert.Contains("LEGEND_GOVERNED_READ_DIAGNOSTICS", response.Message, StringComparison.Ordinal);
+            Assert.Equal("partial_governed_inspection", response.Reason);
+            Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+            Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
+        }
     }
 
     [Theory]
@@ -2177,7 +2198,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Equal(3, handler.RequestCount);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
-            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
         using var finalRound = JsonDocument.Parse(handler.RequestBodies[^1]);
         Assert.Equal("none", finalRound.RootElement.GetProperty("tool_choice").GetString());
         Assert.Empty(finalRound.RootElement.GetProperty("tools").EnumerateArray());

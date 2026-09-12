@@ -1395,6 +1395,24 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertNotNil(UUID(uuidString: request.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") ?? ""))
     }
 
+    func testFounderStreamRetainsCapabilityMetadataInTranscript() async {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"HostedFoundation","foundationModel":"configured-model","foundationHosting":"external","externalAnsweringUsed":true,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic"}}
+
+        """.utf8)
+        await store.send("Verify the evidence and retain this correction.")
+        XCTAssertEqual(store.messages.last?.responseAuthority, "HostedFoundation")
+        XCTAssertEqual(store.messages.last?.foundationModel, "configured-model")
+        XCTAssertEqual(store.messages.last?.foundationHosting, "external")
+        XCTAssertEqual(store.messages.last?.externalAnsweringUsed, true)
+        XCTAssertEqual(store.messages.last?.escalationUsed, false)
+        XCTAssertEqual(store.messages.last?.researchState, "InsufficientEvidence")
+        XCTAssertEqual(store.messages.last?.learningState, "AwaitingCritic")
+        XCTAssertNil(store.failureMessage)
+    }
+
     func testFounderStreamPreservesStructuredFailureDespiteSuccessfulTransport() async {
         let store = await availableFounderStore()
         defer { resetFounderStreamStub() }

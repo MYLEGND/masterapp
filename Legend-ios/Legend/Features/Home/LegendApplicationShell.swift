@@ -10224,17 +10224,35 @@ struct LegendFounderAiChatMessage:
     let role: String
     let content: String
     let responseAuthority: String?
+    let foundationModel: String?
+    let foundationHosting: String?
+    let externalAnsweringUsed: Bool?
+    let escalationUsed: Bool?
+    let researchState: String?
+    let learningState: String?
 
     init(
         id: UUID = UUID(),
         role: String,
         content: String,
-        responseAuthority: String? = nil
+        responseAuthority: String? = nil,
+        foundationModel: String? = nil,
+        foundationHosting: String? = nil,
+        externalAnsweringUsed: Bool? = nil,
+        escalationUsed: Bool? = nil,
+        researchState: String? = nil,
+        learningState: String? = nil
     ) {
         self.id = id
         self.role = role
         self.content = content
         self.responseAuthority = responseAuthority
+        self.foundationModel = foundationModel
+        self.foundationHosting = foundationHosting
+        self.externalAnsweringUsed = externalAnsweringUsed
+        self.escalationUsed = escalationUsed
+        self.researchState = researchState
+        self.learningState = learningState
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -10264,6 +10282,12 @@ private struct LegendFounderAiChatResponse: Decodable {
     let providerStatusCode: Int?
     let reference: String?
     let responseAuthority: String?
+    let foundationModel: String?
+    let foundationHosting: String?
+    let externalAnsweringUsed: Bool?
+    let escalationUsed: Bool?
+    let researchState: String?
+    let learningState: String?
     let stage: String?
     let reason: String?
 }
@@ -10435,7 +10459,13 @@ final class LegendFounderAiStore: ObservableObject {
                         role: "assistant",
                         content: answer,
                         responseAuthority:
-                            response.responseAuthority))
+                            response.responseAuthority,
+                        foundationModel: response.foundationModel,
+                        foundationHosting: response.foundationHosting,
+                        externalAnsweringUsed: response.externalAnsweringUsed,
+                        escalationUsed: response.escalationUsed,
+                        researchState: response.researchState,
+                        learningState: response.learningState))
 
                 failureMessage = nil
                 return
@@ -11045,6 +11075,12 @@ struct LegendFounderAiConversationView: View {
                         .lineSpacing(4)
                         .textSelection(.enabled)
 
+                    if let status = capabilityStatusLabel(message) {
+                        Text(status)
+                            .font(.system(size: 11))
+                            .foregroundStyle(LegendFounderAiPresentationTokens.onHeader)
+                    }
+
                     if let authority = responseAuthorityLabel(message) {
                         Text(authority)
                             .font(.system(size: 10, weight: .bold))
@@ -11579,18 +11615,38 @@ struct LegendFounderAiConversationView: View {
         requestTask = nil
     }
 
+    private func capabilityStatusLabel(_ message: LegendFounderAiChatMessage) -> String? {
+        var labels: [String] = []
+        switch message.researchState {
+        case "Conclusion": labels.append(LegendLocalized("Research completed"))
+        case "InsufficientEvidence": labels.append(LegendLocalized("Research found insufficient evidence"))
+        case "UnresolvedConflict": labels.append(LegendLocalized("Research found conflicting evidence"))
+        case "Failure": labels.append(LegendLocalized("Research could not be completed"))
+        default: break
+        }
+        if message.escalationUsed == true { labels.append(LegendLocalized("Escalation used")) }
+        switch message.learningState {
+        case "Submitted", "AwaitingCritic": labels.append(LegendLocalized("Teaching submitted for review"))
+        case "InsufficientEvidence": labels.append(LegendLocalized("Teaching needs more evidence"))
+        default: break
+        }
+        return labels.isEmpty ? nil : labels.joined(separator: " · ")
+    }
+
     private func responseAuthorityLabel(
         _ message: LegendFounderAiChatMessage
     ) -> String? {
         switch message.responseAuthority {
         case "LegendAi":
-            return "Legend® Ai"
+            return LegendLocalized("Legend® Ai")
+        case "HostedFoundation":
+            return LegendLocalized("LEGEND · hosted foundation")
         case "GovernedResearch":
-            return "LEGEND governed research"
+            return LegendLocalized("LEGEND governed research")
         case "OpenAITeacher":
-            return "OpenAI"
+            return LegendLocalized("OpenAI")
         case "SystemDiagnostic":
-            return "System diagnostic"
+            return LegendLocalized("System diagnostic")
         default:
             return nil
         }

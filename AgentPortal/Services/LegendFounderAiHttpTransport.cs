@@ -105,6 +105,15 @@ internal sealed class LegendFounderAiHttpTransport
             return Task.CompletedTask;
         });
 
+        if (operationId is { } id && !_progress.TryBeginExecution(User, id))
+        {
+            return new ObjectResult(LegendFounderAiChatResponse.ModeFailure(
+                request.Mode ?? "invalid",
+                "This request is already running. Wait for its response before retrying.",
+                "duplicate_request", "request_deduplication", "operation_already_running"))
+            { StatusCode = StatusCodes.Status409Conflict };
+        }
+
         // A long-running provider or governed inspection must not leave the
         // only response connection idle.  The production portal is served
         // directly by App Service, but the observed 26-second 504 proves an
@@ -292,7 +301,7 @@ internal sealed class LegendFounderAiHttpTransport
         IDictionary<string, LegendFounderAiProgressEvent> observations,
         LegendFounderAiProgressEvent update)
     {
-        if (update.Stage is not ("native_response" or "tool_complete" or "tool_unavailable" or "response"))
+        if (update.Stage is not ("native_response" or "foundation_response" or "tool_complete" or "tool_unavailable" or "response"))
             return;
         var identity = update.Tool is null
             ? update.Stage

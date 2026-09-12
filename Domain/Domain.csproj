@@ -1,10 +1,4 @@
 ﻿<Project>
-  <PropertyGroup>
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/Domain/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/Domain/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/Domain/</BaseOutputPath>
-  </PropertyGroup>
-
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
 
   <ItemGroup>

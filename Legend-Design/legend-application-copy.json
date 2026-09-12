@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-651c5e86c077830a",
+  "catalogVersion": "application-copy-v1-276500d0ba9ac9e7",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -22493,6 +22493,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.fd1266fed7e9ba9805954832",
+      "source": "Escalation used",
+      "context": "visual interface copy",
+      "sourceRevision": "cf25c10586676522",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.61d10ab9ea8596d168deecc6",
       "source": "Essentially, you’re covered for life.",
       "context": "visual interface copy",
@@ -29697,6 +29708,17 @@
       "placeholders": [
         "contentType",
         "displayName"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.be618b6f3b586c66a6628d7e",
+      "source": "LEGEND · hosted foundation",
+      "context": "visual interface copy",
+      "sourceRevision": "5d27547d56ec5086",
+      "placeholders": [
+
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -45818,6 +45840,50 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.07b4ff78bd27d22eaf1ee965",
+      "source": "Research completed",
+      "context": "visual interface copy",
+      "sourceRevision": "ee682c5f670fa9a0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.780e0dc2d542f4969daae93a",
+      "source": "Research could not be completed",
+      "context": "visual interface copy",
+      "sourceRevision": "76e5feb8e72b78d4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6f8c5a23f43a70c4ba604866",
+      "source": "Research found conflicting evidence",
+      "context": "visual interface copy",
+      "sourceRevision": "92654c002e9be495",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.77c0bb5d6b7da7ccc1462a33",
+      "source": "Research found insufficient evidence",
+      "context": "visual interface copy",
+      "sourceRevision": "8e3691b1d80d7a4e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b76a2c8881fa475ee6f02190",
       "source": "Resend Invitation",
       "context": "visual interface copy",
@@ -53402,6 +53468,28 @@
       "source": "Teach conversation intelligence",
       "context": "visual interface copy",
       "sourceRevision": "71428922346be395",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.905f0dc1f0ae11b7f2a895fd",
+      "source": "Teaching needs more evidence",
+      "context": "visual interface copy",
+      "sourceRevision": "98edd6e8adfa840f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c14df1aa86db1ce6e60e4554",
+      "source": "Teaching submitted for review",
+      "context": "visual interface copy",
+      "sourceRevision": "94cb55c7201aeb32",
       "placeholders": [
 
       ],

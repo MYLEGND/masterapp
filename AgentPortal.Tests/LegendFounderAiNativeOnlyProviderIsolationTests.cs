@@ -862,7 +862,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             providerScope.External.CallsTo("OpenAI") > 0,
             "Provider-enabled serving must reach the conversation provider; " +
             "otherwise the native-only zero above proves nothing.");
-        Assert.Equal("OpenAITeacher", providerResponse.ResponseAuthority);
+        Assert.Equal("HostedFoundation", providerResponse.ResponseAuthority);
     }
 
     [Fact]
@@ -1460,6 +1460,57 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         Assert.Equal(
             "search-result-1",
             allowedPages.ObservedSearchResultIdentity);
+    }
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 1)]
+    public async Task ResearchToolDispatch_PreservesRequestProviderPolicy(
+        bool nativeOnly,
+        int expectedTransportCalls)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        var search = new CountingResearchSearchTransport();
+        var pages = new CountingResearchPageRetriever();
+        await using var scope = BuildProductionEquivalentScope(
+            configureServices: services =>
+            {
+                services.RemoveAll<ILegendConnectResearchSearchTransport>();
+                services.RemoveAll<ILegendConnectResearchPageRetriever>();
+                services.AddSingleton<ILegendConnectResearchSearchTransport>(search);
+                services.AddSingleton<ILegendConnectResearchPageRetriever>(pages);
+            });
+        var founder = await SeedFounderAsync(scope.Db);
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                scope.Resolve<ILegendConnectOperations>(),
+                new AgentProfileAccessResolver(scope.Db)),
+            null);
+
+        var output = await authority.ExecuteAsync(
+            founder,
+            new FounderAiToolCall(
+                "research-policy-probe",
+                "legend_research_internet",
+                """{"question":"Verify the published environmental sampling methodology.","source_language":"en"}"""),
+            "legend",
+            CancellationToken.None,
+            nativeOnly
+                ? LegendConnectExternalProviderPolicy.NativeOnly
+                : LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.Equal(expectedTransportCalls, search.CallCount);
+        Assert.Equal(expectedTransportCalls, pages.CallCount);
+        if (nativeOnly)
+        {
+            Assert.Contains("native_only_external_research_forbidden", output);
+            AssertNoExternalProviderWasReached(scope.External,
+                "Tool dispatch must preserve native-only isolation,");
+        }
+        else
+        {
+            Assert.Contains("CountingSearchTransport", output);
+        }
     }
 
     private static LegendConnectResearchRequest ResearchRequest()

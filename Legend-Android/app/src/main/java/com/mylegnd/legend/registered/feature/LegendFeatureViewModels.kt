@@ -35,6 +35,12 @@ data class FounderAiTranscriptMessage(
     val role: String,
     val content: String,
     val responseAuthority: String? = null,
+    val foundationModel: String? = null,
+    val foundationHosting: String? = null,
+    val externalAnsweringUsed: Boolean? = null,
+    val escalationUsed: Boolean? = null,
+    val researchState: String? = null,
+    val learningState: String? = null,
 )
 
 data class FounderAiConversationState(
@@ -127,6 +133,12 @@ class FounderAiViewModel(
                                     role = "assistant",
                                     content = response.message,
                                     responseAuthority = response.responseAuthority,
+                                    foundationModel = response.foundationModel,
+                                    foundationHosting = response.foundationHosting,
+                                    externalAnsweringUsed = response.externalAnsweringUsed,
+                                    escalationUsed = response.escalationUsed,
+                                    researchState = response.researchState,
+                                    learningState = response.learningState,
                                 ),
                             )
                         } else {

@@ -23,6 +23,10 @@ public static class UserIdExtensions
         return Norm(oid);
     }
 
+    /// <summary>Canonical tenant scope for both unmapped and mapped Entra tokens.</summary>
+    public static string GetCanonicalTenantId(this ClaimsPrincipal user) =>
+        Norm(Claim(user, "tid") ?? Claim(user, "http://schemas.microsoft.com/identity/claims/tenantid"));
+
     /// <summary>
     /// Legacy candidates that may have been stored historically.
     /// Used ONLY for self-healing migrations when an old link exists.

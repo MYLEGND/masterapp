@@ -1,0 +1,68 @@
+# Translation and platform implementation evidence
+
+Baseline: `144567d7a39ea76d50f3d5efd3aae08f3595f85e`; shared integration candidate remains uncommitted at specialist handoff. Specialist requested `gpt-6-astra`, `high` reasoning through confirmed agent invocation. No deployment, provider-backed tests, production data reads, database writes, or mobile publishing performed by this specialist.
+
+## Confirmed authorities and contract matrix
+
+| Responsibility | Authority | Consumers |
+| --- | --- | --- |
+| Source language | `LegendConnectTranslationRouter.DetectLanguageAsync`, existing language registry and `AzureTranslatorService` provider | Founder reply source resolver, messaging body detection |
+| Preferred recipient language | `IControlledResourceAccessService` canonical persisted preference | Messaging routing and `ApplicationLocalizationService`; platform catalog clients |
+| Translation and reuse | `LegendConnectTranslationRouter`, existing `LegendTranslationAlignments` retained persistence | Messaging, app catalog, notifications, conversation translation callers |
+| Azure HTTP | `AzureTranslatorService` only | Router; native clients do not possess credentials |
+| Response authority | Existing server reply's optional `responseAuthority` string | Web append/reload rendering; iOS response/transcript model and label; Android response/transcript model and label |
+| Hosted primary inference label | Server value `HostedFoundation` | All three platforms display `LEGEND · hosted foundation`, separately from `LegendAi`, `GovernedResearch`, `OpenAITeacher`, `SystemDiagnostic` |
+
+Unknown authority values remain compatible and do not acquire a native label. No new client routing, policy, provider selection, Azure caller, translation store, or schema is introduced. The new label enters the existing shared retained-copy manifest using its generator. iOS authority rendering now resolves through its existing `LegendLocalized` presentation authority; Android already uses `legendLocalized`. Web's existing DOM catalog observer translates static authority copy.
+
+## Direct fixes
+
+1. **Azure automatic source detection bypassed the confidence authority.** `/detect` rejected scores below 0.50, but single and batch `/translate` accepted their automatic detection without score validation. Extracted the existing detection parser inside the existing Azure client and use it in all three paths. Unknown/low-confidence source returns a failed result with no translated content; explicit valid sources remain authoritative. Invalid declared sources now fail before provider calls rather than silently turning into automatic detection. Malformed or out-of-range detection scores fail explicitly.
+2. **Cancelled retained-translation waiters could not stop waiting independently.** Extend the existing coalescer contract with a cancellation token, update both router callers, and let joined requests stop waiting. Only completion of the owning factory removes the in-flight entry; a cancelled waiter cannot release it and permit a duplicate charge. The owner continues awaiting its cancellation-aware factory so scoped dependencies are not disposed while their work is running. No detached background task is introduced.
+3. **Reordered concurrent batches shared an ordered result list.** The batch coalescing key sorted identities although return values follow request order. Preserve identity order in the coalescing key. Existing sorted provider-capacity reservation identity remains the cross-instance duplicate charge fence. Tests exercise reversed concurrent requests and assert each result order.
+4. **Hosted primary answering lacked an honest cross-platform label.** Add `HostedFoundation` to the existing authority rendering on web, iOS, Android. No self-hosted status is claimed.
+5. **Web app-copy localization could alter conversation content.** Its catalog observer excludes `[data-user-content]`, but the Founder conversation body lacked that marker. Mark the actual body span while leaving the authority label eligible for app-copy localization. The server's language and explicit response instructions therefore survive subsequent DOM localization and streaming final-result rendering.
+
+Existing retained keys already include stable source ID, source hash, source revision, source/target languages, translation context, placeholder contract, provider/version, reuse scope, and scope hash. Existing messaging source detection explicitly refuses to infer body language from a sender preference. Existing same-language bypass and approved scoped memory precedence are preserved. Semantic text normalization is unchanged; changing its persistence semantics would require separate evidence and migration analysis.
+
+## Verification performed
+
+- `node --check AgentPortal/wwwroot/js/legend-founder-ai.js`: exit 0.
+- `git diff --check`: exit 0 at pre-handoff source review.
+- `ruby scripts/generate-application-copy-manifest.rb`: exit 0, 5,731 entries; inspected output contains exactly the added hosted label and catalog-version update. No `--rewrite` option used.
+- Added `TranslationRequestCoalescerTests`: cancelled waiter/fence preservation, scope isolation/failure release, reversed batch result order through the router with mocked approved evidence and zero provider use.
+- Extended `AzureTranslatorServiceTests`: single/batch confidence parity (Haitian Creole high/low scores and malformed/out-of-range scores), invalid source zero-call assertion.
+
+.NET tests were **NOT RUN by this specialist**: shared worktree had no restored test assets and lead owns coordinated builds. Lead/verification must run the focused translation tests plus existing `ApplicationLocalizationArchitectureTests` and `MobileMessagingTranslationEndToEndTests`. Existing suites contain approved retained reuse, scope/revision separation, same-language bypass, translation structure/provenance, retained corruption recovery, recipient preference, and ambiguity cases; their existence is not a pass.
+
+Native iOS/Android builds, device rendering/accessibility, real Azure Haitian Creole quality/latency/cache charges, authenticated Founder language preference flows, candidate-code production-data checks, and the new foundation metadata lifecycle are **UNVERIFIED at handoff**. A string-compatible UI source change does not prove a published mobile release. Backend governed response details remain the runtime owner's scope.
+
+Rollback is ordinary version control of these files; existing records, provider/version identity, schema, registrations, routes, and release workflow remain intact. No speculative retained-cache migration or new paid infrastructure was added.
+
+## Additional bounded multilingual research correction
+
+Lead authorized `LegendConnectInternetResearch.cs`, `LegendConnectOperations.cs`, and `LegendConnectGovernedInternetResearchTests.cs` after cross-agent diagnosis. The search prompt previously simultaneously required exact source-language quotes and response-language statements. It now explicitly preserves original-language quotes and omits unsupported cross-language claim proposals while retaining source discoveries.
+
+`BuildResearchEvidencePacket` previously manufactured `EvidenceExtractionLanguageDeclared` receipts without running any translation. Removed this receipt creation at its authoritative source. Existing admissibility still requires independently validated proposal-bound translation provenance; an Azure output alone would not satisfy that requirement and is never relabeled `GovernedTranslationValidated`.
+
+After normal lineage validation and evidence assessment, a session with no admissible material evidence and retrieved cross-language documents now returns `internet_research_cross_language_translation_unavailable`, preserving original documents, citations, source/query/page receipts and timings. Sessions with sufficient same-language admissible evidence continue even when ancillary sources differ. The runtime can then take the policy-permitted next action.
+
+Added two mocked full-operations tests using Haitian Creole question `Verifye valè mezi sa a avèk sous piblik yo.` and an English original document: no claim proposals and an adversarial translated proposal without validated provenance. Assertions cover explicit failure, zero manufactured translation receipts, source preservation, and no canonical knowledge rows. These added tests await the lead's stable combined build/test run. This is honest service-limitation behavior, **not** completed cross-language research translation or measured Haitian Creole model quality.
+
+## Follow-up metadata parity correction
+
+Independent review found that the initial hosted label fix retained authority but dropped additive capability metadata. Existing web persisted message objects, iOS decoded response and transcript objects, and Android decoded response and transcript objects now retain all six server fields: `foundationModel`, `foundationHosting`, `externalAnsweringUsed`, `escalationUsed`, `researchState`, `learningState`. Existing web localStorage saves these fields; native platforms retain them in their existing conversation state (no new durable mobile store added).
+
+All three existing response bubbles now display recognized server research outcomes, explicit escalation use, and confirmed teaching submission/review or evidence-needed states. They do not infer promotion, native independence, or research from response wording; unknown/null metadata remains unavailable. Debug model settings and backend reason strings are not shown in the status line. Seven status labels were added through the canonical shared copy generator, for 5,738 entries total.
+
+Added Android optional-field JSON roundtrip/legacy compatibility test and iOS streamed final response-to-transcript metadata test. `node --check AgentPortal/wwwroot/js/legend-founder-ai.js` and `swiftc -frontend -parse Legend-iOS/Legend/Features/Home/LegendApplicationShell.swift Legend-iOS/LegendTests/MobileNativeContractTests.swift` both exited 0, as did `git diff --check`. Swift parsing is syntax evidence only; native build/device tests and Android test execution remain unperformed by this specialist.
+
+## Executed native gates (supersedes earlier pending native status)
+
+The lead subsequently authorized native execution. Android debug app assembly and unit-test compilation passed; 10 focused tests passed with zero failures/errors/skips (`FounderAiMobileContractTest`: 4, `FounderAiChatStreamTest`: 6). Gradle completed in 131 seconds, exit 0. The initially requested `MobileContractSerializationTests` class does not exist; no test result is claimed for it. The first attempt failed after 7 seconds due to absent ignored local `legend.properties`; the existing checkout's non-secret runtime configuration was copied into the ignored candidate location, without changing signing settings or source configuration.
+
+iOS app and test bundles compiled with Xcode 26.6; all five selected Founder authentication/streaming/terminal-state/cancellation/metadata tests passed on the iPhone 17 Pro iOS 26.5 simulator, zero failures, 0.134 seconds test execution, xcodebuild exit 0. Signing was disabled, cached Swift packages reused, and candidate DerivedData isolated. These tests use mocked transports; they prove native code/contract execution, not live production behavior or end-user layout quality.
+
+Exact commands, result counts, artifacts and source SHA-256 values are recorded in `NATIVE-VERIFICATION.json`. No signed release was built/published, no project signing configuration changed, and no production mutation occurred. Existing unrelated running simulators were not changed or shut down.
+
+The integrated adversarial cross-language test initially failed: the new limitation branch counted `MaterialEvidence`, which intentionally includes `ObservationOnly` rows for provenance. Corrected the authoritative branch to consult existing `Admissibility` dispositions (`ControllingEvidence` or `CorroboratingEvidence`). Unsupported translated observations no longer bypass the explicit limitation. The adversarial test assertions were not changed; a rebuilt candidate rerun is required.

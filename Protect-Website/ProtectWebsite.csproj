@@ -1,8 +1,5 @@
 ﻿<Project>
   <PropertyGroup>
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/ProtectWebsite/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/ProtectWebsite/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/ProtectWebsite/</BaseOutputPath>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

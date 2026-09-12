@@ -178,7 +178,8 @@ internal sealed class LegendFounderToolAuthority
         LegendConnectNativeInferenceSnapshot? internalInference,
         FounderAiMutationAuthorization? restrictedAuthorization,
         CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        LegendConnectExternalProviderPolicy? providerPolicy = null,
+        bool foundationRequestedVerification = false)
     {
         var decision = internalInference?.ResearchDecision ??
             await _legend.DecideResearchNeededAsync(
@@ -187,7 +188,8 @@ internal sealed class LegendFounderToolAuthority
                 sourceLanguageCode,
                 internalInference,
                 cancellationToken,
-                providerPolicy);
+                providerPolicy,
+                foundationRequestedVerification);
         var requestId = Guid.NewGuid();
         if (!decision.ResearchRequired)
         {
@@ -291,6 +293,11 @@ internal sealed class LegendFounderToolAuthority
             if (authorizationFailure is not null)
                 return authorizationFailure;
         }
+
+        // Preserve the existing structured missing/malformed mutation-consent
+        // result above. Before dispatch, provider tool selection still grants
+        // no authority, including read-only services without actor arguments.
+        FounderGuard.EnsureFounderOrThrow(founder);
 
         switch (call.Name)
         {
@@ -631,7 +638,9 @@ internal sealed class LegendFounderToolAuthority
                         sourceLanguage,
                         internalInference: null,
                         call.MutationAuthorization,
-                        cancellationToken));
+                        cancellationToken,
+                        providerPolicy,
+                        foundationRequestedVerification: true));
             }
 
             case "legend_submit_machine_learning_candidate":

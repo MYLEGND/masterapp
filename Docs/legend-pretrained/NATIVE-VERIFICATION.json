@@ -1,0 +1,53 @@
+{
+  "environment": "local candidate code; Android JVM mocked transport and iOS simulator mocked transport, not live production",
+  "baseline": "144567d7a39ea76d50f3d5efd3aae08f3595f85e",
+  "sourceSha256": {
+    "Legend-ios/Legend/Features/Home/LegendApplicationShell.swift": "ebcfe33fb10e691adb10e9b8b7f38490ceb211f459d6d0f8b878500142ba515e",
+    "Legend-ios/LegendTests/MobileNativeContractTests.swift": "b39098f56ce6d7347c7999020a4408a32b6f9b4252f261cfbf2090d1a52bf62f",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt": "6a05cd267c29374225d8b613d6170f2076b1bedbb97d58700fa66afcacabdb74",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/LegendFeatureViewModels.kt": "c84493461cb179fb5c733578ecded70b9f21028c1508fdd7bc36c402ab8a1336",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendFounderAiConversation.kt": "21fb87c6b71a4cb90cf3ef66d8cae5037d435d75ee884648e2312fcd69895030",
+    "Legend-Android/app/src/test/java/com/mylegnd/legend/registered/FounderAiMobileContractTest.kt": "8a51bfa02082d859856c129ddd355dba1cba8dbd54539300de0cf65ca2242668",
+    "Legend-Design/legend-application-copy.json": "66673dc8ceb0a99481185ac2e1b1a5ff06dd7c995872fd82ef8d590bdd2aefde"
+  },
+  "android": {
+    "command": "ANDROID_HOME=/Users/zacowen/Library/Android/sdk ./gradlew --offline --no-daemon :app:assembleDebug :app:testDebugUnitTest --tests '*MobileContractSerializationTests' --tests '*FounderAiMobileContractTest' --tests '*FounderAiChatStreamTest'",
+    "exitCode": 0,
+    "buildElapsedSeconds": 131,
+    "tests": [
+      {
+        "name": "com.mylegnd.legend.registered.FounderAiMobileContractTest",
+        "tests": "4",
+        "skipped": "0",
+        "failures": "0",
+        "errors": "0",
+        "timestamp": "2026-09-12T16:25:21.106Z",
+        "time": "0.003"
+      },
+      {
+        "name": "com.mylegnd.legend.registered.FounderAiChatStreamTest",
+        "tests": "6",
+        "skipped": "0",
+        "failures": "0",
+        "errors": "0",
+        "timestamp": "2026-09-12T16:25:20.129Z",
+        "time": "0.975"
+      }
+    ],
+    "missingRequestedClass": "MobileContractSerializationTests does not exist in this repository; no pass claimed for it",
+    "initialAttempt": "failed after 7s because ignored legend.properties absent; reused existing local non-secret runtime config, not signing config",
+    "log": "/private/tmp/legend-pretrained-android-build.log"
+  },
+  "ios": {
+    "command": "xcodebuild -project Legend.xcodeproj -scheme Legend -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,id=71E3265D-C3ED-4173-AF42-D45462DBBA56' -derivedDataPath /private/tmp/legend-pretrained-ios-derived -clonedSourcePackagesDirPath /Users/zacowen/Library/Developer/Xcode/DerivedData/Legend-ghuzaepzitxhstckdbzfbwboytse/SourcePackages -disableAutomaticPackageResolution -skipPackageUpdates -only-testing:LegendTests/MobileNativeContractTests/testFounderChatConsumesProgressAndResultOnOneAuthenticatedPost -only-testing:LegendTests/MobileNativeContractTests/testFounderStreamRetainsCapabilityMetadataInTranscript -only-testing:LegendTests/MobileNativeContractTests/testFounderStreamPreservesStructuredFailureDespiteSuccessfulTransport -only-testing:LegendTests/MobileNativeContractTests/testFounderStreamRequiresTerminalResultAndConsistentSuccessStatus -only-testing:LegendTests/MobileNativeContractTests/testFounderStopCancelsTheOriginalStreamingPost CODE_SIGNING_ALLOWED=NO test",
+    "exitCode": 0,
+    "tests": 5,
+    "failures": 0,
+    "testExecutionSeconds": 0.134,
+    "testRunnerElapsedSeconds": 96.92,
+    "xcodeVersion": "26.6 (17F113)",
+    "simulator": "iPhone 17 Pro; iOS26.5",
+    "xcresult": "/private/tmp/legend-pretrained-ios-derived/Logs/Test/Test-Legend-2026.09.12_09-23-05--0700.xcresult",
+    "log": "/private/tmp/legend-pretrained-ios-build.log"
+  }
+}

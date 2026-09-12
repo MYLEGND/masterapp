@@ -234,6 +234,42 @@ public sealed class AzureTranslatorServiceTests
         Assert.Contains("Two", handler.RequestBody, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("0.49", false, "translation_language_ambiguous")]
+    [InlineData("1.1", false, "translation_provider_failed")]
+    [InlineData("\"unknown\"", false, "translation_provider_failed")]
+    [InlineData("0.99", true, null)]
+    public async Task AutomaticSourceDetection_UsesTheSameConfidenceAuthorityForSingleAndBatch(
+        string score, bool succeeded, string? error)
+    {
+        var handler = new RecordingHandler(_ => JsonResponse(
+            "[{\"detectedLanguage\":{\"language\":\"ht\",\"score\":" + score +
+            "},\"translations\":[{\"text\":\"Good evening\",\"to\":\"en\"}]}]"));
+        var service = CreateService(handler);
+        var single = await service.TranslateAsync("Bonswa", "en");
+        var batch = Assert.Single(await service.TranslateBatchAsync(["Bonswa"], "en"));
+        foreach (var result in new[] { single, batch })
+        {
+            Assert.Equal(succeeded, result.Succeeded);
+            Assert.Equal(error, result.ErrorCode);
+            Assert.Equal(succeeded ? "ht" : null, result.DetectedLanguage);
+            Assert.Equal(succeeded ? "Good evening" : null, result.TranslatedText);
+        }
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task InvalidDeclaredSource_DoesNotSilentlyUseProviderAutoDetection()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("[]"));
+        var service = CreateService(handler);
+        var single = await service.TranslateAsync("Bonswa", "en", "not a language!");
+        var batch = Assert.Single(await service.TranslateBatchAsync(["Bonswa"], "en", "not a language!"));
+        Assert.Equal("translation_language_unsupported", single.ErrorCode);
+        Assert.Equal("translation_language_unsupported", batch.ErrorCode);
+        Assert.Equal(0, handler.CallCount);
+    }
+
     private static AzureTranslatorService CreateService(RecordingHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);

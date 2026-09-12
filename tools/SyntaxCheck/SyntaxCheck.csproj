@@ -4,9 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/SyntaxCheck/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/SyntaxCheck/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/SyntaxCheck/</BaseOutputPath>
   </PropertyGroup>
 
   <ItemGroup>

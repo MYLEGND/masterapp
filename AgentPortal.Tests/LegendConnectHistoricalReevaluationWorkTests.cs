@@ -616,6 +616,33 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
             "worker-c"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OversizedFailureDetail_FitsPersistedSchemaAndReleasesLease(bool unicodeBoundary)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StartAsync(EvaluatorVersion);
+        AddSourceFamily(fixture.Db, "en", "retained source", 402);
+        await fixture.Db.SaveChangesAsync();
+        await fixture.Work.SeedNextBatchAsync(EvaluatorVersion,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, "test-seeder");
+        var claim = Assert.IsType<LegendHistoricalReevaluationWorkClaim>(
+            await fixture.Work.TryClaimNextAsync(EvaluatorVersion,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, "worker-a"));
+        var detail = unicodeBoundary ? new string('x', 499) + "😀" + new string('y', 900) : new string('x', 1400);
+        await fixture.Work.FailAsync(claim, "evaluator_failure", errorMessage: detail);
+        var item = await fixture.Db.LegendHistoricalReevaluationWorkItems.SingleAsync(x => x.Id == claim.WorkItemId);
+        var property = fixture.Db.Model.FindEntityType(typeof(LegendHistoricalReevaluationWorkItem))!
+            .FindProperty(nameof(LegendHistoricalReevaluationWorkItem.LastErrorMessage))!;
+        Assert.True(item.LastErrorMessage!.Length <= property.GetMaxLength());
+        Assert.Equal(unicodeBoundary ? 499 : 500, item.LastErrorMessage.Length);
+        Assert.False(char.IsHighSurrogate(item.LastErrorMessage[^1]));
+        Assert.Equal("Pending", item.ProcessingState);
+        Assert.Equal("evaluator_failure", item.LastErrorCode);
+        Assert.Null(item.LeaseToken);
+    }
+
     [Fact]
     public async Task RetryAccounting_IsDeterministic_AndTerminalFailureRetiresWithoutBlockingThePhase()
     {

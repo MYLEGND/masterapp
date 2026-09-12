@@ -49,6 +49,26 @@ class FounderAiMobileContractTest {
     }
 
     @Test
+    fun `foundation capability metadata survives response decoding and serialization`() {
+        val response = json.decodeFromString(
+            FounderAiChatResponse.serializer(),
+            """{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"HostedFoundation","foundationModel":"configured-model","foundationHosting":"external","externalAnsweringUsed":true,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic"}""",
+        )
+        val restored = json.decodeFromString(FounderAiChatResponse.serializer(), json.encodeToString(response))
+        assertEquals(response, restored)
+        assertEquals("configured-model", restored.foundationModel)
+        assertEquals("external", restored.foundationHosting)
+        assertEquals(true, restored.externalAnsweringUsed)
+        assertEquals(false, restored.escalationUsed)
+        assertEquals("InsufficientEvidence", restored.researchState)
+        assertEquals("AwaitingCritic", restored.learningState)
+        val legacy = json.decodeFromString(FounderAiChatResponse.serializer(),
+            """{"succeeded":true,"mode":"legend","message":"Older response."}""")
+        assertEquals(null, legacy.externalAnsweringUsed)
+        assertEquals(null, legacy.researchState)
+    }
+
+    @Test
     fun `progress remains an advisory typed stream rather than a second response contract`() {
         val envelope = json.decodeFromString(
             FounderAiProgressEnvelope.serializer(),

@@ -87,37 +87,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                     "translation_provider_failed");
             }
 
-            var candidate = document.RootElement[0];
-            var language = candidate.TryGetProperty("language", out var property)
-                ? CommunicationLanguages.NormalizeOrNull(property.GetString())
-                : null;
-            if (language is null)
-            {
-                return new TranslationDetectionResult(
-                    false,
-                    null,
-                    "translation_language_unsupported");
-            }
-
-            if (!candidate.TryGetProperty("score", out var scoreProperty) ||
-                !scoreProperty.TryGetDecimal(out var confidence))
-            {
-                return new TranslationDetectionResult(
-                    false,
-                    null,
-                    "translation_provider_failed");
-            }
-
-            return confidence < MinimumLanguageIdentificationConfidence
-                ? new TranslationDetectionResult(
-                    false,
-                    null,
-                    "translation_language_ambiguous",
-                    confidence)
-                : new TranslationDetectionResult(
-                    true,
-                    language,
-                    Confidence: confidence);
+            return ReadLanguageDetection(document.RootElement[0]);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -133,6 +103,45 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             _logger.LogWarning(exception, "Azure Translator detection response was invalid.");
             return new TranslationDetectionResult(false, null, "translation_provider_failed");
         }
+    }
+
+    private static TranslationDetectionResult ReadLanguageDetection(JsonElement candidate)
+    {
+        if (candidate.ValueKind != JsonValueKind.Object)
+            return new TranslationDetectionResult(false, null, "translation_provider_failed");
+
+        var language = candidate.TryGetProperty("language", out var property) &&
+            property.ValueKind == JsonValueKind.String
+            ? CommunicationLanguages.NormalizeOrNull(property.GetString())
+            : null;
+        if (language is null)
+        {
+            return new TranslationDetectionResult(
+                false,
+                null,
+                "translation_language_unsupported");
+        }
+
+        if (!candidate.TryGetProperty("score", out var scoreProperty) ||
+            scoreProperty.ValueKind != JsonValueKind.Number ||
+            !scoreProperty.TryGetDecimal(out var confidence) || confidence < 0m || confidence > 1m)
+        {
+            return new TranslationDetectionResult(
+                false,
+                null,
+                "translation_provider_failed");
+        }
+
+        return confidence < MinimumLanguageIdentificationConfidence
+            ? new TranslationDetectionResult(
+                false,
+                null,
+                "translation_language_ambiguous",
+                confidence)
+            : new TranslationDetectionResult(
+                true,
+                language,
+                Confidence: confidence);
     }
 
     public Task<TranslationProviderResult> TranslateAsync(
@@ -160,7 +169,8 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 "external_provider_forbidden_by_native_only_policy");
         }
 
-        if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget))
+        if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget) ||
+            (sourceLanguage is not null && CommunicationLanguages.NormalizeOrNull(sourceLanguage) is null))
             return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_language_unsupported");
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
             return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_unavailable");
@@ -191,10 +201,14 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             }
 
             var detected = source;
-            if (detected is null && document.RootElement[0].TryGetProperty("detectedLanguage", out var detectedLanguage) &&
-                detectedLanguage.TryGetProperty("language", out var detectedValue))
+            if (detected is null)
             {
-                detected = CommunicationLanguages.NormalizeOrNull(detectedValue.GetString());
+                var detection = document.RootElement[0].TryGetProperty("detectedLanguage", out var detectedLanguage)
+                    ? ReadLanguageDetection(detectedLanguage)
+                    : new TranslationDetectionResult(false, null, "translation_provider_failed");
+                if (!detection.Succeeded)
+                    return new TranslationProviderResult(false, null, null, ProviderIdentifier, detection.ErrorCode);
+                detected = detection.Language;
             }
 
             var translated = useHtml ? protectedText.Restore(translatedText.GetString()) : translatedText.GetString();
@@ -250,7 +264,8 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         bool useHtml, CancellationToken cancellationToken)
     {
         var protectedTexts = texts.Select(AzureProtectedText.Create).ToArray();
-        if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget))
+        if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget) ||
+            (sourceLanguage is not null && CommunicationLanguages.NormalizeOrNull(sourceLanguage) is null))
             return BatchFailure(texts.Count, "translation_language_unsupported");
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
             return BatchFailure(texts.Count, "translation_provider_unavailable");
@@ -283,9 +298,18 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             foreach (var item in document.RootElement.EnumerateArray())
             {
                 var detected = source;
-                if (detected is null && item.TryGetProperty("detectedLanguage", out var detectedLanguage) &&
-                    detectedLanguage.TryGetProperty("language", out var detectedValue))
-                    detected = CommunicationLanguages.NormalizeOrNull(detectedValue.GetString());
+                if (detected is null)
+                {
+                    var detection = item.TryGetProperty("detectedLanguage", out var detectedLanguage)
+                        ? ReadLanguageDetection(detectedLanguage)
+                        : new TranslationDetectionResult(false, null, "translation_provider_failed");
+                    if (!detection.Succeeded)
+                    {
+                        results.Add(new TranslationProviderResult(false, null, null, ProviderIdentifier, detection.ErrorCode));
+                        continue;
+                    }
+                    detected = detection.Language;
+                }
 
                 if (!item.TryGetProperty("translations", out var translations) ||
                     translations.ValueKind != JsonValueKind.Array ||

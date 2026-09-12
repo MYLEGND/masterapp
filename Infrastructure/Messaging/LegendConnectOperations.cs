@@ -410,7 +410,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
             CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null)
+            LegendConnectExternalProviderPolicy? providerPolicy = null,
+            bool foundationRequestedVerification = false)
     {
         // Internet research is an external boundary. A native-only request may
         // not be routed to it, so the decision is refused here rather than
@@ -444,7 +445,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             governedLanguage ?? sourceLanguageCode,
             internalInference,
             DateTime.UtcNow,
-            languageGoverned: governedLanguage is not null);
+            languageGoverned: governedLanguage is not null,
+            foundationRequestedVerification: foundationRequestedVerification);
     }
 
     internal static LegendConnectResearchNeededDecision DecideResearchNeeded(
@@ -453,7 +455,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         LegendConnectNativeInferenceSnapshot? internalInference,
         DateTime decidedUtc,
         bool languageGoverned = true,
-        LegendConnectDiscourseStateSnapshot? discourseState = null)
+        LegendConnectDiscourseStateSnapshot? discourseState = null,
+        bool foundationRequestedVerification = false)
     {
         var question = (input ?? string.Empty).Trim();
         var normalized = question.ToLowerInvariant();
@@ -611,6 +614,17 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                 true,
                 LegendConnectResearchNeed.ExplicitVerificationRequest,
                 "explicit_verification_requires_research");
+        }
+
+        // A tool selection requests public verification; it does not authorize
+        // restricted access. The existing access classification, Founder consent,
+        // provider policy and URL transport boundaries still enforce that scope.
+        // This intent must not require a curriculum-derived escalation flag.
+        if (foundationRequestedVerification && !internalAvailable &&
+            !IsConversationInternalQuestion(normalized))
+        {
+            return Decision(true, LegendConnectResearchNeed.ExplicitVerificationRequest,
+                "foundation_requested_factual_verification");
         }
 
         // Failed native understanding does not establish that a factual
@@ -1038,6 +1052,40 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                 request.MinimumIndependentSources,
                 reasoningStartedUtc,
                 evidencePacket.LanguageLineage);
+        // MaterialEvidence also retains ObservationOnly rows for provenance;
+        // their presence does not mean an answer has admissible support.
+        if (!assessment.Admissibility.Any(item => item.Disposition is
+                LegendConnectResearchEvidenceDisposition.ControllingEvidence or
+                LegendConnectResearchEvidenceDisposition.CorroboratingEvidence) &&
+            evidencePacket.Documents.Any(document =>
+                !string.IsNullOrWhiteSpace(document.DocumentLanguageCode) &&
+                !string.Equals(document.DocumentLanguageCode, request.Decision.SourceLanguageCode,
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return Failure(
+                "internet_research_cross_language_translation_unavailable",
+                "Public sources were retrieved, but no admissible evidence in the response language was available. A governed cross-language evidence translation is not available.",
+                transport: evidencePacket.Transport,
+                model: evidencePacket.ModelVersion,
+                settings: evidencePacket.SettingsIdentity,
+                latency: (long)Math.Ceiling((DateTime.UtcNow - startedUtc).TotalMilliseconds),
+                cost: evidencePacket.CostMicrounits,
+                searchQueryReceipts: evidencePacket.SearchQueryReceipts,
+                pageReceipts: evidencePacket.PageReceipts,
+                languageLineage: evidencePacket.LanguageLineage,
+                searchProvider: evidencePacket.SearchProvider,
+                executedQueries: evidencePacket.ExecutedQueries,
+                searchResults: evidencePacket.SearchResults,
+                sources: evidencePacket.Sources,
+                documents: evidencePacket.Documents,
+                claimEvidence: evidencePacket.ClaimEvidence,
+                contradictingEvidence: evidencePacket.ContradictingEvidence,
+                citations: evidencePacket.Citations,
+                searchLatency: searchResult.LatencyMilliseconds,
+                retrievalLatency: pageResult.LatencyMilliseconds,
+                reasoningLatency: (long)Math.Ceiling((DateTime.UtcNow - reasoningStartedUtc).TotalMilliseconds),
+                searchCost: searchResult.CostMicrounits);
+        }
         var unresolvedInternalConflict =
             request.Decision.Need ==
                 LegendConnectResearchNeed.ConflictingInternalEvidence &&
@@ -1967,8 +2015,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         ContainsResearchSignal(normalized, "legend", "our system", "our database", "our model") &&
         ContainsResearchSignal(
             normalized,
-            "system state", "database", "readiness", "training state",
-            "model state", "model version", "provider capacity", "coverage",
+            "system state", "database", "readiness", "training",
+            "model", "provider capacity", "coverage",
             "retained knowledge", "currently know", "current knowledge");
 
     private static bool IsExternalFactualQuestion(string normalized)
@@ -2282,31 +2330,9 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             .Select(item => item!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var translationReceipts = pages.Documents
-            .Where(item =>
-                !string.IsNullOrWhiteSpace(item.DocumentLanguageCode) &&
-                !string.Equals(item.DocumentLanguageCode, userLanguage, StringComparison.OrdinalIgnoreCase))
-            .Select(item =>
-            {
-                var outputIdentity = LegendLanguageIdentity.TextHash(string.Join(
-                    '|',
-                    claims.Where(claim => claim.DocumentIdentity == item.DocumentIdentity)
-                        .Select(claim => claim.Statement)
-                        .Concat(contradictions
-                            .Where(contradiction => contradiction.DocumentIdentity == item.DocumentIdentity)
-                            .Select(contradiction => contradiction.Statement))));
-                return new LegendConnectResearchTranslationReceipt(
-                    LegendLanguageIdentity.TextHash(
-                        "research-translation-receipt|v1|" + item.DocumentIdentity + "|" + userLanguage),
-                    item.DocumentLanguageCode!,
-                    userLanguage,
-                    search.Transport,
-                    item.ContentHash,
-                    outputIdentity,
-                    item.RetrievedUtc,
-                    "EvidenceExtractionLanguageDeclared");
-            })
-            .ToArray();
+        // Search extraction has not executed or independently validated a
+        // translation. A language declaration cannot manufacture a receipt;
+        // admissibility continues to reject unsupported cross-language claims.
         var languageLineage = new LegendConnectResearchLanguageLineage(
             userLanguage,
             search.ExecutedQueries
@@ -2316,8 +2342,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             documentLanguages,
             userLanguage,
             userLanguage,
-            translationReceipts,
-            "EvidenceStatementsRequestedInUserLanguage",
+            [],
+            "OriginalLanguageEvidenceOnly",
             search.Transport);
 
         return new LegendConnectResearchEvidencePacket(

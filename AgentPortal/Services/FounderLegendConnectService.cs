@@ -241,7 +241,8 @@ public sealed class FounderLegendConnectService
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
             CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null)
+            LegendConnectExternalProviderPolicy? providerPolicy = null,
+            bool foundationRequestedVerification = false)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.DecideResearchNeededAsync(
@@ -249,7 +250,8 @@ public sealed class FounderLegendConnectService
             sourceLanguageCode,
             internalInference,
             cancellationToken,
-            providerPolicy);
+            providerPolicy,
+            foundationRequestedVerification);
     }
 
     internal async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(

@@ -1,9 +1,10 @@
 <Project>
   <PropertyGroup>
-    <!-- Keep obj/bin off OneDrive while still isolating per-project intermediates -->
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/$(MSBuildProjectName)/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <!-- Keep obj/bin off OneDrive. Isolated worktrees can select their own root without changing CI artifact paths. -->
+    <MasterAppArtifactsRoot Condition="'$(MasterAppArtifactsRoot)' == ''">/tmp/masterapp</MasterAppArtifactsRoot>
+    <BaseIntermediateOutputPath>$(MasterAppArtifactsRoot)/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MasterAppArtifactsRoot)/obj/$(MSBuildProjectName)/</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(MasterAppArtifactsRoot)/bin/$(MSBuildProjectName)/</BaseOutputPath>
     <!-- Application projects keep extension props disabled. AgentPortal.Tests alone imports
          the restored test-runner build props so VSTest/xUnit discovery is authoritative. -->
     <ImportProjectExtensionProps Condition="'$(MSBuildProjectName)' == 'AgentPortal.Tests'">true</ImportProjectExtensionProps>

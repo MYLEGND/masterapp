@@ -298,7 +298,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(32);
             entity.Property(item => item.LeaseOwner).HasMaxLength(128);
             entity.Property(item => item.LastErrorCode).HasMaxLength(120);
-            entity.Property(item => item.LastErrorMessage).HasMaxLength(500);
+            entity.Property(item => item.LastErrorMessage).HasMaxLength(LegendHistoricalReevaluationWorkItem.MaximumErrorMessageLength);
 
             entity.HasIndex(item => new { item.EvaluatorVersion, item.Phase, item.WorkKind, item.WorkIdentity })
                 .IsUnique()

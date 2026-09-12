@@ -511,8 +511,27 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
+                val capabilityStatus = listOfNotNull(
+                    when (message.researchState) {
+                        "Conclusion" -> legendLocalized("Research completed")
+                        "InsufficientEvidence" -> legendLocalized("Research found insufficient evidence")
+                        "UnresolvedConflict" -> legendLocalized("Research found conflicting evidence")
+                        "Failure" -> legendLocalized("Research could not be completed")
+                        else -> null
+                    },
+                    if (message.escalationUsed == true) legendLocalized("Escalation used") else null,
+                    when (message.learningState) {
+                        "Submitted", "AwaitingCritic" -> legendLocalized("Teaching submitted for review")
+                        "InsufficientEvidence" -> legendLocalized("Teaching needs more evidence")
+                        else -> null
+                    },
+                ).joinToString(" · ")
+                if (capabilityStatus.isNotEmpty()) {
+                    Text(capabilityStatus, style = LegendTypography.Label, color = LegendColors.OnNavy)
+                }
                 val authorityLabel = when (authority) {
                     "LegendAi" -> legendLocalized("Legend® Ai")
+                    "HostedFoundation" -> legendLocalized("LEGEND · hosted foundation")
                     "GovernedResearch" -> legendLocalized("LEGEND governed research")
                     "OpenAITeacher" -> legendLocalized("OpenAI")
                     "SystemDiagnostic" -> legendLocalized("System diagnostic")

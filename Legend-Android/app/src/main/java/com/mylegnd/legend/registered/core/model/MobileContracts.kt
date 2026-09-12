@@ -55,6 +55,12 @@ import kotlinx.serialization.Serializable
     @SerialName("providerStatusCode") val providerStatusCode: Int? = null,
     val reference: String? = null,
     @SerialName("responseAuthority") val responseAuthority: String? = null,
+    @SerialName("foundationModel") val foundationModel: String? = null,
+    @SerialName("foundationHosting") val foundationHosting: String? = null,
+    @SerialName("externalAnsweringUsed") val externalAnsweringUsed: Boolean? = null,
+    @SerialName("escalationUsed") val escalationUsed: Boolean? = null,
+    @SerialName("researchState") val researchState: String? = null,
+    @SerialName("learningState") val learningState: String? = null,
     val stage: String? = null,
     val reason: String? = null,
 )

@@ -1,0 +1,87 @@
+{
+  "category": "actual-provider synthetic medium-effort canary, NOT candidate-code or production-data validation",
+  "results": [
+    {
+      "case": "creole_reasoning",
+      "prompt": "Yon pon ka pote 90 kilogram. Gen twa bwat ki peze 24, 35, ak 38 kilogram. San divize okenn bwat, ki pè bwat ki pi lou ou ka pote ansanm san depase limit la? Eksplike an kreyòl ayisyen.",
+      "model": "gpt-6-astra",
+      "status": "completed",
+      "effort": "medium",
+      "max_output_tokens": 32000,
+      "elapsed_ms": 3132,
+      "usage": {
+        "input_tokens": 66,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 110,
+        "output_tokens_details": {
+          "reasoning_tokens": 19
+        },
+        "total_tokens": 176
+      },
+      "output": [
+        {
+          "id": "rs_0a0a6a1269f3e49a016aa57b05942087d0b2200309374f4de4",
+          "type": "reasoning",
+          "content": [],
+          "summary": []
+        },
+        {
+          "id": "msg_0a0a6a1269f3e49a016aa57b05ea1887d093e1674787adbf5f",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "Ann kalkile pwa chak pè bwat:\n\n- 24 + 35 = **59 kilogram**\n- 24 + 38 = **62 kilogram**\n- 35 + 38 = **73 kilogram**\n\nTout pè yo anba limit **90 kilogram** nan. Pè ki pi lou a se **bwat 35 kilogram nan ak bwat 38 kilogram nan**, ki peze **73 kilogram ansanm**."
+            }
+          ],
+          "phase": "final_answer",
+          "role": "assistant"
+        }
+      ]
+    },
+    {
+      "case": "ordinary_explanation",
+      "prompt": "Explain in two short paragraphs how to compare two imperfect plans when neither dominates every criterion. Do not claim specific organizational facts.",
+      "model": "gpt-6-astra",
+      "status": "completed",
+      "effort": "medium",
+      "max_output_tokens": 32000,
+      "elapsed_ms": 9599,
+      "usage": {
+        "input_tokens": 30,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 154,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 184
+      },
+      "output": [
+        {
+          "id": "msg_0b8048b43862da1c016aa57b0a7ea087d0ba111bd9d2bb5229",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "When neither plan is better on every criterion, make the trade-offs explicit. List the criteria that matter—such as cost, speed, risk, and flexibility—and compare both plans using the same evidence and time horizon. Separate nonnegotiable requirements from preferences, then assign rough priorities to the remaining criteria rather than treating every advantage as equally important.\n\nNext, test whether the choice changes under reasonable shifts in priorities or uncertain estimates. If one plan remains preferable across those variations, the decision is more robust. If the result is close, consider reversibility, the cost of being wrong, and whether a small trial could resolve key uncertainties. Explain the final choice in terms of the trade-offs accepted, not as proof that one plan is best in every respect."
+            }
+          ],
+          "phase": "final_answer",
+          "role": "assistant"
+        }
+      ]
+    }
+  ]
+}
