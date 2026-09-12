@@ -19,16 +19,16 @@
                 <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 <div class="client-auth-brand-copy">
                     <span class="client-auth-brand-name">LEGEND™</span>
-                    <span class="client-auth-brand-label">CLIENT PORTAL</span>
+                    <span class="client-auth-brand-label">MY LEGEND</span>
                 </div>
             </header>
 
             <div class="client-auth-content">
-                <p class="client-auth-eyebrow">CLIENT ACCESS</p>
+                <p class="client-auth-eyebrow">MEMBER ACCESS</p>
                 <h1 id="activation-required-title">@Model.Title</h1>
                 <p class="client-auth-intro">@Model.Message</p>
                 <div class="client-auth-actions">
-                    <a class="client-auth-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Return to client sign-in</a>
+                    <a class="client-auth-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Return to member sign-in</a>
                 </div>
             </div>
         </section>

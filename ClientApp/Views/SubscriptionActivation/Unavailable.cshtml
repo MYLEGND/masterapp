@@ -16,12 +16,12 @@
     <main class="activation-page">
         <section class="activation-notice-card">
             <header>
-                <p class="activation-brand">Legend Client Portal</p>
+                <p class="activation-brand">LEGEND</p>
                 <h1>@Model.Title</h1>
                 <p>@Model.Message</p>
             </header>
             <div class="activation-notice-actions">
-                <a class="activation-link is-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Open client sign-in</a>
+                <a class="activation-link is-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Open member sign-in</a>
                 <a class="activation-link" href="@Model.ReturnUrl">Return</a>
             </div>
         </section>

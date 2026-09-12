@@ -1,7 +1,7 @@
 @model AgentPortal.Models.UserProfileViewModel
 
 @{
-    var fullName = User.Identity?.Name ?? "Agent";
+    var fullName = User.Identity?.Name ?? "Member";
     var firstName = fullName.Split(' ')[0];
 }
 

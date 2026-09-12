@@ -63,7 +63,7 @@ public class AccountController : Controller
         return RedirectToAction(nameof(ActivationRequired), new
         {
             returnUrl = target,
-            message = challenge.SanitizedMessage ?? "Use your activation link or the client sign-in form before continuing to Microsoft sign-in."
+            message = challenge.SanitizedMessage ?? "Use your activation link or the member sign-in form before continuing to Microsoft sign-in."
         });
     }
 
@@ -87,7 +87,7 @@ public class AccountController : Controller
             return View(new ClientLoginViewModel
             {
                 ReturnUrl = target,
-                Message = session.SanitizedMessage ?? "Sign in with the email connected to your active client subscription."
+                Message = session.SanitizedMessage ?? "Sign in with the email connected to your active membership."
             });
         }
 
@@ -121,7 +121,7 @@ public class AccountController : Controller
             return View(nameof(ActivationRequired), new ActivationRequiredViewModel
             {
                 ReturnUrl = model.ReturnUrl,
-                Message = signInPreparation.SanitizedMessage ?? "This client account is not ready for sign-in yet."
+                Message = signInPreparation.SanitizedMessage ?? "This account is not ready for sign-in yet."
             });
         }
 
@@ -158,7 +158,7 @@ public class AccountController : Controller
         {
             ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
             Message = string.IsNullOrWhiteSpace(message)
-                ? "Use the activation link from your agent to finish access setup before signing in."
+                ? "Use the activation link from your LEGEND guide to finish access setup before signing in."
                 : message.Trim()
         });
     }

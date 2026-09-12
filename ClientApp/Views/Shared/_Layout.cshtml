@@ -151,7 +151,7 @@
                         return t.Length > 0 ? t.Substring(0, 1).ToUpperInvariant() : null;
                     }
 
-                    var displayName = "Agent";
+                    var displayName = isAgentView ? "Agent" : "Member";
                     string? first = null;
                     string? last = null;
                     string? avatarUrl = null;
@@ -170,7 +170,7 @@
 
                             if (string.IsNullOrWhiteSpace(displayName))
                             {
-                                displayName = "Client";
+                                displayName = "Member";
                             }
                         }
                         else
@@ -190,7 +190,7 @@
                                     : user.FindFirst("name")?.Value
                                       ?? user.FindFirst(ClaimTypes.Name)?.Value
                                       ?? first
-                                      ?? "Agent";
+                                      ?? (isAgentView ? "Agent" : "Member");
                         }
 
                         userId =
@@ -271,8 +271,8 @@
             messagingServiceContactName,
             messagingServiceContactPhone,
             messagingServiceContactEmail,
-            "Search your agent or Journey Circles connections...",
-            "Choose your servicing agent or an accepted Journey Circles connection to begin.",
+            "Search My Network...",
+            "Choose a connection from My Network to begin.",
             SupportsJourneyCircles: !isAgentView,
             CurrentParticipantType: "Client"))
 }
