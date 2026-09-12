@@ -240,7 +240,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             val current = state.value.call
             if (current != null) {
                 val found = result.activeCalls?.firstOrNull { it.id == current.id }
-                if (found == null) clear() else { show(found); if (found.status != "ringing") peer?.recover() }
+                if (found == null) clear() else { show(found); if (found.status != "ringing") peer?.recover(LegendCallRecoveryReason.REALTIME_RECONNECTED) }
             } else result.activeCalls?.firstOrNull { isCalleeAccount(it) && it.status == "ringing" }?.let { receive(LegendCallEvent(it)) }
         }
     }
@@ -392,7 +392,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
                 updateProximity()
                 runCatching { command(LegendCallCommand("heartbeat", deviceId, id)) }
                     .onSuccess { failures = 0 }
-                    .onFailure { failures++; if (failures >= 2) fail("The call session could not be verified. Please call again.") else peer?.recover() }
+                    .onFailure { failures++; if (failures >= 2) fail("The call session could not be verified. Please call again.") else peer?.recover(LegendCallRecoveryReason.HEARTBEAT_FAILED) }
             }
         }
     }

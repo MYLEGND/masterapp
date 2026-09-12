@@ -62,6 +62,8 @@ class LegendRTCPeer(
     private var screenContentSize: Pair<Int, Int>? = null
     private var screenGeneration = 0L
     private var audioObservationCount = 0
+    private var transportObservationCount = 0
+    private var previousTransportObservation: String? = null
     private var previousAudioCounters: Map<String, Long>? = null
     private val candidates = mutableListOf<Pair<Int, IceCandidate>>()
     private val outgoing = mutableListOf<IceCandidate>()
@@ -72,10 +74,10 @@ class LegendRTCPeer(
                 if (closed) return@launch
                 qualitySample++; healthySamples = 0
                 val next = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-                if (next != cellular) { cellular = next; configureCapture(); applyBitrates(); if (connected) recover() }
+                if (next != cellular) { cellular = next; configureCapture(); applyBitrates(); if (connected) recover(LegendCallRecoveryReason.NETWORK_CHANGED) }
             }
         }
-        override fun onLost(network: Network) { scope.launch { if (!closed) { connected = false; recover() } } }
+        override fun onLost(network: Network) { scope.launch { if (!closed) { connected = false; recover(LegendCallRecoveryReason.NETWORK_LOST) } } }
     }
     init {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(app).createInitializationOptions())
@@ -105,13 +107,15 @@ class LegendRTCPeer(
             override fun onIceCandidate(candidate: IceCandidate) { scope.launch { if (!closed) { if (readyToSignal) sendCandidate(candidate) else outgoing.add(candidate) } } }
             override fun onIceConnectionChange(value: PeerConnection.IceConnectionState) { scope.launch {
                 if (closed) return@launch
+                observeTransportEvent("ice-state state=${value.name}")
+                captureTransportDiagnostic()
                 when (value) {
                     PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
                         val newlyConnected = !connected
                         connected = true; recovery?.cancel(); recovery = null; state("Connected")
                         if (newlyConnected) sendMediaState(request = true)
                     }
-                    PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> { connected = false; recover() }
+                    PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> { connected = false; recover(if (value == PeerConnection.IceConnectionState.FAILED) LegendCallRecoveryReason.ICE_FAILED else LegendCallRecoveryReason.ICE_DISCONNECTED) }
                     else -> Unit
                 }
             } }
@@ -154,6 +158,7 @@ class LegendRTCPeer(
                         scope.launch sampleResult@{
                             if (closed || !connected || sample != qualitySample) return@sampleResult
                             completedQualitySample = sample
+                            observeTransport(report)
                             observeAudio(report)
                             if (bandwidth != null && bandwidth.isFinite() && bandwidth >= 0) {
                                 availableBandwidth = bandwidth
@@ -187,7 +192,7 @@ class LegendRTCPeer(
     }
     suspend fun receive(kind: String, data: String, incomingEpoch: Int) {
         if (closed) return
-        if (kind == "restart") { if (caller) recover(); return }
+        if (kind == "restart") { if (caller) recover(LegendCallRecoveryReason.REMOTE_RESTART); return }
         if (incomingEpoch < epoch) return
         if (kind == "media-state") {
             val media = json.callMediaState(data) ?: return
@@ -217,8 +222,11 @@ class LegendRTCPeer(
             drainRemote()
         }
     }
-    fun recover() {
-        if (closed || recovery != null) return
+    internal fun recover(reason: LegendCallRecoveryReason) {
+        if (closed) return
+        observeTransportEvent("recovery-request reason=${reason.name} alreadyRecovering=${recovery != null}")
+        captureTransportDiagnostic()
+        if (recovery != null) return
         qualitySample++; healthySamples = 0
         state("Reconnecting")
         recovery = scope.launch {
@@ -226,6 +234,7 @@ class LegendRTCPeer(
                 delay(if (attempt == 0) 2_000 else 5_000)
                 if (closed) return@launch
                 runCatching { if (caller) offer(true) else signal("restart", "", epoch) }
+                    .onFailure { observeTransportEvent("recovery-signal-failed kind=${if (caller) "offer" else "restart"}") }
                 delay(6_000)
                 if (connected) { recovery = null; return@launch }
             }
@@ -374,7 +383,21 @@ class LegendRTCPeer(
     }
     private suspend fun flushCandidates() { val batch = outgoing.toList(); outgoing.clear(); batch.forEach { sendCandidate(it) } }
     private suspend fun sendCandidate(candidate: IceCandidate) {
-        runCatching { signal("candidate", json.encodeToString(Candidate(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)), epoch) }.onFailure { recover() }
+        runCatching { signal("candidate", json.encodeToString(Candidate(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)), epoch) }.onFailure { recover(LegendCallRecoveryReason.CANDIDATE_SIGNAL_FAILED) }
+    }
+    private fun observeTransportEvent(value: String) {
+        if (closed || transportObservationCount >= 40) return
+        transportObservationCount++
+        audioObservation("event=$value")
+    }
+    private fun observeTransport(report: RTCStatsReport) {
+        val summary = legendCallTransportDiagnostic(report)
+        if (summary == previousTransportObservation) return
+        previousTransportObservation = summary
+        observeTransportEvent("transport-stats $summary")
+    }
+    private fun captureTransportDiagnostic() {
+        peer.getStats { report -> scope.launch { if (!closed) observeTransport(report) } }
     }
     private fun drainRemote() { remoteEpoch = epoch; candidates.filter { it.first == epoch }.forEach { peer.addIceCandidate(it.second) }; candidates.removeAll { it.first <= epoch } }
     private suspend fun createDescription(offer: Boolean, constraints: MediaConstraints): SessionDescription = suspendCoroutine { continuation ->
