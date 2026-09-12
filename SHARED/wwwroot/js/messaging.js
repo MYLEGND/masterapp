@@ -945,11 +945,86 @@
     }
   }
 
+  let reactionEmojiCatalogFlight;
+  function loadReactionEmojiCatalog() {
+    if (!reactionEmojiCatalogFlight) reactionEmojiCatalogFlight = fetch('/design/legend-reaction-emoji.json')
+      .then(response => { if (!response.ok) throw new Error('Emoji catalog unavailable'); return response.json(); })
+      .then(catalog => {
+        if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.entries)) throw new Error('Emoji catalog unavailable');
+        return catalog.entries.filter(entry => typeof entry.emoji === 'string' && typeof entry.name === 'string' && Array.isArray(entry.keywords));
+      }).catch(error => { reactionEmojiCatalogFlight = null; throw error; });
+    return reactionEmojiCatalogFlight;
+  }
+
+  function createReactionEmojiPicker(select, close) {
+    const picker = document.createElement('div');
+    picker.className = 'messaging-emoji-picker';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'messaging-emoji-search';
+    search.placeholder = 'Search emoji';
+    search.setAttribute('aria-label', 'Search emoji');
+    const grid = document.createElement('div');
+    grid.className = 'messaging-emoji-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Emoji');
+    const status = createTextElement('div', 'messaging-emoji-status', 'Loading emoji…');
+    status.setAttribute('role', 'status');
+    let entries = [], results = [], shown = 0;
+    function appendBatch() {
+      const fragment = document.createDocumentFragment();
+      results.slice(shown, shown + 120).forEach(entry => {
+        const button = createTextElement('button', 'messaging-emoji-option', entry.emoji);
+        button.type = 'button';
+        button.setAttribute('aria-label', entry.name);
+        button.title = entry.name;
+        button.addEventListener('click', () => select(entry.emoji));
+        fragment.append(button);
+      });
+      shown = Math.min(shown + 120, results.length);
+      grid.append(fragment);
+    }
+    function render() {
+      const query = search.value.trim();
+      const words = query.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      results = entries.filter(entry => !query || entry.emoji === query ||
+        (words.length && words.every(word => entry.keywords.some(keyword => keyword.includes(word)))));
+      grid.replaceChildren();
+      grid.scrollTop = 0;
+      shown = 0;
+      status.textContent = results.length ? '' : 'No emoji found';
+      appendBatch();
+    }
+    async function load() {
+      status.textContent = 'Loading emoji…';
+      try {
+        entries = await loadReactionEmojiCatalog();
+        if (picker.isConnected) render();
+      } catch {
+        status.replaceChildren();
+        const retry = createTextElement('button', 'messaging-emoji-retry', 'Retry loading emoji');
+        retry.type = 'button';
+        retry.addEventListener('click', load);
+        status.append(retry);
+      }
+    }
+    search.addEventListener('input', render);
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+    });
+    grid.addEventListener('scroll', () => {
+      if (shown < results.length && grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 100) appendBatch();
+    });
+    picker.append(search, status, grid);
+    queueMicrotask(() => { search.focus(); load(); });
+    return picker;
+  }
+
   function appendMessageInteractions(card, conversation, message) {
     const reactions = document.createElement('div');
     reactions.className = 'messaging-reactions';
     (message.reactions || []).forEach(reaction => {
-      const button = createTextElement('button', 'messaging-reaction', reaction.emoji + (reaction.count > 1 ? ` ${reaction.count}` : ''));
+      const button = createTextElement('button', 'messaging-reaction', reaction.emoji);
       button.type = 'button';
       button.setAttribute('aria-pressed', String(reaction.reactedByCurrentActor));
       button.setAttribute('aria-label', `${reaction.emoji}, ${reaction.count} reactions`);
@@ -971,24 +1046,17 @@
       button.addEventListener('click', () => { menu.open = false; setMessageReaction(conversation.id, message, emoji); });
       palette.append(button);
     });
-    const picker = document.createElement('input');
-    picker.type = 'text';
-    picker.maxLength = 32;
-    picker.hidden = true;
-    picker.placeholder = 'Choose an emoji';
-    picker.setAttribute('aria-label', 'Additional emoji reaction');
     const plus = createTextElement('button', 'messaging-reaction', '+');
     plus.type = 'button';
     plus.setAttribute('aria-label', 'Choose another emoji');
-    plus.addEventListener('click', () => { picker.hidden = false; picker.focus(); });
-    picker.addEventListener('keydown', event => {
-      if (event.key === 'Enter' && picker.value.trim()) {
-        event.preventDefault();
+    plus.addEventListener('click', () => {
+      const picker = createReactionEmojiPicker(emoji => {
         menu.open = false;
-        setMessageReaction(conversation.id, message, picker.value.trim());
-      }
+        setMessageReaction(conversation.id, message, emoji);
+      }, () => { menu.open = false; trigger.focus(); });
+      palette.replaceWith(picker);
     });
-    palette.append(plus, picker);
+    palette.append(plus);
     menu.append(palette);
     const content = card.querySelector('.messaging-shared-content') || card.querySelector('.messaging-attachments');
     if (content) {

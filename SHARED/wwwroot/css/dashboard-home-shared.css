@@ -6144,15 +6144,23 @@ header .legend-global-nav .container-fluid {
 }
 .messaging-reaction-palette > * { flex-shrink: 0; }
 .messaging-reaction {
-    border: 1px solid currentColor;
-    border-radius: 999px;
-    padding: 0.25rem 0.5rem;
+    box-shadow: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0.2rem;
     background: transparent;
     color: inherit;
+    font-size: 1.4rem;
+    line-height: 1.2;
     cursor: pointer;
 }
-.messaging-reactions .messaging-reaction { background: var(--messaging-surface); color: var(--messaging-timestamp); }
-.messaging-reaction[aria-pressed="true"] { border-color: var(--messaging-timestamp); }
+.messaging-reaction:focus-visible, .messaging-emoji-option:focus-visible { outline: 2px solid var(--messaging-timestamp); outline-offset: 2px; }
+.messaging-emoji-picker { display: grid; gap: 0.6rem; width: min(22rem, 100%); margin-top: 0.5rem; padding: 0.6rem; border-radius: 0.8rem; background: var(--messaging-surface); color: var(--messaging-outgoing-text); }
+.messaging-emoji-search { box-sizing: border-box; width: 100%; min-height: 2.75rem; padding: 0.6rem 0.8rem; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; }
+.messaging-emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr)); align-content: start; max-height: 18rem; overflow-y: auto; overscroll-behavior: contain; }
+.messaging-emoji-option { border: 0; background: transparent; color: inherit; min-height: 2.75rem; padding: 0.3rem; font-size: 1.7rem; line-height: 1.2; cursor: pointer; }
+.messaging-emoji-status:empty { display: none; }
+.messaging-emoji-status { font-size: 0.85rem; }
 .messaging-message-actions summary { cursor: pointer; font-size: 0.75rem; }
 .messaging-shared-content { display: grid; gap: 0.5rem; margin-top: 0.35rem; }
 .messaging-shared-author, .messaging-shared-open {

@@ -57,6 +57,8 @@ import androidx.compose.material3.ModalBottomSheet as MaterialModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -3766,12 +3768,10 @@ private fun LegendMessageBubble(
 ) {
     var actionsOpen by remember(message.id) { mutableStateOf(false) }
     var emojiPicker by remember(message.id) { mutableStateOf(false) }
-    var emojiDraft by remember(message.id) { mutableStateOf("") }
-    if (emojiPicker) AlertDialog(onDismissRequest = { emojiPicker = false },
-        title = { Text(legendLocalized("Choose a reaction")) },
-        text = { OutlinedTextField(value = emojiDraft, onValueChange = { emojiDraft = it.take(32) }, label = { Text(legendLocalized("Emoji")) }) },
-        confirmButton = { TextButton(onClick = { emojiPicker = false; react(emojiDraft.trim()) }, enabled = emojiDraft.isNotBlank()) { Text(legendLocalized("React")) } },
-        dismissButton = { TextButton(onClick = { emojiPicker = false }) { Text(legendLocalized("Cancel")) } })
+    if (emojiPicker) LegendReactionEmojiPicker(
+        dismiss = { emojiPicker = false },
+        select = { emoji -> emojiPicker = false; react(emoji) },
+    )
     val context = LocalContext.current
     fun copyText(text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Message", text))
@@ -3900,15 +3900,78 @@ private fun LegendMessageBubble(
 @Composable
 private fun LegendMessageReactions(message: ConversationMessage, react: (String?) -> Unit, modifier: Modifier = Modifier) {
     if (message.reactions.isNotEmpty()) Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            message.reactions.forEach { reaction ->
-                Surface(shape = CircleShape, color = LegendColors.Surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.ChatTimestamp.copy(alpha = if (reaction.reactedByCurrentActor) 1f else 0.3f)),
-                    modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }) {
-                    Text(reaction.emoji + if (reaction.count > 1) " ${reaction.count}" else "",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), color = LegendColors.TextPrimary)
+        message.reactions.forEach { reaction ->
+            Text(reaction.emoji,
+                modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }
+                    .padding(horizontal = 3.dp, vertical = 2.dp)
+                    .semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" },
+                style = MaterialTheme.typography.headlineSmall)
+        }
+    }
+}
+
+private data class LegendReactionEmoji(val emoji: String, val name: String, val keywords: List<String>)
+private object LegendReactionEmojiCatalog {
+    @Volatile private var entries: List<LegendReactionEmoji>? = null
+    fun load(context: Context): List<LegendReactionEmoji> = synchronized(this) {
+        entries ?: context.assets.open("legend-reaction-emoji.json").bufferedReader().use { reader ->
+            val source = org.json.JSONObject(reader.readText())
+            check(source.getInt("schemaVersion") == 1)
+            val array = source.getJSONArray("entries")
+            List(array.length()) { index ->
+                val entry = array.getJSONObject(index)
+                val words = entry.getJSONArray("keywords")
+                LegendReactionEmoji(entry.getString("emoji"), entry.getString("name"), List(words.length()) { words.getString(it) })
+            }.also { entries = it }
+        }
+    }
+}
+
+@Composable
+private fun LegendReactionEmojiPicker(dismiss: () -> Unit, select: (String) -> Unit) {
+    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    var retry by remember { mutableIntStateOf(0) }
+    val catalog by produceState<Result<List<LegendReactionEmoji>>?>(null, retry) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { LegendReactionEmojiCatalog.load(context) } }
+    }
+    val results = remember(catalog, query) {
+        val text = query.trim()
+        val tokens = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKD)
+            .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+        catalog?.getOrNull().orEmpty().filter { entry ->
+            text.isEmpty() || entry.emoji == text || (tokens.isNotEmpty() && tokens.all { word -> entry.keywords.any { it.contains(word) } })
+        }
+    }
+    Dialog(onDismissRequest = dismiss) {
+        Surface(shape = LegendShapes.Card, color = LegendColors.Surface, contentColor = LegendColors.TextPrimary) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(query, { query = it }, modifier = Modifier.weight(1f), singleLine = true,
+                        placeholder = { Text(legendLocalized("Search emoji")) },
+                        leadingIcon = { Icon(Icons.Default.Search, null) }, shape = CircleShape)
+                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, legendLocalized("Close", "accessibility copy")) }
+                }
+                when {
+                    catalog == null -> Text(legendLocalized("Loading emoji…"))
+                    catalog?.isFailure == true -> TextButton(onClick = { retry++ }) { Text(legendLocalized("Retry")) }
+                    results.isEmpty() -> Text(legendLocalized("No emoji found"))
+                    else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(48.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    ) {
+                        items(results.size, key = { results[it].emoji }) { index ->
+                            val entry = results[index]
+                            TextButton(onClick = { select(entry.emoji) }, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                                Text(entry.emoji, style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.semantics { contentDescription = entry.name })
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
 }
 
 @Composable
