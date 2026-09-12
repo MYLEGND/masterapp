@@ -41,6 +41,12 @@
       "horizontalPadding": 8,
       "itemSpacing": 4,
       "borderWidth": 1,
+      "emojiSize": 20,
+      "ownFillColor": "chatTimestamp",
+      "ownFillOpacity": 0.16,
+      "otherFillColor": "surfaceElevated",
+      "borderColor": "gold",
+      "borderOpacity": 0.35,
       "outsideFraction": 0.25,
       "trailingInset": 0
     }

@@ -50,3 +50,8 @@ the content and 25% below it. Reserve the outside height (8 at the standard
 height) before timestamp or next-row content. If accessibility causes the pill
 height to grow, preserve the same fraction using its measured height. Use the
 existing capsule radius and shared surface/gold/separator colors for styling.
+The same reaction contract sets emoji size 20, own-reaction fill color
+`chatTimestamp` at opacity 0.16, other-reaction fill `surfaceElevated`, and border
+color `gold` at opacity 0.35. Color names reference the existing shared color
+tokens, including their light/dark variants; consumers should resolve these
+references instead of declaring platform-specific colors or opacity values.
