@@ -1,25 +1,32 @@
 # Android release version codes
 
 The existing app Gradle configuration allocates release version codes automatically.
-Continue using `./gradlew clean bundleRelease` (or `./gradlew bundleRelease`).
+Run `./release` from Legend-Android, or `~/MASTERAPP/Legend-Android/release`
+from any directory. This shortcut invokes the existing `./gradlew bundleRelease`;
+it does not add another signing or versioning implementation. A routine release
+does not need `clean` or `signingReport`. The original Gradle commands still work.
 The displayed version name remains independent of the Play upload version code.
 
-The allocator uses UTC seconds since 2020, bounded by Google Play's 2,100,000,000
-limit, and a locked high-water mark in
-`$GRADLE_USER_HOME/legend-release/com.mylegnd.legend.registered.version-code`
-(default `~/.gradle`). Checkouts sharing that Gradle user home share the reservation.
-`clean` does not erase it. Failed builds can consume codes; gaps are intentional.
-Malformed reservation state fails the build instead of resetting the counter.
-A Gradle ValueSource rechecks the reservation on configuration-cache reuse.
-Non-release tasks do not allocate codes. The existing CI Gradle command uses the
-same allocator once this change reaches its checked-out branch; it needs no separate
-version override. CI continues using its existing serialized release workflow and
-signing step.
+The Mac's `legend-release` terminal shortcut invokes `scripts/release-mobile.sh`:
+with no argument it builds Android and then archives iOS. Use `legend-release android`
+or `legend-release ios` to build only one. The shortcut advances the Xcode project build number beyond its current value and
+existing LEGEND archives on this Mac, keeping all targets aligned and binding the
+archive to the reserved number. Existing signing is reused; each archive has a unique
+path under Xcode's dated Archives folder. Store uploads remain separate. The helper
+stops on a build failure, preserving any earlier successful output.
 
-This is build-time allocation, not a query of Google Play. Keep build-host clocks
-correct and upload the newest build. Independently built artifacts on different
-hosts within the same second are not globally coordinated. Re-uploading an old
-bundle can still be rejected; rebuilding generates a fresh code.
+The allocator advances a locked persisted reservation by exactly one per release
+build. Wall-clock timestamps are never used. The reservation remains in
+`$GRADLE_USER_HOME/legend-release/com.mylegnd.legend.registered.version-code`
+(default `~/.gradle`). `clean` does not erase it, failed builds may consume a code,
+and Gradle configuration-cache reuse still checks the reservation. Missing,
+malformed or exhausted state fails explicitly; it never guesses a starting code.
+
+The migration from timestamp-based codes requires confirming the highest version
+actually distributed through every Play track before changing the saved reservation.
+Do not lower the reservation merely because a draft was rejected. A fresh CI host
+must restore verified version history through its release authority before building;
+this local counter does not coordinate independent hosts or query Google Play.
 
 Signing still requires the existing local signing environment or the existing CI
 signing step. A successful unsigned build is not a signed upload artifact.
@@ -42,3 +49,16 @@ can require unlocking the login Keychain or approving access to the entries.
 Environment values still work; the GitHub Actions workflow retains its existing
 separate signing step. Local bundle/assemble/package release commands fail early
 when signing is unavailable. Never upload an old bundle after a failed build.
+
+## Play foreground-service declaration
+
+The manifest declares phoneCall, microphone, camera and mediaProjection for
+LegendCallForegroundService. Complete Play Console App content > Foreground
+service permissions with the actual calling/video/screen-sharing use cases and
+the requested demonstration. Building or signing does not submit this declaration.
+Do not remove required calling permissions just to suppress the Console error.
+
+On 2026-09-11 the owner confirmed version 7 as the released Android baseline.
+The Mac timestamp reservation was preserved in a migration receipt and changed
+once to 7 so the corrected build reserves 8. This is a one-time recovery, not an
+automatic reset rule. Future builds continue from the persisted reservation.

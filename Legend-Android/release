@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+# Use the existing Gradle version allocator and signing configuration.
+cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+./gradlew bundleRelease
+printf '\nRelease bundle: %s/app/build/outputs/bundle/release/app-release.aab\n' "$PWD"
