@@ -465,6 +465,9 @@ public sealed record MessagingAttachmentAccessResult(
         new(false, errorCode, errorMessage, null);
 }
 
+public sealed record MessagingReactionPreferences(int PreferredReactionSkinTone);
+public sealed record SetMessagingReactionPreferencesRequest(int? PreferredReactionSkinTone);
+
 public sealed record MessagingOperationResult(
     bool Succeeded,
     string? ErrorCode,
