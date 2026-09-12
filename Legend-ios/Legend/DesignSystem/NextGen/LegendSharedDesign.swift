@@ -102,6 +102,26 @@ enum LegendSharedDesign {
         specification.accountSession
     }
 
+    static var reactionBubble: ReactionBubbleToken { specification.messaging.reactionBubble }
+    struct ReactionBubbleToken: Decodable {
+        let height: CGFloat
+        let emojiSize: CGFloat
+        let ownFillColor: String
+        let ownFillOpacity: Double
+        let otherFillColor: String
+        let borderColor: String
+        let borderOpacity: Double
+        let horizontalPadding: CGFloat
+        let itemSpacing: CGFloat
+        let borderWidth: CGFloat
+        let outsideFraction: CGFloat
+        let trailingInset: CGFloat
+        var overflow: CGFloat { height * outsideFraction }
+    }
+    fileprivate struct MessagingToken: Decodable {
+        let reactionBubble: ReactionBubbleToken
+    }
+
     private static func fontWeight(_ value: String) -> Font.Weight {
         switch value {
         case "regular": return .regular
@@ -155,6 +175,7 @@ enum LegendSharedDesign {
         fileprivate let elevation: [String: ElevationToken]
         fileprivate let copy: [String: String]
         fileprivate let accountSession: AccountSessionToken
+        fileprivate let messaging: MessagingToken
     }
 
     fileprivate struct ColorToken: Decodable {

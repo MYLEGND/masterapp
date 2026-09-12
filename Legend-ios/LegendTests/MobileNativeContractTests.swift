@@ -18,6 +18,39 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(catalog.search("").count, catalog.entries.count)
     }
 
+    func testReactionSkinToneUsesCanonicalVariantsAndSharedPlacement() throws {
+        let catalog = try XCTUnwrap(LegendReactionEmojiCatalog.bundled)
+        XCTAssertEqual(catalog.applyingSkinTone(5, to: "👍"), "👍🏿")
+        XCTAssertEqual(catalog.applyingSkinTone(0, to: "👍🏿"), "👍")
+        XCTAssertEqual(catalog.applyingSkinTone(3, to: "👩‍💻"), "👩🏽‍💻")
+        XCTAssertEqual(catalog.applyingSkinTone(5, to: "❤️"), "❤️")
+        XCTAssertEqual(catalog.applyingSkinTone(1, to: "🇭🇹"), "🇭🇹")
+        let valid = Set(catalog.entries.map(\.emoji))
+        for entry in catalog.entries {
+            for tone in 0..<6 { XCTAssertTrue(valid.contains(catalog.applyingSkinTone(tone, to: entry.emoji))) }
+        }
+        XCTAssertEqual(Set(catalog.palette("").map(\.baseEmoji)).count, catalog.palette("").count)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.outsideFraction, 0.25)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow, 8)
+    }
+
+    func testReactionPreferenceTransportUsesActiveProfileForReadAndWrite() async throws {
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.responseBody = Data(#"{"preferredReactionSkinTone":4}"#.utf8)
+        defer { StubURLProtocol.responseBody = nil }
+        for role: ParticipantType in [.client, .agent] {
+            let api: any MessagingAPI = URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: role)
+            let loaded = try await api.reactionPreferences(accessToken: "test-token")
+            XCTAssertEqual(loaded.preferredReactionSkinTone, 4)
+            let saved = try await api.setReactionPreferences(.init(preferredReactionSkinTone: 4), accessToken: "test-token")
+            XCTAssertEqual(saved.preferredReactionSkinTone, 4)
+            let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+            XCTAssertEqual(request.url?.path, "/api/v1/mobile/messaging/reaction-preferences")
+            XCTAssertEqual(request.httpMethod, "PUT")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"), role.rawValue)
+        }
+    }
+
     func testLocalizationValidatesEntriesWithoutDiscardingOtherTranslatedCopy() {
         func entry(revision: String = "revision1", failure: String? = nil) -> LegendApplicationLocalizedCopy {
             LegendApplicationLocalizedCopy(id: "entry", source: "Settings", text: "Anviwònman", context: "visual interface copy", sourceRevision: revision, placeholders: [], provider: "AzureTranslator", provenance: "ProviderDerived", validationState: "Observation", createdUtc: "2026-09-10T00:00:00Z", reused: true, failureCode: failure)
