@@ -199,6 +199,8 @@
                 (usageTime ? " Updated " + new Date(usageTime).toLocaleString() : ""));
 
             setText('[data-capacity="azure-observed"]', formatNumber(read(capacity, "monthlyAzureReportedCharacters", "MonthlyAzureReportedCharacters"), "Not available"));
+            setText('[data-capacity="azure-observed-remaining"]', formatNumber(read(capacity, "monthlyAzureReportedRemainingCharacters", "MonthlyAzureReportedRemainingCharacters"), "Not available"));
+            setText('[data-capacity="monthly-accounted"]', formatNumber(read(capacity, "monthlyCapacityAccountedCharacters", "MonthlyCapacityAccountedCharacters"), "Not available"));
             const observedThrough = read(capacity, "azureUsageRetrievedUtc", "AzureUsageRetrievedUtc");
             setText("[data-azure-observed-through]", observedThrough ? "Azure usage retrieved " + new Date(observedThrough).toLocaleString() : "Azure-reported usage is not available for this resource.");
             const unavailable = synchronized !== true;

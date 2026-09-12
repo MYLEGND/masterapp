@@ -44,8 +44,6 @@
 .lc-section-launch:hover { background: var(--lc-navy-800); }
 .lc-section-launch:focus-visible { outline: 3px solid var(--lc-command-color); outline-offset: 3px; }
 .lc-command-icon { width: 1.4rem; height: 1.4rem; flex: 0 0 1.4rem; color: var(--lc-command-color, var(--lc-gold-light)); }
-.lc-section-launch .lc-panel-summary-copy { flex: 1; }
-.lc-section-launch .lc-panel-summary-copy > strong { font-size: .92rem; }
 .lc-section-launch .lc-status { white-space: normal; font-size: .6rem; }
 .lc-section-blue { --lc-command-color: #8bc7fa; }
 .lc-section-green { --lc-command-color: var(--lc-green); }
@@ -330,44 +328,8 @@
     padding: .95rem 1rem 1.05rem;
 }
 
-.lc-panel-collapse {
-    padding: 0;
-}
-
-.lc-panel-summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto 32px;
-    align-items: center;
-    gap: .8rem;
-    min-height: 92px;
-    padding: .95rem 1rem;
-    list-style: none;
-    cursor: pointer;
-    background: linear-gradient(90deg, rgba(215, 178, 76, .055), transparent 58%);
-}
-
-.lc-panel-summary::-webkit-details-marker {
-    display: none;
-}
-
-.lc-panel-summary::after {
-    content: "+";
-    display: grid;
-    place-items: center;
-    width: 31px;
-    height: 31px;
-    border: 1px solid var(--lc-gold-border);
-    border-radius: 50%;
-    color: var(--lc-gold-light);
-    font-size: 1rem;
-    font-weight: 820;
-}
-
-.lc-panel-collapse[open] > .lc-panel-summary::after {
-    content: "−";
-}
-
 .lc-panel-summary-copy {
+    flex: 1;
     display: grid;
     gap: .22rem;
     min-width: 0;
@@ -375,24 +337,9 @@
 
 .lc-panel-summary-copy > strong {
     color: var(--lc-white);
-    font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+    font-size: .92rem;
     font-weight: 800;
     letter-spacing: -.025em;
-}
-
-.lc-panel-summary-description {
-    max-width: 820px;
-    color: var(--lc-muted);
-    font-size: .82rem;
-    line-height: 1.5;
-}
-
-.lc-panel-toggle-label {
-    color: var(--lc-gold-light);
-    font-size: .65rem;
-    font-weight: 800;
-    letter-spacing: .04em;
-    text-transform: uppercase;
 }
 
 .lc-panel-body {
@@ -407,7 +354,7 @@
 .lc-panel-header h2 {
     margin: .23rem 0 0;
     color: var(--lc-white);
-    font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+    font-size: .92rem;
     font-weight: 800;
     letter-spacing: -.025em;
 }
@@ -775,21 +722,6 @@
     .lc-panel {
         border-radius: 17px;
         padding: .78rem;
-    }
-
-    .lc-panel-collapse {
-        padding: 0;
-    }
-
-    .lc-panel-summary {
-        grid-template-columns: minmax(0, 1fr) 30px;
-        min-height: 78px;
-        padding: .78rem;
-    }
-
-    .lc-panel-summary > .lc-status,
-    .lc-panel-toggle-label {
-        display: none;
     }
 
     .lc-panel-body {
