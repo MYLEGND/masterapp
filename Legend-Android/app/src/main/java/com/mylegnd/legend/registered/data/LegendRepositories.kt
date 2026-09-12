@@ -163,6 +163,7 @@ class GuestRepository(private val client: LegendApiClient) {
 }
 
 class SocialRepository(private val client: LegendApiClient) {
+    suspend fun post(role: String, id: String) = request { client.api.socialPost(role, id).legendBody() }
     private val uploader = SocialMediaUploader(client)
     suspend fun feed(role: String) = request { client.api.socialFeed(role).legendBody() }
     suspend fun currentProfilePosts(role: String) = request { client.api.currentProfilePosts(role).legendBody() }

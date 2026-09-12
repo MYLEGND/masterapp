@@ -8,21 +8,30 @@ internal sealed partial class MessagingService
 
     private async Task<MessagingSharedContent> ResolveSharedContentAsync(MessagingActor actor,
         Guid postId, CancellationToken cancellationToken)
+        => await ResolveSharedContentAsync(await ResolveSharedSocialActorAsync(actor, cancellationToken), postId, cancellationToken);
+
+    private async Task<MessagingSharedContent> ResolveSharedContentAsync(SocialFeedActor? socialActor,
+        Guid postId, CancellationToken cancellationToken)
     {
         var unavailable = new MessagingSharedContent(postId, "unavailable", null, null, null,
             Array.Empty<SocialMediaAssetView>(), $"/Social/Posts/{postId:D}");
         if (_social is null || postId == Guid.Empty)
             return unavailable;
-        var identities = await _participantIdentities.ResolveIdentitiesAsync(
-            [new MessagingParticipantReference(actor.UserId, actor.ParticipantType)], cancellationToken);
-        if (!identities.TryGetValue(MessagingParticipantIdentityKey.Create(actor.UserId, actor.ParticipantType), out var identity))
-            return unavailable;
-        var result = await _social.GetPostAsync(new SocialFeedActor(actor, identity.ProfileId, identity.DisplayName),
-            postId, cancellationToken);
+        if (socialActor is null) return unavailable;
+        var result = await _social.GetPostAsync(socialActor, postId, cancellationToken);
         return result.Succeeded && result.Value is { } post
             ? unavailable with { Status = "available", ContentType = post.ContentType,
                 Body = post.Body, AuthorDisplayName = post.Author.DisplayName, Media = post.Media }
             : unavailable;
+    }
+
+    private async Task<SocialFeedActor?> ResolveSharedSocialActorAsync(MessagingActor actor, CancellationToken cancellationToken)
+    {
+        if (_social is null) return null;
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(actor.UserId, actor.ParticipantType)], cancellationToken);
+        return identities.TryGetValue(MessagingParticipantIdentityKey.Create(actor.UserId, actor.ParticipantType), out var identity)
+            ? new SocialFeedActor(actor, identity.ProfileId, identity.DisplayName) : null;
     }
 
     private async Task<string> SharedNotificationPreviewAsync(MessagingActor recipient, Guid postId,
@@ -44,12 +53,13 @@ internal sealed partial class MessagingService
     {
         if (sources.Count == 0)
             return messages;
+        var socialActor = await ResolveSharedSocialActorAsync(actor, cancellationToken);
         var cards = new Dictionary<Guid, MessagingSharedContent>();
         for (var index = 0; index < messages.Count; index++)
         {
             if (messages[index].IsDeleted || !sources.TryGetValue(messages[index].Id, out var source)) continue;
             if (!cards.TryGetValue(source, out var card))
-                cards[source] = card = await ResolveSharedContentAsync(actor, source, cancellationToken);
+                cards[source] = card = await ResolveSharedContentAsync(socialActor, source, cancellationToken);
             messages[index] = messages[index] with { SharedContent = card };
         }
         return messages;

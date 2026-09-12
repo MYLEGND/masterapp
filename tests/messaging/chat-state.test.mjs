@@ -14,7 +14,7 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a,b) 
 function environment(request) {
   const context = {
     state: { conversations:[], active:null, requestedConversationId:null, navigationVersion:0, detailFlights:new Map(), detailRevisions:new Map(), readFlights:new Map(), reactionFlights:new Map(), isOpen:true, readAcknowledged:new Map(), scrollPositions:{}, inboxDirty:false, inboxFlight:null },
-    AbortController,
+    AbortController, applicationCopy:value=>value,
     document:{hidden:false},
     elements:{newMessages:{hidden:false},messages:{scrollTop:0}}, request,
     isConversationInRecipientScope:()=>true,
@@ -22,7 +22,7 @@ function environment(request) {
     isCurrentParticipant:(id,type)=>id==='self'&&type==='Client',parseUtcTimestamp:value=>value?new Date(value):null
   };
   vm.createContext(context);
-  for (const name of ['cancelDetailRequests','clearUnavailableConversation','selectDraftRecipient','latestReadMessageIndex','refreshList','acknowledgeVisibleConversation','loadConversation']) vm.runInContext(implementation(name), context);
+  for (const name of ['waitForSelectedDetail','cancelDetailRequests','clearUnavailableConversation','selectDraftRecipient','latestReadMessageIndex','refreshList','acknowledgeVisibleConversation','loadConversation']) vm.runInContext(implementation(name), context);
   return context;
 }
 test('latest read boundary ignores self and distinguishes newer sent messages', () => {
@@ -64,7 +64,7 @@ test('inbox burst shares in-flight work and retains one trailing invalidation',a
 });
 
 class Element {
-  constructor(tag) { this.tagName=tag;this.children=[];this.events={};this.attributes={}; }
+  constructor(tag) { this.tagName=tag;this.children=[];this.events={};this.attributes={};this.dataset={}; }
   append(...children) { this.children.push(...children); }
   setAttribute(key,value) { this.attributes[key]=value; }
   addEventListener(name,handler) { this.events[name]=handler; }
@@ -82,7 +82,9 @@ test('captionless shared content carries actual media and canonical protected li
   const c=domEnvironment(()=>{});const card=new Element('article');
   c.appendSharedContent(card,{sourcePostId:'post-id',status:'available',media:[{id:'asset-id',mediaKind:'Image',displayOrder:0}],contentType:'Story'});
   const children=card.children[0].children;
-  assert.equal(children.find(x=>x.tagName==='img').src,'/Social/Media/asset-id');
+  const imageLink=children.find(x=>x.className==='messaging-shared-original');
+  assert.equal(imageLink.children[0].src,'/Social/Media/asset-id');
+  assert.equal(imageLink.href,'/Social/Posts/post-id');
   assert.equal(children.find(x=>x.tagName==='a').href,'/Social/Posts/post-id');
   const unavailable=new Element('article');c.appendSharedContent(unavailable,{sourcePostId:'post-id',status:'unavailable',media:[{id:'secret',mediaKind:'Image'}]});
   assert.equal(unavailable.children[0].children.filter(x=>x.tagName==='img'||x.tagName==='a').length,0);
@@ -455,4 +457,35 @@ test('opening a cached out-of-scope last conversation does not request its detai
   c.loadConversation=async()=>details++;c.refreshList=async()=>{};c.loadRecipients=async()=>{};
   vm.runInContext(implementation('openCommandCenter'),c);
   await c.openCommandCenter(null);assert.equal(details,0);assert.equal(c.state.active,null);
+});
+
+test('selected detail is fetched before background inbox and contact directory work', async () => {
+  const detail=deferred();const calls=[];
+  const c=environment(url=>{calls.push(url);return url.includes('/A?')?detail.promise:Promise.resolve({conversations:[],recipients:[]});});
+  c.recipientRequestUrl=()=>'/Messaging/Recipients';c.state.recipientScope='Agents';
+  vm.runInContext(implementation('loadRecipients'),c);
+  const selected=c.loadConversation('A',false);const inbox=c.refreshList();const contacts=c.loadRecipients();
+  await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(calls,['/Messaging/Conversations/A?take=60']);
+  detail.resolve({conversation:{id:'A',messages:[]}});await Promise.all([selected,inbox,contacts]);
+  assert.equal(calls.length,3);
+});
+test('selecting a chat aborts background inbox transport and retries it after selected detail', async () => {
+  const oldInbox=deferred(),detail=deferred();const calls=[];let oldSignal;
+  const c=environment((url,options)=>{calls.push(url);if(url.includes('/A?'))return detail.promise;if(calls.length===1){oldSignal=options.signal;return oldInbox.promise;}return Promise.resolve({conversations:[{id:'fresh'}]});});
+  const inbox=c.refreshList();await new Promise(resolve=>setImmediate(resolve));
+  const selected=c.loadConversation('A',false);assert.equal(oldSignal.aborted,true);
+  oldInbox.resolve({conversations:[{id:'obsolete'}]});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.length,2);assert.equal(c.state.conversations.length,0);
+  detail.resolve({conversation:{id:'A',messages:[]}});await Promise.all([selected,inbox]);
+  assert.equal(calls.length,3);assert.equal(c.state.conversations[0].id,'fresh');
+});
+test('safe text links preserve internal navigation and isolate external destinations', () => {
+  const c=domEnvironment(()=>{});c.URL=URL;c.window.location={href:'https://portal.example/chat',origin:'https://portal.example'};
+  c.document.createTextNode=value=>({textContent:value,tagName:'#text'});
+  vm.runInContext(implementation('appendLinkedText'),c);
+  const content=new Element('p');
+  c.appendLinkedText(content,'Visit https://portal.example/Social/Posts/one and https://outside.example/path. javascript:alert(1)');
+  const links=content.children.filter(node=>node.tagName==='a');
+  assert.equal(links.length,2);assert.equal(links[0].target,undefined);assert.equal(links[1].target,'_blank');assert.equal(links[1].rel,'noopener noreferrer');
+  assert.equal(links[1].href,'https://outside.example/path');
 });

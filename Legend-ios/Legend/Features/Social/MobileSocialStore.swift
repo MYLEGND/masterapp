@@ -354,6 +354,7 @@ private final class LegacyHacVideoExport {
 
 protocol MobileSocialAPI: Sendable {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot
+    func post(id: UUID, accessToken: String) async throws -> MobileSocialPost
     func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost]
     func publicProfilePosts(for profile: MobileSocialAuthor, accessToken: String) async throws -> [MobileSocialPost]
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost
@@ -405,6 +406,8 @@ protocol MobileSocialAPI: Sendable {
 }
 
 extension MobileSocialAPI {
+    func post(id: UUID, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.invalidServerResponse }
+
     /// Backwards-compatible API seam for a creator-selected Hac poster. Test
     /// doubles that only model the original endpoint continue to work, while
     /// the production implementation submits the image as a separate form part.
@@ -558,6 +561,9 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
 }
 
 struct URLSessionMobileSocialAPI: MobileSocialAPI {
+    func post(id: UUID, accessToken: String) async throws -> MobileSocialPost {
+        try await client.get("/api/v1/mobile/social/posts/\(id.uuidString)", accessToken: accessToken, headers: participantHeader, response: MobileSocialPost.self)
+    }
     let client: MobileHTTPClient
     let participantType: ParticipantType
 
@@ -857,6 +863,27 @@ final class MobileSocialStore: ObservableObject {
     /// the in-memory response cache below.
     private static let maximumCachedMediaFileCount = 8
     private static let maximumCachedMediaFileBytes = 128 * 1_024 * 1_024
+
+    @Published private(set) var focusedPost: MobileSocialPost?
+    @Published private(set) var focusedPostFailure: UserFacingFailure?
+    private var focusedPostID: UUID?
+    private var focusedPostRequest = UUID()
+    func loadPost(_ id: UUID) async {
+        focusedPostID = id
+        let request = UUID(); focusedPostRequest = request
+        focusedPostFailure = nil
+        if focusedPost?.id != id { focusedPost = nil }
+        do {
+            let post = try await api.post(id: id, accessToken: try await accessTokenProvider())
+            guard !Task.isCancelled, focusedPostID == id, focusedPostRequest == request else { return }
+            focusedPost = post
+        } catch {
+            guard !Task.isCancelled, focusedPostID == id, focusedPostRequest == request else { return }
+            focusedPost = nil
+            focusedPostFailure = failure(for: error, title: LegendLocalized("Shared content unavailable"))
+        }
+    }
+    func closePost() { focusedPostID = nil; focusedPost = nil; focusedPostFailure = nil }
 
     @Published private(set) var state: MobileDataLoadState<MobileSocialSnapshot> = .idle
     @Published private(set) var profileContentState: MobileDataLoadState<[MobileSocialPost]> = .idle
@@ -1888,6 +1915,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     private func remove(_ postID: UUID) {
+        if focusedPost?.id == postID { closePost() }
         var mediaAssetIDs = Set<UUID>()
         if case .loaded(let snapshot) = state {
             let removedPost = snapshot.stories.first { $0.id == postID }
@@ -2001,6 +2029,7 @@ final class MobileSocialStore: ObservableObject {
         matching predicate: @escaping (MobileSocialPost) -> Bool,
         transform: @escaping (MobileSocialPost) -> MobileSocialPost
     ) {
+        if let post = focusedPost, predicate(post) { focusedPost = transform(post) }
         if case .loaded(let snapshot) = state {
             let update: (MobileSocialPost) -> MobileSocialPost = {
                 predicate($0) ? transform($0) : $0

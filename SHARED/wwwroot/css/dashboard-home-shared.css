@@ -6040,7 +6040,16 @@ header .legend-global-nav .container-fluid {
     color: var(--messaging-incoming-text);
 }
 
-.messaging-message.is-own {
+.messaging-message-share {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--messaging-timestamp);
+}
+.messaging-message-share.is-own { align-self: flex-end; }
+
+.messaging-message:not(.messaging-message-share).is-own {
     align-self: flex-end;
     border-radius: 15px 15px 4px 15px;
     background: var(--messaging-outgoing-background);
@@ -6108,7 +6117,11 @@ header .legend-global-nav .container-fluid {
 .messaging-reactions .messaging-reaction { background: var(--messaging-surface); color: var(--messaging-timestamp); }
 .messaging-reaction[aria-pressed="true"] { border-color: var(--messaging-timestamp); }
 .messaging-message-actions summary { cursor: pointer; font-size: 0.75rem; }
-.messaging-shared-content { border-left: 3px solid currentColor; padding: 0.5rem; margin-top: 0.5rem; }
+.messaging-shared-content { display: grid; gap: 0.5rem; margin-top: 0.35rem; }
+.messaging-shared-author { font-weight: 800; }
+.messaging-shared-original { display: block; }
+.messaging-shared-open { font-size: 0.8rem; }
+.messaging-message-body a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; }
 .messaging-shared-media { display: block; max-width: 100%; max-height: 28rem; border-radius: 0.5rem; margin-block: 0.4rem; }
 .messaging-shared-content a { color: inherit; text-decoration: underline; }
 

@@ -2,7 +2,7 @@ using Domain.Messaging;
 using Infrastructure.Messaging;
 using Shared.Messaging;
 
-namespace AgentPortal.Controllers;
+namespace ClientApp.Controllers;
 
 public sealed class ApplicationLocalizationController(
     IMessagingActorContextResolver actors,

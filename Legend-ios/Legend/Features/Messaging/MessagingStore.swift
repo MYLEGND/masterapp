@@ -432,6 +432,8 @@ final class MessagingStore: ObservableObject {
     private var inboxActivityRevision = 0
     private var presentationRevision = 0
     private var isRefreshingActivityNotifications = false
+    private var historyTask: Task<Void, Never>?
+    private var historyRequestID: UUID?
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
     private var conversationDetailRequestIDs: [UUID: UUID] = [:]
     private var readAcknowledgementTasks: [UUID: Task<Void, Never>] = [:]
@@ -536,6 +538,7 @@ final class MessagingStore: ObservableObject {
         presentationRevision += 1
         conversationListTask?.cancel()
         conversationListTask = nil
+        historyTask?.cancel(); historyTask = nil; historyRequestID = nil; isLoadingOlderMessages = false
         for task in conversationDetailTasks.values { task.cancel() }
         conversationDetailTasks.removeAll()
         conversationDetailRequestIDs.removeAll()
@@ -548,6 +551,7 @@ final class MessagingStore: ObservableObject {
     }
 
     func openConversation(_ conversationID: UUID) {
+        if selectedConversationID != conversationID { historyTask?.cancel(); historyTask = nil; historyRequestID = nil; isLoadingOlderMessages = false }
         for id in Array(conversationDetailTasks.keys) where id != conversationID {
             conversationDetailTasks.removeValue(forKey: id)?.cancel()
             conversationDetailRequestIDs.removeValue(forKey: id)
@@ -1457,15 +1461,16 @@ final class MessagingStore: ObservableObject {
 
         isLoadingOlderMessages = true
         let revision = presentationRevision
-        Task {
-            defer { isLoadingOlderMessages = false }
+        let requestID = UUID(); historyRequestID = requestID
+        historyTask = Task(priority: .userInitiated) {
+            defer { if historyRequestID == requestID { isLoadingOlderMessages = false; historyTask = nil; historyRequestID = nil } }
             do {
                 let olderPage = try await api.conversation(
                     id: conversation.id,
                     beforeUTC: oldestMessage.sentUTC,
                     beforeMessageID: oldestMessage.id,
                     accessToken: try await accessTokenProvider())
-                guard revision == presentationRevision,
+                guard !Task.isCancelled, historyRequestID == requestID, revision == presentationRevision,
                       selectedConversationID == conversation.id,
                       case .loaded(let currentConversation) = detailState,
                       currentConversation.id == conversation.id else {
@@ -1487,7 +1492,7 @@ final class MessagingStore: ObservableObject {
                     messages: mergedMessages,
                     hasOlderMessages: olderPage.hasOlderMessages))
             } catch {
-                guard revision == presentationRevision, selectedConversationID == conversation.id else { return }
+                guard !Task.isCancelled, historyRequestID == requestID, revision == presentationRevision, selectedConversationID == conversation.id else { return }
                 if !discardUnavailableConversation(detailFailureState(for: error), conversationID: conversation.id) {
                     sendFailure = failure(for: error, title: LegendLocalized("Earlier messages unavailable"))
                 }

@@ -97,6 +97,7 @@ interface LegendApi {
     @GET("api/v1/mobile/messaging/activity") suspend fun messagingActivity(@Header("X-Legend-Participant-Type") participantType: String, @Query("take") take: Int = 50): Response<List<MessagingActivityNotification>>
     @GET("api/v1/mobile/messaging/controlled-resources/languages") suspend fun communicationLanguages(@Header("X-Legend-Participant-Type") participantType: String): Response<List<CommunicationLanguage>>
 
+    @GET("api/v1/mobile/social/posts/{postId}") suspend fun socialPost(@Header("X-Legend-Participant-Type") role: String, @Path("postId") postId: String): Response<SocialPost>
     @GET("api/v1/mobile/social/feed") suspend fun socialFeed(@Header("X-Legend-Participant-Type") participantType: String): Response<SocialSnapshot>
     @GET("api/v1/mobile/social/profile/posts") suspend fun currentProfilePosts(@Header("X-Legend-Participant-Type") participantType: String): Response<List<SocialPost>>
     @GET("api/v1/mobile/social/profiles/posts") suspend fun publicProfilePosts(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String, @Query("participantType") profileParticipantType: String, @Query("profileId") profileId: String? = null): Response<List<SocialPost>>

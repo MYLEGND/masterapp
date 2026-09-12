@@ -4,6 +4,20 @@ import XCTest
 
 @MainActor
 final class MobileSocialContractTests: XCTestCase {
+    func testOpenedSharedPostUsesCanonicalStoreMutationWithoutFeedCopy() async throws {
+        let post = socialVideoPost(author: try socialAuthor(), processingState: "Ready")
+        let store = MobileSocialStore(api: StubSocialAPI(post: post), accessTokenProvider: { "token" }, diagnostics: LegendDiagnostics())
+        await store.loadPost(post.id)
+        XCTAssertEqual(store.focusedPost?.id, post.id)
+        XCTAssertEqual(store.focusedPost?.media, post.media)
+        XCTAssertEqual(store.state, .idle, "Opening one share must not fetch an entire feed")
+        let updated = await store.updatePost(postID: post.id, body: "Updated original")
+        XCTAssertTrue(updated)
+        XCTAssertEqual(store.focusedPost?.body, "Updated original")
+        store.closePost()
+        XCTAssertNil(store.focusedPost)
+    }
+
     func testSourceOnlyShareRequestCarriesIdentityWithoutInventingCaption() throws {
         let postID = UUID()
         let clientID = UUID()
@@ -987,6 +1001,7 @@ final class MobileSocialContractTests: XCTestCase {
 
 private struct StubSocialAPI: MobileSocialAPI {
     let post: MobileSocialPost
+    func post(id: UUID, accessToken: String) async throws -> MobileSocialPost { post }
 
     func feed(accessToken: String) async throws -> MobileSocialSnapshot {
         testSnapshot(post: post)

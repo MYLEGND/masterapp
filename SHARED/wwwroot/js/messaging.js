@@ -1,4 +1,6 @@
 (() => {
+  // Source marker; translation still comes from the shared application catalog.
+  const applicationCopy = value => value;
   const root = document.querySelector('[data-messaging-command-center]');
   if (!root) return;
 
@@ -60,6 +62,7 @@
     searchRequestId: 0,
     inboxRequestId: 0,
     inboxFlight: null,
+    inboxController: null,
     inboxDirty: false,
     detailFlights: new Map(),
     detailRevisions: new Map(),
@@ -1006,36 +1009,70 @@
     ['pointerup', 'pointercancel', 'pointermove'].forEach(name => card.addEventListener(name, () => window.clearTimeout(hold)));
   }
 
+  function appendLinkedText(container, text) {
+    const value = String(text || '');
+    const pattern = /https?:\/\/[^\s<>]+/gi;
+    let offset = 0;
+    for (const match of value.matchAll(pattern)) {
+      const urlText = match[0].replace(/[.,!?;:)]+$/, '');
+      container.append(document.createTextNode(value.slice(offset, match.index)));
+      const link = createTextElement('a', '', urlText);
+      try {
+        const url = new URL(urlText, window.location.href);
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported link');
+        link.href = url.href;
+        if (url.origin !== window.location.origin) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+        container.append(link);
+      } catch (_) { container.append(document.createTextNode(urlText)); }
+      offset = match.index + urlText.length;
+    }
+    container.append(document.createTextNode(value.slice(offset)));
+  }
+
   function appendSharedContent(card, content) {
     if (!content) return;
     const shared = document.createElement('div');
     shared.className = 'messaging-shared-content';
     if (content.status !== 'available') {
-      shared.append(createTextElement('p', '', 'This shared content is unavailable.'));
+      shared.append(createTextElement('p', '', applicationCopy("This shared content is unavailable.")));
     } else {
-      shared.append(createTextElement('strong', '', content.authorDisplayName || 'Shared content'));
-      if (content.body) shared.append(createTextElement('p', '', content.body));
+      const originalUrl = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
+      const contentName = content.contentType === 'Reel' ? 'Hac' : content.contentType || 'post';
+      const author = createTextElement('a', 'messaging-shared-author', content.authorDisplayName || `Shared ${contentName}`);
+      author.href = originalUrl;
+      author.dataset.userContent = '';
+      shared.append(author);
+      if (content.body) {
+        const body = createTextElement('p', 'messaging-message-body', '');
+        appendLinkedText(body, content.body);
+        shared.append(body);
+      }
       (content.media || []).slice().sort((a, b) => a.displayOrder - b.displayOrder).forEach(asset => {
         if (!['Image', 'Video'].includes(asset.mediaKind)) return;
         const media = document.createElement(asset.mediaKind === 'Image' ? 'img' : 'video');
         media.src = `/Social/Media/${encodeURIComponent(asset.id)}`;
         media.className = 'messaging-shared-media';
         if (asset.mediaKind === 'Image') {
-          media.alt = asset.accessibilityText || 'Shared image';
+          media.alt = asset.accessibilityText || `Shared ${contentName} image`;
           media.loading = 'lazy';
+          const open = createTextElement('a', 'messaging-shared-original', '');
+          open.href = originalUrl;
+          open.setAttribute('aria-label', `Open original ${contentName}`);
+          open.append(media);
+          shared.append(open);
         } else {
           media.controls = true;
           media.playsInline = true;
           media.preload = 'metadata';
+          shared.append(media);
         }
         media.addEventListener('error', () => {
-          media.replaceWith(createTextElement('p', '', 'This media is unavailable.'));
+          media.replaceWith(createTextElement('p', '', applicationCopy("This media is unavailable. Open the original to check access.")));
         });
-        shared.append(media);
       });
-      // The canonical resolver rechecks visibility and serves protected media.
-      const link = createTextElement('a', '', `Open ${content.contentType || 'shared content'}`);
-      link.href = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
+      const openLabel = { Post: applicationCopy("Open original post"), Story: applicationCopy("Open original story"), Reel: applicationCopy("Open original Hac") }[content.contentType] || applicationCopy("Open original post");
+      const link = createTextElement('a', 'messaging-shared-open', openLabel);
+      link.href = originalUrl;
       shared.append(link);
     }
     card.append(shared);
@@ -1090,9 +1127,9 @@
         elements.messages.append(older);
       }
       if (conversation.isDetailPending) {
-        elements.messages.append(createTextElement('p', 'messaging-draft-intro', conversation.detailLoadFailed ? 'Recent messages could not be loaded.' : 'Loading recent messages…'));
+        elements.messages.append(createTextElement('p', 'messaging-draft-intro', conversation.detailLoadFailed ? applicationCopy("Recent messages could not be loaded.") : applicationCopy("Loading recent messages…")));
         if (conversation.detailLoadFailed) {
-          const retry = createTextElement('button', 'messaging-history-button', 'Retry recent messages');
+          const retry = createTextElement('button', 'messaging-history-button', applicationCopy("Retry recent messages"));
           retry.type = 'button';
           retry.addEventListener('click', () => loadConversation(conversation.id, false).catch(error => showError(error.message)));
           elements.messages.append(retry);
@@ -1109,7 +1146,7 @@
         }
 
         const card = document.createElement('article');
-        card.className = 'messaging-message';
+        card.className = message.sharedContent ? 'messaging-message messaging-message-share' : 'messaging-message';
         const isOwn = isCurrentParticipant(message.senderUserId, message.senderType);
         if (isOwn) card.classList.add('is-own');
         const meta = document.createElement('div');
@@ -1122,7 +1159,11 @@
         }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
         card.append(meta);
-        card.append(createTextElement('p', 'messaging-message-body', message.body));
+        if (message.body) {
+          const body = createTextElement('p', 'messaging-message-body', '');
+          appendLinkedText(body, message.body);
+          card.append(body);
+        }
         appendSharedContent(card, message.sharedContent);
 
         if (message.attachments?.length) {
@@ -1345,13 +1386,34 @@
     state.pendingSubmission = null;
   }
 
+  async function waitForSelectedDetail() {
+    while (state.isOpen && state.requestedConversationId) {
+      const selected = state.detailFlights.get(state.requestedConversationId);
+      if (!selected) return;
+      try { await selected; } catch (_) { }
+      if (state.detailFlights.get(state.requestedConversationId) === selected) return;
+    }
+  }
+
   async function refreshList() {
     state.inboxDirty = true;
     if (state.inboxFlight) return state.inboxFlight;
     state.inboxFlight = (async () => {
       do {
         state.inboxDirty = false;
-        const result = await request('/Messaging/Conversations');
+        await waitForSelectedDetail();
+        const controller = new AbortController();
+        state.inboxController = controller;
+        let result;
+        try { result = await request('/Messaging/Conversations', { signal: controller.signal, priority: 'low' }); }
+        catch (error) {
+          if (!controller.signal.aborted) throw error;
+          state.inboxDirty = true;
+          continue;
+        } finally {
+          if (state.inboxController === controller) state.inboxController = null;
+        }
+        if (controller.signal.aborted) { state.inboxDirty = true; continue; }
         state.conversations = result.conversations || [];
         setUnreadCount();
         renderConversations();
@@ -1430,8 +1492,9 @@
       return loadConversation(conversationId, markRead, shouldScrollToBottom);
     }
     if (!flight) {
+      if (state.isOpen) state.inboxController?.abort();
       const controller = new AbortController();
-      flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`, { signal: controller.signal });
+      flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`, { signal: controller.signal, priority: 'high' });
       flight.controller = controller;
       state.detailFlights.set(conversationId, flight);
       flight.finally(() => {
@@ -1499,7 +1562,9 @@
   async function loadRecipients() {
     if (state.recipientsLoaded) return;
     const scope = state.recipientScope;
-    const result = await request(recipientRequestUrl());
+    await waitForSelectedDetail();
+    if (scope !== state.recipientScope) return;
+    const result = await request(recipientRequestUrl(), { priority: 'low' });
     if (scope !== state.recipientScope) return;
     state.recipients = result.recipients || [];
     if (!state.recipientMatchesQuery) state.recipientMatches = state.recipients;
@@ -1695,7 +1760,10 @@
   function startPolling() {
     if (state.pollTimer) return;
     state.pollTimer = window.setInterval(() => {
-      refreshList().catch(() => { });
+      const refresh = state.isOpen && !document.hidden && state.active?.id
+        ? loadConversation(state.active.id, false)
+        : Promise.resolve();
+      refresh.catch(() => {}).then(() => refreshList()).catch(() => {});
     }, 45000);
   }
 
@@ -1720,7 +1788,6 @@
     state.realtime = connection;
     const refreshForEvent = async (event, incomingMessage = false) => {
       try {
-        const listRefresh = refreshList().catch(() => {});
         if (state.active && event?.conversationId === state.active.id &&
             (!state.requestedConversationId || state.requestedConversationId === state.active.id)) {
           const shouldScrollToBottom = isNearMessageBottom();
@@ -1728,7 +1795,7 @@
           await loadConversation(state.active.id, viewed, shouldScrollToBottom, true);
           if (!shouldScrollToBottom) elements.newMessages.hidden = false;
         }
-        await listRefresh;
+        await refreshList();
       } catch (_) { }
     };
     connection.on('messageReceived', event => refreshForEvent(event, true));

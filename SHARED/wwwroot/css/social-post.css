@@ -1,0 +1,44 @@
+/* Canonical original-post detail, shared by both web hosts. */
+.social-original {
+    --social-ink: var(--dash-royal-950, #12213d);
+    --social-muted: #52627a;
+    --social-line: #dce2ea;
+    width: min(100% - 2rem, 960px);
+    margin: 1.25rem auto 3rem;
+    color: var(--social-ink);
+    background: #fff;
+    padding: clamp(1rem, 3vw, 2rem);
+    border-radius: 1rem;
+}
+.social-original-header, .social-original-comment header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .7rem; }
+.social-original-identity { display: flex; align-items: center; gap: .75rem; }
+.social-original-avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
+.social-original-header { padding-bottom: 1rem; border-bottom: 1px solid var(--social-line); }
+.social-original-type { color: var(--social-muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+.social-original h1 { margin: .25rem 0; font-size: clamp(1.3rem, 3vw, 2rem); }
+.social-original time, .social-original-location, .social-original-counts { color: var(--social-muted); font-size: .8rem; }
+.social-original a { color: #234a85; text-underline-offset: .2em; }
+.social-original-body, .social-original-comment p { white-space: pre-wrap; overflow-wrap: anywhere; margin-block: 1rem; }
+.social-original-status { margin-block: .75rem; min-height: 1.5em; color: var(--social-muted); }
+.social-original-status.is-error { color: #a62036; }
+.social-original-media { display: grid; gap: .75rem; }
+.social-original-media img, .social-original-media video { width: 100%; max-height: 78vh; object-fit: contain; display: block; border-radius: .6rem; background: #f3f5f8; }
+.social-original-music { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-block: .8rem; }
+.social-original-music audio { max-width: 100%; }
+.social-original-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; }
+.social-original-actions form { margin: 0; }
+.social-original button, .social-original-actions > a, .social-original-back { display: inline-flex; align-items: center; gap: .35rem; padding: .55rem .8rem; border: 1px solid var(--social-line); border-radius: .65rem; background: #fff; color: var(--social-ink); font: inherit; font-size: .85rem; cursor: pointer; text-decoration: none; }
+.social-original button[aria-pressed="true"] { color: #a62036; background: #fff2f4; border-color: #dd9fa8; }
+.social-original button:disabled { opacity: .55; cursor: wait; }
+.social-original :is(button, a, textarea):focus-visible { outline: 3px solid #2760a8; outline-offset: 3px; }
+.social-original-comments { margin-top: 1.5rem; border-top: 1px solid var(--social-line); padding-top: 1rem; }
+.social-original-comments h2 { font-size: 1.25rem; }
+.social-original-comment-list { display: grid; gap: .8rem; }
+.social-original-comment { padding: .8rem; border-bottom: 1px solid var(--social-line); }
+.social-original-comment.is-reply { margin-left: 1rem; border-left: 2px solid var(--social-line); }
+.social-original-reply-context { font-size: .75rem; }
+.social-original-comment-form { display: grid; gap: .6rem; margin-top: 1rem; }
+.social-original-comment-form textarea { width: 100%; padding: .7rem; color: var(--social-ink); background: #fff; border: 1px solid var(--social-line); border-radius: .6rem; }
+.social-original-comment-form > button { justify-self: start; }
+.social-original-replying { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.social-original [hidden] { display: none; }

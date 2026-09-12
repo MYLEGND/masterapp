@@ -46,6 +46,18 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(pixel[0], 0, "Zooming out must reveal the canvas instead of being clamped back to fill.")
     }
 
+    func testSharedPostOpenUsesAuthenticatedCanonicalSinglePostRoute() async throws {
+        StubURLProtocol.responseStatus = 404
+        defer { StubURLProtocol.responseStatus = 200 }
+        let api: any MobileSocialAPI = URLSessionMobileSocialAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
+        let id = UUID()
+        _ = try? await api.post(id: id, accessToken: "test-token")
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/api/v1/mobile/social/posts/\(id.uuidString)")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Agent")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+    }
+
     func testMessagingExistentialDispatchPreservesBoundedInboxAndHistoryCursor() async throws {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = Data("[]".utf8)
@@ -1959,6 +1971,30 @@ extension MobileNativeContractTests {
 }
 
 extension MobileNativeContractTests {
+    func testSelectingAnotherChatCancelsObsoleteHistoryWithoutClearingNewHistory() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let first = UUID(), second = UUID()
+        store.openConversation(first)
+        try await waitForMessagingCondition { api.pending[first]?.count == 1 }
+        api.complete(first, hasOlder: true)
+        try await waitForMessagingCondition { api.readCount == 1 }; api.finishRead()
+        store.loadOlderMessages()
+        try await waitForMessagingCondition { api.pending[first]?.count == 1 }
+        store.openConversation(second)
+        XCTAssertFalse(store.isLoadingOlderMessages)
+        try await waitForMessagingCondition { api.pending[second]?.count == 1 }
+        api.complete(second, hasOlder: true)
+        try await waitForMessagingCondition { api.readCount == 2 }; api.finishRead()
+        store.loadOlderMessages()
+        try await waitForMessagingCondition { api.pending[second]?.count == 1 }
+        api.complete(first)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertTrue(store.isLoadingOlderMessages, "Obsolete history cleanup must not clear the newly selected request")
+        api.complete(second)
+        try await waitForMessagingCondition { !store.isLoadingOlderMessages }
+    }
+
     func testOlderPageKeepsCurrentDuplicateContentAndServerTieOrder() async throws {
         let api = OwnedDetailMessagingAPI()
         let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)

@@ -355,6 +355,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
             return requireNotNull(detailJob)
         }
         detailJob?.cancel()
+        if (selectedConversationId != id) { historyJob?.cancel(); historyJob = null }
         selectedConversationId = id
         _historyFailure.value = null
         val revision = ++presentationRevision
@@ -849,6 +850,32 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 }
 class SocialViewModel(private val repository: SocialRepository, private val role: String) : ViewModel() {
+    private val _postActionFailure = MutableStateFlow<String?>(null)
+    val postActionFailure = _postActionFailure.asStateFlow()
+    private fun postAction(id: String, action: suspend () -> LoadState<*>) = viewModelScope.launch {
+        if (openedPostId == id) _postActionFailure.value = null
+        when (val result = action()) {
+            is LoadState.Data -> { refreshOpenedPost(id); load() }
+            is LoadState.Error -> if (openedPostId == id) _postActionFailure.value = result.message
+            else -> Unit
+        }
+    }
+    private val _openedPost = MutableStateFlow<LoadState<SocialPost>>(LoadState.Idle)
+    val openedPost = _openedPost.asStateFlow()
+    private var openedPostId: String? = null
+    private var openedPostJob: Job? = null
+    fun openPost(id: String) {
+        openedPostJob?.cancel()
+        openedPostId = id
+        if ((_openedPost.value as? LoadState.Data)?.value?.id != id) _openedPost.value = LoadState.Loading
+        openedPostJob = viewModelScope.launch {
+            val result = repository.post(role, id)
+            ensureActive()
+            if (openedPostId == id) _openedPost.value = result
+        }
+    }
+    fun closePost() { _postActionFailure.value = null; openedPostJob?.cancel(); openedPostId = null; _openedPost.value = LoadState.Idle }
+    private fun refreshOpenedPost(id: String) { if (openedPostId == id) openPost(id) }
     suspend fun network(profile: SocialAuthor, list: String) = repository.follows(role, list, profile)
     private val _state = MutableStateFlow<LoadState<SocialSnapshot>>(LoadState.Idle); val state: StateFlow<LoadState<SocialSnapshot>> = _state.asStateFlow()
     private val _profilePosts = MutableStateFlow<LoadState<List<SocialPost>>>(LoadState.Idle); val profilePosts: StateFlow<LoadState<List<SocialPost>>> = _profilePosts.asStateFlow()
@@ -874,14 +901,20 @@ class SocialViewModel(private val repository: SocialRepository, private val role
     fun dismissPublication() { if (_publication.value !is LoadState.Loading) { pendingPublication = null; _publication.value = LoadState.Idle } }
     fun create(request: CreateSocialPostRequest) = publish { repository.createPost(role, request) }
     fun createMedia(context: Context, uris: List<Uri>, options: SocialMediaPublishOptions, previewUri: Uri? = null) = publish { repository.createMediaPost(context.applicationContext, role, uris, options, previewUri) }
-    fun react(id: String) = viewModelScope.launch { repository.react(role, id); load() }
-    fun comment(id: String, body: String, parentCommentId: String? = null) = viewModelScope.launch { repository.comment(role, id, body, parentCommentId); load() }
-    fun updatePost(id: String, body: String) = viewModelScope.launch { repository.updatePost(role, id, body); load() }
-    fun deletePost(id: String) = viewModelScope.launch { repository.deletePost(role, id); load() }
-    fun toggleFollow(post: SocialPost) = viewModelScope.launch { repository.toggleFollow(role, post.author, post.id); load() }
+    fun react(id: String) = postAction(id) { repository.react(role, id) }
+    fun comment(id: String, body: String, parentCommentId: String? = null) = postAction(id) { repository.comment(role, id, body, parentCommentId) }
+    fun updatePost(id: String, body: String) = postAction(id) { repository.updatePost(role, id, body) }
+    fun deletePost(id: String) = viewModelScope.launch {
+        when (val result = repository.deletePost(role, id)) {
+            is LoadState.Data -> { if (openedPostId == id) _openedPost.value = LoadState.Error("This shared content is no longer available.", 404); load() }
+            is LoadState.Error -> if (openedPostId == id) _postActionFailure.value = result.message
+            else -> Unit
+        }
+    }
+    fun toggleFollow(post: SocialPost) = postAction(post.id) { repository.toggleFollow(role, post.author, post.id) }
     fun toggleFollow(author: SocialAuthor) = viewModelScope.launch { repository.toggleFollow(role, author); load() }
-    fun toggleSave(id: String) = viewModelScope.launch { repository.toggleSave(role, id); load() }
-    fun toggleRepost(id: String) = viewModelScope.launch { repository.toggleRepost(role, id); load() }
+    fun toggleSave(id: String) = postAction(id) { repository.toggleSave(role, id) }
+    fun toggleRepost(id: String) = postAction(id) { repository.toggleRepost(role, id) }
     fun recordShare(id: String) = viewModelScope.launch { repository.recordShare(role, id) }
     fun recordView(id: String, watchDurationSeconds: Double? = null, completion: Double? = null, storyInteractionType: String? = null) = viewModelScope.launch { repository.recordView(role, id, SocialViewRequest(watchDurationSeconds, completion, storyInteractionType)) }
     fun loadCurrentProfile() = viewModelScope.launch { _profilePosts.value = LoadState.Loading; _profileMetrics.value = LoadState.Loading; _profilePosts.value = repository.currentProfilePosts(role); _profileMetrics.value = repository.profileMetrics(role) }
