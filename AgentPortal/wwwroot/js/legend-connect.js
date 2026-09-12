@@ -290,14 +290,12 @@
     const limitsModal = document.getElementById("translationLimitsModal");
     const limitsBody = document.querySelector("[data-translation-limits-body]");
     let accountSearch = new URLSearchParams(location.search).get("account") || "";
-    let loadingLimits = false;
     let limitsRequest = null;
     let limitsGeneration = 0;
-    const editingLimits = () => limitsModal?.contains(document.activeElement) &&
-        document.activeElement.matches("input, select, textarea, [contenteditable=true]");
+    let limitsLoaded = false;
     function setLimitsBusy(busy) {
         limitsBody.setAttribute("aria-busy", String(busy));
-        limitsBody.querySelectorAll(".translation-limits-summary, .translation-account-list").forEach(section => section.hidden = busy);
+        limitsBody.querySelectorAll("[data-limits-retry]").forEach(button => button.disabled = busy);
         let status = limitsBody.querySelector("[data-limits-loading]");
         if (busy && !status) {
             status = document.createElement("p");
@@ -309,15 +307,14 @@
         }
         if (!busy) status?.remove();
     }
-    async function loadLimits(search = accountSearch, automatic = false) {
-        if (automatic && (loadingLimits || editingLimits() || relayBusy)) return;
+    async function loadLimits(search = accountSearch) {
         limitsRequest?.abort();
         const generation = ++limitsGeneration;
         const request = new AbortController();
         limitsRequest = request;
         const timeout = window.setTimeout(() => request.abort(new DOMException("Request timed out", "TimeoutError")), 20000);
-        loadingLimits = true;
         accountSearch = search;
+        limitsBody.querySelector("[data-limits-error]")?.remove();
         setLimitsBusy(true);
         try {
             const response = await fetch("/founder/translation-limits?search=" + encodeURIComponent(search), {
@@ -326,7 +323,7 @@
             });
             if (!response.ok || response.redirected) throw new Error("Allowances unavailable");
             const html = await response.text();
-            if (generation !== limitsGeneration || request.signal.aborted || (automatic && editingLimits())) return;
+            if (generation !== limitsGeneration || request.signal.aborted) return;
             const scrollTop = limitsBody.scrollTop;
             const scrollLeft = limitsBody.scrollLeft;
             Array.from(connectModals).filter(modal => modal.dataset.limitEditor).forEach(modal => {
@@ -354,18 +351,19 @@
                 select.addEventListener("change", update);
                 update();
             });
-            if (automatic) {
-                limitsBody.scrollTop = scrollTop;
-                limitsBody.scrollLeft = scrollLeft;
-            }
+            limitsLoaded = true;
+            limitsBody.scrollTop = scrollTop;
+            limitsBody.scrollLeft = scrollLeft;
             document.dispatchEvent(new CustomEvent("legend:limits-loaded"));
         } catch {
             if (generation !== limitsGeneration) return;
-            limitsBody.innerHTML = '<p class="lc-notice lc-notice-error" role="alert">Current allowances could not be loaded.</p><button type="button" class="lc-button" data-limits-retry>Retry</button>';
+            const error = document.createElement("div");
+            error.dataset.limitsError = "true";
+            error.innerHTML = '<p class="lc-notice lc-notice-error" role="alert">Current allowances could not be loaded.</p><button type="button" class="lc-button" data-limits-retry>Retry</button>';
+            limitsBody.prepend(error);
         } finally {
             window.clearTimeout(timeout);
             if (generation === limitsGeneration) {
-                loadingLimits = false;
                 limitsRequest = null;
                 setLimitsBusy(false);
             }
@@ -375,7 +373,6 @@
         ++limitsGeneration;
         limitsRequest?.abort();
         limitsRequest = null;
-        loadingLimits = false;
         setLimitsBusy(false);
     });
     let relayBusy = false;
@@ -402,12 +399,6 @@
         } finally { relayBusy = false; }
     }
     document.addEventListener("legend:limits-loaded", refreshRelay);
-    window.setInterval(() => {
-        if (!document.hidden && limitsModal?.classList.contains("show")) {
-            if (!editingLimits() && !relayBusy) void loadLimits(accountSearch, true);
-            else void refreshRelay();
-        }
-    }, 30000);
     document.addEventListener("click", event => { if (event.target.closest("[data-relay-refresh]")) void refreshRelay(); });
     document.addEventListener("submit", async event => {
         const form = event.target.closest("[data-relay-form]");
@@ -435,7 +426,7 @@
             void refreshRelay();
         }
     });
-    limitsModal?.addEventListener("show.bs.modal", () => { if (!limitsModal.dataset.returning) void loadLimits(); });
+    limitsModal?.addEventListener("show.bs.modal", () => { if (!limitsLoaded && !limitsModal.dataset.returning) void loadLimits(); });
     document.addEventListener("submit", event => {
         const form = event.target.closest("[data-translation-limit-search]");
         if (!form) return;

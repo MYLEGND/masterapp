@@ -49,3 +49,11 @@ AgentPortal is running from this worktree on https://localhost:6205. Anonymous h
 ClientApp's configured localhost port 5221 is unused. Its Development startup automatically invokes migrations; startup has not been launched against SQL Server until its pending-migration state is verified. Current local legacy-avatar storage contains no matching GUID-named image inputs. No application database credentials were substituted for SELECT-only validation. No deployment occurred.
 
 Corrected diagnostics contract verification: 9/9 passed, zero skipped (`/private/tmp/legend-diagnostics-contract-final/page-health.trx`). The full-run comparison confirmed that the only extra failure was the corrected resolver-name assertion; the nine native failure messages and four skipped cases are unchanged.
+
+Final full regression for commit `4cc5d30a`: 2,534 total, 2,521 passed, exactly nine existing failures with unchanged messages, and the same four skipped cases. Evidence: `/private/tmp/legend-diagnostics-final-4cc5d30a/full.trx`.
+
+## Translation limits presentation correction
+
+Following user visual feedback, the limits dialog now uses more horizontal content space (maximum 1,760px) and caps account cards at three columns, reducing to two and one as the container narrows. Policy and relay summaries share a compact desktop row. Ported dialogs retain the same theme tokens; limits controls use the existing explicit foreground/background button styles rather than dashboard-shell-dependent styling.
+
+The management timer was removed. Allowances load on first opening and thereafter only on explicit Refresh or Search; reopening preserves the existing view. Refreshing and failed refreshes retain the displayed cards, scroll position, and loaded timestamp. Background live metrics elsewhere are unchanged. All 37 shared modal, diagnostics, presentation, navigation, and refresh behavior checks pass. Actual browser rendering remains unverified pending browser connection.

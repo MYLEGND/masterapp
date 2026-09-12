@@ -5,40 +5,40 @@
     @if (TempData["LegendConnectSuccess"] is string success) { <div class="alert alert-success" role="status">@success</div> }
     @if (TempData["LegendConnectError"] is string error) { <div class="alert alert-danger" role="alert">@error</div> }
     <section class="translation-limits-summary" aria-label="Translation policy">
-        <article class="dashboard-analytics-panel">
-            <span class="dashboard-section-kicker">Global monthly default</span>
+        <article class="translation-policy-card">
+            <span class="lc-kicker">Global monthly default</span>
             <strong class="translation-limit-value">@Model.GlobalLimit.CharacterAllowance.ToString("N0") <small>characters / user</small></strong>
             <p>Applies when an account uses the global default. Individual allowances remain separate.</p>
-            <button class="dashboard-command-action btn-carrier-settings" type="button" data-bs-toggle="modal" data-bs-target="#globalTranslationLimit">Edit global limit</button>
+            <button class="lc-button lc-button-primary" type="button" data-bs-toggle="modal" data-bs-target="#globalTranslationLimit">Edit global limit</button>
         </article>
-        <article class="dashboard-analytics-panel translation-founder-card">
-            <span class="dashboard-section-kicker">Founder account</span>
+        <article class="translation-policy-card translation-founder-card">
+            <span class="lc-kicker">Founder account</span>
             <strong class="translation-limit-value">Unlimited</strong>
             <p>Both Founder profiles. Saved translations are reused. Azure resource limits and charges still apply.</p>
             <span class="translation-limit-badge">Always active</span>
         </article>
+        <section class="lc-relay-card" data-relay-management aria-labelledby="relay-management-title">
+            <span class="lc-kicker">AZURE RELAY · PURPLE</span>
+            <h3 id="relay-management-title">Relay service management</h3>
+            <p data-relay-status role="status">Loading current Azure resource status…</p>
+            <p data-relay-detail></p>
+            <p data-relay-result role="status"></p>
+            <form data-relay-form class="lc-actions">
+                @Html.AntiForgeryToken()
+                <button type="submit" name="action" value="start" class="lc-button lc-button-primary" disabled data-relay-start>Start relay service</button>
+                <button type="submit" name="action" value="stop" class="lc-button" disabled data-relay-stop>Stop relay service</button>
+                <button type="button" class="lc-button" data-relay-refresh>Refresh status</button>
+            </form>
+            <p>Starting incurs Azure compute and bandwidth charges. Stopping interrupts relayed calls; disk and IP charges may continue.</p>
+            <small data-relay-observed></small>
+        </section>
     </section>
-    <section class="lc-relay-card" data-relay-management aria-labelledby="relay-management-title">
-        <span class="lc-kicker">AZURE RELAY · PURPLE</span>
-        <h3 id="relay-management-title">Relay service management</h3>
-        <p data-relay-status role="status">Loading current Azure resource status…</p>
-        <p data-relay-detail></p>
-        <p data-relay-result role="status"></p>
-        <form data-relay-form class="lc-actions">
-            @Html.AntiForgeryToken()
-            <button type="submit" name="action" value="start" class="lc-button lc-button-primary" disabled data-relay-start>Start relay service</button>
-            <button type="submit" name="action" value="stop" class="lc-button" disabled data-relay-stop>Stop relay service</button>
-            <button type="button" class="lc-button" data-relay-refresh>Refresh status</button>
-        </form>
-        <p>Starting incurs Azure compute and bandwidth charges. Stopping interrupts relayed calls; disk and IP charges may continue.</p>
-        <small data-relay-observed></small>
-    </section>
-    <section class="dashboard-analytics-panel" aria-labelledby="translation-users-title">
-        <div class="dashboard-section-head"><div><h2 id="translation-users-title">Individual allowances</h2><p>Monthly character allowances · remaining accounts for pending usage.</p></div></div>
+    <section class="translation-accounts-panel" aria-labelledby="translation-users-title">
+        <h2 id="translation-users-title">Individual allowances</h2><p>Monthly character allowances · remaining accounts for pending usage.</p>
         <form method="get" asp-action="TranslationLimits" class="translation-limit-search" data-translation-limit-search role="search">
             <label class="visually-hidden" for="translation-account-search">Search users</label>
             <input id="translation-account-search" class="form-control" type="search" name="search" value="@Model.Search.Query" placeholder="Search name, email or user ID" maxlength="120" />
-            <button type="submit" class="dashboard-command-action btn-carrier-settings">Search</button>
+            <button type="submit" class="lc-button lc-button-primary">Search</button>
         </form>
         <div class="translation-account-list">
         @for (var index = 0; index < Model.Search.Accounts.Count; index++)
@@ -66,7 +66,7 @@
                     }
                     else
                     {
-                        <button type="button" class="dashboard-command-action" data-bs-toggle="modal" data-bs-target="#translationAccount@(index)" aria-label="Manage @account.DisplayName">Manage</button>
+                        <button type="button" class="lc-button" data-bs-toggle="modal" data-bs-target="#translationAccount@(index)" aria-label="Manage @account.DisplayName">Manage</button>
                     }
                 </footer>
             </article>
@@ -85,7 +85,7 @@
             <input class="form-control" id="globalCharacterAllowance" name="CharacterAllowance" type="number" min="0" step="1" required value="@Model.GlobalLimit.CharacterAllowance" />
             <p class="mt-3">Changes apply across web, iOS and Android. Existing usage is retained. Founder access stays unlimited.</p>
         </div>
-        <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Back</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save global limit</button></div>
+        <div class="modal-footer"><button type="button" class="lc-button" data-bs-dismiss="modal">Back</button><button type="submit" class="lc-button lc-button-primary">Save global limit</button></div>
     </form></div>
 </div>
 @for (var index = 0; index < Model.Search.Accounts.Count; index++)
@@ -114,7 +114,7 @@
                 </div>
                 <p class="mt-3">Changing a limit does not reset usage. Use the global default to follow future global changes.</p>
             </div>
-            <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Back</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save allowance</button></div>
+            <div class="modal-footer"><button type="button" class="lc-button" data-bs-dismiss="modal">Back</button><button type="submit" class="lc-button lc-button-primary">Save allowance</button></div>
         </form></div>
     </div>
 }
