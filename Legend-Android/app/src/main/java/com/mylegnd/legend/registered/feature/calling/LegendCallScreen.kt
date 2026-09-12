@@ -37,6 +37,8 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var snapshotRequest by remember { mutableIntStateOf(0) }
+    var minimized by remember { mutableStateOf(false) }
+    LaunchedEffect(state.sharingScreen) { minimized = state.sharingScreen }
     var snapshotError by remember { mutableStateOf<String?>(null) }
     val screenPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) result.data?.let(store::startScreenSharing)
@@ -47,6 +49,15 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     fun answer() { answerPermissions.launch(if (state.call?.video == true) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA) else arrayOf(Manifest.permission.RECORD_AUDIO)) }
     LaunchedEffect(state.systemAnswerRequested) { if (state.systemAnswerRequested) answer() }
     if (state.call == null && !state.starting && state.failure == null) return
+    if (state.sharingScreen && minimized) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp).background(LegendColors.Navy, RoundedCornerShape(28.dp)).padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { minimized = false }) { Icon(Icons.Default.Phone, legendLocalized("Return to call"), tint = Color.White) }
+            Text(legendLocalized("Share screen"), color = Color.White)
+            IconButton(onClick = store::stopScreenSharing) { Icon(Icons.Default.StopScreenShare, legendLocalized("Stop sharing"), tint = LegendColors.Gold) }
+        }
+        return
+    }
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
             state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize(), snapshotRequest) { bitmap ->
@@ -66,18 +77,19 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                     }.onFailure { snapshotError = "The snapshot could not be shared. Please try again." }
                 }
             } } }
+            if (!state.sharingScreen) state.localVideo?.let { video -> store.peer?.let { engine ->
+                LegendVideoSurface(video, engine, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 20.dp, top = 110.dp).size(96.dp, 132.dp).clip(RoundedCornerShape(20.dp)))
+            } }
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text(legendLocalized("LEGEND®"), style = LegendTypography.Wordmark, color = Color.White)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    state.localVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.size(105.dp, 145.dp).clip(RoundedCornerShape(22.dp))) } }
-                }
+                if (state.failure == null) Text(callStatusLabel(state.status), color = Color.White,
+                    modifier = Modifier.background(Color.Black.copy(alpha = .3f), RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = 6.dp))
                 Spacer(Modifier.weight(1f))
                 if (state.failure != null) {
                     Text(legendLocalized(state.failure!!), color = Color.White)
                     Button(onClick = { store.end(); store.dismissFailure() }) { Text(legendLocalized("Close")) }
                 } else {
-                    Text(state.name, style = LegendTypography.Section, color = Color.White)
-                    Text(callStatusLabel(state.status), color = LegendColors.Gold)
+
                     if (state.status == "Calling") Text(legendLocalized("Waiting for the recipient’s device to confirm receipt"), color = Color.White)
                     if (state.status == "Ringing") Text(legendLocalized("The recipient’s device received your call"), color = Color.White)
                     if (state.starting) {
@@ -89,29 +101,22 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                             LegendCallControl("Answer", Icons.Default.Phone, LegendColors.Gold) { answer() }
                         }
                     } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.align(Alignment.End), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             LegendCallControl(if (state.muted) "Unmute" else "Mute", if (state.muted) Icons.Default.MicOff else Icons.Default.Mic, selected = state.muted, action = store::toggleMute)
                             LegendCallControl("Speaker", Icons.Default.VolumeUp, selected = state.speaker, action = store::toggleSpeaker)
                             if (state.call?.video == true && !state.sharingScreen) {
                                 LegendCallControl("Camera", if (state.camera) Icons.Default.Videocam else Icons.Default.VideocamOff, action = store::toggleCamera)
                                 LegendCallControl("Flip", Icons.Default.Cameraswitch, action = store::flipCamera)
                             }
-                        }
                         if (state.remoteVideo != null && state.status == "Connected") {
-                            TextButton(onClick = { snapshotRequest++ }) {
-                                Icon(Icons.Default.PhotoCamera, null, tint = LegendColors.GoldBright)
-                                Spacer(Modifier.width(8.dp)); Text(legendLocalized("Take snapshot"), color = Color.White)
-                            }
+                            LegendCallControl("Take snapshot", Icons.Default.PhotoCamera) { snapshotRequest++ }
                         }
                         if (state.call?.video == true && state.status == "Connected") {
-                            OutlinedButton(onClick = {
+                            LegendCallControl(if (state.sharingScreen) "Stop sharing" else "Share screen", Icons.Default.ScreenShare, selected = state.sharingScreen) {
                                 if (state.sharingScreen) store.stopScreenSharing()
                                 else screenPermission.launch(context.getSystemService(android.media.projection.MediaProjectionManager::class.java).createScreenCaptureIntent())
-                            }) {
-                                Icon(Icons.Default.ScreenShare, null, tint = LegendColors.GoldBright)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (state.sharingScreen) legendLocalized("Stop sharing") else legendLocalized("Share screen"), color = Color.White)
                             }
+                        }
                         }
                         LegendCallControl("End call", Icons.Default.CallEnd, LegendColors.Error) { store.end() }
                     }
@@ -154,7 +159,7 @@ private fun LegendVideoSurface(track: VideoTrack, peer: LegendRTCPeer, modifier:
     }
     key(track) {
         AndroidView(modifier = modifier, factory = { context -> SurfaceViewRenderer(context).apply {
-            init(peer.egl.eglBaseContext, null); setEnableHardwareScaler(true); track.addSink(this); renderer = this
+            init(peer.egl.eglBaseContext, null); setScalingType(org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT); setEnableHardwareScaler(true); track.addSink(this); renderer = this
         } }, onRelease = { view -> track.removeSink(view); view.release(); renderer = null }, update = {})
     }
 }
@@ -166,8 +171,8 @@ private fun LegendCallControl(title: String, icon: androidx.compose.ui.graphics.
     Column(Modifier.legendPressClickable(action), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
         Box(Modifier.size(LegendDesignAuthority.size("callControl")).background(if (selected) LegendColors.Gold else color, CircleShape), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = Color.White)
+            Icon(icon, legendLocalized(title), tint = Color.White)
         }
-        Text(legendLocalized(title), style = LegendTypography.Caption, color = Color.White)
+
     }
 }

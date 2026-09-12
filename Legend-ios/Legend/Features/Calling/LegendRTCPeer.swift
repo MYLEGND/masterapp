@@ -156,7 +156,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         sharingScreen = true
         cameraWasEnabled = localVideo?.isEnabled ?? true
         localVideo?.isEnabled = true
-        source.adaptOutputFormat(toWidth: Int32(cellular ? policy.cellularWidth : policy.wifiWidth), height: Int32(cellular ? policy.cellularHeight : policy.wifiHeight), fps: 15)
+        let maxEdge = cellular ? max(policy.cellularWidth, policy.cellularHeight) : max(policy.wifiWidth, policy.wifiHeight)
         await capturer?.stopCapture()
         let capture = RTCVideoCapturer(delegate: source)
         do {
@@ -167,6 +167,10 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
                         return
                     }
                     guard type == .video, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
+                    let width = CVPixelBufferGetWidth(pixels), height = CVPixelBufferGetHeight(pixels)
+                    let scale = min(1.0, Double(maxEdge) / Double(max(width, height)))
+                    source.adaptOutputFormat(toWidth: Int32(max(2, Int(Double(width) * scale) / 2 * 2)),
+                        height: Int32(max(2, Int(Double(height) * scale) / 2 * 2)), fps: 15)
                     let time = Int64(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(buffer)) * 1_000_000_000)
                     let orientation = (CMGetAttachment(buffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber)?.uint32Value ?? 1
                     let rotation: RTCVideoRotation = switch CGImagePropertyOrientation(rawValue: orientation) {

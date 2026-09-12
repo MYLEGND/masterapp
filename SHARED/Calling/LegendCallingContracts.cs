@@ -18,7 +18,7 @@ public sealed record LegendCallSnapshot(
     string CallerName, string CalleeName, bool Video, string Status,
     DateTime CreatedUtc, DateTime ExpiresUtc, int Epoch,
     string[]? CallerUserIds = null, string[]? CalleeUserIds = null,
-    DateTime? ReceivedUtc = null)
+    DateTime? ReceivedUtc = null, string? CallerImagePath = null)
 {
     // Every client uses the same authoritative delivery and terminal messages.
     public string? FailureMessage => Status switch

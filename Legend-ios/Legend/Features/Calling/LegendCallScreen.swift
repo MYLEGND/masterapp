@@ -55,17 +55,15 @@ private struct LegendCallScreen: View {
         ZStack {
             LinearGradient(colors: [LegendNextColor.navy, LegendNextColor.midnight], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
             if let remote = store.remoteVideo { LegendRTCVideo(track: remote).ignoresSafeArea() }
+            if let local = store.localVideo, !store.sharingScreen {
+                VStack { HStack { LegendRTCVideo(track: local).frame(width: 96, height: 132).clipShape(RoundedRectangle(cornerRadius: 20)); Spacer() }; Spacer() }.padding(.leading, 20).padding(.top, 110)
+            }
             VStack(spacing: 24) {
                 Text(LegendLocalized("LEGEND®"))
                     .font(LegendNextTypography.wordmark)
                     .tracking(LegendSharedDesign.tracking("wordmark"))
                     .frame(maxWidth: .infinity)
-                if let local = store.localVideo {
-                    HStack {
-                        Spacer()
-                        LegendRTCVideo(track: local).frame(width: 105, height: 145).clipShape(RoundedRectangle(cornerRadius: 22))
-                    }
-                }
+                if store.failure == nil { Text(statusLabel).font(.subheadline.weight(.semibold)).padding(.horizontal, 14).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule()) }
                 Spacer()
                 if let failure = store.failure {
                     Image(systemName: "phone.down.fill").font(.largeTitle).foregroundStyle(LegendNextColor.gold)
@@ -73,8 +71,7 @@ private struct LegendCallScreen: View {
                     Button(LegendLocalized("Close")) { store.end(); store.dismissFailure() }
                         .buttonStyle(.borderedProminent).tint(LegendNextColor.gold).foregroundStyle(LegendNextColor.midnight)
                 } else {
-                    Text(store.name).font(.largeTitle.bold()).multilineTextAlignment(.center)
-                    Text(statusLabel).font(.headline).foregroundStyle(LegendNextColor.gold)
+                    EmptyView()
                     if store.status == "Calling" {
                         Text(LegendLocalized("Waiting for the recipient’s device to confirm receipt")).font(.subheadline).multilineTextAlignment(.center)
                     } else if store.status == "Ringing" {
@@ -89,14 +86,15 @@ private struct LegendCallScreen: View {
                             control(LegendLocalized("Answer"), icon: "phone.fill", color: LegendNextColor.gold) { store.answer() }
                         }
                     } else {
-                        HStack(spacing: 20) {
+                        HStack {
+                        Spacer()
+                        VStack(spacing: 16) {
                             control(store.muted ? LegendLocalized("Unmute") : LegendLocalized("Mute"), icon: store.muted ? "mic.slash.fill" : "mic.fill", color: store.muted ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.setMuted() }
                             control(LegendLocalized("Speaker"), icon: store.speaker ? "speaker.wave.3.fill" : "ear.fill", color: store.speaker ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.toggleSpeaker() }
                             if store.current?.video == true && !store.sharingScreen {
                                 control(LegendLocalized("Camera"), icon: store.cameraEnabled ? "video.fill" : "video.slash.fill") { store.toggleCamera() }
                                 control(LegendLocalized("Flip"), icon: "arrow.triangle.2.circlepath.camera") { store.switchCamera() }
                             }
-                        }
                         if let remote = store.remoteVideo, store.status == "Connected" {
                             Button {
                                 snapshotCapture?.cancel()
@@ -108,12 +106,14 @@ private struct LegendCallScreen: View {
                                 }
                                 snapshotCapture = capture
                                 capture.start()
-                            } label: { Label(LegendLocalized("Take snapshot"), systemImage: "camera") }
+                            } label: { Image(systemName: "camera").font(.title2).frame(width: LegendSharedDesign.scalar(.sizes, "callControl"), height: LegendSharedDesign.scalar(.sizes, "callControl")).background(.ultraThinMaterial, in: Circle()) }.accessibilityLabel(LegendLocalized("Take snapshot"))
                         }
                         if store.current?.video == true && store.status == "Connected" {
                             Button { store.toggleScreenSharing() } label: {
-                                Label(store.sharingScreen ? LegendLocalized("Stop sharing") : LegendLocalized("Share Legend® screen"), systemImage: "rectangle.on.rectangle")
-                            }.buttonStyle(.bordered)
+                                Image(systemName: store.sharingScreen ? "rectangle.slash" : "rectangle.on.rectangle").font(.title2).frame(width: LegendSharedDesign.scalar(.sizes, "callControl"), height: LegendSharedDesign.scalar(.sizes, "callControl"))
+                            }.background(.ultraThinMaterial, in: Circle()).accessibilityLabel(store.sharingScreen ? LegendLocalized("Stop sharing") : LegendLocalized("Share Legend® screen"))
+                        }
+                        }
                         }
                         control(LegendLocalized("End call"), icon: "phone.down.fill", color: .red) { store.end() }
                     }
@@ -143,7 +143,7 @@ private struct LegendCallScreen: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: icon).font(.title2).frame(width: LegendSharedDesign.scalar(.sizes, "callControl"), height: LegendSharedDesign.scalar(.sizes, "callControl")).background(color, in: Circle())
-                Text(title).font(.caption)
+
             }
         }.buttonStyle(.plain).accessibilityLabel(title)
     }
@@ -152,7 +152,7 @@ private struct LegendRTCVideo: UIViewRepresentable {
     let track: RTCVideoTrack
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
-        view.videoContentMode = .scaleAspectFill
+        view.videoContentMode = .scaleAspectFit
         view.clipsToBounds = true
         track.add(view)
         context.coordinator.track = track

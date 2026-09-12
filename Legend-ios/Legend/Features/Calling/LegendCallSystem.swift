@@ -1,4 +1,5 @@
 import CallKit
+import Intents
 import PushKit
 import UIKit
 @preconcurrency import WebRTC
@@ -62,7 +63,7 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
                     if error == nil { self.provider.reportCall(with: call.id, endedAt: Date(), reason: .failed) }
                     return
                 }
-                if error == nil { self.reported.insert(call.id) }
+                if error == nil { self.reported.insert(call.id); self.donateCaller(call) }
                 callbacks.forEach { $0(error) }
             }
         }
@@ -72,6 +73,24 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             self.provider.reportCall(with: call.id, endedAt: Date(), reason: .failed)
             callbacks.forEach { $0(LegendCallingError.unavailable("Incoming call presentation timed out.")) }
         }
+    }
+    private func donateCaller(_ call: LegendCallSnapshot) {
+        guard let path = call.callerImagePath,
+              path.hasPrefix("/api/v1/mobile/notifications/"), !path.contains("\\"),
+              let base = Bundle.main.object(forInfoDictionaryKey: "LegendAPIBaseURL") as? String,
+              let origin = URL(string: base), origin.scheme == "https", origin.host != nil,
+              let url = URL(string: path, relativeTo: origin)?.absoluteURL,
+              url.host == origin.host, url.scheme == origin.scheme else { return }
+        let image = INImage(url: url)
+        let person = INPerson(personHandle: INPersonHandle(value: call.callerType + ":" + call.callerUserId, type: .unknown),
+            nameComponents: nil, displayName: call.callerName, image: image,
+            contactIdentifier: nil, customIdentifier: call.callerType + ":" + call.callerUserId)
+        let intent = INStartCallIntent(callRecordFilter: nil, callRecordToCallBack: nil, audioRoute: .unknown,
+            destinationType: .normal, contacts: [person], callCapability: call.video ? .videoCall : .audioCall)
+        intent.setImage(image, forParameterNamed: \.contacts)
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        interaction.donate { _ in }
     }
     func finished(_ id: UUID) { pending.removeValue(forKey: id) }
     private static func update(_ call: LegendCallSnapshot) -> CXCallUpdate {

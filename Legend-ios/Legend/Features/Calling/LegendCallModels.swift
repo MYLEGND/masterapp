@@ -31,6 +31,7 @@ struct LegendCallSnapshot: Decodable, Identifiable {
     var calleeUserIds: [String]? = nil
     var receivedUtc: Date? = nil
     var failureMessage: String? = nil
+    var callerImagePath: String? = nil
     var terminal: Bool { ["ended", "declined", "missed"].contains(status) }
 }
 struct LegendCallEvent: Decodable {

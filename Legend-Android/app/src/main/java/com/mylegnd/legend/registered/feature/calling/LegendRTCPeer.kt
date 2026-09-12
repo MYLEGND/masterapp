@@ -32,6 +32,7 @@ class LegendRTCPeer(
     private var capturer: CameraVideoCapturer? = null
     private var screenCapturer: ScreenCapturerAndroid? = null
     private var screenHelper: SurfaceTextureHelper? = null
+    private var screenDimensions: Pair<Int, Int>? = null
     private var cameraWasEnabled = true
     var onScreenSharingEnded: (() -> Unit)? = null
     var localVideo: VideoTrack? = null; private set
@@ -166,6 +167,17 @@ class LegendRTCPeer(
         localVideo?.setEnabled(true)
         val screen = ScreenCapturerAndroid(permission, object : android.media.projection.MediaProjection.Callback() {
             override fun onStop() { scope.launch { stopScreenSharing() } }
+            override fun onCapturedContentResize(width: Int, height: Int) {
+                scope.launch {
+                    if (width > 0 && height > 0) {
+                        val size = screenSize(width, height)
+                        if (size != screenDimensions && screenCapturer != null) {
+                            screenDimensions = size
+                            screenCapturer?.changeCaptureFormat(size.first, size.second, 15)
+                        }
+                    }
+                }
+            }
         })
         try {
             capturer?.stopCapture(); captureStarted = false
@@ -173,13 +185,20 @@ class LegendRTCPeer(
             screenCapturer = screen
             screen.initialize(screenHelper, app, source.capturerObserver)
             val display = app.resources.displayMetrics
-            val scale = minOf(1f, 1280f / maxOf(display.widthPixels, display.heightPixels))
-            screen.startCapture((display.widthPixels * scale).toInt().coerceAtLeast(2), (display.heightPixels * scale).toInt().coerceAtLeast(2), 15)
+            val size = screenSize(display.widthPixels, display.heightPixels)
+            screenDimensions = size
+            screen.startCapture(size.first, size.second, 15)
         } catch (error: Exception) { stopScreenSharing(); throw error }
+    }
+    private fun screenSize(width: Int, height: Int): Pair<Int, Int> {
+        val maxEdge = if (cellular) maxOf(policy.cellularWidth, policy.cellularHeight) else maxOf(policy.wifiWidth, policy.wifiHeight)
+        val scale = minOf(1.0, maxEdge.toDouble() / maxOf(width, height))
+        return ((width * scale).toInt() / 2 * 2).coerceAtLeast(2) to ((height * scale).toInt() / 2 * 2).coerceAtLeast(2)
     }
     fun stopScreenSharing() {
         val screen = screenCapturer ?: return
         screenCapturer = null
+        screenDimensions = null
         localVideo?.setEnabled(cameraWasEnabled)
         runCatching { screen.stopCapture() }; screen.dispose()
         screenHelper?.dispose(); screenHelper = null

@@ -248,7 +248,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     {
         var callerIds = await ParticipantUserIdFormsAsync(new(call.CallerUserId, call.CallerType), ct);
         var calleeIds = await ParticipantUserIdFormsAsync(new(call.CalleeUserId, call.CalleeType), ct);
-        return CallSnapshot(call) with { CallerUserIds = callerIds, CalleeUserIds = calleeIds };
+        return CallSnapshot(call) with { CallerUserIds = callerIds, CalleeUserIds = calleeIds, CallerImagePath = call.Status == "ringing" ? await _notifications.GetCallSenderImagePathAsync(call.Id, ct) : null };
     }
 
     internal static LegendCallSnapshot CallSnapshot(LegendCallSession call) => new(
