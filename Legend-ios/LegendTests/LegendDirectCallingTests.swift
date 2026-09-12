@@ -188,7 +188,15 @@ final class LegendDirectCallingTests: XCTestCase {
         XCTAssertNotNil(store.current?.receivedUtc)
     }
 
+    func testCancelledAnswerAfterRetirementCannotRestoreCall() async throws {
+        try await verifyDelayedAnswer(throwsCancellation: true)
+    }
+
     func testDelayedAnswerCannotResurrectEndedCallOrReplaceNewCall() async throws {
+        try await verifyDelayedAnswer(throwsCancellation: false)
+    }
+
+    private func verifyDelayedAnswer(throwsCancellation: Bool) async throws {
         let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
             apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
             participantType: .client, accessTokenProvider: { throw CancellationError() }))
@@ -204,7 +212,9 @@ final class LegendDirectCallingTests: XCTestCase {
         var continuation: CheckedContinuation<LegendCallResult, Never>?
         let answer = Task { @MainActor in
             try await store.completeAnswer(callId: original.id) {
-                await withCheckedContinuation { continuation = $0 }
+                let response = await withCheckedContinuation { continuation = $0 }
+                if throwsCancellation { throw CancellationError() }
+                return response
             }
         }
         while continuation == nil { await Task.yield() }

@@ -460,7 +460,15 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     func completeAnswer(callId: UUID, request: () async throws -> LegendCallResult) async throws {
         let generation = callGeneration
         guard isCurrentCall(callId, generation: generation) else { throw CancellationError() }
-        let result = try await request()
+        let result: LegendCallResult
+        do { result = try await request() }
+        catch {
+            if !isCurrentCall(callId, generation: generation) {
+                // Retirement can cancel the response after the server accepted it.
+                _ = try? await transport.call(LegendCallCommand(action: "end", deviceId: deviceId, callId: callId), existingConnectionOnly: true)
+            }
+            throw error
+        }
         guard isCurrentCall(callId, generation: generation) else {
             if result.succeeded, result.call?.id == callId, result.call?.terminal == false {
                 // The earlier decline may have lost the race to the server accepting.
