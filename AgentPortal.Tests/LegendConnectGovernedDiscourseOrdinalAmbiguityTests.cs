@@ -19,6 +19,7 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
 {
     [Fact]
@@ -155,11 +156,11 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         await using var db = ControllerTestHelpers.BuildDb();
         var actor = Guid.NewGuid().ToString("D");
         var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
-        Environment.SetEnvironmentVariable("FOUNDER_OID", actor);
-        db.AgentProfiles.Add(Profile(actor, "heldout"));
-        await db.SaveChangesAsync();
         try
         {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", actor);
+            db.AgentProfiles.Add(Profile(actor, "heldout"));
+            await db.SaveChangesAsync();
             var curriculum = CreateCurriculum(db);
             for (var family = 1; family <= 3; family++)
             {
