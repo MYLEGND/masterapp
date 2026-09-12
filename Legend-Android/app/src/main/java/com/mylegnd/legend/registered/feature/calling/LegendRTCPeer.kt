@@ -150,15 +150,16 @@ class LegendRTCPeer(
                     delay(tuning.sampleSeconds.coerceAtLeast(1) * 1000L)
                     if (completedQualitySample != qualitySample) healthySamples = 0
                     val sample = ++qualitySample
-                    if (connected) peer.getStats { report ->
+                    if (connected || transportObservationCount < 40) peer.getStats { report ->
                         val selected = report.statsMap.values.firstOrNull { it.type == "transport" && it.members["selectedCandidatePairId"] != null }?.members?.get("selectedCandidatePairId") as? String
                         val pair = selected?.let { report.statsMap[it] }
                         val bandwidth = (pair?.members?.get("availableOutgoingBitrate") as? Number)?.toDouble()
                         val latency = (pair?.members?.get("currentRoundTripTime") as? Number)?.toDouble()
                         scope.launch sampleResult@{
-                            if (closed || !connected || sample != qualitySample) return@sampleResult
-                            completedQualitySample = sample
+                            if (closed || sample != qualitySample) return@sampleResult
                             observeTransport(report)
+                            if (!connected) return@sampleResult
+                            completedQualitySample = sample
                             observeAudio(report)
                             if (bandwidth != null && bandwidth.isFinite() && bandwidth >= 0) {
                                 availableBandwidth = bandwidth

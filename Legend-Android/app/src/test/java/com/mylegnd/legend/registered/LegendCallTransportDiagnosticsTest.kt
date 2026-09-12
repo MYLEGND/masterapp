@@ -1,6 +1,6 @@
 package com.mylegnd.legend.registered
 
-import com.mylegnd.legend.registered.feature.calling.legendCallTransportDiagnostic
+import com.mylegnd.legend.registered.feature.calling.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.webrtc.RTCStats
@@ -35,6 +35,27 @@ class LegendCallTransportDiagnosticsTest {
         assertTrue(invalid.contains("dtlsState=unknown"))
         assertTrue(invalid.contains("remoteAudioRttMs=unknown"))
     }
+    @Test fun candidateInventoryRemainsVisibleBeforeAnyPairIsSelected() {
+        val result = legendCallTransportDiagnostic(report(
+            stat("local-candidate", "l1", mapOf("candidateType" to "host", "address" to "192.0.2.1")),
+            stat("local-candidate", "l2", mapOf("candidateType" to "srflx")),
+            stat("local-candidate", "l3", mapOf("candidateType" to "private-value")),
+            stat("remote-candidate", "r1", mapOf("candidateType" to "relay")),
+        ))
+        assertTrue(result.contains("selectedPair=false"))
+        assertTrue(result.contains("localCandidates=count=3,types=host+srflx+unknown"))
+        assertTrue(result.contains("remoteCandidates=count=1,types=relay"))
+        assertFalse(result.contains("192.0.2"))
+        assertFalse(result.contains("private-value"))
+    }
+
+    @Test fun cleanupReasonAndTerminalStatusNeverExposeArbitraryErrorMessages() {
+        assertEquals("event=call-cleanup reason=REMOTE_TERMINAL status=ended",
+            legendCallCleanupDiagnostic(LegendCallCleanupReason.REMOTE_TERMINAL, "ended"))
+        assertEquals("event=call-cleanup reason=CALL_DEADLINE status=unknown",
+            legendCallCleanupDiagnostic(LegendCallCleanupReason.CALL_DEADLINE, "private server error"))
+    }
+
     private fun stat(type: String, id: String, members: Map<String, Any>) = RTCStats(0, type, id, members)
     private fun report(vararg stats: RTCStats) = RTCStatsReport(0, stats.associateBy { it.id })
 }

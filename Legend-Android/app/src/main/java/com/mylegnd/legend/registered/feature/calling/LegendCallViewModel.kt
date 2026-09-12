@@ -170,7 +170,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             if (peer != null && state.value.call != null) {
                 val id = state.value.call!!.id
                 update { it.copy(failure = "Android transferred call audio to another call.") }
-                clear()
+                clear(LegendCallCleanupReason.FOCUS_LOST)
                 viewModelScope.launch { runCatching { command(LegendCallCommand("end", deviceId, id)) } }
             }
         }
@@ -179,11 +179,13 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         update { it.copy(systemAnswerRequested = true) }
         app.startActivity(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
-    fun end() = viewModelScope.launch {
+    fun end() = endWithReason(LegendCallCleanupReason.USER_END)
+    fun systemEnd() = endWithReason(LegendCallCleanupReason.SYSTEM_END)
+    private fun endWithReason(reason: LegendCallCleanupReason) = viewModelScope.launch {
         val outgoing = pending
         val id = state.value.call?.id ?: outgoing?.first
         val decline = state.value.incoming
-        clear()
+        clear(reason)
         if (id != null) runCatching { command(LegendCallCommand(if (outgoing != null) "cancel" else if (decline) "decline" else "end", deviceId, id, outgoing?.second)) }
     }
     fun background(value: Boolean) { peer?.background(value) }
@@ -214,8 +216,8 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     fun platformFailed() { viewModelScope.launch {
         if (state.value.incoming) {
             update { it.copy(failure = "Android could not present this call. Check calling permissions and notifications.") }
-            clear() // Do not decline other devices on the receiving account.
-        } else fail("Android could not start this call. Check calling permissions and try again.")
+            clear(LegendCallCleanupReason.PLATFORM_FAILURE) // Do not decline other devices on the receiving account.
+        } else fail("Android could not start this call. Check calling permissions and try again.", LegendCallCleanupReason.PLATFORM_FAILURE)
     } }
     fun receivePush(call: LegendCallSnapshot) { viewModelScope.launch { receive(LegendCallEvent(call)) } }
     @Suppress("DEPRECATION")
@@ -240,7 +242,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             val current = state.value.call
             if (current != null) {
                 val found = result.activeCalls?.firstOrNull { it.id == current.id }
-                if (found == null) clear() else { show(found); if (found.status != "ringing") peer?.recover(LegendCallRecoveryReason.REALTIME_RECONNECTED) }
+                if (found == null) clear(LegendCallCleanupReason.SYNC_MISSING) else { show(found); if (found.status != "ringing") peer?.recover(LegendCallRecoveryReason.REALTIME_RECONNECTED) }
             } else result.activeCalls?.firstOrNull { isCalleeAccount(it) && it.status == "ringing" }?.let { receive(LegendCallEvent(it)) }
         }
     }
@@ -254,12 +256,12 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         if (state.value.call != null && state.value.call?.id != call.id) return
         val callerAccount = isCallerAccount(call)
         if (callerAccount && call.callerDeviceId != deviceId) return
-        if (!callerAccount && call.calleeDeviceId != null && call.calleeDeviceId != deviceId) { if (state.value.call?.id == call.id) clear(); return }
+        if (!callerAccount && call.calleeDeviceId != null && call.calleeDeviceId != deviceId) { if (state.value.call?.id == call.id) clear(LegendCallCleanupReason.OTHER_DEVICE_ACCEPTED); return }
         if (pending != null && pending?.first != call.id) return
         if (call.terminal) {
             if (state.value.call?.id == call.id || pending?.first == call.id) {
                 if (callerAccount) update { it.copy(failure = call.failureMessage) }
-                clear()
+                clear(LegendCallCleanupReason.REMOTE_TERMINAL, call.status)
             }
             return
         }
@@ -282,7 +284,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             .onFailure {
                 if (state.value.call?.id == id) {
                     update { it.copy(failure = "The incoming call could not be confirmed. Please try again.") }
-                    clear()
+                    clear(LegendCallCleanupReason.INCOMING_CONFIRMATION_FAILED)
                 }
             }
     }
@@ -398,7 +400,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     }
     private fun armDeadline(id: String, at: Long) {
         deadline?.cancel()
-        deadline = viewModelScope.launch { delay((at - System.currentTimeMillis()).coerceAtLeast(1_000)); if (state.value.call?.id == id) fail(if (state.value.call?.status == "ringing") { if (caller && state.value.call?.receivedUtc == null) "The recipient could not be reached. Their device did not confirm receiving the call." else "The call was not answered." } else "This network could not establish a direct call. Try another Wi-Fi or mobile connection.") }
+        deadline = viewModelScope.launch { delay((at - System.currentTimeMillis()).coerceAtLeast(1_000)); if (state.value.call?.id == id) fail(if (state.value.call?.status == "ringing") { if (caller && state.value.call?.receivedUtc == null) "The recipient could not be reached. Their device did not confirm receiving the call." else "The call was not answered." } else "This network could not establish a direct call. Try another Wi-Fi or mobile connection.", LegendCallCleanupReason.CALL_DEADLINE) }
     }
     private fun updateProximity() {
         val power = app.getSystemService(PowerManager::class.java)
@@ -408,8 +410,9 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             proximity?.acquire(90_000)
         } else { if (proximity?.isHeld == true) proximity?.release(); proximity = null }
     }
-    private fun fail(message: String) { update { it.copy(failure = message) }; end() }
-    private fun clear() {
+    private fun fail(message: String, reason: LegendCallCleanupReason = LegendCallCleanupReason.LOCAL_FAILURE) { update { it.copy(failure = message) }; endWithReason(reason) }
+    private fun clear(reason: LegendCallCleanupReason, terminalStatus: String? = null) {
+        android.util.Log.i("LegendCallMedia", "mediaSession=${LegendCallPlatform.mediaSession} ${legendCallCleanupDiagnostic(reason, terminalStatus ?: state.value.call?.status)}")
         pending?.first?.let { finished.add(it) }
         ringback?.release(); ringback = null
         reconciliation?.cancel(); reconciliation = null
@@ -432,7 +435,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         val outgoing = pending
         val id = state.value.call?.id ?: outgoing?.first
         val decline = state.value.incoming
-        clear()
+        clear(LegendCallCleanupReason.ACCOUNT_SHUTDOWN)
         if (LegendCallPlatform.store === this) LegendCallPlatform.store = null
         viewModelScope.cancel()
         // A bounded teardown owns only the old authenticated connection. It may

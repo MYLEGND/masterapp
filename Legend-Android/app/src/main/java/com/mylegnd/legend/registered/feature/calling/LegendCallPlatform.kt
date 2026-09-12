@@ -179,9 +179,9 @@ class LegendConnectionService : ConnectionService() {
         override fun onShowIncomingCallUi() { runCatching { LegendCallPlatform.showIncoming(this@LegendConnectionService) }.onFailure { store.platformFailed() } }
         override fun onAnswer() { store.requestSystemAnswer() }
         override fun onAnswer(videoState: Int) { store.requestSystemAnswer() }
-        override fun onReject() { store.end() }
-        override fun onDisconnect() { store.end() }
-        override fun onAbort() { store.end() }
+        override fun onReject() { store.systemEnd() }
+        override fun onDisconnect() { store.systemEnd() }
+        override fun onAbort() { store.systemEnd() }
         override fun onCallAudioStateChanged(state: CallAudioState) { store.audioRouteChanged(state.route) }
     }.also { LegendCallPlatform.connection = it }
 }
