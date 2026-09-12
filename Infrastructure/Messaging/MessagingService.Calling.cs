@@ -11,7 +11,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
 {
     // Shared media policy; optional relay credentials are minted only on authenticated call requests.
     internal static readonly LegendCallPolicy DirectCallPolicy = new(
-        ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"], Adaptation: new());
+        ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"], Adaptation: new(), ScreenShare: new());
 
     private static LegendCallPolicy CurrentCallPolicy(LegendCallSession call, LegendCallPolicy policy) =>
         call.ExpiresUtc > DateTime.UtcNow && call.Status is "ringing" or "connecting" or "active"
@@ -86,7 +86,18 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                     return result;
                 });
             }
-            return await HandleCallAsync(actor, command, policy, cancellationToken);
+            // SQL Server error 1205 guarantees that the victim transaction
+            // was rolled back. Retry that known outcome once; never retry an
+            // ambiguous connection/commit failure or an enclosing transaction.
+            for (var attempt = 0; ; attempt++)
+            {
+                try { return await HandleCallAsync(actor, command, policy, cancellationToken); }
+                catch (CallWriteDeadlockException) when (attempt == 0 && !cancellationToken.IsCancellationRequested)
+                {
+                    _db.ChangeTracker.Clear();
+                    await Task.Delay(75, cancellationToken);
+                }
+            }
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -98,6 +109,47 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
             }
             return new(false, "This call changed on another device. Refresh the call status.");
         }
+    }
+
+    // Only a failed atomic SaveChanges is retryable. A later snapshot read can
+    // deadlock after the call/outbox has committed and must never replay it.
+    private sealed class CallWriteDeadlockException(Exception inner) : Exception("Call write transaction was rolled back by SQL Server.", inner);
+
+    private async Task SaveCallChangesAsync(CancellationToken cancellationToken)
+    {
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (Exception exception) when (_db.Database.CurrentTransaction is null && IsCallDeadlock(exception))
+        {
+            throw new CallWriteDeadlockException(exception);
+        }
+    }
+
+    internal static bool IsCallDeadlock(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is Microsoft.Data.SqlClient.SqlException { Number: 1205 }) return true;
+        return false;
+    }
+
+    private static bool IsValidCallMediaState(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload) || payload.Length > 256) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payload);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object ||
+                !root.TryGetProperty("screenSharing", out var sharing) ||
+                sharing.ValueKind is not (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)) return false;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in root.EnumerateObject())
+            {
+                if (!seen.Add(field.Name) || field.Name is not ("screenSharing" or "request")) return false;
+                if (field.Name == "request" && field.Value.ValueKind is not (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)) return false;
+            }
+            return true;
+        }
+        catch (System.Text.Json.JsonException) { return false; }
     }
 
     private async Task<LegendCallResult> InviteCallAsync(MessagingActor actor, LegendCallCommand command, LegendCallPolicy policy, CancellationToken ct)
@@ -244,13 +296,18 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                     var signalWindow = DateTime.UtcNow.AddMinutes(-1);
                     if (await _db.LegendCallSignals.CountAsync(s => s.CallId == call.Id && s.CreatedUtc > signalWindow, ct) >= 1024)
                         return new(false, "Too many call signals. Please call again.");
-                    if (command.SignalKind is not ("offer" or "answer" or "candidate" or "restart")) return new(false, "Invalid call signal.");
+                    if (command.SignalKind is not ("offer" or "answer" or "candidate" or "restart" or "media-state")) return new(false, "Invalid call signal.");
                     if (command.SignalKind != "restart" && string.IsNullOrWhiteSpace(command.SignalData)) return new(false, "A call signal is required.");
+                    if (command.SignalKind == "media-state" && !IsValidCallMediaState(command.SignalData))
+                        return new(false, "Invalid call media state.");
                     if (command.SignalKind == "offer")
                     {
                         if (!caller || command.Epoch != call.Epoch + 1) return new(false, "Refresh the call before negotiating.");
                         call.Epoch = command.Epoch;
-                        await SaveCallAsync(call, ct, publish: false);
+                        call.Version = Guid.NewGuid();
+                        // PublishCallAsync saves the epoch and SDP outbox in one
+                        // EF transaction. Advancing the epoch alone strands peers.
+
                     }
                     else if (command.Epoch != call.Epoch || (command.SignalKind == "answer" && caller)) return new(false, "This call signal has expired.");
                     await PublishCallAsync(new(await SnapshotAsync(call, ct), command.SignalKind, command.SignalData, command.DeviceId,
@@ -266,7 +323,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     {
         call.Version = Guid.NewGuid();
         if (publish) await PublishCallAsync(new(await SnapshotAsync(call, ct)), ct);
-        else await _db.SaveChangesAsync(ct);
+        else await SaveCallChangesAsync(ct);
     }
 
     private async Task PublishCallAsync(LegendCallEvent callEvent, CancellationToken ct)
@@ -281,7 +338,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         foreach (var group in groups)
             _db.LegendCallSignals.Add(new LegendCallSignal { CallId = call.Id, RecipientGroup = group,
                 Payload = payload, CreatedUtc = now, ExpiresUtc = now.AddSeconds(60) });
-        await _db.SaveChangesAsync(ct);
+        await SaveCallChangesAsync(ct);
     }
 
     internal async Task<LegendCallSnapshot> SnapshotAsync(LegendCallSession call, CancellationToken ct)

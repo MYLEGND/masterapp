@@ -10,7 +10,7 @@ public sealed record LegendCallPolicy(
     string[] StunUrls, int WifiWidth = 1280, int WifiHeight = 720, int WifiFps = 30,
     int CellularWidth = 640, int CellularHeight = 480, int CellularFps = 24,
     int VideoBitrate = 1_000_000, int AudioBitrate = 64_000,
-    int RingSeconds = 45, int ConnectSeconds = 20, int RecoveryAttempts = 3, LegendCallAdaptationPolicy? Adaptation = null, LegendCallRelay? Relay = null);
+    int RingSeconds = 45, int ConnectSeconds = 20, int RecoveryAttempts = 3, LegendCallAdaptationPolicy? Adaptation = null, LegendCallRelay? Relay = null, LegendCallScreenSharePolicy? ScreenShare = null);
 
 public sealed record LegendCallRelay(string[] Urls, string Username, string Credential, DateTime ExpiresUtc)
 {
@@ -31,6 +31,14 @@ public sealed record LegendCallAdaptationPolicy(int SampleSeconds = 3, int Recov
     int LowBandwidth = 350_000, int HighBandwidth = 900_000, double HighLatencySeconds = 0.6,
     int LowWidth = 320, int LowHeight = 240, int LowFps = 12, int LowBitrate = 180_000,
     int MediumWidth = 640, int MediumHeight = 480, int MediumFps = 18, int MediumBitrate = 450_000, double AudioPriority = 4);
+
+// Screen content preserves text resolution by reducing frame rate before
+// falling back to a lower resolution. Audio retains the shared priority.
+public sealed record LegendCallScreenSharePolicy(
+    int HighWidth = 1920, int HighHeight = 1080, int HighFps = 15, int HighBitrate = 2_500_000,
+    int MediumWidth = 1280, int MediumHeight = 720, int MediumFps = 10, int MediumBitrate = 1_200_000,
+    int LowWidth = 960, int LowHeight = 540, int LowFps = 5, int LowBitrate = 250_000,
+    double TransportHeadroomFraction = 0.15);
 
 public sealed record LegendCallSnapshot(
     Guid Id, Guid ConversationId, string CallerUserId, string CallerType,
