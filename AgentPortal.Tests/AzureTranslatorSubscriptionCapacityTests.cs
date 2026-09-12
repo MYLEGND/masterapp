@@ -85,7 +85,33 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     }
 
     [Fact]
-    public async Task Snapshot_ExcludesFutureDatedConsumptionAndMarksLedgerAsEstimate()
+    public async Task SaturatedProviderConsumptionWithReservationsNeverWrapsRemainingPositive()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.LegendTranslationProviderReservations.Add(new LegendTranslationProviderReservation
+        {
+            Id = Guid.NewGuid(), Provider = "AzureTranslator", ReservationReference = "large-reserved",
+            BillingPeriodStart = new DateOnly(now.Year, now.Month, 1),
+            Purpose = TranslationCapacityPurpose.Live.ToString(), Characters = 3_000_000,
+            State = "Reserved", CreatedUtc = now, ReservationExpiresUtc = now.AddHours(1)
+        });
+        await db.SaveChangesAsync();
+        var source = new StaticAzureCapacitySource(Available("F0", 2_000_000) with
+        {
+            MonthlyAzureReportedCharacters = long.MaxValue,
+            AzureUsageQueryEndUtc = now.AddMinutes(-1)
+        });
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
+        var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
+        Assert.Equal(0L, snapshot.MonthlyRemainingCharacters);
+        Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
+        Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "saturated-overage"));
+    }
+
+    [Fact]
+    public async Task Snapshot_CountsDebtDespiteFutureTimestampsAndMarksLedgerAsEstimate()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -97,13 +123,23 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             State = "Completed", CreatedUtc = now.AddHours(1), CompletedUtc = now.AddHours(1),
             ReservationExpiresUtc = now.AddHours(2)
         });
+        db.LegendTranslationProviderReservations.Add(new LegendTranslationProviderReservation
+        {
+            Id = Guid.NewGuid(), Provider = "AzureTranslator", ReservationReference = "future-reservation",
+            BillingPeriodStart = new DateOnly(now.Year, now.Month, 1),
+            Purpose = TranslationCapacityPurpose.Live.ToString(), Characters = 100,
+            State = "Reserved", CreatedUtc = now.AddHours(1), ReservationExpiresUtc = now.AddHours(2)
+        });
         await db.SaveChangesAsync();
         var authority = new TranslationCapacityAuthority(db, Configuration(),
             NullLogger<TranslationCapacityAuthority>.Instance,
             azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
         var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
-        Assert.Equal(0, snapshot.MonthlyCharactersConsumed);
-        Assert.Equal(0, snapshot.HourlyCharactersConsumed);
+        Assert.Equal(100, snapshot.MonthlyCharactersConsumed);
+        Assert.Equal(100, snapshot.HourlyCharactersConsumed);
+        Assert.Equal(100, snapshot.MonthlyReservedCharacters);
+        Assert.Equal(1_999_800L, snapshot.MonthlyRemainingCharacters);
+        Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1_999_801, TranslationCapacityPurpose.Live, "future-debt-overage"));
         Assert.True(snapshot.RemainingIsEstimate);
         Assert.False(snapshot.IsAzureUsageVerified);
         Assert.Null(snapshot.MonthlyAzureReportedCharacters);
