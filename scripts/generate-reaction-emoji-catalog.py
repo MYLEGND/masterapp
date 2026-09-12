@@ -26,6 +26,39 @@ def tokens(value):
     return re.findall(r"[^\W_]+", folded, flags=re.UNICODE)
 
 
+def add_skin_tone_mappings(entries):
+    """Resolve complete source-listed sequences, including Unicode legacy bases.
+
+    Unicode uses compact neutral bases for handshake, kiss and couple-with-heart
+    but expanded ZWJ sequences for some toned forms. Name matching connects these
+    source records without ever manufacturing a modified Unicode string.
+    """
+    tone_keys = {0x1F3FB: "light", 0x1F3FC: "mediumLight", 0x1F3FD: "medium",
+                 0x1F3FE: "mediumDark", 0x1F3FF: "dark"}
+    neutral = {entry["name"]: entry for entry in entries
+               if not any(ord(c) in tone_keys for c in entry["emoji"])}
+    # CLDR explicitly names both neutral people in expanded mixed-tone forms.
+    neutral_names = {"kiss: person, person": "kiss",
+                     "couple with heart: person, person": "couple with heart"}
+    mappings = {entry["emoji"]: {"default": entry["emoji"]} for entry in neutral.values()}
+    for entry in entries:
+        modifiers = {ord(c) for c in entry["emoji"] if ord(c) in tone_keys}
+        name = re.sub(r"(?:light|medium-light|medium|medium-dark|dark) skin tone(?:, )?",
+                      "", entry["name"]).rstrip(" :,")
+        name = neutral_names.get(name, name)
+        if name not in neutral:
+            raise ValueError(f"No canonical source-listed base for {entry['name']}")
+        base = neutral[name]["emoji"]
+        entry["baseEmoji"] = base
+        if len(modifiers) == 1:
+            key = tone_keys[next(iter(modifiers))]
+            if key in mappings[base] and mappings[base][key] != entry["emoji"]:
+                raise ValueError(f"Ambiguous uniform skin tone for {entry['name']}")
+            mappings[base][key] = entry["emoji"]
+    for entry in entries:
+        entry["skinToneVariants"] = mappings[entry["baseEmoji"]]
+
+
 def generate():
     source = SOURCE.read_bytes()
     text = source.decode("utf-8")
@@ -58,6 +91,7 @@ def generate():
             entries.append(dict(emoji=emoji, name=name, group=group, subgroup=subgroup, keywords=keywords))
     if len(entries) != 3781 or len({entry["emoji"] for entry in entries}) != len(entries):
         raise ValueError("Unicode 16.0 fully-qualified palette must contain 3781 unique entries")
+    add_skin_tone_mappings(entries)
     return {
         "schemaVersion": 1,
         "unicodeVersion": "16.0",

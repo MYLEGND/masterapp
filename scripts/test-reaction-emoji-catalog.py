@@ -38,6 +38,33 @@ class ReactionEmojiCatalogTests(unittest.TestCase):
             )]
             self.assertIn(expected, matches, query)
 
+    def test_skin_tone_maps_only_contain_source_listed_sequences(self):
+        for entry in self.entries:
+            base = self.by_emoji[entry["baseEmoji"]]
+            self.assertEqual(base["emoji"], base["baseEmoji"])
+            self.assertEqual(entry["skinToneVariants"]["default"], base["emoji"])
+            self.assertEqual(entry["skinToneVariants"], base["skinToneVariants"])
+            for value in entry["skinToneVariants"].values():
+                self.assertIn(value, self.by_emoji)
+        self.assertEqual(self.by_emoji["👍"]["skinToneVariants"]["dark"], "👍🏿")
+        self.assertEqual(self.by_emoji["👩‍💻"]["skinToneVariants"]["medium"], "👩🏽‍💻")
+        self.assertEqual(self.by_emoji["❤️"]["skinToneVariants"], {"default": "❤️"})
+        self.assertEqual(self.by_emoji["🇺🇸"]["skinToneVariants"], {"default": "🇺🇸"})
+
+    def test_mixed_tones_and_legacy_zwj_bases_resolve_without_synthesis(self):
+        self.assertEqual(self.by_emoji["🫱🏻‍🫲🏿"]["baseEmoji"], "🤝")
+        self.assertEqual(self.by_emoji["🫱🏻‍🫲🏿"]["skinToneVariants"]["dark"], "🤝🏿")
+        self.assertEqual(self.by_emoji["🧑🏻‍❤️‍💋‍🧑🏿"]["baseEmoji"], "💏")
+        self.assertEqual(self.by_emoji["💏"]["skinToneVariants"]["light"], "💏🏻")
+
+    def test_reaction_geometry_keeps_three_quarters_inside(self):
+        import json
+        contract = json.loads((CATALOG.ROOT / "Legend-Design/legend-design.tokens.json").read_text())
+        bubble = contract["messaging"]["reactionBubble"]
+        self.assertEqual(bubble["outsideFraction"], 0.25)
+        self.assertEqual(bubble["height"] * bubble["outsideFraction"], 8)
+        self.assertEqual(bubble["trailingInset"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
