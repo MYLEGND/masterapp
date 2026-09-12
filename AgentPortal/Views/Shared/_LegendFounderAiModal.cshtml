@@ -210,8 +210,15 @@
                                 <input type="checkbox"
                                        id="legendFounderAiNativeOnly" />
                                 <span>
-                                    <strong>Native-only test</strong>
-                                    <small>Block every OpenAI escalation and fail closed when LEGEND cannot answer.</small>
+                                    <strong>Block all external providers</strong>
+                                    <small>Disable external answering, research, and Azure translation.</small>
+                                </span>
+                            </label>
+                            <label class="legend-founder-ai-native-only" for="legendFounderAiExternalAnsweringBlocked">
+                                <input type="checkbox" id="legendFounderAiExternalAnsweringBlocked" />
+                                <span>
+                                    <strong>Block external answering</strong>
+                                    <small>Allow authorized research and translation.</small>
                                 </span>
                             </label>
                         </div>

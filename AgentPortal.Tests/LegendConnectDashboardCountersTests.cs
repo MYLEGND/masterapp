@@ -43,7 +43,9 @@ public sealed class LegendConnectDashboardCountersTests
         db.AddRange(
             new LegendTranslationLearningEvent { IdempotencyKey = "pending", SourceLanguageCode = "en", SourceTextHash = "SOURCE", TargetLanguageCode = "fr", TargetTextHash = "missing", EligibilityState = "Eligible", ProcessingState = "Pending", FailureCode = "retry", Provenance = "ConsentedLiveTranslation" },
             new LegendTranslationLearningEvent { IdempotencyKey = "retired", SourceLanguageCode = "en", SourceTextHash = "RETIRED", EligibilityState = "Eligible", ProcessingState = "Pending", FailureCode = "retired" },
-            new LegendTranslationLearningEvent { IdempotencyKey = "privacy", EligibilityState = "NotEligible", ProcessingState = "Processed", FailureCode = "privacy", Provenance = "ConsentedLiveTranslation", PromotionOutcome = "Reused" });
+            new LegendTranslationLearningEvent { IdempotencyKey = "privacy", EligibilityState = "NotEligible", ProcessingState = "Processed", FailureCode = "privacy", Provenance = "ConsentedLiveTranslation", PromotionOutcome = "Reused" },
+            new LegendTranslationLearningEvent { IdempotencyKey = "healthy", SourceLanguageCode = "en", SourceTextHash = "SOURCE", TargetLanguageCode = "fr", TargetTextHash = "TARGET", EligibilityState = "Eligible", ProcessingState = "Processed", FailureCode = "  " },
+            new LegendTranslationLearningEvent { IdempotencyKey = "superseded-failure", SourceLanguageCode = "en", SourceTextHash = "SOURCE", TargetLanguageCode = "fr", TargetTextHash = "TARGET", EligibilityState = "Eligible", ProcessingState = "Superseded", FailureCode = "historical" });
         db.AddRange(
             new LegendCorpusCandidate { IdempotencyKey = "valid", SourceLanguageCode = "en", TargetLanguageCode = "fr", SourceTextHash = "SOURCE", SourceText = "Hello\tworld", IsApproved = true, FailureCode = "retry" },
             new LegendCorpusCandidate { IdempotencyKey = "mismatch", SourceLanguageCode = "en", TargetLanguageCode = "fr", SourceTextHash = "SOURCE", SourceText = "Different text", IsApproved = true, FailureCode = "invalid" });

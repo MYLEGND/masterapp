@@ -790,6 +790,15 @@ Return only the requested structured result.
 
     private TeacherConfiguration ReadConfiguration(string role)
     {
+        if (LegendConnectModelTrainingConfiguration.IsControlled(LegendConnectModelTrainingConfiguration.ResolveBackend(_configuration)) &&
+            (!bool.TryParse(_configuration[ConfigurationPrefix + "ExternalLearningEnabled"], out var externalLearning) ||
+             !externalLearning))
+        {
+            return new TeacherConfiguration(false, null, string.Empty, string.Empty,
+                LegendLanguageIdentity.TextHash("local-learning-external-disabled:" + role),
+                "external_learning_not_authorized");
+        }
+
         var modelKey = string.Equals(
             role,
             LegendLanguageTeacherRole.Teacher,

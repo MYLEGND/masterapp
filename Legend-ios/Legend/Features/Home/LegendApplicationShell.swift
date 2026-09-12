@@ -10224,35 +10224,53 @@ struct LegendFounderAiChatMessage:
     let role: String
     let content: String
     let responseAuthority: String?
+    let reason: String?
     let foundationModel: String?
     let foundationHosting: String?
     let externalAnsweringUsed: Bool?
     let escalationUsed: Bool?
+    let escalationDisposition: String?
     let researchState: String?
     let learningState: String?
+    let modelAssistanceState: String?
+    let modelVersion: String?
+    let modelTrainingRunId: String?
+    let modelProvenance: String?
 
     init(
         id: UUID = UUID(),
         role: String,
         content: String,
         responseAuthority: String? = nil,
+        reason: String? = nil,
         foundationModel: String? = nil,
         foundationHosting: String? = nil,
         externalAnsweringUsed: Bool? = nil,
         escalationUsed: Bool? = nil,
+        escalationDisposition: String? = nil,
         researchState: String? = nil,
-        learningState: String? = nil
+        learningState: String? = nil,
+        modelAssistanceState: String? = nil,
+        modelVersion: String? = nil,
+        modelTrainingRunId: String? = nil,
+        modelProvenance: String? = nil
     ) {
         self.id = id
         self.role = role
         self.content = content
         self.responseAuthority = responseAuthority
+        self.reason = reason
         self.foundationModel = foundationModel
         self.foundationHosting = foundationHosting
         self.externalAnsweringUsed = externalAnsweringUsed
         self.escalationUsed = escalationUsed
+        self.escalationDisposition = escalationDisposition
         self.researchState = researchState
         self.learningState = learningState
+        self.modelAssistanceState = modelAssistanceState
+        self.modelVersion = modelVersion
+        self.modelTrainingRunId = modelTrainingRunId
+        self.modelProvenance = modelProvenance
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -10268,6 +10286,7 @@ private struct LegendFounderAiAccessResponse: Decodable {
 private struct LegendFounderAiChatRequest: Encodable {
     let mode: String
     let nativeOnly: Bool
+    let externalAnsweringBlocked: Bool
     let sourceLanguageCode: String?
     let messages: [LegendFounderAiChatMessage]
     let conversationId: String
@@ -10286,8 +10305,13 @@ private struct LegendFounderAiChatResponse: Decodable {
     let foundationHosting: String?
     let externalAnsweringUsed: Bool?
     let escalationUsed: Bool?
+    let escalationDisposition: String?
     let researchState: String?
     let learningState: String?
+    let modelAssistanceState: String?
+    let modelVersion: String?
+    let modelTrainingRunId: String?
+    let modelProvenance: String?
     let stage: String?
     let reason: String?
 }
@@ -10367,6 +10391,7 @@ final class LegendFounderAiStore: ObservableObject {
         _ rawText: String,
         mode: String = "legend",
         nativeOnly: Bool = false,
+        externalAnsweringBlocked: Bool = false,
         sourceLanguageCode: String? = nil
     ) async {
         guard isAvailable,
@@ -10413,6 +10438,7 @@ final class LegendFounderAiStore: ObservableObject {
                 body: LegendFounderAiChatRequest(
                     mode: mode == "teacher" ? "teacher" : "legend",
                     nativeOnly: mode != "teacher" && nativeOnly,
+                    externalAnsweringBlocked: mode != "teacher" && externalAnsweringBlocked,
                     // Only an explicit governed selection supplies a language.
                     sourceLanguageCode: sourceLanguageCode,
                     messages: messages,
@@ -10460,12 +10486,18 @@ final class LegendFounderAiStore: ObservableObject {
                         content: answer,
                         responseAuthority:
                             response.responseAuthority,
+                        reason: response.reason,
                         foundationModel: response.foundationModel,
                         foundationHosting: response.foundationHosting,
                         externalAnsweringUsed: response.externalAnsweringUsed,
                         escalationUsed: response.escalationUsed,
+                        escalationDisposition: response.escalationDisposition,
                         researchState: response.researchState,
-                        learningState: response.learningState))
+                        learningState: response.learningState,
+                        modelAssistanceState: response.modelAssistanceState,
+                        modelVersion: response.modelVersion,
+                        modelTrainingRunId: response.modelTrainingRunId,
+                        modelProvenance: response.modelProvenance))
 
                 failureMessage = nil
                 return
@@ -10509,53 +10541,10 @@ final class LegendFounderAiStore: ObservableObject {
     private func typedFailure(
         _ response: LegendFounderAiChatResponse
     ) -> String {
-        var parts: [String] = []
-
-        if let error =
-            response.error?
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines),
-           !error.isEmpty
-        {
-            parts.append(error)
-        } else {
-            parts.append(
-                "Legend® Ai could not complete that request.")
-        }
-
-        if let kind =
-            response.failureKind,
-           !kind.isEmpty
-        {
-            parts.append(
-                "Type: \(kind)")
-        }
-
-        if let reason =
-            response.reason,
-           !reason.isEmpty
-        {
-            parts.append(
-                "Reason: \(reason)")
-        }
-
-        if let status =
-            response.providerStatusCode
-        {
-            parts.append(
-                "Provider HTTP: \(status)")
-        }
-
-        if let reference =
-            response.reference,
-           !reference.isEmpty
-        {
-            parts.append(
-                "Reference: \(reference)")
-        }
-
-        return parts.joined(
-            separator: "\n")
+        let summary = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return summary?.isEmpty == false
+            ? summary!
+            : "Legend® Ai could not complete that request."
     }
 }
 
@@ -10632,6 +10621,7 @@ struct LegendFounderAiConversationView: View {
     @State private var draft = ""
     @State private var mode = "legend"
     @State private var nativeOnly = false
+    @State private var externalAnsweringBlocked = false
     @State private var chatsOpen = false
     @State private var requestTask: Task<Void, Never>?
     @FocusState private var composerFocused: Bool
@@ -10781,6 +10771,7 @@ struct LegendFounderAiConversationView: View {
 
             mode = value
             nativeOnly = false
+            externalAnsweringBlocked = false
             // A responder switch must start a clean thread; mixing a prior
             // model's reply into the next request would misrepresent source.
             store.clearConversation()
@@ -11144,7 +11135,7 @@ struct LegendFounderAiConversationView: View {
         if let failure =
             store.failureMessage
         {
-            Text(failure)
+            Text(LegendLocalized(failure))
                 .font(
                     .system(
                         size: 10,
@@ -11407,11 +11398,11 @@ struct LegendFounderAiConversationView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(LegendLocalized("Native-only"))
+                    Text(LegendLocalized("Block all external providers"))
                         .font(.system(size: 13, weight: .semibold))
                     Text(
                         mode == "legend"
-                            ? LegendLocalized("Keep OpenAI off for this direct LEGEND test.")
+                            ? LegendLocalized("Disable external answering, research, and Azure translation.")
                             : LegendLocalized("Available in Legend® Ai mode."))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(LegendFounderAiPresentationTokens.muted)
@@ -11420,7 +11411,7 @@ struct LegendFounderAiConversationView: View {
 
                 Spacer(minLength: 0)
 
-                Toggle(LegendLocalized("Native-only"), isOn: $nativeOnly)
+                Toggle(LegendLocalized("Block all external providers"), isOn: $nativeOnly)
                     .labelsHidden()
                     .toggleStyle(
                         SwitchToggleStyle(
@@ -11447,6 +11438,16 @@ struct LegendFounderAiConversationView: View {
                                 .opacity(0.10),
                         lineWidth: 1)
             }
+
+            Toggle(isOn: $externalAnsweringBlocked) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(LegendLocalized("Block external answering"))
+                    Text(LegendLocalized("Allow authorized research and translation."))
+                        .font(.caption)
+                }
+            }
+            .disabled(store.isSending || mode != "legend" || nativeOnly)
+            .onChange(of: externalAnsweringBlocked) { _, _ in store.clearConversation() }
 
             Rectangle()
                 .fill(
@@ -11605,7 +11606,8 @@ struct LegendFounderAiConversationView: View {
             await store.send(
                 text,
                 mode: mode,
-                nativeOnly: nativeOnly)
+                nativeOnly: nativeOnly,
+                externalAnsweringBlocked: externalAnsweringBlocked)
             requestTask = nil
         }
     }
@@ -11617,6 +11619,14 @@ struct LegendFounderAiConversationView: View {
 
     private func capabilityStatusLabel(_ message: LegendFounderAiChatMessage) -> String? {
         var labels: [String] = []
+        if message.reason == "provider_output_incomplete" {
+            labels.append(LegendLocalized("Partial answer: output limit reached"))
+        }
+        switch message.escalationDisposition {
+        case "Restricted": labels.append(LegendLocalized("Teacher material restricted from training"))
+        case "InsufficientEvidence": labels.append(LegendLocalized("Teacher material lacks sufficient evidence"))
+        default: break
+        }
         switch message.researchState {
         case "Conclusion": labels.append(LegendLocalized("Research completed"))
         case "InsufficientEvidence": labels.append(LegendLocalized("Research found insufficient evidence"))
@@ -11630,6 +11640,9 @@ struct LegendFounderAiConversationView: View {
         case "InsufficientEvidence": labels.append(LegendLocalized("Teaching needs more evidence"))
         default: break
         }
+        if message.modelAssistanceState == "Applied", let run = message.modelTrainingRunId, !run.isEmpty {
+            labels.append(LegendLocalized("Promoted model applied"))
+        }
         return labels.isEmpty ? nil : labels.joined(separator: " · ")
     }
 
@@ -11639,6 +11652,8 @@ struct LegendFounderAiConversationView: View {
         switch message.responseAuthority {
         case "LegendAi":
             return LegendLocalized("Legend® Ai")
+        case "LocalFoundation":
+            return LegendLocalized("LEGEND-controlled model")
         case "HostedFoundation":
             return LegendLocalized("LEGEND · hosted foundation")
         case "GovernedResearch":

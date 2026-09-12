@@ -202,6 +202,12 @@ public sealed class LegendConnectController : Controller
         {
             return Forbid();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The polling client has a bounded deadline. Its cancellation is
+            // not a failed model or an unavailable backend service.
+            return StatusCode(StatusCodes.Status499ClientClosedRequest);
+        }
         catch (Exception exception)
         {
             _logger.LogError(

@@ -258,8 +258,7 @@ public sealed class LegendConnectModelPromotionTests
 
         return new(
             db,
-            new LegendConnectTrainingDatasetCompiler(
-                db),
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted),
             configuration);
     }
 
@@ -453,8 +452,7 @@ public sealed class LegendConnectModelPromotionTests
         }
 
         var manifest =
-            await new LegendConnectTrainingDatasetCompiler(
-                    db)
+            await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
                 .CompileAsync();
 
         Assert.NotEmpty(

@@ -1,0 +1,350 @@
+{
+  "files": [
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/README.md",
+      "bytes": 969,
+      "allocated_bytes": 4096,
+      "sha256": "7b17ce562d7ea121c86d2ffdf660eed3726ac5b52cacfa9f1de11a65969f5657",
+      "links": 1,
+      "inode": 158693896
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/added_tokens.json",
+      "bytes": 707,
+      "allocated_bytes": 4096,
+      "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+      "links": 1,
+      "inode": 158693897
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/chat_template.jinja",
+      "bytes": 4040,
+      "allocated_bytes": 4096,
+      "sha256": "40c21f34cf67d8c760ef72f8ad3ae5afad514299d4b06e91dd9a8d705af7b541",
+      "links": 1,
+      "inode": 158693898
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/config.json",
+      "bytes": 938,
+      "allocated_bytes": 4096,
+      "sha256": "574349e5a343236546fda55e4744a76e181f534182d7dc60ff1bad7e7a502849",
+      "links": 1,
+      "inode": 158693899
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/generation_config.json",
+      "bytes": 238,
+      "allocated_bytes": 4096,
+      "sha256": "835fffe355c9438e7a25be099b3fccaa98350b83451f9fd2d99512e74f1ade48",
+      "links": 1,
+      "inode": 158693900
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/legend-download-manifest.json",
+      "bytes": 2320,
+      "allocated_bytes": 4096,
+      "sha256": "676b780abdd6f5ed11ebc9e5eb02267cd3c06866674ecbb00e0ad3df26dd25a1",
+      "links": 1,
+      "inode": 158695646
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/merges.txt",
+      "bytes": 1671853,
+      "allocated_bytes": 1675264,
+      "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+      "links": 1,
+      "inode": 158693901
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/model.safetensors",
+      "bytes": 2263022417,
+      "allocated_bytes": 2273312768,
+      "sha256": "2a73c6c248601ab904e035548abd8e6abb65ea27dcb5f342fb0a8910eb44173f",
+      "links": 1,
+      "inode": 158693905
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/model.safetensors.index.json",
+      "bytes": 63964,
+      "allocated_bytes": 65536,
+      "sha256": "388d811b8b7c2608dd04cce1bcb04a8bf715d19b42790894e6d3427ff429a777",
+      "links": 1,
+      "inode": 158695624
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/special_tokens_map.json",
+      "bytes": 613,
+      "allocated_bytes": 4096,
+      "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+      "links": 1,
+      "inode": 158695625
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/tokenizer.json",
+      "bytes": 11422654,
+      "allocated_bytes": 11423744,
+      "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "links": 1,
+      "inode": 158695626
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/tokenizer_config.json",
+      "bytes": 5440,
+      "allocated_bytes": 8192,
+      "sha256": "4397cc477eb6d79715ccd2000accd6b3531928f30029665832fa1b255f24d2b9",
+      "links": 1,
+      "inode": 158695642
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit/vocab.json",
+      "bytes": 2776833,
+      "allocated_bytes": 2777088,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+      "links": 1,
+      "inode": 158695643
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/README.md",
+      "bytes": 857,
+      "allocated_bytes": 4096,
+      "sha256": "a0cd248b30da7a23710c9290fe42ca83a84dc06593978877b1e5b32f9bd33aaf",
+      "links": 1,
+      "inode": 158697184
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/added_tokens.json",
+      "bytes": 707,
+      "allocated_bytes": 4096,
+      "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+      "links": 1,
+      "inode": 158697185
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/config.json",
+      "bytes": 939,
+      "allocated_bytes": 4096,
+      "sha256": "e5485285fd7e289e76e9cffa112f6dc2e3426519082f7db9b69041589f81a218",
+      "links": 1,
+      "inode": 158697186
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/legend-download-manifest.json",
+      "bytes": 1938,
+      "allocated_bytes": 4096,
+      "sha256": "d5516bcbb6792f33facc21e2952fbb54d905eb06d0142052cb615228bf632cac",
+      "links": 1,
+      "inode": 158711343
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/merges.txt",
+      "bytes": 1671853,
+      "allocated_bytes": 1675264,
+      "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+      "links": 1,
+      "inode": 158697189
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/model.safetensors",
+      "bytes": 4607835174,
+      "allocated_bytes": 4607836160,
+      "sha256": "f2d29621aab300336ad645567ff38c42aac755513006ef4e8a579cf7ef5256d8",
+      "links": 1,
+      "inode": 158697192
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/model.safetensors.index.json",
+      "bytes": 64065,
+      "allocated_bytes": 65536,
+      "sha256": "3fb25463b4078b1fc27159daa605190029c2e965f533bf0b1b594f96cbfceb8a",
+      "links": 1,
+      "inode": 158711286
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/special_tokens_map.json",
+      "bytes": 613,
+      "allocated_bytes": 4096,
+      "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+      "links": 1,
+      "inode": 158711291
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/tokenizer.json",
+      "bytes": 11422654,
+      "allocated_bytes": 11423744,
+      "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "links": 1,
+      "inode": 158711338
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/tokenizer_config.json",
+      "bytes": 9706,
+      "allocated_bytes": 12288,
+      "sha256": "253153d0738ceb4c668d2eff957714dd2bea0b56de772a9fdccd96cbf517e6a0",
+      "links": 1,
+      "inode": 158711341
+    },
+    {
+      "path": "/private/tmp/legend-local-models/qwen3-8b-4bit/vocab.json",
+      "bytes": 2776833,
+      "allocated_bytes": 2777088,
+      "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+      "links": 1,
+      "inode": 158711342
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/adapter-results.json",
+      "bytes": 24998,
+      "allocated_bytes": 28672,
+      "sha256": "1ffbebec337d8e7bd9044eb02db950fbfed737c0c0ff5e001135e053aa261750",
+      "links": 1,
+      "inode": 158704404
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/baseline-invalid-client-contract.json",
+      "bytes": 741,
+      "allocated_bytes": 4096,
+      "sha256": "af58211ec35da824138884ca8e18838a70537ffa30d4a798bb5105c4f05794d7",
+      "links": 1,
+      "inode": 158703619
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/baseline-results.json",
+      "bytes": 25909,
+      "allocated_bytes": 28672,
+      "sha256": "5f694e2316f06988848c54c588ddc3e38186311c32a89f1dcf71977a8adbb835",
+      "links": 1,
+      "inode": 158703682
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/datasets/973a94364bb94ff2309962787404da6b32cdfdb4f91f2c4cb57b81d716bff489.jsonl",
+      "bytes": 77440,
+      "allocated_bytes": 77824,
+      "sha256": "973a94364bb94ff2309962787404da6b32cdfdb4f91f2c4cb57b81d716bff489",
+      "links": 1,
+      "inode": 158703567
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/experiment-manifest.json",
+      "bytes": 608,
+      "allocated_bytes": 4096,
+      "sha256": "e3cc2ab458ebdc2d3f0d1361b77703ac421000385959f8799d9c828e12a7ac69",
+      "links": 1,
+      "inode": 158703569
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/experiment-result.json",
+      "bytes": 795,
+      "allocated_bytes": 4096,
+      "sha256": "ad4b15afd24c150fd243c3d0cd71ecf50bc634dc9a0fdcb570bdd5a28ebca118",
+      "links": 1,
+      "inode": 158704525
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/adapter/0000100_adapters.safetensors",
+      "bytes": 7346007,
+      "allocated_bytes": 7348224,
+      "sha256": "913be121eb52c29eb90a73acef66656f2f49b58582a9571af5662eeebf4db6e4",
+      "links": 1,
+      "inode": 158704064
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/adapter/adapter_config.json",
+      "bytes": 1191,
+      "allocated_bytes": 4096,
+      "sha256": "f6af7c566a1195b65e05614b38d8191f3798c526c99dfd0168731e17f4bff4d3",
+      "links": 1,
+      "inode": 158703881
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/adapter/adapters.safetensors",
+      "bytes": 7346007,
+      "allocated_bytes": 7348224,
+      "sha256": "913be121eb52c29eb90a73acef66656f2f49b58582a9571af5662eeebf4db6e4",
+      "links": 1,
+      "inode": 158704063
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/adapter/checkpoint.json",
+      "bytes": 405,
+      "allocated_bytes": 4096,
+      "sha256": "aeb51220409ea513a0d20906ccfce562a46bde9034c6f8a92803336c372cd7cd",
+      "links": 1,
+      "inode": 158704076
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/compute.log",
+      "bytes": 2421,
+      "allocated_bytes": 4096,
+      "sha256": "1a8a3ee334fa5269328056535630a5fba311e111b322d2f786494c1a0c9ed089",
+      "links": 1,
+      "inode": 158703870
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/data/train.jsonl",
+      "bytes": 69574,
+      "allocated_bytes": 69632,
+      "sha256": "10ca757b90b2825d750341619df70c2ee35a8972e1d46426ab0b4c92aa88464e",
+      "links": 1,
+      "inode": 158703868
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/data/valid.jsonl",
+      "bytes": 7866,
+      "allocated_bytes": 8192,
+      "sha256": "61040d4c3a758ae3f5a8ccd78a608360ac076545b1c9f8a859e4ad727f3c8276",
+      "links": 1,
+      "inode": 158703869
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/probe.log",
+      "bytes": 0,
+      "allocated_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "links": 1,
+      "inode": 158704066
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/result.json",
+      "bytes": 936,
+      "allocated_bytes": 4096,
+      "sha256": "b228600a687b2eacd9ed1ed6f58cbfbcc9e02b64e634be680937c9e87c3df38a",
+      "links": 1,
+      "inode": 158704077
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/locked-holdout.json",
+      "bytes": 4222,
+      "allocated_bytes": 8192,
+      "sha256": "661256f1e6bebdb742153864f96da694bbf93b555f28c0ec5f71f6cb6ce3a910",
+      "links": 1,
+      "inode": 158703568
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/mlx-compute.lock",
+      "bytes": 0,
+      "allocated_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "links": 1,
+      "inode": 158703576
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/run-key.txt",
+      "bytes": 64,
+      "allocated_bytes": 4096,
+      "sha256": "8af7bccef494c24feee1ed3473bacf0dee5202f24ef9f3b936180d013a29f47f",
+      "links": 1,
+      "inode": 158703802
+    },
+    {
+      "path": "/private/tmp/legend-local-training-artifacts/run-locked.py",
+      "bytes": 1677,
+      "allocated_bytes": 4096,
+      "sha256": "9356194dbf20985cdda7e3266522b6c92fda9ffcfe760845e15c015e847f1fca",
+      "links": 1,
+      "inode": 158703657
+    }
+  ],
+  "total_bytes": 6917669186,
+  "allocated_bytes": 6928056320
+}

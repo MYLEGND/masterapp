@@ -13,6 +13,45 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectModelTrainingTests
 {
     [Fact]
+    public async Task LearningPauseStopsLifecycleAdvancementAndResumePollsTheSameJob()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedDatasetAsync(db);
+        var backend = new FakeBackend();
+        var training = Service(db, backend, enabled: true);
+        await training.ProcessOneAsync();
+        await training.ProcessOneAsync();
+        var run = Assert.Single(db.Set<LegendConnectModelTrainingRun>());
+        var job = run.ExternalJobId;
+        Assert.NotNull(job);
+        var state = run.State;
+        var polls = backend.PollCalls;
+        var services = new Moq.Mock<IServiceProvider>(Moq.MockBehavior.Strict);
+        await LegendConnectLearningHostedService.ProcessModelLifecycleCycleAsync(services.Object, false);
+        Assert.Equal(state, run.State);
+        Assert.Equal(job, run.ExternalJobId);
+        Assert.Equal(polls, backend.PollCalls);
+        services.VerifyNoOtherCalls();
+
+        var disabled = new ConfigurationBuilder().Build();
+        var compiler = new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
+        var evaluation = new LegendConnectModelEvaluationService(db, compiler,
+            new Moq.Mock<ILegendConnectModelEvaluationBackend>(Moq.MockBehavior.Strict).Object,
+            new Moq.Mock<ILegendConnectActiveModelInference>(Moq.MockBehavior.Strict).Object, disabled);
+        var promotion = new LegendConnectModelPromotionService(db, compiler, disabled);
+        services.Setup(x => x.GetService(typeof(LegendConnectModelTrainingService))).Returns(training);
+        services.Setup(x => x.GetService(typeof(LegendConnectModelEvaluationService))).Returns(evaluation);
+        services.Setup(x => x.GetService(typeof(LegendConnectModelPromotionService))).Returns(promotion);
+        await LegendConnectLearningHostedService.ProcessModelLifecycleCycleAsync(services.Object, true);
+        Assert.Equal(polls + 1, backend.PollCalls);
+        Assert.Equal(job, run.ExternalJobId);
+        Assert.Equal(1, backend.UploadCalls);
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal("NotStarted", run.EvaluationState);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+    }
+
+    [Fact]
     public async Task DisabledTraining_DoesNotCreateRunOrCallBackend()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -550,7 +589,7 @@ public sealed class LegendConnectModelTrainingTests
 
         return new(
             db,
-            new LegendConnectTrainingDatasetCompiler(db),
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted),
             backend,
             configuration);
     }

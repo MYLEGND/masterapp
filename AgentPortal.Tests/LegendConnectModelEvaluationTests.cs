@@ -1,3 +1,4 @@
+using Domain.Messaging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -708,8 +709,7 @@ public sealed class LegendConnectModelEvaluationTests
 
         return new(
             db,
-            new LegendConnectTrainingDatasetCompiler(
-                db),
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted),
             backend,
             serving,
             configuration);
@@ -800,6 +800,8 @@ public sealed class LegendConnectModelEvaluationTests
     private sealed class FakeServingAuthority
         : ILegendConnectActiveModelInference
     {
+        public Task<LegendConnectConversationModelSelection> ResolveConversationModelAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new LegendConnectConversationModelSelection(false, null, null, null, null, "fixture_has_no_conversation_model"));
         public string Text { get; init; } =
             string.Empty;
 
@@ -845,7 +847,8 @@ public sealed class LegendConnectModelEvaluationTests
             string sourceLanguageCode,
             string targetLanguageCode,
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(
                 new LegendConnectActiveModelInferenceResult(
                     false,
@@ -856,7 +859,8 @@ public sealed class LegendConnectModelEvaluationTests
         public Task<LegendConnectActiveModelInferenceResult>
             TryGenerateGovernedReasoningCandidateAsync(
                 LegendConnectGovernedReasoningCandidateRequest request,
-                CancellationToken cancellationToken = default) =>
+                CancellationToken cancellationToken = default,
+                LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(
                 new LegendConnectActiveModelInferenceResult(
                     false,

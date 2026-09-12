@@ -94,9 +94,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         IReadOnlyList<LegendLanguageDefinitionSnapshot> languages;
         try
         {
-            languages = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
-                ? await _languages.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken)
-                : await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
+            languages = await _languages.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {

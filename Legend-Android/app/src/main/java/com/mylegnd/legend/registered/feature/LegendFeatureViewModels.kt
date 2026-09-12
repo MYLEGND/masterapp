@@ -35,12 +35,18 @@ data class FounderAiTranscriptMessage(
     val role: String,
     val content: String,
     val responseAuthority: String? = null,
+    val reason: String? = null,
     val foundationModel: String? = null,
     val foundationHosting: String? = null,
     val externalAnsweringUsed: Boolean? = null,
     val escalationUsed: Boolean? = null,
+    val escalationDisposition: String? = null,
     val researchState: String? = null,
     val learningState: String? = null,
+    val modelAssistanceState: String? = null,
+    val modelVersion: String? = null,
+    val modelTrainingRunId: String? = null,
+    val modelProvenance: String? = null,
 )
 
 data class FounderAiConversationState(
@@ -83,6 +89,7 @@ class FounderAiViewModel(
         rawText: String,
         mode: String,
         nativeOnly: Boolean,
+        externalAnsweringBlocked: Boolean = false,
         sourceLanguageCode: String? = null,
     ) {
         val text = rawText.trim()
@@ -106,6 +113,7 @@ class FounderAiViewModel(
                     chatRequest = FounderAiChatRequest(
                         mode = mode,
                         nativeOnly = mode == "legend" && nativeOnly,
+                        externalAnsweringBlocked = mode == "legend" && externalAnsweringBlocked,
                         // Free-form input has no client-owned detector. Carry
                         // a code only when a governed upstream selection knows
                         // it; otherwise the server must identify the prompt.
@@ -133,12 +141,18 @@ class FounderAiViewModel(
                                     role = "assistant",
                                     content = response.message,
                                     responseAuthority = response.responseAuthority,
+                                    reason = response.reason,
                                     foundationModel = response.foundationModel,
                                     foundationHosting = response.foundationHosting,
                                     externalAnsweringUsed = response.externalAnsweringUsed,
                                     escalationUsed = response.escalationUsed,
+                                    escalationDisposition = response.escalationDisposition,
                                     researchState = response.researchState,
                                     learningState = response.learningState,
+                                    modelAssistanceState = response.modelAssistanceState,
+                                    modelVersion = response.modelVersion,
+                                    modelTrainingRunId = response.modelTrainingRunId,
+                                    modelProvenance = response.modelProvenance,
                                 ),
                             )
                         } else {
@@ -180,12 +194,10 @@ class FounderAiViewModel(
         _state.value = _state.value.copy(messages = emptyList(), failure = null, progress = null)
     }
 
-    private fun FounderAiChatResponse.safeFailure(): String = buildList {
-        error?.trim()?.takeIf(String::isNotBlank)?.let(::add)
-        if (failureKind?.isNotBlank() == true) add("Stage: ${stage ?: failureKind}.")
-        reason?.trim()?.takeIf(String::isNotBlank)?.let { add("Reason: $it.") }
-        reference?.trim()?.takeIf(String::isNotBlank)?.let { add("Reference: $it.") }
-    }.ifEmpty { listOf("The Founder AI request did not produce a response.") }.joinToString(" ")
+    private fun FounderAiChatResponse.safeFailure(): String =
+        error?.trim()?.takeIf(String::isNotBlank)
+            ?: "The Founder AI request did not produce a response."
+
 }
 
 class HomeViewModel(private val repository: HomeRepository, private val role: String) : ViewModel() {

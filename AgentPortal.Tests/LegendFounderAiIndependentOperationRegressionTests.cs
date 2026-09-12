@@ -792,7 +792,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 "A symbolically authorized answer.",
                 3,
                 "governed",
-                "declarative"));
+                "declarative"), providerPolicy: LegendConnectExternalProviderPolicy.ProviderEnabled);
 
         if (expectedSelectable)
         {

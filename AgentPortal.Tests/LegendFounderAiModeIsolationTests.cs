@@ -169,7 +169,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.IsType<EmptyResult>(result);
         var transcript = Encoding.UTF8.GetString(body.ToArray());
         Assert.Contains("\"type\":\"heartbeat\"", transcript, StringComparison.Ordinal);
-        Assert.Contains("HostedFoundation", transcript, StringComparison.Ordinal);
+        Assert.Contains("LocalFoundation", transcript, StringComparison.Ordinal);
         Assert.Contains("foundation_response", transcript, StringComparison.Ordinal);
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(1, NativeInferenceCalls(operations));
@@ -777,7 +777,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             Request("legend", "Translate this unsupported distinction."));
 
         Assert.True(response.Succeeded, Describe(response));
-        Assert.Equal("HostedFoundation", response.ResponseAuthority);
+        Assert.Equal("LocalFoundation", response.ResponseAuthority);
         Assert.DoesNotContain("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
@@ -1596,7 +1596,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("legend", response.Mode);
-        Assert.Equal("HostedFoundation", response.ResponseAuthority);
+        Assert.Equal("LocalFoundation", response.ResponseAuthority);
         Assert.Equal("foundation_response", response.Stage);
         Assert.Equal(1, NativeInferenceCalls(operations));
         Assert.Equal(1, handler.RequestCount);
@@ -1948,7 +1948,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             Assert.Equal(503, StatusFor(response));
         else
         {
-            Assert.Equal(mode == "teacher" ? "OpenAITeacher" : "HostedFoundation", response.ResponseAuthority);
+            Assert.Equal(mode == "teacher" ? "OpenAITeacher" : "LocalFoundation", response.ResponseAuthority);
             Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
         }
     }
@@ -2364,28 +2364,41 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectOperations operations,
         FounderAiScenarioHandler handler,
-        ITranslationService? translation = null) =>
-        new(
-            new FounderAiHttpClientFactory(handler),
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["OpenAI:ApiKey"] = "test-only-key",
-                    ["OpenAI:LegendFounderAiTimeoutSeconds"] = "45"
-                })
-                .Build(),
-            new FounderLegendConnectService(
-                operations,
-                new AgentProfileAccessResolver(db)),
+        ITranslationService? translation = null)
+    {
+        // Scripted transport fixtures prove policy and orchestration only.
+        // Actual local model/production-data acceptance uses the separate
+        // configured executable harness and cannot pass through this handler.
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OpenAI:ApiKey"] = "test-only-key",
+            ["OpenAI:LegendFounderAiTimeoutSeconds"] = "45",
+            ["LegendConnect:Foundation:Enabled"] = "true",
+            ["LegendConnect:Foundation:Model"] = "fixture-local-model",
+            ["LegendConnect:Foundation:ModelRevision"] = new string('a', 40),
+            ["LegendConnect:Foundation:Endpoint"] = "http://127.0.0.1:8091/v1/responses",
+            ["LegendConnect:Foundation:ApiKey"] = "synthetic-worker-test-key",
+            ["LegendConnect:Foundation:AzureResourceId"] = "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/fixture/providers/Microsoft.Compute/virtualMachines/fixture",
+            ["LegendConnect:Foundation:Engine"] = "Vllm",
+            ["LegendConnect:Foundation:EngineVersion"] = "0.26.1",
+            ["LegendConnect:Foundation:ToolCallParser"] = "hermes",
+            ["LegendConnect:Foundation:ReasoningParser"] = "qwen3",
+            ["LegendConnect:Foundation:TimeoutSeconds"] = "120",
+            ["LegendConnect:Foundation:MaxOutputTokens"] = "1024"
+        }).Build();
+        Mock.Get(operations).Setup(item => item.RecordExternalEscalationDispositionAsync(
+            It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, bool answerProduced, CancellationToken _) => answerProduced ? "Restricted" : "InsufficientEvidence");
+        var clients = new FounderAiHttpClientFactory(handler);
+        return new LegendFounderAiConversationService(clients, configuration,
+            new FounderLegendConnectService(operations, new AgentProfileAccessResolver(db)),
             NullLogger<LegendFounderAiConversationService>.Instance,
-            new LegendFounderAiDiscourseStateService(
-                db,
-                new AgentProfileAccessResolver(db),
-                operations),
-            new LegendLanguageRegistry(
-                db,
-                new ConfigurationBuilder().Build()),
-            translation ?? ControllerTestHelpers.BuildTranslationService());
+            new LegendFounderAiDiscourseStateService(db, new AgentProfileAccessResolver(db), operations),
+            new LegendLanguageRegistry(db, new ConfigurationBuilder().Build()),
+            translation ?? ControllerTestHelpers.BuildTranslationService(),
+            modelInference: new LegendConnectModelInferenceTransport(clients, configuration,
+                NullLogger<LegendConnectModelInferenceTransport>.Instance));
+    }
 
     private static LegendConnectNativeInferenceSnapshot NativeLanguageAnswer(
         string languageCode) =>
@@ -2670,7 +2683,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
     {
         public HttpClient CreateClient(string name)
         {
-            Assert.Equal("OpenAI", name);
+            Assert.Contains(name, new[] { "OpenAI", "LegendLocalFoundation" });
             return new HttpClient(handler, disposeHandler: false)
             {
                 BaseAddress = new Uri("https://openai.test/")
@@ -2723,7 +2736,29 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 catch (OperationCanceledException) { CancellationObserved = true; throw; }
             }
 
-            return _responses.Dequeue();
+            var response = _responses.Dequeue();
+            response.RequestMessage = request;
+            if (request.RequestUri.IsLoopback && response.IsSuccessStatusCode)
+            {
+                var root = System.Text.Json.Nodes.JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken))!.AsObject();
+                root["model"] = "fixture-local-model";
+                root["model_revision"] = new string('a', 40);
+                root["adapter_version"] = "";
+                root["hosting"] = "LegendControlled";
+                var actualRequest = System.Text.Json.Nodes.JsonNode.Parse(RequestBodies[^1])!.AsObject();
+                root["azure_resource_id"] = actualRequest["azure_resource_id"]!.DeepClone();
+                root["host_verification"] = "azure-imds-resource-and-tag-v1";
+                root["execution_limits"] = actualRequest["execution_limits"]!.DeepClone();
+                root["generation_settings"] = actualRequest["generation_settings"]!.DeepClone();
+                root["generation_settings"]!["max_output_tokens"] = actualRequest["max_output_tokens"]!.DeepClone();
+                root["generation_settings"]!["chat_template_sha256"] = new string('b', 64);
+                response.Content.Dispose();
+                response.Content = new StringContent("data: " + JsonSerializer.Serialize(new
+                {
+                    type = "response.completed", response = root
+                }) + "\n\n", Encoding.UTF8, "text/event-stream");
+            }
+            return response;
         }
     }
 

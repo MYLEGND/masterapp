@@ -1,0 +1,9 @@
+{
+  "tools": 26,
+  "instruction_characters": 16907,
+  "tool_json_characters": 19743,
+  "prompt_tokens": 7669,
+  "plus_1024_output_tokens": 8693,
+  "includes_memory": true,
+  "includes_escalation": true
+}

@@ -39,12 +39,29 @@ public sealed class LegendFounderDiagnosticExecutionTests
         operations.Setup(operation => operation.SearchRetainedKnowledgeAsync(
                 "unrelated", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot("unrelated", 1, []));
-        var arguments = new List<string> { "{\"query\":\"requested\"}", "{ \"query\" : \"requested\" }" };
+        operations.Setup(operation => operation.SubmitFounderKnowledgeAsync(
+                It.IsAny<string>(), It.IsAny<LegendConnectKnowledgeSubmission>(), It.IsAny<CancellationToken>(), null, null))
+            .ReturnsAsync(new LegendConnectKnowledgeSubmissionResult(
+                true, false, null, "Submitted.", "en", null, null, Guid.NewGuid(), null, null));
+        var arguments = new List<string> { "{ \"query\" : \"requested\" }" };
         if (includeUnrelated)
             arguments.Add("{\"query\":\"unrelated\"}");
-        using var handler = new Responses(Tools(arguments), Answer());
+        // A successful mutation invalidates the first receipt, so the next
+        // same-scope read is fresh and can observe a real later failure.
+        var mutation = JsonSerializer.Serialize(new
+        {
+            status = "completed",
+            output = new[] { new { type = "function_call", call_id = "mutation", name = "legend_submit_founder_seed",
+                arguments = "{\"source_language\":\"en\",\"source_text\":\"A documented observation can become stale.\",\"context_category\":null,\"usage_register\":null,\"regional_variant\":null}" } }
+        });
+        using var handler = new Responses(Tools(["{\"query\":\"requested\"}"]), mutation, Tools(arguments), Answer());
         var progress = new List<LegendFounderAiProgressEvent>();
-        var response = await Service(db, operations.Object, handler).ReplyAsync(founder, Request(),
+        var request = new LegendFounderAiChatRequest
+        {
+            Mode = "teacher", SourceLanguageCode = "en", FounderCommandConfirmed = true,
+            Messages = [new LegendFounderAiChatMessage("user", "Inspect the evidence, submit this teaching: A documented observation can become stale. Then inspect it again.")]
+        };
+        var response = await Service(db, operations.Object, handler).ReplyAsync(founder, request,
             progress: (item, _) => { progress.Add(item); return ValueTask.CompletedTask; });
         Assert.Equal(includeUnrelated, response.Succeeded);
         Assert.Contains(progress, item => item.Stage == "tool_unavailable" &&
@@ -60,6 +77,8 @@ public sealed class LegendFounderDiagnosticExecutionTests
         }
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             "requested", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        operations.Verify(operation => operation.SubmitFounderKnowledgeAsync(
+            It.IsAny<string>(), It.IsAny<LegendConnectKnowledgeSubmission>(), It.IsAny<CancellationToken>(), null, null), Times.Once);
     }
 
     [Fact]

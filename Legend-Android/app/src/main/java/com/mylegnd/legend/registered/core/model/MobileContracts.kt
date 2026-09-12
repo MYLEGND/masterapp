@@ -42,6 +42,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class FounderAiChatRequest(
     val mode: String,
     @SerialName("nativeOnly") val nativeOnly: Boolean,
+    @SerialName("externalAnsweringBlocked") val externalAnsweringBlocked: Boolean = false,
     @SerialName("sourceLanguageCode") val sourceLanguageCode: String? = null,
     val messages: List<FounderAiChatMessage>,
     @SerialName("conversationId") val conversationId: String,
@@ -59,8 +60,13 @@ import kotlinx.serialization.Serializable
     @SerialName("foundationHosting") val foundationHosting: String? = null,
     @SerialName("externalAnsweringUsed") val externalAnsweringUsed: Boolean? = null,
     @SerialName("escalationUsed") val escalationUsed: Boolean? = null,
+    @SerialName("escalationDisposition") val escalationDisposition: String? = null,
     @SerialName("researchState") val researchState: String? = null,
     @SerialName("learningState") val learningState: String? = null,
+    @SerialName("modelAssistanceState") val modelAssistanceState: String? = null,
+    @SerialName("modelVersion") val modelVersion: String? = null,
+    @SerialName("modelTrainingRunId") val modelTrainingRunId: String? = null,
+    @SerialName("modelProvenance") val modelProvenance: String? = null,
     val stage: String? = null,
     val reason: String? = null,
 )

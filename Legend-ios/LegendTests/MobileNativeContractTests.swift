@@ -1395,21 +1395,51 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertNotNil(UUID(uuidString: request.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") ?? ""))
     }
 
+    func testFounderIndependentAnsweringRequestPreservesSeparatePolicy() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Controlled answer.","responseAuthority":"LocalFoundation"}}
+
+        """.utf8)
+        await store.send("Use authorized research without external answering.", nativeOnly: false, externalAnsweringBlocked: true)
+        let request = try XCTUnwrap(StubURLProtocol.requests.last)
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                body.append(contentsOf: buffer.prefix(count))
+            }
+        }
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(value["externalAnsweringBlocked"] as? Bool, true)
+        XCTAssertEqual(value["nativeOnly"] as? Bool, false)
+        XCTAssertNil(store.failureMessage)
+    }
+
     func testFounderStreamRetainsCapabilityMetadataInTranscript() async {
         let store = await availableFounderStore()
         defer { resetFounderStreamStub() }
         StubURLProtocol.responseBody = Data("""
-        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"HostedFoundation","foundationModel":"configured-model","foundationHosting":"external","externalAnsweringUsed":true,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic"}}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"LocalFoundation","foundationModel":"configured-model","foundationHosting":"LegendControlled","externalAnsweringUsed":false,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic","escalationDisposition":"Restricted","stage":"response_partial","reason":"provider_output_incomplete"}}
 
         """.utf8)
         await store.send("Verify the evidence and retain this correction.")
-        XCTAssertEqual(store.messages.last?.responseAuthority, "HostedFoundation")
+        XCTAssertEqual(store.messages.last?.responseAuthority, "LocalFoundation")
         XCTAssertEqual(store.messages.last?.foundationModel, "configured-model")
-        XCTAssertEqual(store.messages.last?.foundationHosting, "external")
-        XCTAssertEqual(store.messages.last?.externalAnsweringUsed, true)
+        XCTAssertEqual(store.messages.last?.foundationHosting, "LegendControlled")
+        XCTAssertEqual(store.messages.last?.externalAnsweringUsed, false)
         XCTAssertEqual(store.messages.last?.escalationUsed, false)
         XCTAssertEqual(store.messages.last?.researchState, "InsufficientEvidence")
         XCTAssertEqual(store.messages.last?.learningState, "AwaitingCritic")
+        XCTAssertEqual(store.messages.last?.escalationDisposition, "Restricted")
+        XCTAssertEqual(store.messages.last?.reason, "provider_output_incomplete")
+        XCTAssertNil(store.messages.last?.modelTrainingRunId)
+        XCTAssertNil(store.messages.last?.modelAssistanceState)
         XCTAssertNil(store.failureMessage)
     }
 
@@ -1422,10 +1452,9 @@ final class MobileNativeContractTests: XCTestCase {
         """.utf8)
         await store.send("Read the governed record.")
         XCTAssertEqual(store.messages.count, 1)
-        XCTAssertTrue(store.failureMessage?.contains("Evidence is unavailable.") == true)
-        XCTAssertTrue(store.failureMessage?.contains("governed_unavailable") == true)
-        XCTAssertTrue(store.failureMessage?.contains("source_withdrawn") == true)
-        XCTAssertTrue(store.failureMessage?.contains("safe-reference") == true)
+        // The exact backend summary remains a reusable catalog key. Typed
+        // diagnostics must not be concatenated into user-facing copy.
+        XCTAssertEqual(store.failureMessage, "Evidence is unavailable.")
     }
 
     func testFounderStreamRequiresTerminalResultAndConsistentSuccessStatus() async {

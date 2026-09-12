@@ -28,15 +28,18 @@ internal sealed class LegendConnectModelPromotionService
     private readonly MasterAppDbContext _db;
     private readonly LegendConnectTrainingDatasetCompiler _compiler;
     private readonly IConfiguration _configuration;
+    private readonly ILegendConnectModelTrainingBackend? _trainingBackend;
 
     internal LegendConnectModelPromotionService(
         MasterAppDbContext db,
         LegendConnectTrainingDatasetCompiler compiler,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILegendConnectModelTrainingBackend? trainingBackend = null)
     {
         _db = db;
         _compiler = compiler;
         _configuration = configuration;
+        _trainingBackend = trainingBackend;
     }
 
     internal async Task ProcessOneAsync(
@@ -101,6 +104,19 @@ internal sealed class LegendConnectModelPromotionService
         if (!CanEnterPromotion(run))
             return false;
 
+        if (LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider))
+        {
+            var checkpoint = _trainingBackend is { } training && training.TrainingProvider == run.TrainingProvider
+                ? await training.GetCheckpointAsync(run.RunKey, cancellationToken) : null;
+            if (checkpoint is null || checkpoint.ModelVersion != run.ChallengerModelVersion ||
+                run.FailureDetail is null ||
+                !run.FailureDetail.Split(';').Contains("checkpoint=" + checkpoint.AdapterVersion, StringComparer.Ordinal))
+            {
+                await FailPromotionAsync(run, "model_promotion_checkpoint_proof_mismatch", cancellationToken);
+                return false;
+            }
+        }
+
         LegendConnectTrainingDatasetManifest manifest;
 
         try
@@ -143,10 +159,16 @@ internal sealed class LegendConnectModelPromotionService
             return false;
         }
 
+        var tasks = manifest.Training.Concat(manifest.HeldOut).ToArray();
+        var foundationOnly = tasks.Length > 0 && tasks.All(item => item.CapabilityKey == LegendModelCapabilityKeys.FoundationConversation);
+        if (tasks.Any(item => item.CapabilityKey == LegendModelCapabilityKeys.FoundationConversation) &&
+            (!LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider) || !run.FailureDetail!.Split(';').Contains("foundation_controls=passed", StringComparer.Ordinal)))
+        {
+            await FailPromotionAsync(run, "model_promotion_foundation_controls_unavailable", cancellationToken);
+            return false;
+        }
         var pairKeys =
-            manifest.Training
-                .Concat(
-                    manifest.HeldOut)
+            tasks.Where(item => item.CapabilityKey != LegendModelCapabilityKeys.FoundationConversation)
                 .Select(item =>
                     item.PairKey)
                 .Where(item =>
@@ -159,7 +181,7 @@ internal sealed class LegendConnectModelPromotionService
                     StringComparer.Ordinal)
                 .ToArray();
 
-        if (pairKeys.Length == 0)
+        if (pairKeys.Length == 0 && !foundationOnly)
         {
             await FailPromotionAsync(
                 run,
@@ -202,6 +224,13 @@ internal sealed class LegendConnectModelPromotionService
             return false;
         }
 
+        var promotedProof = PreserveEvaluationProof(run.FailureDetail!, pairs.Count, run.DatasetIdentity,
+            run.DatasetEvaluatorVersion) + (foundationOnly ? ";promotion_scope=foundation" : string.Empty);
+        if (promotedProof.Length > 1000)
+        {
+            await FailPromotionAsync(run, "model_promotion_proof_exceeds_storage_contract", cancellationToken);
+            return false;
+        }
         var now =
             DateTime.UtcNow;
 
@@ -316,12 +345,7 @@ internal sealed class LegendConnectModelPromotionService
         run.FailureCode =
             null;
 
-        run.FailureDetail =
-            PreserveEvaluationProof(
-                run.FailureDetail!,
-                pairs.Count,
-                run.DatasetIdentity,
-                run.DatasetEvaluatorVersion);
+        run.FailureDetail = promotedProof;
 
         run.UpdatedUtc =
             now;
@@ -364,7 +388,7 @@ internal sealed class LegendConnectModelPromotionService
                 .ToListAsync(
                     cancellationToken);
 
-        if (lineage.Count == 0)
+        if (lineage.Count == 0 && !HasFoundationOnlyPromotionProof(run))
             return false;
 
         var pairKeys =
@@ -464,10 +488,15 @@ internal sealed class LegendConnectModelPromotionService
     {
         var detail =
             $"{evaluationProof};promotion_pairs={pairCount};promotion_dataset={datasetIdentity};promotion_evaluator={evaluatorVersion}";
-        return detail[..Math.Min(
-            detail.Length,
-            1000)];
+        return detail;
     }
+
+    internal static bool HasFoundationOnlyPromotionProof(LegendConnectModelTrainingRun run) =>
+        LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider) && LegendConnectModelRuntimeProofSummary.IsValid(run.FailureDetail) &&
+        run.FailureDetail!.Split(';').Contains("promotion_scope=foundation", StringComparer.Ordinal) &&
+        run.FailureDetail.Split(';').Contains("promotion_pairs=0", StringComparer.Ordinal) &&
+        run.FailureDetail.Split(';').Contains("foundation_controls=passed", StringComparer.Ordinal) &&
+        run.FailureDetail.Split(';').Contains("promotion_dataset=" + run.DatasetIdentity, StringComparer.Ordinal);
 
     private bool MeetsEvaluationThresholds(
         LegendConnectModelTrainingRun run)

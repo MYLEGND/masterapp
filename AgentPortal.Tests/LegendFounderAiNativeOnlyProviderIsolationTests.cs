@@ -209,6 +209,10 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 
         public HttpClient CreateClient(string name)
         {
+            // Only the configured controlled checkpoint uses real inference.
+            // External answering, research and Azure remain counted/refused.
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             lock (_clients)
                 _clients.Add(name);
 
@@ -295,6 +299,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 // "model_inference_provider_unavailable" and is never reached,
                 // which would silently hide the promoted-model leak.
                 ["LegendConnect:ModelEvaluation:ApiKey"] = "test-model-key",
+                ["LegendConnect:ModelTraining:Backend"] = "OpenAI",
                 ["LegendConnect:ModelEvaluation:Endpoint"] =
                     "https://external.invalid/responses",
                 ["LegendConnect:ModelEvaluation:CodeSha"] =
@@ -306,6 +311,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                     "https://external.invalid/search",
                 ["LegendConnect:InternetResearch:SearchApiKey"] = "test-search-key"
             })
+            .AddControlledFoundation()
             .Build();
 
         var databaseName = Guid.NewGuid().ToString();

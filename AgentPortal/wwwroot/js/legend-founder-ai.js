@@ -34,6 +34,7 @@
     const nativeOnly = document.getElementById(
         'legendFounderAiNativeOnly'
     );
+    const externalAnsweringBlocked = document.getElementById('legendFounderAiExternalAnsweringBlocked');
     const sidebar = document.getElementById('legendFounderAiSidebar');
     const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
@@ -297,7 +298,8 @@
 
     function newConversationRecord(
         mode = 'legend',
-        nativeOnlyEnabled = false
+        nativeOnlyEnabled = false,
+        externalAnsweringBlockedEnabled = false
     ) {
         const now = new Date().toISOString();
 
@@ -307,6 +309,7 @@
             nativeOnly:
                 mode === 'legend' &&
                 nativeOnlyEnabled === true,
+            externalAnsweringBlocked: mode === 'legend' && externalAnsweringBlockedEnabled === true,
             title: 'New conversation',
             createdUtc: now,
             updatedUtc: now,
@@ -462,7 +465,8 @@
         const conversation =
             newConversationRecord(
                 current.mode,
-                current.nativeOnly === true
+                current.nativeOnly === true,
+                current.externalAnsweringBlocked === true
             );
 
         state.conversations.unshift(conversation);
@@ -617,6 +621,11 @@
                 'is-active',
                 conversation.nativeOnly === true
             );
+        }
+
+        if (externalAnsweringBlocked) {
+            externalAnsweringBlocked.checked = conversation.externalAnsweringBlocked === true;
+            externalAnsweringBlocked.disabled = busy || conversation.mode !== 'legend' || conversation.nativeOnly === true;
         }
 
         if (input) {
@@ -888,6 +897,7 @@
             const hasNamedAuthority =
                 responseAuthority === 'LegendAi' ||
                 responseAuthority === 'HostedFoundation' ||
+                responseAuthority === 'LocalFoundation' ||
                 responseAuthority === 'GovernedResearch' ||
                 responseAuthority === 'OpenAITeacher' ||
                 responseAuthority === 'SystemDiagnostic';
@@ -896,6 +906,9 @@
                 authority.classList.add('is-native');
                 authority.textContent =
                     'Legend® Ai';
+            } else if (responseAuthority === 'LocalFoundation') {
+                authority.classList.add('is-native');
+                authority.textContent = 'LEGEND-controlled model';
             } else if (responseAuthority === 'HostedFoundation') {
                 authority.classList.add('is-provider');
                 authority.textContent = 'LEGEND · hosted foundation';
@@ -925,6 +938,12 @@
 
         if (role !== 'user' && metadata) {
             const labels = [];
+            if (metadata.reason === 'provider_output_incomplete') labels.push('Partial answer: output limit reached');
+            const escalationLabels = {
+                Restricted: 'Teacher material restricted from training',
+                InsufficientEvidence: 'Teacher material lacks sufficient evidence'
+            };
+            if (Object.hasOwn(escalationLabels, metadata.escalationDisposition)) labels.push(escalationLabels[metadata.escalationDisposition]);
             const researchLabels = {
                 Conclusion: 'Research completed',
                 InsufficientEvidence: 'Research found insufficient evidence',
@@ -939,6 +958,7 @@
             if (Object.hasOwn(researchLabels, metadata.researchState)) labels.push(researchLabels[metadata.researchState]);
             if (metadata.escalationUsed === true) labels.push('Escalation used');
             if (Object.hasOwn(learningLabels, metadata.learningState)) labels.push(learningLabels[metadata.learningState]);
+            if (metadata.modelAssistanceState === 'Applied' && typeof metadata.modelTrainingRunId === 'string' && metadata.modelTrainingRunId.trim()) labels.push('Promoted model applied');
             if (labels.length) {
                 const status = document.createElement('div');
                 status.className = 'legend-founder-ai-response-authority';
@@ -1016,6 +1036,9 @@
                 activeConversation().mode !== 'legend';
         }
 
+        if (externalAnsweringBlocked) {
+            externalAnsweringBlocked.disabled = value || activeConversation().mode !== 'legend' || activeConversation().nativeOnly === true;
+        }
         if (status) {
             status.textContent = message;
         }
@@ -1045,25 +1068,12 @@
             return fallback || 'Legend® Ai could not complete that response.';
         }
 
-        const details = [
-            result.responseAuthority && `Authority=${result.responseAuthority}`,
-            result.stage && `Stage=${result.stage}`,
-            result.reason && `Reason=${result.reason}`,
-            result.failureKind && `FailureKind=${result.failureKind}`,
-            Number.isFinite(result.providerStatusCode) &&
-                `ProviderStatus=${result.providerStatusCode}`,
-            result.reference && `Reference=${result.reference}`,
-            result.resumable === true && 'Resumable=true'
-        ].filter(Boolean);
-
-        const summary =
-            typeof result.error === 'string' && result.error.trim()
-                ? result.error.trim()
-                : fallback || 'Legend® Ai could not complete that response.';
-
-        return details.length > 0
-            ? `${summary} (${details.join('; ')})`
-            : summary;
+        // Preserve the authoritative summary as one exact catalog source.
+        // Typed diagnostic fields remain on the response contract; app-copy
+        // localization cannot match a summary concatenated with raw codes.
+        return typeof result.error === 'string' && result.error.trim()
+            ? result.error.trim()
+            : fallback || 'Legend® Ai could not complete that response.';
     }
 
     async function consumeChatResultStream(response, signal) {
@@ -1234,6 +1244,19 @@
         );
     }
 
+    externalAnsweringBlocked?.addEventListener('change', () => {
+        const current = activeConversation();
+        if (busy || current.mode !== 'legend' || current.nativeOnly === true) {
+            renderModes();
+            return;
+        }
+        const conversation = newConversationRecord('legend', false, externalAnsweringBlocked.checked);
+        state.conversations.unshift(conversation);
+        state.activeConversationId = conversation.id;
+        saveState();
+        renderAll({ forceBottom: true });
+    });
+
     nativeOnly?.addEventListener(
         'change',
         () => {
@@ -1253,7 +1276,8 @@
             // direct LEGEND test context.
             const conversation = newConversationRecord(
                 'legend',
-                nativeOnly.checked
+                nativeOnly.checked,
+                current.externalAnsweringBlocked === true
             );
             state.conversations.unshift(conversation);
             state.activeConversationId = conversation.id;
@@ -1263,8 +1287,8 @@
 
             if (status) {
                 status.textContent = conversation.nativeOnly
-                    ? 'Native-only test enabled. OpenAI escalation is blocked for this clean conversation.'
-                    : 'Native-only test disabled. Normal governed escalation is available for this clean conversation.';
+                    ? 'All external providers are blocked for this clean conversation.'
+                    : 'Strict provider blocking is disabled for this clean conversation.';
             }
 
             focusComposer();
@@ -1348,6 +1372,7 @@
                             },
                             body: JSON.stringify({
                                 mode: conversation.mode,
+                                externalAnsweringBlocked: conversation.externalAnsweringBlocked === true,
                                 nativeOnly:
                                     conversation.nativeOnly === true,
                                 // The web composer has no authoritative
@@ -1383,12 +1408,18 @@
                     stage:
                         result.stage ||
                         'unclassified',
+                    reason: result.reason ?? null,
+                    escalationDisposition: result.escalationDisposition ?? null,
                     foundationModel: result.foundationModel ?? null,
                     foundationHosting: result.foundationHosting ?? null,
                     externalAnsweringUsed: result.externalAnsweringUsed ?? null,
                     escalationUsed: result.escalationUsed ?? null,
                     researchState: result.researchState ?? null,
-                    learningState: result.learningState ?? null
+                    learningState: result.learningState ?? null,
+                    modelAssistanceState: result.modelAssistanceState ?? null,
+                    modelVersion: result.modelVersion ?? null,
+                    modelTrainingRunId: result.modelTrainingRunId ?? null,
+                    modelProvenance: result.modelProvenance ?? null
                 });
 
                 if (

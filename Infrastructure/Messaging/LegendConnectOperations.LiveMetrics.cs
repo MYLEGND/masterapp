@@ -12,10 +12,7 @@ internal sealed partial class LegendConnectOperations
     {
         // Keep the registry and provider policy authorities used by the full
         // dashboard, but never load the corpus to render scalar polling values.
-        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders)
-            await _registry.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
-        else
-            await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        await _registry.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
         var usage = await _db.Set<LegendTranslationSystemUsage>().AsNoTracking()
             .GroupBy(_ => 1).Select(group => new LegendConnectDashboardCounters
             {
@@ -48,7 +45,15 @@ internal sealed partial class LegendConnectOperations
         var events = _db.Set<LegendTranslationLearningEvent>().AsNoTracking();
         // Match ActiveLearningEvents' historical identity rules, including
         // aggregate-only privacy audit rows and pending events without targets.
-        var activeEvents = events.Where(item => item.ProcessingState != "Superseded" &&
+        // Completed healthy events contribute to neither live counter. Filter
+        // them before the correlated canonical-identity checks, preserving the
+        // exact historical identity rules for pending and failed work. Avoid
+        // probing canonical identity for rows that cannot change a counter.
+        var countedEvents = events.Where(item =>
+            (item.EligibilityState == "Eligible" &&
+             (item.ProcessingState == "Pending" || item.ProcessingState == "Processing")) ||
+            (item.FailureCode != null && item.FailureCode.Trim() != ""));
+        var activeEvents = countedEvents.Where(item => item.ProcessingState != "Superseded" &&
             (item.EligibilityState != "Eligible" ||
              (units.Any(unit => unit.LanguageCode.Trim().ToUpper() == item.SourceLanguageCode.Trim().ToUpper() &&
                                 unit.NormalizedHash.Trim().ToUpper() == item.SourceTextHash.Trim().ToUpper()) &&

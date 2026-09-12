@@ -3,10 +3,12 @@ using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Data.Common;
 
 namespace Infrastructure.Messaging;
 
@@ -22,7 +24,8 @@ internal sealed record LegendConnectActiveModelInferenceResult(
     string? ErrorCode,
     Guid? ModelTrainingRunId = null,
     long? CostMicrounits = null,
-    bool Retryable = false);
+    bool Retryable = false,
+    string? Hosting = null);
 
 internal static class LegendConnectServingEvaluationContracts
 {
@@ -34,6 +37,106 @@ internal static class LegendConnectServingEvaluationContracts
 
     internal const string InferenceSettings =
         "responses-v1,store=false,max_output_tokens=1200";
+
+    internal static string FromLocalReceipt(JsonElement receipt)
+    {
+        var limits = receipt.GetProperty("execution_limits");
+        var generation = receipt.GetProperty("generation_settings");
+        var remote = generation.TryGetProperty("engine", out var engine) && engine.GetString() == "Vllm";
+        var fields = new List<string> { remote ? "controlled-responses-v1" : "local-responses-v1", "store=false", "stream=true",
+            "ctx=" + limits.GetProperty("max_context_tokens").GetInt32(),
+            "limit=" + limits.GetProperty("max_output_tokens").GetInt32(),
+            "out=" + generation.GetProperty("max_output_tokens").GetInt32(),
+            "seconds=" + limits.GetProperty("timeout_seconds").GetInt32(),
+            "concurrency=" + limits.GetProperty("maximum_concurrent_requests").GetInt32(),
+            "temperature=" + generation.GetProperty("temperature").GetDecimal().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "thinking=" + (generation.GetProperty("enable_thinking").GetBoolean() ? "true" : "false"),
+            "template=" + generation.GetProperty("chat_template_sha256").GetString(),
+            "revision=" + receipt.GetProperty("model_revision").GetString(),
+            "adapter=" + (receipt.GetProperty("adapter_version").GetString() ?? string.Empty) };
+        if (remote)
+        {
+            fields.Add("engine=Vllm");
+            fields.Add("engine_version=" + generation.GetProperty("engine_version").GetString());
+            fields.Add("tool_parser=" + generation.GetProperty("tool_call_parser").GetString());
+            fields.Add("reasoning_parser=" + generation.GetProperty("reasoning_parser").GetString());
+            fields.Add("top_p=" + generation.GetProperty("top_p").GetDecimal().ToString(System.Globalization.CultureInfo.InvariantCulture));
+            fields.Add("top_k=" + generation.GetProperty("top_k").GetInt32());
+            fields.Add("seed=" + generation.GetProperty("seed").GetInt32());
+            fields.Add("reasoning=" + (generation.GetProperty("reasoning_effort").GetString() ?? "none"));
+            fields.Add("preserve=" + (generation.GetProperty("preserve_thinking").GetBoolean() ? "true" : "false"));
+        }
+        var value = string.Join(',', fields);
+        if (!IsValidInferenceSettings(value)) throw new InvalidOperationException("controlled_evaluation_generation_settings_invalid");
+        return value;
+    }
+
+    internal static bool IsValidInferenceSettings(string value)
+    {
+        if (value.Length > 500) return false;
+        if (value == InferenceSettings) return true;
+        var pieces = value.Split(',');
+        var remote = pieces[0] == "controlled-responses-v1";
+        if ((!remote && (pieces.Length != 13 || pieces[0] != "local-responses-v1")) ||
+            (remote && pieces.Length != 22)) return false;
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var piece in pieces.Skip(1))
+        {
+            var separator = piece.IndexOf('=');
+            if (separator <= 0 || !fields.TryAdd(piece[..separator], piece[(separator + 1)..])) return false;
+        }
+        var common = fields.GetValueOrDefault("store") == "false" && fields.GetValueOrDefault("stream") == "true" &&
+            int.TryParse(fields.GetValueOrDefault("ctx"), out var context) && context > 0 &&
+            int.TryParse(fields.GetValueOrDefault("limit"), out var limit) && limit > 0 && limit <= context &&
+            int.TryParse(fields.GetValueOrDefault("out"), out var output) && output > 0 && output <= limit &&
+            int.TryParse(fields.GetValueOrDefault("seconds"), out var seconds) && seconds > 0 &&
+            int.TryParse(fields.GetValueOrDefault("concurrency"), out var concurrency) && concurrency > 0 &&
+            IsHex(fields.GetValueOrDefault("template"), 64) && IsHex(fields.GetValueOrDefault("revision"), 40) &&
+            (fields.GetValueOrDefault("adapter") == "" || IsHex(fields.GetValueOrDefault("adapter"), 64));
+        if (!common) return false;
+        if (!remote) return fields.GetValueOrDefault("temperature") == "0" && fields.GetValueOrDefault("thinking") == "false";
+        return fields.GetValueOrDefault("engine") == "Vllm" &&
+            fields.GetValueOrDefault("engine_version") is { Length: > 0 and <= 32 } version &&
+            version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+') &&
+            ParserIdentity(fields.GetValueOrDefault("tool_parser")) && ParserIdentity(fields.GetValueOrDefault("reasoning_parser")) &&
+            Decimal(fields.GetValueOrDefault("temperature"), out var temperature) && temperature is >= 0m and <= 2m &&
+            Decimal(fields.GetValueOrDefault("top_p"), out var topP) && topP is > 0m and <= 1m &&
+            int.TryParse(fields.GetValueOrDefault("top_k"), out var topK) && topK is >= -1 and <= 100000 &&
+            int.TryParse(fields.GetValueOrDefault("seed"), out var seed) && seed >= 0 &&
+            fields.GetValueOrDefault("thinking") is "true" or "false" && fields.GetValueOrDefault("preserve") == "false" &&
+            fields.GetValueOrDefault("reasoning") is "none" or "low" or "medium" or "xhigh";
+    }
+
+    internal static bool IsCompatibleWithBackend(string settings, string provider) =>
+        IsValidInferenceSettings(settings) && (provider switch
+        {
+            "ControlledTransformers" => settings.StartsWith("controlled-responses-v1,", StringComparison.Ordinal),
+            "LocalMlx" => settings.StartsWith("local-responses-v1,", StringComparison.Ordinal),
+            "OpenAI" => settings == InferenceSettings,
+            _ => false
+        });
+
+    private static bool ParserIdentity(string? value) => value is { Length: > 0 and <= 40 } &&
+        value.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-');
+
+    private static bool Decimal(string? value, out decimal number) => decimal.TryParse(value,
+        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out number);
+
+    internal static string SummarySettings(string settings) => settings == InferenceSettings ? settings :
+        settings.Split(',')[0] + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(settings))).ToLowerInvariant();
+
+    internal static string ComparableSettings(string settings) => string.Join(',', settings.Split(',')
+        .Where(field => !field.StartsWith("adapter=", StringComparison.Ordinal)));
+
+    internal static bool IsValidSummarySettings(string settings)
+    {
+        if (settings == InferenceSettings) return true;
+        var separator = settings.IndexOf(':');
+        return separator > 0 && settings[..separator] is "local-responses-v1" or "controlled-responses-v1" && IsHex(settings[(separator + 1)..], 64);
+    }
+
+    private static bool IsHex(string? value, int length) => value is not null && value.Length == length &&
+        value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     internal const string SuccessCriteria =
         "governed-reference-policy-v1";
@@ -47,7 +150,8 @@ internal sealed record LegendConnectLockedServingEvaluationRequest(
     string PromptSetVersion,
     string CodeSha,
     string SuccessCriteria,
-    LegendConnectTrainingDatasetExample Example);
+    LegendConnectTrainingDatasetExample Example,
+    string? ExpectedAdapterVersion = null);
 
 /// <summary>
 /// Immutable proof that one locked held-out case ran through the same model
@@ -82,20 +186,27 @@ internal sealed record LegendConnectGovernedReasoningCandidateRequest(
     string EvidenceStandard,
     string ArticulationMode);
 
-internal interface ILegendConnectActiveModelInference
+public sealed record LegendConnectConversationModelSelection(bool Available, string? ModelVersion,
+    Guid? ModelTrainingRunId, string? ModelProvenance, string? AdapterVersion, string? ReasonCode);
+
+public interface ILegendConnectActiveModelInference
 {
-    Task<LegendConnectActiveModelInferenceResult> TryTranslateAsync(
+    Task<LegendConnectConversationModelSelection> ResolveConversationModelAsync(CancellationToken cancellationToken = default);
+
+    internal Task<LegendConnectActiveModelInferenceResult> TryTranslateAsync(
         string sourceLanguageCode,
         string targetLanguageCode,
         string text,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
-    Task<LegendConnectActiveModelInferenceResult>
+    internal Task<LegendConnectActiveModelInferenceResult>
         TryGenerateGovernedReasoningCandidateAsync(
             LegendConnectGovernedReasoningCandidateRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null);
 
-    Task<LegendConnectLockedServingEvaluationResult>
+    internal Task<LegendConnectLockedServingEvaluationResult>
         EvaluateLockedCaseAsync(
             LegendConnectLockedServingEvaluationRequest request,
             CancellationToken cancellationToken = default);
@@ -106,20 +217,79 @@ internal sealed class LegendConnectActiveModelInference
 {
     private readonly MasterAppDbContext _db;
     private readonly ILegendConnectModelInferenceTransport _transport;
+    private readonly IConfiguration? _configuration;
+    private readonly ILegendConnectModelTrainingBackend? _trainingBackend;
 
     public LegendConnectActiveModelInference(
         MasterAppDbContext db,
-        ILegendConnectModelInferenceTransport transport)
+        ILegendConnectModelInferenceTransport transport,
+        IConfiguration? configuration = null,
+        ILegendConnectModelTrainingBackend? trainingBackend = null)
     {
         _db = db;
         _transport = transport;
+        _configuration = configuration;
+        _trainingBackend = trainingBackend;
+    }
+
+    private Task<LegendConnectTrainingCheckpoint?> ReadCheckpointAsync(string runKey, string trainingProvider, CancellationToken cancellationToken) =>
+        _trainingBackend is not null && _trainingBackend.TrainingProvider == trainingProvider
+            ? _trainingBackend.GetCheckpointAsync(runKey, cancellationToken)
+            : Task.FromResult<LegendConnectTrainingCheckpoint?>(null);
+
+    public async Task<LegendConnectConversationModelSelection> ResolveConversationModelAsync(CancellationToken cancellationToken = default)
+    {
+        var model = _configuration?["LegendConnect:Foundation:Model"];
+        if (_configuration?.GetValue<bool>("LegendConnect:Foundation:Enabled") != true || string.IsNullOrWhiteSpace(model))
+            return new(false, null, null, null, null, "local_foundation_not_configured");
+        try
+        {
+        var run = await _db.Set<LegendConnectModelTrainingRun>().AsNoTracking()
+            .Where(item => item.ScopeKey == "Global" && LegendConnectModelTrainingConfiguration.ControlledProviders.Contains(item.TrainingProvider) &&
+                item.State == "TrainingCompleted" && item.EvaluationState == "Passed" && item.PromotionState == "Promoted" &&
+                item.CompletedUtc != null && item.PromotedUtc != null && item.HeldOutScore != null &&
+                item.RegressionScore != null && item.FailureCode == null && item.FailureDetail != null &&
+                item.ChallengerModelVersion != null && item.DatasetIdentity != "")
+            .OrderByDescending(item => item.Generation).FirstOrDefaultAsync(cancellationToken);
+        if (run is null)
+            return new(true, model, null, "Pretrained", null, null);
+        if (!LegendConnectModelRuntimeProofSummary.IsValid(run.FailureDetail))
+            return new(true, model, null, "Pretrained", null, "active_model_runtime_proof_unavailable");
+        if (!run.FailureDetail!.Split(';').Contains("foundation_controls=passed", StringComparer.Ordinal))
+            return new(true, model, null, "Pretrained", null, "foundation_controls_unavailable");
+        var lineages = await _db.Set<LegendConnectModelPromotionPair>().AsNoTracking()
+            .Where(item => item.ModelTrainingRunId == run.Id && item.RolledBackUtc == null).ToListAsync(cancellationToken);
+        if ((lineages.Count == 0 && !LegendConnectModelPromotionService.HasFoundationOnlyPromotionProof(run)) ||
+            lineages.Any(item => item.PromotedModelVersion != run.ChallengerModelVersion))
+            return new(true, model, null, "Pretrained", null, "active_model_promotion_lineage_unavailable");
+        var pairs = lineages.Select(item => item.PairKey).ToArray();
+        var activeCount = await _db.Set<Domain.Entities.LegendLanguagePair>().AsNoTracking()
+            .CountAsync(item => pairs.Contains(item.PairKey) && item.IsEnabled && item.ActiveModelVersion == run.ChallengerModelVersion,
+                cancellationToken);
+        if (activeCount != lineages.Count)
+            return new(true, model, null, "Pretrained", null, "active_model_promotion_lineage_unavailable");
+        var checkpoint = await ReadCheckpointAsync(run.RunKey, run.TrainingProvider, cancellationToken);
+        if (checkpoint is null || checkpoint.ModelVersion != run.ChallengerModelVersion ||
+            checkpoint.BaseRepository != model || checkpoint.BaseRevision != _configuration?["LegendConnect:Foundation:ModelRevision"] ||
+            !run.FailureDetail!.Split(';').Contains("checkpoint=" + checkpoint.AdapterVersion, StringComparer.Ordinal))
+            return new(true, model, null, "Pretrained", null, "active_model_checkpoint_unavailable");
+        return new(true, checkpoint.ModelVersion, run.Id, "TrainedPromoted", checkpoint.AdapterVersion, null);
+        }
+        catch (DbException)
+        {
+            // Optional learned-checkpoint discovery must not make ordinary
+            // pretrained inference depend on curriculum/registry availability.
+            // The local transport still verifies the configured base identity.
+            return new(true, model, null, "Pretrained", null, "model_registry_unavailable");
+        }
     }
 
     public async Task<LegendConnectActiveModelInferenceResult> TryTranslateAsync(
         string sourceLanguageCode,
         string targetLanguageCode,
         string text,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var pairKey =
             LegendLanguageIdentity.PairKey(
@@ -172,6 +342,8 @@ internal sealed class LegendConnectActiveModelInference
                 select new
                 {
                     run.Id,
+                    run.RunKey,
+                    run.TrainingProvider,
                     run.FailureDetail
                 })
             .FirstOrDefaultAsync(
@@ -188,14 +360,23 @@ internal sealed class LegendConnectActiveModelInference
                 "active_model_runtime_proof_unavailable");
         }
 
-        var result =
-            await _transport.GenerateAsync(
-                pair.ActiveModelVersion,
-                LegendModelTaskRequest.Translation(
-                    sourceLanguageCode,
-                    targetLanguageCode,
-                    text),
-                cancellationToken);
+        var policy = providerPolicy ?? LegendConnectExternalProviderPolicy.NativeOnly;
+        string? adapterVersion = null;
+        if (LegendConnectModelTrainingConfiguration.IsControlled(activeRun.TrainingProvider))
+        {
+            var checkpoint = _configuration is null ? null :
+                await ReadCheckpointAsync(activeRun.RunKey, activeRun.TrainingProvider, cancellationToken);
+            if (checkpoint is null || checkpoint.ModelVersion != pair.ActiveModelVersion ||
+                !activeRun.FailureDetail!.Split(';').Contains("checkpoint=" + checkpoint.AdapterVersion, StringComparer.Ordinal))
+                return new(false, null, pair.ActiveModelVersion, "active_model_checkpoint_unavailable", activeRun.Id);
+            adapterVersion = checkpoint.AdapterVersion;
+        }
+        else if (activeRun.TrainingProvider != "OpenAI" || policy.ForbidsExternalAnswering)
+            return new(false, null, pair.ActiveModelVersion, "native_only_external_model_inference_forbidden", activeRun.Id);
+
+        var result = await _transport.GenerateAsync(pair.ActiveModelVersion,
+            LegendModelTaskRequest.Translation(sourceLanguageCode, targetLanguageCode, text)
+                with { ProviderPolicy = policy, AdapterVersion = adapterVersion }, cancellationToken);
 
         if (!result.Succeeded ||
             string.IsNullOrWhiteSpace(
@@ -211,7 +392,8 @@ internal sealed class LegendConnectActiveModelInference
                 CostMicrounits:
                     result.CostMicrounits,
                 Retryable:
-                    result.Retryable);
+                    result.Retryable,
+                Hosting: result.Hosting);
         }
 
         return new(
@@ -221,13 +403,15 @@ internal sealed class LegendConnectActiveModelInference
             null,
             activeRun.Id,
             CostMicrounits:
-                result.CostMicrounits);
+                result.CostMicrounits,
+            Hosting: result.Hosting);
     }
 
     public async Task<LegendConnectActiveModelInferenceResult>
         TryGenerateGovernedReasoningCandidateAsync(
             LegendConnectGovernedReasoningCandidateRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var scopeKey =
             $"capability:{LegendModelCapabilityKeys.GovernedReasoning}";
@@ -239,7 +423,7 @@ internal sealed class LegendConnectActiveModelInference
                     item.State == "TrainingCompleted" &&
                     item.EvaluationState == "Passed" &&
                     item.PromotionState == "Promoted" &&
-                    item.TrainingProvider == "OpenAI" &&
+                    (item.TrainingProvider == "OpenAI" || LegendConnectModelTrainingConfiguration.ControlledProviders.Contains(item.TrainingProvider)) &&
                     item.CompletedUtc != null &&
                     item.PromotedUtc != null &&
                     item.HeldOutScore != null &&
@@ -258,6 +442,8 @@ internal sealed class LegendConnectActiveModelInference
                 .Select(item => new
                 {
                     item.Id,
+                    item.RunKey,
+                    item.TrainingProvider,
                     item.ChallengerModelVersion,
                     item.FailureDetail
                 })
@@ -274,6 +460,20 @@ internal sealed class LegendConnectActiveModelInference
                 "active_reasoning_model_unavailable");
         }
 
+        var policy = providerPolicy ?? LegendConnectExternalProviderPolicy.NativeOnly;
+        string? adapterVersion = null;
+        if (LegendConnectModelTrainingConfiguration.IsControlled(promoted.TrainingProvider))
+        {
+            var checkpoint = _configuration is null ? null :
+                await ReadCheckpointAsync(promoted.RunKey, promoted.TrainingProvider, cancellationToken);
+            if (checkpoint is null || checkpoint.ModelVersion != promoted.ChallengerModelVersion ||
+                !promoted.FailureDetail!.Split(';').Contains("checkpoint=" + checkpoint.AdapterVersion, StringComparer.Ordinal))
+                return new(false, null, promoted.ChallengerModelVersion, "active_model_checkpoint_unavailable", promoted.Id);
+            adapterVersion = checkpoint.AdapterVersion;
+        }
+        else if (policy.ForbidsExternalAnswering)
+            return new(false, null, promoted.ChallengerModelVersion, "native_only_external_model_inference_forbidden", promoted.Id);
+
         var result =
             await _transport.GenerateAsync(
                 promoted.ChallengerModelVersion!,
@@ -283,7 +483,7 @@ internal sealed class LegendConnectActiveModelInference
                     request.AuthorizedSymbolicText,
                     request.EvidenceCount,
                     request.EvidenceStandard,
-                    request.ArticulationMode),
+                    request.ArticulationMode) with { ProviderPolicy = policy, AdapterVersion = adapterVersion },
                 cancellationToken);
 
         if (!result.Succeeded)
@@ -296,7 +496,8 @@ internal sealed class LegendConnectActiveModelInference
                     "active_reasoning_model_inference_failed",
                 promoted.Id,
                 result.CostMicrounits,
-                result.Retryable);
+                result.Retryable,
+                Hosting: result.Hosting);
         }
 
         var candidate = result.Text?.Trim();
@@ -312,7 +513,8 @@ internal sealed class LegendConnectActiveModelInference
                 promoted.ChallengerModelVersion,
                 "active_reasoning_model_malformed_output",
                 promoted.Id,
-                result.CostMicrounits);
+                result.CostMicrounits,
+                Hosting: result.Hosting);
         }
 
         return new(
@@ -321,7 +523,8 @@ internal sealed class LegendConnectActiveModelInference
             promoted.ChallengerModelVersion,
             null,
             promoted.Id,
-            result.CostMicrounits);
+            result.CostMicrounits,
+            Hosting: result.Hosting);
     }
 
     public async Task<LegendConnectLockedServingEvaluationResult>
@@ -394,7 +597,7 @@ internal sealed class LegendConnectActiveModelInference
 
         if (run is null ||
             run.State != "TrainingCompleted" ||
-            run.TrainingProvider != "OpenAI" ||
+            (run.TrainingProvider != "OpenAI" && !LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider)) ||
             string.IsNullOrWhiteSpace(
                 run.ChallengerModelVersion) ||
             !string.Equals(
@@ -416,6 +619,22 @@ internal sealed class LegendConnectActiveModelInference
                 configurationIdentity,
                 proofLineageIdentity,
                 "model_evaluation_inactive_model");
+        }
+
+        if (LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider))
+        {
+            var checkpoint = _configuration is null ? null :
+                await ReadCheckpointAsync(run.RunKey, run.TrainingProvider, cancellationToken);
+            if (checkpoint is null || checkpoint.ModelVersion != request.ExpectedModelVersion ||
+                checkpoint.AdapterVersion != request.ExpectedAdapterVersion)
+                return Failure(request, configurationIdentity, proofLineageIdentity, "model_evaluation_checkpoint_unavailable");
+            task = task with { ProviderPolicy = LegendConnectExternalProviderPolicy.NativeOnly, AdapterVersion = checkpoint.AdapterVersion };
+            configurationIdentity = StableHash(configurationIdentity, checkpoint.AdapterVersion);
+            proofLineageIdentity = StableHash(proofLineageIdentity, checkpoint.AdapterVersion);
+        }
+        else
+        {
+            task = task with { ProviderPolicy = LegendConnectExternalProviderPolicy.ProviderEnabled };
         }
 
         var started =
@@ -461,6 +680,14 @@ internal sealed class LegendConnectActiveModelInference
                     run.Id);
         }
 
+        var actualSettings = LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider) ? generated.InferenceSettings : LegendConnectServingEvaluationContracts.InferenceSettings;
+        if (actualSettings is null || !LegendConnectServingEvaluationContracts.IsValidInferenceSettings(actualSettings))
+            return Failure(request, configurationIdentity, proofLineageIdentity, "model_evaluation_actual_settings_missing");
+        if (LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider))
+        {
+            configurationIdentity = StableHash(configurationIdentity, actualSettings);
+            proofLineageIdentity = StableHash(proofLineageIdentity, actualSettings);
+        }
         return new(
             true,
             generated.Text,
@@ -472,8 +699,7 @@ internal sealed class LegendConnectActiveModelInference
                 .ResponseAuthority,
             request.PromptSetVersion,
             request.CodeSha,
-            LegendConnectServingEvaluationContracts
-                .InferenceSettings,
+            actualSettings,
             request.Example.EvidenceIdentity,
             configurationIdentity,
             proofLineageIdentity,
@@ -822,7 +1048,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType} ProviderPolicy={ProviderPolicy} LanguagesConsidered={LanguagesConsidered} LanguagesCandidate={LanguagesCandidate} LanguagesAnalyzed={LanguagesAnalyzed} LanguagesComposed={LanguagesComposed} LanguagesIncomplete={LanguagesIncomplete}",
                 "LanguageDetectionCompleted", authorityMethod, stage, outcome, reason,
                 (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType,
-                policy.ForbidsExternalProviders ? "native_only" : "provider_enabled", considered, candidateCount, analyzed, composed, incomplete);
+                policy.DiagnosticMode, considered, candidateCount, analyzed, composed, incomplete);
         }
     }
 
@@ -1486,7 +1712,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         var exceptionType = "none";
         _logger.LogInformation(
             "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ProviderPolicy={ProviderPolicy}",
-            "TranslationStageStarted", authorityMethod, stage, "started", policy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
+            "TranslationStageStarted", authorityMethod, stage, "started", policy.DiagnosticMode);
         try
         {
             var result = await action();
@@ -1529,7 +1755,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType} ProviderPolicy={ProviderPolicy}",
                 "TranslationStageEnded", authorityMethod, stage, outcome, reason,
                 (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType,
-                policy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
+                policy.DiagnosticMode);
         }
     }
 
@@ -1561,7 +1787,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             _logger.LogInformation(
                 "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
                 "TranslationCompleted", "LegendConnectTranslationRouter.TranslateCoreAsync", "translation_result", result.Succeeded ? "resolved" : "unresolved",
-                LegendConnectTelemetry.NormalizeDiagnosticReason(result.ErrorCode), externalProviderPolicy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
+                LegendConnectTelemetry.NormalizeDiagnosticReason(result.ErrorCode), externalProviderPolicy.DiagnosticMode);
             return result;
         }
 
@@ -1713,8 +1939,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         "LegendConnectContextualComposition"));
                 }
 
-                if (_activeModelInference is not null &&
-                    !externalProviderPolicy.ForbidsExternalProviders)
+                if (_activeModelInference is not null)
                 {
                     var neural =
                         await TraceTranslationStageAsync("translation_promoted_model", _activeModelInference.GetType().Name + ".TryTranslateAsync",
@@ -1722,7 +1947,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             source,
                             target,
                             text ?? string.Empty,
-                            cancellationToken), externalProviderPolicy);
+                            cancellationToken, externalProviderPolicy), externalProviderPolicy);
 
                     if (neural.Succeeded &&
                         !string.IsNullOrWhiteSpace(

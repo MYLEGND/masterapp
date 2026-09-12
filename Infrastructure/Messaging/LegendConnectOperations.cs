@@ -93,12 +93,9 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy)
     {
-        // Ensures the data-backed baseline is available for a newly initialized
-        // environment without treating the baseline list as a runtime authority.
-        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders)
-            await _registry.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
-        else
-            await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        // A dashboard read must not seed or converge the registry. Existing
+        // initialization and learning authorities own those mutations.
+        await _registry.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
         return await BuildDashboardAsync(await LoadStateAsync(cancellationToken), cancellationToken, providerPolicy);
     }
 
@@ -838,7 +835,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                     request.Decision.SourceLanguageCode,
                     request.Queries,
                     request.MaximumResults,
-                    request.MaximumClaims),
+                    request.MaximumClaims,
+                    externalResearchPolicy),
                 totalResearchCancellation.Token);
         }
         catch (OperationCanceledException)
@@ -1400,6 +1398,13 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             cancellationToken);
     }
 
+    public Task<string> RecordExternalEscalationDispositionAsync(
+        Guid correlationId,
+        bool answerProduced,
+        CancellationToken cancellationToken = default) =>
+        (_operationalEvents ?? throw new InvalidOperationException("Escalation disposition authority is unavailable."))
+            .RecordEscalationDispositionAsync(correlationId, answerProduced, cancellationToken);
+
     public Task RecordResearchRetentionAsync(
         LegendConnectResearchRetentionLineage lineage,
         LegendConnectMachineTeachingSubmissionResult result,
@@ -1706,19 +1711,6 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             LegendConnectExternalProviderPolicy providerPolicy,
             CancellationToken cancellationToken)
     {
-        // The promoted reasoning model is transported by an external provider.
-        // A native-only request therefore never reaches it: the model
-        // authority is left dormant with its own precise reason and the
-        // governed symbolic answer is served unchanged and unrelabelled.
-        if (providerPolicy.ForbidsExternalProviders)
-        {
-            return symbolic with
-            {
-                ModelAssistance = DormantModelAssistance(
-                    "native_only_external_model_inference_forbidden")
-            };
-        }
-
         if (!symbolic.Supported ||
             string.IsNullOrWhiteSpace(symbolic.Answer))
         {
@@ -1775,7 +1767,7 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         }
 
         var governedSourceLanguage =
-            await _registry.NormalizeEnabledTranslationLanguageAsync(
+            await _registry.NormalizeEnabledTranslationLanguageReadOnlyAsync(
                 sourceLanguageCode,
                 cancellationToken);
         if (governedSourceLanguage is null)
@@ -1797,7 +1789,7 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                         symbolic.EvidenceCount,
                         symbolic.EvidenceStandard,
                         symbolic.ArticulationMode),
-                    cancellationToken);
+                    cancellationToken, providerPolicy);
 
         var generatedText = generated.Text;
         if (!generated.Succeeded ||
@@ -1827,7 +1819,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                     generated.ModelTrainingRunId,
                     LegendConnectNativeModelAssistanceContracts
                         .CandidateAttemptProvenance,
-                    generated.CostMicrounits)
+                    generated.CostMicrounits,
+                    Hosting: generated.Hosting)
             };
         }
 
@@ -1848,7 +1841,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                     generated.ModelTrainingRunId,
                     LegendConnectNativeModelAssistanceContracts
                         .CandidateAttemptProvenance,
-                    generated.CostMicrounits)
+                    generated.CostMicrounits,
+                    Hosting: generated.Hosting)
             };
         }
 
@@ -1867,7 +1861,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
                 generated.ModelVersion,
                 generated.ModelTrainingRunId,
                 LegendConnectNativeModelAssistanceContracts.Provenance,
-                generated.CostMicrounits)
+                generated.CostMicrounits,
+                Hosting: generated.Hosting)
         };
     }
 

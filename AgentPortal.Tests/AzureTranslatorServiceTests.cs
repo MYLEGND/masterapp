@@ -19,6 +19,48 @@ namespace AgentPortal.Tests;
 public sealed class AzureTranslatorServiceTests
 {
     [Fact]
+    public async Task IndependentAnswering_AllowsKnownAzureTranslationWhileNativeOnlyBlocksIt()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("[{\"translations\":[{\"text\":\"Bonjou\",\"to\":\"ht\"}]}]"));
+        var service = CreateService(handler);
+        var translated = await service.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.IndependentAnswering);
+        Assert.True(translated.Succeeded);
+        Assert.Equal("Bonjou", translated.TranslatedText);
+        Assert.Equal(1, handler.CallCount);
+        var blocked = await service.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.False(blocked.Succeeded);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task IndependentAnswering_UnknownTranslationBoundaryCannotDiscardRestrictedPolicy()
+    {
+        var unknown = new PolicyUnawareTranslator();
+        ITranslationService boundary = unknown;
+        var result = await boundary.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.IndependentAnswering);
+        var detected = await boundary.DetectLanguageAsync("Hello", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.IndependentAnswering);
+        Assert.False(result.Succeeded);
+        Assert.False(detected.Succeeded);
+        Assert.Equal(0, unknown.Calls);
+        Assert.True(LegendConnectExternalProviderPolicy.IndependentAnswering.ForbidsExternalAnswering);
+        Assert.False(LegendConnectExternalProviderPolicy.IndependentAnswering.ForbidsExternalProviders);
+    }
+
+    private sealed class PolicyUnawareTranslator : ITranslationService
+    {
+        public int Calls { get; private set; }
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
+        { Calls++; return Task.FromResult(new TranslationDetectionResult(true, "en")); }
+        public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage,
+            string? sourceLanguage = null, CancellationToken cancellationToken = default)
+        { Calls++; return Task.FromResult(new TranslationProviderResult(true, "unexpected", "en", "unknown")); }
+    }
+
+    [Fact]
     public async Task PlainLabels_UsePlainTransportAndMixedBatchesPreserveOrder()
     {
         var handler = new RecordingHandler(request =>

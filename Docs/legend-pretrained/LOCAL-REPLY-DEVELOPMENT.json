@@ -1,0 +1,380 @@
+{
+  "code_revision": "e5d33373c49d758bbd01f4b3d31c7880806e8502 + uncommitted local correction, build4 (not final revision)",
+  "build_log": "/private/tmp/legend-local-integration-build-4.log",
+  "results_sha256": "e1cf6e28221d41ed7c9302dac3b075dbc3eb8c6f9a2713b2abb5953617bee5d0",
+  "scope": "Synthetic isolated database, real local model; no production data; development acceptance, not held-out training generalization",
+  "results": [
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedLocalEvents_FailClosedWithoutThrowingOrExternalFallback(events: \"data: {\\\"type\\\":42}\\n\\n\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004261"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"adapter_version\", value: \"unapproved-adapter\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000641"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[{\\\"type\\\":\\\"message\\\",\\\"content\\\":[{\\\"type\\\":\\\"ou\"···)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001626"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"haitian_creole_conflict\", requiredAnswerElements: [\"25\", \"27\"])",
+      "outcome": "Failed",
+      "duration": "00:01:00.6699327"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MissingOrMismatchedExecutionReceipt_CannotBecomeCompletedProof(mismatched: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0031859"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedLocalEvents_FailClosedWithoutThrowingOrExternalFallback(events: \"data: {\\\"type\\\":\\\"response.completed\\\",\\\"response\\\"···)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001188"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"model\", value: \"different-model\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0004720"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NativeOnly_UsesOnlyControlledClientAndRequiresExactReceipt",
+      "outcome": "Passed",
+      "duration": "00:00:00.0005291"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NonCompletedGeneration_CannotBecomeCompletedAnswerOrEvaluationProof(status: \"incomplete\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001774"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"https://example.com/v1/responses\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000654"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt",
+      "outcome": "Passed",
+      "duration": "00:00:46.0676820"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.UnknownModel_AbsentOrNativeOnlyPolicy_CreatesZeroClients(explicitNativeOnly: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002108"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NonStringTerminalStatus_FailsAsMalformedDataWithoutThrowing",
+      "outcome": "Passed",
+      "duration": "00:00:00.0015711"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"http://user:password@127.0.0.1/v1/responses\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000106"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"causal_diagnosis\", requiredAnswerElements: [\"template\", \"clerk\"])",
+      "outcome": "Failed",
+      "duration": "00:01:07.5642359"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[42]\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000779"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\", requiredAnswerElements: [\"34\", \"2/17\"])",
+      "outcome": "Failed",
+      "duration": "00:00:32.3493456"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedLocalEvents_FailClosedWithoutThrowingOrExternalFallback(events: \"data: []\\n\\n\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000533"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"http://10.0.0.1/v1/responses\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000124"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"hosting\", value: \"ExternalHosted\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001372"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"model_revision\", value: \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000642"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\", requiredAnswerElements: [\"nine\", \"two\", \"Devon\", \"Monday\"])",
+      "outcome": "Failed",
+      "duration": "00:00:50.2260464"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.ChangedActualDestination_IsRejectedEvenIfReceiptClaimsLocal",
+      "outcome": "Passed",
+      "duration": "00:00:00.0003970"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\", requiredAnswerElements: [\"Kestrel\", \"premise\"])",
+      "outcome": "Failed",
+      "duration": "00:01:04.6370620"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"https://8.8.8.8/v1/responses\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000621"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\", requiredAnswerElements: [\"governed\"])",
+      "outcome": "Failed",
+      "duration": "00:00:52.4841314"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.UnknownModel_AbsentOrNativeOnlyPolicy_CreatesZeroClients(explicitNativeOnly: True)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000880"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[{\\\"type\\\":\\\"message\\\",\\\"content\\\":[42]}]\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0008664"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MissingOrMismatchedExecutionReceipt_CannotBecomeCompletedProof(mismatched: False)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0779260"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier",
+      "outcome": "Passed",
+      "duration": "00:01:14.6102982"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[{\\\"type\\\":42}]\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000738"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\", requiredAnswerElements: [\"five\", \"hazardous\"])",
+      "outcome": "Failed",
+      "duration": "00:01:02.9297857"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"http://127.0.0.1/v1/responses?redirect=https://exa\"···)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0002476"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NonCompletedGeneration_CannotBecomeCompletedAnswerOrEvaluationProof(status: \"failed\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0016229"
+    }
+  ],
+  "responses": [
+    {
+      "Label": "native_capability:internal_data_uncertainty",
+      "Prompt": "What was our exact client renewal percentage for the third quarter of last year in the portal? Do not estimate.",
+      "Message": "The provided data does not include the exact client renewal percentage for the third quarter of last year. The `client_lead_portfolio` report shows client and lead counts and status breakdowns, but it does not contain renewal rate or percentage metrics for specific time periods.\n\nTo obtain the exact client renewal percentage for Q3 of last year, you would need to consult the dedicated client retention or performance analytics dashboard, which tracks renewal rates by quarter. This information is not available in the current portfolio summary.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": "Pretrained",
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_client_lead_portfolio"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:rewriting",
+      "Prompt": "Rewrite this rough note as a concise professional update for a regional supervisor without changing any facts: we checked nine renewals, two lack proof of payment, Devon will call those households before Monday, nothing has been reinstated yet.",
+      "Message": null,
+      "Succeeded": false,
+      "Error": "Legend® Ai could not complete this request. The bounded execution window closed before the next governed check.",
+      "ResponseAuthority": "SystemDiagnostic",
+      "Stage": "governed_tool",
+      "Reason": "provider_tool_execution_not_allowed",
+      "FoundationModel": null,
+      "FoundationHosting": null,
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": null,
+      "ProviderCalls": 0,
+      "ToolCalls": [],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:constrained_planning",
+      "Prompt": "Thirty-one overdue inspections must be cleared at seven per day, hazardous sites first, and no site may be contacted twice. Give the daily sequence and the completion day.",
+      "Message": null,
+      "Succeeded": false,
+      "Error": "Legend® Ai could not complete this request. The bounded execution window closed before the next governed check.",
+      "ResponseAuthority": "SystemDiagnostic",
+      "Stage": "governed_tool",
+      "Reason": "provider_tool_execution_not_allowed",
+      "FoundationModel": null,
+      "FoundationHosting": null,
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": null,
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_capabilities"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:causal_diagnosis",
+      "Prompt": "Intake forms began arriving with blank effective dates the same week two intake clerks were reassigned and a form template was republished. Which explanation best accounts for the pattern, and what observation would rule it out?",
+      "Message": null,
+      "Succeeded": false,
+      "Error": "Legend® Ai could not complete this request. The bounded execution window closed before the next governed check.",
+      "ResponseAuthority": "SystemDiagnostic",
+      "Stage": "governed_tool",
+      "Reason": "provider_tool_execution_not_allowed",
+      "FoundationModel": null,
+      "FoundationHosting": null,
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": null,
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_capabilities"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:haitian_creole_conflict",
+      "Prompt": "Yon dosye gen ven-senk fòm. Rapò a di gen ven-sèt fòm ki resevwa. Ki kontradiksyon ki genyen, e ki chif ki dwe verifye anvan nou kontinye?",
+      "Message": null,
+      "Succeeded": false,
+      "Error": "Legend® Ai could not complete this request. The bounded execution window closed before the next governed check.",
+      "ResponseAuthority": "SystemDiagnostic",
+      "Stage": "governed_tool",
+      "Reason": "provider_tool_execution_not_allowed",
+      "FoundationModel": null,
+      "FoundationHosting": null,
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": null,
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_capabilities"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:deduction",
+      "Prompt": "Every audited file carries a signed attestation. File Kestrel was audited and carries no signed attestation. What follows logically, and which premise must be false if both records describe the same file?",
+      "Message": "The logical conclusion is that **one of the premises must be false** because both records describe the same file, yet one claims the file has a signed attestation and the other claims it does not.\n\nLet’s analyze the situation:\n\n- **Premise 1**: \"Every audited file carries a signed attestation.\"\n- **Premise 2**: \"File Kestrel was audited and carries no signed attestation.\"\n\nIf both records describe the same file (Kestrel), and **Premise 1** says *every* audited file must have a signed attestation, then **Premise 2** directly contradicts that.\n\nTherefore, **Premise 1 must be false** — because if every audited file must carry a signed attestation, then Kestrel, being audited, must have one. But it does not. Hence, the claim that \"every audited file carries a signed attestation\" cannot be true in this case.\n\n### Final Answer:\n**The premise \"Every audited file carries a signed attestation\" must be false.**",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": "Pretrained",
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_capabilities"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:arithmetic",
+      "Prompt": "A dispatch board opens with 41 open tickets. Twelve are closed, five new tickets arrive, and four of the remaining tickets are flagged for review. How many tickets are still open, and what share of them are flagged? Show the calculation.",
+      "Message": "We are given the following:\n\n- Initial open tickets: **41**\n- Closed tickets: **12**\n- New tickets arriving: **5**\n- Tickets flagged for review: **4** (from the remaining open tickets)\n\nWe are to find:\n1. The total number of tickets still open.\n2. The share (fraction or percentage) of those open tickets that are flagged.\n\n---\n\n### Step-by-step calculation:\n\n**Step 1: Start with open tickets**\nInitial open tickets = 41\n\n**Step 2: Subtract closed tickets**\nAfter closing 12 tickets:\n- Open tickets = 41 - 12 = **29**\n\n**Step 3: Add new tickets**\n5 new tickets arrive:\n- Total open tickets now = 29 + 5 = **34**\n\n**Step 4: Subtract tickets flagged for review**\n4 tickets are flagged for review (from the open ones):\n- Remaining open tickets = 34 - 4 = **30**\n\nSo, **30 tickets are still open**.\n\n**Step 5: Share of open tickets that are flagged**\n- Flagged tickets = 4\n- Total open tickets = 30\n- Share = 4 / 30 = **2/15** ≈ **0.1333** or **13.33%**\n\n---\n\n### ✅ Final Answer:\n- **Number of tickets still open**: **30**\n- **Share of open tickets that are flagged**: **4/30 = 2/15** (or approximately **13.33%**)\n\n---\n\n### Calculation Summary:\n1. Open after closure: 41 - 12 = 29  \n2. After new tickets: 29 + 5 = 34  \n3. After flagging: 34 - 4 = **30 open**  \n4. Flagged share: 4 / 30 = **2/15**\n\n✅ Answer: **30 tickets are still open**, and **2/15 (≈13.33%)** of them are flagged.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": "Pretrained",
+      "ProviderCalls": 0,
+      "ToolCalls": [],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:tool_planning",
+      "Prompt": "Inspect, read-only, how many client records and how many workstation leads are currently visible to me.",
+      "Message": "Currently visible to you:\n\n- **Client Records**: 1 active client (1 linked through an agent).\n- **Workstation Leads**: 1 active lead (all in the \"Lead\" CRM status; no converted leads are included).\n\nThis data reflects the current state of client and lead records as seen in the system. Let me know if you'd like further details or a breakdown by any specific criteria.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": "Pretrained",
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_client_lead_portfolio"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": []
+    },
+    {
+      "Label": "native_capability:same_conversation_memory_turn_one",
+      "Prompt": "Record two facts for this conversation: Project Marlin closes on the ninth of November, and Corine owns the vendor review.",
+      "Message": "Two facts have been recorded for this conversation:\n\n- Project Marlin closes on the ninth of November.  \n- Corine owns the vendor review.  \n\nThese are now stored as private user assertions and will not be used as canonical organizational knowledge. Let me know if you'd like to explore or act on these facts further.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": "Pretrained",
+      "ProviderCalls": 0,
+      "ToolCalls": [
+        "legend_remember_conversation_facts"
+      ],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": [
+        "LegendFounderAiDiscourseConversation",
+        "LegendFounderAiDiscourseTurn"
+      ]
+    },
+    {
+      "Label": "native_capability:same_conversation_memory_turn_two",
+      "Prompt": "Using only what I told you in this conversation, who owns the vendor review and what is the closing date?",
+      "Message": "Based solely on the information you provided in this conversation:\n\n- **Who owns the vendor review?** Corine owns the vendor review.  \n- **What is the closing date?** The closing date is the ninth of November.\n\nThese facts are directly derived from your user assertions in the conversation, specifically the statements:  \n\"Project Marlin closes on the ninth of November\" and \"Corine owns the vendor review.\"  \n\nNo additional external evidence or research is needed, as these are explicitly stated in your input.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ModelProvenance": "Pretrained",
+      "ProviderCalls": 0,
+      "ToolCalls": [],
+      "OperationalWriteAttempts": 0,
+      "ObservedWriteEntities": [
+        "LegendFounderAiDiscourseConversation",
+        "LegendFounderAiDiscourseTurn"
+      ]
+    }
+  ]
+}

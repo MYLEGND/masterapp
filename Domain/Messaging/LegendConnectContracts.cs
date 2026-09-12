@@ -325,7 +325,8 @@ public sealed record LegendConnectCurriculumExampleSubmission(
     string Text,
     IReadOnlyDictionary<string, string> Variations,
     LegendConnectMeaningGraphSubmission? MeaningGraph = null,
-    string? SemanticExampleKey = null);
+    string? SemanticExampleKey = null,
+    string? ExpectedResponse = null);
 
 /// <summary>
 /// Founder-declared edge between two controlled semantic examples. The keys
@@ -2382,7 +2383,8 @@ public sealed record LegendConnectResearchSearchTransportRequest(
     string UserLanguageCode,
     IReadOnlyList<LegendConnectBoundedSearchQuery> Queries,
     int MaximumResults,
-    int MaximumClaims);
+    int MaximumClaims,
+    LegendConnectExternalProviderPolicy? ProviderPolicy = null);
 
 // Observation only. Null means the stage was not observed; zero means it ran
 // and produced no candidates. Counts never grant evidence or serving authority.
@@ -2571,7 +2573,8 @@ public sealed record LegendConnectNativeModelAssistanceSnapshot(
     string? ModelVersion,
     Guid? ModelTrainingRunId,
     string? Provenance,
-    long? CostMicrounits = null);
+    long? CostMicrounits = null,
+    string? Hosting = null);
 
 public static class LegendConnectNativeModelAssistanceContracts
 {
@@ -2625,7 +2628,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
 /// satisfied by relabelling provider output as native.
 /// </summary>
 public sealed record LegendConnectExternalProviderPolicy(
-    bool AllowExternalProviders)
+    bool AllowExternalProviders,
+    bool AllowExternalAnswering = true)
 {
     /// <summary>
     /// An absolute zero-external-provider request.
@@ -2642,6 +2646,14 @@ public sealed record LegendConnectExternalProviderPolicy(
         new(AllowExternalProviders: true);
 
     /// <summary>
+    /// Blocks external generative inference, including planning and grading,
+    /// while retaining separately authorized research and Azure translation.
+    /// This mode is independent answering, not offline execution.
+    /// </summary>
+    public static readonly LegendConnectExternalProviderPolicy IndependentAnswering =
+        new(AllowExternalProviders: true, AllowExternalAnswering: false);
+
+    /// <summary>
     /// Resolves an absent policy to the provider-enabled default so existing
     /// non-Founder callers keep their current behavior, while a declared
     /// native-only policy is always honored.
@@ -2654,6 +2666,12 @@ public sealed record LegendConnectExternalProviderPolicy(
     /// True when this request forbids every external provider boundary.
     /// </summary>
     public bool ForbidsExternalProviders => !AllowExternalProviders;
+
+    public bool ForbidsExternalAnswering => ForbidsExternalProviders || !AllowExternalAnswering;
+
+    public string DiagnosticMode => ForbidsExternalProviders
+        ? "native_only"
+        : ForbidsExternalAnswering ? "independent_answering" : "provider_enabled";
 }
 
 /// <summary>
@@ -2669,7 +2687,7 @@ public interface ILegendConnectOperations
     Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy) =>
-        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering
             ? Task.FromException<LegendConnectDashboardSnapshot>(new InvalidOperationException(
                 "native_only_diagnostic_policy_unavailable"))
             : GetDashboardAsync(cancellationToken);
@@ -2702,7 +2720,7 @@ public interface ILegendConnectOperations
     Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy) =>
-        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering
             ? Task.FromException<LegendConnectProviderCapacitySnapshot>(new InvalidOperationException(
                 "native_only_diagnostic_policy_unavailable"))
             : GetProviderCapacityAsync(cancellationToken);
@@ -2715,7 +2733,7 @@ public interface ILegendConnectOperations
         string? metricKey,
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy) =>
-        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering
             ? Task.FromException<LegendConnectMetricDetailSnapshot>(new InvalidOperationException(
                 "native_only_diagnostic_policy_unavailable"))
             : GetMetricDetailAsync(metricKey, cancellationToken);
@@ -2755,6 +2773,13 @@ public interface ILegendConnectOperations
     Task<LegendConnectMachineTeachingSubmissionResult> SubmitMachineTeachingProposalAsync(
         LegendConnectMachineTeachingSubmission submission,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Records a metadata-only learning disposition, never teacher text or training eligibility.</summary>
+    Task<string> RecordExternalEscalationDispositionAsync(
+        Guid correlationId,
+        bool answerProduced,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException<string>(new InvalidOperationException("Escalation disposition authority is unavailable."));
 
     /// <summary>
     /// Searches retained governed evidence and admitted knowledge.
@@ -2840,7 +2865,7 @@ public interface ILegendConnectOperations
             string sourceLanguageCode,
             LegendConnectExternalProviderPolicy? providerPolicy) =>
         LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
-                .ForbidsExternalProviders
+                .ForbidsExternalAnswering
             ? Task.FromResult(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,

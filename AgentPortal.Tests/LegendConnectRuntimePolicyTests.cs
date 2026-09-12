@@ -18,6 +18,25 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectRuntimePolicyTests
 {
     [Fact]
+    public async Task DiagnosticReadsDoNotSeedOrConvergeAnEmptyLanguageRegistry()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+
+        await operations.GetDashboardCountersAsync(providerPolicy: LegendConnectExternalProviderPolicy.ProviderEnabled);
+        await policy.GetReadinessAsync(default, LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
+        Assert.Empty(await db.Set<LegendLanguagePair>().ToListAsync());
+        Assert.Empty(await db.Set<LegendConnectKnowledgeAuditEntry>().ToListAsync());
+    }
+
+    [Fact]
     public async Task FounderRuntimePolicy_PersistsAcrossAuthorityRecreation_AndAuditsChanges()
     {
         await using var db = ControllerTestHelpers.BuildDb();

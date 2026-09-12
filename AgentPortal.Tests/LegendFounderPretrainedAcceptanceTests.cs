@@ -45,12 +45,13 @@ public sealed partial class LegendFounderAiModeIsolationTests
             founder, Request("legend", prompt));
 
         Assert.True(result.Succeeded, Describe(result));
-        Assert.Equal("HostedFoundation", result.ResponseAuthority);
+        Assert.Equal("LocalFoundation", result.ResponseAuthority);
         Assert.Equal("Scripted foundation boundary completion.", result.Message);
         Assert.Equal(1, handler.RequestCount);
         using var payload = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
-        Assert.True(payload.RootElement.GetProperty("max_output_tokens").GetInt32() >= 2_000);
-        Assert.Equal("medium", payload.RootElement.GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.Equal(1024, payload.RootElement.GetProperty("max_output_tokens").GetInt32());
+        Assert.False(payload.RootElement.GetProperty("store").GetBoolean());
+        Assert.Equal("fixture-local-model", payload.RootElement.GetProperty("model").GetString());
         Assert.DoesNotContain(operations.Invocations, invocation =>
             invocation.Method.Name is nameof(ILegendConnectOperations.ExecuteResearchAsync) ||
             invocation.Method.Name.StartsWith("Submit", StringComparison.Ordinal) ||
@@ -87,7 +88,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var result = await CreateService(db, operations.Object, handler).ReplyAsync(founder, request);
 
         Assert.True(result.Succeeded, Describe(result));
-        Assert.Equal("HostedFoundation", result.ResponseAuthority);
+        Assert.Equal("LocalFoundation", result.ResponseAuthority);
         Assert.Equal(1, handler.RequestCount);
         Assert.Contains("Option cedar takes one afternoon", Assert.Single(handler.RequestBodies));
         Assert.Contains("option quartz takes three weekends", Assert.Single(handler.RequestBodies));

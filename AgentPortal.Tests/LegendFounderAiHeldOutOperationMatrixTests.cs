@@ -102,10 +102,11 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         Messages = [new("user", prompt)]
                     });
                 Assert.True(response.Succeeded, response.Error);
-                Assert.Equal("LegendAi", response.ResponseAuthority);
-                Assert.Equal("native_response", response.Stage);
-                Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
-                Assert.Equal(native.Answer, response.Message);
+                Assert.Equal("LocalFoundation", response.ResponseAuthority);
+                Assert.Equal("LegendControlled", response.FoundationHosting);
+                Assert.False(response.ExternalAnsweringUsed);
+                Assert.Contains("Wren", response.Message!, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("mortal", response.Message!, StringComparison.OrdinalIgnoreCase);
                 Assert.Equal((0, 0), externalCounts());
                 Assert.Equal(0, writes.OperationalWriteAttempts);
                 Assert.Empty(writes.ObservedWriteEntities);
@@ -584,7 +585,6 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         await using var db = BuildSentinelDb(writeSentinel);
         var founder = await AddFounderProfileAsync(db);
         ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
-        await AdmitFoundationPrerequisiteAsync(db);
         var handler = new RecordingProviderHandler();
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
@@ -634,7 +634,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 handler.ClientConstructions - providerClientsBefore,
                 progress.ToArray())
             {
-                RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics()
+                RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics(),
+                FoundationModel = response.FoundationModel,
+                FoundationHosting = response.FoundationHosting,
+                ExternalAnsweringUsed = response.ExternalAnsweringUsed
             };
         }
 
@@ -691,7 +694,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
     private static bool IsAnswered(MatrixRow row) =>
         row.Succeeded &&
-        string.Equals(row.ResponseAuthority, "LegendAi", StringComparison.Ordinal) &&
+        (row.ResponseAuthority is "LocalFoundation" or "LegendAi") &&
         !string.IsNullOrWhiteSpace(row.Message);
 
     /// <summary>
@@ -733,9 +736,18 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Assert.True(
             IsAnswered(row),
             $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
-        Assert.Equal("LegendAi", row.ResponseAuthority);
-        Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, row.EvidenceOrigin);
-        Assert.True(row.EvidenceCount > 0, "A native capability answer requires positive governed evidence lineage.");
+        if (row.Label == "native_capability:tool_planning" && row.ResponseAuthority == "LegendAi")
+        {
+            Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, row.EvidenceOrigin);
+            Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
+        }
+        else
+        {
+            Assert.Equal("LocalFoundation", row.ResponseAuthority);
+            Assert.Equal("LegendControlled", row.FoundationHosting);
+            Assert.False(string.IsNullOrWhiteSpace(row.FoundationModel));
+            Assert.False(row.ExternalAnsweringUsed);
+        }
         Assert.False(string.IsNullOrWhiteSpace(row.Message));
         Assert.DoesNotContain(
             "OpenAI",
@@ -760,7 +772,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     }
 
     [Fact]
-    public async Task PermittedEscalationAndDirectProviderModeAreAttributedToTheProvider()
+    public async Task OrdinaryReasoningRemainsLocalAndExplicitTeacherIsAttributedExternally()
     {
         var escalated = await RunAsync(
             "escalation_allowed:deduction",
@@ -778,8 +790,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Record([escalated, direct]);
 
         Assert.True(escalated.Succeeded, escalated.Error);
-        Assert.Equal("OpenAITeacher", escalated.ResponseAuthority);
-        Assert.Equal(1, escalated.ProviderCalls);
+        Assert.Equal("LocalFoundation", escalated.ResponseAuthority);
+        Assert.Equal("LegendControlled", escalated.FoundationHosting);
+        Assert.False(escalated.ExternalAnsweringUsed);
+        Assert.Equal(0, escalated.ProviderCalls);
         Assert.Equal(0, escalated.OperationalWriteAttempts);
         Assert.True(direct.Succeeded, direct.Error);
         Assert.Equal("OpenAITeacher", direct.ResponseAuthority);
@@ -791,7 +805,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// owned-record request. The provider function call is scripted, so this
     /// is NOT evidence that LEGEND or the provider autonomously selects the
     /// tool, and it is not evidence of native-only tool planning, which
-    /// remains unimplemented. What it proves is bounded and exact: the request
+    /// is verified separately against the real controlled model. What it proves is bounded and exact: the request
     /// routes to the governed read path, the registered tool executes against
     /// the authenticated database, the receipt carries the canonical counts,
     /// and the answer delivered to the Founder carries those same counts.
@@ -804,9 +818,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         string prompt)
     {
         var row = await RunAsync(
-            "escalation_allowed:governed_tool_read",
+            "explicit_teacher:governed_tool_read",
             prompt,
             nativeOnly: false,
+            mode: "teacher",
             providerResponses:
             [
                 ProviderTool("legend_client_lead_portfolio", "{}"),
@@ -872,10 +887,6 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             await SeedOperationalRecordsAsync(db);
         }
 
-        if (label.StartsWith("native_capability:", StringComparison.Ordinal) ||
-            label.StartsWith("native_only:", StringComparison.Ordinal))
-            await AdmitFoundationPrerequisiteAsync(db);
-
         // Every persistence attempt from this point on is counted and rejected,
         // so zero writes is proven at the command boundary instead of inferred
         // from unchanged row counts.
@@ -932,7 +943,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             handler.ClientConstructions,
             progress.ToArray())
         {
-            RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics()
+            RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics(),
+            FoundationModel = response.FoundationModel,
+            FoundationHosting = response.FoundationHosting,
+            ExternalAnsweringUsed = response.ExternalAnsweringUsed
         };
     }
 
@@ -997,6 +1011,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         IReadOnlyList<LegendFounderAiProgressEvent> Progress)
     {
         public LegendFounderCurriculumSqlServerE2ETests.RuntimeDiagnosticSnapshot? RuntimeDiagnostics { get; init; }
+        public string? FoundationModel { get; init; }
+        public string? FoundationHosting { get; init; }
+        public bool? ExternalAnsweringUsed { get; init; }
     }
 
 
@@ -1047,6 +1064,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["OpenAI:ApiKey"] = "test-only-key",
+                ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120",
                 ["LegendConnect:CorpusAcquisition:Enabled"] = "false",
                 ["LegendConnect:LanguageRegistry:Baseline:0:Code"] = "en",
                 ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
@@ -1055,7 +1074,12 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 ["LegendConnect:LanguageRegistry:Baseline:1:Name"] = "Haitian Creole",
                 ["LegendConnect:LanguageRegistry:Baseline:1:NativeName"] = "Kreyòl ayisyen"
             })
+            .AddControlledFoundation()
             .Build();
+        var clients = new RecordingHttpClientFactory(handler);
+        var modelTransport = new LegendConnectModelInferenceTransport(clients, configuration,
+            loggerFactory.CreateLogger<LegendConnectModelInferenceTransport>());
+        var activeModel = new LegendConnectActiveModelInference(db, modelTransport, configuration);
         var registry = new LegendLanguageRegistry(db, configuration);
         var intelligence = new LegendConnectTranslationIntelligence(db, configuration);
         var corpus = new LegendConnectCorpusService(
@@ -1070,19 +1094,16 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             registry,
             corpus,
             configuration,
+            operationalEvents: new LegendConnectOperationalEventWriter(db,
+                loggerFactory.CreateLogger<LegendConnectOperationalEventWriter>()),
             curriculum: curriculum,
-            intelligence: intelligence);
+            intelligence: intelligence,
+            activeModelInference: activeModel);
         var accessResolver = new AgentProfileAccessResolver(db);
 
         return new LegendFounderAiConversationService(
-            new RecordingHttpClientFactory(handler),
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["OpenAI:ApiKey"] = "test-only-key",
-                    ["OpenAI:LegendFounderAiTimeoutSeconds"] = "45"
-                })
-                .Build(),
+            clients,
+            configuration,
             new FounderLegendConnectService(operations, accessResolver),
             loggerFactory.CreateLogger<LegendFounderAiConversationService>(),
             new LegendFounderAiDiscourseStateService(db, accessResolver, operations),
@@ -1092,7 +1113,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             agencyCommand: new AgencyCommandService(
                 db,
                 new ProductionService(db, loggerFactory.CreateLogger<ProductionService>()),
-                loggerFactory.CreateLogger<AgencyCommandService>()));
+                loggerFactory.CreateLogger<AgencyCommandService>()),
+            modelInference: modelTransport,
+            activeModelInference: activeModel);
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(
@@ -1272,6 +1295,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     {
         public HttpClient CreateClient(string name)
         {
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             handler.ClientConstructions++;
             return new HttpClient(handler, disposeHandler: false)
             {

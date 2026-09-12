@@ -1,0 +1,17 @@
+{
+  "cleaned_locations": [
+    "/private/tmp/legend-local-models",
+    "/private/tmp/legend-local-training-artifacts",
+    "/private/tmp/legend-training-capacity-deadline-check"
+  ],
+  "removed_files": 48,
+  "removed_logical_bytes": 6917670181,
+  "removed_allocated_bytes": 6928072704,
+  "filesystem_available_before": 412558843904,
+  "filesystem_available_after": 419486957568,
+  "filesystem_available_delta": 6928113664,
+  "disk_note": "Allocated bytes from file stat; filesystem delta may include concurrent writes/APFS accounting.",
+  "preservation": "16 dataset/provenance/diagnostic files service-validated in private Azure container before removal; reproducible rejected adapter binaries removed after hash/receipt preservation",
+  "preserved": "worktree, Python environment, shared caches, unrelated work, small manifests/configurations and diagnostic evidence",
+  "remaining_roots": []
+}

@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-276500d0ba9ac9e7",
+  "catalogVersion": "application-copy-v1-32e45ef8b66dd205",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -8951,6 +8951,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.db52839286a318b6ddbd09c6",
+      "source": "Allow authorized research and translation.",
+      "context": "visual interface copy",
+      "sourceRevision": "ca0451345779e8e8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5bc6384e76365742258ec90a",
       "source": "Allow comments",
       "context": "visual interface copy",
@@ -11899,10 +11910,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.58beb421f8d90dce5e72a6c5",
+      "source": "Block all external providers",
+      "context": "visual interface copy",
+      "sourceRevision": "5bb3f184ba471ba1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8ad358567210af073801d2ba",
       "source": "Block every OpenAI escalation and fail closed when LEGEND cannot answer.",
       "context": "visual interface copy",
       "sourceRevision": "8d0e64fc558fce6b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.511f8994701180dfd47a81a7",
+      "source": "Block external answering",
+      "context": "visual interface copy",
+      "sourceRevision": "7a4234e7d1e4fc7c",
       "placeholders": [
 
       ],
@@ -20238,6 +20271,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.6393c40a4bb499d1db8a323e",
+      "source": "Disable external answering, research, and Azure translation.",
+      "context": "visual interface copy",
+      "sourceRevision": "738a34f4949c0c98",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.c48e8a7e008b7c79f435c656",
       "source": "Disabled",
       "context": "visual interface copy",
@@ -23257,6 +23301,17 @@
       "source": "Extended Care — Priorities",
       "context": "visual interface copy",
       "sourceRevision": "2d6afcf4512337dc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.611fe737452753fc37e5cacd",
+      "source": "External answering is blocked for this request. Use Legend® Ai mode. OpenAI Teacher was not contacted.",
+      "context": "visual interface copy",
+      "sourceRevision": "73e08ee741bf3f88",
       "placeholders": [
 
       ],
@@ -29724,6 +29779,61 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.b3d917e8c788ec58ada0186f",
+      "source": "LEGEND · local foundation",
+      "context": "visual interface copy",
+      "sourceRevision": "4151acfa0c6b9372",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0fe8209cb9ac3b68353ea872",
+      "source": "LEGEND's local model registry could not select a verified runtime checkpoint.",
+      "context": "visual interface copy",
+      "sourceRevision": "cb5ccd084fad1ca1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0d4326c2536b53ce5bdde8e8",
+      "source": "LEGEND's local pretrained model could not complete this response. External answering was not used.",
+      "context": "visual interface copy",
+      "sourceRevision": "452f90fcdf0a7a5a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.03da88efdc1a350559f86496",
+      "source": "LEGEND's local pretrained model is not configured on this deployment. External answering was not used.",
+      "context": "visual interface copy",
+      "sourceRevision": "cff0f4c265d0d008",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.003316eed6e0e669552a8aae",
+      "source": "LEGEND-controlled model",
+      "context": "visual interface copy",
+      "sourceRevision": "8584e80553a0252d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2e21701a5210de3d22561f27",
       "source": "LEGEND®",
       "context": "visual interface copy",
@@ -35555,6 +35665,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.cf5d8042a99c5afcbbe1d1cb",
+      "source": "Native-only testing is available only in Legend® Ai mode. OpenAI Teacher was not contacted.",
+      "context": "visual interface copy",
+      "sourceRevision": "8437dc65fec0e0c7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.be6fe5101d8b41298750b8e7",
       "source": "Navigate",
       "context": "visual interface copy",
@@ -40230,6 +40351,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.510d7ce239d6b37d11a89dbf",
+      "source": "Partial answer: output limit reached",
+      "context": "visual interface copy",
+      "sourceRevision": "9ec436b3c79891d2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e399b92fc8f2fa940fe0b6a2",
       "source": "Partially updated",
       "context": "visual interface copy",
@@ -42566,6 +42698,17 @@
       "source": "Promoted group",
       "context": "visual interface copy",
       "sourceRevision": "99e5c5912344399f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.af0eff56fad8c3c7e7fdd5ce",
+      "source": "Promoted model applied",
+      "context": "visual interface copy",
+      "sourceRevision": "e1f19fb194b835a4",
       "placeholders": [
 
       ],
@@ -53475,6 +53618,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.4ae2eec678c79d85c58964dc",
+      "source": "Teacher material lacks sufficient evidence",
+      "context": "visual interface copy",
+      "sourceRevision": "b8a0bcdaac12b5e5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2922a0d5af081904f3c96e1f",
+      "source": "Teacher material restricted from training",
+      "context": "visual interface copy",
+      "sourceRevision": "da36b5e25597c2c6",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.905f0dc1f0ae11b7f2a895fd",
       "source": "Teaching needs more evidence",
       "context": "visual interface copy",
@@ -54161,6 +54326,17 @@
       "source": "The financial store is no longer available.",
       "context": "visual interface copy",
       "sourceRevision": "e5c1f62894c73945",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.90ba0c69558d49fb29eeca46",
+      "source": "The governed model result is missing verified hosting provenance.",
+      "context": "visual interface copy",
+      "sourceRevision": "8f12724a3c48040f",
       "placeholders": [
 
       ],
@@ -55153,6 +55329,17 @@
       "sourceRevision": "31bd17529dacde7b",
       "placeholders": [
         "value1"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ff682cbfc2eeddfd7190ce19",
+      "source": "This request exceeds LEGEND's local model context limit. Shorten the conversation or the supplied material and try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "8027eb56dddb389f",
+      "placeholders": [
+
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"

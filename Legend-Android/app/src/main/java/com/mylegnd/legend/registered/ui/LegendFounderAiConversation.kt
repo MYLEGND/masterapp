@@ -111,6 +111,7 @@ fun FounderAiConversationDialog(
     val scope = rememberCoroutineScope()
     var mode by remember { mutableStateOf("legend") }
     var nativeOnly by remember { mutableStateOf(false) }
+    var externalAnsweringBlocked by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { viewModel.resolveAvailability() }
@@ -139,6 +140,7 @@ fun FounderAiConversationDialog(
                     FounderAiDrawer(
                         mode = mode,
                         nativeOnly = nativeOnly,
+                        externalAnsweringBlocked = externalAnsweringBlocked,
                         canChangeMode = !state.isSending,
                         startNewConversation = {
                             viewModel.startNewConversation()
@@ -146,10 +148,11 @@ fun FounderAiConversationDialog(
                         },
                         selectMode = { selected ->
                             mode = selected
-                            if (selected == "teacher") nativeOnly = false
+                            if (selected == "teacher") { nativeOnly = false; externalAnsweringBlocked = false }
                             viewModel.startNewConversation()
                         },
                         setNativeOnly = { nativeOnly = it },
+                        setExternalAnsweringBlocked = { externalAnsweringBlocked = it; viewModel.startNewConversation() },
                         close = { scope.launch { drawerState.close() } },
                         clear = viewModel::startNewConversation,
                     )
@@ -171,7 +174,7 @@ fun FounderAiConversationDialog(
                     if (state.isSending) {
                         viewModel.cancel()
                     } else {
-                        viewModel.send(draft, mode, nativeOnly)
+                        viewModel.send(draft, mode, nativeOnly, externalAnsweringBlocked)
                         draft = ""
                     }
                 },
@@ -352,10 +355,12 @@ private fun FounderAiHeaderAction(
 private fun FounderAiDrawer(
     mode: String,
     nativeOnly: Boolean,
+    externalAnsweringBlocked: Boolean,
     canChangeMode: Boolean,
     startNewConversation: () -> Unit,
     selectMode: (String) -> Unit,
     setNativeOnly: (Boolean) -> Unit,
+    setExternalAnsweringBlocked: (Boolean) -> Unit,
     close: () -> Unit,
     clear: () -> Unit,
 ) {
@@ -417,8 +422,8 @@ private fun FounderAiDrawer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(legendLocalized("Native-only"), style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
-                    Text(legendLocalized("Block OpenAI escalation for this LEGEND test."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("Block all external providers"), style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(legendLocalized("Disable external answering, research, and Azure translation."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 }
                 Switch(
                     checked = nativeOnly,
@@ -426,6 +431,14 @@ private fun FounderAiDrawer(
                     onCheckedChange = setNativeOnly,
                 )
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(legendLocalized("Block external answering"), style = LegendTypography.Label)
+                Text(legendLocalized("Allow authorized research and translation."), style = LegendTypography.Label)
+            }
+            Switch(checked = externalAnsweringBlocked, enabled = canChangeMode && mode == "legend" && !nativeOnly,
+                onCheckedChange = setExternalAnsweringBlocked)
         }
         HorizontalDivider(color = LegendColors.Divider, modifier = Modifier.padding(vertical = LegendSpacing.Xs))
         Text(legendLocalized("Recent"), style = LegendTypography.Label, color = LegendColors.TextTertiary)
@@ -512,6 +525,13 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
             ) {
                 Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
                 val capabilityStatus = listOfNotNull(
+                    if (message.reason == "provider_output_incomplete")
+                        legendLocalized("Partial answer: output limit reached") else null,
+                    when (message.escalationDisposition) {
+                        "Restricted" -> legendLocalized("Teacher material restricted from training")
+                        "InsufficientEvidence" -> legendLocalized("Teacher material lacks sufficient evidence")
+                        else -> null
+                    },
                     when (message.researchState) {
                         "Conclusion" -> legendLocalized("Research completed")
                         "InsufficientEvidence" -> legendLocalized("Research found insufficient evidence")
@@ -525,12 +545,15 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
                         "InsufficientEvidence" -> legendLocalized("Teaching needs more evidence")
                         else -> null
                     },
+                    if (message.modelAssistanceState == "Applied" && !message.modelTrainingRunId.isNullOrBlank())
+                        legendLocalized("Promoted model applied") else null,
                 ).joinToString(" · ")
                 if (capabilityStatus.isNotEmpty()) {
                     Text(capabilityStatus, style = LegendTypography.Label, color = LegendColors.OnNavy)
                 }
                 val authorityLabel = when (authority) {
                     "LegendAi" -> legendLocalized("Legend® Ai")
+                    "LocalFoundation" -> legendLocalized("LEGEND-controlled model")
                     "HostedFoundation" -> legendLocalized("LEGEND · hosted foundation")
                     "GovernedResearch" -> legendLocalized("LEGEND governed research")
                     "OpenAITeacher" -> legendLocalized("OpenAI")

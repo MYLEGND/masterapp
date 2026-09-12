@@ -337,7 +337,8 @@ end
 Dir.glob([
   ROOT.join("Domain/**/*.cs").to_s,
   ROOT.join("Infrastructure/**/*.cs").to_s,
-  ROOT.join("AgentPortal/Mobile/**/*.cs").to_s
+  ROOT.join("AgentPortal/Mobile/**/*.cs").to_s,
+  ROOT.join("AgentPortal/Services/**/*.cs").to_s
 ]).sort.each do |path|
   source = File.read(path)
   source.scan(/ApplicationCopyText\.Source\(\s*(#{LITERAL})/) do |token|

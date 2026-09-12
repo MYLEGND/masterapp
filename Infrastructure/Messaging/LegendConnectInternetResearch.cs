@@ -183,6 +183,13 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 attemptedQueries, receipts, [], [], [], [], latency, null, reason, retryable, candidateCounts);
         }
 
+        // This configured search adapter uses an external generative model.
+        // Public research permission does not authorize external generation.
+        // Preserve the request decision before reading credentials or creating
+        // a client; pure page retrieval has its own distinct network boundary.
+        if (LegendConnectExternalProviderPolicy.Resolve(request.ProviderPolicy).ForbidsExternalAnswering)
+            return Failure("internet_research_external_generation_forbidden", false);
+
         if (!TryReadConfiguration(out var endpoint, out var apiKey, out var model, out settingsIdentity))
             return Failure("internet_research_configuration_unavailable", false, model);
         if (!IsBoundedRequest(request))

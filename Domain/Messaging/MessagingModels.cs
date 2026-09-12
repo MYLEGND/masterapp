@@ -62,7 +62,7 @@ public interface ITranslationService
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy) =>
         LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
-                .ForbidsExternalProviders
+                .ForbidsExternalAnswering
             ? Task.FromResult(new TranslationDetectionResult(
                 false,
                 null,
@@ -81,7 +81,7 @@ public interface ITranslationService
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy) =>
         LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
-                .ForbidsExternalProviders
+                .ForbidsExternalAnswering
             ? Task.FromResult(new TranslationProviderResult(
                 false,
                 null,

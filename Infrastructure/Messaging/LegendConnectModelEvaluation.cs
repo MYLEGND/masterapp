@@ -12,12 +12,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Messaging;
 
-internal sealed record LegendModelEvaluationGenerationResult(
+/// <summary>
+/// CostMicrounits records answering-provider API charges, as in the existing
+/// hosted token-billing calculation. It excludes hardware, energy and hosting
+/// costs for both local and hosted execution; local resource timings remain
+/// separate serving receipts.
+/// </summary>
+public sealed record LegendModelEvaluationGenerationResult(
     bool Succeeded,
     string? Text,
     string? ErrorCode = null,
     bool Retryable = false,
-    long? CostMicrounits = null);
+    long? CostMicrounits = null,
+    JsonElement? Output = null,
+    string? ModelVersion = null,
+    string? Hosting = null,
+    string? AdapterVersion = null,
+    string? InferenceSettings = null);
 
 /// <summary>
 /// Strict reader for the run-level receipt emitted only after every selected
@@ -93,11 +104,8 @@ public static class LegendConnectModelRuntimeProofSummary
                    "response_authority",
                    LegendConnectServingEvaluationContracts
                        .ResponseAuthority) &&
-               Exact(
-                   fields,
-                   "settings",
-                   LegendConnectServingEvaluationContracts
-                       .InferenceSettings) &&
+               fields.TryGetValue("settings", out var settings) &&
+               LegendConnectServingEvaluationContracts.IsValidSummarySettings(settings) &&
                fields.TryGetValue(
                    "criteria",
                    out var criteria) &&
@@ -176,6 +184,7 @@ public static class LegendConnectModelRuntimeProofSummary
 internal static class LegendModelCapabilityKeys
 {
     internal const string Translation = "translation";
+    internal const string FoundationConversation = "foundation.conversation";
     internal const string SemanticTransition = "governed.semantic_transition";
     internal const string GovernedReasoning = "governed.reasoning";
     internal const string GovernedResearch = "governed.research";
@@ -197,6 +206,8 @@ internal static class LegendModelCapabilityEvaluationPolicies
     private static readonly IReadOnlyDictionary<string, LegendModelCapabilityEvaluationPolicy> Registered =
         new Dictionary<string, LegendModelCapabilityEvaluationPolicy>(StringComparer.Ordinal)
         {
+            [LegendModelCapabilityKeys.FoundationConversation] =
+                new(LegendModelCapabilityKeys.FoundationConversation, false, false),
             [LegendModelCapabilityKeys.Translation] =
                 new(LegendModelCapabilityKeys.Translation, true, true),
             [LegendModelCapabilityKeys.SemanticTransition] =
@@ -213,7 +224,7 @@ internal static class LegendModelCapabilityEvaluationPolicies
         Registered.TryGetValue(capabilityKey, out policy!);
 }
 
-internal sealed record LegendModelEvidencePart(
+public sealed record LegendModelEvidencePart(
     string Modality,
     string ContentReference,
     string MediaType,
@@ -262,14 +273,21 @@ internal static class LegendModelEvidenceAdmission
 /// capability authority supplies the instructions and output contract; the
 /// transport only executes that exact task and owns no domain behavior.
 /// </summary>
-internal sealed record LegendModelTaskRequest(
+public sealed record LegendModelTaskRequest(
     string CapabilityKey,
     string Instructions,
     string Input,
     string OutputContract,
     string? SourceLanguageCode = null,
     string? TargetLanguageCode = null,
-    IReadOnlyList<LegendModelEvidencePart>? EvidenceParts = null)
+    IReadOnlyList<LegendModelEvidencePart>? EvidenceParts = null,
+    JsonElement? ConversationInput = null,
+    JsonElement? Tools = null,
+    bool AllowTools = false,
+    bool RequireToolCall = false,
+    int? MaxOutputTokens = null,
+    LegendConnectExternalProviderPolicy? ProviderPolicy = null,
+    string? AdapterVersion = null)
 {
     internal static LegendModelTaskRequest Translation(
         string sourceLanguageCode,
@@ -318,7 +336,8 @@ internal sealed record LegendModelEvaluationJudgeRequest(
     string GovernedReferenceText,
     long RuntimeLatencyMicroseconds = 0,
     long RuntimeCostMicrounits = 0,
-    string RuntimeProofIdentity = "");
+    string RuntimeProofIdentity = "",
+    string? BaselineModelText = null);
 
 internal sealed record LegendModelEvaluationJudgement(
     bool Succeeded,
@@ -338,7 +357,7 @@ internal sealed record LegendModelEvaluationJudgement(
     bool Retryable = false,
     LegendConnectResearchEvaluationMeasurements? ResearchMeasurements = null);
 
-internal interface ILegendConnectModelInferenceTransport
+public interface ILegendConnectModelInferenceTransport
 {
     Task<LegendModelEvaluationGenerationResult> GenerateAsync(
         string model,
@@ -357,7 +376,7 @@ internal interface ILegendConnectModelEvaluationBackend
 /// Provider-neutral challenger inference + independent semantic judge boundary.
 /// Neither operation owns LEGEND evidence or promotion state.
 /// </summary>
-internal sealed class OpenAiLegendConnectModelInferenceTransport
+internal sealed class LegendConnectModelInferenceTransport
     : ILegendConnectModelInferenceTransport
 {
     private const string ClientName =
@@ -371,12 +390,12 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
 
     private readonly IHttpClientFactory _clients;
     private readonly IConfiguration _configuration;
-    private readonly ILogger<OpenAiLegendConnectModelInferenceTransport> _logger;
+    private readonly ILogger<LegendConnectModelInferenceTransport> _logger;
 
-    public OpenAiLegendConnectModelInferenceTransport(
+    public LegendConnectModelInferenceTransport(
         IHttpClientFactory clients,
         IConfiguration configuration,
-        ILogger<OpenAiLegendConnectModelInferenceTransport> logger)
+        ILogger<LegendConnectModelInferenceTransport> logger)
     {
         _clients = clients;
         _configuration = configuration;
@@ -402,6 +421,23 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                 "model_inference_governed_evidence_rejected");
         }
 
+        if (string.IsNullOrWhiteSpace(model) || model.Length > 200)
+            return new(false, null, "model_inference_invalid_model");
+        var localModel = _configuration["LegendConnect:Foundation:Model"]?.Trim();
+        if (string.Equals(model, localModel, StringComparison.Ordinal) ||
+            model.StartsWith("controlled:", StringComparison.Ordinal) ||
+            model.StartsWith("local-mlx:", StringComparison.Ordinal))
+        {
+            return await SendLocalTaskAsync(model, task, cancellationToken);
+        }
+
+        // A missing policy never authorizes an external answering request.
+        // Existing callers must make their already-governed decision explicit.
+        if (task.ProviderPolicy?.ForbidsExternalAnswering != false)
+            return new(false, null, "external_provider_forbidden_by_policy");
+        if (task.ConversationInput is not null)
+            return new(false, null, "hosted_conversation_requires_teacher_executor");
+
         if (!TryGetConfiguration(
                 out var endpoint,
                 out var key) ||
@@ -421,6 +457,281 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
             task,
             cancellationToken);
     }
+
+    private async Task<LegendModelEvaluationGenerationResult> SendLocalTaskAsync(
+        string model,
+        LegendModelTaskRequest task,
+        CancellationToken cancellationToken)
+    {
+        const string localPrefix = "LegendConnect:Foundation:";
+        var revision = _configuration[localPrefix + "ModelRevision"]?.Trim();
+        var adapterVersion = task.AdapterVersion?.Trim() ?? string.Empty;
+        var apiKey = _configuration[localPrefix + "ApiKey"]?.Trim();
+        var azureResourceId = _configuration[localPrefix + "AzureResourceId"]?.Trim();
+        var engineVersion = _configuration[localPrefix + "EngineVersion"]?.Trim();
+        var toolCallParser = _configuration[localPrefix + "ToolCallParser"]?.Trim();
+        var reasoningParser = _configuration[localPrefix + "ReasoningParser"]?.Trim();
+        if (!_configuration.GetValue<bool>(localPrefix + "Enabled") ||
+            string.IsNullOrWhiteSpace(apiKey) || !IsControlledAzureResourceId(azureResourceId) ||
+            _configuration[localPrefix + "Engine"] != "Vllm" ||
+            toolCallParser is not ("hermes" or "qwen3_coder") || reasoningParser != "qwen3" ||
+            string.IsNullOrWhiteSpace(engineVersion) || engineVersion.Length > 32 ||
+            engineVersion.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('.' or '-' or '+')) ||
+            !Uri.TryCreate(_configuration[localPrefix + "Endpoint"], UriKind.Absolute, out var endpoint) ||
+            !IsControlledFoundationEndpoint(endpoint, !string.IsNullOrWhiteSpace(apiKey)) ||
+            string.IsNullOrWhiteSpace(revision) ||
+            revision.Length != 40 || revision.Any(character => !Uri.IsHexDigit(character)))
+            return new(false, null, "local_foundation_not_configured");
+        if (task.EvidenceParts is { Count: > 0 })
+            return new(false, null, "local_foundation_modality_unsupported");
+
+        var timeoutSeconds = _configuration.GetValue<int?>(localPrefix + "TimeoutSeconds") ?? 120;
+        var maximumOutputTokens = _configuration.GetValue<int?>(localPrefix + "MaxOutputTokens") ?? 1024;
+        var maximumContextTokens = _configuration.GetValue<int?>(localPrefix + "MaxContextTokens") ?? 32768;
+        var enableThinking = _configuration.GetValue<bool>(localPrefix + "EnableThinking");
+        var temperature = _configuration.GetValue<decimal?>(localPrefix + "Temperature") ?? 0m;
+        var topP = _configuration.GetValue<decimal?>(localPrefix + "TopP") ?? 1m;
+        var topK = _configuration.GetValue<int?>(localPrefix + "TopK") ?? 0;
+        var seed = _configuration.GetValue<int?>(localPrefix + "Seed") ?? 73;
+        var reasoningEffort = _configuration[localPrefix + "ReasoningEffort"]?.Trim();
+        if (string.IsNullOrEmpty(reasoningEffort)) reasoningEffort = null;
+        if (timeoutSeconds is < 5 or > 300 || maximumOutputTokens is < 128 or > 8192 ||
+            maximumContextTokens is < 512 or > 131072 || maximumOutputTokens > maximumContextTokens ||
+            temperature is < 0m or > 2m || topP is <= 0m or > 1m || topK is < -1 or > 100000 || seed < 0 ||
+            reasoningEffort is not (null or "low" or "medium" or "xhigh") ||
+            !enableThinking && reasoningEffort is not null ||
+            (_configuration.GetValue<int?>(localPrefix + "MaximumConcurrentRequests") ?? 1) != 1 ||
+            model.StartsWith("local-mlx:", StringComparison.Ordinal) ||
+            model.StartsWith("controlled:", StringComparison.Ordinal) &&
+                (!System.Text.RegularExpressions.Regex.IsMatch(model, "^controlled:[0-9a-f]{64}$") ||
+                 adapterVersion.Length != 64 || adapterVersion.Any(character => !Uri.IsHexDigit(character))) ||
+            model == _configuration[localPrefix + "Model"]?.Trim() && adapterVersion.Length != 0 ||
+            task.MaxOutputTokens is <= 0)
+            return new(false, null, "local_foundation_execution_configuration_invalid");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+        try
+        {
+            var input = task.ConversationInput ?? JsonSerializer.SerializeToElement(new[]
+            {
+                new { role = "user", content = task.Input }
+            });
+            var payload = new
+            {
+                model,
+                model_revision = revision,
+                adapter_version = adapterVersion,
+                azure_resource_id = azureResourceId,
+                generation_settings = new
+                {
+                    engine = "Vllm", engine_version = engineVersion,
+                    tool_call_parser = toolCallParser, reasoning_parser = reasoningParser,
+                    enable_thinking = enableThinking, temperature, top_p = topP, top_k = topK, seed,
+                    reasoning_effort = reasoningEffort, preserve_thinking = false
+                },
+                instructions = task.Instructions,
+                input,
+                tools = task.AllowTools ? task.Tools : null,
+                tool_choice = task.AllowTools ? task.RequireToolCall ? "required" : "auto" : "none",
+                max_output_tokens = Math.Min(task.MaxOutputTokens ?? maximumOutputTokens, maximumOutputTokens),
+                timeout_seconds = timeoutSeconds,
+                execution_limits = new
+                {
+                    max_context_tokens = maximumContextTokens,
+                    max_output_tokens = maximumOutputTokens,
+                    timeout_seconds = timeoutSeconds,
+                    maximum_concurrent_requests = 1
+                },
+                stream = true,
+                store = false
+            };
+            // The controlled worker accepts one bounded JSON document with a
+            // known byte length. JsonContent streams using chunked transfer,
+            // which does not satisfy that existing worker boundary.
+            var payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
+            if (payloadBytes.Length > 2_000_000)
+                return new(false, null, "local_foundation_request_size_limit");
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+            {
+                Content = new ByteArrayContent(payloadBytes)
+            };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
+            if (!string.IsNullOrEmpty(apiKey))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            using var response = await _clients.CreateClient("LegendLocalFoundation").SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                if ((int)response.StatusCode == 422)
+                {
+                    await using var errorStream = await response.Content.ReadAsStreamAsync(deadline.Token);
+                    using var errorReader = new StreamReader(errorStream);
+                    var errorBuffer = new char[256];
+                    var errorLength = await errorReader.ReadBlockAsync(errorBuffer.AsMemory(), deadline.Token);
+                    if (errorLength < errorBuffer.Length)
+                    {
+                        using var error = JsonDocument.Parse(new string(errorBuffer, 0, errorLength));
+                        if (error.RootElement.ValueKind == JsonValueKind.Object &&
+                            HasExactString(error.RootElement, "error", "local_context_limit"))
+                            return new(false, null, "local_foundation_context_limit");
+                    }
+                }
+                return new(false, null, $"local_foundation_http_{(int)response.StatusCode}",
+                    IsRetryable(response.StatusCode));
+            }
+            // Redirects are disabled on this dedicated client. Also validate
+            // the actual target so a changed client registration fails closed.
+            if (response.RequestMessage?.RequestUri != endpoint)
+                return new(false, null, "local_foundation_endpoint_mismatch");
+            if (response.Content.Headers.ContentType?.MediaType != "text/event-stream")
+                return new(false, null, "local_foundation_content_type_invalid");
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+            using var reader = new StreamReader(stream);
+            JsonElement? completed = null;
+            await foreach (var line in ReadBoundedSseLinesAsync(reader, deadline.Token))
+            {
+                if (!line.StartsWith("data: ", StringComparison.Ordinal))
+                    continue;
+                using var item = JsonDocument.Parse(line.AsMemory(6));
+                if (item.RootElement.ValueKind != JsonValueKind.Object)
+                    return new(false, null, "local_foundation_invalid_event");
+                if (item.RootElement.TryGetProperty("type", out var eventType) &&
+                    eventType.ValueKind == JsonValueKind.String && eventType.GetString() == "response.completed" &&
+                    item.RootElement.TryGetProperty("response", out var result))
+                {
+                    completed = result.Clone();
+                    break;
+                }
+                if (item.RootElement.TryGetProperty("type", out eventType) &&
+                    eventType.ValueKind == JsonValueKind.String && eventType.GetString() == "response.failed")
+                    return new(false, null, HasExactString(item.RootElement, "error", "local_context_limit")
+                        ? "local_foundation_context_limit" : "local_foundation_execution_failed");
+            }
+            if (completed is not { } root || root.ValueKind != JsonValueKind.Object ||
+                !HasExactString(root, "model", model) ||
+                !HasExactString(root, "model_revision", revision) ||
+                !HasExactString(root, "adapter_version", adapterVersion) ||
+                !HasExactString(root, "hosting", "LegendControlled") ||
+                !HasExactString(root, "azure_resource_id", azureResourceId!) ||
+                !HasExactString(root, "host_verification", "azure-imds-resource-and-tag-v1") ||
+                !root.TryGetProperty("status", out var state) || state.ValueKind != JsonValueKind.String ||
+                state.GetString() is not ("completed" or "incomplete") ||
+                !root.TryGetProperty("output", out var output) || output.ValueKind != JsonValueKind.Array)
+                return new(false, null, "local_foundation_identity_or_response_invalid");
+            string inferenceSettings;
+            try
+            {
+                inferenceSettings = LegendConnectServingEvaluationContracts.FromLocalReceipt(root);
+                var actualLimits = root.GetProperty("execution_limits");
+                var actualGeneration = root.GetProperty("generation_settings");
+                if (actualLimits.GetProperty("max_context_tokens").GetInt32() != maximumContextTokens ||
+                    actualLimits.GetProperty("max_output_tokens").GetInt32() != maximumOutputTokens ||
+                    actualLimits.GetProperty("timeout_seconds").GetInt32() != timeoutSeconds ||
+                    actualLimits.GetProperty("maximum_concurrent_requests").GetInt32() != 1 ||
+                    actualGeneration.GetProperty("max_output_tokens").GetInt32() != payload.max_output_tokens ||
+                    !HasExactString(actualGeneration, "engine", "Vllm") ||
+                    !HasExactString(actualGeneration, "engine_version", engineVersion) ||
+                    !HasExactString(actualGeneration, "tool_call_parser", toolCallParser) ||
+                    !HasExactString(actualGeneration, "reasoning_parser", reasoningParser) ||
+                    actualGeneration.GetProperty("enable_thinking").GetBoolean() != enableThinking ||
+                    actualGeneration.GetProperty("temperature").GetDecimal() != temperature ||
+                    actualGeneration.GetProperty("top_p").GetDecimal() != topP ||
+                    actualGeneration.GetProperty("top_k").GetInt32() != topK ||
+                    actualGeneration.GetProperty("seed").GetInt32() != seed ||
+                    actualGeneration.GetProperty("reasoning_effort").GetString() != reasoningEffort ||
+                    actualGeneration.GetProperty("preserve_thinking").GetBoolean())
+                    return new(false, null, "local_foundation_execution_receipt_mismatch");
+            }
+            catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
+            {
+                return new(false, null, "local_foundation_execution_receipt_invalid");
+            }
+            return new(true, ExtractCompletedOutputText(root), CostMicrounits: 0, Output: root,
+                ModelVersion: model, Hosting: "LegendControlled", AdapterVersion: adapterVersion,
+                InferenceSettings: inferenceSettings);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(false, null, "local_foundation_timeout", true);
+        }
+        catch (HttpRequestException)
+        {
+            _logger.LogWarning("LEGEND local foundation transport was unavailable.");
+            return new(false, null, "local_foundation_transport_failed", true);
+        }
+        catch (JsonException)
+        {
+            _logger.LogWarning("LEGEND local foundation returned invalid structured output.");
+            return new(false, null, "local_foundation_invalid_json");
+        }
+        catch (InvalidDataException)
+        {
+            return new(false, null, "local_foundation_response_too_large");
+        }
+    }
+
+    private static async IAsyncEnumerable<string> ReadBoundedSseLinesAsync(
+        StreamReader reader,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // ReadLineAsync allocates an entire attacker-controlled line before a
+        // caller can bound it. This reader limits allocation while receiving.
+        var buffer = new char[4096];
+        var line = new StringBuilder();
+        var total = 0;
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0)
+        {
+            total += count;
+            if (total > 2_000_000) throw new InvalidDataException("controlled_response_size_limit");
+            for (var index = 0; index < count; index++)
+            {
+                if (buffer[index] == '\n')
+                {
+                    yield return line.ToString().TrimEnd('\r');
+                    line.Clear();
+                }
+                else
+                {
+                    if (line.Length >= 1_000_000) throw new InvalidDataException("controlled_response_line_limit");
+                    line.Append(buffer[index]);
+                }
+            }
+        }
+        if (line.Length > 0) yield return line.ToString().TrimEnd('\r');
+    }
+
+    private static bool HasExactString(JsonElement root, string name, string expected) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
+        string.Equals(value.GetString(), expected, StringComparison.Ordinal);
+
+    internal static bool IsControlledFoundationEndpoint(Uri endpoint, bool authenticated)
+    {
+        if (!string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) ||
+            !string.IsNullOrEmpty(endpoint.Fragment) || endpoint.AbsolutePath != "/v1/responses")
+            return false;
+        var loopback = endpoint.Host == "localhost" ||
+            System.Net.IPAddress.TryParse(endpoint.Host, out var address) &&
+            System.Net.IPAddress.IsLoopback(address);
+        if (loopback)
+            return endpoint.Scheme is "http" or "https";
+        // A controlled private serving address is an explicit deployment
+        // boundary. Public/DNS answering endpoints cannot become local by label.
+        if (!authenticated || endpoint.Scheme != "https" ||
+            !System.Net.IPAddress.TryParse(endpoint.Host, out address))
+            return false;
+        var bytes = address.GetAddressBytes();
+        return bytes.Length == 4 && (bytes[0] == 10 ||
+            bytes[0] == 172 && bytes[1] is >= 16 and <= 31 ||
+            bytes[0] == 192 && bytes[1] == 168) ||
+            bytes.Length == 16 && (bytes[0] & 0xfe) == 0xfc;
+    }
+
+    internal static bool IsControlledAzureResourceId(string? resourceId) =>
+        resourceId is { Length: <= 300 } && System.Text.RegularExpressions.Regex.IsMatch(resourceId,
+            @"^/subscriptions/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/resourceGroups/[^/\s]{1,90}/providers/Microsoft\.Compute/virtualMachines/[^/\s]{1,64}$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     private async Task<LegendModelEvaluationGenerationResult> SendTaskAsync(
         Uri endpoint,
@@ -503,7 +814,9 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                     output,
                     null,
                     false,
-                    cost);
+                    cost,
+                    ModelVersion: model,
+                    Hosting: "ExternalHosted");
         }
         catch (OperationCanceledException)
             when (!cancellationToken
@@ -683,9 +996,9 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
     private static string? ExtractCompletedOutputText(
         JsonElement root)
     {
-        if (!root.TryGetProperty(
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(
                 "status",
-                out var status) ||
+                out var status) || status.ValueKind != JsonValueKind.String ||
             !string.Equals(
                 status.GetString(),
                 "completed",
@@ -701,9 +1014,9 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
 
         foreach (var item in output.EnumerateArray())
         {
-            if (!item.TryGetProperty(
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty(
                     "type",
-                    out var type) ||
+                    out var type) || type.ValueKind != JsonValueKind.String ||
                 type.GetString() !=
                     "message" ||
                 !item.TryGetProperty(
@@ -717,9 +1030,9 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
 
             foreach (var part in content.EnumerateArray())
             {
-                if (part.TryGetProperty(
+                if (part.ValueKind == JsonValueKind.Object && part.TryGetProperty(
                         "type",
-                        out var partType) &&
+                        out var partType) && partType.ValueKind == JsonValueKind.String &&
                     partType.GetString() ==
                         "output_text" &&
                     part.TryGetProperty(
@@ -1396,19 +1709,25 @@ internal sealed class LegendConnectModelEvaluationService
     private readonly ILegendConnectModelEvaluationBackend _backend;
     private readonly ILegendConnectActiveModelInference _serving;
     private readonly IConfiguration _configuration;
+    private readonly ILegendConnectModelInferenceTransport? _baselineTransport;
+    private readonly ILegendConnectModelTrainingBackend? _trainingBackend;
 
     internal LegendConnectModelEvaluationService(
         MasterAppDbContext db,
         LegendConnectTrainingDatasetCompiler compiler,
         ILegendConnectModelEvaluationBackend backend,
         ILegendConnectActiveModelInference serving,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILegendConnectModelInferenceTransport? baselineTransport = null,
+        ILegendConnectModelTrainingBackend? trainingBackend = null)
     {
         _db = db;
         _compiler = compiler;
         _backend = backend;
         _serving = serving;
         _configuration = configuration;
+        _baselineTransport = baselineTransport;
+        _trainingBackend = trainingBackend;
     }
 
     internal async Task ProcessOneAsync(
@@ -1612,6 +1931,26 @@ internal sealed class LegendConnectModelEvaluationService
             return;
         }
 
+        LegendConnectTrainingCheckpoint? localCheckpoint = null;
+        LegendConnectConversationModelSelection? localBaseline = null;
+        if (LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider))
+        {
+            localCheckpoint = _trainingBackend is { } training && training.TrainingProvider == run.TrainingProvider
+                ? await training.GetCheckpointAsync(run.RunKey, cancellationToken) : null;
+            if (localCheckpoint is null || localCheckpoint.ModelVersion != run.ChallengerModelVersion)
+            {
+                await RecordInfrastructureFailureAsync(run, "local_evaluation_checkpoint_unavailable", false, cancellationToken);
+                return;
+            }
+            localBaseline = await _serving.ResolveConversationModelAsync(cancellationToken);
+            if (!localBaseline.Available || string.IsNullOrWhiteSpace(localBaseline.ModelVersion) ||
+                localBaseline.ModelVersion == run.ChallengerModelVersion)
+            {
+                await RecordInfrastructureFailureAsync(run, "local_evaluation_baseline_unavailable", false, cancellationToken);
+                return;
+            }
+        }
+
         decimal challengerWeighted = 0m;
         decimal referenceWeighted = 0m;
         decimal safeWeighted = 0m;
@@ -1620,6 +1959,10 @@ internal sealed class LegendConnectModelEvaluationService
         var blockingCount = 0;
         var protectedFailureCount = 0;
         var leakageCount = 0;
+        var foundationScenarios = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var foundationLanguages = new HashSet<string>(StringComparer.Ordinal);
+        var foundationControlsExact = true;
+        var observedInferenceSettings = LegendConnectServingEvaluationContracts.InferenceSettings;
         var proofLineage =
             new List<string>();
         long totalLatencyMicroseconds = 0;
@@ -1637,7 +1980,8 @@ internal sealed class LegendConnectModelEvaluationService
                         promptSetVersion,
                         codeSha,
                         successCriteria,
-                        example),
+                        example,
+                        localCheckpoint?.AdapterVersion),
                     cancellationToken);
 
             if (!runtime.Succeeded ||
@@ -1696,6 +2040,40 @@ internal sealed class LegendConnectModelEvaluationService
                     totalCostMicrounits,
                     runtime.CostMicrounits!.Value);
 
+            string? actualBaselineText = null;
+            if (LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider))
+            {
+                var baseModel = localBaseline?.ModelVersion;
+                if (_baselineTransport is null || string.IsNullOrWhiteSpace(baseModel))
+                {
+                    await RecordInfrastructureFailureAsync(run, "local_evaluation_baseline_unavailable", false, cancellationToken);
+                    return;
+                }
+                var baseline = await _baselineTransport.GenerateAsync(baseModel,
+                    example.ToTaskRequest() with { ProviderPolicy = LegendConnectExternalProviderPolicy.NativeOnly,
+                        AdapterVersion = localBaseline?.AdapterVersion }, cancellationToken);
+                if (!baseline.Succeeded || string.IsNullOrWhiteSpace(baseline.Text) || baseline.ModelVersion != baseModel)
+                {
+                    await RecordInfrastructureFailureAsync(run, baseline.ErrorCode ?? "local_evaluation_baseline_failed", baseline.Retryable, cancellationToken);
+                    return;
+                }
+                actualBaselineText = baseline.Text;
+                if (baseline.InferenceSettings is null ||
+                    !LegendConnectServingEvaluationContracts.IsValidInferenceSettings(baseline.InferenceSettings) ||
+                    LegendConnectServingEvaluationContracts.ComparableSettings(baseline.InferenceSettings) !=
+                    LegendConnectServingEvaluationContracts.ComparableSettings(runtime.InferenceSettings))
+                {
+                    await RecordInfrastructureFailureAsync(run, "local_evaluation_settings_mismatch", false, cancellationToken);
+                    return;
+                }
+                if (observedInferenceSettings != LegendConnectServingEvaluationContracts.InferenceSettings &&
+                    observedInferenceSettings != runtime.InferenceSettings)
+                {
+                    await RecordInfrastructureFailureAsync(run, "local_evaluation_settings_changed", false, cancellationToken);
+                    return;
+                }
+                observedInferenceSettings = runtime.InferenceSettings;
+            }
             var judgement =
                 await _backend.JudgeAsync(
                     new(
@@ -1704,7 +2082,8 @@ internal sealed class LegendConnectModelEvaluationService
                         example.TargetText,
                         runtime.LatencyMicroseconds,
                         runtime.CostMicrounits!.Value,
-                        runtime.ProofLineageIdentity),
+                        runtime.ProofLineageIdentity,
+                        actualBaselineText),
                     cancellationToken);
 
             if (!judgement.Succeeded)
@@ -1757,6 +2136,18 @@ internal sealed class LegendConnectModelEvaluationService
 
             if (leakage)
                 leakageCount++;
+
+            if (example.CapabilityKey == LegendModelCapabilityKeys.FoundationConversation)
+            {
+                if (!LegendFoundationConversationControl.TryRead(example.SourceText, out var category, out var scenario, out _))
+                    throw new InvalidOperationException("training_foundation_control_invalid");
+                if (!foundationScenarios.TryGetValue(category!, out var scenarios))
+                    foundationScenarios[category!] = scenarios = new HashSet<string>(StringComparer.Ordinal);
+                scenarios.Add(scenario!);
+                foundationLanguages.Add(example.TargetLanguageCode);
+                foundationControlsExact &= judgement.ChallengerScore == 1m &&
+                    !judgement.BlockingRegression && !judgement.Hallucination && !judgement.Refusal && !leakage;
+            }
 
             var protectedExample =
                 example.Weight >= 4 ||
@@ -1907,7 +2298,7 @@ internal sealed class LegendConnectModelEvaluationService
         var meetsReference =
             heldOutScore >
                 referenceScore ||
-            (heldOutScore == 1m &&
+            (!LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider) && heldOutScore == 1m &&
              referenceScore == 1m);
 
         var passed =
@@ -1967,7 +2358,22 @@ internal sealed class LegendConnectModelEvaluationService
                 successCriteria,
                 proofLineage,
                 totalLatencyMicroseconds,
-                totalCostMicrounits);
+                totalCostMicrounits,
+                observedInferenceSettings);
+        if (localCheckpoint is not null)
+        {
+            var foundationCoverage = foundationControlsExact && foundationLanguages.Contains("en") && foundationLanguages.Contains("ht") &&
+                LegendFoundationConversationControl.RequiredCategories.All(category =>
+                    foundationScenarios.TryGetValue(category, out var scenarios) && scenarios.Count >= 2);
+            run.FailureDetail += ";checkpoint=" + localCheckpoint.AdapterVersion +
+                ";foundation_controls=" + (foundationCoverage ? "passed" : "unavailable");
+        }
+        if (run.FailureDetail.Length > 1000)
+        {
+            await RejectAsync(run, "model_evaluation_proof_exceeds_storage_contract", heldOutScore, regressionScore,
+                "The complete proof exceeds its existing storage contract; no truncated proof is eligible for promotion.", cancellationToken);
+            return;
+        }
 
         run.LeaseExpiresUtc =
             null;
@@ -2112,11 +2518,8 @@ internal sealed class LegendConnectModelEvaluationService
                 runtime.CodeSha,
                 codeSha,
                 StringComparison.Ordinal) ||
-            !string.Equals(
-                runtime.InferenceSettings,
-                LegendConnectServingEvaluationContracts
-                    .InferenceSettings,
-                StringComparison.Ordinal) ||
+            !LegendConnectServingEvaluationContracts.IsValidInferenceSettings(runtime.InferenceSettings) ||
+            !LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(runtime.InferenceSettings, run.TrainingProvider) ||
             !string.Equals(
                 runtime.EvidenceIdentity,
                 example.EvidenceIdentity,
@@ -2174,6 +2577,17 @@ internal sealed class LegendConnectModelEvaluationService
                     DateTime.UtcNow
             };
 
+        if (LegendConnectModelTrainingConfiguration.IsControlled(run.TrainingProvider) && runtime.Succeeded &&
+            LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(runtime.InferenceSettings, run.TrainingProvider) &&
+            LegendConnectServingEvaluationContracts.IsValidInferenceSettings(runtime.InferenceSettings))
+            _db.Set<LegendConnectOperationalEvent>().Add(new LegendConnectOperationalEvent
+            {
+                Category = common.Category, Severity = common.Severity, Status = "ActualInferenceSettings",
+                LanguageCode = common.LanguageCode, PairKey = common.PairKey, CorrelationId = common.CorrelationId,
+                ErrorCode = common.ErrorCode, Summary = runtime.InferenceSettings,
+                IsResolved = failureReason is null, OccurredUtc = common.OccurredUtc
+            });
+
         _db.Set<LegendConnectOperationalEvent>().AddRange(
             new LegendConnectOperationalEvent
             {
@@ -2185,7 +2599,7 @@ internal sealed class LegendConnectModelEvaluationService
                 CorrelationId = common.CorrelationId,
                 ErrorCode = common.ErrorCode,
                 Summary = Bounded(
-                    $"prompt_set={runtime.PromptSetVersion};code_sha={runtime.CodeSha};runtime_mode={runtime.RuntimeMode};response_authority={runtime.ResponseAuthority};settings={runtime.InferenceSettings}",
+                    $"prompt_set={runtime.PromptSetVersion};code_sha={runtime.CodeSha};runtime_mode={runtime.RuntimeMode};response_authority={runtime.ResponseAuthority};settings={LegendConnectServingEvaluationContracts.SummarySettings(runtime.InferenceSettings)}",
                     500),
                 IsResolved = failureReason is null,
                 OccurredUtc = common.OccurredUtc
@@ -2342,10 +2756,9 @@ internal sealed class LegendConnectModelEvaluationService
         string successCriteria,
         IReadOnlyList<string> proofLineage,
         long latencyMicroseconds,
-        long costMicrounits) =>
-        Bounded(
-            $"evaluated={evaluated};reference={referenceScore.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)};blocking={blocking};protected={protectedFailures};leakage={leakage};prompt_set={promptSetVersion};code_sha={codeSha};runtime_mode={LegendConnectServingEvaluationContracts.RuntimeMode};response_authority={LegendConnectServingEvaluationContracts.ResponseAuthority};settings={LegendConnectServingEvaluationContracts.InferenceSettings};criteria={successCriteria};proof_set={StableHash(proofLineage.OrderBy(item => item, StringComparer.Ordinal))};latency_us={latencyMicroseconds};cost_micro={costMicrounits}",
-            1000);
+        long costMicrounits,
+        string? inferenceSettings = null) =>
+            $"evaluated={evaluated};reference={referenceScore.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)};blocking={blocking};protected={protectedFailures};leakage={leakage};prompt_set={promptSetVersion};code_sha={codeSha};runtime_mode={LegendConnectServingEvaluationContracts.RuntimeMode};response_authority={LegendConnectServingEvaluationContracts.ResponseAuthority};settings={LegendConnectServingEvaluationContracts.SummarySettings(inferenceSettings ?? LegendConnectServingEvaluationContracts.InferenceSettings)};criteria={successCriteria};proof_set={StableHash(proofLineage.OrderBy(item => item, StringComparer.Ordinal))};latency_us={latencyMicroseconds};cost_micro={costMicrounits}";
 
     private string BuildSuccessCriteria() =>
         string.Join(

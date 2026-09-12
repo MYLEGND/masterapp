@@ -32,6 +32,19 @@ class FounderAiMobileContractTest {
     }
 
     @Test
+    fun `independent answering request preserves research permission separately from strict native only`() {
+        val request = FounderAiChatRequest(mode = "legend", nativeOnly = false, externalAnsweringBlocked = true,
+            messages = listOf(FounderAiChatMessage("user", "Use approved evidence.")), conversationId = "independent-1")
+        val restored = json.decodeFromString(FounderAiChatRequest.serializer(), json.encodeToString(request))
+        assertTrue(restored.externalAnsweringBlocked)
+        assertFalse(restored.nativeOnly)
+        val legacy = json.decodeFromString(FounderAiChatRequest.serializer(),
+            """{"mode":"legend","nativeOnly":true,"messages":[],"conversationId":"old"}""")
+        assertFalse(legacy.externalAnsweringBlocked)
+        assertTrue(legacy.nativeOnly)
+    }
+
+    @Test
     fun `response authority remains server-projected for distinct native and teacher responders`() {
         val native = json.decodeFromString(
             FounderAiChatResponse.serializer(),
@@ -52,7 +65,7 @@ class FounderAiMobileContractTest {
     fun `foundation capability metadata survives response decoding and serialization`() {
         val response = json.decodeFromString(
             FounderAiChatResponse.serializer(),
-            """{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"HostedFoundation","foundationModel":"configured-model","foundationHosting":"external","externalAnsweringUsed":true,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic"}""",
+            """{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"HostedFoundation","foundationModel":"configured-model","foundationHosting":"external","externalAnsweringUsed":true,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic","escalationDisposition":"Restricted","stage":"response_partial","reason":"provider_output_incomplete"}""",
         )
         val restored = json.decodeFromString(FounderAiChatResponse.serializer(), json.encodeToString(response))
         assertEquals(response, restored)
@@ -62,10 +75,28 @@ class FounderAiMobileContractTest {
         assertEquals(false, restored.escalationUsed)
         assertEquals("InsufficientEvidence", restored.researchState)
         assertEquals("AwaitingCritic", restored.learningState)
+        assertEquals("Restricted", restored.escalationDisposition)
+        assertEquals("response_partial", restored.stage)
+        assertEquals("provider_output_incomplete", restored.reason)
         val legacy = json.decodeFromString(FounderAiChatResponse.serializer(),
             """{"succeeded":true,"mode":"legend","message":"Older response."}""")
         assertEquals(null, legacy.externalAnsweringUsed)
         assertEquals(null, legacy.researchState)
+    }
+
+    @Test
+    fun `local foundation retains model lineage without inventing training or escalation`() {
+        val local = json.decodeFromString(FounderAiChatResponse.serializer(),
+            """{"succeeded":true,"mode":"legend","message":"Local answer.","responseAuthority":"LocalFoundation","foundationHosting":"LegendControlled","foundationModel":"local-pinned-model","externalAnsweringUsed":false,"escalationUsed":false}""")
+        assertEquals("LocalFoundation", local.responseAuthority)
+        assertEquals("LegendControlled", local.foundationHosting)
+        assertEquals(false, local.externalAnsweringUsed)
+        assertEquals(false, local.escalationUsed)
+        assertEquals(null, local.modelTrainingRunId)
+        assertEquals(null, local.modelAssistanceState)
+        val promoted = local.copy(modelAssistanceState = "Applied", modelVersion = "promoted-version",
+            modelTrainingRunId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", modelProvenance = "GovernedPromotedModel")
+        assertEquals(promoted, json.decodeFromString(FounderAiChatResponse.serializer(), json.encodeToString(promoted)))
     }
 
     @Test
