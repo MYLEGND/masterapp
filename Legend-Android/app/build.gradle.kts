@@ -194,6 +194,7 @@ val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) 
 val bundleLegendDesignSpecification by tasks.registering(Sync::class) {
     from(sharedLegendDesignSpec)
     from(sharedLegendApplicationCopy)
+    from(rootProject.file("../Legend-Design/legend-reaction-emoji.json"))
     into(legendDesignAssets)
 }
 

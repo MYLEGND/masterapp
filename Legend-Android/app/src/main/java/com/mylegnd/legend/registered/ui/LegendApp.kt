@@ -57,10 +57,15 @@ import androidx.compose.material3.ModalBottomSheet as MaterialModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -1155,7 +1160,7 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, socialViewModel: Socia
                             value = query,
                             onValueChange = { query = it },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text(if (snapshot.scope == "OwnedClients") legendLocalized("Search clients and agents") else legendLocalized("Search people, goals, interests"), color = LegendColors.OnNavy.copy(alpha = 0.66f)) },
+                            placeholder = { Text(if (snapshot.scope == "OwnedClients") legendLocalized("Search your LEGEND network") else legendLocalized("Search people, goals, interests"), color = LegendColors.OnNavy.copy(alpha = 0.66f)) },
                             leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.GoldBright) },
                             trailingIcon = { if (query.isNotBlank()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, legendLocalized("Clear search", "accessibility copy"), tint = LegendColors.OnNavy) } },
                             singleLine = true,
@@ -2782,6 +2787,9 @@ private fun MessagesScreen(
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { LegendReactionEmojiCatalog.load(context) } }
+    }
     LaunchedEffect(requestedConversationId) {
         val requestedId = requestedConversationId ?: return@LaunchedEffect
         // The canonical start-conversation response already supplies the ID.
@@ -3152,7 +3160,7 @@ private fun LegendRecipientPicker(
     dismiss: () -> Unit,
 ) {
     var search by remember { mutableStateOf(initialSearch) }
-    var scope by remember { mutableStateOf<String?>(null) }
+    var scope by remember(participantType) { mutableStateOf<String?>(null) }
     var isCreatingGroup by remember { mutableStateOf(false) }
     var groupSubject by remember { mutableStateOf("") }
     var groupRecipients by remember { mutableStateOf<List<MessagingRecipient>>(emptyList()) }
@@ -3199,7 +3207,7 @@ private fun LegendRecipientPicker(
                     enabled = !isSending && groupSubject.isNotBlank() && groupRecipients.size >= 2,
                 ) { createGroup(groupSubject, groupRecipients, groupImage) }
             }
-            LazyRow(Modifier.padding(vertical = LegendSpacing.Sm), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+            if (participantType == "Agent") LazyRow(Modifier.padding(vertical = LegendSpacing.Sm), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 item {
                     FilterChip(selected = scope == null, onClick = { scope = null }, label = { Text(legendLocalized("All")) }, colors = legendCompactChipColors())
                 }
@@ -3219,7 +3227,7 @@ private fun LegendRecipientPicker(
                             items(state.value, key = { "${it.identity.userId}:${it.identity.participantType}" }) { recipient ->
                                 LegendContactCard(
                                     displayName = recipient.displayName,
-                                    subtitle = recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("Connection"),
+                                    subtitle = if (participantType == "Agent") recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("Connection") else legendLocalized("Connection"),
                                     isVerified = recipient.isVerified == true,
                                     onClick = {
                                         if (!isSending) {
@@ -3766,13 +3774,32 @@ private fun LegendMessageBubble(
 ) {
     var actionsOpen by remember(message.id) { mutableStateOf(false) }
     var emojiPicker by remember(message.id) { mutableStateOf(false) }
-    var emojiDraft by remember(message.id) { mutableStateOf("") }
-    if (emojiPicker) AlertDialog(onDismissRequest = { emojiPicker = false },
-        title = { Text(legendLocalized("Choose a reaction")) },
-        text = { OutlinedTextField(value = emojiDraft, onValueChange = { emojiDraft = it.take(32) }, label = { Text(legendLocalized("Emoji")) }) },
-        confirmButton = { TextButton(onClick = { react(emojiDraft.trim()); emojiPicker = false }, enabled = emojiDraft.isNotBlank()) { Text(legendLocalized("React")) } },
-        dismissButton = { TextButton(onClick = { emojiPicker = false }) { Text(legendLocalized("Cancel")) } })
+    var pendingEmojiPicker by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(pendingEmojiPicker, actionsOpen) {
+        if (pendingEmojiPicker && !actionsOpen) {
+            withFrameNanos { }
+            pendingEmojiPicker = false
+            emojiPicker = true
+        }
+    }
+    if (emojiPicker) LegendReactionEmojiPicker(
+        participantType = participantType,
+        dismiss = { emojiPicker = false },
+        select = { emoji -> emojiPicker = false; react(emoji) },
+    )
     val context = LocalContext.current
+    var quickTone by remember(message.id, participantType) { mutableStateOf<Int?>(null) }
+    var quickCatalog by remember { mutableStateOf<List<LegendReactionEmoji>>(emptyList()) }
+    var quickPreferenceError by remember { mutableStateOf(false) }
+    LaunchedEffect(actionsOpen, participantType) {
+        if (actionsOpen) {
+            quickTone = null; quickPreferenceError = false
+            quickCatalog = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { LegendReactionEmojiCatalog.load(context) }.getOrDefault(emptyList()) }
+            val result = (context.applicationContext as com.mylegnd.legend.registered.LegendApplication).container.messagingRepository.reactionPreferences(participantType)
+            quickTone = (result as? LoadState.Data)?.value?.preferredReactionSkinTone?.takeIf { it in 0..5 }
+            quickPreferenceError = quickTone == null || quickCatalog.isEmpty()
+        }
+    }
     fun copyText(text: String) {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Message", text))
         actionsOpen = false
@@ -3780,17 +3807,33 @@ private fun LegendMessageBubble(
     if (actionsOpen) AlertDialog(onDismissRequest = { actionsOpen = false },
         title = { Text(legendLocalized("Message actions")) },
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
-                reactionOptions.forEach { emoji ->
-                    TextButton(onClick = { react(emoji); actionsOpen = false }) { Text(emoji) }
+            Surface(shape = CircleShape, color = LegendColors.Navy,
+                border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.55f))) {
+                Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    reactionOptions.forEach { emoji ->
+                        val selected = message.reactions.any { it.emoji == emoji && it.reactedByCurrentActor }
+                        val tonedEmoji = quickCatalog.firstOrNull { it.emoji == emoji }?.variant(quickTone ?: 0) ?: emoji
+                        TextButton(onClick = { actionsOpen = false; react(tonedEmoji) }, enabled = true,
+                            modifier = Modifier.size(48.dp), shape = CircleShape,
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.textButtonColors(containerColor = if (selected) LegendColors.Gold.copy(alpha = 0.28f) else Color.Transparent)) {
+                            Text(tonedEmoji, style = MaterialTheme.typography.headlineSmall)
+                        }
+                    }
+                    }
+                    IconButton(onClick = { actionsOpen = false; pendingEmojiPicker = true }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Add, legendLocalized("Choose a reaction", "accessibility copy"), tint = LegendColors.GoldBright)
+                    }
                 }
-                TextButton(onClick = { actionsOpen = false; emojiPicker = true }) { Text("+") }
             }
-            if (message.reactions.any { it.reactedByCurrentActor }) TextButton(onClick = { react(null); actionsOpen = false }) { Text(legendLocalized("Remove reaction")) }
-            androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
-            Text(legendMeetingTime(message.sentUtc), style = LegendTypography.Label)
+            if (quickPreferenceError) Text(legendLocalized("Reaction preference unavailable. Reopen to retry."), color = LegendColors.Error)
+            if (message.body.isNotBlank()) androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
+            Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, modifier = Modifier.padding(vertical = 8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (message.reactions.any { it.reactedByCurrentActor }) TextButton(onClick = { actionsOpen = false; react(null) }) { Text(legendLocalized("Remove reaction")) }
             TextButton(onClick = { actionsOpen = false; reply() }) { Text(legendLocalized("Reply")) }
-            TextButton(onClick = { copyText(message.body) }) { Text(legendLocalized("Copy")) }
+            if (message.body.isNotBlank()) TextButton(onClick = { copyText(message.body) }) { Text(legendLocalized("Copy")) }
             message.originalBody?.takeIf { it != message.body }?.let { original ->
                 TextButton(onClick = { copyText(original) }) { Text(legendLocalized("Copy original text")) }
             }
@@ -3806,9 +3849,16 @@ private fun LegendMessageBubble(
                 }) { Text(legendLocalized("Share message")) }
             }
             if (message.isMine) TextButton(onClick = { actionsOpen = false; delete() }) { Text(legendLocalized("Unsend"), color = LegendColors.Error) }
+            }
         } }, confirmButton = { TextButton(onClick = { actionsOpen = false }) { Text(legendLocalized("Done")) } })
     val openProfile = LocalLegendOpenProfile.current
     val openSharedPost = LocalLegendOpenSharedPost.current
+    val reactionBubble = LegendDesignAuthority.reactionBubble()
+    val density = LocalDensity.current
+    var reactionContentWidth by remember(message.id) { mutableStateOf(300.dp) }
+    var reactionHeight by remember(message.id) { mutableStateOf(reactionBubble.height.dp) }
+    val reactionInset = reactionHeight * reactionBubble.outsideFraction
+    val reactionMeasured: (Int) -> Unit = { height -> reactionHeight = with(density) { height.toDp() } }
     val isMediaMessage = !message.isDeleted && (message.sharedContent != null || message.attachments.isNotEmpty())
     val messageTextColor = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.OnNavy
     val senderProfile = SocialAuthor(message.sender.identity, message.sender.profileId, message.sender.displayName, message.sender.avatar)
@@ -3818,9 +3868,9 @@ private fun LegendMessageBubble(
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
         Column(horizontalAlignment = Alignment.End) {
-        Box(Modifier.padding(top = if (message.reactions.isEmpty()) 0.dp else 13.dp)) {
-        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
-            Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+        Box(Modifier.padding(bottom = if (message.reactions.isEmpty() || message.attachments.isNotEmpty()) 0.dp else reactionInset)) {
+        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
+            Column(Modifier.padding(if (isMediaMessage) 0.dp else LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
                 message.reply?.let { replyPreview ->
                     Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -3844,39 +3894,172 @@ private fun LegendMessageBubble(
                 if (!message.isDeleted) {
                     message.sharedContent?.let { shared ->
                         if (shared.status == "available") {
-                            TextButton(onClick = { openSharedPost(shared.sourcePostId) }) { Text(shared.authorDisplayName.orEmpty(), style = LegendTypography.BodyEmphasis) }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                shared.authorDisplayName?.takeIf { it.isNotBlank() }?.let { author ->
+                                    LegendMessageContentPill(author, Icons.Default.Person, Modifier.weight(1f)) { openSharedPost(shared.sourcePostId) }
+                                }
+                                LegendMessageContentPill(legendLocalized("Open original"), Icons.Default.OpenInNew) { openSharedPost(shared.sourcePostId) }
+                            }
                             shared.body?.takeIf { it.isNotBlank() }?.let { Text(it) }
                             shared.media.sortedBy { it.displayOrder }.forEach { media ->
                                 LegendProtectedSocialMedia(assetId = media.id, mediaKind = media.mediaKind,
                                     participantType = participantType, repository = mediaRepository,
-                                    contentDescription = media.accessibilityText, modifier = Modifier.fillMaxWidth().clickable { openSharedPost(shared.sourcePostId) })
+                                    contentDescription = media.accessibilityText, modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { openSharedPost(shared.sourcePostId) }, onDoubleClick = { react("❤️") }, onLongClick = { actionsOpen = true }))
                             }
-                            TextButton(onClick = { openSharedPost(shared.sourcePostId) }) { Text(legendLocalized("Open original")) }
                         } else Text(legendLocalized("Shared content is unavailable."))
                     }
-                    message.attachments.forEach { attachment ->
-                        LegendMessageAttachmentOpen(attachment, mediaRepository, participantType)
+                    message.attachments.forEachIndexed { index, attachment ->
+                        LegendMessageAttachmentOpen(attachment, mediaRepository, participantType,
+                            hasReactions = index == message.attachments.lastIndex && message.reactions.isNotEmpty(),
+                            reactionReserve = reactionInset,
+                            doubleTap = { react("❤️") }, longPress = { actionsOpen = true },
+                            reactionOverlay = { if (index == message.attachments.lastIndex) LegendMessageReactions(message, react, Modifier.align(androidx.compose.ui.AbsoluteAlignment.BottomRight).widthIn(max = reactionContentWidth), reactionMeasured) })
                     }
                 }
+            }
+        }
+        if (message.attachments.isEmpty()) LegendMessageReactions(message, react, Modifier.align(androidx.compose.ui.AbsoluteAlignment.BottomRight).widthIn(max = reactionContentWidth), reactionMeasured)
+        }
+        Row(Modifier.widthIn(max = 300.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = LegendColors.ChatTimestamp)
+            IconButton(onClick = reply, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(16.dp), tint = LegendColors.TextSecondary)
+            }
+            if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(16.dp), tint = LegendColors.TextSecondary)
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun LegendMessageReactions(message: ConversationMessage, react: (String?) -> Unit, modifier: Modifier = Modifier, measured: (Int) -> Unit = {}) {
+    val bubble = LegendDesignAuthority.reactionBubble()
+    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = size.height * bubble.outsideFraction; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
+        message.reactions.forEach { reaction ->
+            Surface(modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }, shape = CircleShape,
+                color = if (reaction.reactedByCurrentActor) LegendDesignAuthority.color(bubble.ownFillColor).copy(alpha = bubble.ownFillOpacity) else LegendDesignAuthority.color(bubble.otherFillColor),
+                border = BorderStroke(bubble.borderWidth.dp, LegendDesignAuthority.color(bubble.borderColor).copy(alpha = bubble.borderOpacity))) {
+                Box(Modifier.heightIn(min = bubble.height.dp).padding(horizontal = bubble.horizontalPadding.dp), contentAlignment = Alignment.Center) {
+                    Text(reaction.emoji, fontSize = bubble.emojiSize.sp,
+                        modifier = Modifier.semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" })
+                }
+            }
+        }
+    }
+}
+
+private val legendReactionToneKeys = listOf("default", "light", "mediumLight", "medium", "mediumDark", "dark")
+internal data class LegendReactionEmoji(val emoji: String, val name: String, val keywords: List<String>, val baseEmoji: String, val variants: Map<String, String>) {
+    fun variant(tone: Int) = variants[legendReactionToneKeys.getOrElse(tone) { "default" }] ?: baseEmoji
+}
+internal fun legendReactionSearch(entries: List<LegendReactionEmoji>, query: String): List<LegendReactionEmoji> {
+    val text = query.trim()
+    val exactBase = entries.firstOrNull { it.emoji == text }?.baseEmoji
+    val tokens = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKD)
+        .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+    return entries.filter { it.emoji == it.baseEmoji }.filter { entry ->
+        text.isEmpty() || entry.baseEmoji == exactBase || (tokens.isNotEmpty() && tokens.all { word -> entry.keywords.any { it.contains(word) } })
+    }
+}
+
+private object LegendReactionEmojiCatalog {
+    @Volatile private var entries: List<LegendReactionEmoji>? = null
+    fun cached(): List<LegendReactionEmoji>? = entries
+    fun load(context: Context): List<LegendReactionEmoji> = synchronized(this) {
+        entries ?: context.assets.open("legend-reaction-emoji.json").bufferedReader().use { reader ->
+            val source = org.json.JSONObject(reader.readText())
+            check(source.getInt("schemaVersion") == 1)
+            val array = source.getJSONArray("entries")
+            List(array.length()) { index ->
+                val entry = array.getJSONObject(index)
+                val words = entry.getJSONArray("keywords")
+                val variants = entry.getJSONObject("skinToneVariants")
+                LegendReactionEmoji(entry.getString("emoji"), entry.getString("name"), List(words.length()) { words.getString(it) },
+                    entry.getString("baseEmoji"), variants.keys().asSequence().associateWith { variants.getString(it) })
+            }.also { entries = it }
+        }
+    }
+}
+
+@Composable
+private fun LegendReactionEmojiPicker(participantType: String, dismiss: () -> Unit, select: (String) -> Unit) {
+    val context = LocalContext.current
+    var query by remember { mutableStateOf("") }
+    var retry by remember { mutableIntStateOf(0) }
+    var preferredTone by remember(participantType) { mutableStateOf<Int?>(null) }
+    var savingTone by remember { mutableStateOf(false) }
+    var preferenceError by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val repository = (context.applicationContext as com.mylegnd.legend.registered.LegendApplication).container.messagingRepository
+    LaunchedEffect(participantType, retry) {
+        preferenceError = false
+        val result = repository.reactionPreferences(participantType)
+        preferredTone = (result as? LoadState.Data)?.value?.preferredReactionSkinTone?.takeIf { it in 0..5 }
+        preferenceError = preferredTone == null
+    }
+    val catalog by produceState<Result<List<LegendReactionEmoji>>?>(LegendReactionEmojiCatalog.cached()?.let { Result.success(it) }, retry) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { LegendReactionEmojiCatalog.load(context) } }
+    }
+    val results = remember(catalog, query) { legendReactionSearch(catalog?.getOrNull().orEmpty(), query) }
+
+    Dialog(onDismissRequest = dismiss) {
+        Surface(shape = LegendShapes.Card, color = LegendColors.Surface, contentColor = LegendColors.TextPrimary) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = reply, modifier = Modifier.size(28.dp)) { Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright) }
-                    if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright) }
+                    OutlinedTextField(query, { query = it }, modifier = Modifier.weight(1f), singleLine = true,
+                        placeholder = { Text(legendLocalized("Search emoji")) },
+                        leadingIcon = { Icon(Icons.Default.Search, null) }, shape = CircleShape)
+                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, legendLocalized("Close", "accessibility copy")) }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    val hand = catalog?.getOrNull()?.firstOrNull { it.emoji == "👍" }
+                    legendReactionToneKeys.forEachIndexed { index, key ->
+                        TextButton(enabled = preferredTone != null && !savingTone && hand != null,
+                            onClick = { scope.launch {
+                                savingTone = true; preferenceError = false
+                                val result = repository.saveReactionPreferences(participantType, index)
+                                if (result is LoadState.Data && result.value.preferredReactionSkinTone == index) preferredTone = index else preferenceError = true
+                                savingTone = false
+                            } }, modifier = Modifier.size(44.dp), contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.textButtonColors(containerColor = if (preferredTone == index) LegendColors.Gold.copy(alpha = 0.2f) else Color.Transparent)) {
+                            Text(hand?.variant(index).orEmpty(), style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.semantics { contentDescription = "$key skin tone" })
+                        }
+                    }
+                }
+                if (preferenceError) TextButton(onClick = { retry++ }) { Text(legendLocalized("Reaction preference unavailable. Retry")) }
+                when {
+                    catalog == null -> Text(legendLocalized("Loading emoji…"))
+                    catalog?.isFailure == true -> TextButton(onClick = { retry++ }) { Text(legendLocalized("Retry")) }
+                    results.isEmpty() -> Text(legendLocalized("No emoji found"))
+                    else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(48.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    ) {
+                        items(results.size, key = { results[it].emoji }) { index ->
+                            val entry = results[index]
+                            TextButton(enabled = !savingTone, onClick = { select(entry.variant(preferredTone ?: 0)) }, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                                Text(entry.variant(preferredTone ?: 0), style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.semantics { contentDescription = entry.name })
+                            }
+                        }
+                    }
                 }
             }
         }
-        if (message.reactions.isNotEmpty()) Row(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-13).dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            message.reactions.forEach { reaction ->
-                Surface(shape = CircleShape, color = LegendColors.Surface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.ChatTimestamp.copy(alpha = if (reaction.reactedByCurrentActor) 1f else 0.3f)),
-                    modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }) {
-                    Text(reaction.emoji + if (reaction.count > 1) " ${reaction.count}" else "",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), color = LegendColors.TextPrimary)
-                }
-            }
-        }
-        }
-        Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = LegendColors.ChatTimestamp)
+    }
+}
+
+@Composable
+private fun LegendMessageContentPill(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier.heightIn(min = 36.dp), shape = CircleShape,
+        color = LegendColors.SurfaceInset, contentColor = LegendColors.TextPrimary,
+        border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.35f))) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, modifier = Modifier.size(14.dp), tint = LegendColors.Gold)
+            Text(label, style = LegendTypography.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -8411,6 +8594,11 @@ private fun LegendCallActionCard(title: String, subtitle: String, icon: androidx
 @Composable
 private fun LegendMessageAttachmentOpen(
     attachment: MessageAttachment, repository: AuthenticatedMediaRepository, participantType: String,
+    hasReactions: Boolean = false,
+    reactionReserve: androidx.compose.ui.unit.Dp = (LegendDesignAuthority.reactionBubble().height * LegendDesignAuthority.reactionBubble().outsideFraction).dp,
+    doubleTap: (() -> Unit)? = null,
+    longPress: (() -> Unit)? = null,
+    reactionOverlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -8443,14 +8631,27 @@ private fun LegendMessageAttachmentOpen(
     }
     DisposableEffect(inlineFile) { val file = inlineFile; onDispose { file?.delete() } }
     inlineFile?.let { file ->
-        AsyncImage(model = file, contentDescription = attachment.originalFileName,
-            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).clip(LegendShapes.Control).clickable { open(false) }, contentScale = ContentScale.Fit)
+        var imageAspect by remember(file) { mutableFloatStateOf(1f) }
+        Box(Modifier.padding(bottom = if (hasReactions) reactionReserve else 0.dp).width(minOf(300f, 320f * imageAspect).dp)) {
+            AsyncImage(model = file, contentDescription = attachment.originalFileName,
+                modifier = Modifier.fillMaxWidth().aspectRatio(imageAspect).clip(LegendShapes.Control).combinedClickable(onClick = { open(false) }, onDoubleClick = doubleTap, onLongClick = longPress), contentScale = ContentScale.Fit,
+                onSuccess = { result ->
+                    val size = result.painter.intrinsicSize
+                    if (size.width.isFinite() && size.height.isFinite() && size.width > 0 && size.height > 0) imageAspect = size.width / size.height
+                })
+            reactionOverlay()
+        }
     }
-    TextButton(enabled = attachment.canDownload && !loading, onClick = { open(false) }) {
-        Text("${attachment.originalFileName} · ${attachment.scanStatus}")
-    }
-    TextButton(enabled = attachment.canDownload && !loading, onClick = { open(true) }) {
-        Text(legendLocalized("Share attachment"))
+    Box(Modifier.padding(bottom = if (inlineFile == null && hasReactions) reactionReserve else 0.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(enabled = attachment.canDownload && !loading, onClick = { open(false) }, modifier = Modifier.weight(1f)) {
+                Text("${attachment.originalFileName} · ${attachment.scanStatus}", maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(enabled = attachment.canDownload && !loading, onClick = { open(true) }) {
+                Icon(Icons.Default.Share, legendLocalized("Share attachment", "accessibility copy"), tint = LegendColors.Gold)
+            }
+        }
+        if (inlineFile == null) reactionOverlay()
     }
     if (failed) Text(legendLocalized("Attachment unavailable"), color = LegendColors.Error)
 }

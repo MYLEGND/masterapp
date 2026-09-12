@@ -13,6 +13,8 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     private var registry: PKPushRegistry?
     private(set) var token: String?
     private weak var owner: LegendCallStore?
+    private var audioSessionActive = false
+    private var mediaRequested = false
     private var pending: [UUID: LegendCallSnapshot] = [:]
     private var reported = Set<UUID>()
     private var reportCompletions: [UUID: [(Error?) -> Void]] = [:]
@@ -26,6 +28,8 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
         configuration.includesCallsInRecents = false
         provider = CXProvider(configuration: configuration)
         super.init()
+        RTCAudioSession.sharedInstance().useManualAudio = true
+        RTCAudioSession.sharedInstance().isAudioEnabled = false
         provider.setDelegate(self, queue: .main)
     }
     func start() {
@@ -36,6 +40,10 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
         self.registry = registry
     }
     func attach(_ store: LegendCallStore) {
+        if owner !== store {
+            mediaRequested = false
+            RTCAudioSession.sharedInstance().isAudioEnabled = false
+        }
         owner = store
         start()
         store.registerVoipToken(token)
@@ -43,7 +51,39 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             Task { await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil)) }
         }
     }
-    func detach(_ store: LegendCallStore) { if owner === store { owner = nil } }
+    func retireAccount(unless identity: LogicalParticipantIdentity? = nil) {
+        guard let owner else { return }
+        if let identity, owner.belongs(to: identity) { return }
+        owner.shutdown()
+    }
+    func detach(_ store: LegendCallStore) {
+        guard owner === store else { return }
+        setMediaRequested(false, for: store)
+        owner = nil
+    }
+    func prepareAudio(for store: LegendCallStore, video: Bool) throws {
+        guard owner === store else { throw CancellationError() }
+        let session = RTCAudioSession.sharedInstance()
+        session.lockForConfiguration()
+        defer { session.unlockForConfiguration() }
+        let configuration = RTCAudioSessionConfiguration.webRTC()
+        configuration.category = AVAudioSession.Category.playAndRecord.rawValue
+        configuration.mode = (video ? AVAudioSession.Mode.videoChat : .voiceChat).rawValue
+        configuration.categoryOptions = video ? [.allowBluetoothHFP, .defaultToSpeaker] : [.allowBluetoothHFP]
+        RTCAudioSessionConfiguration.setWebRTC(configuration)
+        // CallKit owns activation; configure WebRTC without independently setting active.
+        try session.setConfiguration(configuration)
+    }
+    func audioActivationChanged(_ active: Bool) {
+        audioSessionActive = active
+        RTCAudioSession.sharedInstance().isAudioEnabled = active && mediaRequested
+        owner?.audioActivated(active)
+    }
+    func setMediaRequested(_ requested: Bool, for store: LegendCallStore) {
+        guard owner === store else { return }
+        mediaRequested = requested
+        RTCAudioSession.sharedInstance().isAudioEnabled = audioSessionActive && mediaRequested
+    }
     func report(_ call: LegendCallSnapshot) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             reportIncoming(call) { error in
@@ -139,7 +179,7 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             }
         }
     }
-    nonisolated func providerDidReset(_ provider: CXProvider) { Task { @MainActor in self.owner?.providerDidReset(provider); self.pending.removeAll() } }
+    nonisolated func providerDidReset(_ provider: CXProvider) { Task { @MainActor in self.audioActivationChanged(false); self.owner?.providerDidReset(provider); self.pending.removeAll() } }
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         Task { @MainActor in guard let owner = self.owner else { action.fail(); return }; owner.provider(provider, perform: action) }
     }
@@ -168,12 +208,13 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     }
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
-        RTCAudioSession.sharedInstance().isAudioEnabled = true
-        Task { @MainActor in self.owner?.audioActivated(true) }
+        Task { @MainActor in
+            self.audioActivationChanged(true)
+        }
     }
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         RTCAudioSession.sharedInstance().isAudioEnabled = false
-        Task { @MainActor in self.owner?.audioActivated(false) }
+        Task { @MainActor in self.audioActivationChanged(false) }
         RTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
     }
 }

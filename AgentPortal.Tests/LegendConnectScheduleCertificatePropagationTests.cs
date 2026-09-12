@@ -20,6 +20,7 @@ namespace AgentPortal.Tests;
 /// Carrier tests start with an executed governed-frame fixture. They prove
 /// certificate conservation, not natural-language grounding or admission.
 /// </summary>
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectScheduleCertificatePropagationTests
 {
     private static readonly Guid Family = Guid.Parse("268d826a-ab84-4a53-91c6-e1b911c99a91");
@@ -81,9 +82,9 @@ public sealed class LegendConnectScheduleCertificatePropagationTests
         Assert.True(LegendConnectCurriculumService.TryProjectScheduleCertificates(proof, [rule], out var certificates));
         var founderId = Guid.NewGuid().ToString("D");
         var priorFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
-        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
         try
         {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
             await using var db = ControllerTestHelpers.BuildDb();
             db.AgentProfiles.Add(new AgentProfile
             {

@@ -155,6 +155,12 @@ internal sealed partial class MessagingService
     {
         if (value.Length is 0 or > 64 || StringInfo.ParseCombiningCharacters(value).Length != 1) return false;
         var runes = value.EnumerateRunes().Select(x => x.Value).ToArray();
+        // Unicode's three fully-qualified subdivision flags use tag characters
+        // rather than regional indicators. Do not admit arbitrary hidden tags.
+        if (runes.Length == 7 && runes[0] == 0x1F3F4 && runes[1] == 0xE0067 &&
+            runes[2] == 0xE0062 && runes[6] == 0xE007F &&
+            ((runes[3], runes[4], runes[5]) is (0xE0065, 0xE006E, 0xE0067) or
+                (0xE0073, 0xE0063, 0xE0074) or (0xE0077, 0xE006C, 0xE0073))) return true;
         if (runes.Length == 2 && runes.All(x => x is >= 0x1F1E6 and <= 0x1F1FF)) return true;
         if (runes.Length is 2 or 3 && (runes[0] is >= 0x30 and <= 0x39 or 0x23 or 0x2A) &&
             runes[^1] == 0x20E3 && (runes.Length == 2 || runes[1] == 0xFE0F)) return true;
@@ -166,7 +172,10 @@ internal sealed partial class MessagingService
             if (needBase)
             {
                 if (!(rune is >= 0x1F300 and <= 0x1FAFF or >= 0x2600 and <= 0x27BF or
-                    0x203C or 0x2049 or 0x2122 or 0x2139 or >= 0x2194 and <= 0x2199 or
+                    0xA9 or 0xAE or 0x1F004 or 0x1F0CF or 0x1F170 or 0x1F171 or
+                    0x1F17E or 0x1F17F or 0x1F18E or >= 0x1F191 and <= 0x1F19A or
+                    0x1F201 or 0x1F202 or 0x1F21A or 0x1F22F or >= 0x1F232 and <= 0x1F23A or
+                    0x1F250 or 0x1F251 or 0x203C or 0x2049 or 0x2122 or 0x2139 or >= 0x2194 and <= 0x2199 or
                     0x21A9 or 0x21AA or 0x231A or 0x231B or 0x2328 or 0x23CF or
                     >= 0x23E9 and <= 0x23F3 or >= 0x23F8 and <= 0x23FA or 0x24C2 or
                     0x25AA or 0x25AB or 0x25B6 or 0x25C0 or >= 0x25FB and <= 0x25FE or

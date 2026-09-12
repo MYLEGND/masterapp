@@ -284,17 +284,18 @@
 
     if (!root) return;
 
+    // Keep ownership by identity when the shared modal authority ports dialogs to body.
+    const connectModals = new Set(root.querySelectorAll(".modal"));
+    const ownsConnectElement = element => root.contains(element) || connectModals.has(element?.closest(".modal"));
     const limitsModal = document.getElementById("translationLimitsModal");
     const limitsBody = document.querySelector("[data-translation-limits-body]");
     let accountSearch = new URLSearchParams(location.search).get("account") || "";
-    let loadingLimits = false;
     let limitsRequest = null;
     let limitsGeneration = 0;
-    const editingLimits = () => limitsModal?.contains(document.activeElement) &&
-        document.activeElement.matches("input, select, textarea, [contenteditable=true]");
+    let limitsLoaded = false;
     function setLimitsBusy(busy) {
         limitsBody.setAttribute("aria-busy", String(busy));
-        limitsBody.querySelectorAll(".translation-limits-summary, .translation-account-list").forEach(section => section.hidden = busy);
+        limitsBody.querySelectorAll("[data-limits-retry]").forEach(button => button.disabled = busy);
         let status = limitsBody.querySelector("[data-limits-loading]");
         if (busy && !status) {
             status = document.createElement("p");
@@ -306,15 +307,14 @@
         }
         if (!busy) status?.remove();
     }
-    async function loadLimits(search = accountSearch, automatic = false) {
-        if (automatic && (loadingLimits || editingLimits() || relayBusy)) return;
+    async function loadLimits(search = accountSearch) {
         limitsRequest?.abort();
         const generation = ++limitsGeneration;
         const request = new AbortController();
         limitsRequest = request;
-        const timeout = window.setTimeout(() => request.abort(), 20000);
-        loadingLimits = true;
+        const timeout = window.setTimeout(() => request.abort(new DOMException("Request timed out", "TimeoutError")), 20000);
         accountSearch = search;
+        limitsBody.querySelector("[data-limits-error]")?.remove();
         setLimitsBusy(true);
         try {
             const response = await fetch("/founder/translation-limits?search=" + encodeURIComponent(search), {
@@ -323,11 +323,22 @@
             });
             if (!response.ok || response.redirected) throw new Error("Allowances unavailable");
             const html = await response.text();
-            if (generation !== limitsGeneration || request.signal.aborted || (automatic && editingLimits())) return;
-            root.querySelectorAll("[data-limit-editor]").forEach(modal => { bootstrap.Modal.getInstance(modal)?.dispose(); modal.remove(); });
+            if (generation !== limitsGeneration || request.signal.aborted) return;
+            const scrollTop = limitsBody.scrollTop;
+            const scrollLeft = limitsBody.scrollLeft;
+            Array.from(connectModals).filter(modal => modal.dataset.limitEditor).forEach(modal => {
+                const previous = parents.get(modal);
+                if (previous) suspendedParents.delete(previous.parent);
+                parents.delete(modal);
+                suspendedParents.delete(modal);
+                bootstrap.Modal.getInstance(modal)?.dispose();
+                connectModals.delete(modal);
+                modal.remove();
+            });
             limitsBody.innerHTML = html;
             limitsBody.querySelectorAll(".modal").forEach(modal => {
                 modal.dataset.limitEditor = "true";
+                connectModals.add(modal);
                 root.append(modal);
             });
             root.querySelectorAll("[data-limit-mode]").forEach(select => {
@@ -340,14 +351,19 @@
                 select.addEventListener("change", update);
                 update();
             });
+            limitsLoaded = true;
+            limitsBody.scrollTop = scrollTop;
+            limitsBody.scrollLeft = scrollLeft;
             document.dispatchEvent(new CustomEvent("legend:limits-loaded"));
         } catch {
             if (generation !== limitsGeneration) return;
-            limitsBody.innerHTML = '<p class="lc-notice lc-notice-error" role="alert">Current allowances could not be loaded.</p><button type="button" class="lc-button" data-limits-retry>Retry</button>';
+            const error = document.createElement("div");
+            error.dataset.limitsError = "true";
+            error.innerHTML = '<p class="lc-notice lc-notice-error" role="alert">Current allowances could not be loaded.</p><button type="button" class="lc-button" data-limits-retry>Retry</button>';
+            limitsBody.prepend(error);
         } finally {
             window.clearTimeout(timeout);
             if (generation === limitsGeneration) {
-                loadingLimits = false;
                 limitsRequest = null;
                 setLimitsBusy(false);
             }
@@ -357,7 +373,6 @@
         ++limitsGeneration;
         limitsRequest?.abort();
         limitsRequest = null;
-        loadingLimits = false;
         setLimitsBusy(false);
     });
     let relayBusy = false;
@@ -384,12 +399,6 @@
         } finally { relayBusy = false; }
     }
     document.addEventListener("legend:limits-loaded", refreshRelay);
-    window.setInterval(() => {
-        if (!document.hidden && limitsModal?.classList.contains("show")) {
-            if (!editingLimits() && !relayBusy) void loadLimits(accountSearch, true);
-            else void refreshRelay();
-        }
-    }, 30000);
     document.addEventListener("click", event => { if (event.target.closest("[data-relay-refresh]")) void refreshRelay(); });
     document.addEventListener("submit", async event => {
         const form = event.target.closest("[data-relay-form]");
@@ -417,7 +426,7 @@
             void refreshRelay();
         }
     });
-    limitsModal?.addEventListener("show.bs.modal", () => { if (!limitsModal.dataset.returning) void loadLimits(); });
+    limitsModal?.addEventListener("show.bs.modal", () => { if (!limitsLoaded && !limitsModal.dataset.returning) void loadLimits(); });
     document.addEventListener("submit", event => {
         const form = event.target.closest("[data-translation-limit-search]");
         if (!form) return;
@@ -430,9 +439,12 @@
     // Bootstrap supports one visible dialog. Return child editors to their parent,
     // preserving the search and focus without creating overlapping backdrops.
     const parents = new WeakMap();
-    document.addEventListener("click", event => {
+    const suspendedParents = new WeakSet();
+    // Bootstrap's delegated document capture handler runs before later document
+    // listeners. Intercept at window capture while the parent is still visible.
+    window.addEventListener("click", event => {
         const trigger = event.target.closest('[data-bs-toggle="modal"]');
-        if (!trigger?.closest(".legend-connect-page") || !window.bootstrap) return;
+        if (!trigger || !ownsConnectElement(trigger) || !window.bootstrap) return;
         const selector = trigger.getAttribute("data-bs-target");
         if (!selector?.startsWith("#")) return;
         const modal = document.getElementById(selector.slice(1));
@@ -441,22 +453,26 @@
         event.stopImmediatePropagation();
         const parent = trigger.closest(".modal.show");
         if (parent && parent !== modal) {
-            parents.set(modal, { parent, trigger });
+            suspendedParents.add(parent);
+            parents.set(modal, { parent, trigger, scroll: Array.from(parent.querySelectorAll(".modal-body, [data-legend-section-body]")).map(element => ({ element, top: element.scrollTop, left: element.scrollLeft })) });
             parent.addEventListener("hidden.bs.modal", () => bootstrap.Modal.getOrCreateInstance(modal).show(trigger), { once: true });
             bootstrap.Modal.getOrCreateInstance(parent).hide();
         } else bootstrap.Modal.getOrCreateInstance(modal).show(trigger);
     }, true);
     document.addEventListener("show.bs.modal", event => {
-        if (event.target.closest(".legend-connect-page")) void refreshMetrics();
+        if (connectModals.has(event.target)) void refreshMetrics();
     });
     document.addEventListener("hidden.bs.modal", event => {
+        if (suspendedParents.has(event.target)) return;
         const previous = parents.get(event.target);
         if (!previous) return;
         parents.delete(event.target);
+        suspendedParents.delete(previous.parent);
         previous.parent.dataset.returning = "true";
         previous.parent.addEventListener("shown.bs.modal", () => {
             delete previous.parent.dataset.returning;
-            previous.trigger?.focus();
+            previous.scroll.forEach(({ element, top, left }) => { element.scrollTop = top; element.scrollLeft = left; });
+            previous.trigger?.focus({ preventScroll: true });
         }, { once: true });
         bootstrap.Modal.getOrCreateInstance(previous.parent).show();
     });
@@ -882,6 +898,14 @@
         }
     }
 
+    document.querySelectorAll("[data-legend-inspection-modal]").forEach(modal => {
+        modal.addEventListener("shown.bs.modal", () => {
+            const panel = modal.querySelector("[data-legend-section]");
+            panel.open = true;
+            if (!panelState.has(panel) && !activeRequests.has(panel)) void requestPage(panel);
+        });
+    });
+
     document
         .querySelectorAll("[data-legend-section]")
         .forEach(panel => {
@@ -890,7 +914,8 @@
                 () => {
                     if (
                         panel.open &&
-                        !panelState.has(panel)
+                        !panelState.has(panel) &&
+                        !activeRequests.has(panel)
                     ) {
                         void requestPage(panel);
                     }

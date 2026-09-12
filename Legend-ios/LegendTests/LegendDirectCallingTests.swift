@@ -1,9 +1,154 @@
 import XCTest
 import AVFoundation
+import UIKit
+@preconcurrency import WebRTC
 @testable import Legend
 
 @MainActor
 final class LegendDirectCallingTests: XCTestCase {
+    func testDetachingCallPresentationDoesNotEndAnAccountOwnedPendingCall() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        store.start(conversationId: UUID(), video: false, recipientName: "Recipient")
+        XCTAssertTrue(store.isStarting)
+        let coordinator = LegendCallPresentation.Coordinator(store: store)
+        LegendCallPresentation.dismantleUIView(UIView(), coordinator: coordinator)
+        XCTAssertTrue(store.isStarting, "A view disappearing must not terminate its account's active call authority")
+        XCTAssertEqual(store.name, "Recipient")
+        store.end()
+    }
+
+    func testAccountLifecycleRetiresRetainedCallsButPreservesSameIdentityRefresh() throws {
+        let identity = try LogicalParticipantIdentity(userID: "caller", participantType: .client)
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport, identity: identity)
+        defer { store.shutdown() }
+        let coordinator = MobileSessionCoordinator(tokenStore: CallingTestTokenStore())
+        let actor = try MobileActor(identity: identity, profileID: "00000000-0000-0000-0000-000000000001", displayName: "Caller", avatar: nil)
+        store.start(conversationId: UUID(), video: false, recipientName: "Recipient")
+        coordinator.handleCallAccountTransition(to: .loading)
+        coordinator.handleCallAccountTransition(to: .authenticating)
+        coordinator.handleCallAccountTransition(to: .authenticated(MobileSession(actor: actor, capabilities: ["messaging"])))
+        XCTAssertTrue(store.isStarting)
+        coordinator.signOut()
+        XCTAssertFalse(store.isStarting, "Sign-out must retire even a strongly retained call store synchronously")
+        store.start(conversationId: UUID(), video: false)
+        XCTAssertFalse(store.isStarting)
+    }
+
+    func testActualRoleChangeRetiresPreviousCallOwnerSynchronously() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        let coordinator = MobileSessionCoordinator(tokenStore: CallingTestTokenStore())
+        let changedActor = try MobileActor(identity: LogicalParticipantIdentity(userID: "caller", participantType: .agent),
+            profileID: "00000000-0000-0000-0000-000000000001", displayName: "Caller", avatar: nil)
+        store.start(conversationId: UUID(), video: false)
+        coordinator.handleCallAccountTransition(to: .authenticated(MobileSession(actor: changedActor, capabilities: ["messaging"])))
+        XCTAssertFalse(store.isStarting)
+    }
+
+    func testCallKitAudioActivationOrderAndRetiredStoreCannotMuteCurrentOwner() throws {
+        func store(_ user: String) throws -> LegendCallStore {
+            let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+                apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+                participantType: .client, accessTokenProvider: { throw CancellationError() }))
+            return LegendCallStore(transport: transport,
+                identity: try LogicalParticipantIdentity(userID: user, participantType: .client))
+        }
+        let system = LegendCallSystem.shared
+        let first = try store("first")
+        defer { first.shutdown(); system.audioActivationChanged(false) }
+        system.audioActivationChanged(false)
+        system.setMediaRequested(true, for: first)
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.audioActivationChanged(true)
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.setMediaRequested(false, for: first)
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.setMediaRequested(true, for: first)
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        let second = try store("second")
+        defer { second.shutdown() }
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.setMediaRequested(true, for: second)
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        first.shutdown()
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.audioActivationChanged(false)
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+    }
+
+    func testPresentationMetadataFailureDoesNotRestartMediaAndLegacyPolicyDoesNotSendIt() async throws {
+        var policy = LegendCallPolicy(stunUrls: [], wifiWidth: 1280, wifiHeight: 720, wifiFps: 30,
+            cellularWidth: 640, cellularHeight: 360, cellularFps: 24, videoBitrate: 900_000,
+            audioBitrate: 64_000, ringSeconds: 45, connectSeconds: 30, recoveryAttempts: 3)
+        let legacy = try LegendRTCPeer(policy: policy, video: false, caller: true)
+        defer { legacy.close() }
+        var sent = 0
+        legacy.onSignal = { _, _, _ in sent += 1 }
+        try await legacy.receive(kind: "media-state", data: "{\"screenSharing\":true,\"request\":true}", epoch: 0)
+        XCTAssertEqual(sent, 0)
+        let legacySize = LegendCallScreenSharePolicy.fit(width: 1170, height: 2532, targetWidth: policy.cellularWidth, targetHeight: policy.cellularHeight)
+        XCTAssertLessThanOrEqual(legacySize.width, policy.cellularHeight)
+        XCTAssertLessThanOrEqual(legacySize.height, policy.cellularWidth)
+        XCTAssertEqual(Double(legacySize.width) / Double(legacySize.height), 1170.0 / 2532.0, accuracy: 0.005)
+        policy.screenShare = LegendCallScreenSharePolicy(highWidth: 1920, highHeight: 1080, highFps: 15, highBitrate: 2_500_000,
+            mediumWidth: 1280, mediumHeight: 720, mediumFps: 10, mediumBitrate: 1_200_000,
+            lowWidth: 960, lowHeight: 540, lowFps: 5, lowBitrate: 250_000, transportHeadroomFraction: 0.15)
+        let peer = try LegendRTCPeer(policy: policy, video: false, caller: true)
+        defer { peer.close() }
+        var sharing = false
+        var states: [String] = []
+        peer.onRemoteScreenSharing = { sharing = $0 }
+        peer.onState = { states.append($0) }
+        peer.onSignal = { _, _, _ in sent += 1; throw CancellationError() }
+        try await peer.receive(kind: "media-state", data: "{\"screenSharing\":true,\"request\":true}", epoch: 0)
+        XCTAssertTrue(sharing)
+        XCTAssertEqual(sent, 1)
+        XCTAssertFalse(states.contains("Reconnecting"))
+        try await peer.receive(kind: "media-state", data: "invalid", epoch: 0)
+        XCTAssertTrue(sharing)
+    }
+
+    func testScreenSharingUsesCentralProfilesWithoutCroppingPortraitText() throws {
+        let json = """
+        {"highWidth":1920,"highHeight":1080,"highFps":15,"highBitrate":2500000,
+         "mediumWidth":1280,"mediumHeight":720,"mediumFps":10,"mediumBitrate":1200000,
+         "lowWidth":960,"lowHeight":540,"lowFps":5,"lowBitrate":250000,"transportHeadroomFraction":0.15}
+        """
+        let policy = try JSONDecoder().decode(LegendCallScreenSharePolicy.self, from: Data(json.utf8))
+        let portrait = policy.dimensions(width: 1170, height: 2532, quality: 2)
+        XCTAssertEqual(portrait.height, 1920)
+        XCTAssertLessThanOrEqual(portrait.width, 1080)
+        XCTAssertEqual(portrait.width % 2, 0)
+        XCTAssertEqual(Double(portrait.width) / Double(portrait.height), 1170.0 / 2532.0, accuracy: 0.002)
+        let landscape = policy.dimensions(width: 2532, height: 1170, quality: 2)
+        XCTAssertEqual(landscape.width, portrait.height)
+        XCTAssertEqual(landscape.height, portrait.width)
+        let weakNetwork = policy.dimensions(width: 1920, height: 1080, quality: 0)
+        XCTAssertEqual(weakNetwork.width, 960)
+        XCTAssertEqual(weakNetwork.height, 540)
+        XCTAssertEqual(policy.profile(quality: 0).fps, 5)
+        XCTAssertEqual(policy.profile(quality: 1).bitrate, 1_200_000)
+        XCTAssertEqual(policy.bitrate(quality: 2, availableBandwidth: 350_000, audioBitrate: 64_000), 233_500)
+        XCTAssertEqual(policy.bitrate(quality: 0, availableBandwidth: 2_000_000, audioBitrate: 64_000), 250_000)
+        XCTAssertEqual(policy.bitrate(quality: 2, availableBandwidth: 20_000, audioBitrate: 64_000), 0)
+        XCTAssertEqual(policy.bitrate(quality: 2, availableBandwidth: nil, audioBitrate: 64_000), 2_500_000)
+        let small = policy.dimensions(width: 320, height: 180, quality: 2)
+        XCTAssertEqual(small.width, 320)
+        XCTAssertEqual(small.height, 180)
+    }
+
     func testAdaptiveQualityRecognizesWeakWifiAndDoesNotRecoverWithoutEvidence() {
         let tuning = LegendCallAdaptationPolicy(sampleSeconds: 3, recoverySamples: 4,
             lowBandwidth: 350_000, highBandwidth: 900_000, highLatencySeconds: 0.6, audioPriority: 4,
@@ -41,6 +186,55 @@ final class LegendDirectCallingTests: XCTestCase {
         await store.receive(unconfirmed)
         XCTAssertEqual(store.status, "Ringing")
         XCTAssertNotNil(store.current?.receivedUtc)
+    }
+
+    func testCancelledAnswerAfterRetirementCannotRestoreCall() async throws {
+        try await verifyDelayedAnswer(throwsCancellation: true)
+    }
+
+    func testDelayedAnswerCannotResurrectEndedCallOrReplaceNewCall() async throws {
+        try await verifyDelayedAnswer(throwsCancellation: false)
+    }
+
+    private func verifyDelayedAnswer(throwsCancellation: Bool) async throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        var call = LegendCallSnapshot(id: UUID(), conversationId: UUID(),
+            callerUserId: "caller", callerType: "Client", calleeUserId: "callee", calleeType: "Agent",
+            callerDeviceId: store.deviceId, calleeDeviceId: nil, callerName: "Caller", calleeName: "Callee",
+            video: false, status: "ringing", createdUtc: Date(), expiresUtc: Date().addingTimeInterval(45), epoch: 0)
+        await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+        let original = call
+        var continuation: CheckedContinuation<LegendCallResult, Never>?
+        let answer = Task { @MainActor in
+            try await store.completeAnswer(callId: original.id) {
+                let response = await withCheckedContinuation { continuation = $0 }
+                if throwsCancellation { throw CancellationError() }
+                return response
+            }
+        }
+        while continuation == nil { await Task.yield() }
+        call = LegendCallSnapshot(id: call.id, conversationId: call.conversationId,
+            callerUserId: call.callerUserId, callerType: call.callerType,
+            calleeUserId: call.calleeUserId, calleeType: call.calleeType,
+            callerDeviceId: call.callerDeviceId, calleeDeviceId: call.calleeDeviceId,
+            callerName: call.callerName, calleeName: call.calleeName, video: call.video,
+            status: "ended", createdUtc: call.createdUtc, expiresUtc: call.expiresUtc, epoch: call.epoch)
+        await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+        XCTAssertNil(store.current)
+        store.start(conversationId: UUID(), video: false, recipientName: "New recipient")
+        continuation?.resume(returning: LegendCallResult(succeeded: true, error: nil, call: original, activeCalls: nil, policy: nil))
+        do { try await answer.value; XCTFail("An ended call's answer must be rejected") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertNil(store.current)
+        XCTAssertTrue(store.isStarting, "The old answer must not clear the new call")
+        XCTAssertEqual(store.name, "New recipient")
+        await store.receive(LegendCallEvent(call: original, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+        XCTAssertNil(store.current, "Finished call events remain rejected")
     }
 
     func testCallingSoundsArePackagedAndDecodable() throws {
@@ -138,4 +332,10 @@ final class LegendDirectCallingTests: XCTestCase {
         caller.close()
         caller.close() // Closing after a network failure and a UI dismissal is safe.
     }
+}
+
+private struct CallingTestTokenStore: SecureTokenStoring {
+    func read() throws -> OAuthTokenSet? { nil }
+    func save(_ tokens: OAuthTokenSet) throws {}
+    func clear() throws {}
 }

@@ -16,5 +16,5 @@ public sealed class ActivationRequiredViewModel
 {
     public string ReturnUrl { get; set; } = "/";
     public string Title { get; set; } = "Activation Required";
-    public string Message { get; set; } = "Use your activation link to finish setting up access, or contact your agent if you need a new invitation.";
+    public string Message { get; set; } = "Use your activation link to finish setting up access, or contact your LEGEND guide if you need a new invitation.";
 }

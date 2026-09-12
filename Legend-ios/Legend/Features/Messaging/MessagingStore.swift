@@ -413,6 +413,43 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var hasMoreConversations = true
     @Published private(set) var refreshFailure: UserFacingFailure?
 
+    @Published private(set) var preferredReactionSkinTone = 0
+    @Published private(set) var isSavingReactionPreferences = false
+    @Published private(set) var reactionPreferencesFailure: String?
+    private var reactionPreferencesRevision = 0
+
+    func refreshReactionPreferences() async {
+        guard !isSavingReactionPreferences else { return }
+        let revision = reactionPreferencesRevision
+        do {
+            let value = try await api.reactionPreferences(accessToken: try await accessTokenProvider())
+            guard revision == reactionPreferencesRevision, (0...5).contains(value.preferredReactionSkinTone) else { return }
+            preferredReactionSkinTone = value.preferredReactionSkinTone
+            reactionPreferencesFailure = nil
+        } catch {
+            guard revision == reactionPreferencesRevision else { return }
+            reactionPreferencesFailure = LegendLocalized("Skin tone preference could not be loaded.")
+        }
+    }
+
+    func setReactionSkinTone(_ tone: Int) {
+        guard (0...5).contains(tone), !isSavingReactionPreferences else { return }
+        isSavingReactionPreferences = true
+        reactionPreferencesRevision += 1
+        Task {
+            defer { isSavingReactionPreferences = false }
+            do {
+                let saved = try await api.setReactionPreferences(.init(preferredReactionSkinTone: tone),
+                    accessToken: try await accessTokenProvider())
+                guard (0...5).contains(saved.preferredReactionSkinTone) else { throw MobileMessagingContractError.unavailable }
+                preferredReactionSkinTone = saved.preferredReactionSkinTone
+                reactionPreferencesFailure = nil
+            } catch {
+                reactionPreferencesFailure = LegendLocalized("Skin tone preference could not be saved. Try again.")
+            }
+        }
+    }
+
     private struct PendingSubmission {
         let conversationID: UUID
         let body: String
@@ -487,6 +524,15 @@ final class MessagingStore: ObservableObject {
         Task { @MainActor [realtime, calling] in
             if let calling { calling.shutdown(); await calling.awaitShutdown() }
             realtime?.stop()
+        }
+    }
+
+    func recipientScopeTitle(_ scope: MessagingRecipientScope) -> String {
+        guard actorParticipantType == .client else { return scope.title }
+        switch scope {
+        case .clients: return LegendLocalized("My Circle")
+        case .agents: return LegendLocalized("LEGEND guides")
+        case .leads: return LegendLocalized("My Network")
         }
     }
 
@@ -1256,6 +1302,7 @@ final class MessagingStore: ObservableObject {
     private var reactionVersions: [UUID: Int] = [:]
     private var confirmedReactions: [UUID: [MessageReaction]] = [:]
     func react(to message: ConversationMessage, emoji: String?) {
+        let emoji = emoji.map { LegendReactionEmojiCatalog.bundled?.applyingSkinTone(preferredReactionSkinTone, to: $0) ?? $0 }
         guard !message.isDeleted, case .loaded(let conversation) = detailState,
               conversation.id == message.conversationID,
               let currentMessage = conversation.messages.first(where: { $0.id == message.id }) else { return }

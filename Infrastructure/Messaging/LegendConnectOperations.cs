@@ -18,7 +18,7 @@ namespace Infrastructure.Messaging;
 /// existing registry, corpus, capacity, demand, and audit records; it does not
 /// introduce a second language store, provider, or learning pipeline.
 /// </summary>
-internal sealed class LegendConnectOperations : ILegendConnectOperations
+internal sealed partial class LegendConnectOperations : ILegendConnectOperations
 {
     private const int LanguageKnowledgeDetailRecordLimit = 250;
     private const int TranslationRouteAuditRecordLimit = 250;
@@ -4295,6 +4295,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     public Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default) =>
         Intelligence.GetTranslationQualityAsync(cancellationToken);
+
+    public Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualitySummaryAsync(
+        CancellationToken cancellationToken = default) =>
+        Intelligence.GetTranslationQualitySummaryAsync(cancellationToken);
 
     public Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(
         CancellationToken cancellationToken = default) =>

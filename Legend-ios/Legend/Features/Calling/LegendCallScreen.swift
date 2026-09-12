@@ -29,7 +29,8 @@ struct LegendCallPresentation: UIViewRepresentable {
     static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
         coordinator.window?.isHidden = true
         coordinator.window = nil
-        coordinator.store.shutdown()
+        // Presentation can be detached during SwiftUI navigation or scene updates.
+        // The account-scoped MessagingStore owns call shutdown, not this view.
     }
     @MainActor final class Coordinator {
         let store: LegendCallStore
@@ -53,16 +54,18 @@ private struct LegendCallScreen: View {
             }.padding().foregroundStyle(.white).background(LegendNextColor.navy, in: Capsule())
         } else {
         ZStack {
-            LinearGradient(colors: [LegendNextColor.navy, LegendNextColor.midnight], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
-            if let remote = store.remoteVideo { LegendRTCVideo(track: remote).ignoresSafeArea() }
+            Color.black.ignoresSafeArea()
+            if let remote = store.remoteVideo { LegendRTCVideo(track: remote, screenSharing: store.remoteVideoFitsContent).ignoresSafeArea() }
             if let local = store.localVideo, !store.sharingScreen {
                 VStack { HStack { LegendRTCVideo(track: local).frame(width: 96, height: 132).clipShape(RoundedRectangle(cornerRadius: 20)); Spacer() }; Spacer() }.padding(.leading, 20).padding(.top, 110)
             }
             VStack(spacing: 24) {
-                Text(LegendLocalized("LEGEND®"))
-                    .font(LegendNextTypography.wordmark)
-                    .tracking(LegendSharedDesign.tracking("wordmark"))
-                    .frame(maxWidth: .infinity)
+                if store.remoteVideo == nil {
+                    Text(LegendLocalized("LEGEND®"))
+                        .font(LegendNextTypography.wordmark)
+                        .tracking(LegendSharedDesign.tracking("wordmark"))
+                        .frame(maxWidth: .infinity)
+                }
                 if store.failure == nil { Text(statusLabel).font(.subheadline.weight(.semibold)).padding(.horizontal, 14).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule()) }
                 Spacer()
                 if let failure = store.failure {
@@ -118,8 +121,8 @@ private struct LegendCallScreen: View {
                         control(LegendLocalized("End call"), icon: "phone.down.fill", color: .red) { store.end() }
                     }
                 }
-                Spacer().frame(height: 28)
-            }.padding(24)
+                Spacer().frame(height: 4)
+            }.padding(.horizontal, 16).padding(.vertical, 12)
         }.foregroundStyle(.white)
         .sheet(item: $snapshot) { item in LegendCallImageShare(image: item.image) }
         .onDisappear { snapshotCapture?.cancel(); snapshotCapture = nil }
@@ -150,15 +153,17 @@ private struct LegendCallScreen: View {
 }
 private struct LegendRTCVideo: UIViewRepresentable {
     let track: RTCVideoTrack
+    var screenSharing = false
     func makeUIView(context: Context) -> RTCMTLVideoView {
         let view = RTCMTLVideoView(frame: .zero)
-        view.videoContentMode = .scaleAspectFit
+        view.videoContentMode = screenSharing ? .scaleAspectFit : .scaleAspectFill
         view.clipsToBounds = true
         track.add(view)
         context.coordinator.track = track
         return view
     }
     func updateUIView(_ uiView: RTCMTLVideoView, context: Context) {
+        uiView.videoContentMode = screenSharing ? .scaleAspectFit : .scaleAspectFill
         if context.coordinator.track !== track {
             context.coordinator.track?.remove(uiView); track.add(uiView); context.coordinator.track = track
         }

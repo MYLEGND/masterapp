@@ -10,6 +10,20 @@ namespace AgentPortal.Tests;
 public sealed class CallingNetworkPolicyTests
 {
     [Fact]
+    public void ScreenSharingUsesLegibleCentralProfilesInsteadOfCameraLowResolution()
+    {
+        var policy = MessagingService.BuildCallPolicy(null);
+        var screen = Assert.IsType<Shared.Calling.LegendCallScreenSharePolicy>(policy.ScreenShare);
+        Assert.Equal((1920, 1080), (screen.HighWidth, screen.HighHeight));
+        Assert.True(screen.LowBitrate + policy.AudioBitrate < policy.Adaptation!.LowBandwidth);
+        Assert.InRange(screen.TransportHeadroomFraction, 0.01, 0.5);
+        Assert.True(screen.LowWidth > policy.Adaptation!.MediumWidth);
+        Assert.True(screen.LowFps < screen.MediumFps && screen.MediumFps < screen.HighFps);
+        Assert.True(screen.LowBitrate < screen.MediumBitrate && screen.MediumBitrate < screen.HighBitrate);
+        Assert.Equal(policy.ScreenShare, MessagingService.BuildCallPolicy(null).ScreenShare);
+    }
+
+    [Fact]
     public void SharedPolicy_ProvidesConservativeMeasuredNetworkThresholds()
     {
         var policy = MessagingService.BuildCallPolicy(null);

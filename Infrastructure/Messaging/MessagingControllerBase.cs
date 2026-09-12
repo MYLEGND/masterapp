@@ -40,6 +40,27 @@ public abstract class MessagingControllerBase : Controller
         return actor is null ? null : new MessagingActor(actor.Value.UserId, actor.Value.ParticipantType);
     }
 
+    [HttpGet("/Messaging/ReactionPreferences")]
+    public async Task<IActionResult> GetReactionPreferences()
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor == null) return Forbid();
+        var preferences = await _messagingService.GetReactionPreferencesAsync(actor, HttpContext.RequestAborted);
+        return preferences is not null ? Ok(preferences) : Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available.");
+    }
+
+    [HttpPut("/Messaging/ReactionPreferences")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetReactionPreferences([FromBody] SetMessagingReactionPreferencesRequest? request)
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor == null) return Forbid();
+        if (request?.PreferredReactionSkinTone is not int tone)
+            return Failure("MESSAGING_REACTION_PREFERENCE_INVALID", "Choose a supported reaction skin tone.");
+        var result = await _messagingService.SetReactionPreferencesAsync(actor, tone, HttpContext.RequestAborted);
+        return result.Succeeded ? Ok(new MessagingReactionPreferences(tone)) : Failure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpPut("/Messaging/Conversations/{conversationId:guid}/Messages/{messageId:guid}/Reaction")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SetMessageReaction(Guid conversationId, Guid messageId,

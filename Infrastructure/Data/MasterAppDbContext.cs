@@ -1148,6 +1148,7 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<MobileProfileSettings>(e =>
         {
             e.Property(x => x.SendReadReceipts).HasDefaultValue(true);
+            e.Property(x => x.PreferredReactionSkinTone).HasDefaultValue(0);
             e.ToTable("MobileProfileSettings");
             e.HasKey(x => x.Id);
             e.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);

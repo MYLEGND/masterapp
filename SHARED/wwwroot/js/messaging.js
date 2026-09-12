@@ -945,11 +945,142 @@
     }
   }
 
+  let reactionBubbleSettings = null;
+  function reserveReactionOverlap(group) {
+    if (!reactionBubbleSettings || !group.isConnected) return;
+    group.parentElement.style.setProperty('--messaging-reaction-reserve', `${group.getBoundingClientRect().height * reactionBubbleSettings.outsideFraction}px`);
+  }
+  const reactionBubbleObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+    entries.forEach(({ target }) => { if (target.isConnected) reserveReactionOverlap(target); else reactionBubbleObserver.unobserve(target); });
+  }) : null;
+  const reactionToneKeys = ['default', 'light', 'mediumLight', 'medium', 'mediumDark', 'dark'];
+  function toneVariant(entry, tone) { return entry.skinToneVariants?.[reactionToneKeys[tone]] || entry.baseEmoji; }
+  async function loadReactionTone() {
+    const result = await request('/Messaging/ReactionPreferences');
+    if (!Number.isInteger(result?.preferredReactionSkinTone) || result.preferredReactionSkinTone < 0 || result.preferredReactionSkinTone > 5) throw new Error('Reaction preference unavailable');
+    return result.preferredReactionSkinTone;
+  }
+  let reactionEmojiCatalogFlight;
+  function loadReactionEmojiCatalog() {
+    if (!reactionEmojiCatalogFlight) reactionEmojiCatalogFlight = fetch('/design/legend-reaction-emoji.json')
+      .then(response => { if (!response.ok) throw new Error('Emoji catalog unavailable'); return response.json(); })
+      .then(catalog => {
+        if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.entries)) throw new Error('Emoji catalog unavailable');
+        return catalog.entries.filter(entry => typeof entry.emoji === 'string' && typeof entry.baseEmoji === 'string' && typeof entry.name === 'string' && Array.isArray(entry.keywords) && entry.skinToneVariants);
+      }).catch(error => { reactionEmojiCatalogFlight = null; throw error; });
+    return reactionEmojiCatalogFlight;
+  }
+
+  function createReactionEmojiPicker(select, close) {
+    const picker = document.createElement('div');
+    picker.className = 'messaging-emoji-picker';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'messaging-emoji-search';
+    search.placeholder = 'Search emoji';
+    search.setAttribute('aria-label', 'Search emoji');
+    const grid = document.createElement('div');
+    grid.className = 'messaging-emoji-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Emoji');
+    const status = createTextElement('div', 'messaging-emoji-status', 'Loading emoji…');
+    status.setAttribute('role', 'status');
+    let entries = [], results = [], shown = 0, preferredTone = null, savingTone = false;
+    const tones = document.createElement('div');
+    tones.className = 'messaging-emoji-tones';
+    tones.setAttribute('role', 'group');
+    tones.setAttribute('aria-label', 'Saved skin tone');
+    const preferenceStatus = document.createElement('div');
+    preferenceStatus.className = 'messaging-emoji-status';
+    preferenceStatus.setAttribute('role', 'status');
+    function renderTones() {
+      tones.replaceChildren();
+      const hand = entries.find(entry => entry.emoji === '👍');
+      reactionToneKeys.forEach((key, tone) => {
+        const button = createTextElement('button', 'messaging-emoji-option', hand ? toneVariant(hand, tone) : '');
+        button.type = 'button';
+        button.setAttribute('aria-label', `${key} skin tone`);
+        button.setAttribute('aria-pressed', String(preferredTone === tone));
+        button.disabled = preferredTone === null || savingTone || !hand;
+        button.addEventListener('click', async () => {
+          savingTone = true; preferenceStatus.textContent = ''; renderTones(); render();
+          try {
+            const result = await request('/Messaging/ReactionPreferences', { method: 'PUT', body: JSON.stringify({ preferredReactionSkinTone: tone }) });
+            if (result?.preferredReactionSkinTone !== tone) throw new Error('Reaction preference was not saved');
+            preferredTone = tone;
+          } catch { preferenceStatus.textContent = 'Skin tone could not be saved. Try again.'; }
+          finally { savingTone = false; if (picker.isConnected) { renderTones(); render(); } }
+        });
+        tones.append(button);
+      });
+    }
+    async function refreshPreference() {
+      preferenceStatus.textContent = 'Loading saved skin tone…';
+      try { preferredTone = await loadReactionTone(); preferenceStatus.textContent = ''; }
+      catch {
+        preferenceStatus.replaceChildren();
+        const retry = createTextElement('button', 'messaging-emoji-retry', 'Reaction preference unavailable. Retry');
+        retry.type = 'button'; retry.addEventListener('click', refreshPreference); preferenceStatus.append(retry);
+      }
+      if (picker.isConnected) { renderTones(); render(); }
+    }
+    function appendBatch() {
+      const fragment = document.createDocumentFragment();
+      results.slice(shown, shown + 120).forEach(entry => {
+        const button = createTextElement('button', 'messaging-emoji-option', toneVariant(entry, preferredTone ?? 0));
+        button.type = 'button';
+        button.setAttribute('aria-label', entry.name);
+        button.title = entry.name;
+        button.disabled = savingTone;
+        button.addEventListener('click', () => select(toneVariant(entry, preferredTone ?? 0)));
+        fragment.append(button);
+      });
+      shown = Math.min(shown + 120, results.length);
+      grid.append(fragment);
+    }
+    function render() {
+      const query = search.value.trim();
+      const exactBase = entries.find(entry => entry.emoji === query)?.baseEmoji;
+      const words = query.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      results = entries.filter(entry => entry.emoji === entry.baseEmoji).filter(entry => !query || entry.baseEmoji === exactBase ||
+        (words.length && words.every(word => entry.keywords.some(keyword => keyword.includes(word)))));
+      grid.replaceChildren();
+      grid.scrollTop = 0;
+      shown = 0;
+      status.textContent = results.length ? '' : 'No emoji found';
+      appendBatch();
+    }
+    async function load() {
+      status.textContent = 'Loading emoji…';
+      try {
+        entries = await loadReactionEmojiCatalog();
+        if (picker.isConnected) { renderTones(); render(); }
+      } catch {
+        status.replaceChildren();
+        const retry = createTextElement('button', 'messaging-emoji-retry', 'Retry loading emoji');
+        retry.type = 'button';
+        retry.addEventListener('click', load);
+        status.append(retry);
+      }
+    }
+    search.addEventListener('input', render);
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+    });
+    grid.addEventListener('scroll', () => {
+      if (shown < results.length && grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 100) appendBatch();
+    });
+    picker.append(search, tones, preferenceStatus, status, grid);
+    queueMicrotask(() => { load(); refreshPreference(); });
+    requestAnimationFrame(() => { if (picker.isConnected) search.focus({ preventScroll: true }); });
+    return picker;
+  }
+
   function appendMessageInteractions(card, conversation, message) {
     const reactions = document.createElement('div');
     reactions.className = 'messaging-reactions';
     (message.reactions || []).forEach(reaction => {
-      const button = createTextElement('button', 'messaging-reaction', reaction.emoji + (reaction.count > 1 ? ` ${reaction.count}` : ''));
+      const button = createTextElement('button', 'messaging-reaction', reaction.emoji);
       button.type = 'button';
       button.setAttribute('aria-pressed', String(reaction.reactedByCurrentActor));
       button.setAttribute('aria-label', `${reaction.emoji}, ${reaction.count} reactions`);
@@ -964,33 +1095,56 @@
     const palette = document.createElement('div');
     palette.className = 'messaging-reaction-palette';
     palette.setAttribute('aria-label', 'Choose a reaction');
+    let quickTone = null, quickCatalog = [];
+    const quickButtons = [];
     (conversation.reactionOptions || []).forEach(emoji => {
       const button = createTextElement('button', 'messaging-reaction', emoji);
       button.type = 'button';
       button.setAttribute('aria-label', `React ${emoji}`);
-      button.addEventListener('click', () => { menu.open = false; setMessageReaction(conversation.id, message, emoji); });
+      button.disabled = false;
+      quickButtons.push({ button, emoji });
+      button.addEventListener('click', () => {
+        menu.open = false;
+        const entry = quickCatalog.find(item => item.emoji === emoji);
+        setMessageReaction(conversation.id, message, entry ? toneVariant(entry, quickTone) : emoji);
+      });
       palette.append(button);
     });
-    const picker = document.createElement('input');
-    picker.type = 'text';
-    picker.maxLength = 32;
-    picker.hidden = true;
-    picker.placeholder = 'Choose an emoji';
-    picker.setAttribute('aria-label', 'Additional emoji reaction');
     const plus = createTextElement('button', 'messaging-reaction', '+');
     plus.type = 'button';
     plus.setAttribute('aria-label', 'Choose another emoji');
-    plus.addEventListener('click', () => { picker.hidden = false; picker.focus(); });
-    picker.addEventListener('keydown', event => {
-      if (event.key === 'Enter' && picker.value.trim()) {
-        event.preventDefault();
+    plus.addEventListener('click', event => {
+      event.preventDefault(); event.stopPropagation(); menu.open = true;
+      const picker = createReactionEmojiPicker(emoji => {
         menu.open = false;
-        setMessageReaction(conversation.id, message, picker.value.trim());
-      }
+        setMessageReaction(conversation.id, message, emoji);
+      }, () => { menu.open = false; trigger.focus(); });
+      palette.replaceWith(picker);
     });
-    palette.append(plus, picker);
+    palette.append(plus);
     menu.append(palette);
-    card.append(menu, reactions);
+    menu.addEventListener('toggle', async () => {
+      if (!menu.open) return;
+      try {
+        [quickTone, quickCatalog] = await Promise.all([loadReactionTone(), loadReactionEmojiCatalog()]);
+        if (!menu.isConnected) return;
+        quickButtons.forEach(({ button, emoji }) => {
+          const entry = quickCatalog.find(item => item.emoji === emoji);
+          button.textContent = entry ? toneVariant(entry, quickTone) : emoji;
+          button.disabled = false;
+        });
+      } catch { if (menu.isConnected) showError('Reaction preference unavailable. Reopen to retry.'); }
+    });
+    const media = Array.from(card.querySelectorAll('.messaging-shared-media, .messaging-attachment')).at(-1);
+    const content = media?.parentElement?.matches('.messaging-shared-original') ? media.parentElement : media;
+    if (content) {
+      const anchor = document.createElement('div');
+      anchor.className = 'messaging-reacted-content';
+      content.replaceWith(anchor);
+      anchor.append(content, reactions);
+      card.append(menu);
+    } else { card.append(menu, reactions); }
+    reactionBubbleObserver?.observe(reactions);
     card.addEventListener('dblclick', event => {
       if (event.target.closest('a, button, input, summary, video, audio')) return;
       setMessageReaction(conversation.id, message, '❤️');
@@ -1099,6 +1253,7 @@
 
     elements.threadEmpty.hidden = Boolean(conversation || isDraft);
     elements.threadContent.hidden = !(conversation || isDraft);
+    reactionBubbleObserver?.disconnect();
     elements.messages.replaceChildren();
     elements.mute.hidden = !conversation || conversation.isDetailPending === true;
     elements.closeConversation.hidden = !conversation || conversation.isDetailPending === true;
@@ -2024,6 +2179,24 @@
         const color = design.colors?.[key]?.light;
         if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-${role}`, color);
       }
+      const bubble = design.messaging?.reactionBubble;
+      if (bubble) {
+        reactionBubbleSettings = bubble;
+        for (const [key, css] of [['height','height'], ['horizontalPadding','padding'], ['itemSpacing','gap'], ['borderWidth','border'], ['trailingInset','trailing'], ['emojiSize','emoji-size']]) {
+          if (Number.isFinite(bubble[key])) root.style.setProperty(`--messaging-reaction-${css}`, `${bubble[key]}px`);
+        }
+        for (const [key, css] of [['ownFillColor','own-fill'], ['otherFillColor','other-fill'], ['borderColor','border-color']]) {
+          const color = design.colors?.[bubble[key]]?.light;
+          if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-reaction-${css}`, color);
+        }
+        if (Number.isFinite(bubble.ownFillOpacity)) root.style.setProperty('--messaging-reaction-own-opacity', `${bubble.ownFillOpacity * 100}%`);
+        if (Number.isFinite(bubble.borderOpacity)) root.style.setProperty('--messaging-reaction-border-opacity', `${bubble.borderOpacity * 100}%`);
+        if (Number.isFinite(bubble.outsideFraction)) {
+          root.style.setProperty('--messaging-reaction-outside', `${bubble.outsideFraction * 100}%`);
+          root.style.setProperty('--messaging-reaction-reserve', `${bubble.height * bubble.outsideFraction}px`);
+        }
+      }
+      root.querySelectorAll('.messaging-reactions').forEach(reserveReactionOverlap);
       const semantic = design.platformSemanticColors;
       for (const [status, key] of [['read', 'success'], ['sent', 'danger']]) {
         const color = semantic?.[key]?.android;

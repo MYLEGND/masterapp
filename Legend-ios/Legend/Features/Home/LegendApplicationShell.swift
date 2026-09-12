@@ -6080,7 +6080,8 @@ private struct LegendAccountView: View {
                             badgePlacement: .alongsideProfileImage
                         )
 
-                        if let roleLabel = normalized(profile.roleLabel) {
+                        if profile.participantType == .agent,
+                           let roleLabel = normalized(profile.roleLabel) {
                             LegendNextBadge(roleLabel, tone: .gold, systemImage: "briefcase.fill")
                         }
                     }
@@ -9163,7 +9164,7 @@ struct LegendPublicProfileView: View {
             }
             Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
-            Text(LegendLocalized("This removes the Journey Circles connection and prevents client-to-client messaging with this profile."))
+            Text(LegendLocalized("This removes the Journey Circles connection and prevents messaging with this profile."))
         }
         .sheet(isPresented: $isPresentingFounderManagement) {
             if let messaging {
@@ -9306,7 +9307,8 @@ struct LegendPublicProfileView: View {
                     badgePlacement: .alongsideProfileImage
                 )
 
-                if let roleLabel = normalized(displayedProfile.roleLabel) {
+                if displayedProfile.identity.participantType == .agent,
+                   let roleLabel = normalized(displayedProfile.roleLabel) {
                     Text(roleLabel)
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(LegendNextColor.navy)

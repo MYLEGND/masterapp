@@ -690,75 +690,53 @@
         </div></div>
     </div>
 
-    <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcSection6"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16l5 5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0" /></svg>
-            <span class="lc-panel-summary-copy">
-                <strong>Explore LEGEND® intelligence</strong>
-            </span>
-            <span class="lc-panel-toggle-label">Inspection</span>
-        </button>
-    <div class="modal fade lc-section-modal" id="lcSection6" tabindex="-1" aria-labelledby="lcSection6Title" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
-            <div class="modal-header"><h2 class="modal-title" id="lcSection6Title">Explore LEGEND® intelligence</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-            <div class="modal-body">
-
-        <div class="lc-panel-body">
-
-        <div class="lc-disclosure-list">
             @foreach (var panel in new[]
             {
-                ("submissions", "Curriculum processing",
-                    "Per-submission completion from durable submission, work-item, evaluator, coverage, and transition records."),
-                ("curriculum", "Curriculum",
-                    "Semantic families and controlled examples."),
-                ("candidates", "Candidates",
-                    "Target-realization hypotheses and their governed lifecycle."),
-                ("evidence", "Evidence",
-                    "Founder-controlled compositional anchors."),
-                ("relationships", "Relationships",
-                    "Structural relationships and contradiction state."),
-                ("learning", "Translation Events",
-                    "Durable translation-acquisition work and processing state."),
-                ("machine-learning-lifecycle", "Machine Learning Lifecycle",
-                    "Read-only MachineProposed candidate, critic, validator, and admission lineage. Pending material remains noncanonical and non-serving."),
-                ("research-observability", "Research Observability",
-                    "Sanitized, bounded research decisions, queries, sources, claim relationships, citations, timing, cost, failures, runtime identity, and retention correlation. These receipts are observations, not retained knowledge."),
-                ("models", "Models",
-                    "Governed model-training lifecycle records."),
-                ("health", "Health",
-                    "Operational health for the selected language."),
-                ("retained-knowledge", "Retained Knowledge",
-                    "Searchable eligible canonical knowledge."),
-                ("language-pairs", "Language Pairs",
-                    "Directional language-pair intelligence."),
-                ("provider-observations", "Provider Observations",
-                    "Provider-derived evidence isolated from Founder authority.")
+                ("submissions", Domain.Messaging.ApplicationCopyText.Source("Curriculum processing"),
+                    Domain.Messaging.ApplicationCopyText.Source("Per-submission completion from durable submission, work-item, evaluator, coverage, and transition records.")),
+                ("curriculum", Domain.Messaging.ApplicationCopyText.Source("Curriculum"),
+                    Domain.Messaging.ApplicationCopyText.Source("Semantic families and controlled examples.")),
+                ("candidates", Domain.Messaging.ApplicationCopyText.Source("Candidates"),
+                    Domain.Messaging.ApplicationCopyText.Source("Target-realization hypotheses and their governed lifecycle.")),
+                ("evidence", Domain.Messaging.ApplicationCopyText.Source("Evidence"),
+                    Domain.Messaging.ApplicationCopyText.Source("Founder-controlled compositional anchors.")),
+                ("relationships", Domain.Messaging.ApplicationCopyText.Source("Relationships"),
+                    Domain.Messaging.ApplicationCopyText.Source("Structural relationships and contradiction state.")),
+                ("learning", Domain.Messaging.ApplicationCopyText.Source("Translation Events"),
+                    Domain.Messaging.ApplicationCopyText.Source("Durable translation-acquisition work and processing state.")),
+                ("machine-learning-lifecycle", Domain.Messaging.ApplicationCopyText.Source("Machine Learning Lifecycle"),
+                    Domain.Messaging.ApplicationCopyText.Source("Read-only MachineProposed candidate, critic, validator, and admission lineage. Pending material remains noncanonical and non-serving.")),
+                ("research-observability", Domain.Messaging.ApplicationCopyText.Source("Research Observability"),
+                    Domain.Messaging.ApplicationCopyText.Source("Sanitized, bounded research decisions, queries, sources, claim relationships, citations, timing, cost, failures, runtime identity, and retention correlation. These receipts are observations, not retained knowledge.")),
+                ("models", Domain.Messaging.ApplicationCopyText.Source("Models"),
+                    Domain.Messaging.ApplicationCopyText.Source("Governed model-training lifecycle records.")),
+                ("health", Domain.Messaging.ApplicationCopyText.Source("Health"),
+                    Domain.Messaging.ApplicationCopyText.Source("Operational health for the selected language.")),
+                ("retained-knowledge", Domain.Messaging.ApplicationCopyText.Source("Retained Knowledge"),
+                    Domain.Messaging.ApplicationCopyText.Source("Searchable eligible canonical knowledge.")),
+                ("language-pairs", Domain.Messaging.ApplicationCopyText.Source("Language Pairs"),
+                    Domain.Messaging.ApplicationCopyText.Source("Directional language-pair intelligence.")),
+                ("provider-observations", Domain.Messaging.ApplicationCopyText.Source("Provider Observations"),
+                    Domain.Messaging.ApplicationCopyText.Source("Provider-derived evidence isolated from Founder authority."))
             })
             {
-                <details class="lc-disclosure"
-                         data-legend-section="@panel.Item1">
-
-                    <summary>
-                        <span>
-                            <small>LEGEND® INTELLIGENCE</small>
-                            <strong>@panel.Item2</strong>
-                            <em>@panel.Item3</em>
-                        </span>
-
-                        <span class="lc-tag">Load on demand</span>
-                    </summary>
-
-                    <div class="lc-disclosure-body"
-                         data-legend-section-body>
-                        <p class="lc-copy">@panel.Item3</p>
-                    </div>
-                </details>
+                <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcInspect-@panel.Item1">
+                    <svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v18h17 M8 16v-5 M13 16V7 M18 16V4" /></svg>
+                    <span class="lc-panel-summary-copy"><strong>@panel.Item2</strong></span>
+                </button>
+                <div class="modal fade lc-section-modal" id="lcInspect-@panel.Item1" tabindex="-1" aria-labelledby="lcInspectTitle-@panel.Item1" aria-hidden="true" data-legend-inspection-modal>
+                    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+                        <div class="modal-header"><h2 class="modal-title" id="lcInspectTitle-@panel.Item1">@panel.Item2</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                        <div class="modal-body">
+                            <details class="lc-disclosure" data-legend-section="@panel.Item1">
+                                <summary><span><strong>@panel.Item2</strong><em>@panel.Item3</em></span><span class="lc-tag">Load on demand</span></summary>
+                                <div class="lc-disclosure-body" data-legend-section-body><p class="lc-copy">@panel.Item3</p></div>
+                            </details>
+                        </div>
+                    </div></div>
+                </div>
             }
-        </div>
-        </div>
-    </div>
-        </div></div>
-    </div>
-    <div class="modal fade lc-section-modal" id="translationLimitsModal" tabindex="-1" aria-labelledby="translationLimitsTitle" aria-hidden="true">
+    <div class="modal fade lc-section-modal lc-limits-modal" id="translationLimitsModal" tabindex="-1" aria-labelledby="translationLimitsTitle" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
             <div class="modal-header"><div><span class="lc-kicker">FOUNDER CONTROLS</span><h2 class="modal-title" id="translationLimitsTitle">Translation limits &amp; relay</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body" data-translation-limits-body aria-live="polite"><p class="lc-copy">Open to load current allowances.</p></div>

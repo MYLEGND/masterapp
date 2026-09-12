@@ -1431,12 +1431,25 @@ final class MobileSessionCoordinator: ObservableObject {
         isOfferingBiometricSignIn = true
     }
 
+    func handleCallAccountTransition(to newState: MobileSessionState) {
+        switch newState {
+        case .authenticated(let session):
+            LegendCallSystem.shared.retireAccount(unless: session.actor.identity)
+        case .signedOut, .contractUnavailable, .roleSelection:
+            LegendCallSystem.shared.retireAccount()
+        case .loading, .authenticating, .failed:
+            // Temporary work or a failed refresh does not revoke the existing actor.
+            break
+        }
+    }
+
     private func transition(to newState: MobileSessionState, reason: String) {
         #if DEBUG
         diagnostics.record(
             category: .authentication,
             summary: "Coordinator state transition \(state.diagnosticName) -> \(newState.diagnosticName). Reason: \(reason).")
         #endif
+        handleCallAccountTransition(to: newState)
         state = newState
     }
 

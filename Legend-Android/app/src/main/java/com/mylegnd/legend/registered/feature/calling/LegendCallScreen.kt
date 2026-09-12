@@ -60,7 +60,7 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     }
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
-            state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize(), snapshotRequest) { bitmap ->
+            state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize(), snapshotRequest, fitContent = state.remoteScreenSharing) { bitmap ->
                 scope.launch {
                     runCatching {
                         val uri = withContext(Dispatchers.IO) {
@@ -143,7 +143,7 @@ private fun callStatusLabel(value: String): String = when (value) {
     else -> legendLocalized(value)
 }
 @Composable
-private fun LegendVideoSurface(track: VideoTrack, peer: LegendRTCPeer, modifier: Modifier, snapshotRequest: Int = 0, snapshot: (android.graphics.Bitmap) -> Unit = {}) {
+private fun LegendVideoSurface(track: VideoTrack, peer: LegendRTCPeer, modifier: Modifier, snapshotRequest: Int = 0, fitContent: Boolean = false, snapshot: (android.graphics.Bitmap) -> Unit = {}) {
     var renderer by remember(track) { mutableStateOf<SurfaceViewRenderer?>(null) }
     val onSnapshot by rememberUpdatedState(snapshot)
     DisposableEffect(renderer, snapshotRequest) {
@@ -159,8 +159,10 @@ private fun LegendVideoSurface(track: VideoTrack, peer: LegendRTCPeer, modifier:
     }
     key(track) {
         AndroidView(modifier = modifier, factory = { context -> SurfaceViewRenderer(context).apply {
-            init(peer.egl.eglBaseContext, null); setScalingType(org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT); setEnableHardwareScaler(true); track.addSink(this); renderer = this
-        } }, onRelease = { view -> track.removeSink(view); view.release(); renderer = null }, update = {})
+            init(peer.egl.eglBaseContext, null); setScalingType(if (fitContent) org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT else org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL); setEnableHardwareScaler(true); track.addSink(this); renderer = this
+        } }, onRelease = { view -> track.removeSink(view); view.release(); renderer = null }, update = { view ->
+            view.setScalingType(if (fitContent) org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FIT else org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+        })
     }
 }
 

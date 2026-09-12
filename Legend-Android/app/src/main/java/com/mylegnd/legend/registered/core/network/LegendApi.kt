@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import kotlinx.serialization.json.JsonObject
 
+@Serializable data class ReactionPreferences(val preferredReactionSkinTone: Int)
 interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
@@ -71,6 +72,8 @@ interface LegendApi {
     @GET("api/v1/mobile/messaging/conversations/{id}") suspend fun conversation(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60, @Query("beforeMessageId") beforeMessageId: String? = null): Response<ConversationDetail>
     @GET("api/v1/mobile/messaging/conversations/{id}/messages") suspend fun messages(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60): Response<List<ConversationMessage>>
     @POST("api/v1/mobile/messaging/conversations/{id}/messages") suspend fun sendMessage(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SendMessageRequest): Response<ConversationMessage>
+    @GET("api/v1/mobile/messaging/reaction-preferences") suspend fun reactionPreferences(@Header("X-Legend-Participant-Type") role: String): Response<ReactionPreferences>
+    @PUT("api/v1/mobile/messaging/reaction-preferences") suspend fun saveReactionPreferences(@Header("X-Legend-Participant-Type") role: String, @Body request: ReactionPreferences): Response<ReactionPreferences>
     @PUT("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/reaction") suspend fun setMessageReaction(@Header("X-Legend-Participant-Type") role: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String, @Body request: MessageReactionRequest): Response<MessageReactionResult>
     @DELETE("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/reaction") suspend fun removeMessageReaction(@Header("X-Legend-Participant-Type") role: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String): Response<MessageReactionResult>
     @Multipart @POST("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/attachments") suspend fun uploadMessageAttachment(@Header("X-Legend-Participant-Type") participantType: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String, @Part file: MultipartBody.Part): Response<MessageAttachment>

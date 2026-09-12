@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A190B0219BDE447799100001 /* legend-reaction-emoji.json in Resources */ = {isa = PBXBuildFile; fileRef = A190B0219BDE447799100002 /* legend-reaction-emoji.json */; };
 		01B90048792BDCE3C35189E3 /* LegendCallSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EFD49D13AD84E4B171A989E /* LegendCallSystem.swift */; };
 		038E5681F02654E5FAD13F54 /* MobileDiscoveryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B316F4B7D89E45A80EE0ED /* MobileDiscoveryModels.swift */; };
 		05A0BE1D18F75D238A3A6BEC /* LegendTodayActivityNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC498E55C7C5E5C6892A74AB /* LegendTodayActivityNotificationScheduler.swift */; };
@@ -125,6 +126,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A190B0219BDE447799100002 /* legend-reaction-emoji.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "legend-reaction-emoji.json"; sourceTree = "<group>"; };
 		02A0C45349D257A61D736948 /* Legend-Staging.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Staging.xcconfig"; sourceTree = "<group>"; };
 		06A2CD95CC34A2A381274575 /* LegendNextContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextContent.swift; sourceTree = "<group>"; };
 		10B73B365BF2133E6B85E1C4 /* MobileDiscoveryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryStoreTests.swift; sourceTree = "<group>"; };
@@ -355,6 +357,7 @@
 			isa = PBXGroup;
 			children = (
 				1F20FB63560403143889765D /* legend-application-copy.json */,
+				A190B0219BDE447799100002 /* legend-reaction-emoji.json */,
 				452622EF612A1C339AA4173A /* legend-design.tokens.json */,
 			);
 			path = "Legend-Design";
@@ -686,6 +689,7 @@
 				EFB4F1DFD8EF0581FCC18D3A /* PrivacyInfo.xcprivacy in Resources */,
 				CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */,
 				E2DFA2F96E598176BF9082AA /* legend-application-copy.json in Resources */,
+				A190B0219BDE447799100001 /* legend-reaction-emoji.json in Resources */,
 				B1451E8E156E526EA6BF05ED /* legend-design.tokens.json in Resources */,
 				B50BF47FE06926803EA8753C /* legend_incoming.wav in Resources */,
 				9822C6C9EF13553DCC9E8357 /* legend_ringback.wav in Resources */,

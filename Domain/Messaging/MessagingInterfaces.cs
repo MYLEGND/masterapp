@@ -2,6 +2,10 @@ namespace Domain.Messaging;
 
 public interface IMessagingService
 {
+    Task<MessagingReactionPreferences?> GetReactionPreferencesAsync(MessagingActor actor,
+        CancellationToken cancellationToken = default);
+    Task<MessagingOperationResult> SetReactionPreferencesAsync(MessagingActor actor, int preferredReactionSkinTone,
+        CancellationToken cancellationToken = default);
     Task<MessagingReactionResult> SetMessageReactionAsync(MessagingActor actor, Guid conversationId,
         Guid messageId, string? emoji, CancellationToken cancellationToken = default) =>
         Task.FromResult(MessagingReactionResult.Failure("MESSAGING_REACTION_UNAVAILABLE", "Message reactions are unavailable."));

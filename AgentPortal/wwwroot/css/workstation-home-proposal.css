@@ -1,11 +1,4 @@
 /* Home-equivalent proposal UI for Workstation (isolated hp-* classes only) */
-:root{
-    --legend-modal-safe-margin: 24px;
-    --legend-modal-clearance-top: 0px;
-    --legend-modal-area-start: 24px;
-    --legend-modal-safe-height: calc(100dvh - var(--legend-modal-area-start) - var(--legend-modal-safe-margin));
-    --legend-modal-safe-center: 50vh;
-}
 
 .hp-proposal-group{
     position: relative;
@@ -97,7 +90,7 @@
     #proposalOverlay.hp-overlay{
         align-items:center;
         justify-content:center;
-        padding:var(--legend-modal-area-start, max(10px, env(safe-area-inset-top))) 10px var(--legend-modal-safe-margin, max(10px, env(safe-area-inset-bottom))) 10px;
+        padding:var(--legend-modal-area-start, max(10px, env(safe-area-inset-top))) 10px var(--legend-modal-area-end, max(10px, env(safe-area-inset-bottom))) 10px;
     }
     #proposalDialog.hp-dialog{
         width:min(1380px,98vw);
@@ -786,7 +779,7 @@
 .uw-overlay,
 .proposal-overlay,
 .note-self-overlay{
-    padding: var(--legend-modal-area-start, 24px) 1rem var(--legend-modal-safe-margin, 24px) !important;
+    padding: var(--legend-modal-area-start, 24px) 1rem var(--legend-modal-area-end, 24px) !important;
 }
 
 #proposalDialog.hp-dialog,
@@ -802,7 +795,7 @@
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    padding: var(--legend-modal-area-start, 24px) var(--legend-modal-safe-margin, 24px) var(--legend-modal-safe-margin, 24px) !important;
+    padding: var(--legend-modal-area-start, 24px) var(--legend-modal-safe-margin, 24px) var(--legend-modal-area-end, 24px) !important;
     overflow-y: auto !important;
 }
 

@@ -9774,6 +9774,11 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<int>("PreferredReactionSkinTone")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("ProfileId")
                         .HasColumnType("uniqueidentifier");
 

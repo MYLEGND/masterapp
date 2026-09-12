@@ -413,12 +413,24 @@ internal sealed class LocalFfmpegSocialVideoProcessor
     }
 
     private static string ResolvePackagedOrPath(string executableName)
+        => ResolvePackagedOrPath(executableName, AppContext.BaseDirectory, OperatingSystem.IsWindows());
+
+    internal static string ResolvePackagedOrPath(string executableName, string applicationDirectory, bool isWindows)
     {
+        // Explicit executable paths remain authoritative. Windows PATH lookup
+        // appends .exe, but File.Exists does not; use the deployed filename for
+        // the packaged lookup while retaining the caller's PATH fallback.
+        if (Path.IsPathRooted(executableName) || executableName.Contains('/') || executableName.Contains('\\'))
+            return executableName;
+
+        var packagedName = isWindows && !Path.HasExtension(executableName)
+            ? executableName + ".exe"
+            : executableName;
         var packagedPath = Path.Combine(
-            AppContext.BaseDirectory,
+            applicationDirectory,
             "tools",
             "ffmpeg",
-            Path.GetFileName(executableName));
+            packagedName);
 
         // Production deployment packages FFmpeg and FFprobe together here.
         // Developers retain the conventional PATH-based workflow.

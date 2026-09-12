@@ -13,6 +13,41 @@
     --dash-text-soft: rgba(226, 232, 240, 0.78);
     --dash-shadow: 0 28px 60px rgba(4, 10, 28, 0.26);
     --dash-shadow-strong: 0 34px 80px rgba(3, 8, 22, 0.38);
+    --legend-modal-safe-margin: 24px;
+    --legend-modal-area-start: 24px;
+    --legend-modal-area-end: 24px;
+    --legend-modal-safe-height: calc(100dvh - 48px);
+}
+
+/* One shared content-region boundary; backdrop and focus ownership stay with
+   the existing Bootstrap/custom dialog controller. No fixed banner heights. */
+html[data-legend-modal-region] body [data-legend-modal-surface] {
+    box-sizing: border-box;
+    padding: var(--legend-modal-area-start) var(--legend-modal-safe-margin) var(--legend-modal-area-end);
+}
+html[data-legend-modal-region] body [data-legend-modal-panel] {
+    min-height: 0;
+    max-height: var(--legend-modal-safe-height);
+    overflow: auto;
+}
+html[data-legend-modal-region] body [data-legend-modal-panel]:not(.modal-dialog) {
+    max-width: 100%;
+}
+html[data-legend-modal-region] body .modal > .modal-dialog {
+    margin: 0 auto;
+    min-height: 0;
+    max-height: var(--legend-modal-safe-height);
+}
+html[data-legend-modal-region] body .modal > .modal-dialog-scrollable {
+    height: var(--legend-modal-safe-height);
+}
+html[data-legend-modal-region] body .modal > .modal-dialog-centered {
+    min-height: var(--legend-modal-safe-height);
+}
+html[data-legend-modal-region] body .modal .modal-body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .dashboard-page-shell {
@@ -6049,6 +6084,7 @@ header .legend-global-nav .container-fluid {
 }
 .messaging-message-share.is-own { align-self: flex-end; }
 
+.messaging-message:not(.messaging-message-share) { margin-bottom: var(--messaging-reaction-reserve); }
 .messaging-message:not(.messaging-message-share).is-own {
     align-self: flex-end;
     border-radius: 15px 15px 4px 15px;
@@ -6099,31 +6135,54 @@ header .legend-global-nav .container-fluid {
     gap: 0.3rem;
     margin-top: 0.4rem;
 }
-.messaging-reactions { margin-top: 0; position: absolute; top: -0.8rem; right: -0.2rem; flex-wrap: nowrap; }
+.messaging-reactions { margin-top: 0; position: absolute; bottom: 0; right: var(--messaging-reaction-trailing); transform: translateY(var(--messaging-reaction-outside)); flex-wrap: wrap; justify-content: flex-end; max-width: 100%; gap: var(--messaging-reaction-gap); }
+.messaging-reactions .messaging-reaction { display: inline-flex; align-items: center; justify-content: center; min-height: var(--messaging-reaction-height); padding: 0 var(--messaging-reaction-padding); border: var(--messaging-reaction-border) solid color-mix(in srgb, var(--messaging-reaction-border-color) var(--messaging-reaction-border-opacity), transparent); border-radius: 999px; background: var(--messaging-reaction-other-fill); font-size: var(--messaging-reaction-emoji-size); }
+.messaging-reactions .messaging-reaction[aria-pressed="true"] { background: color-mix(in srgb, var(--messaging-reaction-own-fill) var(--messaging-reaction-own-opacity), transparent); }
 .messaging-reaction-palette {
     flex-wrap: nowrap;
     max-width: 100%;
     overflow-x: auto;
+    padding: 0.45rem; border-radius: 999px;
+    background: color-mix(in srgb, var(--messaging-timestamp) 8%, var(--messaging-surface));
 }
 .messaging-reaction-palette > * { flex-shrink: 0; }
 .messaging-reaction {
-    border: 1px solid currentColor;
-    border-radius: 999px;
-    padding: 0.25rem 0.5rem;
+    box-shadow: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0.2rem;
     background: transparent;
     color: inherit;
+    font-size: 1.4rem;
+    line-height: 1.2;
     cursor: pointer;
 }
-.messaging-reactions .messaging-reaction { background: var(--messaging-surface); color: var(--messaging-timestamp); }
-.messaging-reaction[aria-pressed="true"] { border-color: var(--messaging-timestamp); }
+.messaging-reaction:focus-visible, .messaging-emoji-option:focus-visible { outline: 2px solid var(--messaging-timestamp); outline-offset: 2px; }
+.messaging-emoji-picker { display: grid; gap: 0.6rem; width: min(22rem, 100%); margin-top: 0.5rem; padding: 0.6rem; border-radius: 0.8rem; background: var(--messaging-surface); color: var(--messaging-outgoing-text); }
+.messaging-emoji-search { box-sizing: border-box; width: 100%; min-height: 2.75rem; padding: 0.6rem 0.8rem; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; }
+.messaging-emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr)); align-content: start; max-height: 18rem; overflow-y: auto; overscroll-behavior: contain; }
+.messaging-emoji-option { border: 0; background: transparent; color: inherit; min-height: 2.75rem; padding: 0.3rem; font-size: 1.7rem; line-height: 1.2; cursor: pointer; }
+.messaging-emoji-tones { display: flex; justify-content: space-between; gap: 0.2rem; }
+.messaging-emoji-tones .messaging-emoji-option[aria-pressed="true"] { border-radius: 999px; background: color-mix(in srgb, var(--messaging-outgoing-background) 20%, transparent); }
+.messaging-emoji-option:disabled { cursor: wait; opacity: 0.55; }
+.messaging-emoji-status:empty { display: none; }
+.messaging-emoji-status { font-size: 0.85rem; }
 .messaging-message-actions summary { cursor: pointer; font-size: 0.75rem; }
 .messaging-shared-content { display: grid; gap: 0.5rem; margin-top: 0.35rem; }
-.messaging-shared-author { font-weight: 800; }
+.messaging-shared-author, .messaging-shared-open {
+    justify-self: start; display: inline-flex; align-items: center;
+    border-radius: 999px; padding: 0.35rem 0.65rem;
+    font-size: 0.75rem; font-weight: 700;
+    background: color-mix(in srgb, var(--messaging-timestamp) 10%, transparent);
+}
+.messaging-reacted-content { position: relative; width: fit-content; max-width: 100%; margin-bottom: var(--messaging-reaction-reserve); }
+.messaging-reacted-content .messaging-shared-media { margin: 0; }
+.messaging-reacted-content > .messaging-reactions { max-width: 100%; }
 .messaging-shared-original { display: block; }
 .messaging-shared-open { font-size: 0.8rem; }
 .messaging-message-body a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; }
 .messaging-shared-media { display: block; max-width: 100%; max-height: 28rem; border-radius: 0.5rem; margin-block: 0.4rem; }
-.messaging-shared-content a { color: inherit; text-decoration: underline; }
+.messaging-shared-content a { color: inherit; text-decoration: none; }
 
 .messaging-message-edited {
     opacity: 0.75;

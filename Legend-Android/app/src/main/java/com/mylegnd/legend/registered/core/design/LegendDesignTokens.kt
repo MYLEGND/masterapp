@@ -43,6 +43,7 @@ object LegendDesignAuthority {
     internal fun socialFormat(name: String) = required().socialFormats.required(name)
     internal fun accountSession() = required().accountSession
     internal fun navigation() = required().navigation
+    internal fun reactionBubble() = required().messaging.reactionBubble
     internal fun gradient(name: String): Brush = Brush.linearGradient(
         required().gradients.required(name).map(::color),
     )
@@ -167,8 +168,12 @@ internal object LegendTypography {
     val Eyebrow get() = LegendDesignAuthority.typography("eyebrow")
 }
 
+@Serializable internal data class LegendReactionBubbleToken(val height: Float, val horizontalPadding: Float, val itemSpacing: Float, val borderWidth: Float, val outsideFraction: Float, val trailingInset: Float, val emojiSize: Float, val ownFillColor: String, val ownFillOpacity: Float, val otherFillColor: String, val borderColor: String, val borderOpacity: Float)
+@Serializable private data class LegendMessagingDesignToken(val reactionBubble: LegendReactionBubbleToken)
+
 @Serializable
 private data class LegendDesignSpecification(
+    val messaging: LegendMessagingDesignToken,
     val colors: Map<String, LegendColorToken>,
     val platformSemanticColors: Map<String, LegendPlatformSemanticColor>,
     val gradients: Map<String, List<String>>,

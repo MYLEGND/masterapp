@@ -754,7 +754,13 @@ struct FounderAccountBatchOutcome: Codable, Equatable, Sendable {
     let results: [FounderAccountBatchItemOutcome]
 }
 
+struct MessagingReactionPreferences: Codable, Sendable {
+    let preferredReactionSkinTone: Int
+}
+
 protocol MessagingAPI: Sendable {
+    func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences
+    func setReactionPreferences(_ preferences: MessagingReactionPreferences, accessToken: String) async throws -> MessagingReactionPreferences
     func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage
     func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL
     func sharedPostURL(_ postID: UUID) -> URL?
@@ -896,6 +902,13 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences {
+        throw MobileMessagingContractError.unavailable
+    }
+    func setReactionPreferences(_ preferences: MessagingReactionPreferences, accessToken: String) async throws -> MessagingReactionPreferences {
+        throw MobileMessagingContractError.unavailable
+    }
+
     func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileAPIError.invalidServerResponse }
     func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
     func sharedPostURL(_ postID: UUID) -> URL? { nil }
@@ -1737,6 +1750,16 @@ struct URLSessionMessagingAPI: MessagingAPI {
             headers: participantHeader)
     }
 
+    func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences {
+        try await client.get("/api/v1/mobile/messaging/reaction-preferences", accessToken: accessToken,
+            headers: participantHeader, response: MessagingReactionPreferences.self)
+    }
+
+    func setReactionPreferences(_ preferences: MessagingReactionPreferences, accessToken: String) async throws -> MessagingReactionPreferences {
+        try await client.put("/api/v1/mobile/messaging/reaction-preferences", body: preferences,
+            accessToken: accessToken, headers: participantHeader, response: MessagingReactionPreferences.self)
+    }
+
     func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws {
         try await client.put("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/read-receipts",
             body: MessagingReadReceiptRequest(enabled: enabled, globally: globally),
@@ -1798,4 +1821,45 @@ struct MessagingSharedContent: Codable, Equatable, Sendable {
     let authorDisplayName: String?
     let media: [MobileSocialMedia]
     let url: String
+}
+
+struct LegendReactionEmojiCatalog: Decodable {
+    struct Entry: Decodable, Identifiable {
+        let emoji: String
+        let name: String
+        let keywords: [String]
+        let baseEmoji: String
+        let skinToneVariants: [String: String]
+        var id: String { emoji }
+    }
+    let entries: [Entry]
+    private let entriesByEmoji: [String: Entry]
+    private enum CodingKeys: String, CodingKey { case entries }
+    init(from decoder: Decoder) throws {
+        entries = try decoder.container(keyedBy: CodingKeys.self).decode([Entry].self, forKey: .entries)
+        entriesByEmoji = Dictionary(entries.map { ($0.emoji, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+    static let bundled: LegendReactionEmojiCatalog? = {
+        guard let url = Bundle.main.url(forResource: "legend-reaction-emoji", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Self.self, from: data)
+    }()
+    static let skinToneKeys = ["default", "light", "mediumLight", "medium", "mediumDark", "dark"]
+    func applyingSkinTone(_ tone: Int, to emoji: String) -> String {
+        guard Self.skinToneKeys.indices.contains(tone), let entry = entriesByEmoji[emoji] else { return emoji }
+        return entry.skinToneVariants[Self.skinToneKeys[tone]] ?? entry.baseEmoji
+    }
+    func palette(_ query: String) -> [Entry] {
+        var bases = Set<String>()
+        return search(query).filter { bases.insert($0.baseEmoji).inserted }
+    }
+    func search(_ query: String) -> [Entry] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return entries }
+        let normalized = query.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        let tokens = normalized.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        return entries.filter { entry in
+            entry.emoji == query || (!tokens.isEmpty && tokens.allSatisfy { token in entry.keywords.contains { $0.contains(token) } })
+        }
+    }
 }

@@ -203,7 +203,7 @@ private struct RoleSelectionView: View {
                                         Text(
                                             role == .agent
                                                 ? LegendLocalized("Continue as Agent")
-                                                : LegendLocalized("Continue as Client")
+                                                : LegendLocalized("Continue as Member")
                                         )
                                         .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(LegendNextColor.textPrimary)

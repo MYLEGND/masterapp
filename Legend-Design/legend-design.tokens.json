@@ -35,6 +35,22 @@
     "verified": { "light": "#1F7AEB" },
     "chatTimestamp": { "light": "#0072E5", "dark": "#42BFFF" }
   },
+  "messaging": {
+    "reactionBubble": {
+      "height": 32,
+      "horizontalPadding": 8,
+      "itemSpacing": 4,
+      "borderWidth": 1,
+      "emojiSize": 20,
+      "ownFillColor": "chatTimestamp",
+      "ownFillOpacity": 0.16,
+      "otherFillColor": "surfaceElevated",
+      "borderColor": "gold",
+      "borderOpacity": 0.35,
+      "outsideFraction": 0.25,
+      "trailingInset": 0
+    }
+  },
   "platformSemanticColors": {
     "success": { "ios": "systemGreen", "android": "#34C759" },
     "warning": { "ios": "systemOrange", "android": "#FF9500" },

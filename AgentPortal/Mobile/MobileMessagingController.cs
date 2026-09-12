@@ -37,6 +37,27 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
         _controlledResources = controlledResources;
     }
 
+    [HttpGet("messaging/reaction-preferences")]
+    public async Task<IActionResult> GetReactionPreferences(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null) return resolved.Error;
+        var preferences = await _messaging.GetReactionPreferencesAsync(resolved.Actor!.Actor, cancellationToken);
+        return preferences is not null ? Ok(preferences) : MessagingFailure("MESSAGING_ACTOR_INVALID", "Messaging is not available.");
+    }
+
+    [HttpPut("messaging/reaction-preferences")]
+    public async Task<IActionResult> SetReactionPreferences([FromBody] SetMessagingReactionPreferencesRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null) return resolved.Error;
+        if (request?.PreferredReactionSkinTone is not int tone)
+            return MessagingFailure("MESSAGING_REACTION_PREFERENCE_INVALID", "Choose a supported reaction skin tone.");
+        var result = await _messaging.SetReactionPreferencesAsync(resolved.Actor!.Actor, tone, cancellationToken);
+        return result.Succeeded ? Ok(new MessagingReactionPreferences(tone)) : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpPut("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/reaction")]
     public async Task<IActionResult> SetMessageReaction(Guid conversationId, Guid messageId,
         [FromBody] SetMessagingReactionRequest? request, CancellationToken cancellationToken)

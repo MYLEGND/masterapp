@@ -176,6 +176,9 @@ internal interface ILegendConnectTranslationIntelligence
     Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default);
 
+    Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualitySummaryAsync(
+        CancellationToken cancellationToken = default);
+
     Task<LegendProviderObservationResolution> ApproveProviderObservationAsync(
         Guid alignmentId,
         CancellationToken cancellationToken = default);
@@ -1295,8 +1298,17 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         CancellationToken cancellationToken = default) =>
         EvaluateProviderObservationAsync(alignmentId, cancellationToken);
 
-    public async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
-        CancellationToken cancellationToken = default)
+    public Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
+        CancellationToken cancellationToken = default) =>
+        GetTranslationQualityCoreAsync(includeReviewItems: true, cancellationToken);
+
+    public Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualitySummaryAsync(
+        CancellationToken cancellationToken = default) =>
+        GetTranslationQualityCoreAsync(includeReviewItems: false, cancellationToken);
+
+    private async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityCoreAsync(
+        bool includeReviewItems,
+        CancellationToken cancellationToken)
     {
         var observations =
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
@@ -1348,7 +1360,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         // bounded Founder-review queue in SQL, then load evidence only for
         // those rows instead of materializing every provider observation and
         // every quality-evidence record on the initial dashboard request.
-        var reviewCandidates = await (
+        var reviewCandidatesQuery = (
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
             join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on alignment.SourceTextUnitId equals source.Id
@@ -1378,7 +1390,15 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 source.Provenance,
                 target.LanguageCode,
                 target.Text)
-        ).Take(250).ToListAsync(cancellationToken);
+        ).Take(250);
+        // Live counters retain the same capped review queue definition without
+        // reading source/target text or materializing per-observation evidence.
+        var needsReviewCount = includeReviewItems
+            ? 0L
+            : await reviewCandidatesQuery.LongCountAsync(cancellationToken);
+        List<ProviderObservationProjection> reviewCandidates = includeReviewItems
+            ? await reviewCandidatesQuery.ToListAsync(cancellationToken)
+            : [];
         var reviewCandidateIds = reviewCandidates.Select(item => item.AlignmentId).ToArray();
         List<LegendTranslationQualityEvidence> reviewEvidence = reviewCandidateIds.Length == 0
             ? []
@@ -1425,7 +1445,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         ).LongCountAsync(cancellationToken);
 
         return new LegendConnectTranslationQualitySnapshot(
-            reviewItems.Count,
+            includeReviewItems ? reviewItems.Count : needsReviewCount,
             providerObservationCount,
             supportedObservationCount,
             contradictionCount,
