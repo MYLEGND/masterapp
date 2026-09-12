@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-bda4dc4a17ce9490",
+  "catalogVersion": "application-copy-v1-8bec002267abdc21",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -502,6 +502,17 @@
       "source": "Choose a picture from your photo library",
       "context": "accessibility copy",
       "sourceRevision": "aeb5874873d47af2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.53e608a1490f5f4f65bf20e2",
+      "source": "Choose a reaction",
+      "context": "accessibility copy",
+      "sourceRevision": "3eb7065dfe9e3cb0",
       "placeholders": [
 
       ],
@@ -1758,6 +1769,17 @@
       "source": "Muted conversation",
       "context": "accessibility copy",
       "sourceRevision": "7f0fce8bb6143d2d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f22f46302d60254cef5ba4e6",
+      "source": "My home focus areas",
+      "context": "accessibility copy",
+      "sourceRevision": "03329dd3a78b021b",
       "placeholders": [
 
       ],
@@ -3024,6 +3046,17 @@
       "source": "Share Hac",
       "context": "accessibility copy",
       "sourceRevision": "be901324ad29c6bc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.8b66dfc84310d176886365f3",
+      "source": "Share attachment",
+      "context": "accessibility copy",
+      "sourceRevision": "792231ab34b9ab4d",
       "placeholders": [
 
       ],
@@ -9193,6 +9226,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.238df471c9f8aa1402636178",
+      "source": "Android transferred call audio to another call.",
+      "context": "visual interface copy",
+      "sourceRevision": "124239b0758f4734",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.c76163a622c10c94c2ac97aa",
       "source": "Android's system photo picker keeps your library private until you select media for LEGEND.",
       "context": "visual interface copy",
@@ -12493,6 +12537,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.56b5c8628c6b024cebc53dd6",
+      "source": "Business Protection",
+      "context": "visual interface copy",
+      "sourceRevision": "10e008fa6124f876",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7655d1e44358921c9aea53ee",
       "source": "Business Protection (Business Clients)",
       "context": "visual interface copy",
@@ -14550,6 +14605,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ff51b5d83d3d7cf3bd334163",
+      "source": "Choose the image that appears on your profile and in My Network.",
+      "context": "visual interface copy",
+      "sourceRevision": "3f3dffec848cdb8d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b0f1de6ef27bdcf33c4e967d",
       "source": "Choose the image that appears throughout your client portal and to your agent.",
       "context": "visual interface copy",
@@ -14621,6 +14687,17 @@
       "source": "Choose when this event starts.",
       "context": "visual interface copy",
       "sourceRevision": "7360837adeea2714",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.144ce31b73a0be99d4cac443",
+      "source": "Choose whether your LEGEND guide can open your full account. Your contact record remains visible to your guide either way.",
+      "context": "visual interface copy",
+      "sourceRevision": "b8d6a135dba9e8a0",
       "placeholders": [
 
       ],
@@ -21723,6 +21800,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9a5411a1ab6ab4c056663426",
+      "source": "Email on your membership",
+      "context": "visual interface copy",
+      "sourceRevision": "d6456c2cfd890fa7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7714153802861837c88e71b7",
       "source": "Email:",
       "context": "visual interface copy",
@@ -26135,6 +26223,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.2c411c5f49373e2b1669b7a3",
+      "source": "Guide Access",
+      "context": "visual interface copy",
+      "sourceRevision": "5751fb7dcfa89d0b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9ac19c76852379f4a9acd986",
       "source": "Guided learning journey",
       "context": "visual interface copy",
@@ -27021,6 +27120,17 @@
       "source": "Household Required",
       "context": "visual interface copy",
       "sourceRevision": "3f305b15e9f99074",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9e8a08e5adc8995886c46d10",
+      "source": "Household members shared with your LEGEND guide.",
+      "context": "visual interface copy",
+      "sourceRevision": "c56ef5e2f41973f8",
       "placeholders": [
 
       ],
@@ -29261,6 +29371,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0df718bd7c5bb6c44ab779b8",
+      "source": "Keep your contact details up to date for your LEGEND guide.",
+      "context": "visual interface copy",
+      "sourceRevision": "a553cc60f885d50e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.42fb969e40b5e5a889496b01",
       "source": "Keep your policy documents close, review educational material quickly, and access important support information in one place.",
       "context": "visual interface copy",
@@ -29463,6 +29584,17 @@
       "source": "LEGEND guide",
       "context": "visual interface copy",
       "sourceRevision": "5e130707ce7e5880",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.930126586c73e73c7a674c16",
+      "source": "LEGEND guides",
+      "context": "visual interface copy",
+      "sourceRevision": "37f28ec541f2c834",
       "placeholders": [
 
       ],
@@ -31198,6 +31330,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a6338c63028494e412d7b507",
+      "source": "Legend™ Journey Focus",
+      "context": "visual interface copy",
+      "sourceRevision": "b4e533a1d3649078",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.dd976c5cca9ee7cf1d5c424e",
       "source": "Legend™ Legacy Protection",
       "context": "visual interface copy",
@@ -32628,10 +32771,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.24997b5df6299a16a71a5e12",
+      "source": "MEMBER ACCESS",
+      "context": "visual interface copy",
+      "sourceRevision": "91d074e1158a35b0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.140047ae263f1a47ee867bc4",
       "source": "MEMBER EXPERIENCE",
       "context": "visual interface copy",
       "sourceRevision": "e1267d2f3e226490",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a4bdbac45a2920668ee234a6",
+      "source": "MEMBER SIGN-IN",
+      "context": "visual interface copy",
+      "sourceRevision": "4426f5e581fa31a4",
       "placeholders": [
 
       ],
@@ -32742,6 +32907,17 @@
       "source": "MT",
       "context": "visual interface copy",
       "sourceRevision": "409521f02c8b29bd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.721f8806bd821d251fed7b8d",
+      "source": "MY LEGEND",
+      "context": "visual interface copy",
+      "sourceRevision": "2b6380ebebb547a3",
       "placeholders": [
 
       ],
@@ -34939,6 +35115,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.904a75cf961c29d94dc25a0d",
+      "source": "My Circle",
+      "context": "visual interface copy",
+      "sourceRevision": "e439eaa52bb8cf8b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e31f17ffccc3f90e8aa8f97b",
       "source": "My Day",
       "context": "visual interface copy",
@@ -34954,6 +35141,28 @@
       "source": "My Day Queue",
       "context": "visual interface copy",
       "sourceRevision": "a633c8eeec307499",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.045c843c812ad5eab2151b82",
+      "source": "My Home",
+      "context": "visual interface copy",
+      "sourceRevision": "f36672c0538accdf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6f65a83e384f55666568ec97",
+      "source": "My Network",
+      "context": "visual interface copy",
+      "sourceRevision": "016f554ec92c9456",
       "placeholders": [
 
       ],
@@ -35702,6 +35911,17 @@
       "source": "New threads stay in this Founder workspace.",
       "context": "visual interface copy",
       "sourceRevision": "31be525789bdb769",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.48d452f20ec638bbb310278f",
+      "source": "New to the portal? Use the activation link sent by your LEGEND guide.",
+      "context": "visual interface copy",
+      "sourceRevision": "9eaf454939b6d5f3",
       "placeholders": [
 
       ],
@@ -38393,6 +38613,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.3841c9802c04a23169f462fc",
+      "source": "Open member sign-in",
+      "context": "visual interface copy",
+      "sourceRevision": "e37074505954aa39",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.56f6d17f7f36898a73fb555e",
       "source": "Open notifications, {count} recent interactions",
       "context": "visual interface copy",
@@ -40289,6 +40520,28 @@
       "source": "Pension",
       "context": "visual interface copy",
       "sourceRevision": "edf14213688b25ed",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5efbecd3a6c10f5c2f19e41f",
+      "source": "People in the LEGEND network",
+      "context": "visual interface copy",
+      "sourceRevision": "c95775c750d64d42",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2318052f96f8681d7fa76c53",
+      "source": "People in the LEGEND network will appear here.",
+      "context": "visual interface copy",
+      "sourceRevision": "d61d8a24705a6033",
       "placeholders": [
 
       ],
@@ -46038,6 +46291,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7fb9b0f54d0e09b1248b791f",
+      "source": "Return to member sign-in",
+      "context": "visual interface copy",
+      "sourceRevision": "97ae9b2615f20e98",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.0bc587e6b3c43ec3ffd814e6",
       "source": "Return to your profile or manage the active membership.",
       "context": "visual interface copy",
@@ -48293,6 +48557,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e200c028303e3d774898a031",
+      "source": "Search the network quickly, then jump straight into the partner or tool that supports your next move.",
+      "context": "visual interface copy",
+      "sourceRevision": "219a7710defe673a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.86a8082ef755d602a2460714",
       "source": "Search training...",
       "context": "visual interface copy",
@@ -48880,6 +49155,17 @@
       "source": "Select what matters most right now so both client and agent stay aligned on the next best move. Coverage lines are selected above in Protection Foundation.",
       "context": "visual interface copy",
       "sourceRevision": "8cdd547770e41f3b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.81acbe2fdd332435248c0485",
+      "source": "Select what matters most right now so you and your LEGEND guide can agree on the next step. Coverage lines are selected above in Protection Foundation.",
+      "context": "visual interface copy",
+      "sourceRevision": "033db235b4fe685e",
       "placeholders": [
 
       ],
@@ -49723,6 +50009,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0961bcf543a1171bcab9af66",
+      "source": "Shared Account — allow my LEGEND guide to work in my account",
+      "context": "visual interface copy",
+      "sourceRevision": "11666485c32409e1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.fadafaee6a2acf0e8aa25abd",
       "source": "Shared Account — allow my agent to work in my account",
       "context": "visual interface copy",
@@ -49849,6 +50146,17 @@
       "source": "Shared with the connected agent workspace for consistent follow-up.",
       "context": "visual interface copy",
       "sourceRevision": "34ae33c57889dd21",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.eb8dad47592501d2975f4dd6",
+      "source": "Shared with your LEGEND guide for consistent follow-up.",
+      "context": "visual interface copy",
+      "sourceRevision": "240cba0988567357",
       "placeholders": [
 
       ],
@@ -50157,6 +50465,17 @@
       "source": "Sign in to view this profile.",
       "context": "visual interface copy",
       "sourceRevision": "7b7d3262ae54af1e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0104e6219d9f7452d495c1a5",
+      "source": "Sign in with the email linked to your active LEGEND membership.",
+      "context": "visual interface copy",
+      "sourceRevision": "f42082b935baae26",
       "placeholders": [
 
       ],
@@ -53519,6 +53838,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.02bf4177fd16ff8bc572de0f",
+      "source": "The camera could not resume after screen sharing.",
+      "context": "visual interface copy",
+      "sourceRevision": "f4aee76d4ef37dee",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e9c3ee0ad93f94ecf84f088e",
       "source": "The client CRM store is no longer available.",
       "context": "visual interface copy",
@@ -54157,6 +54487,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.3685285897bb5f4905c31710",
+      "source": "This LEGEND membership is active at $0.00 per month. No payment method is needed.",
+      "context": "visual interface copy",
+      "sourceRevision": "874f1d35f9920d6a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.bbdc88333337ea189a774fd6",
       "source": "This Legend Client Portal membership is active at $0.00 per month. No payment method is needed.",
       "context": "visual interface copy",
@@ -54579,6 +54920,17 @@
       "source": "This removes the Journey Circles connection and prevents client-to-client messaging with this profile.",
       "context": "visual interface copy",
       "sourceRevision": "3c0ea90fe5959f3d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b5991594e069fb307d56158b",
+      "source": "This removes the Journey Circles connection and prevents messaging with this profile.",
+      "context": "visual interface copy",
+      "sourceRevision": "d4c2dbe690205b69",
       "placeholders": [
 
       ],
@@ -60473,6 +60825,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.84d66faf29e1e3c69a474efe",
+      "source": "Your personal space for life, wellness, and financial clarity.",
+      "context": "visual interface copy",
+      "sourceRevision": "813cf9c62f860834",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2a09bfb67272bb17aa48e442",
       "source": "Your policy document library",
       "context": "visual interface copy",
@@ -60488,6 +60851,17 @@
       "source": "Your profile and sign-in remain your own. This invitation provides shared household access without a separate subscription.",
       "context": "visual interface copy",
       "sourceRevision": "5d67276015989d1e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5439ffc029004534441fbbef",
+      "source": "Your protection workspace. Select what you currently have in place so your LEGEND guide can review gaps and recommend next steps.",
+      "context": "visual interface copy",
+      "sourceRevision": "d4c63fd42595a6fb",
       "placeholders": [
 
       ],
