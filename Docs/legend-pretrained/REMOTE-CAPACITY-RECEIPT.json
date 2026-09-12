@@ -117,5 +117,32 @@
     }
   ],
   "physical_capacity_confirmed": false,
-  "approved_experiment_spend_usd": null
+  "approved_experiment_spend_usd": 20,
+  "approved_max_compute_hours": 4,
+  "approval_scope": "Initial existing-subscription experiment only; all incremental charges included; necessary quota only; stop first limit; no extension or ongoing/deployment commitment",
+  "quota_provider": "Microsoft.Quota and Microsoft.Capacity Registered. Modern quota API works after Capacity registration.",
+  "subscription_policy": {
+    "quotaId": "PayAsYouGo_2014-09-01",
+    "spendingLimit": "Off",
+    "state": "Enabled"
+  },
+  "provisioning_blocker": "No configurable PAYG dollar hard cap; automatic deallocation controls not installed or verified. No paid compute provisioned.",
+  "quota_requests": [
+    {
+      "resource": "StandardNCADSA100v4Family",
+      "region": "eastus2",
+      "previous": 0,
+      "requested": 24,
+      "request_id": "b8792525-63a7-403a-bded-043fddcd5576",
+      "status": "InProgress"
+    },
+    {
+      "resource": "cores",
+      "region": "eastus2",
+      "previous": 10,
+      "requested": 24,
+      "request_id": "c3ff3bf1-b0c4-45a7-b6af-5273e307afed",
+      "status": "InProgress"
+    }
+  ]
 }

@@ -267,6 +267,8 @@ public sealed class LegendConnectRuntimePolicyTests
 
         var initiallyBlocked = await policy.ActivateAsync("founder");
         Assert.Equal("BLOCKED", initiallyBlocked.State);
+        Assert.Equal("BLOCKED", Assert.Single(initiallyBlocked.Checks, item => item.Name == "Language Registry").State);
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
 
         await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
             100, 20, 80, true, "Shadow", 0.98m));
@@ -284,6 +286,10 @@ public sealed class LegendConnectRuntimePolicyTests
 
         await CompleteHistoricalConvergenceAsync(policy);
 
+        // Production migrations seed this catalog; InMemory fixtures must
+        // invoke the existing provisioner explicitly, never through readiness.
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
+        Assert.NotEmpty(await registry.ListEnabledTranslationLanguagesAsync());
         var idle = await policy.ActivateAsync("founder");
         Assert.Equal("ACTIVE — NO ELIGIBLE WORK", idle.State);
         Assert.Equal("IDLE", Assert.Single(idle.Checks, item => item.Name == "Approved Corpus").State);
@@ -313,6 +319,7 @@ public sealed class LegendConnectRuntimePolicyTests
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
+        Assert.NotEmpty(await registry.ListEnabledTranslationLanguagesAsync());
         var policy = Policy(db, registry, configuration);
         await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
             1_000, 250, 750, true, "Shadow", 0.98m));

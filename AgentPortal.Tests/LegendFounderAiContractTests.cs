@@ -209,7 +209,11 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("'System diagnostic'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
-        Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
+        Assert.Contains("All external providers are blocked for this clean conversation.", script, StringComparison.Ordinal);
+        Assert.Contains("Strict provider blocking is disabled for this clean conversation.", script, StringComparison.Ordinal);
+        Assert.Contains("externalAnsweringBlocked: conversation.externalAnsweringBlocked === true", script, StringComparison.Ordinal);
+        Assert.Contains("responseAuthority === 'LocalFoundation'", script, StringComparison.Ordinal);
+        Assert.Contains("'LEGEND-controlled model'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
     }
 
@@ -300,6 +304,16 @@ public sealed class LegendFounderAiContractTests
             1,
             modal.Split("id=\"legendFounderAiNativeOnly\"", StringSplitOptions.None).Length - 1);
         Assert.Equal(
+            1,
+            modal.Split("id=\"legendFounderAiExternalAnsweringBlocked\"", StringSplitOptions.None).Length - 1);
+        foreach (var source in new[] { modal, mobile, androidPresentation })
+        {
+            Assert.Contains("Block all external providers", source, StringComparison.Ordinal);
+            Assert.Contains("Disable external answering, research, and Azure translation.", source, StringComparison.Ordinal);
+            Assert.Contains("Block external answering", source, StringComparison.Ordinal);
+            Assert.Contains("Allow authorized research and translation.", source, StringComparison.Ordinal);
+        }
+        Assert.Equal(
             2,
             modal.Split("legend-founder-ai-logo-image", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("legendFounderAiMobileNew", modal, StringComparison.Ordinal);
@@ -339,11 +353,12 @@ public sealed class LegendFounderAiContractTests
             mobile.Split("Image(\"LegendAiIcon\")", StringSplitOptions.None).Length - 1);
         Assert.Contains("nativeOnly: Bool", mobile, StringComparison.Ordinal);
         Assert.Contains("stop.fill", mobile, StringComparison.Ordinal);
-        Assert.Contains("Keep OpenAI off for this direct LEGEND test.", mobile, StringComparison.Ordinal);
+        Assert.Contains("Disable external answering, research, and Azure translation.", mobile, StringComparison.Ordinal);
         Assert.Contains(
-            "Toggle(LegendLocalized(\"Native-only\")",
+            "Toggle(LegendLocalized(\"Block all external providers\"), isOn: $nativeOnly)",
             mobile,
             StringComparison.Ordinal);
+        Assert.Contains("Toggle(isOn: $externalAnsweringBlocked)", mobile, StringComparison.Ordinal);
         Assert.Contains("responseAuthority", mobile, StringComparison.Ordinal);
         Assert.Contains("case \"LegendAi\":", mobile, StringComparison.Ordinal);
         Assert.Contains("case \"GovernedResearch\":", mobile, StringComparison.Ordinal);

@@ -99,14 +99,16 @@ public sealed class LegendConnectScheduleCertificatePropagationTests
                     It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(), "en",
                     It.IsAny<LegendConnectExternalProviderPolicy?>()))
                 .ReturnsAsync(Native(proof, certificates));
-            var configuration = new ConfigurationBuilder().Build();
+            var configuration = new ConfigurationBuilder().AddControlledFoundation().Build();
             var factory = new NoExternalFactory();
             var profiles = new AgentProfileAccessResolver(db);
             var service = new LegendFounderAiConversationService(factory, configuration,
                 new FounderLegendConnectService(operations.Object, profiles),
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations.Object),
-                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService());
+                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService(),
+                modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance));
             var response = await service.ReplyAsync(ControllerTestHelpers.BuildUser(founderId),
                 new LegendFounderAiChatRequest
                 {
@@ -165,6 +167,8 @@ public sealed class LegendConnectScheduleCertificatePropagationTests
         public int Calls { get; private set; }
         public HttpClient CreateClient(string name)
         {
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             Calls++;
             throw new InvalidOperationException("Certificate propagation must not invoke an external provider.");
         }

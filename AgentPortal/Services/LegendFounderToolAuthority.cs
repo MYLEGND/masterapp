@@ -74,7 +74,7 @@ internal sealed class LegendFounderToolAuthority
                 return !externalTeacher && !providerPolicy.ForbidsExternalAnswering;
             if (name == "legend_research_internet" && providerPolicy.ForbidsExternalProviders)
                 return false;
-            return IsReadOnlyFounderTool(name) || mutationConfirmed;
+            return !RequiresExplicitFounderCommand(name) || mutationConfirmed;
         }).ToArray();
     }
 
@@ -83,6 +83,9 @@ internal sealed class LegendFounderToolAuthority
 
     internal bool IsReadOnly(string name) =>
         IsReadOnlyFounderTool(name);
+
+    private static bool RequiresExplicitFounderCommand(string name) =>
+        !IsReadOnlyFounderTool(name) && name != "legend_remember_conversation_facts";
 
     internal bool IsGovernedEvidence(string name) =>
         IsGovernedEvidenceTool(name);
@@ -319,7 +322,7 @@ internal sealed class LegendFounderToolAuthority
             return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
         }
 
-        if (!IsReadOnlyFounderTool(call.Name) && call.Name != "legend_remember_conversation_facts")
+        if (RequiresExplicitFounderCommand(call.Name))
         {
             var authorizationFailure = await TryConsumeMutationAuthorizationAsync(
                 founder,
@@ -1863,7 +1866,7 @@ internal sealed class LegendFounderToolAuthority
                     ? "founder_governed_public_read_or_exact_authorized_restricted_read"
                     : readOnly ? "founder_governed_read" : "founder_governed_mutation",
                 sourceOfTruth = "BuildFounderTools",
-                requiresExplicitFounderCommand = !readOnly,
+                requiresExplicitFounderCommand = RequiresExplicitFounderCommand(name),
                 restrictedClassRequiresExistingAuthorization = conditionallyRestrictedResearch,
                 zeroWrite = conditionallyRestrictedResearch,
                 canOverrideAuthorities = false,

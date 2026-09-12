@@ -81,8 +81,9 @@ public sealed class LegendFounderAiInspectionRegressionTests
         Assert.DoesNotContain("You are Legend® Ai speaking", teacher, StringComparison.Ordinal);
 
         Assert.Contains("You are Legend® Ai speaking", legend, StringComparison.Ordinal);
-        Assert.Contains("externally hosted pretrained foundation", legend, StringComparison.Ordinal);
-        Assert.Contains("not native or provider-independent", legend, StringComparison.Ordinal);
+        Assert.Contains("pretrained", legend, StringComparison.Ordinal);
+        Assert.Contains("OpenAI is an optional external teacher or escalation", legend, StringComparison.Ordinal);
+        Assert.Contains("must never be reported as local reasoning", legend, StringComparison.Ordinal);
     }
 
     [Theory]

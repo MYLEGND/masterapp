@@ -263,14 +263,17 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             }
 
             var countingFactory = new CountingHttpClientFactory();
+            var replyConfiguration = Configuration();
             var chat = new LegendFounderAiConversationService(
                 countingFactory,
-                Configuration(),
+                replyConfiguration,
                 new FounderLegendConnectService(operations, profiles),
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 discourse,
-                new LegendLanguageRegistry(db, Configuration()),
-                ControllerTestHelpers.BuildTranslationService());
+                new LegendLanguageRegistry(db, replyConfiguration),
+                ControllerTestHelpers.BuildTranslationService(),
+                modelInference: new LegendConnectModelInferenceTransport(countingFactory, replyConfiguration,
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance));
             var reply = await chat.ReplyAsync(
                 founder,
                 new LegendFounderAiChatRequest
@@ -499,6 +502,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 ["AzureOpenAI:Endpoint"] = "https://legend.invalid",
                 ["AzureOpenAI:ApiKey"] = "test-key"
             })
+            .AddControlledFoundation()
             .Build();
 
     private static AgentProfile Profile(string actor, string prefix) => new()
@@ -722,6 +726,8 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
 
         public HttpClient CreateClient(string name)
         {
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             CreateClientCalls++;
             return new HttpClient(new NoNetworkHandler())
             {

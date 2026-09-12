@@ -127,19 +127,59 @@ public sealed class LegendFounderDiagnosticExecutionTests
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(), It.IsAny<CancellationToken>(),
                 "en", It.IsAny<LegendConnectExternalProviderPolicy?>()))
             .ThrowsAsync(new InvalidOperationException("private-exception-payload Bearer secret-token"));
+        var decision = new LegendConnectResearchNeededDecision(true,
+            LegendConnectResearchNeed.ExplicitVerificationRequest, "explicit_verification_requires_research",
+            LegendConnectResearchAccessClass.PublicReadOnly, "en", false, false, false, null, DateTime.UtcNow);
+        operations.Setup(operation => operation.DecideResearchNeededAsync(
+                It.IsAny<string>(), "en", It.IsAny<LegendConnectNativeInferenceSnapshot?>(),
+                It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>(), It.IsAny<bool>()))
+            .ReturnsAsync(decision);
+        var configuration = new ConfigurationBuilder().Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var research = new LegendConnectOperations(db, registry,
+            new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance), configuration);
+        operations.Setup(operation => operation.ExecuteResearchAsync(It.IsAny<LegendConnectResearchRequest>(),
+                It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()))
+            .Returns((LegendConnectResearchRequest input, CancellationToken token, LegendConnectExternalProviderPolicy? policy) =>
+                research.ExecuteResearchAsync(input, token, policy));
+        operations.Setup(operation => operation.RecordResearchObservabilityAsync(It.IsAny<LegendConnectResearchOutcome>(),
+                It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        // Protocol-only failure injection: preserve the positive external
+        // escalation control after a controlled attempt and public research
+        // failure, rather than restoring an automatic hosted primary fallback.
+        var attemptedPrompts = new List<string>();
+        var inference = new Mock<ILegendConnectModelInferenceTransport>(MockBehavior.Strict);
+        using var escalation = JsonDocument.Parse("""
+            {"status":"completed","output":[{"type":"function_call","call_id":"escalate-once","name":"legend_request_teacher_escalation","arguments":"{}"}]}
+            """);
+        inference.Setup(item => item.GenerateAsync("controlled-protocol-fixture", It.IsAny<LegendModelTaskRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, LegendModelTaskRequest, CancellationToken>((_, task, _) =>
+                attemptedPrompts.Add(task.Instructions + task.Input + task.ConversationInput?.GetRawText()))
+            .ReturnsAsync(nativeOnly
+                ? new LegendModelEvaluationGenerationResult(false, null, "controlled_fixture_unavailable")
+                : new LegendModelEvaluationGenerationResult(true, null, Output: escalation.RootElement.Clone(),
+                    ModelVersion: "controlled-protocol-fixture", Hosting: "LegendControlled"));
         using var handler = new Responses(Answer());
         var request = new LegendFounderAiChatRequest
         {
             Mode = "legend", SourceLanguageCode = "en", NativeOnly = nativeOnly,
-            Messages = [new LegendFounderAiChatMessage("user", "Inspect the requested evidence.")]
+            Messages = [new LegendFounderAiChatMessage("user", "Verify the published observation.")]
         };
-        var response = await Service(db, operations.Object, handler).ReplyAsync(founder, request);
+        var response = await Service(db, operations.Object, handler, inference.Object).ReplyAsync(founder, request);
+        Assert.Single(attemptedPrompts);
+        Assert.All(attemptedPrompts, prompt =>
+        {
+            Assert.DoesNotContain("private-exception-payload", prompt);
+            Assert.DoesNotContain("secret-token", prompt);
+        });
         Assert.DoesNotContain("private-exception-payload", JsonSerializer.Serialize(response));
         Assert.DoesNotContain("secret-token", JsonSerializer.Serialize(response));
         if (nativeOnly)
         {
             Assert.False(response.Succeeded);
-            Assert.Equal("native_inference", response.FailureKind);
+            Assert.Equal("local_foundation", response.FailureKind);
+            Assert.Equal("controlled_fixture_unavailable", response.Reason);
             Assert.Empty(handler.RequestBodies);
         }
         else
@@ -183,6 +223,9 @@ public sealed class LegendFounderDiagnosticExecutionTests
     private static Mock<ILegendConnectOperations> Operations()
     {
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations.Setup(operation => operation.RecordExternalEscalationDispositionAsync(
+                It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Restricted");
         operations.Setup(operation => operation.TryBindConversationContentAsync(
                 It.IsAny<string>(), It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(), It.IsAny<string>()))
@@ -194,13 +237,23 @@ public sealed class LegendFounderDiagnosticExecutionTests
     }
 
     private static LegendFounderAiConversationService Service(MasterAppDbContext db,
-        ILegendConnectOperations operations, Responses handler) => new(
-        new ClientFactory(handler), new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        { ["OpenAI:ApiKey"] = "test-only-key", ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120" }).Build(),
+        ILegendConnectOperations operations, Responses handler, ILegendConnectModelInferenceTransport? inference = null)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["OpenAI:ApiKey"] = "test-only-key", ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120",
+            ["LegendConnect:Foundation:Enabled"] = (inference is not null).ToString(),
+            ["LegendConnect:Foundation:Model"] = "controlled-protocol-fixture"
+        }).Build();
+        return new(
+        new ClientFactory(handler), configuration,
         new FounderLegendConnectService(operations, new AgentProfileAccessResolver(db)),
         NullLogger<LegendFounderAiConversationService>.Instance,
         new LegendFounderAiDiscourseStateService(db, new AgentProfileAccessResolver(db), operations),
-        new LegendLanguageRegistry(db, new ConfigurationBuilder().Build()), ControllerTestHelpers.BuildTranslationService());
+        new LegendLanguageRegistry(db, new ConfigurationBuilder().Build()), ControllerTestHelpers.BuildTranslationService(),
+        modelInference: inference,
+        activeModelInference: inference is null ? null : new LegendConnectActiveModelInference(db, inference, configuration));
+    }
 
     private static LegendFounderAiChatRequest Request() => new()
     {

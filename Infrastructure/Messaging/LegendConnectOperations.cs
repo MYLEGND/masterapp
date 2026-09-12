@@ -1795,6 +1795,9 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         if (!generated.Succeeded ||
             string.IsNullOrWhiteSpace(generatedText))
         {
+            if (generated.ErrorCode == "native_only_external_model_inference_forbidden")
+                return symbolic with { ModelAssistance = DormantModelAssistance(generated.ErrorCode) };
+
             var unavailable = string.Equals(
                 generated.ErrorCode,
                 "active_reasoning_model_unavailable",

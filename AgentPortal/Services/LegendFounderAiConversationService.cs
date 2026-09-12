@@ -341,7 +341,10 @@ public sealed class LegendFounderAiConversationService
                 LegendConnectTelemetry.NormalizeDiagnosticReason(sourceLanguage.Reason), providerPolicy.DiagnosticMode);
             if (!sourceLanguage.Succeeded)
             {
-                if (IsTeacherMode(mode) && !sourceLanguage.IsTransientIdentificationOutage)
+                if (sourceLanguage.Outcome == FounderAiSourceLanguageOutcome.InvalidDeclaration ||
+                    (!string.IsNullOrWhiteSpace(request.SourceLanguageCode) &&
+                     sourceLanguage.Outcome == FounderAiSourceLanguageOutcome.UnsupportedLanguage) ||
+                    (IsTeacherMode(mode) && !sourceLanguage.IsTransientIdentificationOutage))
                 {
                     return WithResearchEvidence(LegendFounderAiChatResponse.ModeFailure(
                         mode,
@@ -859,6 +862,7 @@ public sealed class LegendFounderAiConversationService
             string? learningState = null;
             var executedToolOutputs = new Dictionary<string, string>(StringComparer.Ordinal);
             var cachedReadOnlyIdentities = new HashSet<string>(StringComparer.Ordinal);
+            var governedProofIsCurrent = nativeInference is { Supported: true };
             var toolCallCount = 0;
             var toolPlanningExhausted = false;
             var escalationRequested = false;
@@ -1193,6 +1197,14 @@ public sealed class LegendFounderAiConversationService
                         ModelVersion: usingExternalAnswering ? null : localModelSelection?.ModelVersion,
                         ModelTrainingRunId: usingExternalAnswering ? null : localModelSelection?.ModelTrainingRunId,
                         ModelProvenance: usingExternalAnswering ? null : localModelSelection?.ModelProvenance,
+                        // These receipts belong to this request's supported
+                        // governed executor result supplied as evidence. They
+                        // do not certify the model's free-form wording, and a
+                        // research or teacher answer cannot inherit them.
+                        ScheduleCertificates: governedProofIsCurrent && !usingExternalAnswering && !researchAttempted && nativeInference is { Supported: true }
+                            ? nativeInference.ScheduleCertificates : null,
+                        ReasoningTransitionPath: governedProofIsCurrent && !usingExternalAnswering && !researchAttempted && nativeInference is { Supported: true }
+                            ? nativeInference.ReasoningTransitionPath : null,
                         FoundationModel: executedFoundationModel,
                         FoundationHosting: usingExternalAnswering ? "ExternalHosted" : "LegendControlled",
                         ExternalAnsweringUsed: usingExternalAnswering,
@@ -1432,6 +1444,9 @@ public sealed class LegendFounderAiConversationService
                             executedToolOutputs.Remove(readIdentity);
                         cachedReadOnlyIdentities.Clear();
                         successfulGovernedReads.Clear();
+                        // Earlier executor proof remains recorded evidence,
+                        // but cannot certify current state after a mutation.
+                        governedProofIsCurrent = false;
                         governedInspectionCompleted = !requiresMandatoryGovernedInspection;
                     }
 
@@ -3458,6 +3473,8 @@ If the Founder explicitly asks you to teach or train LEGEND:
                 nativeInference.ReasonCode,
                 nativeInference.ContentBindingProvenance,
                 nativeInference.ReasoningTransitionPath,
+                nativeInference.ScheduleCertificates,
+                certificateScope = "Certificates apply only to the governed executor result in Answer. They do not certify generated wording or additional claims.",
                 instructionAuthority = false
             }, JsonOptions);
         }

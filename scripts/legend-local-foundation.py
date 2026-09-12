@@ -929,7 +929,7 @@ def main() -> None:
         parser.error("The pinned serving configuration is invalid")
     if not 1 <= args.max_training_iterations <= 2000 or not 30 <= args.max_training_seconds <= 3600:
         parser.error("Training limits are outside the bounded remote job contract")
-    api_key = os.environ.get("LEGEND_LOCAL_FOUNDATION_KEY", "")
+    api_key = os.environ.get("LEGEND_CONTROLLED_FOUNDATION_KEY", "")
     if not api_key:
         parser.error("The remote worker requires server-side authentication even on loopback")
     engine = VllmEngine(args)
