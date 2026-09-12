@@ -10,8 +10,8 @@
         <div><span class="dashboard-section-kicker">Translation management</span><h2 class="dashboard-section-title" id="account-usage-title">Translation allowances</h2></div>
         <partial name="_CopyButton" model="@("client-translation-usage")" />
     </div>
-    <p class="dashboard-section-copy">Manage global translation limits and individual allowances on the dedicated Founder page.</p>
-    <a asp-action="TranslationLimits" class="dashboard-command-action btn-carrier-settings">Manage translation limits</a>
+    <p class="dashboard-section-copy">Manage global translation limits and individual allowances inside Legend® Connect.</p>
+    <button type="button" class="dashboard-command-action btn-carrier-settings" data-bs-toggle="modal" data-bs-target="#translationLimitsModal">Manage translation limits</button>
 
     <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--three" aria-label="Client translation account monitoring">
         <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(accountScale.HighConsumptionAccountCount)" data-legend-live-card="high-consumption-accounts"><span class="dashboard-stat-label">High consumption accounts</span><span class="dashboard-stat-value" data-legend-live-value="high-consumption-accounts">@accountScale.HighConsumptionAccountCount.ToString("N0")</span></div>

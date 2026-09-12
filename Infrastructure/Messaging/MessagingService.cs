@@ -30,6 +30,7 @@ internal sealed partial class MessagingService : IMessagingService
     private const int MaximumMeetingCustomDescriptionLength = 240;
     private const int MaximumPinnedConversations = 6;
 
+    private readonly Microsoft.Extensions.Configuration.IConfiguration? _callConfiguration;
     private readonly MasterAppDbContext _db;
     private readonly ILogger<MessagingService> _logger;
     private readonly ICommunityTextModerationService _moderation;
@@ -62,9 +63,11 @@ internal sealed partial class MessagingService : IMessagingService
         ITranslationSystemUsageRecorder? translationSystemUsage = null,
         IApplicationLocalizationService? applicationLocalization = null,
         IMessagingRealtimePublisher? realtime = null,
-        Domain.Social.ISocialFeedService? social = null)
+        Domain.Social.ISocialFeedService? social = null,
+        Microsoft.Extensions.Configuration.IConfiguration? callConfiguration = null)
     {
         _db = db;
+        _callConfiguration = callConfiguration;
         _social = social;
         _realtime = realtime;
         _logger = logger;

@@ -22,6 +22,18 @@ public sealed class LegendConnectController : Controller
         _logger = logger;
     }
 
+    [HttpGet]
+    [Route("founder/legend-connect/relay")]
+    public async Task<IActionResult> GetCallRelay([FromServices] FounderCallRelayService relay, CancellationToken cancellationToken) =>
+        Ok(await relay.GetAsync(cancellationToken));
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/relay")]
+    public async Task<IActionResult> ChangeCallRelay([FromServices] FounderCallRelayService relay,
+        [FromForm] string? action, [FromForm] bool confirmed, CancellationToken cancellationToken) =>
+        Ok(await relay.ChangeAsync(action, confirmed, cancellationToken));
+
     [NonAction]
     public Task<IActionResult> Index(
         string? language,
@@ -57,7 +69,13 @@ public sealed class LegendConnectController : Controller
     [Route("founder/translation-limits")]
     public async Task<IActionResult> TranslationLimits([FromQuery] string? search, CancellationToken cancellationToken)
     {
-        try { return View(await _service.GetTranslationLimitsAsync(User, search, cancellationToken)); }
+        try
+        {
+            var model = await _service.GetTranslationLimitsAsync(User, search, cancellationToken);
+            if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+                return PartialView("TranslationLimits", model);
+            return RedirectToAction(nameof(Index), new { panel = "translation-limits", account = search });
+        }
         catch (ForbidResultException) { return Forbid(); }
     }
 

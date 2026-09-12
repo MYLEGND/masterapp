@@ -47,24 +47,35 @@ class LegendRTCPeer(
     private var negotiating = false
     private var connected = false
     private var recovery: Job? = null
+    private var qualityMonitor: Job? = null
+    private var quality = 2
+    private var healthySamples = 0
+    private var qualitySample = 0L
+    private var completedQualitySample = 0L
+    private var screenContentSize: Pair<Int, Int>? = null
+    private var screenGeneration = 0L
     private val candidates = mutableListOf<Pair<Int, IceCandidate>>()
     private val outgoing = mutableListOf<IceCandidate>()
     private val json = Json { ignoreUnknownKeys = true }
     private val network = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
             scope.launch {
+                if (closed) return@launch
+                qualitySample++; healthySamples = 0
                 val next = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
                 if (next != cellular) { cellular = next; configureCapture(); applyBitrates(); if (connected) recover() }
             }
         }
-        override fun onLost(network: Network) { scope.launch { connected = false; recover() } }
+        override fun onLost(network: Network) { scope.launch { if (!closed) { connected = false; recover() } } }
     }
     init {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(app).createInitializationOptions())
         factory = PeerConnectionFactory.builder()
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext)).createPeerConnectionFactory()
-        val configuration = PeerConnection.RTCConfiguration(policy.stunUrls.map { PeerConnection.IceServer.builder(it).createIceServer() }).apply {
+        val servers = policy.stunUrls.map { PeerConnection.IceServer.builder(it).createIceServer() }.toMutableList()
+        policy.relay?.let { relay -> servers.add(PeerConnection.IceServer.builder(relay.urls).setUsername(relay.username).setPassword(relay.credential).createIceServer()) }
+        val configuration = PeerConnection.RTCConfiguration(servers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
@@ -104,6 +115,30 @@ class LegendRTCPeer(
             configureCapture()
         }
         applyBitrates()
+        policy.adaptation?.let { tuning ->
+            qualityMonitor = scope.launch {
+                while (!closed) {
+                    delay(tuning.sampleSeconds.coerceAtLeast(1) * 1000L)
+                    if (completedQualitySample != qualitySample) healthySamples = 0
+                    val sample = ++qualitySample
+                    if (connected) peer.getStats { report ->
+                        val selected = report.statsMap.values.firstOrNull { it.type == "transport" && it.members["selectedCandidatePairId"] != null }?.members?.get("selectedCandidatePairId") as? String
+                        val pair = selected?.let { report.statsMap[it] }
+                        val bandwidth = (pair?.members?.get("availableOutgoingBitrate") as? Number)?.toDouble()
+                        val latency = (pair?.members?.get("currentRoundTripTime") as? Number)?.toDouble()
+                        scope.launch sampleResult@{
+                            if (closed || !connected || sample != qualitySample) return@sampleResult
+                            completedQualitySample = sample
+                            val target = tuning.targetQuality(bandwidth, latency)
+                            if (target == null) { healthySamples = 0; return@sampleResult }
+                            if (target < quality) { quality = target; healthySamples = 0; configureCapture(); applyBitrates() }
+                            else if (target > quality) { healthySamples++; if (healthySamples >= tuning.recoverySamples) { quality++; healthySamples = 0; configureCapture(); applyBitrates() } }
+                            else healthySamples = 0
+                        }
+                    }
+                }
+            }
+        }
         connectivity.registerDefaultNetworkCallback(network)
     }
     suspend fun offer(restart: Boolean = false) {
@@ -145,6 +180,7 @@ class LegendRTCPeer(
     }
     fun recover() {
         if (closed || recovery != null) return
+        qualitySample++; healthySamples = 0
         state("Reconnecting")
         recovery = scope.launch {
             repeat(policy.recoveryAttempts) { attempt ->
@@ -163,17 +199,19 @@ class LegendRTCPeer(
     fun startScreenSharing(permission: android.content.Intent) {
         check(!closed && video && screenCapturer == null)
         val source = requireNotNull(videoSource)
+        val generation = ++screenGeneration
         cameraWasEnabled = localVideo?.enabled() ?: true
         localVideo?.setEnabled(true)
         val screen = ScreenCapturerAndroid(permission, object : android.media.projection.MediaProjection.Callback() {
-            override fun onStop() { scope.launch { stopScreenSharing() } }
+            override fun onStop() { scope.launch { if (generation == screenGeneration) stopScreenSharing() } }
             override fun onCapturedContentResize(width: Int, height: Int) {
                 scope.launch {
-                    if (width > 0 && height > 0) {
+                    if (!closed && generation == screenGeneration && width > 0 && height > 0) {
+                        screenContentSize = width to height
                         val size = screenSize(width, height)
                         if (size != screenDimensions && screenCapturer != null) {
                             screenDimensions = size
-                            screenCapturer?.changeCaptureFormat(size.first, size.second, 15)
+                            screenCapturer?.changeCaptureFormat(size.first, size.second, minOf(15, captureLimits.third))
                         }
                     }
                 }
@@ -185,20 +223,24 @@ class LegendRTCPeer(
             screenCapturer = screen
             screen.initialize(screenHelper, app, source.capturerObserver)
             val display = app.resources.displayMetrics
+            screenContentSize = display.widthPixels to display.heightPixels
             val size = screenSize(display.widthPixels, display.heightPixels)
             screenDimensions = size
-            screen.startCapture(size.first, size.second, 15)
+            screen.startCapture(size.first, size.second, minOf(15, captureLimits.third))
         } catch (error: Exception) { stopScreenSharing(); throw error }
     }
     private fun screenSize(width: Int, height: Int): Pair<Int, Int> {
-        val maxEdge = if (cellular) maxOf(policy.cellularWidth, policy.cellularHeight) else maxOf(policy.wifiWidth, policy.wifiHeight)
+        val limits = captureLimits
+        val maxEdge = maxOf(limits.first, limits.second)
         val scale = minOf(1.0, maxEdge.toDouble() / maxOf(width, height))
         return ((width * scale).toInt() / 2 * 2).coerceAtLeast(2) to ((height * scale).toInt() / 2 * 2).coerceAtLeast(2)
     }
     fun stopScreenSharing() {
         val screen = screenCapturer ?: return
         screenCapturer = null
+        screenGeneration++
         screenDimensions = null
+        screenContentSize = null
         localVideo?.setEnabled(cameraWasEnabled)
         runCatching { screen.stopCapture() }; screen.dispose()
         screenHelper?.dispose(); screenHelper = null
@@ -206,18 +248,32 @@ class LegendRTCPeer(
         onScreenSharingEnded?.invoke()
     }
     fun flipCamera() { capturer?.switchCamera(null) }
+    private val captureLimits: Triple<Int, Int, Int> get() {
+        val tuning = policy.adaptation
+        val width = if (tuning != null && quality == 0) tuning.lowWidth else if (tuning != null && quality == 1) tuning.mediumWidth else if (cellular) policy.cellularWidth else policy.wifiWidth
+        val height = if (tuning != null && quality == 0) tuning.lowHeight else if (tuning != null && quality == 1) tuning.mediumHeight else if (cellular) policy.cellularHeight else policy.wifiHeight
+        val fps = if (tuning != null && quality == 0) tuning.lowFps else if (tuning != null && quality == 1) tuning.mediumFps else if (cellular) policy.cellularFps else policy.wifiFps
+        return Triple(minOf(width, if (cellular) policy.cellularWidth else policy.wifiWidth), minOf(height, if (cellular) policy.cellularHeight else policy.wifiHeight), minOf(fps, if (cellular) policy.cellularFps else policy.wifiFps))
+    }
     private fun configureCapture() {
-        if (closed || screenCapturer != null || background || !video || localVideo?.enabled() != true) return
-        val width = if (cellular) policy.cellularWidth else policy.wifiWidth
-        val height = if (cellular) policy.cellularHeight else policy.wifiHeight
-        val fps = if (cellular) policy.cellularFps else policy.wifiFps
+        if (closed) return
+        if (screenCapturer != null) {
+            screenContentSize?.let { (width, height) ->
+                val size = screenSize(width, height)
+                screenDimensions = size
+                screenCapturer?.changeCaptureFormat(size.first, size.second, minOf(15, captureLimits.third))
+            }
+            return
+        }
+        if (background || !video || localVideo?.enabled() != true) return
+        val (width, height, fps) = captureLimits
         if (captureStarted) capturer?.changeCaptureFormat(width, height, fps)
         else { capturer?.startCapture(width, height, fps); captureStarted = capturer != null }
     }
     private fun applyBitrates() {
         peer.senders.forEach { sender ->
             val parameters = sender.parameters
-            parameters.encodings.forEach { it.maxBitrateBps = if (sender.track()?.kind() == "audio") policy.audioBitrate else policy.videoBitrate }
+            parameters.encodings.forEach { it.bitratePriority = if (sender.track()?.kind() == "audio") policy.adaptation?.audioPriority ?: 1.0 else 1.0; it.maxBitrateBps = if (sender.track()?.kind() == "audio") policy.audioBitrate else when (quality) { 0 -> policy.adaptation?.lowBitrate ?: policy.videoBitrate; 1 -> policy.adaptation?.mediumBitrate ?: policy.videoBitrate; else -> policy.videoBitrate } }
             sender.parameters = parameters
         }
     }
@@ -246,7 +302,8 @@ class LegendRTCPeer(
     }
     fun close() {
         if (closed) return
-        closed = true; recovery?.cancel(); recovery = null
+        closed = true
+        qualityMonitor?.cancel(); qualityMonitor = null; recovery?.cancel(); recovery = null
         stopScreenSharing()
         runCatching { connectivity.unregisterNetworkCallback(network) }
         audioTrack.setEnabled(false); localVideo?.setEnabled(false)

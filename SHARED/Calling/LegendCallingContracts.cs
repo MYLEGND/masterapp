@@ -10,7 +10,27 @@ public sealed record LegendCallPolicy(
     string[] StunUrls, int WifiWidth = 1280, int WifiHeight = 720, int WifiFps = 30,
     int CellularWidth = 640, int CellularHeight = 480, int CellularFps = 24,
     int VideoBitrate = 1_000_000, int AudioBitrate = 64_000,
-    int RingSeconds = 45, int ConnectSeconds = 20, int RecoveryAttempts = 3);
+    int RingSeconds = 45, int ConnectSeconds = 20, int RecoveryAttempts = 3, LegendCallAdaptationPolicy? Adaptation = null, LegendCallRelay? Relay = null);
+
+public sealed record LegendCallRelay(string[] Urls, string Username, string Credential, DateTime ExpiresUtc)
+{
+    public static bool IsConfigurationValid(string[] urls, string? secret) =>
+        urls.Length > 0 && !string.IsNullOrWhiteSpace(secret) && secret.Length >= 32 && urls.All(IsEndpointValid);
+
+    private static bool IsEndpointValid(string value)
+    {
+        var colon = value.IndexOf(':');
+        if (colon < 0 || value[..colon].ToLowerInvariant() is not ("turn" or "turns") || value.Any(char.IsWhiteSpace)) return false;
+        if (!Uri.TryCreate("https://" + value[(colon + 1)..], UriKind.Absolute, out var uri)) return false;
+        return uri.Host.Length > 0 && uri.UserInfo.Length == 0 && uri.AbsolutePath == "/" && uri.Fragment.Length == 0 &&
+            uri.Query is "" or "?transport=udp" or "?transport=tcp";
+    }
+}
+
+public sealed record LegendCallAdaptationPolicy(int SampleSeconds = 3, int RecoverySamples = 4,
+    int LowBandwidth = 350_000, int HighBandwidth = 900_000, double HighLatencySeconds = 0.6,
+    int LowWidth = 320, int LowHeight = 240, int LowFps = 12, int LowBitrate = 180_000,
+    int MediumWidth = 640, int MediumHeight = 480, int MediumFps = 18, int MediumBitrate = 450_000, double AudioPriority = 4);
 
 public sealed record LegendCallSnapshot(
     Guid Id, Guid ConversationId, string CallerUserId, string CallerType,

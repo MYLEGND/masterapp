@@ -15,6 +15,7 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
 {
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _configuration;
+    private bool _baselineEnsured;
 
     public LegendLanguageRegistry(MasterAppDbContext db, IConfiguration configuration)
     {
@@ -190,6 +191,8 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
 
     private async Task EnsureBaselineAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_baselineEnsured) return;
         // Runtime is intentionally idempotent. Migrations seed this data for
         // production; this provisioner keeps isolated test/dev databases and a
         // newly initialized deployment on the same authority.
@@ -222,12 +225,16 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
             })
             .ToArray();
         if (additions.Length == 0)
+        {
+            _baselineEnsured = true;
             return;
+        }
 
         _db.Set<LegendLanguageDefinition>().AddRange(additions);
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
+            _baselineEnsured = true;
         }
         catch (DbUpdateException)
         {

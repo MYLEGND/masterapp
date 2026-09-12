@@ -34,10 +34,14 @@
 
                 <span class="lc-live-badge">
                     <span class="lc-live-dot"></span>
-                    Live intelligence
+                    Usage refreshes every 30s
                 </span>
             </div>
 
+
+        </div>
+
+        <div class="lc-hero-controls">
             <form method="get"
                   asp-action="Index"
                   class="lc-language-selector">
@@ -54,8 +58,8 @@
                     </select>
                 </label>
             </form>
+            <button type="button" class="lc-button lc-button-primary lc-limits-launch" data-bs-toggle="modal" data-bs-target="#translationLimitsModal"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v7m0 4v7 M12 3v3m0 4v11 M20 3v11m0 4v3 M1 10h6v4H1z M9 6h6v4H9z M17 14h6v4h-6z" /></svg> Translation limits &amp; relay</button>
         </div>
-
         @if (selected is not null)
         {
             <div class="lc-hero-metrics">
@@ -101,20 +105,18 @@
         </section>
     }
 
-    <details class="lc-panel lc-panel-collapse lc-remediation-authority">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcSection0"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4Z M8 12l3 3 5-6" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker">FOUNDER-GOVERNED ENGINEERING</span>
-                <strong role="heading" aria-level="2">GitHub Remediation Authority</strong>
-                <span class="lc-panel-summary-description">
-                    One bounded authority for repair preparation and Founder-approved release.
-                    It never accepts a personal access token, exposes a private key, or grants a raw production console.
-                </span>
+                <strong>GitHub Remediation Authority</strong>
             </span>
             <span class="lc-status @(remediation.RepairPreparationReady ? "lc-status-gold" : "lc-status-amber")">
                 @remediation.State
             </span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection0" tabindex="-1" aria-labelledby="lcSection0Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection0Title">GitHub Remediation Authority</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
 
@@ -161,17 +163,20 @@
             </form>
         </div>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
 
-    <details class="lc-panel lc-panel-collapse lc-intelligence-evaluation">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcSection1"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v18h17 M8 16v-5 M13 16V7 M18 16V4" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker">VERSIONED EVALUATION</span>
-                <strong role="heading" aria-level="2">LEGEND® Intelligence Evaluation</strong>
-                <span class="lc-panel-summary-description">Three separate lenses are retained and compared; they are never hidden inside one blended score.</span>
+                <strong>LEGEND® Intelligence Evaluation</strong>
             </span>
             <span class="lc-panel-toggle-label">Evaluation</span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection1" tabindex="-1" aria-labelledby="lcSection1Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection1Title">LEGEND® Intelligence Evaluation</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
             <button type="button" class="dashboard-command-action btn-carrier-settings" data-bs-toggle="modal" data-bs-target="#legendIntelligenceEvaluationModal">
@@ -190,7 +195,9 @@
             <button type="submit" class="dashboard-command-action btn-carrier-settings">Record evidence evaluation snapshot</button>
         </form>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
 
     <div class="modal fade" id="legendIntelligenceEvaluationModal" tabindex="-1" aria-labelledby="legendIntelligenceEvaluationModalTitle" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -239,22 +246,20 @@
         </div>
     </div>
 
-    <details class="lc-panel lc-panel-collapse lc-panel-legend">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-green" data-bs-toggle="modal" data-bs-target="#lcSection2"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12 M9 3v2 M5 5c0 6 3 8 7 10 M13 5c-1 5-4 9-9 11 M14 21l4-10 4 10 M16 17h4" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker">INTERNAL LANGUAGE INTELLIGENCE</span>
-                <strong role="heading" aria-level="2">Legend® Ai Translations</strong>
-                <span class="lc-panel-summary-description">
-                    Measure what LEGEND® resolves, reuses, or composes internally
-                    before Azure Translator is required.
-                </span>
+                <strong>Legend® Ai Translations</strong>
             </span>
 
             <span class="lc-status lc-status-gold"
                   data-live-metrics-status>
                 Loading
             </span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection2" tabindex="-1" aria-labelledby="lcSection2Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection2Title">Legend® Ai Translations</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
 
@@ -358,33 +363,33 @@
             </article>
         </div>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
 
-    <details class="lc-panel lc-panel-collapse lc-panel-azure">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-blue" data-bs-toggle="modal" data-bs-target="#lcSection3"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 17a5 5 0 0 1-1-10 7 7 0 0 1 13 1 4 4 0 0 1 0 8 M8 17l3 3 6-7" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker lc-kicker-azure">AZURE TRANSLATOR</span>
-                <strong role="heading" aria-level="2">Azure Translations</strong>
-                <span class="lc-panel-summary-description">
-                    Track provider consumption and protected capacity separately
-                    from LEGEND® internal translation intelligence.
-                </span>
+                <strong>Azure Translations</strong>
             </span>
 
             <span class="lc-status lc-status-blue"
                   data-azure-status>
                 Loading
             </span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection3" tabindex="-1" aria-labelledby="lcSection3Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection3Title">Azure Translations</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
 
         <div class="lc-metric-grid">
             <article class="lc-metric lc-tone-blue"
                      data-live-metric="azure-characters-used">
-                <span>Azure characters used</span>
+                <span>Recorded Azure characters</span>
                 <strong>—</strong>
-                <small>Total Azure translation consumption</small>
+                <small>Consumption recorded by LEGEND</small>
             </article>
 
             <article class="lc-metric lc-tone-blue"
@@ -447,23 +452,24 @@
             </div>
 
             <div class="lc-capacity-grid">
+                <div><span>Azure-reported month to date</span><strong data-capacity="azure-observed">—</strong></div>
                 <div>
                     <span>Monthly included allowance</span>
                     <strong data-capacity="monthly-limit">—</strong>
                 </div>
 
                 <div>
-                    <span>Used this billing month</span>
+                    <span>Recorded this billing month</span>
                     <strong data-capacity="monthly-consumed">—</strong>
                 </div>
 
                 <div>
-                    <span>Monthly allowance left</span>
+                    <span>Estimated allowance left</span>
                     <strong data-capacity="monthly-remaining">—</strong>
                 </div>
 
                 <div>
-                    <span>Safe acquisition now</span>
+                    <span>Protected acquisition estimate</span>
                     <strong data-capacity="safe">—</strong>
                 </div>
             </div>
@@ -471,22 +477,24 @@
             <p data-azure-detail>
                 Synchronizing Azure Translator capacity.
             </p>
+            <p class="lc-copy" data-azure-observed-through>Awaiting Azure observation.</p>
+            <p class="lc-copy" data-azure-usage-detail>Awaiting current usage evidence.</p>
         </div>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
 
-    <details class="lc-panel lc-panel-collapse">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcSection4"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3h15v18H4z M8 7h7 M8 11h7 M8 15h4" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker">FOUNDER CONTROLS</span>
-                <strong role="heading" aria-level="2">Governed language training</strong>
-                <span class="lc-panel-summary-description">
-                    Submit Founder-approved material through the existing canonical
-                    ingestion authority without creating a parallel learning path.
-                </span>
+                <strong>Governed language training</strong>
             </span>
             <span class="lc-panel-toggle-label">Training</span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection4" tabindex="-1" aria-labelledby="lcSection4Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection4Title">Governed language training</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
 
@@ -637,24 +645,23 @@
             </div>
         </details>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
 
-    <details class="lc-panel lc-panel-collapse">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcSection5"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v7m0 4v7 M12 3v3m0 4v11 M20 3v11m0 4v3 M1 10h6v4H1z M9 6h6v4H9z M17 14h6v4h-6z" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker">PRODUCTION CONTROL</span>
-                <strong role="heading" aria-level="2">Composition boundary</strong>
-                <span class="lc-panel-summary-description">
-                    Change only the established server policy. Curriculum,
-                    contradiction, evidence, quality, and Azure fallback authorities
-                    remain unchanged.
-                </span>
+                <strong>Composition boundary</strong>
             </span>
 
             <span class="lc-status lc-status-gold">
                 @compositionMode
             </span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection5" tabindex="-1" aria-labelledby="lcSection5Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection5Title">Composition boundary</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
 
@@ -677,20 +684,20 @@
             }
         </div>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
 
-    <details class="lc-panel lc-panel-collapse">
-        <summary class="lc-panel-summary">
+    <button type="button" class="lc-section-launch lc-section-gold" data-bs-toggle="modal" data-bs-target="#lcSection6"><svg class="lc-command-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 16l5 5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0" /></svg>
             <span class="lc-panel-summary-copy">
-                <span class="lc-kicker">GOVERNED INSPECTION</span>
-                <strong role="heading" aria-level="2">Explore LEGEND® intelligence</strong>
-                <span class="lc-panel-summary-description">
-                    Detailed datasets remain bounded and load only when you
-                    deliberately open the relevant intelligence domain.
-                </span>
+                <strong>Explore LEGEND® intelligence</strong>
             </span>
             <span class="lc-panel-toggle-label">Inspection</span>
-        </summary>
+        </button>
+    <div class="modal fade lc-section-modal" id="lcSection6" tabindex="-1" aria-labelledby="lcSection6Title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><h2 class="modal-title" id="lcSection6Title">Explore LEGEND® intelligence</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
 
         <div class="lc-panel-body">
 
@@ -746,7 +753,15 @@
             }
         </div>
         </div>
-    </details>
+    </div>
+        </div></div>
+    </div>
+    <div class="modal fade lc-section-modal" id="translationLimitsModal" tabindex="-1" aria-labelledby="translationLimitsTitle" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content lc-evaluation-modal">
+            <div class="modal-header"><div><span class="lc-kicker">FOUNDER CONTROLS</span><h2 class="modal-title" id="translationLimitsTitle">Translation limits &amp; relay</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body" data-translation-limits-body aria-live="polite"><p class="lc-copy">Open to load current allowances.</p></div>
+        </div></div>
+    </div>
 </main>
 
 @section Scripts {

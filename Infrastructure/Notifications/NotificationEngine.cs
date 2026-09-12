@@ -477,7 +477,7 @@ internal sealed class NotificationEngine : INotificationEngine
         CancellationToken cancellationToken = default)
     {
         var recipient = Normalize(actor);
-        var notifications = await _db.MobileActivityNotifications
+        var rows = await _db.MobileActivityNotifications
             .AsNoTracking()
             .Where(notification =>
                 notification.RecipientUserId == recipient.UserId &&
@@ -486,7 +486,7 @@ internal sealed class NotificationEngine : INotificationEngine
             .OrderByDescending(notification => notification.OccurredUtc)
             .ThenByDescending(notification => notification.Id)
             .Take(Math.Clamp(take, 1, 100))
-            .Select(notification => new NotificationLedgerItem(
+            .Select(notification => new { Item = new NotificationLedgerItem(
                 notification.Id,
                 notification.Kind,
                 notification.Title,
@@ -494,13 +494,18 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.ConversationId,
                 notification.OccurredUtc,
                 notification.IsRead,
-                notification.IsCleared))
+                notification.IsCleared), notification.SourceMessageId })
             .ToListAsync(cancellationToken);
 
+        var notifications = rows.Select(row => row.Item).ToList();
+        var messaging = _services?.GetService<IMessagingService>();
+        // The list already read each notice. Avoid a redundant point query for
+        // every row; message presentation still rechecks its own authorization.
         // Activity presentation also runs without a registered push device.
         for (var index = 0; index < notifications.Count; index++)
         {
-            var detail = await PrepareDeliveryPresentationAsync(recipient, notifications[index].Id, cancellationToken);
+            if (rows[index].SourceMessageId is null || messaging is null) continue;
+            var detail = await messaging.PrepareNotificationPresentationAsync(recipient, notifications[index].Id, cancellationToken);
             if (detail is not null)
                 notifications[index] = notifications[index] with { Detail = detail };
         }

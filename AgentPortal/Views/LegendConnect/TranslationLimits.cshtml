@@ -1,14 +1,7 @@
 @using AgentPortal.Models
 @model TranslationLimitsPageVm
-@{ ViewData["Title"] = "Translation Limits"; }
-@section Styles {
-    <link rel="stylesheet" href="~/css/translation-limits.css" asp-append-version="true" />
-}
-<main class="dashboard-page-shell translation-limits">
-    <header class="dashboard-section-head">
-        <div><span class="dashboard-section-kicker">Founder controls</span><h1>Translation Limits</h1><p>One allowance policy for every LEGEND platform.</p></div>
-        <a asp-action="Index" class="dashboard-command-action">Legend® Connect</a>
-    </header>
+<div class="translation-limits">
+    <div class="lc-actions"><span class="lc-copy">Allowances loaded @DateTimeOffset.UtcNow.ToString("u")</span><button type="button" class="lc-button" data-limits-retry>Refresh allowances</button></div>
     @if (TempData["LegendConnectSuccess"] is string success) { <div class="alert alert-success" role="status">@success</div> }
     @if (TempData["LegendConnectError"] is string error) { <div class="alert alert-danger" role="alert">@error</div> }
     <section class="translation-limits-summary" aria-label="Translation policy">
@@ -25,9 +18,24 @@
             <span class="translation-limit-badge">Always active</span>
         </article>
     </section>
+    <section class="lc-relay-card" data-relay-management aria-labelledby="relay-management-title">
+        <span class="lc-kicker">AZURE RELAY · PURPLE</span>
+        <h3 id="relay-management-title">Relay service management</h3>
+        <p data-relay-status role="status">Loading current Azure resource status…</p>
+        <p data-relay-detail></p>
+        <p data-relay-result role="status"></p>
+        <form data-relay-form class="lc-actions">
+            @Html.AntiForgeryToken()
+            <button type="submit" name="action" value="start" class="lc-button lc-button-primary" disabled data-relay-start>Start relay service</button>
+            <button type="submit" name="action" value="stop" class="lc-button" disabled data-relay-stop>Stop relay service</button>
+            <button type="button" class="lc-button" data-relay-refresh>Refresh status</button>
+        </form>
+        <p>Starting incurs Azure compute and bandwidth charges. Stopping interrupts relayed calls; disk and IP charges may continue.</p>
+        <small data-relay-observed></small>
+    </section>
     <section class="dashboard-analytics-panel" aria-labelledby="translation-users-title">
         <div class="dashboard-section-head"><div><h2 id="translation-users-title">Individual allowances</h2><p>Find an account to review usage and adjust its monthly limit.</p></div></div>
-        <form method="get" asp-action="TranslationLimits" class="translation-limit-search" role="search">
+        <form method="get" asp-action="TranslationLimits" class="translation-limit-search" data-translation-limit-search role="search">
             <label class="visually-hidden" for="translation-account-search">Search users</label>
             <input id="translation-account-search" class="form-control" type="search" name="search" value="@Model.Search.Query" placeholder="Search name, email or user ID" maxlength="120" />
             <button type="submit" class="dashboard-command-action btn-carrier-settings">Search</button>
@@ -55,9 +63,9 @@
         @if (Model.Search.Accounts.Count == 0) { <p class="translation-limit-empty">No matching active accounts. Try another name or email.</p> }
         @if (Model.Search.HasMore) { <p>More accounts match. Refine your search to find a specific user.</p> }
     </section>
-</main>
-<div class="modal fade legend-modal" id="globalTranslationLimit" tabindex="-1" aria-labelledby="globalTranslationLimitTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post" asp-action="UpdateGlobalTranslationLimit">
+</div>
+<div class="modal fade lc-section-modal" id="globalTranslationLimit" tabindex="-1" aria-labelledby="globalTranslationLimitTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><form class="modal-content lc-evaluation-modal" method="post" asp-action="UpdateGlobalTranslationLimit">
         <div class="modal-header"><h2 class="modal-title fs-5" id="globalTranslationLimitTitle">Global monthly limit</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
         <div class="modal-body">
             <input type="hidden" name="Version" value="@Model.GlobalLimit.Version" />
@@ -65,7 +73,7 @@
             <input class="form-control" id="globalCharacterAllowance" name="CharacterAllowance" type="number" min="0" step="1" required value="@Model.GlobalLimit.CharacterAllowance" />
             <p class="mt-3">Changes apply across web, iOS and Android. Existing usage is retained. Founder access stays unlimited.</p>
         </div>
-        <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Cancel</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save global limit</button></div>
+        <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Back</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save global limit</button></div>
     </form></div>
 </div>
 @for (var index = 0; index < Model.Search.Accounts.Count; index++)
@@ -74,8 +82,8 @@
     var entitlement = account.Entitlement;
     if (entitlement.EntitlementSource == "FounderIdentity") { continue; }
     var usesGlobal = entitlement.EntitlementSource is "DefaultPolicy" or "GlobalPolicy";
-    <div class="modal fade legend-modal" id="translationAccount@(index)" tabindex="-1" aria-labelledby="translationAccountTitle@(index)" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post" asp-action="UpdateTranslationAccountLimit" data-translation-limit-form>
+    <div class="modal fade lc-section-modal" id="translationAccount@(index)" tabindex="-1" aria-labelledby="translationAccountTitle@(index)" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><form class="modal-content lc-evaluation-modal" method="post" asp-action="UpdateTranslationAccountLimit" data-translation-limit-form>
             <div class="modal-header"><h2 class="modal-title fs-5" id="translationAccountTitle@(index)">@account.DisplayName</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body">
                 <input type="hidden" name="TargetUserId" value="@account.Account.UserId" /><input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" /><input type="hidden" name="ReturnAccountSearch" value="@Model.Search.Query" />
@@ -94,8 +102,7 @@
                 </div>
                 <p class="mt-3">Changing a limit does not reset usage. Use the global default to follow future global changes.</p>
             </div>
-            <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Cancel</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save allowance</button></div>
+            <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Back</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save allowance</button></div>
         </form></div>
     </div>
 }
-@section Scripts { <script src="~/js/translation-limits.js" asp-append-version="true"></script> }

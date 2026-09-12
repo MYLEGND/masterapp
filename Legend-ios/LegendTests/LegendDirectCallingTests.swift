@@ -4,6 +4,23 @@ import AVFoundation
 
 @MainActor
 final class LegendDirectCallingTests: XCTestCase {
+    func testAdaptiveQualityRecognizesWeakWifiAndDoesNotRecoverWithoutEvidence() {
+        let tuning = LegendCallAdaptationPolicy(sampleSeconds: 3, recoverySamples: 4,
+            lowBandwidth: 350_000, highBandwidth: 900_000, highLatencySeconds: 0.6, audioPriority: 4,
+            lowWidth: 320, lowHeight: 180, lowFps: 15, lowBitrate: 250_000,
+            mediumWidth: 640, mediumHeight: 360, mediumFps: 24, mediumBitrate: 600_000)
+        XCTAssertEqual(tuning.targetQuality(bandwidth: 0, latency: nil), 0)
+        XCTAssertEqual(tuning.targetQuality(bandwidth: 349_999, latency: 0.1), 0)
+        XCTAssertEqual(tuning.targetQuality(bandwidth: 350_000, latency: 0.1), 1)
+        XCTAssertEqual(tuning.targetQuality(bandwidth: 900_000, latency: 0.1), 2)
+        XCTAssertEqual(tuning.targetQuality(bandwidth: 2_000_000, latency: 0.7), 0)
+        XCTAssertEqual(tuning.targetQuality(bandwidth: nil, latency: 0.7), 0)
+        XCTAssertNil(tuning.targetQuality(bandwidth: nil, latency: 0.1))
+        XCTAssertNil(tuning.targetQuality(bandwidth: .nan, latency: nil))
+        XCTAssertNil(tuning.targetQuality(bandwidth: .infinity, latency: nil))
+        XCTAssertNil(tuning.targetQuality(bandwidth: -1, latency: nil))
+    }
+
     func testOnlyConfirmedReceiptShowsRingingAndStaleEventsCannotUndoIt() async throws {
         let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
             apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,

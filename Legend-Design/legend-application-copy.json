@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-70db8bde5ea25d46",
+  "catalogVersion": "application-copy-v1-3ab0fb3e7d884d85",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -6498,6 +6498,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c0d900050ad8230f3ffdcdd4",
+      "source": "AZURE RELAY · PURPLE",
+      "context": "visual interface copy",
+      "sourceRevision": "fa66792336b1822b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7150bcf4e8813e2d2d571c4d",
       "source": "AZURE TRANSLATOR",
       "context": "visual interface copy",
@@ -10392,10 +10403,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.19f56c728f6018928fa5745a",
+      "source": "Awaiting Azure observation.",
+      "context": "visual interface copy",
+      "sourceRevision": "2d05dd30168eb7c8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7d619ad6f723e0cb359e424b",
       "source": "Awaiting corpus processing",
       "context": "visual interface copy",
       "sourceRevision": "bbb63953168853fb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.8f326c6568eceec22cdd606d",
+      "source": "Awaiting current usage evidence.",
+      "context": "visual interface copy",
+      "sourceRevision": "ca005d793726f584",
       "placeholders": [
 
       ],
@@ -10495,6 +10528,17 @@
       "source": "Azure translation operations recorded",
       "context": "visual interface copy",
       "sourceRevision": "a5587fbb1e76164d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.456ea05667566b86c4f28067",
+      "source": "Azure-reported month to date",
+      "context": "visual interface copy",
+      "sourceRevision": "97973151ab974d81",
       "placeholders": [
 
       ],
@@ -15600,6 +15644,17 @@
       "source": "Conservative",
       "context": "visual interface copy",
       "sourceRevision": "75e1783e4e517e54",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.776fa6072f0db082ec3ed184",
+      "source": "Consumption recorded by LEGEND",
+      "context": "visual interface copy",
+      "sourceRevision": "8d7c026d07ae3c0f",
       "placeholders": [
 
       ],
@@ -20946,6 +21001,17 @@
       "source": "Estate Docs —",
       "context": "visual interface copy",
       "sourceRevision": "2380d5daed29c015",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a65f8107c6465b14f7dc0763",
+      "source": "Estimated allowance left",
+      "context": "visual interface copy",
+      "sourceRevision": "dadc0be9ecb65bf4",
       "placeholders": [
 
       ],
@@ -29768,6 +29834,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.4067cfa39cb5394f4cceb9b7",
+      "source": "Loading current Azure resource status…",
+      "context": "visual interface copy",
+      "sourceRevision": "55e43d1f7ce928af",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.32b4656bfdc1aad7c9fe5a2d",
       "source": "Loading current health checks…",
       "context": "visual interface copy",
@@ -30553,6 +30630,17 @@
       "source": "Manage clients, leads, operations, and your professional workspace.",
       "context": "visual interface copy",
       "sourceRevision": "0e53a6d3105c5b38",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b9f0b7b4443e398935da5069",
+      "source": "Manage global translation limits and individual allowances inside Legend® Connect.",
+      "context": "visual interface copy",
+      "sourceRevision": "9f88b6182a762d68",
       "placeholders": [
 
       ],
@@ -35665,6 +35753,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0c5e8c3d8ecd711f368be9ad",
+      "source": "Open to load current allowances.",
+      "context": "visual interface copy",
+      "sourceRevision": "f2b68bd962da4678",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.cc0422c31998e2d896909269",
       "source": "Open your core work apps from one premium workspace without leaving the portal flow.",
       "context": "visual interface copy",
@@ -39042,6 +39141,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.904faac3b6cf1075f1231922",
+      "source": "Protected acquisition estimate",
+      "context": "visual interface copy",
+      "sourceRevision": "63edabeb9754a789",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5385277aca7c73af8d2f2284",
       "source": "Protected production branch",
       "context": "visual interface copy",
@@ -40560,6 +40670,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.b5c311a88ff3d665599d40ae",
+      "source": "Recorded Azure characters",
+      "context": "visual interface copy",
+      "sourceRevision": "0d7c3594a6ba2965",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c448926249d4c46389fb82b8",
+      "source": "Recorded this billing month",
+      "context": "visual interface copy",
+      "sourceRevision": "69ef49f502884ec4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7a05ae84484cf13ee7599933",
       "source": "Recording · tap to finish",
       "context": "visual interface copy",
@@ -40685,6 +40817,17 @@
       "source": "Refresh",
       "context": "visual interface copy",
       "sourceRevision": "0e91610117029a62",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.3911f826b2277af42a289cba",
+      "source": "Refresh allowances",
+      "context": "visual interface copy",
+      "sourceRevision": "6b31b7c4a8655274",
       "placeholders": [
 
       ],
@@ -40916,6 +41059,17 @@
       "source": "Relationship Status",
       "context": "visual interface copy",
       "sourceRevision": "36942d4b3ba915f3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b31d6698f3abffc2eb189a61",
+      "source": "Relay service management",
+      "context": "visual interface copy",
+      "sourceRevision": "d1721de572faf1a9",
       "placeholders": [
 
       ],
@@ -46908,6 +47062,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c048cffd8a64b68dfc42cf94",
+      "source": "Start relay service",
+      "context": "visual interface copy",
+      "sourceRevision": "8b9b5be0590d02fd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.a192b85254e1e123d494d45e",
       "source": "Start the conversation",
       "context": "visual interface copy",
@@ -46967,6 +47132,17 @@
       "source": "Starting Dollar Amount",
       "context": "visual interface copy",
       "sourceRevision": "31ba4fbe78df8445",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.44950688f3490b5af7e47151",
+      "source": "Starting incurs Azure compute and bandwidth charges. Stopping interrupts relayed calls; disk and IP charges may continue.",
+      "context": "visual interface copy",
+      "sourceRevision": "a731d89f22cdbd0e",
       "placeholders": [
 
       ],
@@ -47198,6 +47374,17 @@
       "source": "Stocks, Bonds or Other",
       "context": "visual interface copy",
       "sourceRevision": "faee1a178ee5e121",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.df01f366b87386cb29ab4be5",
+      "source": "Stop relay service",
+      "context": "visual interface copy",
+      "sourceRevision": "e9628b169b244e8c",
       "placeholders": [
 
       ],
@@ -51210,6 +51397,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.de7df91036a6b347fb65d1aa",
+      "source": "Translation limits & relay",
+      "context": "visual interface copy",
+      "sourceRevision": "40916e8c375413a2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b86c9e9fc2d91a825073d814",
       "source": "Translation management",
       "context": "visual interface copy",
@@ -52314,6 +52512,17 @@
       "source": "Usage",
       "context": "visual interface copy",
       "sourceRevision": "8d59829c1e15afe1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c39a8dd20e5fe9c88ab0015e",
+      "source": "Usage refreshes every 30s",
+      "context": "visual interface copy",
+      "sourceRevision": "13e540484906f560",
       "placeholders": [
 
       ],
