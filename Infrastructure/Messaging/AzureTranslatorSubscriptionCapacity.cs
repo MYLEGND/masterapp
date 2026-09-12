@@ -41,6 +41,9 @@ internal sealed record AzureTranslatorSubscriptionCapacity(
 {
     public long? MonthlyAzureReportedCharacters { get; init; }
     public DateTime? AzureUsageRetrievedUtc { get; init; }
+    // Requested query end, used only as a ledger accounting anchor. Azure
+    // telemetry is delayed and is not guaranteed complete through this instant.
+    public DateTime? AzureUsageQueryEndUtc { get; init; }
     public string? UsageDetail { get; init; }
 
     public const int CapacityWindowMinutes = 60;
@@ -243,8 +246,9 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
             {
                 MonthlyAzureReportedCharacters = total,
                 AzureUsageRetrievedUtc = total.HasValue ? _timeProvider.GetUtcNow().UtcDateTime : null,
+                AzureUsageQueryEndUtc = total.HasValue ? now : null,
                 UsageDetail = total.HasValue
-                    ? "Azure Monitor reports delayed month-to-date text-character telemetry separately from live Legend reservations. It is not an invoice balance. Monthly protection uses the larger of Azure reported consumption and completed Legend usage, plus in-flight reservations; overlapping observations may conservatively reduce availability. Hourly protection uses the rolling Legend ledger. Delayed or external usage may still differ."
+                    ? "Azure Monitor reports delayed month-to-date text-character telemetry separately from live Legend reservations. It is not an invoice balance. Monthly protection uses the larger of completed Legend usage and Azure reported consumption plus Legend completions after the Azure query end, then adds in-flight reservations. The query end is an accounting anchor, not verified telemetry coverage; overlap can conservatively reduce availability and pre-anchor reporting lag remains unknown. Hourly protection uses the rolling Legend ledger. Delayed or external usage may still differ."
                     : "Azure Monitor returned no character observations. Usage is unknown, not zero; Legend ledger remaining capacity is an estimate."
             };
         }

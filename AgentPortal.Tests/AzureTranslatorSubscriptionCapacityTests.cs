@@ -49,17 +49,24 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.True(snapshot.RemainingIsEstimate);
         Assert.NotNull(snapshot.AzureUsageRetrievedUtc);
         Assert.Equal(2, handler.SendAttempts);
-        Assert.Equal(reported, snapshot.MonthlyCapacityAccountedCharacters);
+        Assert.Equal(reported + 12, snapshot.MonthlyCapacityAccountedCharacters);
         if (sku == "F0")
         {
-            Assert.Equal(67_234L, snapshot.MonthlyRemainingCharacters);
+            Assert.Equal(67_222L, snapshot.MonthlyRemainingCharacters);
             Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
             Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap, "protected-corpus"));
             Assert.Null(await authority.TryReserveAsync("AzureTranslator", 67_235, TranslationCapacityPurpose.Live, "observed-overage"));
-            var remainingReservation = await authority.TryReserveAsync("AzureTranslator", 67_234, TranslationCapacityPurpose.Live, "observed-live");
+            var remainingReservation = await authority.TryReserveAsync("AzureTranslator", 67_222, TranslationCapacityPurpose.Live, "observed-live");
             Assert.NotNull(remainingReservation);
             Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "observed-reserved-overage"));
             Assert.Equal(0L, (await authority.GetSnapshotAsync("AzureTranslator")).MonthlyRemainingCharacters);
+            await authority.CompleteAsync(remainingReservation!, providerMayHaveConsumed: true);
+            var afterCompletion = await authority.GetSnapshotAsync("AzureTranslator");
+            Assert.Equal(0L, afterCompletion.MonthlyRemainingCharacters);
+            Assert.Equal(2_000_000L, afterCompletion.MonthlyCapacityAccountedCharacters);
+            Assert.Equal(0L, afterCompletion.MonthlyReservedCharacters);
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "completed-does-not-refill"));
+            Assert.Equal(2, handler.SendAttempts);
         }
     }
 
