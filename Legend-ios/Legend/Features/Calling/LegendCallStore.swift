@@ -41,6 +41,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     func handlesSystemCall(_ id: UUID) -> Bool { current?.id == id || pendingOutgoing?.0 == id }
     private var reportedCalls = Set<UUID>()
     private var finishedCalls = Set<UUID>()
+    private var callGeneration: UInt64 = 0
     private var requestingScreenShare = false
     private var stopped = false
     private var shutdownTask: Task<Void, Never>?
@@ -265,8 +266,9 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
 
     private func ensurePeer() async throws {
         guard peer == nil, let call = current else { return }
+        let generation = callGeneration
         if policy == nil { _ = try await send(LegendCallCommand(action: "get", deviceId: deviceId, callId: call.id)) }
-        guard let policy, current?.id == call.id else { throw CancellationError() }
+        guard let policy, isCurrentCall(call.id, generation: generation) else { throw CancellationError() }
         guard peer == nil else { return }
         ringback?.stop(); ringback = nil
         status = "Connecting"
@@ -364,11 +366,13 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     }
     private func finish(_ id: UUID) async {
         if pendingOutgoing?.0 == id { end(); return }
+        guard current?.id == id else { return }
         let decline = current?.status == "ringing" && !isCaller
         clear()
         _ = try? await send(LegendCallCommand(action: decline ? "decline" : "end", deviceId: deviceId, callId: id))
     }
     private func clear() {
+        callGeneration &+= 1
         if let pendingOutgoing { finishedCalls.insert(pendingOutgoing.0); LegendCallSystem.shared.finished(pendingOutgoing.0) }
         if let current { finishedCalls.insert(current.id); LegendCallSystem.shared.finished(current.id) }
         ringback?.stop(); ringback = nil
@@ -448,16 +452,48 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
             }
         }
     }
+    private func isCurrentCall(_ id: UUID, generation: UInt64) -> Bool {
+        !stopped && callGeneration == generation && current?.id == id && !finishedCalls.contains(id)
+    }
+
+    // Apply only an answer belonging to the still-live call across the RPC suspension.
+    func completeAnswer(callId: UUID, request: () async throws -> LegendCallResult) async throws {
+        let generation = callGeneration
+        guard isCurrentCall(callId, generation: generation) else { throw CancellationError() }
+        let result = try await request()
+        guard isCurrentCall(callId, generation: generation) else {
+            if result.succeeded, result.call?.id == callId, result.call?.terminal == false {
+                // The earlier decline may have lost the race to the server accepting.
+                // Retire that call on this account's existing connection only.
+                _ = try? await transport.call(LegendCallCommand(action: "end", deviceId: deviceId, callId: callId), existingConnectionOnly: true)
+            }
+            throw CancellationError()
+        }
+        guard result.succeeded, let accepted = result.call, accepted.id == callId, !accepted.terminal else {
+            throw LegendCallingError.unavailable(result.error ?? "The call could not be answered.")
+        }
+        // A realtime event can advance the call while the answer response is in flight.
+        if current?.status != "active" { current = accepted }
+    }
+
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         Task { @MainActor in
             guard let call = self.current, call.id == action.callUUID else { action.fail(); return }
+            let generation = self.callGeneration
             do {
                 try await self.permissions(video: call.video)
-                guard self.current?.id == call.id else { action.fail(); return }
+                guard self.isCurrentCall(call.id, generation: generation) else { action.fail(); return }
                 try await self.ensurePeer()
-                let result = try await self.send(LegendCallCommand(action: "accept", deviceId: self.deviceId, callId: call.id))
-                self.current = result.call; action.fulfill()
-            } catch { action.fail(); self.fail(error.localizedDescription) }
+                guard self.isCurrentCall(call.id, generation: generation) else { action.fail(); return }
+                try await self.completeAnswer(callId: call.id) {
+                    try await self.send(LegendCallCommand(action: "accept", deviceId: self.deviceId, callId: call.id))
+                }
+                action.fulfill()
+            } catch {
+                action.fail()
+                guard self.isCurrentCall(call.id, generation: generation) else { return }
+                self.fail(error.localizedDescription)
+            }
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {

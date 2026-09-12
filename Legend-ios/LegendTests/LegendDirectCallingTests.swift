@@ -188,6 +188,45 @@ final class LegendDirectCallingTests: XCTestCase {
         XCTAssertNotNil(store.current?.receivedUtc)
     }
 
+    func testDelayedAnswerCannotResurrectEndedCallOrReplaceNewCall() async throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        var call = LegendCallSnapshot(id: UUID(), conversationId: UUID(),
+            callerUserId: "caller", callerType: "Client", calleeUserId: "callee", calleeType: "Agent",
+            callerDeviceId: store.deviceId, calleeDeviceId: nil, callerName: "Caller", calleeName: "Callee",
+            video: false, status: "ringing", createdUtc: Date(), expiresUtc: Date().addingTimeInterval(45), epoch: 0)
+        await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+        let original = call
+        var continuation: CheckedContinuation<LegendCallResult, Never>?
+        let answer = Task { @MainActor in
+            try await store.completeAnswer(callId: original.id) {
+                await withCheckedContinuation { continuation = $0 }
+            }
+        }
+        while continuation == nil { await Task.yield() }
+        call = LegendCallSnapshot(id: call.id, conversationId: call.conversationId,
+            callerUserId: call.callerUserId, callerType: call.callerType,
+            calleeUserId: call.calleeUserId, calleeType: call.calleeType,
+            callerDeviceId: call.callerDeviceId, calleeDeviceId: call.calleeDeviceId,
+            callerName: call.callerName, calleeName: call.calleeName, video: call.video,
+            status: "ended", createdUtc: call.createdUtc, expiresUtc: call.expiresUtc, epoch: call.epoch)
+        await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+        XCTAssertNil(store.current)
+        store.start(conversationId: UUID(), video: false, recipientName: "New recipient")
+        continuation?.resume(returning: LegendCallResult(succeeded: true, error: nil, call: original, activeCalls: nil, policy: nil))
+        do { try await answer.value; XCTFail("An ended call's answer must be rejected") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertNil(store.current)
+        XCTAssertTrue(store.isStarting, "The old answer must not clear the new call")
+        XCTAssertEqual(store.name, "New recipient")
+        await store.receive(LegendCallEvent(call: original, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+        XCTAssertNil(store.current, "Finished call events remain rejected")
+    }
+
     func testCallingSoundsArePackagedAndDecodable() throws {
         for name in ["legend_ringback", "legend_incoming"] {
             let url = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: "wav"))
