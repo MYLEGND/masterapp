@@ -30,6 +30,12 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     private var ringback: AVAudioPlayer?
     private var audioActive = false
     private let callLog = Logger(subsystem: "com.mylegnd.legend.registered", category: "calling")
+    // Development console evidence contains only bounded state, never identifiers or payloads.
+    private func trace(_ event: String) {
+        #if DEBUG
+        print("LegendCallTrace generation=\(callGeneration) \(event)")
+        #endif
+    }
     private var reconciliation: Task<Void, Never>?
     private var startupDeadline: Task<Void, Never>?
     private var outgoingRequest: Task<Void, Never>?
@@ -174,8 +180,10 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     }
     private func send(_ command: LegendCallCommand) async throws -> LegendCallResult {
         guard !stopped else { throw CancellationError() }
+        trace("command=\(command.action)")
         callLog.info("Call command: \(command.action, privacy: .public)")
         let result = try await transport.call(command)
+        trace("result=\(command.action) success=\(result.succeeded)")
         callLog.info("Call result: \(command.action, privacy: .public), success=\(result.succeeded)")
         guard !stopped else { throw CancellationError() }
         guard result.succeeded else { throw LegendCallingError.unavailable(result.error ?? "Call unavailable.") }
@@ -224,6 +232,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
             return
         }
         if call.terminal {
+            trace("received-terminal")
             if current?.id == call.id || pendingOutgoing?.0 == call.id {
                 if callerAccount { failure = call.failureMessage }
                 provider.reportCall(with: call.id, endedAt: Date(), reason: call.status == "declined" ? .declinedElsewhere : .remoteEnded)
@@ -233,6 +242,9 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         }
         if current?.id == call.id && current?.receivedUtc != nil && call.receivedUtc == nil && call.status == "ringing" { return }
         current = call
+        if ["ringing", "connecting", "active", "ended", "declined", "failed", "cancelled", "missed"].contains(call.status) {
+            trace("received-status=\(call.status) terminal=\(call.terminal)")
+        }
         callLog.info("Call event: \(call.status, privacy: .public), received=\(call.receivedUtc != nil)")
         startReconciliation(call.id)
         if call.status == "ringing" {
@@ -300,6 +312,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         armDeadline(call.id, until: Date().addingTimeInterval(Double(policy.connectSeconds)))
     }
     func audioActivated(_ active: Bool) {
+        trace("audio-active=\(active)")
         audioActive = active
         updateRingback()
     }
@@ -352,6 +365,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         deadline = Task { [weak self] in
             try? await Task.sleep(for: .seconds(max(1, date.timeIntervalSinceNow)))
             guard !Task.isCancelled, let self, self.current?.id == id else { return }
+            self.trace("local-deadline ringing=\(self.current?.status == "ringing")")
             self.fail(self.current?.status == "ringing" ? (self.current?.receivedUtc == nil && self.isCaller ? "The recipient could not be reached. Their device did not confirm receiving the call." : "The call was not answered.") : "This network could not establish a direct call. Try another Wi-Fi or mobile connection.")
         }
     }
@@ -359,6 +373,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         UIDevice.current.isProximityMonitoringEnabled = current != nil && !speaker && AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInReceiver }
     }
     private func fail(_ message: String) {
+        trace("local-failure")
         failure = message
         guard let id = current?.id else { clear(); return }
         provider.reportCall(with: id, endedAt: Date(), reason: .failed)
@@ -488,6 +503,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         Task { @MainActor in
             guard let call = self.current, call.id == action.callUUID else { action.fail(); return }
             let generation = self.callGeneration
+            self.trace("answer-action-start")
             do {
                 try await self.permissions(video: call.video)
                 guard self.isCurrentCall(call.id, generation: generation) else { action.fail(); return }
@@ -496,8 +512,10 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
                 try await self.completeAnswer(callId: call.id) {
                     try await self.send(LegendCallCommand(action: "accept", deviceId: self.deviceId, callId: call.id))
                 }
+                self.trace("answer-action-fulfilled")
                 action.fulfill()
             } catch {
+                self.trace("answer-action-failed")
                 action.fail()
                 guard self.isCurrentCall(call.id, generation: generation) else { return }
                 self.fail(error.localizedDescription)
@@ -506,6 +524,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor in
+            self.trace("system-end-action")
             action.fulfill()
             guard self.current?.id == action.callUUID || self.pendingOutgoing?.0 == action.callUUID else { return }
             await self.finish(action.callUUID)

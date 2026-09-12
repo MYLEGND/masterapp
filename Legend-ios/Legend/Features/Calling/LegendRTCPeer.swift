@@ -99,6 +99,9 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
                                 let microphone = self.audio?.isEnabled == true
                                 let route = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
                                 self.audioLog.info("audioInboundBytesDelta=\(deltas[0]) audioOutboundBytesDelta=\(deltas[1]) audioInboundPacketsDelta=\(deltas[2]) audioOutboundPacketsDelta=\(deltas[3]) sessionEnabled=\(enabled) localTrackEnabled=\(microphone) routeCategory=\(route, privacy: .public)")
+                                #if DEBUG
+                                print("LegendCallTrace audio-in=\(deltas[2]) audio-out=\(deltas[3]) enabled=\(enabled) microphone=\(microphone)")
+                                #endif
                                 self.audioObservations += 1
                             }
                             self.lastAudioCounters = counters
@@ -402,6 +405,9 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     nonisolated func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
         Task { @MainActor in
             guard !self.closed else { return }
+            #if DEBUG
+            print("LegendCallTrace ice-state=\(newState.rawValue)")
+            #endif
             switch newState {
             case .connected, .completed:
                 let newlyConnected = !self.connected
