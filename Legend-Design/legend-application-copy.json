@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-3ab0fb3e7d884d85",
+  "catalogVersion": "application-copy-v1-cafa9de3300f2898",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -11518,6 +11518,17 @@
       "source": "Booking unavailable",
       "context": "visual interface copy",
       "sourceRevision": "8905fcdb0413ef10",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9c8cfdb1b32b716355c50df4",
+      "source": "Both Founder profiles. Saved translations are reused. Azure resource limits and charges still apply.",
+      "context": "visual interface copy",
+      "sourceRevision": "954eea705230138e",
       "placeholders": [
 
       ],
