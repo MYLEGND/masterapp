@@ -51,6 +51,11 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             Task { await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil)) }
         }
     }
+    func retireAccount(unless identity: LogicalParticipantIdentity? = nil) {
+        guard let owner else { return }
+        if let identity, owner.belongs(to: identity) { return }
+        owner.shutdown()
+    }
     func detach(_ store: LegendCallStore) {
         guard owner === store else { return }
         setMediaRequested(false, for: store)

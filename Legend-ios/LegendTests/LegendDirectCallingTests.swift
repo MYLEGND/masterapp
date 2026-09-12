@@ -1,10 +1,62 @@
 import XCTest
 import AVFoundation
+import UIKit
 @preconcurrency import WebRTC
 @testable import Legend
 
 @MainActor
 final class LegendDirectCallingTests: XCTestCase {
+    func testDetachingCallPresentationDoesNotEndAnAccountOwnedPendingCall() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        store.start(conversationId: UUID(), video: false, recipientName: "Recipient")
+        XCTAssertTrue(store.isStarting)
+        let coordinator = LegendCallPresentation.Coordinator(store: store)
+        LegendCallPresentation.dismantleUIView(UIView(), coordinator: coordinator)
+        XCTAssertTrue(store.isStarting, "A view disappearing must not terminate its account's active call authority")
+        XCTAssertEqual(store.name, "Recipient")
+        store.end()
+    }
+
+    func testAccountLifecycleRetiresRetainedCallsButPreservesSameIdentityRefresh() throws {
+        let identity = try LogicalParticipantIdentity(userID: "caller", participantType: .client)
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport, identity: identity)
+        defer { store.shutdown() }
+        let coordinator = MobileSessionCoordinator(tokenStore: CallingTestTokenStore())
+        let actor = try MobileActor(identity: identity, profileID: "00000000-0000-0000-0000-000000000001", displayName: "Caller", avatar: nil)
+        store.start(conversationId: UUID(), video: false, recipientName: "Recipient")
+        coordinator.handleCallAccountTransition(to: .loading)
+        coordinator.handleCallAccountTransition(to: .authenticating)
+        coordinator.handleCallAccountTransition(to: .authenticated(MobileSession(actor: actor, capabilities: ["messaging"])))
+        XCTAssertTrue(store.isStarting)
+        coordinator.signOut()
+        XCTAssertFalse(store.isStarting, "Sign-out must retire even a strongly retained call store synchronously")
+        store.start(conversationId: UUID(), video: false)
+        XCTAssertFalse(store.isStarting)
+    }
+
+    func testActualRoleChangeRetiresPreviousCallOwnerSynchronously() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        let coordinator = MobileSessionCoordinator(tokenStore: CallingTestTokenStore())
+        let changedActor = try MobileActor(identity: LogicalParticipantIdentity(userID: "caller", participantType: .agent),
+            profileID: "00000000-0000-0000-0000-000000000001", displayName: "Caller", avatar: nil)
+        store.start(conversationId: UUID(), video: false)
+        coordinator.handleCallAccountTransition(to: .authenticated(MobileSession(actor: changedActor, capabilities: ["messaging"])))
+        XCTAssertFalse(store.isStarting)
+    }
+
     func testCallKitAudioActivationOrderAndRetiredStoreCannotMuteCurrentOwner() throws {
         func store(_ user: String) throws -> LegendCallStore {
             let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
@@ -231,4 +283,10 @@ final class LegendDirectCallingTests: XCTestCase {
         caller.close()
         caller.close() // Closing after a network failure and a UI dismissal is safe.
     }
+}
+
+private struct CallingTestTokenStore: SecureTokenStoring {
+    func read() throws -> OAuthTokenSet? { nil }
+    func save(_ tokens: OAuthTokenSet) throws {}
+    func clear() throws {}
 }

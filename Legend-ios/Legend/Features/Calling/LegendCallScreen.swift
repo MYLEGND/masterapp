@@ -29,7 +29,8 @@ struct LegendCallPresentation: UIViewRepresentable {
     static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
         coordinator.window?.isHidden = true
         coordinator.window = nil
-        coordinator.store.shutdown()
+        // Presentation can be detached during SwiftUI navigation or scene updates.
+        // The account-scoped MessagingStore owns call shutdown, not this view.
     }
     @MainActor final class Coordinator {
         let store: LegendCallStore

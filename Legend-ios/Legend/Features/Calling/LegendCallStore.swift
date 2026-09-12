@@ -187,6 +187,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     private func isCalleeAccount(_ call: LegendCallSnapshot) -> Bool {
         call.calleeType == identity.participantType.rawValue && (call.calleeUserIds ?? [call.calleeUserId]).contains { $0.caseInsensitiveCompare(identity.userID) == .orderedSame }
     }
+    func belongs(to identity: LogicalParticipantIdentity) -> Bool { self.identity == identity }
     func owns(_ call: LegendCallSnapshot) -> Bool { isCallerAccount(call) || isCalleeAccount(call) }
     func registerVoipToken(_ token: String?) {
         guard !stopped, let token, let environment = LegendAPNSEnvironment.fromSignedEntitlement(Bundle.main.object(forInfoDictionaryKey: "LegendAPNSEnvironment") as? String) else { return }
