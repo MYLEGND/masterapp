@@ -3710,7 +3710,9 @@ private struct LegendMessageBubble: View {
                 .navigationTitle(LegendLocalized("Open or share attachments"))
             }
         }
-        .onLongPressGesture(minimumDuration: 0.35) { if !message.isDeleted { actionMenu = true } }
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+            if !message.isDeleted { actionMenu = true }
+        })
         .popover(isPresented: $actionMenu) {
           VStack(alignment: .leading, spacing: 12) {
             LegendMessageContextPreview(message: message).frame(maxHeight: 90).clipped()
@@ -3816,7 +3818,6 @@ private struct LegendMessageBubble: View {
             ) {
                 if !displayedMessageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(displayedMessageBody)
-                    .textSelection(.enabled)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)
@@ -3825,7 +3826,6 @@ private struct LegendMessageBubble: View {
                     )
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
 
                 }
                 if !message.isDeleted, let shared = message.sharedContent {
