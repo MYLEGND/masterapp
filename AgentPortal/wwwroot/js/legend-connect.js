@@ -335,6 +335,7 @@
                     const custom = select.closest("form").querySelector("[data-custom-limit]");
                     custom.hidden = select.value !== "Custom";
                     custom.querySelector("input").disabled = select.value !== "Custom";
+                    custom.querySelector("input").required = select.value === "Custom";
                 };
                 select.addEventListener("change", update);
                 update();
