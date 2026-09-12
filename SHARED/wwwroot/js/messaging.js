@@ -1031,8 +1031,8 @@
         button.type = 'button';
         button.setAttribute('aria-label', entry.name);
         button.title = entry.name;
-        button.disabled = preferredTone === null || savingTone;
-        button.addEventListener('click', () => select(toneVariant(entry, preferredTone)));
+        button.disabled = savingTone;
+        button.addEventListener('click', () => select(toneVariant(entry, preferredTone ?? 0)));
         fragment.append(button);
       });
       shown = Math.min(shown + 120, results.length);
@@ -1101,7 +1101,7 @@
       const button = createTextElement('button', 'messaging-reaction', emoji);
       button.type = 'button';
       button.setAttribute('aria-label', `React ${emoji}`);
-      button.disabled = true;
+      button.disabled = false;
       quickButtons.push({ button, emoji });
       button.addEventListener('click', () => {
         menu.open = false;
@@ -1125,7 +1125,6 @@
     menu.append(palette);
     menu.addEventListener('toggle', async () => {
       if (!menu.open) return;
-      quickButtons.forEach(({ button }) => { button.disabled = true; });
       try {
         [quickTone, quickCatalog] = await Promise.all([loadReactionTone(), loadReactionEmojiCatalog()]);
         if (!menu.isConnected) return;

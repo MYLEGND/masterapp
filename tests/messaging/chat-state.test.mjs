@@ -64,8 +64,11 @@ test('inbox burst shares in-flight work and retains one trailing invalidation',a
 });
 
 class Element {
-  constructor(tag) { this.tagName=tag;this.children=[];this.events={};this.attributes={};this.dataset={}; }
-  append(...children) { this.children.push(...children); }
+  constructor(tag) { this.tagName=tag;this.children=[];this.events={};this.attributes={};this.dataset={};this.isConnected=true; }
+  append(...children) { children.forEach(child => { child.parentElement=this; this.children.push(child); }); }
+  matches(selector) { return selector.split(",").some(value => (this.className || "").split(" ").includes(value.trim().slice(1))); }
+  querySelectorAll(selector) { return this.children.flatMap(child => [...(child.matches?.(selector) ? [child] : []), ...(child.querySelectorAll?.(selector) || [])]); }
+  replaceWith(replacement) { const parent=this.parentElement; const index=parent.children.indexOf(this);parent.children[index]=replacement;replacement.parentElement=parent;this.parentElement=null; }
   setAttribute(key,value) { this.attributes[key]=value; }
   addEventListener(name,handler) { this.events[name]=handler; }
   focus() { this.focused=true; }
@@ -84,6 +87,8 @@ function domEnvironment(request) {
   const c=environment(request);
   c.document={createElement:tag=>new Element(tag)};
   c.createTextElement=(tag,cls,text)=>{ const element=new Element(tag);element.className=cls;element.textContent=text;return element; };
+  c.reactionBubbleObserver=null;
+  c.loadReactionTone=async()=>0;c.loadReactionEmojiCatalog=async()=>[];
   c.window={getSelection:()=>({toString:()=>''}),setTimeout,clearTimeout};
   for(const name of ['setMessageReaction','appendMessageInteractions','appendSharedContent']) vm.runInContext(implementation(name),c);
   return c;
@@ -316,6 +321,9 @@ test('selecting a palette reaction dismisses the menu before response', async ()
   const message={id:'m',reactions:[]}; c.state.active={id:'A',messages:[message]};
   const card=new Element('article'); c.appendMessageInteractions(card,{id:'A',reactionOptions:['❤️']},message);
   const menu=card.children[0]; menu.open=true;
+  assert.equal(menu.children[1].children[0].disabled,false);
+  await menu.events.toggle();
+  assert.equal(menu.children[1].children[0].disabled,false);
   menu.children[1].children[0].events.click();
   assert.equal(menu.open,false);
   pending.resolve({messageId:'m',reactions:[{emoji:'❤️',count:1,reactedByCurrentActor:true}]});
@@ -503,7 +511,35 @@ test('safe text links preserve internal navigation and isolate external destinat
 test('shared content owns its reaction badges rather than the surrounding message row', () => {
   const c=domEnvironment(()=>{}), card=new Element('article'), shared=new Element('div');
   shared.className='messaging-shared-content';card.append(shared);
+  const link=new Element('a'),media=new Element('img');link.className='messaging-shared-original';media.className='messaging-shared-media';link.append(media);shared.append(link);
   c.appendMessageInteractions(card,{id:'A',reactionOptions:['❤️']},{id:'m',reactions:[{emoji:'❤️',count:1}]});
-  assert.equal(shared.children.at(-1).className,'messaging-reactions');
+  const anchor=shared.children[0];
+  assert.equal(anchor.className,'messaging-reacted-content');
+  assert.equal(anchor.children[0],link);
+  assert.equal(anchor.children[1].className,'messaging-reactions');
+  assert.equal(link.children.length,1);
   assert.equal(card.children.some(x=>x.className==='messaging-reactions'),false);
+});
+
+ test('optional skin preference failure preserves the explicit available palette reaction', async () => {
+  const calls=[],c=domEnvironment(async(url,options)=>{calls.push(JSON.parse(options.body));return {messageId:'m',reactions:[]};});
+  c.loadReactionTone=async()=>{throw Error('unavailable');};
+  const message={id:'m',reactions:[]};c.state.active={id:'A',messages:[message]};
+  const card=new Element('article');c.appendMessageInteractions(card,{id:'A',reactionOptions:['👍']},message);
+  const menu=card.children[0];menu.open=true;await menu.events.toggle();
+  const button=menu.children[1].children[0];assert.equal(button.disabled,false);assert.equal(button.textContent,'👍');
+  button.events.click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls[0].emoji,'👍');assert.equal(menu.open,false);
+});
+
+test('the first plus click replaces the quick palette with the existing full picker without reacting', () => {
+  let opened=0,mutations=0;
+  const c=domEnvironment(()=>{mutations++;}),picker=new Element('div');
+  c.createReactionEmojiPicker=()=>{opened++;return picker;};
+  const card=new Element('article');c.appendMessageInteractions(card,{id:'A',reactionOptions:['❤️']},{id:'m',reactions:[]});
+  const menu=card.children[0],palette=menu.children[1];menu.open=true;
+  let prevented=false,stopped=false;
+  palette.children.at(-1).events.click({preventDefault(){prevented=true;},stopPropagation(){stopped=true;}});
+  assert.equal(opened,1);assert.equal(menu.children[1],picker);assert.equal(menu.open,true);
+  assert.equal(prevented,true);assert.equal(stopped,true);assert.equal(mutations,0);
 });

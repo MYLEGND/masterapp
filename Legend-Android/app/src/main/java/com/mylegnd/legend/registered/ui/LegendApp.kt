@@ -2787,6 +2787,9 @@ private fun MessagesScreen(
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { LegendReactionEmojiCatalog.load(context) } }
+    }
     LaunchedEffect(requestedConversationId) {
         val requestedId = requestedConversationId ?: return@LaunchedEffect
         // The canonical start-conversation response already supplies the ID.
@@ -3811,7 +3814,7 @@ private fun LegendMessageBubble(
                     reactionOptions.forEach { emoji ->
                         val selected = message.reactions.any { it.emoji == emoji && it.reactedByCurrentActor }
                         val tonedEmoji = quickCatalog.firstOrNull { it.emoji == emoji }?.variant(quickTone ?: 0) ?: emoji
-                        TextButton(onClick = { actionsOpen = false; react(tonedEmoji) }, enabled = quickTone != null,
+                        TextButton(onClick = { actionsOpen = false; react(tonedEmoji) }, enabled = true,
                             modifier = Modifier.size(48.dp), shape = CircleShape,
                             contentPadding = PaddingValues(0.dp),
                             colors = ButtonDefaults.textButtonColors(containerColor = if (selected) LegendColors.Gold.copy(alpha = 0.28f) else Color.Transparent)) {
@@ -3963,6 +3966,7 @@ internal fun legendReactionSearch(entries: List<LegendReactionEmoji>, query: Str
 
 private object LegendReactionEmojiCatalog {
     @Volatile private var entries: List<LegendReactionEmoji>? = null
+    fun cached(): List<LegendReactionEmoji>? = entries
     fun load(context: Context): List<LegendReactionEmoji> = synchronized(this) {
         entries ?: context.assets.open("legend-reaction-emoji.json").bufferedReader().use { reader ->
             val source = org.json.JSONObject(reader.readText())
@@ -3995,7 +3999,7 @@ private fun LegendReactionEmojiPicker(participantType: String, dismiss: () -> Un
         preferredTone = (result as? LoadState.Data)?.value?.preferredReactionSkinTone?.takeIf { it in 0..5 }
         preferenceError = preferredTone == null
     }
-    val catalog by produceState<Result<List<LegendReactionEmoji>>?>(null, retry) {
+    val catalog by produceState<Result<List<LegendReactionEmoji>>?>(LegendReactionEmojiCatalog.cached()?.let { Result.success(it) }, retry) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { LegendReactionEmojiCatalog.load(context) } }
     }
     val results = remember(catalog, query) { legendReactionSearch(catalog?.getOrNull().orEmpty(), query) }
@@ -4036,7 +4040,7 @@ private fun LegendReactionEmojiPicker(participantType: String, dismiss: () -> Un
                     ) {
                         items(results.size, key = { results[it].emoji }) { index ->
                             val entry = results[index]
-                            TextButton(enabled = preferredTone != null && !savingTone, onClick = { select(entry.variant(preferredTone!!)) }, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
+                            TextButton(enabled = !savingTone, onClick = { select(entry.variant(preferredTone ?: 0)) }, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) {
                                 Text(entry.variant(preferredTone ?: 0), style = MaterialTheme.typography.headlineSmall,
                                     modifier = Modifier.semantics { contentDescription = entry.name })
                             }
