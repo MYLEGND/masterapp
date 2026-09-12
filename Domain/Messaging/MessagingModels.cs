@@ -159,7 +159,8 @@ public sealed record MessagingConversationListQuery(
 public sealed record MessagingConversationMessagePageQuery(
     DateTime? BeforeUtc = null,
     int Take = 60,
-    bool IncludeGroupImage = true);
+    bool IncludeGroupImage = true,
+    Guid? BeforeMessageId = null);
 
 public sealed record StartMessagingConversationCommand(
     MessagingActor Actor,

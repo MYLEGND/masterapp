@@ -1451,7 +1451,7 @@ final class MessagingStore: ObservableObject {
         guard !isLoadingOlderMessages,
               case .loaded(let conversation) = detailState,
               conversation.hasOlderMessages == true,
-              let oldestMessageUTC = conversation.messages.first?.sentUTC else {
+              let oldestMessage = conversation.messages.first else {
             return
         }
 
@@ -1462,7 +1462,8 @@ final class MessagingStore: ObservableObject {
             do {
                 let olderPage = try await api.conversation(
                     id: conversation.id,
-                    beforeUTC: oldestMessageUTC,
+                    beforeUTC: oldestMessage.sentUTC,
+                    beforeMessageID: oldestMessage.id,
                     accessToken: try await accessTokenProvider())
                 guard revision == presentationRevision,
                       selectedConversationID == conversation.id,
@@ -1471,19 +1472,25 @@ final class MessagingStore: ObservableObject {
                     return
                 }
 
+                // Preserve server order within timestamp ties so the next cursor
+                // remains the actual oldest message rather than a dictionary entry.
+                let currentByID = Dictionary(currentConversation.messages.map { ($0.id, $0) }, uniquingKeysWith: { _, current in current })
+                var seen = Set<UUID>()
                 let mergedMessages = (olderPage.messages + currentConversation.messages)
-                    .reduce(into: [UUID: ConversationMessage]()) { messages, message in
-                        messages[message.id] = message
-                    }
-                    .values
-                    .sorted { $0.sentUTC < $1.sentUTC }
+                    .filter { seen.insert($0.id).inserted }
+                    .map { currentByID[$0.id] ?? $0 }
+                    .enumerated()
+                    .sorted { $0.element.sentUTC == $1.element.sentUTC ? $0.offset < $1.offset : $0.element.sentUTC < $1.element.sentUTC }
+                    .map(\.element)
                 presentConversation(copyConversation(
                     currentConversation,
                     messages: mergedMessages,
                     hasOlderMessages: olderPage.hasOlderMessages))
             } catch {
-                guard revision == presentationRevision else { return }
-                sendFailure = failure(for: error, title: LegendLocalized("Earlier messages unavailable"))
+                guard revision == presentationRevision, selectedConversationID == conversation.id else { return }
+                if !discardUnavailableConversation(detailFailureState(for: error), conversationID: conversation.id) {
+                    sendFailure = failure(for: error, title: LegendLocalized("Earlier messages unavailable"))
+                }
             }
         }
     }
@@ -1595,9 +1602,22 @@ final class MessagingStore: ObservableObject {
             guard revision == presentationRevision, presentsResult, selectedConversationID == conversationID else {
                 return
             }
-            if cachedConversationDetail(for: conversationID) == nil {
-                detailState = detailFailureState(for: error)
+            let failedState = detailFailureState(for: error)
+            if !discardUnavailableConversation(failedState, conversationID: conversationID), cachedConversationDetail(for: conversationID) == nil {
+                detailState = failedState
             }
+        }
+    }
+
+    @discardableResult
+    private func discardUnavailableConversation(_ state: ConversationDetailLoadState, conversationID: UUID) -> Bool {
+        switch state {
+        case .unauthorized, .forbidden, .unavailable:
+            conversationDetailCache.removeValue(forKey: conversationID)
+            conversationDetailCacheOrder.removeAll { $0 == conversationID }
+            if selectedConversationID == conversationID { detailState = state }
+            return true
+        default: return false
         }
     }
 
@@ -1853,6 +1873,10 @@ final class MessagingStore: ObservableObject {
             return .unauthorized(failure)
         case .forbidden, .conflict, .apiForbidden, .apiConflict:
             return .forbidden(failure)
+        case .apiServer(let status, _, _, _) where status == 404 || status == 410:
+            return .unavailable(failure.message)
+        case .server(let status, _) where status == 404 || status == 410:
+            return .unavailable(failure.message)
         case .invalidServerResponse, .networkUnavailable:
             return .offline(failure)
         default:

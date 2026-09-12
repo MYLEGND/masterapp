@@ -161,6 +161,43 @@ public class MiddlewareTests
         Assert.True(nextCalled);
     }
 
+    [Fact]
+    public async Task AssistantMiddleware_BoundIdentityIsUsedAndDisabledAccessIsRecheckedNextRequest()
+    {
+        using var db = BuildDb();
+        var assistant = new AgentAssistant
+        {
+            Id = Guid.NewGuid(), ParentAgentUserId = "parent-bound",
+            FirstName = "Assistant", LastName = "Test",
+            Email = "bound@example.com", NormalizedEmail = "bound@example.com",
+            IsActive = true, InvitedAt = DateTime.UtcNow, CreatedUtc = DateTime.UtcNow
+        };
+        db.AgentAssistants.Add(assistant);
+        await db.SaveChangesAsync();
+        var passed = 0;
+        var (middleware, service, registry) = BuildAssistantMiddleware(db, _ =>
+        {
+            passed++;
+            return Task.CompletedTask;
+        });
+        var user = AuthenticatedUser("bound-oid", "bound@example.com", guestTenant: true);
+        var first = BuildHttpContext(user);
+        first.Request.RouteValues["controller"] = "Leads";
+        await middleware.InvokeAsync(first, service, registry);
+        Assert.Equal("bound-oid", assistant.AssistantUserId);
+        Assert.Equal("parent-bound", first.Items["EffectiveAgentOid"]);
+        Assert.Equal(1, passed);
+
+        assistant.IsActive = false;
+        await db.SaveChangesAsync();
+        var second = BuildHttpContext(user);
+        second.Request.RouteValues["controller"] = "Leads";
+        await middleware.InvokeAsync(second, service, registry);
+        Assert.Equal(1, passed);
+        Assert.Equal(302, second.Response.StatusCode);
+        Assert.Contains("reason=disabled", second.Response.Headers.Location.ToString());
+    }
+
     // -----------------------------------------------------------------------
     // AssistantResolutionMiddleware — active assistant blocked from forbidden route → 302
     // -----------------------------------------------------------------------

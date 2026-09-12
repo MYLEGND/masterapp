@@ -1,6 +1,5 @@
 using Domain.Messaging;
 using Domain.Social;
-using Microsoft.EntityFrameworkCore;
 namespace Infrastructure.Messaging;
 
 internal sealed partial class MessagingService
@@ -40,17 +39,15 @@ internal sealed partial class MessagingService
     }
 
     private async Task<List<MessagingMessageSummary>> ApplySharedContentAsync(MessagingActor actor,
-        List<MessagingMessageSummary> messages, CancellationToken cancellationToken)
+        List<MessagingMessageSummary> messages, IReadOnlyDictionary<Guid, Guid> sources,
+        CancellationToken cancellationToken)
     {
-        var ids = messages.Where(message => !message.IsDeleted).Select(message => message.Id).ToArray();
-        var sources = await _db.InternalMessages.AsNoTracking()
-            .Where(message => ids.Contains(message.Id) && message.SharedSocialPostId != null)
-            .Select(message => new { message.Id, Source = message.SharedSocialPostId!.Value })
-            .ToDictionaryAsync(message => message.Id, message => message.Source, cancellationToken);
+        if (sources.Count == 0)
+            return messages;
         var cards = new Dictionary<Guid, MessagingSharedContent>();
         for (var index = 0; index < messages.Count; index++)
         {
-            if (!sources.TryGetValue(messages[index].Id, out var source)) continue;
+            if (messages[index].IsDeleted || !sources.TryGetValue(messages[index].Id, out var source)) continue;
             if (!cards.TryGetValue(source, out var card))
                 cards[source] = card = await ResolveSharedContentAsync(actor, source, cancellationToken);
             messages[index] = messages[index] with { SharedContent = card };

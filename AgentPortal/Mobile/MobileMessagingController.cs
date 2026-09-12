@@ -623,7 +623,8 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
         Guid conversationId,
         [FromQuery] DateTime? beforeUtc,
         [FromQuery] int? take,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? beforeMessageId = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
@@ -635,7 +636,7 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
             new MessagingConversationMessagePageQuery(
                 beforeUtc,
                 take ?? 60,
-                IncludeGroupImage: true),
+                IncludeGroupImage: true, BeforeMessageId: beforeMessageId),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -648,7 +649,8 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
         Guid conversationId,
         [FromQuery] DateTime? beforeUtc,
         [FromQuery] int? take,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? beforeMessageId = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
@@ -660,7 +662,7 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
             new MessagingConversationMessagePageQuery(
                 beforeUtc,
                 take ?? 60,
-                IncludeGroupImage: false),
+                IncludeGroupImage: false, BeforeMessageId: beforeMessageId),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);

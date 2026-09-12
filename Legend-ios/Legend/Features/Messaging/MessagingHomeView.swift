@@ -2150,14 +2150,23 @@ struct ConversationThreadView: View {
         }
     }
 
+    private var selectedTitle: String? {
+        guard case .loaded(let summaries) = store.state else { return nil }
+        return summaries.first(where: { $0.id == conversationID })?.title
+    }
+
     @ViewBuilder
     private var threadContent: some View {
         switch store.detailState {
         case .idle, .loading:
-            LegendConversationLoadingView()
+            LegendConversationLoadingView(title: selectedTitle)
 
         case .loaded(let conversation):
-            conversationView(conversation)
+            if conversation.id == conversationID {
+                conversationView(conversation)
+            } else {
+                LegendConversationLoadingView(title: selectedTitle)
+            }
 
         case .unavailable(let message):
             conversationFailure(
@@ -3264,6 +3273,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
 }
 
 private struct LegendConversationFallbackHeader: View {
+    var title: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -3280,7 +3290,7 @@ private struct LegendConversationFallbackHeader: View {
             .buttonStyle(LegendMessagingPressButtonStyle())
             .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
 
-            Text(LegendLocalized("Conversation"))
+            Text(title ?? LegendLocalized("Conversation"))
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(.white)
 
@@ -4076,9 +4086,10 @@ private struct LegendMessageAttachmentChip: View {
 }
 
 private struct LegendConversationLoadingView: View {
+    var title: String? = nil
     var body: some View {
         VStack(spacing: 0) {
-            LegendConversationFallbackHeader()
+            LegendConversationFallbackHeader(title: title)
 
             VStack(spacing: LegendNextSpacing.sm) {
                 ForEach(0..<5, id: \.self) { index in

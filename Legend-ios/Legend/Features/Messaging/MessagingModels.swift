@@ -763,6 +763,9 @@ protocol MessagingAPI: Sendable {
     func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult
     func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws
     func conversations(accessToken: String) async throws -> [ConversationSummary]
+    func conversations(offset: Int, limit: Int, accessToken: String) async throws -> [ConversationSummary]
+    func conversation(id: UUID, beforeUTC: Date?, accessToken: String) async throws -> ConversationDetail
+    func conversation(id: UUID, beforeUTC: Date?, beforeMessageID: UUID?, accessToken: String) async throws -> ConversationDetail
     func recipients(
         search: String?,
         scope: MessagingRecipientScope?,
@@ -917,6 +920,10 @@ extension MessagingAPI {
         accessToken: String
     ) async throws -> [ConversationSummary] {
         try await conversations(accessToken: accessToken)
+    }
+
+    func conversation(id: UUID, beforeUTC: Date?, beforeMessageID: UUID?, accessToken: String) async throws -> ConversationDetail {
+        try await conversation(id: id, beforeUTC: beforeUTC, accessToken: accessToken)
     }
 
     func conversation(
@@ -1614,7 +1621,14 @@ struct URLSessionMessagingAPI: MessagingAPI {
         beforeUTC: Date?,
         accessToken: String
     ) async throws -> ConversationDetail {
+        try await conversation(id: id, beforeUTC: beforeUTC, beforeMessageID: nil, accessToken: accessToken)
+    }
+
+    func conversation(id: UUID, beforeUTC: Date?, beforeMessageID: UUID?, accessToken: String) async throws -> ConversationDetail {
         var queryItems = [URLQueryItem(name: "take", value: "60")]
+        if let beforeMessageID {
+            queryItems.append(URLQueryItem(name: "beforeMessageId", value: beforeMessageID.uuidString))
+        }
         if let beforeUTC {
             queryItems.append(URLQueryItem(
                 name: "beforeUtc",

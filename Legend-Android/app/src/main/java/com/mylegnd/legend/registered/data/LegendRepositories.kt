@@ -9,14 +9,14 @@ import com.mylegnd.legend.registered.core.media.MessagingAttachmentUploader
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.TimeZone
 
-sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String) : LoadState<Nothing> }
+sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String, val status: Int? = null) : LoadState<Nothing> }
 private suspend fun <T> request(block: suspend () -> T): LoadState<T> = try { LoadState.Data(block()) }
 catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
 catch (error: Exception) { LoadState.Error(when (error) {
     is LegendApiException -> error.problem?.message
     is com.mylegnd.legend.registered.core.media.SocialMediaPreparationException -> error.message
     else -> null
-} ?: "Legend is unavailable right now.") }
+} ?: "Legend is unavailable right now.", status = (error as? LegendApiException)?.status) }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
 class FounderAiRepository(private val client: LegendApiClient) {
     suspend fun access(role: String): LoadState<FounderAiAccessResponse> = request {
@@ -115,8 +115,8 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun recipients(role: String, search: String? = null, scope: String? = null) = request {
         client.api.recipients(role, search, scope).legendBody()
     }
-    suspend fun conversation(role: String, id: String, beforeUtc: String? = null) = request {
-        client.api.conversation(role, id, beforeUtc).legendBody()
+    suspend fun conversation(role: String, id: String, beforeUtc: String? = null, beforeMessageId: String? = null) = request {
+        client.api.conversation(role, id, beforeUtc, beforeMessageId = beforeMessageId).legendBody()
     }
     suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null, clientMessageId: String, sharedPostId: String? = null) = request {
         client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId, clientMessageId, sharedPostId)).legendBody()

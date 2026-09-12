@@ -500,15 +500,15 @@ internal sealed partial class MessagingService : IMessagingService
                 x.HiddenUtc,
                 x.IsGroupManager))
             .ToListAsync(cancellationToken);
-        var take = messagePage is null
-            ? (int?)null
-            : Math.Clamp(messagePage.Take, 1, 80);
+        // Detail/open and mutation projections use the same bounded default as
+        // explicit history pages. Never hydrate and translate an entire thread.
+        var take = Math.Clamp(messagePage?.Take ?? 60, 1, 80);
         var messagesQuery = _db.InternalMessages
             .AsNoTracking()
             .Where(message => message.ConversationId == conversationId && !message.IsDeleted);
         if (messagePage?.BeforeUtc is DateTime beforeUtc)
         {
-            messagesQuery = messagesQuery.Where(message => message.SentUtc < beforeUtc);
+            messagesQuery = ApplyConversationMessageCursor(messagesQuery, beforeUtc, messagePage.BeforeMessageId);
         }
 
         var projectionMessages = acknowledgedMessageId is Guid acknowledgmentId
@@ -518,7 +518,7 @@ internal sealed partial class MessagingService : IMessagingService
         var newestMessages = await projectionMessages
             .OrderByDescending(message => message.SentUtc)
             .ThenByDescending(message => message.Id)
-            .Take(take ?? int.MaxValue)
+            .Take(acknowledgedMessageId.HasValue ? 1 : take + 1)
             .Select(x => new MessageDetailRow(
                 x.Id,
                 x.ConversationId,
@@ -541,15 +541,17 @@ internal sealed partial class MessagingService : IMessagingService
                         x.ReplyToMessage.Body,
                         x.ReplyToMessage.OriginalLanguage,
                         x.ReplyToMessage.SenderPreferredLanguage,
-                        x.ReplyToMessage.IsDeleted)))
+                        x.ReplyToMessage.IsDeleted),
+                x.SharedSocialPostId))
             .ToListAsync(cancellationToken);
-        var messages = newestMessages
-            .OrderBy(message => message.SentUtc)
-            .ThenBy(message => message.Id)
-            .ToList();
+        // The one-row lookahead determines history without a second query;
+        // discard it before attachments, social cards or translation work.
+        var hasOlderMessages = !acknowledgedMessageId.HasValue && newestMessages.Count > take;
+        // Reverse the database order: SQL Server GUID ordering differs from
+        // .NET's comparer, so sorting ties again here would break the cursor.
+        var messages = newestMessages.Take(take).Reverse().ToList();
         timing.Next("history_query");
-        var hasOlderMessages = false;
-        if (take.HasValue && messages.Count > 0)
+        if (acknowledgedMessageId.HasValue && messages.Count > 0)
         {
             var oldestSentUtc = messages[0].SentUtc;
             hasOlderMessages = await messagesQuery
@@ -627,7 +629,10 @@ internal sealed partial class MessagingService : IMessagingService
                 Reactions = reactionSummaries.GetValueOrDefault(message.Id) ?? []
             })
             .ToList();
-        messageSummaries = await ApplySharedContentAsync(actor, messageSummaries, cancellationToken);
+        messageSummaries = await ApplySharedContentAsync(actor, messageSummaries,
+            messages.Where(message => message.SharedSocialPostId.HasValue)
+                .ToDictionary(message => message.Id, message => message.SharedSocialPostId!.Value),
+            cancellationToken);
         if (applyTranslation)
             messageSummaries = await ApplyTranslationPresentationAsync(
                 actor, messageSummaries, messages, cancellationToken);
@@ -700,6 +705,13 @@ internal sealed partial class MessagingService : IMessagingService
         timing.Complete();
         return new MessagingConversationResult(true, null, null, detail);
     }
+
+    internal static IQueryable<InternalMessage> ApplyConversationMessageCursor(
+        IQueryable<InternalMessage> messages, DateTime beforeUtc, Guid? beforeMessageId) =>
+        beforeMessageId is { } id
+            ? messages.Where(message => message.SentUtc < beforeUtc ||
+                (message.SentUtc == beforeUtc && message.Id.CompareTo(id) < 0))
+            : messages.Where(message => message.SentUtc < beforeUtc);
 
     public async Task<MessagingRecipientListResult> ListRecipientsAsync(
         MessagingActor actor,
@@ -4529,8 +4541,20 @@ internal sealed partial class MessagingService : IMessagingService
         IReadOnlyList<MessageDetailRow> sourceMessages,
         CancellationToken cancellationToken)
     {
+        // Pages with no incoming translatable text need neither entitlement /
+        // preference lookup nor the retained-translation query. Incoming quoted
+        // originals still count even when every visible message is our own.
+        var hasIncomingText = summaries.Any(summary =>
+            !summary.IsDeleted && !string.IsNullOrWhiteSpace(summary.Body) &&
+            summary.VerificationReview is null &&
+            !IsSameParticipant(summary.SenderUserId, summary.SenderType, actor.UserId, actor.ParticipantType));
+        var hasIncomingReply = sourceMessages.Any(source => source.Reply is { IsDeleted: false } reply &&
+            !string.IsNullOrWhiteSpace(reply.Body) &&
+            !IsSameParticipant(reply.SenderUserId, reply.SenderType, actor.UserId, actor.ParticipantType));
+        if (!hasIncomingText && !hasIncomingReply)
+            return summaries.ToList();
         var targetLanguage = await _controlledResources.GetPreferredLanguageAsync(actor, cancellationToken);
-        if (targetLanguage is null || summaries.Count == 0)
+        if (targetLanguage is null)
             return summaries.ToList();
 
         // One page-scoped cache read, including quoted originals. Never run EF calls
@@ -5004,7 +5028,8 @@ internal sealed partial class MessagingService : IMessagingService
         message.IsDeleted,
         null,
         null,
-        null);
+        null,
+        SharedSocialPostId: null);
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim() ?? string.Empty;
@@ -5160,7 +5185,8 @@ internal sealed partial class MessagingService : IMessagingService
         bool IsDeleted,
         Guid? ReplyToMessageId,
         Guid? VerificationReviewRequestId,
-        ReplyDetailRow? Reply);
+        ReplyDetailRow? Reply,
+        Guid? SharedSocialPostId);
 
     private sealed record CachedMessageTranslation(
         string TranslatedText,

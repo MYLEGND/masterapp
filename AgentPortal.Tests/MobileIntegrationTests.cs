@@ -801,14 +801,18 @@ public sealed class MobileIntegrationTests
         storage.VerifyAll();
     }
 
-    [Fact]
-    public async Task MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor(bool historyPage)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         db.AgentProfiles.Add(new AgentProfile { AgentUserId = "agent-oid", AgentUpn = "agent@example.test", FullName = "Agent", IsActive = true });
         await db.SaveChangesAsync();
 
         var conversationId = Guid.NewGuid();
+        DateTime? beforeUtc = historyPage ? DateTime.UtcNow : null;
+        Guid? beforeMessageId = historyPage ? Guid.NewGuid() : null;
         var actor = new MessagingActor("agent-oid", MessagingParticipantTypes.Agent);
         var detail = new MessagingConversationDetail(
             conversationId,
@@ -845,7 +849,8 @@ public sealed class MobileIntegrationTests
                 actor,
                 conversationId,
                 It.Is<MessagingConversationMessagePageQuery>(query =>
-                    query.BeforeUtc == null &&
+                    query.BeforeUtc == beforeUtc &&
+                    query.BeforeMessageId == beforeMessageId &&
                     query.Take == 60 &&
                     query.IncludeGroupImage),
                 It.IsAny<CancellationToken>()))
@@ -854,7 +859,8 @@ public sealed class MobileIntegrationTests
                 actor,
                 conversationId,
                 It.Is<MessagingConversationMessagePageQuery>(query =>
-                    query.BeforeUtc == null &&
+                    query.BeforeUtc == beforeUtc &&
+                    query.BeforeMessageId == beforeMessageId &&
                     query.Take == 60 &&
                     !query.IncludeGroupImage),
                 It.IsAny<CancellationToken>()))
@@ -867,9 +873,10 @@ public sealed class MobileIntegrationTests
 
         var conversationResult = await controller.Conversation(
             conversationId,
+            beforeUtc,
             null,
-            null,
-            CancellationToken.None);
+            CancellationToken.None,
+            beforeMessageId);
         var conversation = Assert.IsType<OkObjectResult>(conversationResult).Value as MobileConversationDetailDto;
         Assert.NotNull(conversation);
         Assert.Single(conversation!.Messages);
@@ -877,9 +884,10 @@ public sealed class MobileIntegrationTests
 
         var messagesResult = await controller.Messages(
             conversationId,
+            beforeUtc,
             null,
-            null,
-            CancellationToken.None);
+            CancellationToken.None,
+            beforeMessageId);
         var messages = Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(Assert.IsType<OkObjectResult>(messagesResult).Value);
         Assert.Single(messages);
         Assert.Equal("Mesaj sèvè a tradui", messages[0].Body);

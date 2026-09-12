@@ -2851,9 +2851,13 @@ private fun MessagesScreen(
     } else {
         Column(Modifier.fillMaxSize()) {
             if (detail !is LoadState.Data) {
-                TextButton(onClick = { selectedConversationId = null }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    Text(legendLocalized("Back to messages"))
+                Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { selectedConversationId = null }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                        Text(legendLocalized("Back to messages"))
+                    }
+                    val title = (conversations as? LoadState.Data)?.value?.firstOrNull { it.id == selectedConversationId }?.title
+                    Text(title ?: legendLocalized("Conversation"), style = LegendTypography.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         when (detail) {
