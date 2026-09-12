@@ -7,20 +7,22 @@ import org.junit.Test
 
 class LegendCallAudioLifecycleTest {
     @Test fun mediaWaitsForBothForegroundServiceAndActualTelecomFocus() = runBlocking {
-        val gate = LegendCallAudioGate()
+        val service = Any()
+        val gate = LegendCallAudioGate().apply { bindService(service) }
         gate.begin("call-a")
         val waiting = async(start = CoroutineStart.UNDISPATCHED) { gate.awaitReady("call-a", true) }
         gate.foregroundReady("call-a")
         yield()
         assertFalse(waiting.isCompleted)
-        gate.focusChanged(true)
+        gate.focusChanged(service, true)
         waiting.await()
     }
 
     @Test fun focusBeforeForegroundServiceDoesNotStartMedia() = runBlocking {
-        val gate = LegendCallAudioGate()
+        val service = Any()
+        val gate = LegendCallAudioGate().apply { bindService(service) }
         gate.begin("call-a")
-        gate.focusChanged(true)
+        gate.focusChanged(service, true)
         val waiting = async(start = CoroutineStart.UNDISPATCHED) { gate.awaitReady("call-a", true) }
         assertFalse(waiting.isCompleted)
         gate.foregroundReady("call-a")
@@ -28,25 +30,27 @@ class LegendCallAudioLifecycleTest {
     }
 
     @Test fun deniedFocusTimesOutAndEndedCallCannotBeRevivedByLateCallbacks() = runBlocking {
-        val gate = LegendCallAudioGate()
+        val service = Any()
+        val gate = LegendCallAudioGate().apply { bindService(service) }
         gate.begin("call-a")
         gate.foregroundReady("call-a")
         val denial = runCatching { withTimeout(20) { gate.awaitReady("call-a", true) } }.exceptionOrNull()
         assertTrue(denial is TimeoutCancellationException)
         gate.ended()
-        gate.focusChanged(true)
+        gate.focusChanged(service, true)
         gate.foregroundReady("call-a")
         assertTrue(runCatching { gate.awaitReady("call-a", true) }.exceptionOrNull() is CancellationException)
     }
 
     @Test fun previousCallForegroundCallbackCannotUnlockReplacementCall() = runBlocking {
-        val gate = LegendCallAudioGate()
+        val service = Any()
+        val gate = LegendCallAudioGate().apply { bindService(service) }
         gate.begin("old")
         val old = async(start = CoroutineStart.UNDISPATCHED) { runCatching { gate.awaitReady("old", true) }.exceptionOrNull() }
         gate.ended()
         gate.begin("new")
         gate.foregroundReady("old")
-        gate.focusChanged(true)
+        gate.focusChanged(service, true)
         val current = async(start = CoroutineStart.UNDISPATCHED) { gate.awaitReady("new", true) }
         yield()
         assertTrue(old.await() is CancellationException)
@@ -90,6 +94,47 @@ class LegendCallAudioLifecycleTest {
         }.exceptionOrNull()
         assertTrue(error is IllegalStateException)
         assertEquals(1, cleaned)
+    }
+
+    @Test fun consecutiveCallReusesServiceFocusButStillRequiresItsOwnForegroundReadiness() = runBlocking {
+        val service = Any()
+        val gate = LegendCallAudioGate().apply { bindService(service) }
+        gate.begin("first")
+        gate.focusChanged(service, true)
+        gate.foregroundReady("first")
+        gate.awaitReady("first", true)
+        gate.ended()
+        gate.begin("second")
+        val waiting = async(start = CoroutineStart.UNDISPATCHED) { gate.awaitReady("second", true) }
+        assertFalse(waiting.isCompleted)
+        gate.foregroundReady("first")
+        yield()
+        assertFalse(waiting.isCompleted)
+        gate.foregroundReady("second")
+        waiting.await()
+        assertEquals(2, gate.mediaSession)
+    }
+
+    @Test fun focusLossBetweenCallsAndReplacedServiceCallbacksCannotGrantMedia() = runBlocking {
+        val old = Any()
+        val current = Any()
+        val gate = LegendCallAudioGate().apply { bindService(old) }
+        gate.begin("first")
+        gate.focusChanged(old, true)
+        gate.ended()
+        gate.focusChanged(old, false)
+        assertFalse(gate.hasFocus)
+        gate.bindService(current)
+        gate.begin("next")
+        gate.foregroundReady("next")
+        assertFalse(gate.focusChanged(old, true))
+        assertFalse(gate.unbindService(old))
+        val waiting = async(start = CoroutineStart.UNDISPATCHED) { gate.awaitReady("next", true) }
+        assertFalse(waiting.isCompleted)
+        gate.focusChanged(current, true)
+        waiting.await()
+        gate.unbindService(current)
+        assertFalse(gate.hasFocus)
     }
 
     private fun snapshot(id: String) = LegendCallSnapshot(id, "conversation", "caller", "Agent", "callee", "Client",

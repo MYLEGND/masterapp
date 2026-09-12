@@ -347,6 +347,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         }
         check(audioFocusGranted) { "Android could not grant call audio. Finish the other call or audio session and try again." }
         if (call.video) routeSpeaker(true)
+        val mediaSession = LegendCallPlatform.mediaSession
         val engine = LegendRTCPeer(app, settings, call.video, caller, viewModelScope,
             signal = { kind, data, epoch -> command(LegendCallCommand("signal", deviceId, call.id, signalKind = kind, signalData = data, epoch = epoch)); Unit },
             state = { value ->
@@ -372,7 +373,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
                         null -> "unknown"
                         else -> "external"
                     } else if (state.value.speaker) "speaker" else "receiver-or-external"
-                    android.util.Log.i("LegendCallMedia", "$observation audioFocusGranted=$audioFocusGranted route=$route")
+                    android.util.Log.i("LegendCallMedia", "mediaSession=$mediaSession $observation audioFocusGranted=$audioFocusGranted route=$route")
                 }
             })
         peer = engine
