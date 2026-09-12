@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-8bec002267abdc21",
+  "catalogVersion": "application-copy-v1-68f48dda2bcd0a5e",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -21976,6 +21976,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.31881b907f66ee30aeee7a4d",
+      "source": "Emoji unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "98bb4d55e4fe9d19",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b8287faf39c546feea85ebc7",
       "source": "Employee",
       "context": "visual interface copy",
@@ -32276,6 +32287,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f11c47a01b28addee0b535b1",
+      "source": "Loading emoji…",
+      "context": "visual interface copy",
+      "sourceRevision": "f35e910386bab6d3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e1d307a888ac3f8cf0f5c5ac",
       "source": "Loading failure detection…",
       "context": "visual interface copy",
@@ -36527,6 +36549,17 @@
       "source": "No documents found for this category.",
       "context": "visual interface copy",
       "sourceRevision": "c93d929e2bb410db",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e3eb2a817923ea65fe8bdaa5",
+      "source": "No emoji found",
+      "context": "visual interface copy",
+      "sourceRevision": "a9f5acb45bbdaa3b",
       "placeholders": [
 
       ],
@@ -48352,6 +48385,17 @@
       "source": "Search connections",
       "context": "visual interface copy",
       "sourceRevision": "b8826956a24d2179",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.33fd04707d3221b4ad4055c7",
+      "source": "Search emoji",
+      "context": "visual interface copy",
+      "sourceRevision": "87fafa7206f9f9e3",
       "placeholders": [
 
       ],
