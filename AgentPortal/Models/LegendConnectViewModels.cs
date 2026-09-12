@@ -290,12 +290,20 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         TranslationFounderScaleSnapshot accountScale,
         LegendConnectProductionReadinessSnapshot readiness,
         int runtimeAuditCount)
+        => Create(LegendConnectDashboardCounters.FromDashboard(dashboard), translationQuality, accountScale, readiness, runtimeAuditCount);
+
+    public static FounderLegendConnectLiveMetricsSnapshot Create(
+        LegendConnectDashboardCounters dashboard,
+        LegendConnectTranslationQualitySnapshot translationQuality,
+        TranslationFounderScaleSnapshot accountScale,
+        LegendConnectProductionReadinessSnapshot readiness,
+        int runtimeAuditCount)
     {
         var metrics = new Dictionary<string, FounderLegendConnectLiveMetricSnapshot>(StringComparer.Ordinal);
         var routedRequestCount = dashboard.ReconciledTerminalRouteCount;
 
-        Add(metrics, "active-languages", dashboard.Languages.Count, LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count));
-        Add(metrics, "directional-pairs", dashboard.Pairs.Count, LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count));
+        Add(metrics, "active-languages", dashboard.ActiveLanguageCount, LegendConnectMetricTone.InformationalActivity(dashboard.ActiveLanguageCount));
+        Add(metrics, "directional-pairs", dashboard.DirectionalPairCount, LegendConnectMetricTone.InformationalActivity(dashboard.DirectionalPairCount));
         Add(metrics, "learning-failures", dashboard.FailedLearningJobCount, LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount));
         Add(metrics, "duplicate-prevention", dashboard.DuplicatePreventionCount, LegendConnectMetricTone.BeneficialActivity(dashboard.DuplicatePreventionCount));
 
@@ -356,9 +364,9 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         Add(metrics, "legacy-multi-unit-assets-retired", dashboard.SupersededLegacyMultiUnitAssetCount, LegendConnectMetricTone.InformationalActivity(dashboard.SupersededLegacyMultiUnitAssetCount));
 
         AddDisplay(metrics, "translation-quality-needs-review-summary", $"{translationQuality.NeedsReviewCount:N0} needs review", LegendConnectMetricTone.PendingWork(translationQuality.NeedsReviewCount));
-        AddDisplay(metrics, "active-pairs-summary", $"{dashboard.Pairs.Count:N0} pairs", LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count));
+        AddDisplay(metrics, "active-pairs-summary", $"{dashboard.DirectionalPairCount:N0} pairs", LegendConnectMetricTone.InformationalActivity(dashboard.DirectionalPairCount));
         AddDisplay(metrics, "runtime-audit-entries", $"{runtimeAuditCount:N0} entries", LegendConnectMetricTone.InformationalActivity(runtimeAuditCount));
-        AddDisplay(metrics, "operational-events-summary", $"{dashboard.RecentOperationalEvents.Count:N0} events", LegendConnectMetricTone.InformationalActivity(dashboard.RecentOperationalEvents.Count));
+        AddDisplay(metrics, "operational-events-summary", $"{dashboard.RecentOperationalEventCount:N0} events", LegendConnectMetricTone.InformationalActivity(dashboard.RecentOperationalEventCount));
 
         return new FounderLegendConnectLiveMetricsSnapshot(metrics, dashboard.ProviderCapacity);
     }

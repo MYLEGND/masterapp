@@ -1519,21 +1519,22 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     private async Task<(long Approved, long PendingEligible, long RejectedOrIneligible, long Deduplicated, long AwaitingKnowledgePairs)> CandidateReadinessAsync(
         CancellationToken cancellationToken)
     {
-        var candidates = await _db.Set<LegendCorpusCandidate>().AsNoTracking()
-            .Select(item => new
-            {
-                item.IsApproved, item.ProcessingState, item.SourceLanguageCode, item.TargetLanguageCode
-            })
-            .ToListAsync(cancellationToken);
-        var approved = candidates.LongCount(item => item.IsApproved);
-        var pending = candidates.LongCount(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing");
-        var rejected = candidates.LongCount(item => !item.IsApproved || item.ProcessingState == "Rejected");
-        var deduplicated = candidates.LongCount(item => item.ProcessingState == "Deduplicated");
-        var awaitingPairs = candidates.Where(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing")
-            .Select(item => LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .LongCount();
-        return (approved, pending, rejected, deduplicated, awaitingPairs);
+        var candidates = _db.Set<LegendCorpusCandidate>().AsNoTracking();
+        var counts = await candidates.GroupBy(_ => 1).Select(group => new
+        {
+            Approved = group.LongCount(item => item.IsApproved),
+            Pending = group.LongCount(item => item.IsApproved && (item.ProcessingState == "Pending" || item.ProcessingState == "Processing")),
+            Rejected = group.LongCount(item => !item.IsApproved || item.ProcessingState == "Rejected"),
+            Deduplicated = group.LongCount(item => item.ProcessingState == "Deduplicated")
+        }).SingleOrDefaultAsync(cancellationToken);
+        // Canonical language codes are ASCII. Uppercasing the complete pair
+        // preserves the previous OrdinalIgnoreCase distinctness without loading
+        // every candidate into the polling request's memory.
+        var awaitingPairs = await candidates
+            .Where(item => item.IsApproved && (item.ProcessingState == "Pending" || item.ProcessingState == "Processing"))
+            .Select(item => (item.SourceLanguageCode + ":" + item.TargetLanguageCode).ToUpper())
+            .Distinct().LongCountAsync(cancellationToken);
+        return (counts?.Approved ?? 0, counts?.Pending ?? 0, counts?.Rejected ?? 0, counts?.Deduplicated ?? 0, awaitingPairs);
     }
 
     private async Task<bool> DatabaseReadyAsync(CancellationToken cancellationToken)

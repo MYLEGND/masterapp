@@ -351,6 +351,9 @@ Dir.glob([ROOT.join("AgentPortal/Views/**/*.cshtml").to_s,
           ROOT.join("ClientApp/Views/**/*.cshtml").to_s,
           ROOT.join("SHARED/Views/**/*.cshtml").to_s]).sort.each do |path|
   html = File.read(path).gsub(/<(script|style)\b[^>]*>.*?<\/\1>/mi, "")
+  html.scan(/ApplicationCopyText\.Source\(\s*(#{LITERAL})/) do |token|
+    add.call(literal_value(token[0]), VISUAL)
+  end
   html.scan(/>([^<>]+)</m).flatten.each do |text|
     next if text.match?(/[@{}]/)
     value = CGI.unescapeHTML(text).gsub(/\s+/, " ").strip

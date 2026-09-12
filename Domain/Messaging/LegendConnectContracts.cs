@@ -2674,6 +2674,11 @@ public interface ILegendConnectOperations
                 "native_only_diagnostic_policy_unavailable"))
             : GetDashboardAsync(cancellationToken);
 
+    async Task<LegendConnectDashboardCounters> GetDashboardCountersAsync(
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+        LegendConnectDashboardCounters.FromDashboard(await GetDashboardAsync(cancellationToken, providerPolicy));
+
     Task<LegendConnectDashboardProjectionSnapshot> GetDashboardProjectionAsync(
         string? languageCode,
         string? pairKey,
@@ -2728,6 +2733,10 @@ public interface ILegendConnectOperations
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Counter-only projection; preserves the bounded review queue count and leaves ReviewItems empty.</summary>
+    Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualitySummaryAsync(
         CancellationToken cancellationToken = default);
 
     Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(

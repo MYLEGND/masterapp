@@ -773,10 +773,8 @@ public sealed class FounderLegendConnectService
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
-        var dashboard = nativeOnly
-            ? await _operations.GetDashboardAsync(cancellationToken, providerPolicy)
-            : await _operations.GetDashboardAsync(cancellationToken);
-        var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
+        var dashboard = await _operations.GetDashboardCountersAsync(cancellationToken, providerPolicy);
+        var translationQuality = await _operations.GetTranslationQualitySummaryAsync(cancellationToken);
         var accountScale = _entitlements is null
             ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
             : await _entitlements.GetFounderScaleAsync(cancellationToken);

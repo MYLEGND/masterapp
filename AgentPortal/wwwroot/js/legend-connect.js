@@ -284,6 +284,9 @@
 
     if (!root) return;
 
+    // Keep ownership by identity when the shared modal authority ports dialogs to body.
+    const connectModals = new Set(root.querySelectorAll(".modal"));
+    const ownsConnectElement = element => root.contains(element) || connectModals.has(element?.closest(".modal"));
     const limitsModal = document.getElementById("translationLimitsModal");
     const limitsBody = document.querySelector("[data-translation-limits-body]");
     let accountSearch = new URLSearchParams(location.search).get("account") || "";
@@ -312,7 +315,7 @@
         const generation = ++limitsGeneration;
         const request = new AbortController();
         limitsRequest = request;
-        const timeout = window.setTimeout(() => request.abort(), 20000);
+        const timeout = window.setTimeout(() => request.abort(new DOMException("Request timed out", "TimeoutError")), 20000);
         loadingLimits = true;
         accountSearch = search;
         setLimitsBusy(true);
@@ -324,10 +327,21 @@
             if (!response.ok || response.redirected) throw new Error("Allowances unavailable");
             const html = await response.text();
             if (generation !== limitsGeneration || request.signal.aborted || (automatic && editingLimits())) return;
-            root.querySelectorAll("[data-limit-editor]").forEach(modal => { bootstrap.Modal.getInstance(modal)?.dispose(); modal.remove(); });
+            const scrollTop = limitsBody.scrollTop;
+            const scrollLeft = limitsBody.scrollLeft;
+            Array.from(connectModals).filter(modal => modal.dataset.limitEditor).forEach(modal => {
+                const previous = parents.get(modal);
+                if (previous) suspendedParents.delete(previous.parent);
+                parents.delete(modal);
+                suspendedParents.delete(modal);
+                bootstrap.Modal.getInstance(modal)?.dispose();
+                connectModals.delete(modal);
+                modal.remove();
+            });
             limitsBody.innerHTML = html;
             limitsBody.querySelectorAll(".modal").forEach(modal => {
                 modal.dataset.limitEditor = "true";
+                connectModals.add(modal);
                 root.append(modal);
             });
             root.querySelectorAll("[data-limit-mode]").forEach(select => {
@@ -340,6 +354,10 @@
                 select.addEventListener("change", update);
                 update();
             });
+            if (automatic) {
+                limitsBody.scrollTop = scrollTop;
+                limitsBody.scrollLeft = scrollLeft;
+            }
             document.dispatchEvent(new CustomEvent("legend:limits-loaded"));
         } catch {
             if (generation !== limitsGeneration) return;
@@ -430,9 +448,12 @@
     // Bootstrap supports one visible dialog. Return child editors to their parent,
     // preserving the search and focus without creating overlapping backdrops.
     const parents = new WeakMap();
-    document.addEventListener("click", event => {
+    const suspendedParents = new WeakSet();
+    // Bootstrap's delegated document capture handler runs before later document
+    // listeners. Intercept at window capture while the parent is still visible.
+    window.addEventListener("click", event => {
         const trigger = event.target.closest('[data-bs-toggle="modal"]');
-        if (!trigger?.closest(".legend-connect-page") || !window.bootstrap) return;
+        if (!trigger || !ownsConnectElement(trigger) || !window.bootstrap) return;
         const selector = trigger.getAttribute("data-bs-target");
         if (!selector?.startsWith("#")) return;
         const modal = document.getElementById(selector.slice(1));
@@ -441,22 +462,26 @@
         event.stopImmediatePropagation();
         const parent = trigger.closest(".modal.show");
         if (parent && parent !== modal) {
-            parents.set(modal, { parent, trigger });
+            suspendedParents.add(parent);
+            parents.set(modal, { parent, trigger, scroll: Array.from(parent.querySelectorAll(".modal-body, [data-legend-section-body]")).map(element => ({ element, top: element.scrollTop, left: element.scrollLeft })) });
             parent.addEventListener("hidden.bs.modal", () => bootstrap.Modal.getOrCreateInstance(modal).show(trigger), { once: true });
             bootstrap.Modal.getOrCreateInstance(parent).hide();
         } else bootstrap.Modal.getOrCreateInstance(modal).show(trigger);
     }, true);
     document.addEventListener("show.bs.modal", event => {
-        if (event.target.closest(".legend-connect-page")) void refreshMetrics();
+        if (connectModals.has(event.target)) void refreshMetrics();
     });
     document.addEventListener("hidden.bs.modal", event => {
+        if (suspendedParents.has(event.target)) return;
         const previous = parents.get(event.target);
         if (!previous) return;
         parents.delete(event.target);
+        suspendedParents.delete(previous.parent);
         previous.parent.dataset.returning = "true";
         previous.parent.addEventListener("shown.bs.modal", () => {
             delete previous.parent.dataset.returning;
-            previous.trigger?.focus();
+            previous.scroll.forEach(({ element, top, left }) => { element.scrollTop = top; element.scrollLeft = left; });
+            previous.trigger?.focus({ preventScroll: true });
         }, { once: true });
         bootstrap.Modal.getOrCreateInstance(previous.parent).show();
     });
@@ -882,6 +907,14 @@
         }
     }
 
+    document.querySelectorAll("[data-legend-inspection-modal]").forEach(modal => {
+        modal.addEventListener("shown.bs.modal", () => {
+            const panel = modal.querySelector("[data-legend-section]");
+            panel.open = true;
+            if (!panelState.has(panel) && !activeRequests.has(panel)) void requestPage(panel);
+        });
+    });
+
     document
         .querySelectorAll("[data-legend-section]")
         .forEach(panel => {
@@ -890,7 +923,8 @@
                 () => {
                     if (
                         panel.open &&
-                        !panelState.has(panel)
+                        !panelState.has(panel) &&
+                        !activeRequests.has(panel)
                     ) {
                         void requestPage(panel);
                     }

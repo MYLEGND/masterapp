@@ -13,6 +13,41 @@
     --dash-text-soft: rgba(226, 232, 240, 0.78);
     --dash-shadow: 0 28px 60px rgba(4, 10, 28, 0.26);
     --dash-shadow-strong: 0 34px 80px rgba(3, 8, 22, 0.38);
+    --legend-modal-safe-margin: 24px;
+    --legend-modal-area-start: 24px;
+    --legend-modal-area-end: 24px;
+    --legend-modal-safe-height: calc(100dvh - 48px);
+}
+
+/* One shared content-region boundary; backdrop and focus ownership stay with
+   the existing Bootstrap/custom dialog controller. No fixed banner heights. */
+html[data-legend-modal-region] body [data-legend-modal-surface] {
+    box-sizing: border-box;
+    padding: var(--legend-modal-area-start) var(--legend-modal-safe-margin) var(--legend-modal-area-end);
+}
+html[data-legend-modal-region] body [data-legend-modal-panel] {
+    min-height: 0;
+    max-height: var(--legend-modal-safe-height);
+    overflow: auto;
+}
+html[data-legend-modal-region] body [data-legend-modal-panel]:not(.modal-dialog) {
+    max-width: 100%;
+}
+html[data-legend-modal-region] body .modal > .modal-dialog {
+    margin: 0 auto;
+    min-height: 0;
+    max-height: var(--legend-modal-safe-height);
+}
+html[data-legend-modal-region] body .modal > .modal-dialog-scrollable {
+    height: var(--legend-modal-safe-height);
+}
+html[data-legend-modal-region] body .modal > .modal-dialog-centered {
+    min-height: var(--legend-modal-safe-height);
+}
+html[data-legend-modal-region] body .modal .modal-body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .dashboard-page-shell {

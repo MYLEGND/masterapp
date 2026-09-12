@@ -1417,18 +1417,25 @@ public sealed class LegendFounderAiContractTests
         var page = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "legend-connect-index.cshtml"));
 
-        // The Founder requested compact modal launchers in place of seven accordion rows.
+        // The Founder requested direct access to every inspector, not a hidden Explore menu.
+        // Six fixed launchers plus one Razor loop render nineteen section launchers.
         // This checks presentation only; intelligence evidence and native gates are unchanged.
         Assert.Contains("<section class=\"lc-hero\"", page, StringComparison.Ordinal);
         Assert.Contains("FOUNDER LANGUAGE INTELLIGENCE", page, StringComparison.Ordinal);
         Assert.DoesNotContain("<details class=\"lc-hero", page, StringComparison.Ordinal);
         Assert.Equal(7, page.Split("class=\"lc-section-launch ", StringSplitOptions.None).Length - 1);
-        for (var index = 0; index < 7; index++)
+        for (var index = 0; index < 6; index++)
         {
             Assert.Contains($"data-bs-target=\"#lcSection{index}\"", page, StringComparison.Ordinal);
             Assert.Contains($"id=\"lcSection{index}\" tabindex=\"-1\" aria-labelledby=\"lcSection{index}Title\" aria-hidden=\"true\"", page, StringComparison.Ordinal);
             Assert.Contains($"id=\"lcSection{index}Title\"", page, StringComparison.Ordinal);
         }
+        foreach (var section in new[] { "submissions", "curriculum", "candidates", "evidence", "relationships", "learning", "machine-learning-lifecycle", "research-observability", "models", "health", "retained-knowledge", "language-pairs", "provider-observations" })
+            Assert.Contains($"(\"{section}\",", page, StringComparison.Ordinal);
+        Assert.Contains("data-bs-target=\"#lcInspect-@panel.Item1\"", page, StringComparison.Ordinal);
+        Assert.Contains("aria-labelledby=\"lcInspectTitle-@panel.Item1\"", page, StringComparison.Ordinal);
+        Assert.Contains("data-legend-section=\"@panel.Item1\"", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"lcSection6\"", page, StringComparison.Ordinal);
         Assert.Contains("data-bs-target=\"#translationLimitsModal\"", page, StringComparison.Ordinal);
         Assert.Contains("id=\"translationLimitsModal\" tabindex=\"-1\" aria-labelledby=\"translationLimitsTitle\" aria-hidden=\"true\"", page, StringComparison.Ordinal);
         Assert.DoesNotContain("<details class=\"lc-panel lc-panel-collapse", page, StringComparison.Ordinal);

@@ -155,7 +155,16 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                     _logger.LogWarning(
                         "Azure Translator subscription capacity lookup failed. StatusCode={StatusCode}",
                         (int)response.StatusCode);
-                    return _cached = Unavailable(now, "Azure did not authorize the Translator resource capacity lookup.");
+                    var detail = response.StatusCode switch
+                    {
+                        System.Net.HttpStatusCode.Unauthorized => "Azure could not authenticate the application identity for the Translator resource lookup.",
+                        System.Net.HttpStatusCode.Forbidden => "The application identity is not authorized to read the Azure Translator resource. Verify its resource permissions.",
+                        System.Net.HttpStatusCode.NotFound => "The configured Azure Translator resource was not found. Verify the resource ID.",
+                        System.Net.HttpStatusCode.TooManyRequests => "Azure temporarily throttled the Translator resource lookup. Capacity is unavailable until a later refresh succeeds.",
+                        _ when (int)response.StatusCode >= 500 => "Azure Resource Manager is temporarily unavailable. Capacity could not be verified.",
+                        _ => $"Azure rejected the Translator resource lookup (HTTP {(int)response.StatusCode}). Verify the resource configuration."
+                    };
+                    return _cached = Unavailable(now, detail, resourceId);
                 }
 
                 using var document = JsonDocument.Parse(

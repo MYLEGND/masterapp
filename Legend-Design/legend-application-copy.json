@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-4d27ce83e75cd9f3",
+  "catalogVersion": "application-copy-v1-bda4dc4a17ce9490",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -9061,6 +9061,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.2d04bbf577e8b806182d3fb8",
+      "source": "Always unlimited",
+      "context": "visual interface copy",
+      "sourceRevision": "00994d76cdfc19a4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.905b260fe3b4cf66be533998",
       "source": "American General (AIG/Corebridge)",
       "context": "visual interface copy",
@@ -13443,6 +13454,17 @@
       "source": "Cancer, heart attack, stroke, paralysis, a major organ transplant, kidney failure, blindness, ALS, coma, major burns, traumatic brain injury, sudden cardiac arrest, heart valve replacement, cystic fibrosis, aplastic anemia, or being told you only had 2 years left to live.",
       "context": "visual interface copy",
       "sourceRevision": "717150d875309a16",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.04a07b11e7cdc86f144780fa",
+      "source": "Candidates",
+      "context": "visual interface copy",
+      "sourceRevision": "fdc9c0f69d6aa8ea",
       "placeholders": [
 
       ],
@@ -18489,6 +18511,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.989dc89dcc0e43dcec8094de",
+      "source": "Curriculum processing",
+      "context": "visual interface copy",
+      "sourceRevision": "ac3038841c5c8d6c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.3524b132a1e489d2611ebb26",
       "source": "Custom",
       "context": "visual interface copy",
@@ -19941,6 +19974,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.79ed76d3e74be882cd139423",
+      "source": "Diagnostics",
+      "context": "visual interface copy",
+      "sourceRevision": "268f14bbfe119c1e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.380e8748e27543e1b8d7483e",
       "source": "Dial Tracker — YTD",
       "context": "visual interface copy",
@@ -20000,6 +20044,17 @@
       "source": "Direction only. No debate.",
       "context": "visual interface copy",
       "sourceRevision": "a3c9cf490d260aab",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a49399e365481e5fbc46dd2d",
+      "source": "Directional language-pair intelligence.",
+      "context": "visual interface copy",
+      "sourceRevision": "0d70cb3f571ae726",
       "placeholders": [
 
       ],
@@ -20990,6 +21045,17 @@
       "source": "Duplicate Warning",
       "context": "visual interface copy",
       "sourceRevision": "d239c0eb56ad3880",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.132ab475d75827eb7e22154d",
+      "source": "Durable translation-acquisition work and processing state.",
+      "context": "visual interface copy",
+      "sourceRevision": "00e42adb30d0ae4c",
       "placeholders": [
 
       ],
@@ -22511,6 +22577,17 @@
       "placeholders": [
         "time",
         "weekdays"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6480d673514b96acd5328220",
+      "source": "Evidence",
+      "context": "visual interface copy",
+      "sourceRevision": "03867aea70acaf4c",
+      "placeholders": [
+
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -24771,6 +24848,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.87a86a0d388313353fe06860",
+      "source": "Founder-controlled compositional anchors.",
+      "context": "visual interface copy",
+      "sourceRevision": "5db3f8d6efac1eff",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.3fa94f1e7ba1cbe58ddb6b1c",
       "source": "Founder-only",
       "context": "visual interface copy",
@@ -25622,6 +25710,17 @@
       "source": "Governed language training",
       "context": "visual interface copy",
       "sourceRevision": "476dd6e6bba61f31",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.91be7ddb2c0c95d2e9dec561",
+      "source": "Governed model-training lifecycle records.",
+      "context": "visual interface copy",
+      "sourceRevision": "596a9b108de758a9",
       "placeholders": [
 
       ],
@@ -29570,6 +29669,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.78179151b93b23d792e41ecd",
+      "source": "Language Pairs",
+      "context": "visual interface copy",
+      "sourceRevision": "228478943296216b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8d997d4ac8094e8cb96af41a",
       "source": "Language Translation Access",
       "context": "visual interface copy",
@@ -32639,6 +32749,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.283ce5b68f6e9ebe62dce589",
+      "source": "Machine Learning Lifecycle",
+      "context": "visual interface copy",
+      "sourceRevision": "bce5252db998429f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.18a468e8af4b2f614bacc484",
       "source": "Mail-In Aged Leads",
       "context": "visual interface copy",
@@ -34069,6 +34190,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.676b9aee13ca8d9288edf69e",
+      "source": "Models",
+      "context": "visual interface copy",
+      "sourceRevision": "d17d2d78d76e6a6c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.c69d92b85effec683ed380a4",
       "source": "Mon",
       "context": "visual interface copy",
@@ -34432,10 +34564,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.70ee98717208cc1b082fe6b1",
+      "source": "Monthly character allowances · remaining accounts for pending usage.",
+      "context": "visual interface copy",
+      "sourceRevision": "8c2b7a36bb26de2c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.540e694ec7de77bd80318764",
       "source": "Monthly included allowance",
       "context": "visual interface copy",
       "sourceRevision": "6f2c0ea09a505c48",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d241351f6940df834f6df669",
+      "source": "Monthly limit",
+      "context": "visual interface copy",
+      "sourceRevision": "c52f575884d08440",
       "placeholders": [
 
       ],
@@ -38547,6 +38701,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.bd0233ba2c601de511acafe1",
+      "source": "Operational health for the selected language.",
+      "context": "visual interface copy",
+      "sourceRevision": "b30ccb206fbd0a93",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.1e3e561d46b154c7753284a4",
       "source": "Operations",
       "context": "visual interface copy",
@@ -39361,6 +39526,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.eeeed301f2328df6698f39b2",
+      "source": "Page Health",
+      "context": "visual interface copy",
+      "sourceRevision": "5136fe9bbc089ecd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e5498d33c2a9adb9c9c6e059",
       "source": "Page Journey",
       "context": "visual interface copy",
@@ -40146,6 +40322,17 @@
       "source": "People who have mutually accepted a connection.",
       "context": "visual interface copy",
       "sourceRevision": "2b6f37802e160d86",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c1e7d6951e8e1b9faa3dfb71",
+      "source": "Per-submission completion from durable submission, work-item, evaluator, coverage, and transition records.",
+      "context": "visual interface copy",
+      "sourceRevision": "16760a7acad1c39e",
       "placeholders": [
 
       ],
@@ -42496,6 +42683,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.3bdc8690fe79a05d3fd26b40",
+      "source": "Provider Observations",
+      "context": "visual interface copy",
+      "sourceRevision": "f2c55c7040fe9f88",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.4d6c8d22ce6dfffd7f057867",
       "source": "Provider dependency",
       "context": "visual interface copy",
@@ -42566,6 +42764,17 @@
       "source": "Provider-billable translation volume",
       "context": "visual interface copy",
       "sourceRevision": "51bb38db54cc3b28",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ef527e683745b20291ef7a40",
+      "source": "Provider-derived evidence isolated from Founder authority.",
+      "context": "visual interface copy",
+      "sourceRevision": "5b518c970ead0566",
       "placeholders": [
 
       ],
@@ -43457,6 +43666,17 @@
       "source": "Read-only",
       "context": "visual interface copy",
       "sourceRevision": "72bb90897ab1eadc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.999d31cff827a111bb017993",
+      "source": "Read-only MachineProposed candidate, critic, validator, and admission lineage. Pending material remains noncanonical and non-serving.",
+      "context": "visual interface copy",
+      "sourceRevision": "b862ec9cf512cb4a",
       "placeholders": [
 
       ],
@@ -44366,10 +44586,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e703f7b3afd23cf36f464138",
+      "source": "Relationships",
+      "context": "visual interface copy",
+      "sourceRevision": "85752a46aa46dc5e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b31d6698f3abffc2eb189a61",
       "source": "Relay service management",
       "context": "visual interface copy",
       "sourceRevision": "d1721de572faf1a9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a2e667007f1e36da1abb5944",
+      "source": "Remaining",
+      "context": "visual interface copy",
+      "sourceRevision": "f3e4352a5df650e5",
       "placeholders": [
 
       ],
@@ -45246,6 +45488,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.98f8ea29b8a606d9dbae55f5",
+      "source": "Research Observability",
+      "context": "visual interface copy",
+      "sourceRevision": "17a486eeb4b01c8b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b76a2c8881fa475ee6f02190",
       "source": "Resend Invitation",
       "context": "visual interface copy",
@@ -45514,6 +45767,17 @@
       "source": "Resuming account…",
       "context": "visual interface copy",
       "sourceRevision": "b9fac9fef9004a2d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7ac22c4d5c325b72e8f2c33f",
+      "source": "Retained Knowledge",
+      "context": "visual interface copy",
+      "sourceRevision": "02b59a5ec8e8f69a",
       "placeholders": [
 
       ],
@@ -46684,6 +46948,17 @@
 
       ],
       "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f04161e9c367d50f112d03c1",
+      "source": "Sanitized, bounded research decisions, queries, sources, claim relationships, citations, timing, cost, failures, runtime identity, and retention correlation. These receipts are observations, not retained knowledge.",
+      "context": "visual interface copy",
+      "sourceRevision": "731293ef4fd98ca8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "ApprovedOnly",
       "reuseScope": "Global"
     },
     {
@@ -48084,6 +48359,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.1a7c689bf9b2eb0d8cb59017",
+      "source": "Searchable eligible canonical knowledge.",
+      "context": "visual interface copy",
+      "sourceRevision": "9dddecf18ce88913",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.09a52e9f1964b7028cd0dbc1",
       "source": "Secondary Controls",
       "context": "visual interface copy",
@@ -48715,6 +49001,17 @@
       "source": "Self managed",
       "context": "visual interface copy",
       "sourceRevision": "16156d20a6ec8153",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.fc21a6c2515a918887a263fc",
+      "source": "Semantic families and controlled examples.",
+      "context": "visual interface copy",
+      "sourceRevision": "4a7f7cd33e78f4bd",
       "placeholders": [
 
       ],
@@ -51528,6 +51825,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.b92a80312ff1c9c195c89e0c",
+      "source": "Structural relationships and contradiction state.",
+      "context": "visual interface copy",
+      "sourceRevision": "66eb368dfdaf03ac",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.1f987dfb3ba541694c194bdf",
       "source": "Submissions are time-stamped; falsification or unauthorized signing is a policy violation and may be unlawful.",
       "context": "visual interface copy",
@@ -52456,6 +52764,17 @@
       "source": "Target total contribution",
       "context": "visual interface copy",
       "sourceRevision": "3aabf1c105b43723",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.bce9468a07c2619fd9fc4838",
+      "source": "Target-realization hypotheses and their governed lifecycle.",
+      "context": "visual interface copy",
+      "sourceRevision": "1736bb3d7511ca17",
       "placeholders": [
 
       ],
@@ -55423,6 +55742,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.4a469e1ac1c16718e677c6bb",
+      "source": "Translation Events",
+      "context": "visual interface copy",
+      "sourceRevision": "c77c94863ad366d7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2b73c03b44ba66d48427afb4",
       "source": "Translation Limits",
       "context": "visual interface copy",
@@ -57022,6 +57352,17 @@
       "source": "Use your own Bookings setup only if you want a personal scheduler in public quote flows.",
       "context": "visual interface copy",
       "sourceRevision": "fda2dc97dfbc4b88",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7355c0399db0381746b968b4",
+      "source": "Used",
+      "context": "visual interface copy",
+      "sourceRevision": "ae7d8dfac9ff5e0f",
       "placeholders": [
 
       ],

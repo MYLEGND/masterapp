@@ -65,11 +65,23 @@
 .translation-founder-card .translation-limit-value { color: var(--lc-green); }
 .translation-limit-search { display: flex; flex-wrap: wrap; gap: .6rem; margin: .75rem 0; }
 .translation-limit-search input { flex: 1 1 220px; }
-.translation-account-list { display: grid; gap: .6rem; }
-.translation-account-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .7rem; background: var(--lc-navy-950); border-radius: 10px; }
-.translation-account-row > div { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
-.translation-account-row small { display: block; }
-.translation-limit-badge { border: 1px solid var(--lc-gold-border); border-radius: 20px; padding: .3rem .55rem; color: var(--lc-gold-light); font-size: .7rem; }
+.translation-account-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .65rem; align-items: stretch; }
+.translation-account-row { display: flex; flex-direction: column; min-width: 0; gap: .65rem; padding: .8rem; background: var(--lc-navy-950); border: 1px solid var(--lc-border); border-radius: 10px; overflow-wrap: anywhere; }
+.translation-account-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.translation-account-heading > div { min-width: 0; }
+.translation-account-heading strong { display: block; color: var(--lc-white); font-size: .95rem; line-height: 1.3; }
+.translation-account-row small { display: block; margin-top: .2rem; }
+.translation-account-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .75rem; margin: 0; }
+.translation-account-metrics dt { color: var(--lc-muted); font-size: .72rem; font-weight: 500; }
+.translation-account-metrics dd { margin: .1rem 0 0; color: var(--lc-white); font-size: .95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.translation-account-metrics .translation-account-remaining dd { color: #8bc7fa; }
+.translation-account-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem; margin-top: auto; padding-top: .6rem; border-top: 1px solid var(--lc-border); }
+.translation-account-actions .dashboard-command-action { min-height: 44px; padding: .45rem .75rem; }
+.translation-account-protected { color: var(--lc-green); font-size: .72rem; }
+.translation-limit-badge { display: inline-flex; align-items: center; border: 1px solid var(--lc-gold-border); border-radius: 20px; padding: .3rem .55rem; color: var(--lc-gold-light); font-size: .7rem; line-height: 1.2; }
+.translation-access-status { flex-shrink: 0; }
+.translation-access-enabled { color: var(--lc-green); border-color: var(--lc-green); }
+.translation-access-disabled { color: var(--lc-red); border-color: var(--lc-red); }
 .lc-relay-card { border-left: 3px solid #ba9aff; padding: 1rem; background: var(--lc-navy-850); border-radius: 14px; }
 .lc-relay-card h3, .lc-relay-card .lc-kicker { color: #cfb7ff; }
 .lc-relay-card .lc-actions { flex-wrap: wrap; }

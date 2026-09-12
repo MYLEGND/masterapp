@@ -34,7 +34,7 @@
         <small data-relay-observed></small>
     </section>
     <section class="dashboard-analytics-panel" aria-labelledby="translation-users-title">
-        <div class="dashboard-section-head"><div><h2 id="translation-users-title">Individual allowances</h2><p>Find an account to review usage and adjust its monthly limit.</p></div></div>
+        <div class="dashboard-section-head"><div><h2 id="translation-users-title">Individual allowances</h2><p>Monthly character allowances · remaining accounts for pending usage.</p></div></div>
         <form method="get" asp-action="TranslationLimits" class="translation-limit-search" data-translation-limit-search role="search">
             <label class="visually-hidden" for="translation-account-search">Search users</label>
             <input id="translation-account-search" class="form-control" type="search" name="search" value="@Model.Search.Query" placeholder="Search name, email or user ID" maxlength="120" />
@@ -45,18 +45,30 @@
         {
             var account = Model.Search.Accounts[index];
             var entitlement = account.Entitlement;
-            <article class="translation-account-row">
-                <div><strong>@account.DisplayName</strong><small>@account.Account.ParticipantType · @(account.PreferredLanguage ?? "Language not set")</small></div>
-                <div><strong>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.CharacterAllowance.ToString("N0"))</strong><small>@entitlement.ConsumedCharacters.ToString("N0") used this month</small></div>
-                <span class="translation-limit-badge">@(entitlement.EntitlementSource is "DefaultPolicy" or "GlobalPolicy" ? "Global default" : entitlement.EntitlementSource == "FounderIdentity" ? "Founder" : "Individual")</span>
-                @if (entitlement.EntitlementSource == "FounderIdentity")
-                {
-                    <span class="translation-limit-badge">Unlimited Founder access</span>
-                }
-                else
-                {
-                    <button type="button" class="dashboard-command-action" data-bs-toggle="modal" data-bs-target="#translationAccount@(index)" aria-label="Manage @account.DisplayName">Manage</button>
-                }
+            var isFounder = entitlement.EntitlementSource == "FounderIdentity";
+            var accessEnabled = account.AccessState == "Granted";
+            <article class="translation-account-row" aria-labelledby="translation-account-name@(index)">
+                <header class="translation-account-heading">
+                    <div><strong id="translation-account-name@(index)">@account.DisplayName</strong><small>@account.Account.ParticipantType · @(account.PreferredLanguage ?? "Language not set")</small></div>
+                    <span class="translation-limit-badge translation-access-status @(accessEnabled ? "translation-access-enabled" : "translation-access-disabled")">@(accessEnabled ? "Enabled" : "Disabled")</span>
+                </header>
+                <dl class="translation-account-metrics">
+                    <div><dt>Monthly limit</dt><dd>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.CharacterAllowance.ToString("N0"))</dd></div>
+                    <div class="translation-account-remaining"><dt>Remaining</dt><dd>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.RemainingCharacters?.ToString("N0") ?? "Unavailable")</dd></div>
+                    <div><dt>Used</dt><dd>@entitlement.ConsumedCharacters.ToString("N0")</dd></div>
+                    <div><dt>Pending</dt><dd>@entitlement.ReservedCharacters.ToString("N0")</dd></div>
+                </dl>
+                <footer class="translation-account-actions">
+                    <span class="translation-limit-badge">@(entitlement.EntitlementSource is "DefaultPolicy" or "GlobalPolicy" ? "Global default" : isFounder ? "Founder" : "Individual")</span>
+                    @if (isFounder)
+                    {
+                        <span class="translation-account-protected">Always unlimited</span>
+                    }
+                    else
+                    {
+                        <button type="button" class="dashboard-command-action" data-bs-toggle="modal" data-bs-target="#translationAccount@(index)" aria-label="Manage @account.DisplayName">Manage</button>
+                    }
+                </footer>
             </article>
         }
         </div>
