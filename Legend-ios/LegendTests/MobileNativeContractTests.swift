@@ -6,6 +6,18 @@ import UIKit
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testBundledEmojiPickerSearchIncludesKeywordsAndCompleteSequences() throws {
+        let catalog = try XCTUnwrap(LegendReactionEmojiCatalog.bundled)
+        XCTAssertGreaterThan(catalog.entries.count, 3000)
+        XCTAssertEqual(Set(catalog.entries.map(\.emoji)).count, catalog.entries.count)
+        XCTAssertTrue(catalog.search("pizza").contains { $0.emoji == "🍕" })
+        XCTAssertTrue(catalog.search("THUMBS UP").contains { $0.emoji == "👍" })
+        XCTAssertTrue(catalog.search("pízza").contains { $0.emoji == "🍕" })
+        XCTAssertEqual(catalog.search("👨‍👩‍👧‍👦").map(\.emoji), ["👨‍👩‍👧‍👦"])
+        XCTAssertTrue(catalog.search("not-an-emoji-zzzz").isEmpty)
+        XCTAssertEqual(catalog.search("").count, catalog.entries.count)
+    }
+
     func testLocalizationValidatesEntriesWithoutDiscardingOtherTranslatedCopy() {
         func entry(revision: String = "revision1", failure: String? = nil) -> LegendApplicationLocalizedCopy {
             LegendApplicationLocalizedCopy(id: "entry", source: "Settings", text: "Anviwònman", context: "visual interface copy", sourceRevision: revision, placeholders: [], provider: "AzureTranslator", provenance: "ProviderDerived", validationState: "Observation", createdUtc: "2026-09-10T00:00:00Z", reused: true, failureCode: failure)

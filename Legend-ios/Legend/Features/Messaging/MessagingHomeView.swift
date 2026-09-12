@@ -3658,7 +3658,6 @@ private struct LegendMessageBubble: View {
     @State private var copyFeedbackTrigger = 0
     @State private var isShowingOriginal = false
     @State private var emojiPicker = false
-    @State private var emojiDraft = ""
     @State private var actionMenu = false
 
     private let senderBubbleColor = LegendNextColor.gold
@@ -3695,12 +3694,10 @@ private struct LegendMessageBubble: View {
         )
         .onTapGesture(count: 2) { if !message.isDeleted { onReact("❤️") } }
         .sheet(isPresented: $emojiPicker) {
-            VStack(spacing: 16) {
-                Text(LegendLocalized("Choose a reaction")).font(.headline)
-                TextField(LegendLocalized("Emoji"), text: $emojiDraft).textFieldStyle(.roundedBorder)
-                Button(LegendLocalized("React")) { onReact(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines)); emojiPicker = false }
-                    .disabled(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }.padding().presentationDetents([.height(220)])
+            LegendReactionEmojiPicker { emoji in
+                emojiPicker = false
+                onReact(emoji)
+            }
         }
         .sheet(isPresented: $sharingAttachments) {
             NavigationStack {
@@ -3913,12 +3910,9 @@ private struct LegendMessageBubble: View {
                             Button { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) } label: {
                                 HStack(spacing: 2) {
                                     Text(reaction.emoji)
-                                    if reaction.count > 1 { Text("\(reaction.count)").font(.caption2.bold()) }
                                 }
                                 .font(.system(size: 15))
                                 .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(LegendNextColor.surface, in: Capsule())
-                                .overlay(Capsule().stroke(LegendNextColor.chatTimestamp.opacity(reaction.reactedByCurrentActor ? 1 : 0.3), lineWidth: 1))
                             }.buttonStyle(.plain)
                         }
                     }
@@ -4567,5 +4561,69 @@ private struct LegendSharedMessageCard: View {
                 }.buttonStyle(.plain).padding(.trailing, 64)
             } else { Text(LegendLocalized("Shared content is unavailable.")) }
         }
+    }
+}
+
+
+struct LegendReactionEmojiCatalog: Decodable {
+    struct Entry: Decodable, Identifiable {
+        let emoji: String
+        let name: String
+        let keywords: [String]
+        var id: String { emoji }
+    }
+    let entries: [Entry]
+    static let bundled: LegendReactionEmojiCatalog? = {
+        guard let url = Bundle.main.url(forResource: "legend-reaction-emoji", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Self.self, from: data)
+    }()
+    func search(_ query: String) -> [Entry] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return entries }
+        let normalized = query.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        let tokens = normalized.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        return entries.filter { entry in
+            entry.emoji == query || (!tokens.isEmpty && tokens.allSatisfy { token in entry.keywords.contains { $0.contains(token) } })
+        }
+    }
+}
+
+private struct LegendReactionEmojiPicker: View {
+    let select: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    private let columns = [GridItem(.adaptive(minimum: 44), spacing: 8)]
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if let catalog = LegendReactionEmojiCatalog.bundled {
+                    let entries = catalog.search(query)
+                    if entries.isEmpty {
+                        ContentUnavailableView.search(text: query)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(entries) { entry in
+                                Button { select(entry.emoji) } label: {
+                                    Text(entry.emoji).font(.system(size: 32)).frame(minWidth: 44, minHeight: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(entry.name)
+                            }
+                        }.padding(.horizontal, 16).padding(.vertical, 12)
+                    }
+                } else {
+                    ContentUnavailableView(LegendLocalized("Emoji unavailable"), systemImage: "face.smiling")
+                }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: LegendLocalized("Search emoji"))
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark").accessibilityLabel(LegendLocalized("Close")) }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
