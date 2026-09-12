@@ -81,6 +81,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "LegendConnect:LanguageRegistry:Baseline:0:NativeName",
                     "English")
             })
+            .AddControlledFoundation()
             .Build();
 
         var registry =
@@ -328,7 +329,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             $"transition sources but found {independentSupport}.");
 
         var factory =
-            new CountingHttpClientFactory();
+            new CountingHttpClientFactory(allowControlledFoundation: true);
         var discourseProfiles = new AgentProfileAccessResolver(db);
 
         var chat =
@@ -341,7 +342,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 new LegendFounderAiDiscourseStateService(
                     db, discourseProfiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(),
+                modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance));
 
         var fallbackFragments = new[]
         {
@@ -491,11 +494,23 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             Assert.True(
                 reply.Succeeded,
-                $"User-facing ReplyAsync failed for '{prompt}'.");
+                $"User-facing ReplyAsync failed for '{prompt}': authority={reply.ResponseAuthority}; stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}");
 
-            Assert.Equal(
-                native.Answer,
-                reply.Message);
+            // Governed realization above remains independently verified.
+            // These are protocol and bounded surface checks only. Natural
+            // relevance and absence of invented claims require independent
+            // review of the actual remote model responses recorded above.
+            Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+            Assert.Equal("foundation_response", reply.Stage);
+            Assert.False(reply.ExternalAnsweringUsed);
+            Assert.False(reply.EscalationUsed);
+            Assert.Null(reply.LearningState);
+            Assert.Null(reply.ResearchOutcome);
+            Assert.False(string.IsNullOrWhiteSpace(reply.Message));
+            Assert.InRange(reply.Message!.Length, 1, 1000);
+            Assert.Matches(@"(?i)\b(hi|hello|hey|welcome|morning|meet|help|assist|ready|well|here|doing)\b", reply.Message);
+            Assert.DoesNotMatch(@"(?i)\b(not configured|unconfigured|model unavailable|foundation unavailable|curriculum incomplete|insufficient curriculum)\b", reply.Message);
+            Assert.DoesNotMatch(@"(?i)\b(I|I've|I have)\s+(sent|emailed|contacted|booked|purchased|promoted|trained)\b", reply.Message);
 
             Assert.False(
                 string.Equals(
@@ -524,7 +539,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             passed++;
 
             _output.WriteLine(
-                "RESULT: PASS");
+                "RESULT: PROTOCOL_PASS; NATURAL_LANGUAGE_QUALITY: NOT_REVIEWED");
         }
 
         _output.WriteLine("");
@@ -532,7 +547,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             "============================================================");
 
         _output.WriteLine(
-            $"DIRECT PROMPTS PASSED: {passed}/8");
+            $"DIRECT PROTOCOL CHECKS PASSED: {passed}/8");
 
         _output.WriteLine(
             $"DIRECT PROMPTS FAILED: {8 - passed}/8");
@@ -542,10 +557,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             $"{factory.CreateClientCalls}");
 
         _output.WriteLine(
-            "FALLBACK RESPONSES ACCEPTED: 0");
+            "KNOWN FALLBACK PHRASES ACCEPTED: 0; OPEN-ENDED CLAIM REVIEW: REQUIRED");
 
         _output.WriteLine(
-            "RELEASE BEHAVIOR PROOF: PASS");
+            "RELEASE BEHAVIOR PROOF: NOT_ESTABLISHED; INDEPENDENT REMOTE RESPONSE REVIEW REQUIRED");
 
         _output.WriteLine(
             "============================================================");
@@ -5840,7 +5855,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         }
     }
 
-    private sealed class CountingHttpClientFactory : IHttpClientFactory
+    private sealed class CountingHttpClientFactory(bool allowControlledFoundation = false) : IHttpClientFactory
     {
         private int _createClientCalls;
         private int _sendCalls;
@@ -5849,6 +5864,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         public HttpClient CreateClient(string name)
         {
+            if (allowControlledFoundation && name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             Interlocked.Increment(ref _createClientCalls);
             return new HttpClient(new NoNetworkHandler(() => Interlocked.Increment(ref _sendCalls)))
             {

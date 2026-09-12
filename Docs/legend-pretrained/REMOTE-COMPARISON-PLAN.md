@@ -1,5 +1,9 @@
 # Remote comparison: approval and evidence contract
 
+CURRENT BILLING AUTHORITY: all unused experiment authorization is withdrawn. No new paid resources, quota/support requests or recurring commitments. Prior approved envelopes below are historical only.
+
+SUPERSEDED SELECTION SCOPE: user now directs qualification of Qwen/Qwen3.8-27B for production. Defer paired4B/27B comparison; reuse compatibility, safety, quality and lifecycle gates below for27B alone. Historical comparison requirements remain recorded, not actively executed.
+
 Status: user approved the initial experiment, total incremental cost at most $20 and cumulative compute at most four hours, whichever comes first. All setup/downloads/disks/storage/network charges count. Only necessary quota increases are authorized; no extension, recurring compute or production deployment. Implementation continues; no model selected, paid compute provisioned or remote model evaluation performed. Historical Mac results are excluded from selection. This plan permits no laptop weights, model execution, training data, or checkpoints.
 
 ## Capacity and proposed initial spending envelope

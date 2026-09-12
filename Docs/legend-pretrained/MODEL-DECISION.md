@@ -1,4 +1,9 @@
-# LEGEND foundation decision — remote comparison pending
+# LEGEND foundation target — Qwen3.8-27B qualification pending
+
+CURRENT BILLING AUTHORITY: all unused experiment authorization is withdrawn. No new paid resources, quota/support requests or recurring commitments. Prior approved envelopes below are historical only.
+
+Latest user direction: qualify Qwen/Qwen3.8-27B directly for production. Comparative selection is deferred. This is the intended target, not a tested capability or deployment claim. Existing $20/four-hour approval covers bounded qualification only; recurring hosting requires separate approval.
+
 
 **No production foundation has been selected.** The active requirement is a fair remote comparison of official `Qwen/Qwen3-4B-Instruct-2507` and `Qwen/Qwen3.8-27B`, through the corrected authoritative LEGEND pipeline. Historical Mac experiments and earlier hosted-model canaries do not select the winner.
 

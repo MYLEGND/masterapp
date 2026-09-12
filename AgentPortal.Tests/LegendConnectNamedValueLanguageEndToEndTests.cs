@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Services;
 using Domain.Entities;
@@ -77,9 +78,15 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
             var conversation = Guid.NewGuid().ToString("D");
             var service = services.GetRequiredService<LegendFounderAiConversationService>();
             var first = await service.ReplyAsync(founder, Request(request, conversation));
-            Assert.Equal("LegendAi", first.ResponseAuthority);
-            Assert.Equal("native_response", first.Stage);
-            Assert.Equal(expected, first.Message);
+            Assert.True(first.Succeeded, $"authority={first.ResponseAuthority}; stage={first.Stage}; reason={first.Reason}; error={first.Error}");
+            Assert.Equal("LocalFoundation", first.ResponseAuthority);
+            Assert.Equal("foundation_response", first.Stage);
+            Assert.False(first.ExternalAnsweringUsed);
+            Assert.False(first.EscalationUsed);
+            using var firstAnswer = JsonDocument.Parse(Assert.IsType<string>(first.Message));
+            Assert.Equal(2, firstAnswer.RootElement.EnumerateObject().Count());
+            Assert.Equal(newOwner, firstAnswer.RootElement.GetProperty("owner").GetString());
+            Assert.Equal(newDate, firstAnswer.RootElement.GetProperty("closing_date").GetString());
 
             // The next request contains neither new value nor raw first-turn
             // text. Recall must use the persisted, revalidated observation.
@@ -90,9 +97,15 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
                 turn.Nodes.Any(node => node.SemanticDimension == "owner" && node.SemanticValue == newOwner) &&
                 turn.Nodes.Any(node => node.SemanticDimension == "closing_date" && node.SemanticValue == newDate));
             var recalled = await service.ReplyAsync(founder, Request("Recall the owner and date.", conversation));
-            Assert.Equal("LegendAi", recalled.ResponseAuthority);
-            Assert.Equal("native_response", recalled.Stage);
-            Assert.Equal(expected, recalled.Message);
+            Assert.True(recalled.Succeeded, $"authority={recalled.ResponseAuthority}; stage={recalled.Stage}; reason={recalled.Reason}; error={recalled.Error}");
+            Assert.Equal("LocalFoundation", recalled.ResponseAuthority);
+            Assert.Equal("foundation_response", recalled.Stage);
+            Assert.False(recalled.ExternalAnsweringUsed);
+            Assert.False(recalled.EscalationUsed);
+            using var recalledAnswer = JsonDocument.Parse(Assert.IsType<string>(recalled.Message));
+            Assert.Equal(2, recalledAnswer.RootElement.EnumerateObject().Count());
+            Assert.Equal(newOwner, recalledAnswer.RootElement.GetProperty("owner").GetString());
+            Assert.Equal(newDate, recalledAnswer.RootElement.GetProperty("closing_date").GetString());
             Assert.False(await db.LegendLanguageMeaningNodeEvidence.AnyAsync(node =>
                 node.SemanticValue == newOwner || node.SemanticValue == newDate));
             Assert.Equal((0, 0), externalCounts());
@@ -134,7 +147,17 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
     private static Dictionary<string, string> Values(params (string Dimension, string Value)[] values) =>
         values.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal);
     private static LegendFounderAiChatRequest Request(string text, string conversation) =>
-        new() { Mode = "legend", NativeOnly = true, SourceLanguageCode = "en", ConversationId = conversation, Messages = [new("user", text)] };
+        new()
+        {
+            Mode = "legend", NativeOnly = true, SourceLanguageCode = "en", ConversationId = conversation,
+            // Formatting is prior context; the latest native input retains its
+            // declared shape. Recall contains no prior owner/date values.
+            Messages =
+            [
+                new("user", "For the next request, return only a JSON object with exactly the string fields owner and closing_date. Preserve the observed spelling and opaque date text exactly."),
+                new("user", text)
+            ]
+        };
     private sealed class FounderScope : IDisposable
     {
         public const string FounderId = "8db720a7-fc93-458d-9adf-ed1811c2dd76";

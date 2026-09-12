@@ -117,32 +117,34 @@
     }
   ],
   "physical_capacity_confirmed": false,
-  "approved_experiment_spend_usd": 20,
-  "approved_max_compute_hours": 4,
-  "approval_scope": "Initial existing-subscription experiment only; all incremental charges included; necessary quota only; stop first limit; no extension or ongoing/deployment commitment",
+  "approved_experiment_spend_usd": 0,
+  "approved_max_compute_hours": 0,
+  "approval_scope": "WITHDRAWN. No remaining spending authority; no new quota/support requests. Historical20USD/fourhour grant retained in ledger only.",
   "quota_provider": "Microsoft.Quota and Microsoft.Capacity Registered. Modern quota API works after Capacity registration.",
   "subscription_policy": {
     "quotaId": "PayAsYouGo_2014-09-01",
     "spendingLimit": "Off",
     "state": "Enabled"
   },
-  "provisioning_blocker": "No configurable PAYG dollar hard cap; automatic deallocation controls not installed or verified. No paid compute provisioned.",
+  "provisioning_blocker": "New spending prohibited; no qualifying GPU quota; model remains unconfigured",
   "quota_requests": [
     {
-      "resource": "StandardNCADSA100v4Family",
-      "region": "eastus2",
-      "previous": 0,
-      "requested": 24,
-      "request_id": "b8792525-63a7-403a-bded-043fddcd5576",
-      "status": "InProgress"
+      "id": "b8792525-63a7-403a-bded-043fddcd5576",
+      "resource": "A100family24",
+      "status": "Failed",
+      "reason": "QuotaNotAvailableForResource"
     },
     {
-      "resource": "cores",
-      "region": "eastus2",
-      "previous": 10,
-      "requested": 24,
-      "request_id": "c3ff3bf1-b0c4-45a7-b6af-5273e307afed",
-      "status": "InProgress"
+      "id": "c3ff3bf1-b0c4-45a7-b6af-5273e307afed",
+      "resource": "regionalcores24",
+      "status": "Succeeded"
+    },
+    {
+      "id": "5d52fe8d-bcdb-4a6b-b4bc-b20bd05b25f9",
+      "resource": "H100family40",
+      "status": "Failed",
+      "reason": "QuotaNotAvailableForResource"
     }
-  ]
+  ],
+  "authorization_status": "WITHDRAWN: all unused$20authorization revoked; no new quota/support or billablecapacity without explicit new approval"
 }

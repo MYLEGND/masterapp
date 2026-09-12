@@ -285,22 +285,21 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                     Messages =
                     [
                         .. priorMessages,
-                        new LegendFounderAiChatMessage("user", currentRequest)
+                        new LegendFounderAiChatMessage("user", currentRequest + " Return only the selected option's name.")
                     ]
                 });
 
-            // A governed diagnostic is not a successfully answered correction.
-            Assert.Equal(hasGroundedCorrection, reply.Succeeded);
-            if (hasGroundedCorrection)
-            {
-                Assert.Equal("I understand the correction.", reply.Message);
-                Assert.Equal("LegendAi", reply.ResponseAuthority);
-            }
-            else
-            {
-                Assert.Equal("SystemDiagnostic", reply.ResponseAuthority);
-                Assert.NotEqual("I understand the correction.", reply.Message);
-            }
+            // Curriculum support still controls the independently inspected
+            // native proof above. General understanding of this correction
+            // must not require that curriculum function to have been admitted.
+            Assert.True(reply.Succeeded,
+                $"authority={reply.ResponseAuthority}; stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}");
+            Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+            Assert.Equal("foundation_response", reply.Stage);
+            Assert.False(reply.ExternalAnsweringUsed);
+            Assert.False(reply.EscalationUsed);
+            Assert.Null(reply.LearningState);
+            Assert.Equal("alpha", reply.Message?.Trim(), ignoreCase: true);
             Assert.Equal(0, countingFactory.CreateClientCalls);
         }
         finally
