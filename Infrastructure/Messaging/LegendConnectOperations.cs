@@ -262,7 +262,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var corpusLimit = providerCapacity is not null
             ? providerCapacity.MaximumSafeCorpusConsumptionCharacters ?? 0
             : runtime?.MaximumSafeCorpusConsumptionCharacters ?? Math.Max(0, configuredCapacity - liveReserve);
-        long? remainingSafe = providerCapacity is not null ? providerCapacity.MonthlyRemainingCharacters : (configuredCapacity > 0
+        long? remainingSafe = providerCapacity is not null ? (providerCapacity.MonthlyRemainingCharacters is { } monthlyRemaining
+            ? Math.Max(0, monthlyRemaining - (providerCapacity.MonthlyLiveReserveCharacters ?? 0))
+            : (long?)null) : (configuredCapacity > 0
             ? Math.Max(0, configuredCapacity - used - inFlight - liveReserve)
             : null);
         long? safeAcquisition = providerCapacity is not null ? providerCapacity.SafeAcquisitionCharacters : (configuredCapacity > 0

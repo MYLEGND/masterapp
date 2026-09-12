@@ -24,6 +24,68 @@ namespace AgentPortal.Tests;
 public sealed class AzureTranslatorSubscriptionCapacityTests
 {
     [Fact]
+    public async Task PaidTier_ObservesMonitorWithoutAddingProviderTotalsToLedger()
+    {
+        var handler = new JsonHandler("""{"name":"translator","sku":{"name":"S1"}}""",
+            """{"value":[{"name":{"value":"TextCharactersTranslated"},"timeseries":[{"data":[{"total":4500}]}]}]}""");
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(factory.Object, Configuration(),
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, new StaticTokenCredential());
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
+        var reservation = await authority.TryReserveAsync("AzureTranslator", 12, TranslationCapacityPurpose.Live, "monitor-ledger");
+        Assert.NotNull(reservation);
+        await authority.CompleteAsync(reservation!, providerMayHaveConsumed: true);
+        var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
+        Assert.Equal(4500L, snapshot.MonthlyAzureReportedCharacters);
+        Assert.Equal(12L, snapshot.MonthlyCharactersConsumed);
+        Assert.False(snapshot.IsAzureUsageVerified);
+        Assert.True(snapshot.RemainingIsEstimate);
+        Assert.NotNull(snapshot.AzureUsageObservedThroughUtc);
+        Assert.Equal(2, handler.SendAttempts);
+    }
+
+    [Theory]
+    [InlineData("{\"value\":[]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":null}]}]}]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":0}]}]}]}", 0L)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":30}]}]}]}", 42L)]
+    public void MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(string json, long? expected)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(expected, AzureTranslatorSubscriptionCapacitySource.ReadMonthlyTranslatedCharacters(document.RootElement));
+    }
+
+    [Fact]
+    public async Task Snapshot_ExcludesFutureDatedConsumptionAndMarksLedgerAsEstimate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.LegendTranslationProviderReservations.Add(new LegendTranslationProviderReservation
+        {
+            Id = Guid.NewGuid(), Provider = "AzureTranslator", ReservationReference = "future-consumption",
+            BillingPeriodStart = new DateOnly(now.Year, now.Month, 1),
+            Purpose = TranslationCapacityPurpose.Live.ToString(), Characters = 100,
+            State = "Completed", CreatedUtc = now.AddHours(1), CompletedUtc = now.AddHours(1),
+            ReservationExpiresUtc = now.AddHours(2)
+        });
+        await db.SaveChangesAsync();
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance,
+            azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
+        var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
+        Assert.Equal(0, snapshot.MonthlyCharactersConsumed);
+        Assert.Equal(0, snapshot.HourlyCharactersConsumed);
+        Assert.True(snapshot.RemainingIsEstimate);
+        Assert.False(snapshot.IsAzureUsageVerified);
+        Assert.Null(snapshot.MonthlyAzureReportedCharacters);
+        Assert.True(snapshot.UsageRefreshedUtc >= now);
+    }
+
+    [Fact]
     public async Task NativeCapacity_ColdFreshAndExpiredCacheNeverRefreshesOrReplacesProviderState()
     {
         var clock = new CapacityTimeProvider();
@@ -210,7 +272,9 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.Equal(expectedLimit - expectedLimit / 20, capacity.MaximumSafeHourlyCorpusCharacters);
         Assert.Equal(sku == "F0" ? expectedLimit / 20 : null, capacity.MonthlyLiveReserveCharacters);
         Assert.Equal(HttpMethod.Get, handler.Method);
-        Assert.Contains("api-version=2024-10-01", handler.RequestUri!.Query, StringComparison.Ordinal);
+        Assert.Contains(sku == "F0" ? "api-version=2024-10-01" : "api-version=2023-10-01", handler.RequestUri!.Query, StringComparison.Ordinal);
+        Assert.Equal(sku == "F0" ? 1 : 2, handler.SendAttempts);
+        Assert.Null(capacity.MonthlyAzureReportedCharacters);
         Assert.Equal("Bearer", handler.AuthorizationScheme);
     }
 
@@ -547,7 +611,12 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     private sealed class JsonHandler : HttpMessageHandler
     {
         private readonly string _json;
-        public JsonHandler(string json) => _json = json;
+        private readonly string? _metricsJson;
+        public JsonHandler(string json, string? metricsJson = null)
+        {
+            _json = json;
+            _metricsJson = metricsJson;
+        }
         public HttpMethod? Method { get; private set; }
         public Uri? RequestUri { get; private set; }
         public string? AuthorizationScheme { get; private set; }
@@ -561,7 +630,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             AuthorizationScheme = request.Headers.Authorization?.Scheme;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(_json, Encoding.UTF8, "application/json")
+                Content = new StringContent(request.RequestUri!.AbsolutePath.EndsWith("/metrics", StringComparison.Ordinal) ? _metricsJson ?? _json : _json, Encoding.UTF8, "application/json")
             });
         }
     }

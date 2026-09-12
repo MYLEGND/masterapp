@@ -140,7 +140,13 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             settings.CapacityCharacters > 0 ? settings.LiveReserveCharacters : null,
             safeAcquisition,
             settings.RefreshedUtc,
-            settings.Detail);
+            settings.Detail)
+        {
+            UsageRefreshedUtc = now,
+            MonthlyAzureReportedCharacters = settings.MonthlyAzureReportedCharacters,
+            AzureUsageObservedThroughUtc = settings.AzureUsageObservedThroughUtc,
+            UsageDetail = settings.UsageDetail ?? "Usage includes completed and in-flight Legend reservations. Azure resource SKU synchronization does not verify provider-side character consumption or calls outside Legend."
+        };
     }
 
     public async Task<TranslationCapacityReservation?> TryReserveAsync(
@@ -576,6 +582,11 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                     azure.Tier,
                     azure.RefreshedUtc,
                     azure.Detail)
+                {
+                    MonthlyAzureReportedCharacters = azure.MonthlyAzureReportedCharacters,
+                    AzureUsageObservedThroughUtc = azure.AzureUsageObservedThroughUtc,
+                    UsageDetail = azure.UsageDetail
+                }
                 : new CapacitySettings(
                     0, 0, 0, null, null, null, false, true, azure.Status, azure.ResourceId,
                     azure.ResourceName, azure.Tier, azure.RefreshedUtc, azure.Detail);
@@ -615,8 +626,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         var rows = await _db.Set<LegendTranslationProviderReservation>()
             .AsNoTracking()
             .Where(item => item.Provider == provider &&
-                ((item.State == CompletedState && item.CompletedUtc != null && item.CompletedUtc >= windowStartUtc) ||
-                 (item.State == ReservedState && item.ReservationExpiresUtc >= now)))
+                ((item.State == CompletedState && item.CompletedUtc != null && item.CompletedUtc >= windowStartUtc && item.CompletedUtc <= now) ||
+                 (item.State == ReservedState && item.CreatedUtc <= now && item.ReservationExpiresUtc >= now)))
             .Select(item => new { item.Characters, item.Purpose, item.State })
             .ToListAsync(cancellationToken);
         var completed = rows.Where(item => item.State == CompletedState).ToArray();
@@ -747,5 +758,10 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         string? ResourceName,
         string? Tier,
         DateTime RefreshedUtc,
-        string? Detail);
+        string? Detail)
+    {
+        public long? MonthlyAzureReportedCharacters { get; init; }
+        public DateTime? AzureUsageObservedThroughUtc { get; init; }
+        public string? UsageDetail { get; init; }
+    }
 }

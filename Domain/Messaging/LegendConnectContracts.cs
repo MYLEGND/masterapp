@@ -661,7 +661,16 @@ public sealed record LegendConnectProviderCapacitySnapshot(
     long? HourlyLiveReserveCharacters,
     long? SafeAcquisitionCharacters,
     DateTime RefreshedUtc,
-    string? Detail);
+    string? Detail)
+{
+    public string UsageSource { get; init; } = "Legend reservation ledger";
+    public bool IsAzureUsageVerified { get; init; }
+    public bool RemainingIsEstimate { get; init; } = true;
+    public DateTime UsageRefreshedUtc { get; init; }
+    public string UsageDetail { get; init; } = "Usage includes completed and in-flight Legend reservations. Azure resource SKU synchronization does not verify provider-side character consumption or calls outside Legend.";
+    public long? MonthlyAzureReportedCharacters { get; init; }
+    public DateTime? AzureUsageObservedThroughUtc { get; init; }
+}
 
 public sealed record LegendConnectDashboardSnapshot(
     IReadOnlyList<LegendConnectLanguageHealthSnapshot> Languages,

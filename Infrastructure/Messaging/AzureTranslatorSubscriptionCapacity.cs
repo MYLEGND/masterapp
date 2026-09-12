@@ -39,6 +39,10 @@ internal sealed record AzureTranslatorSubscriptionCapacity(
     DateTime RefreshedUtc,
     string? Detail)
 {
+    public long? MonthlyAzureReportedCharacters { get; init; }
+    public DateTime? AzureUsageObservedThroughUtc { get; init; }
+    public string? UsageDetail { get; init; }
+
     public const int CapacityWindowMinutes = 60;
     public const int LiveReservePercent = 5;
 
@@ -161,7 +165,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                     ? skuName.GetString()?.Trim().ToUpperInvariant()
                     : null;
                 var limits = LimitsForTier(sku);
-                return _cached = limits is null
+                var capacity = limits is null
                     ? Unavailable(now, $"Azure Translator tier '{sku ?? "unknown"}' has no recognized capacity contract.", resourceId, resourceName, sku)
                     : new AzureTranslatorSubscriptionCapacity(
                         true,
@@ -175,6 +179,12 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                         limits.MonthlyIncludedCharacterAllowance is { } monthlyAllowance
                             ? $"Azure resource SKU is synchronized. The F0 tier includes {monthlyAllowance:N0} free characters per month and allows {limits.HourlyCharacterLimit:N0} characters per rolling hour. Character usage is measured from the canonical Legend reservation ledger because Azure does not expose an F0 character-usage metric."
                             : $"Azure resource SKU is synchronized. This tier has an Azure hourly velocity limit of {limits.HourlyCharacterLimit:N0} characters and no fixed monthly included-character allowance in the resource SKU.");
+                if (capacity.IsAvailable && sku != "F0")
+                    capacity = await ObservePaidUsageAsync(capacity, token.Token, now, refreshToken);
+                else if (sku == "F0")
+                    capacity = capacity with { UsageDetail = "F0 usage is estimated from the Legend reservation ledger. Azure does not expose direct character metrics for this tier; calls outside Legend cannot be reconciled. Remaining capacity is an estimate, not an Azure-verified balance." };
+                cancellationToken.ThrowIfCancellationRequested();
+                return _cached = capacity;
             }
             catch (CredentialUnavailableException exception)
             {
@@ -211,6 +221,69 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
         {
             _refreshLock.Release();
         }
+    }
+
+    private async Task<AzureTranslatorSubscriptionCapacity> ObservePaidUsageAsync(
+        AzureTranslatorSubscriptionCapacity capacity, string accessToken, DateTime now, CancellationToken cancellationToken)
+    {
+        // Monitor is delayed telemetry, not a real-time billing balance. Keep it
+        // separate from the reservation ledger to avoid double counting requests.
+        try
+        {
+            var start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var timespan = Uri.EscapeDataString($"{start:O}/{now:O}");
+            using var request = new HttpRequestMessage(HttpMethod.Get,
+                capacity.ResourceId + "/providers/microsoft.insights/metrics?api-version=2023-10-01" +
+                "&metricnames=TextCharactersTranslated&aggregation=Total&interval=FULL&timespan=" + timespan);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await _httpClientFactory.CreateClient("AzureResourceManager").SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return capacity with { UsageDetail = "Azure tier connected; Azure Monitor usage is unavailable. Legend ledger usage and remaining capacity are estimates." };
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+            var total = ReadMonthlyTranslatedCharacters(document.RootElement);
+            return capacity with
+            {
+                MonthlyAzureReportedCharacters = total,
+                AzureUsageObservedThroughUtc = total.HasValue ? now : null,
+                UsageDetail = total.HasValue
+                    ? "Azure Monitor reports delayed month-to-date text-character telemetry separately from live Legend reservations. It is not an invoice balance and is not added to the ledger. Remaining capacity uses the Legend ledger; external usage may differ."
+                    : "Azure Monitor returned no character observations. Usage is unknown, not zero; Legend ledger remaining capacity is an estimate."
+            };
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or OperationCanceledException or OverflowException or InvalidOperationException)
+        {
+            return capacity with { UsageDetail = "Azure tier connected; Azure Monitor usage could not be refreshed. Legend ledger usage and remaining capacity are estimates." };
+        }
+    }
+
+    internal static long? ReadMonthlyTranslatedCharacters(JsonElement root)
+    {
+        if (!root.TryGetProperty("value", out var metrics) || metrics.ValueKind != JsonValueKind.Array)
+            return null;
+        decimal total = 0;
+        var observed = false;
+        foreach (var metric in metrics.EnumerateArray())
+        {
+            if (!metric.TryGetProperty("name", out var name) ||
+                !name.TryGetProperty("value", out var metricName) ||
+                metricName.GetString() != "TextCharactersTranslated" ||
+                !metric.TryGetProperty("timeseries", out var series) || series.ValueKind != JsonValueKind.Array)
+                continue;
+            foreach (var item in series.EnumerateArray())
+            {
+                if (!item.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var point in data.EnumerateArray())
+                {
+                    if (!point.TryGetProperty("total", out var value) || value.ValueKind != JsonValueKind.Number ||
+                        !value.TryGetDecimal(out var count) || count < 0 || count != decimal.Truncate(count))
+                        continue;
+                    total += count;
+                    observed = true;
+                }
+            }
+        }
+        return observed ? checked((long)total) : null;
     }
 
     private static AzureTranslatorSubscriptionCapacity Unavailable(
