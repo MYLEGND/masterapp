@@ -18,6 +18,8 @@ import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.core.model.MobileIdentity
 import com.mylegnd.legend.registered.core.realtime.MobileMessagingRealtimeClient
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.webrtc.VideoTrack
@@ -51,6 +53,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     val state = mutableState.asStateFlow()
     val deviceId = app.getSharedPreferences("legend_calls", Context.MODE_PRIVATE).let { preferences -> preferences.getString("device", null) ?: UUID.randomUUID().toString().also { preferences.edit().putString("device", it).apply() } }
     private var policy: LegendCallPolicy? = null
+    private val peerInitialization = Mutex()
     var peer: LegendRTCPeer? = null; private set
     private var ringback: MediaPlayer? = null
     private var reconciliation: Job? = null
@@ -144,9 +147,33 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         try {
             checkPermissions(call.video)
             ensurePeer()
-            command(LegendCallCommand("accept", deviceId, call.id)).call?.let(::show)
-            LegendCallPlatform.connection?.setActive()
-        } catch (error: Exception) { fail(error.message ?: "The call could not be answered.") }
+            completeLegendCallAcceptance(call.id,
+                isCurrent = { isCurrentCall(call.id) },
+                accept = { command(LegendCallCommand("accept", deviceId, call.id)).call },
+                showAccepted = ::show,
+                endOriginal = { transport.call(LegendCallCommand("end", deviceId, call.id), existingConnectionOnly = true); Unit })
+        } catch (error: Exception) {
+            if (isCurrentCall(call.id)) fail(error.message ?: "The call could not be answered.")
+        }
+    }
+    private fun isCurrentCall(id: String) = !stopped && state.value.call?.id == id && id !in finished
+    private fun requireCurrentCall(id: String) {
+        if (!isCurrentCall(id)) throw CancellationException("This call has ended.")
+    }
+    fun telecomAudioFocusChanged(granted: Boolean) {
+        audioFocusGranted = granted
+        if (granted) updateRingback()
+        else {
+            ringback?.release(); ringback = null
+            // This connection does not advertise hold support. Release its media before
+            // ConnectionService acknowledges lost focus to Telecom.
+            if (peer != null && state.value.call != null) {
+                val id = state.value.call!!.id
+                update { it.copy(failure = "Android transferred call audio to another call.") }
+                clear()
+                viewModelScope.launch { runCatching { command(LegendCallCommand("end", deviceId, id)) } }
+            }
+        }
     }
     fun requestSystemAnswer() {
         update { it.copy(systemAnswerRequested = true) }
@@ -193,10 +220,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     fun receivePush(call: LegendCallSnapshot) { viewModelScope.launch { receive(LegendCallEvent(call)) } }
     @Suppress("DEPRECATION")
     private fun routeSpeaker(enabled: Boolean) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val target = if (enabled) AudioDeviceInfo.TYPE_BUILTIN_SPEAKER else AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-            audio.availableCommunicationDevices.firstOrNull { it.type == target }?.let { audio.setCommunicationDevice(it) }
-        } else audio.isSpeakerphoneOn = enabled
+        LegendCallPlatform.connection?.setAudioRoute(if (enabled) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_EARPIECE)
     }
     private fun checkPermissions(video: Boolean) {
         check(ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) { "Allow microphone access to join a call." }
@@ -245,9 +269,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             if (!callerAccount && reported.add(call.id)) { runCatching { LegendCallPlatform.incoming(app, call) }.onFailure { platformFailed() } }
             armDeadline(call.id, Instant.parse(call.expiresUtc).toEpochMilli())
         } else if (event.signalKind != null && event.signalData != null) {
-            runCatching { ensurePeer(); peer?.receive(event.signalKind, event.signalData, call.epoch) }.onFailure { fail("The direct connection could not be established.") }
+            runCatching { ensurePeer(); requireCurrentCall(call.id); peer?.receive(event.signalKind, event.signalData, call.epoch) }
+                .onFailure { if (isCurrentCall(call.id)) fail("The direct connection could not be established.") }
         } else if (callerAccount && peer == null) {
-            runCatching { ensurePeer(); peer?.offer() }.onFailure { fail(it.message ?: "Calling unavailable.") }
+            runCatching { ensurePeer(); requireCurrentCall(call.id); peer?.offer() }
+                .onFailure { if (isCurrentCall(call.id)) fail(it.message ?: "Calling unavailable.") }
         }
     }
     fun confirmIncomingPresentation(id: String) = viewModelScope.launch {
@@ -266,9 +292,12 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             ringback?.release(); ringback = null; return
         }
         if (ringback != null) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && !LegendCallPlatform.hasTelecomAudioFocus) return
         runCatching {
-            audio.mode = AudioManager.MODE_IN_COMMUNICATION
-            check(audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                audio.mode = AudioManager.MODE_IN_COMMUNICATION
+                check(audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+            }
             val player = MediaPlayer()
             ringback = player
             player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
@@ -297,21 +326,27 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             }
         }
     }
-    private suspend fun ensurePeer() {
-        if (peer != null) return
-        val call = state.value.call ?: return
+    private suspend fun ensurePeer() = peerInitialization.withLock {
+        if (peer != null) return@withLock
+        val call = state.value.call ?: return@withLock
         if (policy == null) command(LegendCallCommand("get", deviceId, call.id))
+        requireCurrentCall(call.id)
         val settings = policy ?: error("Call settings unavailable.")
         checkPermissions(call.video)
         ringback?.release(); ringback = null
-        audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        audioFocusGranted = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        check(audioFocusGranted) {
-            "Android could not grant call audio. Finish the other call or audio session and try again."
-        }
         update { it.copy(speaker = call.video, status = "Connecting") }
+        try {
+            LegendCallPlatform.activateForMedia(app, call)
+        } catch (error: TimeoutCancellationException) {
+            throw IllegalStateException("Android did not make call audio available in time. Please try again.", error)
+        }
+        requireCurrentCall(call.id)
+        audioFocusGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) LegendCallPlatform.hasTelecomAudioFocus else {
+            audio.mode = AudioManager.MODE_IN_COMMUNICATION
+            audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+        check(audioFocusGranted) { "Android could not grant call audio. Finish the other call or audio session and try again." }
         if (call.video) routeSpeaker(true)
-        LegendCallPlatform.foreground(app, call.video)
         val engine = LegendRTCPeer(app, settings, call.video, caller, viewModelScope,
             signal = { kind, data, epoch -> command(LegendCallCommand("signal", deviceId, call.id, signalKind = kind, signalData = data, epoch = epoch)); Unit },
             state = { value ->
@@ -383,9 +418,10 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         deadline?.cancel(); deadline = null; heartbeat?.cancel(); heartbeat = null; pending = null
         val oldPeer = peer; peer = null; update { LegendCallUiState(failure = it.failure) }; oldPeer?.close()
         if (proximity?.isHeld == true) proximity?.release(); proximity = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.clearCommunicationDevice() else routeSpeaker(false)
         audioFocusGranted = false; statusBeforeAudioInterruption = null
-        audio.abandonAudioFocusRequest(focus); audio.mode = AudioManager.MODE_NORMAL
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            audio.abandonAudioFocusRequest(focus); audio.mode = AudioManager.MODE_NORMAL
+        }
         LegendCallPlatform.ended(app)
     }
     fun shutdown() {

@@ -21,6 +21,25 @@ object LegendCallPlatform {
     var store: LegendCallViewModel? = null
     var connection: Connection? = null
     private var avatarJob: Job? = null
+    private val audioGate = LegendCallAudioGate()
+    val hasTelecomAudioFocus: Boolean get() = audioGate.hasFocus
+    fun telecomAudioFocusChanged(granted: Boolean) {
+        audioGate.focusChanged(granted)
+        store?.telecomAudioFocusChanged(granted)
+    }
+    fun foregroundReady(callId: String) { audioGate.foregroundReady(callId) }
+    suspend fun activateForMedia(context: Context, call: LegendCallSnapshot) {
+        val owner = checkNotNull(store) { "Android call session is unavailable." }
+        check(owner.state.value.call?.id == call.id) { "This call has ended." }
+        val activeConnection = checkNotNull(connection) { "Android call connection is unavailable." }
+        audioGate.begin(call.id)
+        activeConnection.setActive()
+        context.startForegroundService(Intent(context, LegendCallForegroundService::class.java)
+            .putExtra("video", call.video).putExtra("callId", call.id))
+        withTimeout(8_000) { audioGate.awaitReady(call.id, Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) }
+        if (store !== owner || connection !== activeConnection || owner.state.value.call?.id != call.id)
+            throw CancellationException("This call has ended.")
+    }
     const val CHANNEL = "legend_calls"
     const val NOTIFICATION = 7042
     private fun handle(context: Context) = PhoneAccountHandle(ComponentName(context, LegendConnectionService::class.java), "legend")
@@ -80,10 +99,8 @@ object LegendCallPlatform {
             }
         }
     }
-    fun foreground(context: Context, video: Boolean) {
-        context.startForegroundService(Intent(context, LegendCallForegroundService::class.java).putExtra("video", video))
-    }
     fun ended(context: Context) {
+        audioGate.ended()
         avatarJob?.cancel(); avatarJob = null
         connection?.setDisconnected(DisconnectCause(DisconnectCause.LOCAL)); connection?.destroy(); connection = null
         context.stopService(Intent(context, LegendCallForegroundService::class.java))
@@ -91,6 +108,18 @@ object LegendCallPlatform {
     }
 }
 class LegendConnectionService : ConnectionService() {
+    private var owner: LegendCallViewModel? = null
+    private var ownedConnection: Connection? = null
+    private fun ownsCurrentConnection() = owner != null && owner === LegendCallPlatform.store &&
+        ownedConnection != null && ownedConnection === LegendCallPlatform.connection
+    // Telecom owns focus for self-managed calls; a second AudioManager request can be denied.
+    override fun onConnectionServiceFocusGained() {
+        if (ownsCurrentConnection()) LegendCallPlatform.telecomAudioFocusChanged(true)
+    }
+    override fun onConnectionServiceFocusLost() {
+        try { if (ownsCurrentConnection()) LegendCallPlatform.telecomAudioFocusChanged(false) }
+        finally { connectionServiceFocusReleased() }
+    }
     override fun onCreateOutgoingConnection(manager: PhoneAccountHandle?, request: ConnectionRequest): Connection {
         val store = LegendCallPlatform.store ?: return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
         if (request.address?.schemeSpecificPart != store.pendingCallId) return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
@@ -120,13 +149,13 @@ class LegendConnectionService : ConnectionService() {
         override fun onDisconnect() { store.end() }
         override fun onAbort() { store.end() }
         override fun onCallAudioStateChanged(state: CallAudioState) { store.audioRouteChanged(state.route) }
-    }.also { LegendCallPlatform.connection = it }
+    }.also { owner = store; ownedConnection = it; LegendCallPlatform.connection = it }
 }
 class LegendCallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val call = LegendCallPlatform.store?.state?.value?.call ?: run { stopSelf(); return START_NOT_STICKY }
-        if (intent?.hasExtra("screenPermission") == true && intent.getStringExtra("callId") != call.id) return START_NOT_STICKY
+        if (intent?.getStringExtra("callId")?.let { it != call.id } == true) return START_NOT_STICKY
         val launch = PendingIntent.getActivity(this, 7043, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val end = PendingIntent.getBroadcast(this, 7044, Intent(this, LegendCallActionReceiver::class.java).setAction("end").putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(this, LegendCallPlatform.CHANNEL).setSmallIcon(R.drawable.ic_legend_notification)
@@ -142,6 +171,7 @@ class LegendCallForegroundService : Service() {
         if (screenPermission != null && Build.VERSION.SDK_INT >= 29) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         try {
             ServiceCompat.startForeground(this, LegendCallPlatform.NOTIFICATION, notification, types)
+            LegendCallPlatform.foregroundReady(call.id)
             if (screenPermission != null) LegendCallPlatform.store?.captureScreen(screenPermission)
         }
         catch (_: RuntimeException) { LegendCallPlatform.store?.platformFailed(); stopSelf() }
