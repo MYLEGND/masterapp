@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-68f48dda2bcd0a5e",
+  "catalogVersion": "application-copy-v1-651c5e86c077830a",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -16953,6 +16953,17 @@
       "source": "Continue as Client",
       "context": "visual interface copy",
       "sourceRevision": "653c33f3263f6bd7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a8e7faf86a766ab48d2e86f6",
+      "source": "Continue as Member",
+      "context": "visual interface copy",
+      "sourceRevision": "7f50150c511231be",
       "placeholders": [
 
       ],
@@ -43882,6 +43893,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.42d853de2e0c03a3ccf07bf8",
+      "source": "Reaction preference unavailable. Reopen to retry.",
+      "context": "visual interface copy",
+      "sourceRevision": "2873501fb63e5404",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.fe745ca0b6b231e182f987af",
+      "source": "Reaction preference unavailable. Retry",
+      "context": "visual interface copy",
+      "sourceRevision": "49ceebe3620d106f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.46043b32cabaf1fb731283e8",
       "source": "Reaction unavailable",
       "context": "visual interface copy",
@@ -50751,6 +50784,39 @@
       "source": "Size",
       "context": "visual interface copy",
       "sourceRevision": "1af851907331c0ed",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e0d73605d124b2727d60ca66",
+      "source": "Skin tone",
+      "context": "visual interface copy",
+      "sourceRevision": "8817dfec8b5e2bf3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.81f8beaa58585ef13b8914d9",
+      "source": "Skin tone preference could not be loaded.",
+      "context": "visual interface copy",
+      "sourceRevision": "eb60e665bab045ec",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.dd8f5f7ea6c704aaff026fd7",
+      "source": "Skin tone preference could not be saved. Try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "90e9fda3dccdcd66",
       "placeholders": [
 
       ],
