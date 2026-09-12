@@ -3782,8 +3782,8 @@ private fun LegendMessageBubble(
         text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
             Surface(shape = CircleShape, color = LegendColors.Navy,
                 border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.55f))) {
-                Row(Modifier.horizontalScroll(rememberScrollState()).padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     reactionOptions.forEach { emoji ->
                         val selected = message.reactions.any { it.emoji == emoji && it.reactedByCurrentActor }
                         TextButton(onClick = { actionsOpen = false; react(emoji) },
@@ -3793,16 +3793,18 @@ private fun LegendMessageBubble(
                             Text(emoji, style = MaterialTheme.typography.headlineSmall)
                         }
                     }
+                    }
                     IconButton(onClick = { actionsOpen = false; emojiPicker = true }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Add, legendLocalized("Choose a reaction", "accessibility copy"), tint = LegendColors.GoldBright)
                     }
                 }
             }
+            if (message.body.isNotBlank()) androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
+            Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, modifier = Modifier.padding(vertical = 8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (message.reactions.any { it.reactedByCurrentActor }) TextButton(onClick = { actionsOpen = false; react(null) }) { Text(legendLocalized("Remove reaction")) }
-            androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
-            Text(legendMeetingTime(message.sentUtc), style = LegendTypography.Label)
             TextButton(onClick = { actionsOpen = false; reply() }) { Text(legendLocalized("Reply")) }
-            TextButton(onClick = { copyText(message.body) }) { Text(legendLocalized("Copy")) }
+            if (message.body.isNotBlank()) TextButton(onClick = { copyText(message.body) }) { Text(legendLocalized("Copy")) }
             message.originalBody?.takeIf { it != message.body }?.let { original ->
                 TextButton(onClick = { copyText(original) }) { Text(legendLocalized("Copy original text")) }
             }
@@ -3818,6 +3820,7 @@ private fun LegendMessageBubble(
                 }) { Text(legendLocalized("Share message")) }
             }
             if (message.isMine) TextButton(onClick = { actionsOpen = false; delete() }) { Text(legendLocalized("Unsend"), color = LegendColors.Error) }
+            }
         } }, confirmButton = { TextButton(onClick = { actionsOpen = false }) { Text(legendLocalized("Done")) } })
     val openProfile = LocalLegendOpenProfile.current
     val openSharedPost = LocalLegendOpenSharedPost.current
