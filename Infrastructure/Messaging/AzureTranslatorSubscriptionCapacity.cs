@@ -111,7 +111,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
             // A local diagnostic may inspect an already synchronized, fresh
             // snapshot. It never waits for or starts an external refresh, and
             // its result cannot replace the provider-enabled shared cache.
-            return _cached is { } local && now - local.RefreshedUtc < MinimumRefreshInterval
+            return _cached is { } local && now - local.RefreshedUtc < MinimumRefreshInterval && local.RefreshedUtc.Year == now.Year && local.RefreshedUtc.Month == now.Month
                 ? local with
                 {
                     Status = local.IsAvailable ? "Cached" : local.Status,
@@ -120,14 +120,14 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                 : Unavailable(now,
                     "native_only_capacity_refresh_forbidden: no fresh cached Azure capacity observation is available.");
         }
-        if (_cached is { } cached && now - cached.RefreshedUtc < MinimumRefreshInterval)
+        if (_cached is { } cached && now - cached.RefreshedUtc < MinimumRefreshInterval && cached.RefreshedUtc.Year == now.Year && cached.RefreshedUtc.Month == now.Month)
             return cached;
 
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
             now = _timeProvider.GetUtcNow().UtcDateTime;
-            if (_cached is { } refreshed && now - refreshed.RefreshedUtc < MinimumRefreshInterval)
+            if (_cached is { } refreshed && now - refreshed.RefreshedUtc < MinimumRefreshInterval && refreshed.RefreshedUtc.Year == now.Year && refreshed.RefreshedUtc.Month == now.Month)
                 return refreshed;
 
             var resourceId = NormalizeResourceId(_configuration["AzureTranslator:ResourceId"]);
@@ -177,12 +177,10 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                         limits.HourlyCharacterLimit,
                         now,
                         limits.MonthlyIncludedCharacterAllowance is { } monthlyAllowance
-                            ? $"Azure resource SKU is synchronized. The F0 tier includes {monthlyAllowance:N0} free characters per month and allows {limits.HourlyCharacterLimit:N0} characters per rolling hour. Character usage is measured from the canonical Legend reservation ledger because Azure does not expose an F0 character-usage metric."
+                            ? $"Azure resource SKU is synchronized. The F0 tier includes {monthlyAllowance:N0} free characters per month and allows {limits.HourlyCharacterLimit:N0} characters per rolling hour. Provider character telemetry is queried from Azure Monitor; live reservations are measured separately in the canonical Legend ledger."
                             : $"Azure resource SKU is synchronized. This tier has an Azure hourly velocity limit of {limits.HourlyCharacterLimit:N0} characters and no fixed monthly included-character allowance in the resource SKU.");
-                if (capacity.IsAvailable && sku != "F0")
-                    capacity = await ObservePaidUsageAsync(capacity, token.Token, now, refreshToken);
-                else if (sku == "F0")
-                    capacity = capacity with { UsageDetail = "F0 usage is estimated from the Legend reservation ledger. Azure does not expose direct character metrics for this tier; calls outside Legend cannot be reconciled. Remaining capacity is an estimate, not an Azure-verified balance." };
+                if (capacity.IsAvailable)
+                    capacity = await ObserveUsageAsync(capacity, token.Token, now, refreshToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 return _cached = capacity;
             }
@@ -223,7 +221,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
         }
     }
 
-    private async Task<AzureTranslatorSubscriptionCapacity> ObservePaidUsageAsync(
+    private async Task<AzureTranslatorSubscriptionCapacity> ObserveUsageAsync(
         AzureTranslatorSubscriptionCapacity capacity, string accessToken, DateTime now, CancellationToken cancellationToken)
     {
         // Monitor is delayed telemetry, not a real-time billing balance. Keep it
@@ -246,7 +244,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                 MonthlyAzureReportedCharacters = total,
                 AzureUsageRetrievedUtc = total.HasValue ? _timeProvider.GetUtcNow().UtcDateTime : null,
                 UsageDetail = total.HasValue
-                    ? "Azure Monitor reports delayed month-to-date text-character telemetry separately from live Legend reservations. It is not an invoice balance and is not added to the ledger. Remaining capacity uses the Legend ledger; external usage may differ."
+                    ? "Azure Monitor reports delayed month-to-date text-character telemetry separately from live Legend reservations. It is not an invoice balance. Monthly protection uses the larger of Azure reported consumption and completed Legend usage, plus in-flight reservations; overlapping observations may conservatively reduce availability. Hourly protection uses the rolling Legend ledger. Delayed or external usage may still differ."
                     : "Azure Monitor returned no character observations. Usage is unknown, not zero; Legend ledger remaining capacity is an estimate."
             };
         }

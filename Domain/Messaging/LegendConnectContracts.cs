@@ -669,6 +669,12 @@ public sealed record LegendConnectProviderCapacitySnapshot(
     public DateTime UsageRefreshedUtc { get; init; }
     public string UsageDetail { get; init; } = "Usage includes completed and in-flight Legend reservations. Azure resource SKU synchronization does not verify provider-side character consumption or calls outside Legend.";
     public long? MonthlyAzureReportedCharacters { get; init; }
+    public long MonthlyCapacityAccountedCharacters { get; init; }
+    // Delayed Azure observation, not the live ledger's protected balance.
+    public long? MonthlyAzureReportedRemainingCharacters =>
+        MonthlyIncludedCharacterAllowance is { } allowance && MonthlyAzureReportedCharacters is { } reported
+            ? Math.Max(0, allowance - reported)
+            : null;
     public DateTime? AzureUsageRetrievedUtc { get; init; }
 }
 

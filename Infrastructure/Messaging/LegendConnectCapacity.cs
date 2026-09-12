@@ -100,14 +100,15 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         var settings = await SettingsForAsync(normalizedProvider, cancellationToken, providerPolicy);
         var monthlyUsage = await GetWindowUsageAsync(normalizedProvider, billingStartUtc, now, cancellationToken);
         var hourlyUsage = await GetWindowUsageAsync(normalizedProvider, hourlyWindowStart, now, cancellationToken);
-        var monthlyRemaining = Remaining(settings.MonthlyCapacityCharacters, monthlyUsage);
+        var protectedMonthlyUsage = WithProviderObservation(monthlyUsage, settings);
+        var monthlyRemaining = Remaining(settings.MonthlyCapacityCharacters, protectedMonthlyUsage);
         var hourlyCapacity = settings.IsAvailable ? (long?)settings.CapacityCharacters : null;
         var hourlyRemaining = Remaining(hourlyCapacity, hourlyUsage);
         var monthlyAcquisition = SafeAcquisitionRemaining(
             settings.MonthlyCapacityCharacters,
             settings.MonthlyLiveReserveCharacters,
             settings.MaximumSafeMonthlyCorpusCharacters,
-            monthlyUsage);
+            protectedMonthlyUsage);
         var hourlyAcquisition = SafeAcquisitionRemaining(
             hourlyCapacity,
             settings.LiveReserveCharacters,
@@ -143,6 +144,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             settings.Detail)
         {
             UsageRefreshedUtc = now,
+            MonthlyCapacityAccountedCharacters = protectedMonthlyUsage.CompletedCharacters,
             MonthlyAzureReportedCharacters = settings.MonthlyAzureReportedCharacters,
             AzureUsageRetrievedUtc = settings.AzureUsageRetrievedUtc,
             UsageDetail = settings.UsageDetail ?? "Usage includes completed and in-flight Legend reservations. Azure resource SKU synchronization does not verify provider-side character consumption or calls outside Legend."
@@ -528,13 +530,18 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
 
         return settings.MonthlyCapacityCharacters is not { } monthlyCapacity ||
                CanReserveWindow(
-                   monthlyUsage,
+                   WithProviderObservation(monthlyUsage, settings),
                    monthlyCapacity,
                    settings.MonthlyLiveReserveCharacters ?? 0,
                    settings.MaximumSafeMonthlyCorpusCharacters ?? 0,
                    characters,
                    purpose);
     }
+
+    private static RollingUsage WithProviderObservation(RollingUsage usage, CapacitySettings settings) =>
+        settings.MonthlyAzureReportedCharacters is { } reported
+            ? usage with { CompletedCharacters = Math.Max(usage.CompletedCharacters, reported) }
+            : usage;
 
     private static bool CanReserveWindow(
         RollingUsage usage,

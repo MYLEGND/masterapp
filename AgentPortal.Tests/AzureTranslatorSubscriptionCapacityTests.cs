@@ -23,11 +23,13 @@ namespace AgentPortal.Tests;
 
 public sealed class AzureTranslatorSubscriptionCapacityTests
 {
-    [Fact]
-    public async Task PaidTier_ObservesMonitorWithoutAddingProviderTotalsToLedger()
+    [Theory]
+    [InlineData("F0", 1_932_766L, 67_234L)]
+    [InlineData("S1", 4500L, null)]
+    public async Task RecognizedTier_ObservesMonitorWithoutAddingProviderTotalsToLedger(string sku, long reported, long? remaining)
     {
-        var handler = new JsonHandler("""{"name":"translator","sku":{"name":"S1"}}""",
-            """{"value":[{"name":{"value":"TextCharactersTranslated"},"timeseries":[{"data":[{"total":4500}]}]}]}""");
+        var handler = new JsonHandler(JsonSerializer.Serialize(new { name = "translator", sku = new { name = sku } }),
+            """{"value":[{"name":{"value":"TextCharactersTranslated"},"timeseries":[{"data":[{"total":4500}]}]}]}""".Replace("4500", reported.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(item => item.CreateClient("AzureResourceManager"))
             .Returns(() => new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
@@ -40,12 +42,25 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.NotNull(reservation);
         await authority.CompleteAsync(reservation!, providerMayHaveConsumed: true);
         var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
-        Assert.Equal(4500L, snapshot.MonthlyAzureReportedCharacters);
+        Assert.Equal(reported, snapshot.MonthlyAzureReportedCharacters);
+        Assert.Equal(remaining, snapshot.MonthlyAzureReportedRemainingCharacters);
         Assert.Equal(12L, snapshot.MonthlyCharactersConsumed);
         Assert.False(snapshot.IsAzureUsageVerified);
         Assert.True(snapshot.RemainingIsEstimate);
         Assert.NotNull(snapshot.AzureUsageRetrievedUtc);
         Assert.Equal(2, handler.SendAttempts);
+        Assert.Equal(reported, snapshot.MonthlyCapacityAccountedCharacters);
+        if (sku == "F0")
+        {
+            Assert.Equal(67_234L, snapshot.MonthlyRemainingCharacters);
+            Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap, "protected-corpus"));
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 67_235, TranslationCapacityPurpose.Live, "observed-overage"));
+            var remainingReservation = await authority.TryReserveAsync("AzureTranslator", 67_234, TranslationCapacityPurpose.Live, "observed-live");
+            Assert.NotNull(remainingReservation);
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "observed-reserved-overage"));
+            Assert.Equal(0L, (await authority.GetSnapshotAsync("AzureTranslator")).MonthlyRemainingCharacters);
+        }
     }
 
     [Theory]
@@ -85,6 +100,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.True(snapshot.RemainingIsEstimate);
         Assert.False(snapshot.IsAzureUsageVerified);
         Assert.Null(snapshot.MonthlyAzureReportedCharacters);
+        Assert.Null(snapshot.MonthlyAzureReportedRemainingCharacters);
         Assert.True(snapshot.UsageRefreshedUtc >= now);
     }
 
@@ -111,7 +127,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         var synchronized = await source.GetCurrentAsync();
         Assert.True(synchronized.IsAvailable);
         Assert.Equal(1, credential.TokenRequests);
-        Assert.Equal(1, handler.SendAttempts);
+        Assert.Equal(2, handler.SendAttempts);
         await using var db = ControllerTestHelpers.BuildDb();
         var authority = new TranslationCapacityAuthority(db, Configuration(),
             NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
@@ -129,24 +145,24 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.Equal(synchronized.HourlyCharacterLimit, local.HourlyCharacterLimit);
         Assert.Same(synchronized, await source.GetCurrentAsync());
         Assert.Equal(1, credential.TokenRequests);
-        Assert.Equal(1, handler.SendAttempts);
-        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Once);
+        Assert.Equal(2, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(2));
 
         clock.UtcNow = clock.UtcNow.AddMinutes(3);
         var expired = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
         Assert.False(expired.IsAvailable);
         Assert.Null(expired.HourlyCharacterLimit);
         Assert.Equal(1, credential.TokenRequests);
-        Assert.Equal(1, handler.SendAttempts);
-        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Once);
+        Assert.Equal(2, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(2));
 
         var refreshed = await source.GetCurrentAsync();
         Assert.True(refreshed.IsAvailable);
         Assert.Equal("Synchronized", refreshed.Status);
         Assert.Equal(clock.UtcNow.UtcDateTime, refreshed.RefreshedUtc);
         Assert.Equal(2, credential.TokenRequests);
-        Assert.Equal(2, handler.SendAttempts);
-        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(2));
+        Assert.Equal(4, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(4));
     }
 
     [Fact]
@@ -275,8 +291,8 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.Equal(expectedLimit - expectedLimit / 20, capacity.MaximumSafeHourlyCorpusCharacters);
         Assert.Equal(sku == "F0" ? expectedLimit / 20 : null, capacity.MonthlyLiveReserveCharacters);
         Assert.Equal(HttpMethod.Get, handler.Method);
-        Assert.Contains(sku == "F0" ? "api-version=2024-10-01" : "api-version=2023-10-01", handler.RequestUri!.Query, StringComparison.Ordinal);
-        Assert.Equal(sku == "F0" ? 1 : 2, handler.SendAttempts);
+        Assert.Contains("api-version=2023-10-01", handler.RequestUri!.Query, StringComparison.Ordinal);
+        Assert.Equal(2, handler.SendAttempts);
         Assert.Null(capacity.MonthlyAzureReportedCharacters);
         Assert.Equal("Bearer", handler.AuthorizationScheme);
     }
