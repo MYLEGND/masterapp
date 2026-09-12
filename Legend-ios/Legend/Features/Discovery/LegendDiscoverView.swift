@@ -212,7 +212,7 @@ struct LegendDiscoverView: View {
                                 }
                             }
                         } else {
-                            directorySectionHeader("Explore Legend", detail: LegendLocalized("Active member and agent profiles"))
+                            directorySectionHeader("Explore Legend", detail: LegendLocalized("People in the LEGEND network"))
                             ForEach(directoryResults) { result in
                                 resultCard(result, loadsMore: true)
                             }
@@ -279,7 +279,7 @@ struct LegendDiscoverView: View {
         }
         return store.scope == .ownedClients
             ? LegendLocalized("Your clients and active Legend agents will appear here.")
-            : LegendLocalized("Active Legend members and agents will appear here.")
+            : LegendLocalized("People in the LEGEND network will appear here.")
     }
 
     private var directoryResults: [MobileDiscoveryResult] {

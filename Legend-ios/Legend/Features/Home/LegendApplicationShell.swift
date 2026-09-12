@@ -9163,7 +9163,7 @@ struct LegendPublicProfileView: View {
             }
             Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
-            Text(LegendLocalized("This removes the Journey Circles connection and prevents client-to-client messaging with this profile."))
+            Text(LegendLocalized("This removes the Journey Circles connection and prevents messaging with this profile."))
         }
         .sheet(isPresented: $isPresentingFounderManagement) {
             if let messaging {
