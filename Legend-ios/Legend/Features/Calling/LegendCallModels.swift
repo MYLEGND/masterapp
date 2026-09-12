@@ -18,6 +18,7 @@ struct LegendCallPolicy: Decodable {
     let videoBitrate, audioBitrate, ringSeconds, connectSeconds, recoveryAttempts: Int
     var adaptation: LegendCallAdaptationPolicy? = nil
     var relay: LegendCallRelay? = nil
+    var screenShare: LegendCallScreenSharePolicy? = nil
 }
 struct LegendCallSnapshot: Decodable, Identifiable {
     let id, conversationId: UUID
@@ -69,5 +70,38 @@ extension LegendCallAdaptationPolicy {
         if let latency, latency.isFinite, latency > highLatencySeconds { return 0 }
         guard let bandwidth, bandwidth.isFinite, bandwidth >= 0 else { return nil }
         return bandwidth < Double(lowBandwidth) ? 0 : bandwidth < Double(highBandwidth) ? 1 : 2
+    }
+}
+
+struct LegendCallScreenSharePolicy: Decodable {
+    let highWidth, highHeight, highFps, highBitrate: Int
+    let mediumWidth, mediumHeight, mediumFps, mediumBitrate: Int
+    let lowWidth, lowHeight, lowFps, lowBitrate: Int
+    let transportHeadroomFraction: Double
+
+    func bitrate(quality: Int, availableBandwidth: Double?, audioBitrate: Int) -> Int {
+        let ceiling = profile(quality: quality).bitrate
+        guard let availableBandwidth, availableBandwidth.isFinite, availableBandwidth >= 0 else { return ceiling }
+        let budget = max(0, availableBandwidth * (1 - min(1, max(0, transportHeadroomFraction))) - Double(audioBitrate))
+        return Int(min(Double(ceiling), budget))
+    }
+
+    func profile(quality: Int) -> (width: Int, height: Int, fps: Int, bitrate: Int) {
+        switch quality {
+        case 0: return (lowWidth, lowHeight, lowFps, lowBitrate)
+        case 1: return (mediumWidth, mediumHeight, mediumFps, mediumBitrate)
+        default: return (highWidth, highHeight, highFps, highBitrate)
+        }
+    }
+    func dimensions(width: Int, height: Int, quality: Int) -> (width: Int, height: Int) {
+        let target = profile(quality: quality)
+        return Self.fit(width: width, height: height, targetWidth: target.width, targetHeight: target.height)
+    }
+    static func fit(width: Int, height: Int, targetWidth: Int, targetHeight: Int) -> (width: Int, height: Int) {
+        let portrait = height > width
+        let maxWidth = portrait ? min(targetWidth, targetHeight) : max(targetWidth, targetHeight)
+        let maxHeight = portrait ? max(targetWidth, targetHeight) : min(targetWidth, targetHeight)
+        let scale = min(1, Double(maxWidth) / Double(max(1, width)), Double(maxHeight) / Double(max(1, height)))
+        return (max(2, min(maxWidth, Int((Double(width) * scale).rounded())) / 2 * 2), max(2, min(maxHeight, Int((Double(height) * scale).rounded())) / 2 * 2))
     }
 }

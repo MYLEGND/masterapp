@@ -1,5 +1,6 @@
 import AVFoundation
 import Network
+import os
 import ReplayKit
 import UIKit
 @preconcurrency import WebRTC
@@ -8,12 +9,14 @@ import UIKit
 final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     var onSignal: ((String, String, Int) async throws -> Void)?
     var onState: ((String) -> Void)?
+    var onRemoteScreenSharing: ((Bool) -> Void)?
     var onRemoteVideo: ((RTCVideoTrack) -> Void)?
     private(set) var localVideo: RTCVideoTrack?
     private let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
     private var peer: RTCPeerConnection?
     private var capturer: RTCCameraVideoCapturer?
     private var videoSource: RTCVideoSource?
+    private var screenTrack: RTCVideoTrack?
     private var sharingScreen = false
     private var screenGeneration = 0
     private var cameraWasEnabled = true
@@ -38,6 +41,10 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     private var qualitySample = 0
     private var completedQualitySample = 0
     private var connected = false
+    private var availableBandwidth: Double?
+    private var audioObservations = 0
+    private var lastAudioCounters = [Int64](repeating: 0, count: 4)
+    private let audioLog = Logger(subsystem: "com.legend.calling", category: "media")
     private var observers: [NSObjectProtocol] = []
 
     init(policy: LegendCallPolicy, video: Bool, caller: Bool) throws {
@@ -79,9 +86,26 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
                         let pair = selected.flatMap { report.statistics[$0] }
                         let bandwidth = (pair?.values["availableOutgoingBitrate"] as? NSNumber)?.doubleValue
                         let latency = (pair?.values["currentRoundTripTime"] as? NSNumber)?.doubleValue
+                        let audioStats = report.statistics.values.filter { ($0.values["kind"] as? String ?? $0.values["mediaType"] as? String) == "audio" }
+                        let counters = [("inbound-rtp", "bytesReceived"), ("outbound-rtp", "bytesSent"), ("inbound-rtp", "packetsReceived"), ("outbound-rtp", "packetsSent")].map { type, key in
+                            audioStats.filter { $0.type == type }.reduce(Int64(0)) { $0 + (($1.values[key] as? NSNumber)?.int64Value ?? 0) }
+                        }
                         Task { @MainActor [weak self] in
                             guard let self, !self.closed, self.connected, sample == self.qualitySample else { return }
                             self.completedQualitySample = sample
+                            if self.audioObservations < 6 {
+                                let deltas = zip(counters, self.lastAudioCounters).map { max(0, $0 - $1) }
+                                let enabled = RTCAudioSession.sharedInstance().isAudioEnabled
+                                let microphone = self.audio?.isEnabled == true
+                                let route = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+                                self.audioLog.info("audioInboundBytesDelta=\(deltas[0]) audioOutboundBytesDelta=\(deltas[1]) audioInboundPacketsDelta=\(deltas[2]) audioOutboundPacketsDelta=\(deltas[3]) sessionEnabled=\(enabled) localTrackEnabled=\(microphone) routeCategory=\(route, privacy: .public)")
+                                self.audioObservations += 1
+                            }
+                            self.lastAudioCounters = counters
+                            if let bandwidth, bandwidth.isFinite, bandwidth >= 0 {
+                                self.availableBandwidth = bandwidth
+                                self.applyBitrates()
+                            }
                             guard let target = tuning.targetQuality(bandwidth: bandwidth, latency: latency) else { self.healthySamples = 0; return }
                             if target < self.quality { self.quality = target; self.healthySamples = 0; self.configureCamera(); self.applyBitrates() }
                             else if target > self.quality { self.healthySamples += 1; if self.healthySamples >= tuning.recoverySamples { self.quality += 1; self.healthySamples = 0; self.configureCamera(); self.applyBitrates() } }
@@ -132,6 +156,13 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
 
     func receive(kind: String, data: String, epoch incomingEpoch: Int) async throws {
         guard let peer, !closed else { return }
+        if kind == "media-state" {
+            guard incomingEpoch >= epoch else { return }
+            guard let state = try? JSONDecoder().decode(MediaState.self, from: Data(data.utf8)) else { return }
+            onRemoteScreenSharing?(state.screenSharing)
+            if state.request == true { await sendMediaState(request: false) }
+            return
+        }
         if kind == "restart" { if caller { recover() }; return }
         if kind == "candidate" {
             guard incomingEpoch >= epoch else { return }
@@ -186,8 +217,14 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     }
 
     func startScreenSharing() async throws {
-        guard !closed, !sharingScreen, let source = videoSource else { return }
+        guard !closed, !sharingScreen, videoSource != nil else { return }
+        let screenPolicy = policy.screenShare
+        let source = factory.videoSource(forScreenCast: true)
+        let track = factory.videoTrack(with: source, trackId: "legend-screen")
+        screenTrack = track
+        peer?.senders.first(where: { $0.track?.kind == "video" })?.track = track
         sharingScreen = true
+        applyBitrates()
         screenGeneration += 1
         let generation = screenGeneration
         cameraWasEnabled = localVideo?.isEnabled ?? true
@@ -207,12 +244,11 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
                     guard type == .video, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
                     Task { @MainActor [weak self] in
                     guard let self, !self.closed, self.sharingScreen, self.screenGeneration == generation else { return }
-                    let limits = self.captureLimits
-                    let maxEdge = max(limits.width, limits.height)
+                    let legacy = self.captureLimits
                     let width = CVPixelBufferGetWidth(pixels), height = CVPixelBufferGetHeight(pixels)
-                    let scale = min(1.0, Double(maxEdge) / Double(max(width, height)))
-                    source.adaptOutputFormat(toWidth: Int32(max(2, Int(Double(width) * scale) / 2 * 2)),
-                        height: Int32(max(2, Int(Double(height) * scale) / 2 * 2)), fps: Int32(min(15, limits.fps)))
+                    let size = screenPolicy?.dimensions(width: width, height: height, quality: self.quality)
+                        ?? LegendCallScreenSharePolicy.fit(width: width, height: height, targetWidth: legacy.width, targetHeight: legacy.height)
+                    source.adaptOutputFormat(toWidth: Int32(size.width), height: Int32(size.height), fps: Int32(screenPolicy?.profile(quality: self.quality).fps ?? legacy.fps))
                     let time = Int64(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(buffer)) * 1_000_000_000)
                     let orientation = (CMGetAttachment(buffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber)?.uint32Value ?? 1
                     let rotation: RTCVideoRotation = switch CGImagePropertyOrientation(rawValue: orientation) {
@@ -228,21 +264,35 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
                 })
             }
             if closed || !sharingScreen { RPScreenRecorder.shared().stopCapture { _ in } }
+            else { await sendMediaState(request: false) }
         } catch {
-            sharingScreen = false
-            localVideo?.isEnabled = cameraWasEnabled
-            configureCamera()
+            stopScreenSharing()
             throw error
         }
     }
     func stopScreenSharing() {
         guard sharingScreen else { return }
         sharingScreen = false
+        restoreCameraTrack()
         screenGeneration += 1
         localVideo?.isEnabled = cameraWasEnabled
         RPScreenRecorder.shared().stopCapture { _ in }
         configureCamera()
         onScreenSharingEnded?()
+        if !closed { Task { [weak self] in await self?.sendMediaState(request: false) } }
+    }
+    private struct MediaState: Codable { let screenSharing: Bool; let request: Bool? }
+    private func sendMediaState(request: Bool) async {
+        // This additive presentation signal is supported only by the matching policy.
+        guard !closed, policy.screenShare != nil,
+              let data = try? JSONEncoder().encode(MediaState(screenSharing: sharingScreen, request: request)) else { return }
+        do { try await onSignal?("media-state", String(decoding: data, as: UTF8.self), epoch) }
+        catch { audioLog.notice("Screen presentation state could not synchronize; media transport remains active.") }
+    }
+    private func restoreCameraTrack() {
+        peer?.senders.first(where: { $0.track?.kind == "video" })?.track = localVideo
+        screenTrack = nil
+        applyBitrates()
     }
     func setMuted(_ muted: Bool) { audio?.isEnabled = !muted }
     func setCameraEnabled(_ enabled: Bool) {
@@ -301,8 +351,11 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
             let parameters = sender.parameters
             for encoding in parameters.encodings {
                 encoding.bitratePriority = sender.track?.kind == "audio" ? (policy.adaptation?.audioPriority ?? 1) : 1
-                let videoBitrate = quality == 0 ? (policy.adaptation?.lowBitrate ?? policy.videoBitrate) : quality == 1 ? (policy.adaptation?.mediumBitrate ?? policy.videoBitrate) : policy.videoBitrate
-                encoding.maxBitrateBps = NSNumber(value: sender.track?.kind == "audio" ? policy.audioBitrate : videoBitrate)
+                let cameraBitrate = quality == 0 ? (policy.adaptation?.lowBitrate ?? policy.videoBitrate) : quality == 1 ? (policy.adaptation?.mediumBitrate ?? policy.videoBitrate) : policy.videoBitrate
+                let videoBitrate = sharingScreen ? (policy.screenShare?.bitrate(quality: quality, availableBandwidth: availableBandwidth, audioBitrate: policy.audioBitrate) ?? cameraBitrate) : cameraBitrate
+                encoding.isActive = sender.track?.kind == "audio" || videoBitrate > 0
+                // A zero video budget pauses this encoding; never reserve bandwidth ahead of audio.
+                encoding.maxBitrateBps = videoBitrate == 0 && sender.track?.kind != "audio" ? nil : NSNumber(value: sender.track?.kind == "audio" ? policy.audioBitrate : videoBitrate)
             }
             sender.parameters = parameters
         }
@@ -351,7 +404,9 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
             guard !self.closed else { return }
             switch newState {
             case .connected, .completed:
+                let newlyConnected = !self.connected
                 self.connected = true; self.recoveryTask?.cancel(); self.recoveryTask = nil; self.onState?("Connected")
+                if newlyConnected { await self.sendMediaState(request: true) }
             case .disconnected, .failed: self.connected = false; self.recover()
             case .closed: self.connected = false; self.qualitySample += 1; self.healthySamples = 0
             default: break

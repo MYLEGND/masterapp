@@ -25,6 +25,8 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     private let controller = CXCallController()
     private var policy: LegendCallPolicy?
     private var peer: LegendRTCPeer?
+    @Published private(set) var remoteScreenSharing = false
+    var remoteVideoFitsContent: Bool { remoteScreenSharing || policy?.screenShare == nil }
     private var ringback: AVAudioPlayer?
     private var audioActive = false
     private let callLog = Logger(subsystem: "com.mylegnd.legend.registered", category: "calling")
@@ -57,7 +59,6 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         provider = LegendCallSystem.shared.provider
         super.init()
         LegendCallSystem.shared.attach(self)
-        RTCAudioSession.sharedInstance().useManualAudio = true
         transport.onCall = { [weak self] event in Task { await self?.receive(event) } }
         transport.onCallReconnect = { [weak self] in Task { await self?.sync() } }
         audioObservers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -87,8 +88,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
                 guard pendingOutgoing?.0 == id, !stopped else { return }
                 try await permissions(video: video)
                 guard pendingOutgoing?.0 == id, !stopped else { return }
-                try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: video ? .videoChat : .voiceChat,
-                    options: video ? [.allowBluetoothHFP, .defaultToSpeaker] : [.allowBluetoothHFP])
+                try LegendCallSystem.shared.prepareAudio(for: self, video: video)
                 startupDeadline = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(25))
                     guard !Task.isCancelled, let self, self.pendingOutgoing?.0 == id else { return }
@@ -153,10 +153,14 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     func switchCamera() { peer?.switchCamera() }
     func toggleSpeaker() {
         do {
-            speaker.toggle()
-            try AVAudioSession.sharedInstance().overrideOutputAudioPort(speaker ? .speaker : .none)
+            let requested = !speaker
+            let session = RTCAudioSession.sharedInstance()
+            session.lockForConfiguration()
+            defer { session.unlockForConfiguration() }
+            try session.overrideOutputAudioPort(requested ? .speaker : .none)
+            speaker = requested
             updateProximity()
-        } catch { failure = "The audio route could not be changed." }
+        } catch { controlError = "The audio route could not be changed." }
     }
 
     private func permissions(video: Bool) async throws {
@@ -262,16 +266,17 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         guard peer == nil, let call = current else { return }
         if policy == nil { _ = try await send(LegendCallCommand(action: "get", deviceId: deviceId, callId: call.id)) }
         guard let policy, current?.id == call.id else { throw CancellationError() }
+        guard peer == nil else { return }
         ringback?.stop(); ringback = nil
         status = "Connecting"
         speaker = call.video
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playAndRecord, mode: call.video ? .videoChat : .voiceChat, options: call.video ? [.allowBluetoothHFP, .defaultToSpeaker] : [.allowBluetoothHFP])
+        try LegendCallSystem.shared.prepareAudio(for: self, video: call.video)
         let engine = try LegendRTCPeer(policy: policy, video: call.video, caller: isCaller)
         engine.onSignal = { [weak self] kind, data, epoch in
             guard let self, self.current?.id == call.id else { throw CancellationError() }
             _ = try await self.send(LegendCallCommand(action: "signal", deviceId: self.deviceId, callId: call.id, signalKind: kind, signalData: data, epoch: epoch))
         }
+        engine.onRemoteScreenSharing = { [weak self] sharing in self?.remoteScreenSharing = sharing }
         engine.onRemoteVideo = { [weak self] track in self?.remoteVideo = track }
         engine.onState = { [weak self] state in
             guard let self, self.current?.id == call.id else { return }
@@ -287,6 +292,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         }
         engine.onScreenSharingEnded = { [weak self] in self?.sharingScreen = false; self?.minimized = false }
         peer = engine; localVideo = engine.localVideo
+        LegendCallSystem.shared.setMediaRequested(true, for: self)
         updateProximity()
         armDeadline(call.id, until: Date().addingTimeInterval(Double(policy.connectSeconds)))
     }
@@ -372,9 +378,10 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         heartbeat?.cancel(); heartbeat = nil; deadline?.cancel(); deadline = nil
         localVideo = nil; remoteVideo = nil; current = nil; pendingOutgoing = nil
         muted = false; cameraEnabled = true; speaker = false
+        remoteScreenSharing = false
         sharingScreen = false; minimized = false; controlError = nil
         UIDevice.current.isProximityMonitoringEnabled = false
-        RTCAudioSession.sharedInstance().isAudioEnabled = false
+        LegendCallSystem.shared.setMediaRequested(false, for: self)
     }
     func unregisterVoipToken(_ token: String?) {
         guard let token, let environment = LegendAPNSEnvironment.fromSignedEntitlement(Bundle.main.object(forInfoDictionaryKey: "LegendAPNSEnvironment") as? String) else { return }

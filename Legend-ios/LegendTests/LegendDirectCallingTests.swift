@@ -1,9 +1,102 @@
 import XCTest
 import AVFoundation
+@preconcurrency import WebRTC
 @testable import Legend
 
 @MainActor
 final class LegendDirectCallingTests: XCTestCase {
+    func testCallKitAudioActivationOrderAndRetiredStoreCannotMuteCurrentOwner() throws {
+        func store(_ user: String) throws -> LegendCallStore {
+            let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+                apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+                participantType: .client, accessTokenProvider: { throw CancellationError() }))
+            return LegendCallStore(transport: transport,
+                identity: try LogicalParticipantIdentity(userID: user, participantType: .client))
+        }
+        let system = LegendCallSystem.shared
+        let first = try store("first")
+        defer { first.shutdown(); system.audioActivationChanged(false) }
+        system.audioActivationChanged(false)
+        system.setMediaRequested(true, for: first)
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.audioActivationChanged(true)
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.setMediaRequested(false, for: first)
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.setMediaRequested(true, for: first)
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        let second = try store("second")
+        defer { second.shutdown() }
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.setMediaRequested(true, for: second)
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        first.shutdown()
+        XCTAssertTrue(RTCAudioSession.sharedInstance().isAudioEnabled)
+        system.audioActivationChanged(false)
+        XCTAssertFalse(RTCAudioSession.sharedInstance().isAudioEnabled)
+    }
+
+    func testPresentationMetadataFailureDoesNotRestartMediaAndLegacyPolicyDoesNotSendIt() async throws {
+        var policy = LegendCallPolicy(stunUrls: [], wifiWidth: 1280, wifiHeight: 720, wifiFps: 30,
+            cellularWidth: 640, cellularHeight: 360, cellularFps: 24, videoBitrate: 900_000,
+            audioBitrate: 64_000, ringSeconds: 45, connectSeconds: 30, recoveryAttempts: 3)
+        let legacy = try LegendRTCPeer(policy: policy, video: false, caller: true)
+        defer { legacy.close() }
+        var sent = 0
+        legacy.onSignal = { _, _, _ in sent += 1 }
+        try await legacy.receive(kind: "media-state", data: "{\"screenSharing\":true,\"request\":true}", epoch: 0)
+        XCTAssertEqual(sent, 0)
+        let legacySize = LegendCallScreenSharePolicy.fit(width: 1170, height: 2532, targetWidth: policy.cellularWidth, targetHeight: policy.cellularHeight)
+        XCTAssertLessThanOrEqual(legacySize.width, policy.cellularHeight)
+        XCTAssertLessThanOrEqual(legacySize.height, policy.cellularWidth)
+        XCTAssertEqual(Double(legacySize.width) / Double(legacySize.height), 1170.0 / 2532.0, accuracy: 0.005)
+        policy.screenShare = LegendCallScreenSharePolicy(highWidth: 1920, highHeight: 1080, highFps: 15, highBitrate: 2_500_000,
+            mediumWidth: 1280, mediumHeight: 720, mediumFps: 10, mediumBitrate: 1_200_000,
+            lowWidth: 960, lowHeight: 540, lowFps: 5, lowBitrate: 250_000, transportHeadroomFraction: 0.15)
+        let peer = try LegendRTCPeer(policy: policy, video: false, caller: true)
+        defer { peer.close() }
+        var sharing = false
+        var states: [String] = []
+        peer.onRemoteScreenSharing = { sharing = $0 }
+        peer.onState = { states.append($0) }
+        peer.onSignal = { _, _, _ in sent += 1; throw CancellationError() }
+        try await peer.receive(kind: "media-state", data: "{\"screenSharing\":true,\"request\":true}", epoch: 0)
+        XCTAssertTrue(sharing)
+        XCTAssertEqual(sent, 1)
+        XCTAssertFalse(states.contains("Reconnecting"))
+        try await peer.receive(kind: "media-state", data: "invalid", epoch: 0)
+        XCTAssertTrue(sharing)
+    }
+
+    func testScreenSharingUsesCentralProfilesWithoutCroppingPortraitText() throws {
+        let json = """
+        {"highWidth":1920,"highHeight":1080,"highFps":15,"highBitrate":2500000,
+         "mediumWidth":1280,"mediumHeight":720,"mediumFps":10,"mediumBitrate":1200000,
+         "lowWidth":960,"lowHeight":540,"lowFps":5,"lowBitrate":250000,"transportHeadroomFraction":0.15}
+        """
+        let policy = try JSONDecoder().decode(LegendCallScreenSharePolicy.self, from: Data(json.utf8))
+        let portrait = policy.dimensions(width: 1170, height: 2532, quality: 2)
+        XCTAssertEqual(portrait.height, 1920)
+        XCTAssertLessThanOrEqual(portrait.width, 1080)
+        XCTAssertEqual(portrait.width % 2, 0)
+        XCTAssertEqual(Double(portrait.width) / Double(portrait.height), 1170.0 / 2532.0, accuracy: 0.002)
+        let landscape = policy.dimensions(width: 2532, height: 1170, quality: 2)
+        XCTAssertEqual(landscape.width, portrait.height)
+        XCTAssertEqual(landscape.height, portrait.width)
+        let weakNetwork = policy.dimensions(width: 1920, height: 1080, quality: 0)
+        XCTAssertEqual(weakNetwork.width, 960)
+        XCTAssertEqual(weakNetwork.height, 540)
+        XCTAssertEqual(policy.profile(quality: 0).fps, 5)
+        XCTAssertEqual(policy.profile(quality: 1).bitrate, 1_200_000)
+        XCTAssertEqual(policy.bitrate(quality: 2, availableBandwidth: 350_000, audioBitrate: 64_000), 233_500)
+        XCTAssertEqual(policy.bitrate(quality: 0, availableBandwidth: 2_000_000, audioBitrate: 64_000), 250_000)
+        XCTAssertEqual(policy.bitrate(quality: 2, availableBandwidth: 20_000, audioBitrate: 64_000), 0)
+        XCTAssertEqual(policy.bitrate(quality: 2, availableBandwidth: nil, audioBitrate: 64_000), 2_500_000)
+        let small = policy.dimensions(width: 320, height: 180, quality: 2)
+        XCTAssertEqual(small.width, 320)
+        XCTAssertEqual(small.height, 180)
+    }
+
     func testAdaptiveQualityRecognizesWeakWifiAndDoesNotRecoverWithoutEvidence() {
         let tuning = LegendCallAdaptationPolicy(sampleSeconds: 3, recoverySamples: 4,
             lowBandwidth: 350_000, highBandwidth: 900_000, highLatencySeconds: 0.6, audioPriority: 4,
