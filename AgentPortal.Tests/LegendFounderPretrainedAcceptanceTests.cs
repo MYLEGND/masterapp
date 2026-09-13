@@ -73,16 +73,20 @@ public sealed partial class LegendFounderAiModeIsolationTests
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false, 0m, null, "meaning_graph_component_unknown", 0, "No matching approved semantic evidence.", false));
         var handler = new FounderAiScenarioHandler(ProviderText("The earlier option has the smaller scope."));
+        var conversationId = Guid.NewGuid();
+        var cursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+            ControllerTestHelpers.BuildFounderHistoryScopes(db), FounderEnvironmentScope.FounderId, conversationId,
+            [new("user", "Option cedar takes one afternoon; option quartz takes three weekends."),
+             new("assistant", "I can help compare their scope.")]);
+        Assert.NotNull(cursor);
         var request = new LegendFounderAiChatRequest
         {
             Mode = "legend",
             SourceLanguageCode = "en",
-            Messages =
-            [
-                new LegendFounderAiChatMessage("user", "Option cedar takes one afternoon; option quartz takes three weekends."),
-                new LegendFounderAiChatMessage("assistant", "I can help compare their scope."),
-                new LegendFounderAiChatMessage("user", "Compare the earlier option with the later one.")
-            ]
+            ConversationId = conversationId.ToString("D"),
+            ExpectedLastMessageId = cursor,
+            // Prior content comes from the canonical store, never client echo.
+            Messages = [new LegendFounderAiChatMessage("user", "Compare the earlier option with the later one.")]
         };
 
         var result = await CreateService(db, operations.Object, handler).ReplyAsync(founder, request);
@@ -92,6 +96,10 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Equal(1, handler.RequestCount);
         Assert.Contains("Option cedar takes one afternoon", Assert.Single(handler.RequestBodies));
         Assert.Contains("option quartz takes three weekends", Assert.Single(handler.RequestBodies));
+        Assert.Contains("I can help compare their scope.", Assert.Single(handler.RequestBodies));
+        Assert.Equal(conversationId, result.ConversationId);
+        Assert.NotNull(result.MessageId);
+        Assert.NotEqual(cursor, result.MessageId);
         Assert.DoesNotContain(operations.Invocations, invocation =>
             invocation.Method.Name == nameof(ILegendConnectOperations.ExecuteResearchAsync));
     }
