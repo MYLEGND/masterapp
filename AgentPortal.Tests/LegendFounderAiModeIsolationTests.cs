@@ -1250,6 +1250,68 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
 
+    [Theory]
+    [InlineData(false, "First section.\nMiddle section.\nLast section.")]
+    [InlineData(true, "First section.\nMiddle section.\nLast section.")]
+    [InlineData(true, "")]
+    public async Task TeacherMode_ContinuationWithoutNewContentStopsAndRetainsPartialStatus(bool completed, string repeated)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        SetupUnclassifiedContentPlan(operations);
+        const string original = "First section.\nMiddle section.\nLast section.";
+        var handler = new FounderAiScenarioHandler(ProviderIncompleteText(original),
+            completed ? ProviderText(repeated) : ProviderIncompleteText(repeated));
+        var result = await CreateService(db, operations.Object, handler).ReplyAsync(founder,
+            Request("teacher", "Continue the explanation without restarting it."));
+        Assert.True(result.Succeeded, Describe(result));
+        Assert.Equal(original, result.Message);
+        Assert.Equal("response_partial", result.Stage);
+        Assert.Equal("response_continuation_no_progress", result.Reason);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task TeacherMode_ContinuationPreservesAnIntentionalClosingRefrain()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        SetupUnclassifiedContentPlan(operations);
+        var handler = new FounderAiScenarioHandler(ProviderIncompleteText("Opening refrain.\nMiddle verse."),
+            ProviderText("Opening refrain."));
+        var result = await CreateService(db, operations.Object, handler).ReplyAsync(founder,
+            Request("teacher", "Use the opening refrain again as the closing line."));
+        Assert.True(result.Succeeded, Describe(result));
+        Assert.Equal("Opening refrain.\nMiddle verse.\nOpening refrain.", result.Message);
+        Assert.NotEqual("response_partial", result.Stage);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task TeacherMode_ToolAfterPartialIsExecutedBeforeFinalAnswer()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        SetupUnclassifiedContentPlan(operations);
+        var handler = new FounderAiScenarioHandler(ProviderIncompleteText("The calculation is"),
+            ProviderTool("legend_calculate", "{\"operation\":\"add\",\"left\":\"2\",\"right\":\"3\"}"),
+            ProviderText("5."));
+        var result = await CreateService(db, operations.Object, handler).ReplyAsync(founder,
+            Request("teacher", "Calculate the sum using the authorized calculator."));
+        Assert.True(result.Succeeded, Describe(result));
+        Assert.Equal("The calculation is\n5.", result.Message);
+        Assert.NotEqual("response_partial", result.Stage);
+        Assert.Equal(3, handler.RequestCount);
+        Assert.Contains("function_call_output", handler.RequestBodies[2]);
+        Assert.Contains("LegendConnectGovernedReasoningExecutor", handler.RequestBodies[2]);
+    }
+
     [Fact]
     public async Task TeacherMode_ProviderRejectionPreservesSafeProviderStatusAndReference()
     {

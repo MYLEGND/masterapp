@@ -1042,7 +1042,14 @@ public sealed class LegendFounderAiConversationService
                 var responseState =
                     ReadResponseState(root);
 
-                if (responseState == "incomplete")
+                var toolCalls = responseState == "completed" ? ReadFunctionCalls(root) : [];
+                var responseSegment = ExtractOutputText(root);
+                var mergedAnswer = MergeProviderAnswerSegment(accumulatedProviderAnswer, responseSegment);
+                var continuationMadeNoProgress = accumulatedProviderAnswer.Length > 0 &&
+                    string.Equals(mergedAnswer, accumulatedProviderAnswer, StringComparison.Ordinal);
+
+                if (responseState == "incomplete" ||
+                    (responseState == "completed" && toolCalls.Count == 0 && continuationMadeNoProgress))
                 {
                     if ((requiresMandatoryGovernedInspection &&
                          !governedInspectionCompleted) ||
@@ -1058,19 +1065,14 @@ public sealed class LegendFounderAiConversationService
                             "required_governed_inspection_missing"));
                     }
 
-                    var partial =
-                        ExtractOutputText(root);
-
-                    accumulatedProviderAnswer =
-                        MergeProviderAnswerSegment(
-                            accumulatedProviderAnswer,
-                            partial);
+                    var partial = responseSegment;
+                    accumulatedProviderAnswer = mergedAnswer;
 
                     var remainingAfterProvider =
                         TimeSpan.FromSeconds(_timeoutSeconds) -
                         executionClock.Elapsed;
 
-                    if (!string.IsNullOrWhiteSpace(partial) &&
+                    if (!continuationMadeNoProgress && !string.IsNullOrWhiteSpace(partial) &&
                         round < maximumToolRounds - 1 &&
                         remainingAfterProvider > TimeSpan.FromSeconds(8))
                     {
@@ -1111,7 +1113,7 @@ public sealed class LegendFounderAiConversationService
                             null,
                             ResponseAuthority: usingExternalAnswering ? "OpenAITeacher" : "LocalFoundation",
                             Stage: "response_partial",
-                            Reason: "provider_output_incomplete",
+                            Reason: continuationMadeNoProgress ? "response_continuation_no_progress" : "provider_output_incomplete",
                             EvidenceOrigin: LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
                             ResearchOutcome: completedResearchOutcome,
                             ModelVersion: usingExternalAnswering ? null : localModelSelection?.ModelVersion,
@@ -1147,8 +1149,6 @@ public sealed class LegendFounderAiConversationService
                         "provider_response",
                         "provider_response_unusable"));
                 }
-
-                var toolCalls = ReadFunctionCalls(root);
 
                 if (toolCalls.Count == 0)
                 {
@@ -1187,12 +1187,7 @@ public sealed class LegendFounderAiConversationService
                             round + 1),
                         effectiveToken);
 
-                    var answer = ExtractOutputText(root);
-
-                    accumulatedProviderAnswer =
-                        MergeProviderAnswerSegment(
-                            accumulatedProviderAnswer,
-                            answer);
+                    accumulatedProviderAnswer = mergedAnswer;
 
                     if (string.IsNullOrWhiteSpace(accumulatedProviderAnswer))
                     {
