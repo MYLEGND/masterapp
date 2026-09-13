@@ -485,6 +485,14 @@ final class LegendApplicationLocalization: ObservableObject {
         stopFetch()
         if preferredLanguageCode != nil { continuation = nil; notBefore = .distantPast }
         applyWarm(preferredLanguageCode, actorKey: Self.actorKey(session))
+        // The caller supplies the actual successful account-save response. Effective catalog locale is not a preference.
+        if let preferredLanguageCode, !preferredLanguageCode.isEmpty,
+           let prior = launchCache.readSession(), prior.actor.identity == session.actor.identity,
+           prior.credentialFingerprint != nil {
+            launchCache.writeSession(MobileSessionCacheEntry(actor: prior.actor, capabilities: prior.capabilities,
+                permittedParticipantTypes: prior.permittedParticipantTypes, cachedUtc: prior.cachedUtc,
+                credentialFingerprint: prior.credentialFingerprint, preferredLanguageCode: preferredLanguageCode))
+        }
         configureRequest(session: session, coordinator: coordinator, launchCache: launchCache)
     }
 

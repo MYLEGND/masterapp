@@ -47,7 +47,7 @@ private val cachedSessionKey = stringPreferencesKey("encrypted_session")
     fun retainingLocalization(participantType: String, value: ApplicationLocalizationCatalog): CachedLegendSession {
         val key = participantType.lowercase(java.util.Locale.ROOT) + "\n" + value.catalogVersion + "\n" + value.languageCode.lowercase(java.util.Locale.ROOT)
         val retained = (localizationCatalogs.filterKeys { it != key } + (key to value)).entries.toList().takeLast(8).associate { it.toPair() }
-        return copy(preferredLanguageCode = value.languageCode, localizationCatalog = null, localizationCatalogs = retained)
+        return copy(localizationCatalog = null, localizationCatalogs = retained)
     }
 
     fun requiresInteractiveSignIn(retentionDays: Int, now: Instant = Instant.now()): Boolean {
@@ -108,6 +108,15 @@ class SecureSessionStore(private val context: Context) : LegendSessionStoring {
         val existing = catalog.accounts.firstOrNull { it.accountId == accountId } ?: return@withLock
         val accounts = catalog.accounts.filterNot { it.accountId == accountId } + existing.retainingLocalization(participantType, value)
         writeCatalog(catalog.copy(accounts = accounts))
+    }
+
+    // Only the authenticated account-save response supplies this value. Catalog locale may be a source fallback.
+    suspend fun writeSavedPreferredLanguage(accountId: String, participantType: String, languageCode: String) = mutationMutex.withLock {
+        if (languageCode.isBlank()) return@withLock
+        val catalog = readCatalog()
+        if (catalog.selectedAccountId != accountId) return@withLock
+        val existing = catalog.accounts.firstOrNull { it.accountId == accountId && it.participantType.equals(participantType, true) } ?: return@withLock
+        writeCatalog(catalog.copy(accounts = catalog.accounts.filterNot { it.accountId == accountId } + existing.copy(preferredLanguageCode = languageCode)))
     }
 
     override suspend fun selectAccount(accountId: String): CachedLegendSession? = mutationMutex.withLock {

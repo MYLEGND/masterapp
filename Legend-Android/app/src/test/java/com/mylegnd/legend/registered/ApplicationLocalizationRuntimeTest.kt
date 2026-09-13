@@ -40,11 +40,13 @@ class ApplicationLocalizationRuntimeTest {
     fun `cached languages retain exact account role catalog identity and authoritative withdrawal`() {
         val copy = ApplicationLocalizedCopy("entry", "Settings", "Anviwònman", "visual interface copy", "r1", emptyList(), "AzureTranslator", "ProviderDerived", "Observation", "now", true)
         fun catalog(language: String) = ApplicationLocalizationCatalog("v1", "en", language, language, "now", true, listOf(copy))
-        val original = CachedLegendSession("actor-a", "Agent", "A", "now", accountId = "a")
+        val original = CachedLegendSession("actor-a", "Agent", "A", "now", accountId = "a", preferredLanguageCode = "ht")
         val saved = original.retainingLocalization("Agent", catalog("ht")).retainingLocalization("Agent", catalog("es"))
         assertEquals(listOf("ht", "es"), saved.localizationCatalogsFor("Agent").map { it.languageCode })
         assertTrue(saved.localizationCatalogsFor("Client").isEmpty())
         assertTrue(original.localizationCatalogsFor("Agent").isEmpty())
+        assertEquals("ht", saved.retainingLocalization("Agent", catalog("en")).preferredLanguageCode)
+        assertEquals("now", saved.cachedUtc)
         val revoked = saved.retainingLocalization("Agent", catalog("ht").copy(entries = listOf(copy.copy(text="Settings", failureCode="approved_translation_unavailable"))))
         assertNull(revoked.localizationCatalogsFor("Agent").last().entries.single().validatedText("Settings", "visual interface copy", "r1", emptyList()))
         var bounded = saved

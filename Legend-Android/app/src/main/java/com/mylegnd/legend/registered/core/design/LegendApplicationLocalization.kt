@@ -92,6 +92,10 @@ class LegendApplicationLocalization(
         stopFetch()
         if (preferredLanguageCode != null) { continuation = null; notBeforeMillis = 0 }
         applyWarm(actorKey, preferredLanguageCode)
+        val generation = requestGeneration
+        // This argument is the actual successful account-save response, never the picker's desired value.
+        if (!preferredLanguageCode.isNullOrBlank()) cache.writeSavedPreferredLanguage(actorKey, participantType, preferredLanguageCode)
+        if (generation != requestGeneration) return
         startFetch()
     }
 
