@@ -341,7 +341,7 @@ public sealed class LegendFounderAiConversationService
             // confirmation. A lost response cannot prove an action was rolled back.
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var unknown = WithWorkEvidence(FromHistoryProvenance(MessagingFounderAiResponseProvenance.OutcomeUnknown(mode),
-                "This request was interrupted. Its outcome is unknown; check completed actions before starting another request."));
+                ApplicationCopyText.Source("This request was interrupted. Its outcome is unknown; check completed actions before starting another request.")));
             try
             {
                 var terminal = await InHistoryScopeAsync((history, token) => history.CompleteFounderAiTurnAsync(new(
@@ -370,7 +370,7 @@ public sealed class LegendFounderAiConversationService
         var terminal = receipt.TerminalMessage;
         if (terminal?.ResponseProvenance is not { } provenance)
             return LegendFounderAiChatResponse.ModeFailure(mode,
-                "This request is still pending. Refresh its conversation to retrieve the result; do not submit it as a new request.",
+                ApplicationCopyText.Source("This request is still pending. Refresh its conversation to retrieve the result; do not submit it as a new request."),
                 "history_pending", "conversation_history", "operation_pending") with
             { ConversationId = conversationId, UserMessageId = receipt.UserMessage?.Id, OperationId = operationId.ToString("D"), LastMessageUtc = receipt.LastMessageUtc };
         return FromHistoryProvenance(provenance, terminal.Body) with

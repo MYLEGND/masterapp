@@ -686,7 +686,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
             .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
-        var service = CreateService(db, handler, loggerFactory);
+        var historyScopes = ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db);
+        var service = CreateService(db, handler, loggerFactory, historyScopes);
         var conversationId = Guid.NewGuid().ToString("D");
         Guid? cursor = null;
 
@@ -748,7 +749,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         // Force the follow-up to reload canonical persisted discourse state.
         // No assistant answer or expected value is injected into the request.
         db.ChangeTracker.Clear();
-        service = CreateService(db, handler, loggerFactory);
+        service = CreateService(db, handler, loggerFactory, historyScopes);
 
         var followUp = await SendAsync(
             "native_capability:same_conversation_memory_turn_two",
@@ -965,6 +966,23 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         ("haitian_creole_conflict", CreolePrompt)
     ];
 
+    [Fact]
+    public async Task MatrixFixture_ConversationPersistenceIsSeparateFromGuardedOperations()
+    {
+        // Script only the explicit external transport fixture: this proves
+        // database composition, never independent model capability.
+        var row = await RunAsync("fixture:conversation_isolation", "Explain the supplied scenario.",
+            nativeOnly: false, mode: "teacher", providerText: "A transport fixture response.");
+        Assert.True(row.Succeeded, row.Error);
+        Assert.Equal("OpenAITeacher", row.ResponseAuthority);
+        Assert.Equal(1, row.ProviderCalls);
+        Assert.Equal(2, row.PersistedConversationMessages);
+        Assert.True(row.PersistedDiscourseTurns > 0);
+        Assert.Equal(0, row.OperationalWriteAttempts);
+        Assert.Empty(row.ObservedWriteEntities);
+        Assert.Equal(0, row.PendingTrackedChanges);
+    }
+
     private static async Task<MatrixRow> RunAsync(
         string label,
         string prompt,
@@ -997,11 +1015,15 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
             .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
-        var historyScopes = ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db);
+        // Conversation persistence is exercised in its isolated canonical store.
+        // The operations store remains guarded against every attempted write.
+        await using var conversationDb = ControllerTestHelpers.BuildDb();
+        await AddFounderProfileAsync(conversationDb);
+        var historyScopes = ControllerTestHelpers.BuildFounderHistoryScopes(conversationDb);
         conversationId ??= Guid.NewGuid().ToString("D");
         var expectedLastMessageId = await ControllerTestHelpers.SeedFounderHistoryAsync(historyScopes,
             FounderEnvironmentScope.FounderId, Guid.Parse(conversationId), priorTurns ?? []);
-        var service = CreateService(db, handler, loggerFactory, historyScopes);
+        var service = CreateService(db, handler, loggerFactory, historyScopes, conversationDb);
 
         var messages = new List<LegendFounderAiChatMessage>(
             priorTurns ?? []) { new("user", prompt) };
@@ -1048,6 +1070,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             handler.ClientConstructions,
             progress.ToArray())
         {
+            PersistedConversationMessages = await conversationDb.InternalMessages.AsNoTracking().CountAsync(),
+            PersistedDiscourseTurns = await conversationDb.LegendFounderAiDiscourseTurns.AsNoTracking().CountAsync(),
             RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics(),
             FoundationModel = response.FoundationModel,
             FoundationHosting = response.FoundationHosting,
@@ -1119,6 +1143,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         public string? FoundationModel { get; init; }
         public string? FoundationHosting { get; init; }
         public bool? ExternalAnsweringUsed { get; init; }
+        public int? PersistedConversationMessages { get; init; }
+        public int? PersistedDiscourseTurns { get; init; }
     }
 
 
@@ -1165,7 +1191,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         MasterAppDbContext db,
         RecordingProviderHandler handler,
         ILoggerFactory loggerFactory,
-        IServiceScopeFactory? historyScopes = null)
+        IServiceScopeFactory? historyScopes = null,
+        MasterAppDbContext? conversationDb = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -1212,7 +1239,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             configuration,
             new FounderLegendConnectService(operations, accessResolver),
             loggerFactory.CreateLogger<LegendFounderAiConversationService>(),
-            new LegendFounderAiDiscourseStateService(db, accessResolver, operations),
+            new LegendFounderAiDiscourseStateService(conversationDb ?? db,
+                conversationDb is null ? accessResolver : new AgentProfileAccessResolver(conversationDb), operations),
             registry,
             ControllerTestHelpers.BuildTranslationService(),
             softwareRemediation: null,
