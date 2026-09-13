@@ -38,7 +38,7 @@ namespace Infrastructure.Messaging;
 /// The suffix is opaque curriculum meaning, allowing new skill domains without
 /// adding code or a topic router.
 /// </summary>
-internal static class LegendConnectGovernedReasoningExecutor
+public static class LegendConnectGovernedReasoningExecutor
 {
     internal const int MaximumDepth = 12;
     internal const int MaximumStates = 512;
@@ -1154,6 +1154,27 @@ internal static class LegendConnectGovernedReasoningExecutor
         computedBindings = computed;
         scheduleSteps = steps;
         failureReason = null;
+        return true;
+    }
+
+    /// <summary>Computes supplied operands only; grants no factual or curriculum authority.</summary>
+    public static bool TryCalculate(string operation, string? left, string? right, out string? result)
+    {
+        result = null;
+        if (left is null || right is null) return false;
+        var mode = operation switch
+        {
+            "add" => ReasoningMode.ArithmeticAdd,
+            "subtract" => ReasoningMode.ArithmeticSubtract,
+            "multiply" => ReasoningMode.ArithmeticMultiply,
+            "divide" => ReasoningMode.ArithmeticDivide,
+            "compare" => ReasoningMode.ArithmeticCompare,
+            _ => (ReasoningMode?)null
+        };
+        if (mode is null || !TryComputeArithmeticBindings(mode.Value,
+                new Dictionary<string, string> { [NumericLeftVariable] = left, [NumericRightVariable] = right },
+                out var computed)) return false;
+        result = computed[mode == ReasoningMode.ArithmeticCompare ? NumericComparisonVariable : NumericResultVariable];
         return true;
     }
 

@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 
 namespace AgentPortal.Services;
 
@@ -96,6 +97,7 @@ internal sealed class LegendFounderToolAuthority
     private static bool IsGovernedEvidenceTool(string name) =>
         IsReadOnlyFounderTool(name) &&
         !string.Equals(name, "legend_capabilities", StringComparison.Ordinal) &&
+        !string.Equals(name, "legend_calculate", StringComparison.Ordinal) &&
         !string.Equals(name, "legend_request_teacher_escalation", StringComparison.Ordinal) &&
         !string.Equals(name, "legend_research_internet", StringComparison.Ordinal);
 
@@ -121,6 +123,7 @@ internal sealed class LegendFounderToolAuthority
     private static bool IsReadOnlyFounderTool(
         string name) =>
         name is
+            "legend_calculate" or
             "legend_capabilities" or
             "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
@@ -339,6 +342,30 @@ internal sealed class LegendFounderToolAuthority
 
         switch (call.Name)
         {
+            case "legend_calculate":
+            {
+                if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                    return SerializeUnbounded(new { ok = false, error = "calculation_arguments_invalid" });
+                try
+                {
+                    using var arguments = JsonDocument.Parse(call.Arguments);
+                    var root = arguments.RootElement;
+                    if (!TryResolveFounderFunctionParameters(call.Name, out var schema) || !IsStrictSchemaInstance(schema, root))
+                        return SerializeUnbounded(new { ok = false, error = "calculation_arguments_invalid" });
+                    var operation = root.GetProperty("operation").GetString()!;
+                    var left = root.GetProperty("left").GetString()!;
+                    var right = root.GetProperty("right").GetString()!;
+                    if (!LegendConnectGovernedReasoningExecutor.TryCalculate(operation, left, right, out var result))
+                        return SerializeUnbounded(new { ok = false, error = "calculation_undefined_or_out_of_bounds" });
+                    return SerializeUnbounded(new { ok = true, operation, left, right, result,
+                        authority = "LegendConnectGovernedReasoningExecutor", scope = "supplied_operands_only" });
+                }
+                catch (JsonException)
+                {
+                    return SerializeUnbounded(new { ok = false, error = "calculation_arguments_invalid" });
+                }
+            }
+
             case "legend_capabilities":
             {
                 return SerializeUnbounded(DescribeFounderCapabilities());
@@ -1887,6 +1914,23 @@ internal sealed class LegendFounderToolAuthority
     {
         IReadOnlyList<object> tools =
         [
+            new
+            {
+                type = "function", name = "legend_calculate",
+                description = "Compute an exact bounded operation on supplied integers, decimals or fractions. Use for calculations where an executable check helps. Returns a reduced fraction or integer; compare returns less, equal or greater. Does not verify that supplied quantities describe real records. No records, curriculum, research or external provider required.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        operation = new { type = "string", @enum = new[] { "add", "subtract", "multiply", "divide", "compare" } },
+                        left = new { type = "string", minLength = 1, maxLength = 64 },
+                        right = new { type = "string", minLength = 1, maxLength = 64 }
+                    },
+                    required = new[] { "operation", "left", "right" }, additionalProperties = false
+                },
+                strict = true
+            },
             new
             {
                 type = "function",

@@ -518,6 +518,18 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         AssertCapabilitySemantics(category, row.Message!);
     }
 
+    [Fact]
+    public async Task NativeCalculator_UsesExactExecutorWithoutOrganizationalReads()
+    {
+        var row = await RunAsync("native_calculator:fraction_comparison",
+            "Use LEGEND's calculator to compare 13/7 with 1.85. Return only the calculator's comparison result. Do not look up organizational records.",
+            nativeOnly: true, sourceLanguageCode: "en");
+        Record([row]);
+        AssertNativeCapability(row, ["greater"]);
+        Assert.Equal("legend_calculate", Assert.Single(row.ToolCalls));
+        Assert.Equal("greater", row.Message!.Trim(), ignoreCase: true);
+    }
+
     private static void AssertCapabilitySemantics(string category, string answer)
     {
         var normalized = answer.ToLowerInvariant();
