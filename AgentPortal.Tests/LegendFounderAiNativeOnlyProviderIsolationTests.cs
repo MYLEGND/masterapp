@@ -1399,7 +1399,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         // observes real AzureTranslator client creation.
         Assert.False(allowed.Succeeded);
         Assert.Equal("AzureTranslator", allowed.Provider);
-        Assert.Equal("translation_capacity_unavailable", allowed.ErrorCode);
+        Assert.Equal("translation_capacity_configuration_unavailable", allowed.ErrorCode);
         Assert.NotEqual(
             "external_provider_forbidden_by_native_only_policy",
             allowed.ErrorCode);
