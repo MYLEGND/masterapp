@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-37db1e0515a8c650",
+  "catalogVersion": "application-copy-v1-df51957a2f4467d4",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -9402,6 +9402,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.92b26d8c153f383898a4884a",
+      "source": "Another request in this conversation is still running.",
+      "context": "visual interface copy",
+      "sourceRevision": "8b5c0e4f7a0be020",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9174822de13d62f48357e6e5",
       "source": "Answer",
       "context": "visual interface copy",
@@ -14154,6 +14165,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.6ec5d4661117964f00e94136",
+      "source": "Check or retry the same request",
+      "context": "visual interface copy",
+      "sourceRevision": "f55589e1f689e2de",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9689128054652f9e14e9f7be",
       "source": "Check-in cadence",
       "context": "visual interface copy",
@@ -17224,10 +17246,76 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f1cfd55199bee1e67ece68a8",
+      "source": "Conversation history changed before this response was saved.",
+      "context": "visual interface copy",
+      "sourceRevision": "a38cca2ce660465e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6cd35d1b4bbb71e8fc02b599",
+      "source": "Conversation history changed. Reload it before sending.",
+      "context": "visual interface copy",
+      "sourceRevision": "b3fe8c054603b093",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9c45e976cd95bcd24a696207",
+      "source": "Conversation history changed. Reload it to see the durable outcome.",
+      "context": "visual interface copy",
+      "sourceRevision": "5b54bbd8d52c2e9e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a6d3baf3aad444f567ae476d",
+      "source": "Conversation history could not be verified.",
+      "context": "visual interface copy",
+      "sourceRevision": "635209aaaafe114b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.f48784ebda4d076061f27cec",
       "source": "Conversation history is stored only in this browser through the existing Legend® Ai local storage state. It is not a LEGEND chat database.",
       "context": "visual interface copy",
       "sourceRevision": "dce40249cbab3def",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f0aca366368a0ddb36c48042",
+      "source": "Conversation history is unavailable for this account.",
+      "context": "visual interface copy",
+      "sourceRevision": "388920cfce41a2e7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2501d3197a37c87ceeb0869c",
+      "source": "Conversation history is unavailable.",
+      "context": "visual interface copy",
+      "sourceRevision": "458bd07f03e7ff29",
       "placeholders": [
 
       ],
@@ -32188,10 +32276,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.98deaab93f7cd82fbd6c6d7a",
+      "source": "Load more conversations",
+      "context": "visual interface copy",
+      "sourceRevision": "8806b16b26c66256",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.dea31515ca8fd689258fe173",
       "source": "Load more members",
       "context": "visual interface copy",
       "sourceRevision": "01c037a8160545de",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.df6d6640e03d54348a0a7495",
+      "source": "Load newer messages",
+      "context": "visual interface copy",
+      "sourceRevision": "dc294d6b7860deb7",
       "placeholders": [
 
       ],
@@ -40355,6 +40465,17 @@
       "source": "Part-Time",
       "context": "visual interface copy",
       "sourceRevision": "472f382d0a3f8c76",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5b9cef9ca2c39ef65d7f4727",
+      "source": "Partial answer",
+      "context": "visual interface copy",
+      "sourceRevision": "e77a569a30567bcb",
       "placeholders": [
 
       ],
@@ -53090,6 +53211,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f755cc15f4ec771f413338c5",
+      "source": "Synced to your account",
+      "context": "visual interface copy",
+      "sourceRevision": "3e53c083b96cb079",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.62af9714740f83bacff03bdf",
       "source": "Synced weekly outlook",
       "context": "visual interface copy",
@@ -54234,6 +54366,50 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.4f282263b7a9717179441a15",
+      "source": "The conversation execution deadline is invalid.",
+      "context": "visual interface copy",
+      "sourceRevision": "010b1e1eb6ba1d3f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6f834d27790efd23498d2ba3",
+      "source": "The conversation history cursor is invalid.",
+      "context": "visual interface copy",
+      "sourceRevision": "c4013156f93492ad",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.fa9a8a1271d70d6f48d9b296",
+      "source": "The conversation request is invalid.",
+      "context": "visual interface copy",
+      "sourceRevision": "be4f904c98cf6f82",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f61107bc541aa648587260c5",
+      "source": "The conversation response could not be verified.",
+      "context": "visual interface copy",
+      "sourceRevision": "1d88455cfc72abb3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.0247cb18bc970b8fa01db421",
       "source": "The current Expense Lens projection is not available.",
       "context": "visual interface copy",
@@ -54597,6 +54773,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e2a6dc05ae8a1a26110eb729",
+      "source": "The request ended without a confirmed durable response. Check any consequential action before trying again.",
+      "context": "visual interface copy",
+      "sourceRevision": "684d8a0234c32604",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.56e04de7951c869ca882fb42",
+      "source": "The requested conversation was not found.",
+      "context": "visual interface copy",
+      "sourceRevision": "b41044271de76f5d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ef94d735c85f84f1a3954d1d",
       "source": "The required client and lead workspace could not be initialized for this agent session.",
       "context": "visual interface copy",
@@ -54942,6 +55140,17 @@
       "source": "This closes sign-in access and removes the account's Legend content. The Archive provides the separate permanent erase action. Type DELETE to continue.",
       "context": "visual interface copy",
       "sourceRevision": "bee84cb350b5eda9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d08715da3c6a0ba9722a7a36",
+      "source": "This conversation is closed.",
+      "context": "visual interface copy",
+      "sourceRevision": "21efafbd11783dcc",
       "placeholders": [
 
       ],
@@ -55356,10 +55565,43 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f76975503efb112cc30d8853",
+      "source": "This request already has a durable outcome and cannot be replaced.",
+      "context": "visual interface copy",
+      "sourceRevision": "cf3db55e656f571a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.aabcaa05635964689569eee8",
+      "source": "This request ended without a confirmed durable response. Its outcome is unknown. Check any consequential action before trying again.",
+      "context": "visual interface copy",
+      "sourceRevision": "7cdde76bb1968217",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ff682cbfc2eeddfd7190ce19",
       "source": "This request exceeds LEGEND's local model context limit. Shorten the conversation or the supplied material and try again.",
       "context": "visual interface copy",
       "sourceRevision": "8027eb56dddb389f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e754ea897218e0f85ba0cbcf",
+      "source": "This request identifier was already used for different content or settings.",
+      "context": "visual interface copy",
+      "sourceRevision": "12f4d23fe930a939",
       "placeholders": [
 
       ],
@@ -61313,6 +61555,17 @@
       "source": "Your saved cash-flow projection is available, but Financial Health Snapshot has not been saved.",
       "context": "visual interface copy",
       "sourceRevision": "e1e21450c0c0f3fe",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ed2a921eca19b2b790a036cf",
+      "source": "Your saved conversations are available on web, iOS, and Android when you sign in to the same account.",
+      "context": "visual interface copy",
+      "sourceRevision": "b1c1df81fe9e84e4",
       "placeholders": [
 
       ],
