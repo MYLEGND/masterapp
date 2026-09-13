@@ -700,6 +700,7 @@ public sealed record MessagingMessageSummary(
     MessagingTranslationPresentation? Translation = null,
     string? OriginalBody = null)
 {
+    public string? TranslationNotice { get; init; }
     public string AuthorKind { get; init; } = MessagingAuthorKinds.Human;
     public MessagingFounderAiResponseProvenance? ResponseProvenance { get; init; }
     public MessagingSharedContent? SharedContent { get; init; }
@@ -728,7 +729,11 @@ public sealed record SetMessagingReactionRequest(string? Emoji);
 public sealed record MessagingTranslationPresentation(
     string OriginalLanguage,
     string TargetLanguage,
-    string Provider);
+    string Provider)
+{
+    public const string UnavailableCode = "MESSAGING_TRANSLATION_NOT_READY";
+    public static readonly string UnavailableMessage = ApplicationCopyText.Source("Translation is not ready. Your messages remain saved. Please try again.");
+}
 
 public sealed record MessagingVerificationReview(
     Guid Id,

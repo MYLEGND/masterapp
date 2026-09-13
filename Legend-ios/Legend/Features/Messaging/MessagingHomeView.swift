@@ -2278,6 +2278,14 @@ struct ConversationThreadView: View {
 
     private var composerArea: some View {
         VStack(spacing: 0) {
+            if let refreshFailure = store.conversationRefreshFailure {
+                LegendMessagingStatusBanner(
+                    symbol: "exclamationmark.circle.fill",
+                    title: refreshFailure.title,
+                    message: refreshFailure.message
+                )
+                .padding(.top, LegendNextSpacing.xs)
+            }
             if let sendFailure = store.sendFailure {
                 LegendMessagingStatusBanner(
                     symbol: "exclamationmark.circle.fill",
@@ -3850,6 +3858,9 @@ private struct LegendMessageBubble: View {
                     }
                 }
 
+                if let notice = message.translationNotice {
+                    Text(verbatim: notice).font(.caption)
+                }
                 if let translation = message.translation,
                    message.originalBody != nil {
                     Button {

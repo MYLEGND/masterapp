@@ -226,6 +226,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let reply: MessageReplyPreview?
     let verificationReview: VerificationReview?
     let translation: MessageTranslationPresentation?
+    let translationNotice: String?
     let originalBody: String?
     var reactions: [MessageReaction]
     let sharedContent: MessagingSharedContent?
@@ -243,7 +244,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case verificationReview
         case translation
         case reactions, sharedContent
-        case originalBody
+        case originalBody, translationNotice
     }
 
     init(
@@ -259,6 +260,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview: VerificationReview? = nil,
         translation: MessageTranslationPresentation? = nil,
         originalBody: String? = nil,
+        translationNotice: String? = nil,
         reactions: [MessageReaction] = [],
         sharedContent: MessagingSharedContent? = nil
     ) {
@@ -274,6 +276,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.verificationReview = verificationReview
         self.translation = translation
         self.originalBody = originalBody
+        self.translationNotice = translationNotice
         self.reactions = reactions
         self.sharedContent = sharedContent
     }
@@ -292,6 +295,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview = try container.decodeIfPresent(VerificationReview.self, forKey: .verificationReview)
         translation = try container.decodeIfPresent(MessageTranslationPresentation.self, forKey: .translation)
         originalBody = try container.decodeIfPresent(String.self, forKey: .originalBody)
+        translationNotice = try container.decodeIfPresent(String.self, forKey: .translationNotice)
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
         sharedContent = try container.decodeIfPresent(MessagingSharedContent.self, forKey: .sharedContent)
     }

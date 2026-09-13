@@ -497,17 +497,22 @@ internal sealed class NotificationEngine : INotificationEngine
                 notification.IsCleared), notification.SourceMessageId })
             .ToListAsync(cancellationToken);
 
-        var notifications = rows.Select(row => row.Item).ToList();
+        var notifications = new List<NotificationLedgerItem>(rows.Count);
         var messaging = _services?.GetService<IMessagingService>();
-        // The list already read each notice. Avoid a redundant point query for
-        // every row; message presentation still rechecks its own authorization.
-        // Activity presentation also runs without a registered push device.
-        for (var index = 0; index < notifications.Count; index++)
+        // Withhold an unready message preview; never replace it with its raw
+        // stored original. The durable notice remains unread and is retried by
+        // the existing activity/push paths, including accounts without devices.
+        foreach (var row in rows)
         {
-            if (rows[index].SourceMessageId is null || messaging is null) continue;
-            var detail = await messaging.PrepareNotificationPresentationAsync(recipient, notifications[index].Id, cancellationToken);
+            if (row.SourceMessageId is null)
+            {
+                notifications.Add(row.Item);
+                continue;
+            }
+            if (messaging is null) continue;
+            var detail = await messaging.PrepareNotificationPresentationAsync(recipient, row.Item.Id, cancellationToken);
             if (detail is not null)
-                notifications[index] = notifications[index] with { Detail = detail };
+                notifications.Add(row.Item with { Detail = detail });
         }
         var badge = await ReconcileBadgeAsync(recipient, cancellationToken);
         return new NotificationSnapshot(badge, notifications);

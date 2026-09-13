@@ -476,12 +476,14 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
                 if (revision != presentationRevision || selectedConversationId != id) return@launch
                 if (result is LoadState.Data) {
                     detailCache[id] = result.value
+                    _historyFailure.value = null
                     _detail.value = result
                     if (detailMarksRead) acknowledgeVisible(id, result.value)
                 } else if (result is LoadState.Error && result.status in setOf(401, 403, 404, 410)) {
                     detailCache.remove(id)
                     _detail.value = result
                 } else if (_detail.value !is LoadState.Data) _detail.value = result
+                else if (result is LoadState.Error) _historyFailure.value = result.message
             } while (detailRefreshPending)
         }.also { detailJob = it }
     }

@@ -3882,6 +3882,9 @@ private fun LegendMessageBubble(
                 message.originalBody?.takeIf { it != message.body }?.let { original ->
                     Text("${LegendCopy.value("message.original")}: $original", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }
+                message.translationNotice?.let { notice ->
+                    Text(notice, style = LegendTypography.Label, color = messageTextColor)
+                }
                 message.translation?.let { translation ->
                     Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }

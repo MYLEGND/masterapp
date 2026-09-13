@@ -412,6 +412,7 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var isLoadingMoreConversations = false
     @Published private(set) var hasMoreConversations = true
     @Published private(set) var refreshFailure: UserFacingFailure?
+    @Published private(set) var conversationRefreshFailure: UserFacingFailure?
 
     @Published private(set) var preferredReactionSkinTone = 0
     @Published private(set) var isSavingReactionPreferences = false
@@ -603,6 +604,7 @@ final class MessagingStore: ObservableObject {
             conversationDetailRequestIDs.removeValue(forKey: id)
         }
         selectedConversationID = conversationID
+        conversationRefreshFailure = nil
         sendFailure = nil
 
         if let cached = cachedConversationDetail(for: conversationID) {
@@ -1572,7 +1574,7 @@ final class MessagingStore: ObservableObject {
                     attachments: message.attachments + [attachment],
                     isMine: message.isMine,
                     reply: message.reply,
-                    verificationReview: message.verificationReview, translation: message.translation, originalBody: message.originalBody, reactions: message.reactions)
+                    verificationReview: message.verificationReview, translation: message.translation, originalBody: message.originalBody, translationNotice: message.translationNotice, reactions: message.reactions)
             }))
     }
 
@@ -1645,6 +1647,7 @@ final class MessagingStore: ObservableObject {
                 return
             }
             if presentsResult {
+                conversationRefreshFailure = nil
                 presentConversation(conversation)
             }
 
@@ -1655,8 +1658,12 @@ final class MessagingStore: ObservableObject {
                 return
             }
             let failedState = detailFailureState(for: error)
-            if !discardUnavailableConversation(failedState, conversationID: conversationID), cachedConversationDetail(for: conversationID) == nil {
-                detailState = failedState
+            if !discardUnavailableConversation(failedState, conversationID: conversationID) {
+                if cachedConversationDetail(for: conversationID) == nil {
+                    detailState = failedState
+                } else {
+                    conversationRefreshFailure = failure(for: error, title: LegendLocalized("Messages unavailable"))
+                }
             }
         }
     }

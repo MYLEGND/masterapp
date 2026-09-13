@@ -16,6 +16,60 @@ namespace AgentPortal.Tests;
 
 public sealed partial class MessagingServiceTests
 {
+    [Fact]
+    public async Task DeferredNotification_ExhaustedQuotaDeliversOriginalAndPresetNoticeWithoutCachingItAsTranslation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var client = await db.ClientProfiles.SingleAsync(item => item.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1", ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation, IsActive = true,
+            GrantedUtc = DateTime.UtcNow, GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = client.Id, ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        await db.SaveChangesAsync();
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var retained = new Moq.Mock<IRetainedTranslationService>(Moq.MockBehavior.Strict);
+        var intelligence = new Moq.Mock<ILegendConnectTranslationIntelligence>(Moq.MockBehavior.Strict);
+        var localization = new ApplicationLocalizationService(new EmbeddedApplicationCopyManifestSource(),
+            new ControlledResourceAccessService(db, configuration), registry, retained.Object, intelligence.Object,
+            NullLogger<ApplicationLocalizationService>.Instance);
+        var translator = new DeferredTranslationProbe { Fail = true, FailureCode = "translation_quota_exhausted" };
+        var service = CreateService(db, translator, applicationLocalization: localization);
+        var sender = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var recipient = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(sender, recipient.UserId, recipient.ParticipantType));
+        var sent = await service.SendMessageAsync(new SendMessagingMessageCommand(sender, opened.Conversation!.Id, "Hello.", "quota-send"));
+        Assert.True(sent.Succeeded);
+        Assert.Equal(0, translator.Calls);
+        var page = await service.GetConversationAsync(recipient, opened.Conversation.Id);
+        Assert.True(page.Succeeded, page.ErrorCode);
+        var received = Assert.Single(page.Conversation!.Messages);
+        Assert.Equal("Hello.", received.Body);
+        Assert.Null(received.Translation);
+        Assert.Null(received.OriginalBody);
+        Assert.Equal("Limit karaktè tradiksyon ou a pa sifi pou tèks sa a. Tèks ki pa tradui yo parèt nan lang orijinal yo.", received.TranslationNotice);
+        var notification = await db.MobileActivityNotifications.SingleAsync();
+        Assert.Equal(received.TranslationNotice + "\n\nHello.", await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        retained.VerifyNoOtherCalls();
+        intelligence.VerifyNoOtherCalls();
+        // A later usable translation replaces the quota presentation, without a stale quota cache.
+        translator.Fail = false;
+        var recovered = await service.GetConversationAsync(recipient, opened.Conversation.Id);
+        var translated = Assert.Single(recovered.Conversation!.Messages);
+        Assert.Equal("Bonjou.", translated.Body);
+        Assert.Null(translated.TranslationNotice);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, false)]
@@ -73,7 +127,34 @@ public sealed partial class MessagingServiceTests
         var engine = provider.GetRequiredService<INotificationEngine>();
         // The activity path invokes the same authority without any device registration.
         var snapshot = await engine.GetSnapshotAsync(recipient, 10);
-        Assert.Equal(failTranslation ? "Hello." : "Bonjou.", Assert.Single(snapshot.Notifications).Detail);
+        if (failTranslation)
+            Assert.Empty(snapshot.Notifications);
+        else
+            Assert.Equal("Bonjou.", Assert.Single(snapshot.Notifications).Detail);
+        Assert.False(notification.IsRead);
+        var page = await service.GetConversationAsync(recipient, opened.Conversation!.Id);
+        var inbox = await service.ListConversationsAsync(recipient, new MessagingConversationListQuery());
+        var activity = await service.ListActivityNotificationsAsync(recipient);
+        if (failTranslation)
+        {
+            Assert.False(page.Succeeded);
+            Assert.Equal(MessagingTranslationPresentation.UnavailableCode, page.ErrorCode);
+            Assert.Null(page.Conversation);
+            Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, Assert.Single(inbox.Conversations).LastMessagePreview);
+            Assert.Empty(activity.Notifications);
+        }
+        else
+        {
+            Assert.True(page.Succeeded);
+            Assert.Equal("Bonjou.", Assert.Single(page.Conversation!.Messages).Body);
+            Assert.Equal("Bonjou.", Assert.Single(inbox.Conversations).LastMessagePreview);
+            Assert.Equal("Bonjou.", Assert.Single(activity.Notifications).Detail);
+        }
+        // The failure does not advance a read or pagination boundary. Recovery
+        // returns the same durable message, not a newly sent duplicate.
+        var recipientRow = await db.MessageConversationParticipants.SingleAsync(item =>
+            item.ConversationId == opened.Conversation!.Id && item.UserId == recipient.UserId);
+        Assert.Null(recipientRow.LastReadMessageId);
         Assert.Empty(await db.MobilePushDevices.ToListAsync());
         var device = new MobilePushDevice
         {
@@ -128,6 +209,12 @@ public sealed partial class MessagingServiceTests
         Assert.NotNull(delivery.SentUtc);
         Assert.Single(await db.MessageTranslations.ToListAsync());
         Assert.Equal("Bonjou.", await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
+        var recoveredPage = await service.GetConversationAsync(recipient, opened.Conversation!.Id);
+        Assert.True(recoveredPage.Succeeded);
+        Assert.Equal(sent.Message!.Id, Assert.Single(recoveredPage.Conversation!.Messages).Id);
+        Assert.Equal("Bonjou.", Assert.Single(recoveredPage.Conversation.Messages).Body);
+        Assert.Equal("Bonjou.", Assert.Single((await engine.GetSnapshotAsync(recipient, 10)).Notifications).Detail);
+        Assert.Single(await db.InternalMessages.ToListAsync());
     }
 
     [Fact]
@@ -301,6 +388,7 @@ public sealed partial class MessagingServiceTests
     private sealed class DeferredTranslationProbe : ITranslationService
     {
         public bool Fail { get; set; }
+        public string? FailureCode { get; set; }
         public int Calls { get; private set; }
         public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
             => Task.FromResult(new TranslationDetectionResult(true, "en"));
@@ -308,7 +396,7 @@ public sealed partial class MessagingServiceTests
             string? sourceLanguage = null, CancellationToken cancellationToken = default)
         {
             Calls++;
-            return Task.FromResult(new TranslationProviderResult(!Fail, Fail ? null : "Bonjou.", "en", "test"));
+            return Task.FromResult(new TranslationProviderResult(!Fail, Fail ? null : "Bonjou.", "en", "test", ErrorCode: FailureCode));
         }
     }
 }

@@ -17,6 +17,42 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplicationLocalizationArchitectureTests
 {
+    [Fact]
+    public async Task QuotaNotice_EveryBaselineLanguage_IsPresetAndNeverInvokesTranslation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var languages = await registry.ListEnabledTranslationLanguagesAsync();
+        var manifest = new EmbeddedApplicationCopyManifestSource();
+        var entries = manifest.Manifest.Entries.Where(item => item.PresetTranslations is not null).ToArray();
+        Assert.Equal(2, entries.Length);
+        foreach (var entry in entries)
+        {
+        Assert.Equal("ApprovedOnly", entry.TranslationPolicy);
+        var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
+        var translations = new Mock<IRetainedTranslationService>(MockBehavior.Strict);
+        var intelligence = new Mock<ILegendConnectTranslationIntelligence>(MockBehavior.Strict);
+        var actor = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var service = new ApplicationLocalizationService(manifest, preferences.Object, registry,
+            translations.Object, intelligence.Object, NullLogger<ApplicationLocalizationService>.Instance);
+        foreach (var language in languages)
+        {
+            preferences.Setup(item => item.GetCanonicalPreferredLanguageAsync(actor, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(language.Code);
+            Assert.True(entry.PresetTranslations!.ContainsKey(language.Code));
+            for (var delivery = 0; delivery < 2; delivery++)
+            {
+                var notice = await service.LocalizeAsync(actor, entry.Source, entry.Context);
+                Assert.Equal(entry.PresetTranslations[language.Code], notice.Text);
+                Assert.True(notice.Reused);
+                Assert.Null(notice.FailureCode);
+            }
+        }
+        translations.VerifyNoOtherCalls();
+        intelligence.VerifyNoOtherCalls();
+        }
+    }
+
     [Theory]
     [InlineData("Ringing")]
     [InlineData("The call status could not be confirmed. Please try again.")]
@@ -378,7 +414,7 @@ public sealed class ApplicationLocalizationArchitectureTests
 
         Assert.Equal("ht", first.LanguageCode);
         Assert.False(first.IsComplete);
-        Assert.Equal(new EmbeddedApplicationCopyManifestSource().Manifest.Entries.Count(entry => entry.TranslationPolicy == "ApprovedOnly"),
+        Assert.Equal(new EmbeddedApplicationCopyManifestSource().Manifest.Entries.Count(entry => entry.TranslationPolicy == "ApprovedOnly" && entry.PresetTranslations?.ContainsKey("ht") != true),
             first.Entries.Count(item => item.FailureCode == "approved_translation_unavailable"));
         Assert.Contains(first.Entries, item =>
             item.Source == "Secure sign in" && item.Text.StartsWith("[ht]", StringComparison.Ordinal));

@@ -25,7 +25,8 @@ internal sealed record ApplicationCopyManifestEntry(
     string SourceRevision,
     IReadOnlyList<string> Placeholders,
     string TranslationPolicy,
-    string ReuseScope);
+    string ReuseScope,
+    IReadOnlyDictionary<string, string>? PresetTranslations = null);
 
 internal interface IApplicationCopyManifestSource
 {
@@ -68,7 +69,9 @@ internal sealed class EmbeddedApplicationCopyManifestSource : IApplicationCopyMa
             entry.SourceRevision,
             string.Join(',', entry.Placeholders),
             entry.TranslationPolicy,
-            entry.ReuseScope)));
+            entry.ReuseScope) + (entry.PresetTranslations is null ? string.Empty :
+                "\u001f" + string.Join("\u001e", entry.PresetTranslations.OrderBy(item => item.Key, StringComparer.Ordinal)
+                    .Select(item => $"{item.Key}={item.Value}")))));
         var expectedVersion = "application-copy-v1-" + Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(catalogIdentity)))[..16].ToLowerInvariant();
         if (!string.Equals(manifest.CatalogVersion, expectedVersion, StringComparison.Ordinal))
@@ -86,6 +89,12 @@ internal sealed class EmbeddedApplicationCopyManifestSource : IApplicationCopyMa
                     ApplicationTranslationPolicies.ApprovedOnly or
                     ApplicationTranslationPolicies.NonTranslatable))
                 throw new InvalidOperationException($"Invalid application-copy definition: {entry.Id}");
+
+            if (entry.PresetTranslations is not null &&
+                (entry.TranslationPolicy != ApplicationTranslationPolicies.ApprovedOnly ||
+                 entry.PresetTranslations.Any(item => !LegendLanguageIdentity.TryNormalize(item.Key, out _) ||
+                    !TranslationOutputValidator.IsValid(entry.Source, item.Value, string.Join(',', entry.Placeholders)))))
+                throw new InvalidOperationException($"Invalid preset application copy: {entry.Id}");
 
             var placeholders = TranslationOutputValidator.PlaceholderNames(entry.Source);
             if (!placeholders.SequenceEqual(
@@ -159,6 +168,11 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
 
             if (entry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly)
             {
+                if (Preset(entry, source, target) is { } preset)
+                {
+                    results[entry.Id] = preset;
+                    continue;
+                }
                 approvedMatches.TryGetValue(entry.Id, out var approved);
                 results[entry.Id] = approved is not null && TranslationOutputValidator.IsValid(
                         entry.Source,
@@ -280,6 +294,10 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
         {
             result = Source(manifestEntry, sourceLanguage, targetLanguage);
         }
+        else if (Preset(manifestEntry, sourceLanguage, targetLanguage) is { } preset)
+        {
+            result = preset;
+        }
         else if (manifestEntry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly)
         {
             var approved = await _intelligence.TryGetTrustedScopedMemoryAsync(
@@ -374,6 +392,15 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
         DateTime.UtcNow,
         Reused: true,
         failureCode);
+
+    private static ApplicationLocalizedCopy? Preset(ApplicationCopyManifestEntry entry, string source, string target) =>
+        entry.PresetTranslations?.TryGetValue(target, out var text) == true
+            ? Source(entry, source, target) with
+            {
+                Text = text!, Provider = "ApplicationPreset", Provenance = "ApplicationCopyManifest",
+                ValidationState = "Preset"
+            }
+            : null;
 
     private static ApplicationLocalizedCopy Source(
         ApplicationCopyManifestEntry entry,

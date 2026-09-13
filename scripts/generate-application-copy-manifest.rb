@@ -387,7 +387,12 @@ end
 # Retain those identities in this same catalog; current source entries win.
 if MANIFEST.exist?
   JSON.parse(File.read(MANIFEST)).fetch("entries").each do |entry|
-    entries[[entry.fetch("source"), entry.fetch("context")]] ||= entry
+    key = [entry.fetch("source"), entry.fetch("context")]
+    entries[key] ||= entry
+    if entry["presetTranslations"]
+      entries[key]["presetTranslations"] = entry["presetTranslations"]
+      entries[key]["translationPolicy"] = "ApprovedOnly"
+    end
   end
 end
 
@@ -401,7 +406,7 @@ catalog_identity = ordered_entries.map do |entry|
     entry["placeholders"].join(","),
     entry["translationPolicy"],
     entry["reuseScope"]
-  ].join("\u001f")
+  ].join("\u001f") + (entry["presetTranslations"] ? "\u001f" + entry["presetTranslations"].sort.map { |language, text| "#{language}=#{text}" }.join("\u001e") : "")
 end.join("\n")
 catalog_version = "application-copy-v1-#{Digest::SHA256.hexdigest(catalog_identity)[0, 16]}"
 manifest = {

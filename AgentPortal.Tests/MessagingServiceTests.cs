@@ -4046,7 +4046,8 @@ public sealed partial class MessagingServiceTests
         ITranslationService? translation = null,
         string? configuredFounderOid = null,
         IConfiguration? configuration = null,
-        Domain.Social.ISocialFeedService? social = null)
+        Domain.Social.ISocialFeedService? social = null,
+        IApplicationLocalizationService? applicationLocalization = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var images = new MessagingProfileImageResolver(
@@ -4065,7 +4066,7 @@ public sealed partial class MessagingServiceTests
                 new NoopNotificationRealtimePublisher(),
                 new ApplePushDeliverySignal(),
                 NullLogger<NotificationEngine>.Instance),
-            configuredFounderOid, social: social);
+            configuredFounderOid, social: social, applicationLocalization: applicationLocalization);
     }
 
     private static IConfiguration FounderConfiguration(string founderOid) =>

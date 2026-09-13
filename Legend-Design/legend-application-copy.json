@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-a6078439d44db5ac",
+  "catalogVersion": "application-copy-v1-9deb649cdee83c9f",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -56831,6 +56831,29 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9ef38264f3c4b78f2b2ef0cb",
+      "source": "Translation is not ready. Your messages remain saved. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "75ea4dd957c76a37",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "ApprovedOnly",
+      "reuseScope": "Global",
+      "presetTranslations": {
+        "en": "Translation is not ready. Your messages remain saved. Please try again.",
+        "ht": "Tradiksyon an poko pare. Mesaj ou yo toujou anrejistre. Tanpri eseye ankò.",
+        "es": "La traducción aún no está lista. Tus mensajes siguen guardados. Inténtalo de nuevo.",
+        "fr": "La traduction n’est pas encore prête. Vos messages restent enregistrés. Veuillez réessayer.",
+        "pt": "A tradução ainda não está pronta. Suas mensagens continuam salvas. Tente novamente.",
+        "de": "Die Übersetzung ist noch nicht bereit. Deine Nachrichten bleiben gespeichert. Bitte versuche es erneut.",
+        "ja": "翻訳はまだ準備できていません。メッセージは保存されています。もう一度お試しください。",
+        "ko": "번역이 아직 준비되지 않았습니다. 메시지는 저장되어 있습니다. 다시 시도해 주세요.",
+        "zh-Hans": "翻译尚未就绪。您的消息仍已保存。请重试。",
+        "ar": "الترجمة غير جاهزة بعد. لا تزال رسائلك محفوظة. يُرجى المحاولة مرة أخرى."
+      }
+    },
+    {
       "id": "application.copy.9d3b7d0d29af1c05c54c4261",
       "source": "Translation language",
       "context": "visual interface copy",
@@ -61670,6 +61693,29 @@
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4e54d934b241a9feec23de13",
+      "source": "Your translation character limit does not cover this text. Untranslated text is shown in its original language.",
+      "context": "visual interface copy",
+      "sourceRevision": "f0c736a79ff6acad",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "ApprovedOnly",
+      "reuseScope": "Global",
+      "presetTranslations": {
+        "en": "Your translation character limit does not cover this text. Untranslated text is shown in its original language.",
+        "ht": "Limit karaktè tradiksyon ou a pa sifi pou tèks sa a. Tèks ki pa tradui yo parèt nan lang orijinal yo.",
+        "es": "Tu límite de caracteres de traducción no alcanza para este texto. El texto no traducido se muestra en su idioma original.",
+        "fr": "Votre limite de caractères de traduction ne suffit pas pour ce texte. Le texte non traduit est affiché dans sa langue d’origine.",
+        "pt": "Seu limite de caracteres de tradução não é suficiente para este texto. O texto não traduzido é exibido no idioma original.",
+        "de": "Dein Zeichenlimit für Übersetzungen reicht für diesen Text nicht aus. Nicht übersetzter Text wird in seiner Originalsprache angezeigt.",
+        "ja": "このテキストを翻訳するには、翻訳可能な残りの文字数が不足しています。未翻訳のテキストは元の言語で表示されます。",
+        "ko": "이 텍스트를 번역하기에는 남은 번역 문자 수가 부족합니다. 번역되지 않은 텍스트는 원래 언어로 표시됩니다.",
+        "zh-Hans": "您的剩余翻译字符额度不足以翻译此文本。未翻译的文本以原始语言显示。",
+        "ar": "رصيد أحرف الترجمة المتبقي لا يكفي لهذا النص. يُعرض النص غير المترجم بلغته الأصلية."
+      }
     },
     {
       "id": "application.copy.ec4ca2416d253be39e2102d5",

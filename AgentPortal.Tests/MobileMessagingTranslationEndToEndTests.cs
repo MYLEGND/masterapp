@@ -214,6 +214,18 @@ public sealed class MobileMessagingTranslationEndToEndTests
                 var sent = await service.SendMessageAsync(new SendMessagingMessageCommand(
                     sender, conversation.Conversation.Id, body, ClientMessageId: Guid.NewGuid().ToString("N")));
                 Assert.True(sent.Succeeded, sent.ErrorCode);
+                // Changing preference also changes presentation of older incoming rows.
+                // Give each genuinely uncached historical route an explicit fixture result.
+                var history = await db.InternalMessages.Where(item => item.ConversationId == conversation.Conversation.Id &&
+                    item.SenderUserId != recipientId && item.Id != sent.Message!.Id).ToListAsync();
+                foreach (var historical in history)
+                {
+                    var historicalSource = historical.OriginalLanguage ?? "en";
+                    if (historicalSource == target.Code || await db.MessageTranslations.AnyAsync(item =>
+                        item.InternalMessageId == historical.Id && item.TargetLanguage == target.Code)) continue;
+                    translator.Setup(value => value.TranslateAsync(historical.Body, target.Code, historicalSource, It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new TranslationProviderResult(true, $"[{target.Code}] {historical.Body}", historicalSource, "TestTranslator"));
+                }
                 var view = await controller.Messages(conversation.Conversation.Id, null, null, CancellationToken.None);
                 var rows = Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(Assert.IsType<OkObjectResult>(view).Value);
                 var received = Assert.Single(rows.Where(row => row.Id == sent.Message!.Id));

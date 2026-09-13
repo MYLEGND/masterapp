@@ -1319,6 +1319,9 @@
           appendLinkedText(body, message.body);
           card.append(body);
         }
+        if (message.translationNotice) {
+          card.append(createTextElement('p', 'messaging-message-body', message.translationNotice));
+        }
         appendSharedContent(card, message.sharedContent);
 
         if (message.attachments?.length) {

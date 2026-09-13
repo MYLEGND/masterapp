@@ -336,6 +336,7 @@ internal object FinancialPresentationOrder {
     @SerialName("verificationReview") val verificationReview: VerificationReview? = null,
     val translation: MessageTranslation? = null,
     @SerialName("originalBody") val originalBody: String? = null,
+    @SerialName("translationNotice") val translationNotice: String? = null,
     val reactions: List<MessageReaction> = emptyList(),
     val sharedContent: MessagingSharedContent? = null,
 )
