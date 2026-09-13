@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
@@ -33,6 +35,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mylegnd.legend.registered.core.design.*
+import com.mylegnd.legend.registered.ui.LegendHomeBrandBar
 import com.mylegnd.legend.registered.ui.legendPressClickable
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
@@ -47,9 +50,11 @@ private fun rememberCallPermissionGate(): LegendCallPermissionGate = rememberSav
     ),
 ) { LegendCallPermissionGate() }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LegendCallOverlay(store: LegendCallViewModel) {
     val state by store.state.collectAsStateWithLifecycle()
+    val presentingIdentity = state.starting || state.call?.status == "ringing"
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var snapshotRequest by remember { mutableIntStateOf(0) }
@@ -118,7 +123,8 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
         return
     }
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
-        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
+            val portraitSize = minOf(LegendDesignAuthority.size("callPortrait"), maxWidth * .64f, maxHeight * .36f)
             if (state.wallpaperMode == "profile" && peerAvatar != null && state.remoteVideo == null) {
                 Image(peerAvatar!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop)
@@ -141,16 +147,20 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                     }.onFailure { snapshotError = "The snapshot could not be shared. Please try again." }
                 }
             } } }
-            if (!state.sharingScreen) state.localVideo?.let { video -> store.peer?.let { engine ->
+            if (!presentingIdentity && !state.sharingScreen) state.localVideo?.let { video -> store.peer?.let { engine ->
                 LegendVideoSurface(video, engine, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 20.dp, top = 110.dp).size(96.dp, 132.dp).clip(RoundedCornerShape(20.dp)))
             } }
-            Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Text(legendLocalized("LEGEND®"), style = LegendTypography.Wordmark, color = Color.White)
+            Column(Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LegendHomeBrandBar(openFounderAi = null, create = null, showsHomeActions = false, usesDarkSurface = true)
                 if (state.failure == null) Text(callStatusLabel(state.status), color = Color.White,
                     modifier = Modifier.background(Color.Black.copy(alpha = .3f), RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = 6.dp))
-                Spacer(Modifier.weight(1f))
-                if (state.name.isNotBlank() && state.remoteVideo == null) {
-                    Box(Modifier.size(LegendSize.ProfileAvatar).clip(CircleShape)
+                // Identity and secondary controls can scroll on compact/accessibility
+                // layouts; the answer/cancel/end action always retains its own row.
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
+                if (state.name.isNotBlank() && presentingIdentity) {
+                    Box(Modifier.size(portraitSize).clip(CircleShape)
                         .background(LegendColors.Gold.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
                         val avatar = peerAvatar
                         if (avatar != null) Image(avatar.asImageBitmap(), contentDescription = null,
@@ -158,27 +168,17 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                         else Icon(Icons.Default.Person, contentDescription = null, tint = LegendColors.Gold)
                     }
                 }
-                if (state.name.isNotBlank()) {
+                if (state.name.isNotBlank() && presentingIdentity) {
                     Text(state.name, style = LegendTypography.Title, color = Color.White,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
-                if (state.failure != null) {
-                    Text(legendLocalized(state.failure!!), color = Color.White)
-                    Button(onClick = { store.end(); store.dismissFailure() }) { Text(legendLocalized("Close")) }
-                } else {
-
-                    if (state.status == "Calling") Text(legendLocalized("Waiting for the recipient’s device to confirm receipt"), color = Color.White)
-                    if (state.status == "Ringing") Text(legendLocalized("The recipient’s device received your call"), color = Color.White)
-                    if (state.starting) {
-                        CircularProgressIndicator(color = LegendColors.Gold)
-                        LegendCallControl("Cancel", Icons.Default.CallEnd, LegendColors.Error) { store.end() }
-                    } else if (state.incoming) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
-                        LegendCallControl("Decline", Icons.Default.CallEnd, LegendColors.Error) { store.end() }
-                            LegendCallControl("Answer", Icons.Default.Phone, LegendColors.Gold) { answer() }
-                        }
-                    } else {
-                        Column(Modifier.align(Alignment.End), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (state.failure != null) Text(legendLocalized(state.failure!!), color = Color.White)
+                    if (presentingIdentity && state.status == "Calling") Text(legendLocalized("Waiting for the recipient’s device to confirm receipt"), color = Color.White)
+                    if (presentingIdentity && state.status == "Ringing") Text(legendLocalized("The recipient’s device received your call"), color = Color.White)
+                    if (!presentingIdentity && state.failure == null) {
+                        FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = 3,
+                            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             LegendCallControl(if (state.muted) "Unmute" else "Mute", if (state.muted) Icons.Default.MicOff else Icons.Default.Mic, selected = state.muted, action = store::toggleMute)
                             LegendCallControl("Speaker", Icons.Default.VolumeUp, selected = state.speaker, action = store::toggleSpeaker)
                             if (state.call?.video == true && !state.sharingScreen) {
@@ -205,10 +205,18 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                             }
                         }
                         }
-                        LegendCallControl("End call", Icons.Default.CallEnd, LegendColors.Error) { store.end() }
                     }
                 }
-                Spacer(Modifier.height(28.dp))
+                if (state.failure != null) {
+                    Button(onClick = { store.end(); store.dismissFailure() }) { Text(legendLocalized("Close")) }
+                } else if (state.incoming) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
+                        LegendCallControl("Decline", Icons.Default.CallEnd, LegendColors.Error) { store.end() }
+                        LegendCallControl("Answer", Icons.Default.Phone, LegendColors.Gold) { answer() }
+                    }
+                } else {
+                    LegendCallControl(if (presentingIdentity) "Cancel" else "End call", Icons.Default.CallEnd, LegendColors.Error) { store.end() }
+                }
             }
         }
     }

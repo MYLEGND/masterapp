@@ -2350,7 +2350,7 @@ private class LegendClientCreationPortalWebViewClient(
 }
 
 @Composable
-private fun LegendHomeBrandBar(
+internal fun LegendHomeBrandBar(
     openFounderAi: (() -> Unit)?,
     create: (() -> Unit)?,
     showsHomeActions: Boolean = true,

@@ -122,3 +122,31 @@ test('back-forward cache restoration reauthenticates a retired document', () => 
 test('chat voice and video buttons call the existing client directly with their selected mode',()=>{
  const f=fixture();f.element('messagingVoiceCall').listeners.click();assert.deepEqual(f.client.lastStart,['conversation',false,'Recipient']);f.element('messagingVideoCall').listeners.click();assert.deepEqual(f.client.lastStart,['conversation',true,'Recipient']);assert.equal(f.client.starts,2);
 });
+
+for (const caller of [true, false]) {
+  test(`accepted ${caller ? 'outgoing' : 'incoming'} call clears identity and ringing without waiting for video`, () => {
+    const f = fixture();
+    const call = { id: 'phase-call', status: 'ringing', calleeName: 'Peer', callerName: 'Peer',
+      calleeUserId: 'peer', callerUserId: 'peer', calleeType: 'Client', callerType: 'Client',
+      incomingRingtoneResource: 'legend_incoming' };
+    f.client.call = call;
+    f.client.present(call, caller);
+    assert.equal(f.element('legendBrowserCallName').hidden, false);
+    assert.equal(f.element('legendBrowserCallInitials').hidden, false);
+    assert.equal(f.element('legendBrowserCallPortrait').hidden, false);
+    for (const status of ['connecting', 'active']) {
+      f.client.present({ ...call, status }, caller);
+      assert.equal(f.element('legendBrowserCallName').hidden, true);
+      assert.equal(f.element('legendBrowserCallInitials').hidden, true);
+      assert.equal(f.element('legendBrowserCallPortrait').hidden, true);
+      assert.equal(f.element('[data-legend-call-action="accept"]').hidden, true);
+      assert.equal(f.tones[0].paused, true);
+      assert.equal(f.tones.length, 1);
+    }
+    f.client.present(null);
+    f.client.present({ ...call, id: 'next-call', calleeUserId: 'new-peer' }, caller);
+    assert.equal(f.element('legendBrowserCallName').hidden, false);
+    assert.equal(f.element('legendBrowserCallInitials').hidden, false);
+    assert.equal(f.element('legendBrowserCallPortrait').hidden, false);
+  });
+}

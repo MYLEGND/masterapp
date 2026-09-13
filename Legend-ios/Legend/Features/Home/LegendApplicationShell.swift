@@ -466,27 +466,7 @@ private struct LegendAppBrandBar: View {
 
     var body: some View {
         ZStack {
-            Text(LegendLocalized("LEGEND"))
-                .font(LegendNextTypography.wordmark)
-                .tracking(LegendSharedDesign.tracking("wordmark"))
-                .foregroundStyle(Color.clear)
-                .overlay(alignment: .leading) {
-                    Text(LegendLocalized("LEGEND®"))
-                        .font(LegendNextTypography.wordmark)
-                        .tracking(
-                            LegendSharedDesign.tracking("wordmark")
-                        )
-                        .foregroundStyle(wordmarkColor)
-                        .fixedSize(
-                            horizontal: true,
-                            vertical: false
-                        )
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel(LegendLocalized("LEGEND registered", context: "accessibility copy"))
-                .accessibilityAddTraits(.isHeader)
+            LegendAppWordmark(color: wordmarkColor)
 
             HStack(spacing: LegendNextSpacing.sm) {
                 homeActionButton(

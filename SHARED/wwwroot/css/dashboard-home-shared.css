@@ -7010,9 +7010,9 @@ header .legend-global-nav .container-fluid {
 .legend-browser-call-controls { position: relative; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; padding: 1.5rem; background: var(--dash-royal-950); }
 
 .legend-browser-call-controls button { min-height: 44px; min-width: 44px; font-size: max(14px, .9rem); }
-.legend-browser-call-initials { position: absolute; top: 40%; left: calc(50% - 4rem); width: 8rem; height: 8rem; display: grid; place-items: center; border: 1px solid var(--dash-gold); border-radius: 50%; background: var(--dash-royal-860); color: var(--dash-gold); font-size: 2.5rem; font-weight: 600; box-shadow: 0 0 0 1.2rem var(--dash-gold-soft); }
-.legend-browser-call-portrait { position: absolute; width: 8rem; height: 8rem; border-radius: 50%; object-fit: cover; top: 40%; left: calc(50% - 4rem); }
-.legend-browser-call-portrait.is-wallpaper { inset: 0; width: 100%; height: 100%; border-radius: 0; opacity: .55; }
+.legend-browser-call-initials:not([hidden]) { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(64vw, 36vh, var(--legend-call-portrait, 36vh)); aspect-ratio: 1; display: grid; place-items: center; border: 1px solid var(--dash-gold); border-radius: 50%; background: var(--dash-royal-860); color: var(--dash-gold); font-size: 2.5rem; font-weight: 600; box-shadow: 0 0 0 1.2rem var(--dash-gold-soft); }
+.legend-browser-call-portrait { position: absolute; width: min(64vw, 36vh, var(--legend-call-portrait, 36vh)); aspect-ratio: 1; border-radius: 50%; object-fit: cover; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.legend-browser-call-portrait.is-wallpaper { transform: none; inset: 0; width: 100%; height: 100%; border-radius: 0; opacity: .55; }
 .legend-calling-preferences { max-width: min(32rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid var(--dash-line-strong); border-radius: 1rem; color: var(--dash-text); background: var(--dash-royal-950); }
 .legend-calling-preferences form { display: grid; gap: .75rem; }
 .legend-calling-preferences select { padding: .75rem; border-radius: .5rem; color: var(--dash-text); background: var(--dash-royal-860); }

@@ -2,6 +2,7 @@ import XCTest
 import AVFoundation
 import Network
 import UIKit
+import SwiftUI
 @preconcurrency import WebRTC
 @testable import Legend
 
@@ -492,6 +493,35 @@ final class LegendDirectCallingTests: XCTestCase {
         XCTAssertEqual(store.name, "New recipient")
         await store.receive(LegendCallEvent(call: original, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
         XCTAssertNil(store.current, "Finished call events remain rejected")
+    }
+
+    func testOutgoingCallPresentationRendersAtCompactAndRegularDeviceSizes() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        store.start(conversationId: UUID(), video: true, recipientName: "Alex Morgan")
+        for size in [CGSize(width: 390, height: 760), CGSize(width: 320, height: 568), CGSize(width: 844, height: 340)] {
+            let renderer = ImageRenderer(content: LegendCallScreen(store: store)
+                .frame(width: size.width, height: size.height))
+            renderer.scale = 1
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size, size)
+            let attachment = XCTAttachment(image: image)
+            let filename = "legend-call-\(Int(size.width))-\(Int(size.height))"
+            attachment.name = filename
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent(filename + ".png")
+            try XCTUnwrap(image.pngData()).write(to: file)
+            print("LEGEND_CALL_RENDER \(file.path)")
+        }
+        XCTAssertTrue(store.isStarting)
+        XCTAssertEqual(store.name, "Alex Morgan")
+        store.end()
+        XCTAssertFalse(store.isStarting)
     }
 
     func testCallingSoundsArePackagedAndDecodable() throws {

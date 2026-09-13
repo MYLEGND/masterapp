@@ -2206,14 +2206,18 @@
           for (const action of ['mute', 'camera', 'share']) dialog.querySelector(`[data-legend-call-action="${action}"]`).setAttribute('aria-pressed', 'false');
           if (dialog.open) dialog.close(); return;
         }
+        const presentingIdentity = ['preparing', 'ringing'].includes(call.status);
+        name.hidden = !presentingIdentity;
         name.textContent = caller ? call.calleeName : call.callerName;
+        document.getElementById('legendBrowserCallInitials').hidden = !presentingIdentity;
         document.getElementById('legendBrowserCallInitials').textContent = initials(name.textContent || 'LEGEND');
         const peer = caller ? { userId: call.calleeUserId, participantType: call.calleeType } : { userId: call.callerUserId, participantType: call.callerType };
         const photo = participantAvatarUrl(peer);
         const wallpaper = (caller ? call.calleeWallpaperMode : call.callerWallpaperMode) === 'profile';
         portrait.classList.toggle('is-wallpaper', wallpaper);
         if (photo && portrait.getAttribute('src') !== photo) { portrait.hidden = false; portrait.src = photo; }
-        if (!photo) { portrait.hidden = true; portrait.removeAttribute('src'); }
+        if (!photo) portrait.removeAttribute('src');
+        if (!photo || !presentingIdentity) portrait.hidden = true;
         status.textContent = ['preparing', 'ringing'].includes(call.status)
           ? (caller ? (call.receivedUtc ? applicationCopy('Ringing') : applicationCopy('Calling')) : applicationCopy('Incoming call'))
           : (call.status === 'active' ? applicationCopy('Connected') : applicationCopy('Connecting'));
@@ -2607,6 +2611,8 @@
           if (Number.isFinite(value)) root.style.setProperty(`--messaging-${prefix}-${css}`, `${value}px`);
         }
       }
+      const callPortrait = design.sizes?.callPortrait;
+      if (Number.isFinite(callPortrait) && callPortrait > 0) document.getElementById('legendBrowserCall')?.style.setProperty('--legend-call-portrait', `${callPortrait}px`);
       const bubble = design.messaging?.reactionBubble;
       if (bubble) {
         reactionBubbleSettings = bubble;
