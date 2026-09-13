@@ -816,7 +816,20 @@ internal static class LegendConnectModelLifecycleLease
                             now),
                     cancellationToken);
 
-            return claimed == 1;
+            if (claimed != 1)
+                return false;
+
+            // ExecuteUpdate bypasses the change tracker. A run already loaded
+            // by the lifecycle service still has a null lease; assigning null
+            // on completion would then persist no release. Refresh this one
+            // claimed entity so the existing release is tracked and saved.
+            var claimedEntry = db.ChangeTracker
+                .Entries<LegendConnectModelTrainingRun>()
+                .SingleOrDefault(entry => entry.Entity.Id == runId);
+            if (claimedEntry is not null)
+                await claimedEntry.ReloadAsync(cancellationToken);
+
+            return true;
         }
 
         var tracked =
