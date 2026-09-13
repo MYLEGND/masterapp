@@ -307,12 +307,320 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
     }
 
     [Fact]
+    public async Task ReplacementBinding_PersistsProducerIssuedCurrentTurnOccurrenceIdentity()
+    {
+        var databaseName = Guid.NewGuid().ToString("D");
+        var root = new InMemoryDatabaseRoot();
+        var actor = Guid.NewGuid().ToString("D");
+        await using (var setup = CreateDb(databaseName, root))
+        {
+            setup.AgentProfiles.Add(Profile(actor, "replacement-missing"));
+            await setup.SaveChangesAsync();
+            var curriculum = CreateCurriculum(setup);
+            for (var family = 1; family <= 3; family++)
+            {
+                var submitted = await curriculum.SubmitFounderBatchAsync(
+                    ProducerIssuedReplacementFamily(family));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        var conversationId = Guid.NewGuid();
+        async Task ObserveAnalyzedAsync(string surface)
+        {
+            await using var db = CreateDb(databaseName, root);
+            var operations = CreateOperations(db);
+            var graph = await operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    graph);
+        }
+
+        await ObserveAnalyzedAsync("The alpha choice feels affordable to me.");
+        await ObserveAnalyzedAsync("The beta choice seems reliable to me.");
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var correctionGraph = await operations.AnalyzeReusableMeaningGraphAsync(
+                "Please route the first marker.");
+            Assert.True(correctionGraph.IsComposed, correctionGraph.ReasonCode);
+            var selector = Assert.Single(correctionGraph.Nodes.Where(item =>
+                item.SemanticDimension == "reference_selector"));
+            Assert.NotNull(selector.SupersededCurrentTurnOccurrence);
+            var occurrence = selector.SupersededCurrentTurnOccurrence!;
+            var superseded = correctionGraph.Nodes[occurrence.NodeIndex];
+            Assert.Equal("choice", occurrence.SemanticDimension);
+            Assert.Equal("beta", occurrence.SemanticValue);
+            Assert.Equal("choice", superseded.SemanticDimension);
+            Assert.Equal("beta", superseded.SemanticValue);
+
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    correctionGraph);
+        }
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var discourse = new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations);
+            var binding = Assert.Single(await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.Equal("bound", binding.ResolutionState);
+            Assert.Equal("alpha", binding.EntitySemanticValue);
+            Assert.True(binding.ReplacesActiveBinding);
+            Assert.True(binding.HasSupersededCurrentTurnEntity);
+            Assert.NotNull(binding.SupersededCurrentTurnNodeIndex);
+            Assert.Equal("choice", binding.SupersededCurrentTurnSemanticDimension);
+            Assert.Equal("beta", binding.SupersededCurrentTurnSemanticValue);
+
+            var state = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await discourse.GetStateAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString()));
+            var projectedTurn = Assert.Single(state.Turns.Where(item => item.SequenceNumber == 3));
+            var projectedSelector = Assert.Single(projectedTurn.Nodes.Where(item =>
+                item.SemanticDimension == "reference_selector"));
+            Assert.NotNull(projectedSelector.SupersededCurrentTurnOccurrence);
+
+            var pruning = InvokeReplacementPruning(
+                projectedTurn.Nodes,
+                projectedTurn.Relations,
+                projectedTurn.Bindings);
+            Assert.True(pruning.Succeeded);
+            Assert.DoesNotContain(
+                pruning.Nodes,
+                item => item.SemanticDimension == "choice" && item.SemanticValue == "beta");
+
+            var plan = await operations.TryPlanConversationAsync("Please route the first marker.", state);
+            Assert.True(plan.Supported, plan.ReasonCode);
+        }
+    }
+
+    [Fact]
+    public async Task ReplacementBinding_PreservesBroadContainingCurrentTurnCandidateWithoutProducerLineage()
+    {
+        var databaseName = Guid.NewGuid().ToString("D");
+        var root = new InMemoryDatabaseRoot();
+        var actor = Guid.NewGuid().ToString("D");
+        await using (var setup = CreateDb(databaseName, root))
+        {
+            setup.AgentProfiles.Add(Profile(actor, "replacement-anchored"));
+            await setup.SaveChangesAsync();
+            var curriculum = CreateCurriculum(setup);
+            for (var family = 1; family <= 3; family++)
+            {
+                var submitted = await curriculum.SubmitFounderBatchAsync(
+                    ProducerIssuedBroadReplacementFamily(family));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        var conversationId = Guid.NewGuid();
+        async Task ObserveAnalyzedAsync(string surface)
+        {
+            await using var db = CreateDb(databaseName, root);
+            var operations = CreateOperations(db);
+            var graph = await operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    graph);
+        }
+
+        await ObserveAnalyzedAsync("The alpha choice feels affordable to me.");
+        await ObserveAnalyzedAsync("The beta choice seems reliable to me.");
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var correctionGraph = await operations.AnalyzeReusableMeaningGraphAsync(
+                "Please route the first marker now.");
+            Assert.True(correctionGraph.IsComposed, correctionGraph.ReasonCode);
+            var selector = Assert.Single(correctionGraph.Nodes.Where(item =>
+                item.SemanticDimension == "reference_selector"));
+            Assert.Null(selector.SupersededCurrentTurnOccurrence);
+            Assert.Contains(correctionGraph.Nodes, item =>
+                item.SemanticDimension == "choice" &&
+                item.SemanticValue == "beta" &&
+                item.TokenLength > selector.TokenLength);
+
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    correctionGraph);
+        }
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var discourse = new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations);
+            var binding = Assert.Single(await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.Equal("bound", binding.ResolutionState);
+            Assert.Equal("alpha", binding.EntitySemanticValue);
+            Assert.True(binding.ReplacesActiveBinding);
+            Assert.False(binding.HasSupersededCurrentTurnEntity);
+            Assert.Null(binding.SupersededCurrentTurnNodeIndex);
+
+            var state = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await discourse.GetStateAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString()));
+            var projectedTurn = Assert.Single(state.Turns.Where(item => item.SequenceNumber == 3));
+            var projectedSelector = Assert.Single(projectedTurn.Nodes.Where(item =>
+                item.SemanticDimension == "reference_selector"));
+            Assert.Null(projectedSelector.SupersededCurrentTurnOccurrence);
+
+            var pruning = InvokeReplacementPruning(
+                projectedTurn.Nodes,
+                projectedTurn.Relations,
+                projectedTurn.Bindings);
+            Assert.True(pruning.Succeeded);
+            Assert.Equal(projectedTurn.Nodes, pruning.Nodes);
+            Assert.Equal(projectedTurn.Relations, pruning.Relations);
+
+            var plan = await operations.TryPlanConversationAsync("Please route the first marker now.", state);
+            Assert.False(plan.Supported);
+            Assert.Equal("ambiguous_composed_meaning", plan.ReasonCode);
+        }
+    }
+
+    [Fact]
+    public async Task ReplacementBinding_DuplicateProducerCandidatesPreserveGraphAndFailClosed()
+    {
+        var databaseName = Guid.NewGuid().ToString("D");
+        var root = new InMemoryDatabaseRoot();
+        var actor = Guid.NewGuid().ToString("D");
+        await using (var setup = CreateDb(databaseName, root))
+        {
+            setup.AgentProfiles.Add(Profile(actor, "replacement-duplicate"));
+            await setup.SaveChangesAsync();
+            var curriculum = CreateCurriculum(setup);
+            for (var family = 1; family <= 3; family++)
+            {
+                var submitted = await curriculum.SubmitFounderBatchAsync(
+                    ProducerIssuedDuplicateReplacementFamily(family));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        var conversationId = Guid.NewGuid();
+        async Task ObserveAnalyzedAsync(string surface)
+        {
+            await using var db = CreateDb(databaseName, root);
+            var operations = CreateOperations(db);
+            var graph = await operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    graph);
+        }
+
+        await ObserveAnalyzedAsync("The alpha choice feels affordable to me.");
+        await ObserveAnalyzedAsync("The beta choice seems reliable to me.");
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var correctionGraph = await operations.AnalyzeReusableMeaningGraphAsync(
+                "Please route the first marker twice.");
+            Assert.True(correctionGraph.IsComposed, correctionGraph.ReasonCode);
+            var selector = Assert.Single(correctionGraph.Nodes.Where(item =>
+                item.SemanticDimension == "reference_selector"));
+            Assert.Null(selector.SupersededCurrentTurnOccurrence);
+            Assert.Equal(2, correctionGraph.Nodes.Count(item =>
+                item.SemanticDimension == "choice" &&
+                item.StartTokenIndex == selector.StartTokenIndex &&
+                item.TokenLength == selector.TokenLength));
+
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    correctionGraph);
+        }
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var discourse = new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations);
+            var binding = Assert.Single(await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.Equal("bound", binding.ResolutionState);
+            Assert.Equal("alpha", binding.EntitySemanticValue);
+            Assert.False(binding.HasSupersededCurrentTurnEntity);
+
+            var state = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await discourse.GetStateAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString()));
+            var plan = await operations.TryPlanConversationAsync("Please route the first marker twice.", state);
+            Assert.False(plan.Supported);
+            Assert.Equal("ambiguous_composed_meaning", plan.ReasonCode);
+        }
+    }
+
+    [Fact]
     public void ReplacementPruning_RemovesOnlySelectorLocalSupersededOccurrence_AndPreservesOtherRelations()
     {
         var nodes = new[]
         {
             new LegendConnectUtteranceMeaningNode("compare", "conversation_function", "compare", 0, 1, 3),
-            new LegendConnectUtteranceMeaningNode("selector", "reference_selector", "ordinal_one", 1, 1, 3),
+            new LegendConnectUtteranceMeaningNode(
+                "selector",
+                "reference_selector",
+                "ordinal_one",
+                1,
+                1,
+                3,
+                SupersededCurrentTurnOccurrence: new LegendConnectCurrentTurnOccurrenceSnapshot(
+                    2,
+                    "one",
+                    "choice",
+                    "one",
+                    2,
+                    1)),
             new LegendConnectUtteranceMeaningNode("one", "choice", "one", 2, 1, 3),
             new LegendConnectUtteranceMeaningNode("two", "choice", "two", 3, 1, 3),
             new LegendConnectUtteranceMeaningNode("note", "choice_note", "stable", 4, 1, 3)
@@ -338,6 +646,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 "rule")
             {
                 HasSupersededCurrentTurnEntity = true,
+                SelectorNodeIndex = 1,
                 SupersededCurrentTurnNodeIndex = 2,
                 SupersededCurrentTurnSemanticSignature = "one",
                 SupersededCurrentTurnSemanticDimension = "choice",
@@ -363,10 +672,36 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         var nodes = new[]
         {
             new LegendConnectUtteranceMeaningNode("compare_one", "conversation_function", "compare_one", 0, 1, 3),
-            new LegendConnectUtteranceMeaningNode("selector_one", "reference_selector", "ordinal_one", 1, 1, 3),
+            new LegendConnectUtteranceMeaningNode(
+                "selector_one",
+                "reference_selector",
+                "ordinal_one",
+                1,
+                1,
+                3,
+                SupersededCurrentTurnOccurrence: new LegendConnectCurrentTurnOccurrenceSnapshot(
+                    2,
+                    "one",
+                    "choice",
+                    "one",
+                    2,
+                    1)),
             new LegendConnectUtteranceMeaningNode("one", "choice", "one", 2, 1, 3),
             new LegendConnectUtteranceMeaningNode("compare_two", "conversation_function", "compare_two", 3, 1, 3),
-            new LegendConnectUtteranceMeaningNode("selector_two", "reference_selector", "ordinal_two", 4, 1, 3),
+            new LegendConnectUtteranceMeaningNode(
+                "selector_two",
+                "reference_selector",
+                "ordinal_two",
+                4,
+                1,
+                3,
+                SupersededCurrentTurnOccurrence: new LegendConnectCurrentTurnOccurrenceSnapshot(
+                    5,
+                    "two",
+                    "choice",
+                    "two",
+                    5,
+                    1)),
             new LegendConnectUtteranceMeaningNode("two", "choice", "two", 5, 1, 3)
         };
         var relations = new[]
@@ -378,8 +713,28 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         };
         var firstOrder = new[]
         {
-            new LegendConnectDiscourseReferenceBindingSnapshot("bound", "ok", "choice", "alpha", "alpha", 1, 0, true, "selector_one", "rule_one"),
+            new LegendConnectDiscourseReferenceBindingSnapshot("bound", "ok", "choice", "alpha", "alpha", 1, 0, true, "selector_one", "rule_one")
+            {
+                SelectorNodeIndex = 1,
+                HasSupersededCurrentTurnEntity = true,
+                SupersededCurrentTurnNodeIndex = 2,
+                SupersededCurrentTurnSemanticSignature = "one",
+                SupersededCurrentTurnSemanticDimension = "choice",
+                SupersededCurrentTurnSemanticValue = "one",
+                SupersededCurrentTurnNodeStartTokenIndex = 2,
+                SupersededCurrentTurnNodeTokenLength = 1
+            },
             new LegendConnectDiscourseReferenceBindingSnapshot("bound", "ok", "choice", "beta", "beta", 1, 1, true, "selector_two", "rule_two")
+            {
+                SelectorNodeIndex = 4,
+                HasSupersededCurrentTurnEntity = true,
+                SupersededCurrentTurnNodeIndex = 5,
+                SupersededCurrentTurnSemanticSignature = "two",
+                SupersededCurrentTurnSemanticDimension = "choice",
+                SupersededCurrentTurnSemanticValue = "two",
+                SupersededCurrentTurnNodeStartTokenIndex = 5,
+                SupersededCurrentTurnNodeTokenLength = 1
+            }
         };
         var reversedOrder = firstOrder.Reverse().ToArray();
 
@@ -440,6 +795,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         var binding = new LegendConnectDiscourseReferenceBindingSnapshot(
             "bound", "ok", "choice", "alpha", "alpha", 1, 0, true, "selector", "rule")
         {
+            SelectorNodeIndex = 0,
             HasSupersededCurrentTurnEntity = true,
             SupersededCurrentTurnNodeIndex = 1,
             SupersededCurrentTurnSemanticSignature = "tampered",
@@ -537,6 +893,96 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 "The beta choice seems reliable to me.",
                 "reliable"),
             CorrectionReferenceExample(family),
+            ResponseEvidenceExample(family, "correction_acknowledgement")
+        ],
+        [
+            new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction",
+                    ["choice"] = "$subject"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction_acknowledgement"
+                }))
+        ]);
+
+    private static LegendConnectCurriculumBatchSubmission ProducerIssuedReplacementFamily(int family) => new(
+        $"rg5.producer.issued.choice.{family}",
+        "Founder-governed replacement occurrence lineage",
+        [
+            ChoiceEntityExample(
+                family,
+                "alpha",
+                "The alpha choice feels affordable to me.",
+                "affordable"),
+            ChoiceEntityExample(
+                family,
+                "beta",
+                "The beta choice seems reliable to me.",
+                "reliable"),
+            ProducerIssuedReplacementExample(family, "Please route the first marker.", "first", "beta"),
+            ResponseEvidenceExample(family, "correction_acknowledgement")
+        ],
+        [
+            new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction",
+                    ["choice"] = "$subject"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction_acknowledgement"
+                }))
+        ]);
+
+    private static LegendConnectCurriculumBatchSubmission ProducerIssuedBroadReplacementFamily(int family) => new(
+        $"rg5.producer.broad.choice.{family}",
+        "Founder-governed broad replacement occurrence lineage",
+        [
+            ChoiceEntityExample(
+                family,
+                "alpha",
+                "The alpha choice feels affordable to me.",
+                "affordable"),
+            ChoiceEntityExample(
+                family,
+                "beta",
+                "The beta choice seems reliable to me.",
+                "reliable"),
+            ProducerIssuedBroadReplacementExample(family),
+            ResponseEvidenceExample(family, "correction_acknowledgement")
+        ],
+        [
+            new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction",
+                    ["choice"] = "$subject"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction_acknowledgement"
+                }))
+        ]);
+
+    private static LegendConnectCurriculumBatchSubmission ProducerIssuedDuplicateReplacementFamily(int family) => new(
+        $"rg5.producer.duplicate.choice.{family}",
+        "Founder-governed duplicate replacement occurrence lineage",
+        [
+            ChoiceEntityExample(
+                family,
+                "alpha",
+                "The alpha choice feels affordable to me.",
+                "affordable"),
+            ChoiceEntityExample(
+                family,
+                "beta",
+                "The beta choice seems reliable to me.",
+                "reliable"),
+            ProducerIssuedDuplicateReplacementExample(family),
             ResponseEvidenceExample(family, "correction_acknowledgement")
         ],
         [
@@ -659,6 +1105,96 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "ordinal_one", "first")
             ],
             [new LegendConnectMeaningRelationSubmission("function", "corrects", "selector")],
+            [new LegendConnectDiscourseReferenceSubmission(
+                "selector",
+                "choice",
+                "ordinal",
+                1,
+                ["user", "assistant"],
+                true)]));
+
+    private static LegendConnectCurriculumExampleSubmission ProducerIssuedReplacementExample(
+        int family,
+        string surface,
+        string selectorSurface,
+        string supersededValue) =>
+        new(
+            $"Founder producer-issued replacement {family}: {surface}",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = "correction",
+                ["choice"] = supersededValue
+            },
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission("function", "conversation_function", "correction", "route"),
+                new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "ordinal_one", selectorSurface),
+                new LegendConnectMeaningNodeSubmission("kind", "reference_kind", "choice", "marker"),
+                new LegendConnectMeaningNodeSubmission("choice", "choice", supersededValue, selectorSurface)
+            ],
+            [
+                new LegendConnectMeaningRelationSubmission("function", "corrects", "selector"),
+                new LegendConnectMeaningRelationSubmission("selector", "reference-target", "kind"),
+                new LegendConnectMeaningRelationSubmission("function", "mentions", "choice")
+            ],
+            [new LegendConnectDiscourseReferenceSubmission(
+                "selector",
+                "choice",
+                "ordinal",
+                1,
+                ["user", "assistant"],
+                true)]));
+
+    private static LegendConnectCurriculumExampleSubmission ProducerIssuedBroadReplacementExample(int family) =>
+        new(
+            $"Founder producer-issued broad replacement {family}: Please route the first marker now.",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = "correction",
+                ["choice"] = "beta"
+            },
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission("function", "conversation_function", "correction", "route"),
+                new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "ordinal_one", "first"),
+                new LegendConnectMeaningNodeSubmission("kind", "reference_kind", "choice", "marker"),
+                new LegendConnectMeaningNodeSubmission("choice", "choice", "beta", "first marker")
+            ],
+            [
+                new LegendConnectMeaningRelationSubmission("function", "corrects", "selector"),
+                new LegendConnectMeaningRelationSubmission("selector", "reference-target", "kind"),
+                new LegendConnectMeaningRelationSubmission("function", "mentions", "choice")
+            ],
+            [new LegendConnectDiscourseReferenceSubmission(
+                "selector",
+                "choice",
+                "ordinal",
+                1,
+                ["user", "assistant"],
+                true)]));
+
+    private static LegendConnectCurriculumExampleSubmission ProducerIssuedDuplicateReplacementExample(int family) =>
+        new(
+            $"Founder producer-issued duplicate replacement {family}: Please route the first marker twice.",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = "correction",
+                ["choice"] = "beta"
+            },
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission("function", "conversation_function", "correction", "route"),
+                new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "ordinal_one", "first"),
+                new LegendConnectMeaningNodeSubmission("kind", "reference_kind", "choice", "marker"),
+                new LegendConnectMeaningNodeSubmission("choice_beta", "choice", "beta", "first"),
+                new LegendConnectMeaningNodeSubmission("choice_gamma", "choice", "gamma", "first")
+            ],
+            [
+                new LegendConnectMeaningRelationSubmission("function", "corrects", "selector"),
+                new LegendConnectMeaningRelationSubmission("selector", "reference-target", "kind"),
+                new LegendConnectMeaningRelationSubmission("function", "mentions", "choice_beta"),
+                new LegendConnectMeaningRelationSubmission("function", "mentions", "choice_gamma")
+            ],
             [new LegendConnectDiscourseReferenceSubmission(
                 "selector",
                 "choice",

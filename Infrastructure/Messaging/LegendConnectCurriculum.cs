@@ -5319,7 +5319,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 () => AnalyzeDeclaredSourceSlotsAsync(languageCode, normalizedInput, candidates, cancellationToken),
                 nameof(AnalyzeDeclaredSourceSlotsAsync), "source_slots");
             if (sourceSlots.Graph is not null)
-                return Observe(sourceSlots.Graph, tokens.Count);
+                return Observe(
+                    await EmitSupersededCurrentTurnOccurrencesAsync(
+                        languageCode,
+                        sourceSlots.Graph,
+                        cancellationToken),
+                    tokens.Count);
             if (sourceSlots.ReasonCode is not null)
                 return Observe(new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), sourceSlots.ReasonCode), tokens.Count);
         }
@@ -5642,12 +5647,85 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         ? "meaning_graph_relation_unproven"
                         : "meaning_graph_observational_composed";
 
-        return Observe(new(
-            isComposed,
-            orderedNodes,
-            orderedRelations,
-            unknown,
-            reasonCode), tokens.Count);
+        return Observe(
+            await EmitSupersededCurrentTurnOccurrencesAsync(
+                languageCode,
+                new(
+                    isComposed,
+                    orderedNodes,
+                    orderedRelations,
+                    unknown,
+                    reasonCode),
+                cancellationToken),
+            tokens.Count);
+    }
+
+    private async Task<LegendConnectUtteranceMeaningGraphSnapshot> EmitSupersededCurrentTurnOccurrencesAsync(
+        string sourceLanguageCode,
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        CancellationToken cancellationToken)
+    {
+        if (!graph.IsComposed || graph.Nodes.Count == 0)
+            return graph;
+        var selectorSignatures = graph.Nodes
+            .Where(node => string.Equals(node.SemanticDimension, "reference_selector", StringComparison.Ordinal))
+            .Select(node => node.SemanticSignature)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (selectorSignatures.Length == 0)
+            return graph;
+        var replacementRules = (await GetProductionDiscourseReferenceRulesAsync(
+                sourceLanguageCode,
+                selectorSignatures,
+                cancellationToken))
+            .Where(rule => rule.ReplacesActiveBinding)
+            .GroupBy(rule => rule.SelectorSemanticSignature, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+        if (replacementRules.Count == 0)
+            return graph;
+
+        var updated = graph.Nodes.ToArray();
+        var changed = false;
+        for (var selectorIndex = 0; selectorIndex < updated.Length; selectorIndex++)
+        {
+            var selector = updated[selectorIndex];
+            if (!string.Equals(selector.SemanticDimension, "reference_selector", StringComparison.Ordinal) ||
+                !replacementRules.TryGetValue(selector.SemanticSignature, out var rule))
+            {
+                continue;
+            }
+
+            var candidates = updated
+                .Select((node, nodeIndex) => new { node, nodeIndex })
+                .Where(item =>
+                    item.nodeIndex != selectorIndex &&
+                    string.Equals(item.node.SemanticDimension, rule.EntitySemanticDimension, StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(item.node.SemanticSignature) &&
+                    !string.IsNullOrWhiteSpace(item.node.SemanticValue) &&
+                    item.node.StartTokenIndex == selector.StartTokenIndex &&
+                    item.node.TokenLength == selector.TokenLength)
+                .Take(2)
+                .ToArray();
+
+            LegendConnectCurrentTurnOccurrenceSnapshot? occurrence = candidates.Length == 1
+                ? new(
+                    candidates[0].nodeIndex,
+                    candidates[0].node.SemanticSignature,
+                    candidates[0].node.SemanticDimension,
+                    candidates[0].node.SemanticValue,
+                    candidates[0].node.StartTokenIndex,
+                    candidates[0].node.TokenLength)
+                : null;
+            if (selector.SupersededCurrentTurnOccurrence == occurrence)
+                continue;
+            updated[selectorIndex] = selector with { SupersededCurrentTurnOccurrence = occurrence };
+            changed = true;
+        }
+
+        return !changed
+            ? graph
+            : graph with { Nodes = updated };
     }
 
     private async Task<ReusableMeaningCandidateRetrieval> ReadReusableMeaningCandidatesAsync(
@@ -7547,11 +7625,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             if (!binding.HasSupersededCurrentTurnEntity)
                 continue;
+            if (binding.SelectorNodeIndex is not int selectorIndex ||
+                selectorIndex < 0 || selectorIndex >= nodes.Count ||
+                !HasValidSupersededCurrentTurnOccurrence(
+                    nodes,
+                    selectorIndex,
+                    nodes[selectorIndex].SupersededCurrentTurnOccurrence))
+            {
+                return false;
+            }
+            var selectorOccurrence = nodes[selectorIndex].SupersededCurrentTurnOccurrence!;
             if (binding.SupersededCurrentTurnNodeIndex is not int candidateIndex ||
                 candidateIndex < 0 || candidateIndex >= nodes.Count)
                 return false;
             var candidate = nodes[candidateIndex];
-            if (!string.Equals(candidate.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) ||
+            if (selectorOccurrence.NodeIndex != candidateIndex ||
+                !string.Equals(selectorOccurrence.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) ||
+                !string.Equals(selectorOccurrence.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) ||
+                !string.Equals(selectorOccurrence.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) ||
+                selectorOccurrence.StartTokenIndex != binding.SupersededCurrentTurnNodeStartTokenIndex ||
+                selectorOccurrence.TokenLength != binding.SupersededCurrentTurnNodeTokenLength ||
+                !string.Equals(candidate.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) ||
                 !string.Equals(candidate.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) ||
                 !string.Equals(candidate.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) ||
                 candidate.StartTokenIndex != binding.SupersededCurrentTurnNodeStartTokenIndex ||
@@ -7585,6 +7679,32 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             })
             .ToList();
         return true;
+    }
+
+    private static bool HasValidSupersededCurrentTurnOccurrence(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        int selectorIndex,
+        LegendConnectCurrentTurnOccurrenceSnapshot? occurrence)
+    {
+        if (occurrence is null ||
+            occurrence.NodeIndex < 0 ||
+            occurrence.NodeIndex >= nodes.Count ||
+            occurrence.NodeIndex == selectorIndex ||
+            string.IsNullOrWhiteSpace(occurrence.SemanticSignature) ||
+            string.IsNullOrWhiteSpace(occurrence.SemanticDimension) ||
+            string.IsNullOrWhiteSpace(occurrence.SemanticValue) ||
+            occurrence.StartTokenIndex < 0 ||
+            occurrence.TokenLength <= 0)
+        {
+            return false;
+        }
+
+        var node = nodes[occurrence.NodeIndex];
+        return string.Equals(node.SemanticSignature, occurrence.SemanticSignature, StringComparison.Ordinal) &&
+            string.Equals(node.SemanticDimension, occurrence.SemanticDimension, StringComparison.Ordinal) &&
+            string.Equals(node.SemanticValue, occurrence.SemanticValue, StringComparison.Ordinal) &&
+            node.StartTokenIndex == occurrence.StartTokenIndex &&
+            node.TokenLength == occurrence.TokenLength;
     }
 
     private static bool IsActiveDiscourseEntityNode(
