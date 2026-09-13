@@ -43,9 +43,9 @@ struct OAuthAuthorizationRequest: Sendable {
             URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: state),
 
-            // Microsoft must explicitly display its account chooser. Without this,
-            // an existing browser session may silently lock Legend to the last account.
-            URLQueryItem(name: "prompt", value: "select_account"),
+            // An interactive login starts a new retention period. Browser SSO
+            // alone must not reset that security checkpoint.
+            URLQueryItem(name: "prompt", value: "login"),
 
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256")
@@ -110,13 +110,13 @@ enum OAuthError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .randomGenerationFailed:
-            return "A secure sign-in request could not be created."
+            return LegendLocalized("A secure sign-in request could not be created.")
         case .invalidAuthorizationEndpoint:
-            return "The mobile authorization endpoint is invalid."
+            return LegendLocalized("The mobile authorization endpoint is invalid.")
         case .missingCallback:
-            return "The authorization service did not return a callback."
+            return LegendLocalized("The authorization service did not return a callback.")
         case .sessionStartFailed:
-            return "The system browser could not start sign-in."
+            return LegendLocalized("The system browser could not start sign-in.")
         }
     }
 }

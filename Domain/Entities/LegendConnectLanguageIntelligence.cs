@@ -93,6 +93,22 @@ public sealed class LegendTranslationAlignment
     /// </summary>
     public string Provenance { get; set; } = string.Empty;
     public string? ProviderModel { get; set; }
+    /// <summary>
+    /// Deterministic identity for an operational retained translation. Null
+    /// identifies pre-existing curriculum/provider-observation alignments.
+    /// </summary>
+    public string? RetainedTranslationIdentity { get; set; }
+    public string? StableSourceContentId { get; set; }
+    public string? SourceContentRevision { get; set; }
+    public string? TranslationContext { get; set; }
+    public string? PlaceholderContractHash { get; set; }
+    public string? ReuseScope { get; set; }
+    /// <summary>
+    /// Empty only for global copy. Tenant, user, and conversation identities
+    /// are stored as one-way hashes and never as raw protected identifiers.
+    /// </summary>
+    public string? ReuseScopeIdentityHash { get; set; }
+    public string? ProviderVersion { get; set; }
     public decimal? Confidence { get; set; }
     public string QualityState { get; set; } = "Observation";
     public bool HumanVerified { get; set; }

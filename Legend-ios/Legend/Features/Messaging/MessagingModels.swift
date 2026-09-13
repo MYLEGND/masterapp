@@ -116,12 +116,14 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let meeting: MessagingGroupMeeting?
     let canManageMeeting: Bool?
     let hasOlderMessages: Bool?
+    let reactionOptions: [String]?
+    let readReceipts: MessagingReadReceiptSettings?
 
     private enum CodingKeys: String, CodingKey {
         case id, conversationType, title, participants, messages, isMuted, isClosed
         case canManageMembers, purpose, groupAvatar, canManageCollaborators
         case canDeleteGroup, isPromoted, canManagePromotion, meeting, canManageMeeting
-        case hasOlderMessages
+        case hasOlderMessages, readReceipts, reactionOptions
         case promotionStartedUTC = "promotionStartedUtc"
         case promotionEndedUTC = "promotionEndedUtc"
     }
@@ -145,7 +147,9 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         canManagePromotion: Bool? = nil,
         meeting: MessagingGroupMeeting? = nil,
         canManageMeeting: Bool? = nil,
-        hasOlderMessages: Bool? = nil
+        hasOlderMessages: Bool? = nil,
+        readReceipts: MessagingReadReceiptSettings? = nil,
+        reactionOptions: [String]? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -166,8 +170,22 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.meeting = meeting
         self.canManageMeeting = canManageMeeting
         self.hasOlderMessages = hasOlderMessages
+        self.readReceipts = readReceipts
+        self.reactionOptions = reactionOptions
     }
 }
+
+struct MessagingReadReceiptSettings: Codable, Equatable, Sendable {
+    let globalEnabled: Bool
+    let conversationEnabled: Bool
+    let readers: [MessagingReadReceipt]
+}
+struct MessagingReadReceipt: Codable, Equatable, Sendable {
+    let userId: String
+    let participantType: String
+    let readThroughUtc: Date
+}
+struct MessagingReadReceiptRequest: Encodable { let enabled: Bool; let globally: Bool }
 
 struct MessagingGroupMeeting: Codable, Equatable, Sendable {
     let host: MessagingParticipant
@@ -209,6 +227,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let verificationReview: VerificationReview?
     let translation: MessageTranslationPresentation?
     let originalBody: String?
+    var reactions: [MessageReaction]
+    let sharedContent: MessagingSharedContent?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -222,6 +242,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case reply
         case verificationReview
         case translation
+        case reactions, sharedContent
         case originalBody
     }
 
@@ -237,7 +258,9 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         reply: MessageReplyPreview?,
         verificationReview: VerificationReview? = nil,
         translation: MessageTranslationPresentation? = nil,
-        originalBody: String? = nil
+        originalBody: String? = nil,
+        reactions: [MessageReaction] = [],
+        sharedContent: MessagingSharedContent? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -251,6 +274,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.verificationReview = verificationReview
         self.translation = translation
         self.originalBody = originalBody
+        self.reactions = reactions
+        self.sharedContent = sharedContent
     }
 
     init(from decoder: Decoder) throws {
@@ -267,6 +292,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview = try container.decodeIfPresent(VerificationReview.self, forKey: .verificationReview)
         translation = try container.decodeIfPresent(MessageTranslationPresentation.self, forKey: .translation)
         originalBody = try container.decodeIfPresent(String.self, forKey: .originalBody)
+        reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+        sharedContent = try container.decodeIfPresent(MessagingSharedContent.self, forKey: .sharedContent)
     }
 }
 
@@ -385,11 +412,11 @@ enum ControlledResourceType: String, Codable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .verificationBadge: "Legend verification"
-        case .languageTranslation: "Language Translation Access"
-        case .scriptureManagement: "Daily Scripture Management"
-        case .communityManagement: "Community Manager"
-        case .socialContentPriority: "Featured Creator"
+        case .verificationBadge: LegendLocalized("Legend verification")
+        case .languageTranslation: LegendLocalized("Language Translation Access")
+        case .scriptureManagement: LegendLocalized("Daily Scripture Management")
+        case .communityManagement: LegendLocalized("Community Manager")
+        case .socialContentPriority: LegendLocalized("Featured Creator")
         }
     }
 }
@@ -442,6 +469,15 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
     let contentType: String
     let data: Data
     var state: State
+    var acknowledgedMessageID: UUID?
+
+    func canUpload(to messageID: UUID) -> Bool {
+        acknowledgedMessageID == messageID && state != .uploading
+    }
+
+    static func hasPendingAcknowledgedUploads(_ attachments: [Self]) -> Bool {
+        attachments.contains { $0.acknowledgedMessageID != nil }
+    }
 
     init(
         id: UUID = UUID(),
@@ -458,13 +494,26 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
     }
 }
 
-struct SendMessageRequest: Encodable, Sendable {
+/// Captures the composer submission without owning message delivery state.
+struct MessagingDraftSnapshot {
     let body: String
     let replyToMessageID: UUID?
 
+    func matches(body: String, replyToMessageID: UUID?) -> Bool {
+        self.body == body && self.replyToMessageID == replyToMessageID
+    }
+}
+
+struct SendMessageRequest: Encodable, Sendable {
+    let body: String
+    let replyToMessageID: UUID?
+    let clientMessageID: UUID
+    var sharedPostId: UUID? = nil
+
     private enum CodingKeys: String, CodingKey {
-        case body
+        case body, sharedPostId
         case replyToMessageID = "replyToMessageId"
+        case clientMessageID = "clientMessageId"
     }
 }
 
@@ -516,6 +565,13 @@ enum MessagingRecipientScope: String, CaseIterable, Identifiable, Sendable {
     case leads = "Leads"
 
     var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .clients: LegendLocalized("Clients")
+        case .agents: LegendLocalized("Agents")
+        case .leads: LegendLocalized("Leads")
+        }
+    }
     var icon: String {
         switch self {
         case .clients: "person.2.fill"
@@ -621,20 +677,6 @@ struct ConversationMutedRequest: Encodable, Sendable {
     let isMuted: Bool
 }
 
-struct ConversationCallOptions: Codable, Equatable, Sendable {
-    let conversationID: UUID
-    let displayName: String
-    let phoneNumber: String?
-    let faceTimeAddress: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case conversationID = "conversationId"
-        case displayName
-        case phoneNumber
-        case faceTimeAddress
-    }
-}
-
 struct ResolveVerificationRequest: Encodable, Sendable {
     let approve: Bool
     let note: String?
@@ -649,6 +691,7 @@ struct FounderManagedAccount: Codable, Equatable, Identifiable, Sendable {
     let lifecycleState: String
     let hasCancelableSubscription: Bool
     let isActive: Bool
+    var canRestore: Bool? = nil
 
     var id: UUID { profileID }
 
@@ -656,7 +699,7 @@ struct FounderManagedAccount: Codable, Equatable, Identifiable, Sendable {
         case userID = "userId"
         case profileID = "profileId"
         case participantType, displayName, email, lifecycleState
-        case hasCancelableSubscription, isActive
+        case hasCancelableSubscription, isActive, canRestore
     }
 }
 
@@ -711,8 +754,24 @@ struct FounderAccountBatchOutcome: Codable, Equatable, Sendable {
     let results: [FounderAccountBatchItemOutcome]
 }
 
+struct MessagingReactionPreferences: Codable, Sendable {
+    let preferredReactionSkinTone: Int
+}
+
 protocol MessagingAPI: Sendable {
+    func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences
+    func setReactionPreferences(_ preferences: MessagingReactionPreferences, accessToken: String) async throws -> MessagingReactionPreferences
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL
+    func sharedPostURL(_ postID: UUID) -> URL?
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws
+
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws
     func conversations(accessToken: String) async throws -> [ConversationSummary]
+    func conversations(offset: Int, limit: Int, accessToken: String) async throws -> [ConversationSummary]
+    func conversation(id: UUID, beforeUTC: Date?, accessToken: String) async throws -> ConversationDetail
+    func conversation(id: UUID, beforeUTC: Date?, beforeMessageID: UUID?, accessToken: String) async throws -> ConversationDetail
     func recipients(
         search: String?,
         scope: MessagingRecipientScope?,
@@ -756,6 +815,7 @@ protocol MessagingAPI: Sendable {
         scope: FounderAccountDirectoryScope,
         accessToken: String
     ) async throws -> [FounderManagedAccount]
+    func restoreFounderClient(account: FounderManagedAccount, accessToken: String) async throws -> FounderAccountRemovalOutcome
     func removeFounderAccount(
         account: FounderManagedAccount,
         confirmation: String,
@@ -825,6 +885,7 @@ protocol MessagingAPI: Sendable {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage
     func upload(
@@ -838,10 +899,30 @@ protocol MessagingAPI: Sendable {
     func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws
     func removeConversation(conversationID: UUID, accessToken: String) async throws
     func deleteMessage(conversationID: UUID, messageID: UUID, accessToken: String) async throws
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions
 }
 
 extension MessagingAPI {
+    func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences {
+        throw MobileMessagingContractError.unavailable
+    }
+    func setReactionPreferences(_ preferences: MessagingReactionPreferences, accessToken: String) async throws -> MessagingReactionPreferences {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileAPIError.invalidServerResponse }
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
+    func sharedPostURL(_ postID: UUID) -> URL? { nil }
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws {
+        try await markRead(conversationID: conversationID, accessToken: accessToken)
+    }
+
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult {
+        throw MobileMessagingContractError.unavailable
+    }
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
     /// Older test doubles and integration implementations can continue to
     /// provide the original inbox contract. The production transport supplies
     /// the bounded server page below so the Messages landing screen never has
@@ -852,6 +933,10 @@ extension MessagingAPI {
         accessToken: String
     ) async throws -> [ConversationSummary] {
         try await conversations(accessToken: accessToken)
+    }
+
+    func conversation(id: UUID, beforeUTC: Date?, beforeMessageID: UUID?, accessToken: String) async throws -> ConversationDetail {
+        try await conversation(id: id, beforeUTC: beforeUTC, accessToken: accessToken)
     }
 
     func conversation(
@@ -932,6 +1017,8 @@ extension MessagingAPI {
     ) async throws -> [FounderManagedAccount] {
         try await founderAccounts(search: search, accessToken: accessToken)
     }
+
+    func restoreFounderClient(account: FounderManagedAccount, accessToken: String) async throws -> FounderAccountRemovalOutcome { throw MobileAPIError.invalidServerResponse }
 
     func removeFounderAccount(
         account: FounderManagedAccount,
@@ -1052,9 +1139,6 @@ extension MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
-        throw MobileMessagingContractError.unavailable
-    }
 }
 
 struct MobileContractUnavailableMessagingAPI: MessagingAPI {
@@ -1106,6 +1190,7 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage {
         throw MobileMessagingContractError.unavailable
@@ -1135,20 +1220,26 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
-        throw MobileMessagingContractError.unavailable
-    }
 }
 
 enum MobileMessagingContractError: LocalizedError, Equatable {
     case unavailable
 
     var errorDescription: String? {
-        "Secure mobile messaging is waiting for the approved server contract."
+        LegendLocalized("Secure mobile messaging is waiting for the approved server contract.")
     }
 }
 
 struct URLSessionMessagingAPI: MessagingAPI {
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult {
+        let path = "/api/v1/mobile/messaging/conversations/\(conversationID)/messages/\(messageID)/reaction"
+        if let emoji {
+            return try await client.put(path, body: MessageReactionRequest(emoji: emoji), accessToken: accessToken,
+                headers: participantHeader, response: MessageReactionResult.self)
+        }
+        return try await client.delete(path, accessToken: accessToken, headers: participantHeader, response: MessageReactionResult.self)
+    }
+
     let client: MobileHTTPClient
     let participantType: ParticipantType
 
@@ -1341,6 +1432,12 @@ struct URLSessionMessagingAPI: MessagingAPI {
             queryItems: queryItems,
             headers: participantHeader,
             response: [FounderManagedAccount].self)
+    }
+
+    func restoreFounderClient(account: FounderManagedAccount, accessToken: String) async throws -> FounderAccountRemovalOutcome {
+        try await client.post("/api/v1/mobile/founder/accounts/restore",
+            body: FounderAccountRemovalRequest(profileID: account.profileID, participantType: account.participantType, confirmation: "RESTORE"),
+            accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: FounderAccountRemovalOutcome.self)
     }
 
     func removeFounderAccount(
@@ -1537,7 +1634,14 @@ struct URLSessionMessagingAPI: MessagingAPI {
         beforeUTC: Date?,
         accessToken: String
     ) async throws -> ConversationDetail {
+        try await conversation(id: id, beforeUTC: beforeUTC, beforeMessageID: nil, accessToken: accessToken)
+    }
+
+    func conversation(id: UUID, beforeUTC: Date?, beforeMessageID: UUID?, accessToken: String) async throws -> ConversationDetail {
         var queryItems = [URLQueryItem(name: "take", value: "60")]
+        if let beforeMessageID {
+            queryItems.append(URLQueryItem(name: "beforeMessageId", value: beforeMessageID.uuidString))
+        }
         if let beforeUTC {
             queryItems.append(URLQueryItem(
                 name: "beforeUtc",
@@ -1562,19 +1666,49 @@ struct URLSessionMessagingAPI: MessagingAPI {
         )
     }
 
+
+    func sharedPostURL(_ postID: UUID) -> URL? {
+        client.baseURL.appendingPathComponent("Social/Posts").appendingPathComponent(postID.uuidString)
+    }
+
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage {
+        try await client.post("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
+            body: SendMessageRequest(body: body, replyToMessageID: nil, clientMessageID: clientMessageID, sharedPostId: sharedPostID),
+            accessToken: accessToken, idempotencyKey: clientMessageID, headers: participantHeader, response: ConversationMessage.self)
+    }
+
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL {
+        guard attachment.canDownload else { throw MobileAPIError.invalidServerResponse }
+        let temporary = try await client.downloadFile("/api/v1/mobile/messaging/attachments/\(attachment.id.uuidString)",
+            accessToken: accessToken, headers: participantHeader)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let filename = (attachment.originalFileName as NSString).lastPathComponent
+        let destination = directory.appendingPathComponent(filename.isEmpty ? "attachment" : filename)
+        try FileManager.default.moveItem(at: temporary, to: destination)
+        return destination
+    }
+
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws {
+        try await client.post("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/read?readThroughMessageId=\(readThroughMessageID.uuidString)",
+            body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader)
+    }
+
     func send(
         conversationID: UUID,
         body: String,
         replyToMessageID: UUID?,
+        clientMessageID: UUID,
         accessToken: String
     ) async throws -> ConversationMessage {
         try await client.post(
             "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
             body: SendMessageRequest(
                 body: body,
-                replyToMessageID: replyToMessageID),
+                replyToMessageID: replyToMessageID,
+                clientMessageID: clientMessageID),
             accessToken: accessToken,
-            idempotencyKey: UUID(),
+            idempotencyKey: clientMessageID,
             headers: participantHeader,
             response: ConversationMessage.self
         )
@@ -1616,6 +1750,22 @@ struct URLSessionMessagingAPI: MessagingAPI {
             headers: participantHeader)
     }
 
+    func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences {
+        try await client.get("/api/v1/mobile/messaging/reaction-preferences", accessToken: accessToken,
+            headers: participantHeader, response: MessagingReactionPreferences.self)
+    }
+
+    func setReactionPreferences(_ preferences: MessagingReactionPreferences, accessToken: String) async throws -> MessagingReactionPreferences {
+        try await client.put("/api/v1/mobile/messaging/reaction-preferences", body: preferences,
+            accessToken: accessToken, headers: participantHeader, response: MessagingReactionPreferences.self)
+    }
+
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws {
+        try await client.put("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/read-receipts",
+            body: MessagingReadReceiptRequest(enabled: enabled, globally: globally),
+            accessToken: accessToken, headers: participantHeader)
+    }
+
     func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws {
         try await client.put(
             "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/mute",
@@ -1638,13 +1788,78 @@ struct URLSessionMessagingAPI: MessagingAPI {
             headers: participantHeader)
     }
 
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
-        try await client.get(
-            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/call-options",
-            accessToken: accessToken,
-            headers: participantHeader,
-            response: ConversationCallOptions.self)
-    }
 }
 
 private struct EmptyMobileRequest: Encodable {}
+
+/// The server owns reader privacy and chronological ordering; this only reduces redundant labels.
+func messageReceiptLabels(messages: [ConversationMessage], readers: [MessagingReadReceipt]) -> [UUID: String] {
+    let own = messages.filter { $0.isMine && !$0.isDeleted }
+    let latestRead = own.lastIndex { message in
+        readers.contains { reader in
+            !(reader.userId.caseInsensitiveCompare(message.sender.identity.userID) == .orderedSame &&
+              reader.participantType == message.sender.identity.participantType.rawValue) &&
+                reader.readThroughUtc >= message.sentUTC
+        }
+    }
+    return Dictionary(uniqueKeysWithValues: own.enumerated().compactMap { index, message in
+        if index == latestRead { return (message.id, "Read") }
+        if latestRead == nil || index > latestRead! { return (message.id, "Sent") }
+        return nil
+    })
+}
+
+struct MessageReaction: Codable, Equatable, Sendable { let emoji: String; let count: Int; let reactedByCurrentActor: Bool }
+struct MessageReactionRequest: Encodable { let emoji: String }
+struct MessageReactionResult: Decodable { let messageId: UUID; let reactions: [MessageReaction] }
+
+struct MessagingSharedContent: Codable, Equatable, Sendable {
+    let sourcePostId: UUID
+    let status: String
+    let contentType: String?
+    let body: String?
+    let authorDisplayName: String?
+    let media: [MobileSocialMedia]
+    let url: String
+}
+
+struct LegendReactionEmojiCatalog: Decodable {
+    struct Entry: Decodable, Identifiable {
+        let emoji: String
+        let name: String
+        let keywords: [String]
+        let baseEmoji: String
+        let skinToneVariants: [String: String]
+        var id: String { emoji }
+    }
+    let entries: [Entry]
+    private let entriesByEmoji: [String: Entry]
+    private enum CodingKeys: String, CodingKey { case entries }
+    init(from decoder: Decoder) throws {
+        entries = try decoder.container(keyedBy: CodingKeys.self).decode([Entry].self, forKey: .entries)
+        entriesByEmoji = Dictionary(entries.map { ($0.emoji, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+    static let bundled: LegendReactionEmojiCatalog? = {
+        guard let url = Bundle.main.url(forResource: "legend-reaction-emoji", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Self.self, from: data)
+    }()
+    static let skinToneKeys = ["default", "light", "mediumLight", "medium", "mediumDark", "dark"]
+    func applyingSkinTone(_ tone: Int, to emoji: String) -> String {
+        guard Self.skinToneKeys.indices.contains(tone), let entry = entriesByEmoji[emoji] else { return emoji }
+        return entry.skinToneVariants[Self.skinToneKeys[tone]] ?? entry.baseEmoji
+    }
+    func palette(_ query: String) -> [Entry] {
+        var bases = Set<String>()
+        return search(query).filter { bases.insert($0.baseEmoji).inserted }
+    }
+    func search(_ query: String) -> [Entry] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return entries }
+        let normalized = query.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        let tokens = normalized.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        return entries.filter { entry in
+            entry.emoji == query || (!tokens.isEmpty && tokens.allSatisfy { token in entry.keywords.contains { $0.contains(token) } })
+        }
+    }
+}

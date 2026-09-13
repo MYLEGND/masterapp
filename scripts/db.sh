@@ -274,11 +274,33 @@ migration_source_paths() {
         -print | sort
 }
 
+is_generated_data_migration() {
+    local source_path="$1"
+    local designer_path="${source_path%.cs}.Designer.cs"
+    local prior_ref=""
+    prior_ref="$(artifact_base_ref)" || return 1
+    # Existing migration history remains immutable. A new SQL/data migration
+    # may legitimately leave the EF model unchanged; verify the generated
+    # target instead of requiring a fabricated snapshot edit.
+    git cat-file -e "${prior_ref}:${source_path}" 2>/dev/null && return 1
+    [[ -f "$designer_path" && -f "$SNAPSHOT_FILE" ]] || return 1
+    grep -q 'BuildTargetModel(ModelBuilder modelBuilder)' "$designer_path" || return 1
+    grep -q '#pragma warning disable' "$designer_path" || return 1
+    grep -qE 'migrationBuilder\.(Sql|InsertData|UpdateData|DeleteData)\(' "$source_path" || return 1
+    if grep -oE 'migrationBuilder\.[A-Za-z]+' "$source_path" | grep -qEv '^migrationBuilder\.(Sql|InsertData|UpdateData|DeleteData)$'; then
+        return 1
+    fi
+    diff -q \
+        <(sed -n '/#pragma warning disable/,/#pragma warning restore/p' "$designer_path") \
+        <(sed -n '/#pragma warning disable/,/#pragma warning restore/p' "$SNAPSHOT_FILE") >/dev/null
+}
+
 check_changed_artifact_set() {
     local source_changed=0
     local designer_changed=0
     local snapshot_changed=0
     local restored_designer=0
+    local only_data_migrations=1
     local path file counterpart
 
     while IFS= read -r path; do
@@ -302,6 +324,9 @@ check_changed_artifact_set() {
                 ;;
             *.cs)
                 source_changed=1
+                if ! is_generated_data_migration "$path"; then
+                    only_data_migrations=0
+                fi
                 if is_legacy_manual_migration "$path"; then
                     add_integrity_error "Legacy manual migration $file was changed; create a new generated migration instead."
                 else
@@ -314,11 +339,10 @@ check_changed_artifact_set() {
         esac
     done <"$CHANGED_PATHS_FILE"
 
-    # Newly created/changed migrations remain strict: source + designer +
-    # snapshot must move together. A verified restoration of a historically
-    # missing designer does not change the database model or migration source,
-    # so it must not require falsifying changes to the canonical snapshot.
-    if (( source_changed || designer_changed )) && (( ! snapshot_changed )); then
+    # Schema changes require source + designer + snapshot. Generated data-only
+    # migrations with an identical model and verified historical designer
+    # restorations do not require falsifying the canonical snapshot.
+    if (( source_changed || designer_changed )) && (( ! snapshot_changed && ! only_data_migrations )); then
         add_integrity_error "Migration artifacts changed without MasterAppDbContextModelSnapshot.cs."
     fi
 

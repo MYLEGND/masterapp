@@ -117,7 +117,7 @@ public class AssistantResolutionMiddleware
         if (context.User?.Identity?.IsAuthenticated == true)
         {
             // Ensure every authenticated user gets an AgentProfile (source of truth) even if they have no leads/clients.
-            await agentRegistry.UpsertAgentProfileAsync(context.User);
+            await agentRegistry.UpsertAgentProfileAsync(context.User, context.RequestAborted);
 
             // Founder impersonation takes precedence over assistant logic.
             if (context.Items.TryGetValue("ImpersonatedAgentOid", out var impObj) &&
@@ -130,9 +130,12 @@ public class AssistantResolutionMiddleware
                 return;
             }
 
-            await assistantContext.BindAssistantOidIfNeededAsync(context.User);
-
-            var assistantRecord = await assistantContext.GetAssistantRecordForUserAsync(context.User, activeOnly: false);
+            // Binding already resolves the current record by OID/email, including
+            // disabled records. Reuse this request's authoritative result instead
+            // of repeating the same database lookup twice before every page/API.
+            var assistantRecord = await assistantContext.BindAssistantOidIfNeededAsync(context.User);
+            if (AssistantContextService.GetRawOid(context.User) is null)
+                assistantRecord = await assistantContext.GetAssistantRecordForUserAsync(context.User, activeOnly: false);
             if (assistantRecord != null && !assistantRecord.IsActive)
             {
                 if (WantsHtml(context))
@@ -149,7 +152,9 @@ public class AssistantResolutionMiddleware
                 return;
             }
 
-            var effectiveAgentOid = await assistantContext.ResolveEffectiveAgentOidAsync(context.User);
+            var rawOid = AssistantContextService.GetRawOid(context.User)
+                ?? throw new InvalidOperationException("Missing OID claim.");
+            var effectiveAgentOid = assistantRecord?.ParentAgentUserId ?? rawOid;
             var isAssistant = assistantRecord?.IsActive == true;
 
             if (!isAssistant && AssistantContextService.IsLikelyGuestUser(context.User, _tenantId, _firstPartyDomain))

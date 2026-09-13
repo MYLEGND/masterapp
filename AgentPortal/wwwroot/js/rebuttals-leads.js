@@ -3764,15 +3764,21 @@
     });
     syncAllNoteTextareaTones();
     syncNotePrefixVisual();
-    // Initialize SignalR and active state sync with the shared Microsoft client.
-    const connection = new window.signalR.HubConnectionBuilder()
-      .withUrl('/leadbridgehub')
-      .withAutomaticReconnect()
-      .build();
-    connection.on('LeadChanged', payload => applyRemoteState(payload, true));
-    connection.start()
-      .then(fetchActiveState)
-      .catch(error => console.error('[leadbridge] SignalR start failed.', error));
+    // Lead loading remains available while the shared realtime client downloads.
+    let leadBridgeConnection = null;
+    function startLeadBridgeRealtime() {
+      if (leadBridgeConnection || !window.signalR?.HubConnectionBuilder) return;
+      leadBridgeConnection = new window.signalR.HubConnectionBuilder()
+        .withUrl('/leadbridgehub')
+        .withAutomaticReconnect()
+        .build();
+      leadBridgeConnection.on('LeadChanged', payload => applyRemoteState(payload, true));
+      leadBridgeConnection.start()
+        .then(fetchActiveState)
+        .catch(error => console.error('[leadbridge] SignalR start failed.', error));
+    }
+    window.addEventListener('legend-signalr-ready', startLeadBridgeRealtime);
+    startLeadBridgeRealtime();
 
     try {
       baseLeads = await fetchLeads();

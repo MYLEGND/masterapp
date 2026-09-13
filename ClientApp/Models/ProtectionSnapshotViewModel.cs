@@ -6,7 +6,7 @@ public sealed class ProtectionSnapshotViewModel
 {
     public Guid ClientProfileId { get; init; }
     public string ClientUserId { get; init; } = string.Empty;
-    public string ClientDisplayName { get; init; } = "Client";
+    public string ClientDisplayName { get; init; } = "Member";
     public string MaritalStatus { get; init; } = string.Empty;
     public int? Age { get; init; }
     public bool IsAgentView { get; init; }

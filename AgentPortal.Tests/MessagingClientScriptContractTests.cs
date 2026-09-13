@@ -52,7 +52,9 @@ public sealed class MessagingClientScriptContractTests
         var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
         var searchBody = GetFunctionBody(source, "searchRecipients");
 
-        Assert.DoesNotContain("AbortController", source, StringComparison.Ordinal);
+        // Contact search still uses ordered responses; conversation navigation now
+        // cancels detail transport independently to avoid blocking the selected chat.
+        Assert.DoesNotContain("AbortController", searchBody, StringComparison.Ordinal);
         Assert.DoesNotContain("searchAbortController", source, StringComparison.Ordinal);
         Assert.Contains("if (requestId !== state.searchRequestId) return;", searchBody, StringComparison.Ordinal);
         Assert.Contains("if (requestId === state.searchRequestId)", searchBody, StringComparison.Ordinal);
@@ -82,6 +84,7 @@ public sealed class MessagingClientScriptContractTests
         var conversationsBody = GetFunctionBody(source, "renderConversations");
         var searchBody = GetFunctionBody(source, "renderSearchResults");
         var openBody = GetFunctionBody(source, "openCommandCenter");
+        var detailBody = GetFunctionBody(source, "loadConversation");
 
         Assert.Contains("function isConversationInRecipientScope(conversation)", source, StringComparison.Ordinal);
         Assert.Contains("function setRecipientScope(scope)", source, StringComparison.Ordinal);
@@ -89,7 +92,12 @@ public sealed class MessagingClientScriptContractTests
         Assert.Contains("Search active company agents", source, StringComparison.Ordinal);
         Assert.Contains("state.conversations.filter(isConversationInRecipientScope)", conversationsBody, StringComparison.Ordinal);
         Assert.Contains(".filter(isConversationInRecipientScope)", searchBody, StringComparison.Ordinal);
-        Assert.Contains("isConversationInRecipientScope(conversation)", openBody, StringComparison.Ordinal);
+        // Opening no longer awaits the inbox: known summaries are checked immediately,
+        // and an uncached restored ID is checked against its authorized detail before display.
+        Assert.Contains("!known || isConversationInRecipientScope(known)", openBody, StringComparison.Ordinal);
+        Assert.Contains("if (!isConversationInRecipientScope(result.conversation))", detailBody, StringComparison.Ordinal);
+        Assert.True(detailBody.IndexOf("if (!isConversationInRecipientScope(result.conversation))", StringComparison.Ordinal)
+            < detailBody.IndexOf("state.active = result.conversation;", StringComparison.Ordinal));
     }
 
     [Fact]

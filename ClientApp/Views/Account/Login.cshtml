@@ -1,6 +1,6 @@
 @model ClientApp.Models.ClientLoginViewModel
 @{
-    ViewData["Title"] = "Client Sign In";
+    ViewData["Title"] = "Member Sign In";
     Layout = null;
 }
 
@@ -19,14 +19,14 @@
                 <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 <div class="client-auth-brand-copy">
                     <span class="client-auth-brand-name">LEGEND™</span>
-                    <span class="client-auth-brand-label">CLIENT PORTAL</span>
+                    <span class="client-auth-brand-label">MY LEGEND</span>
                 </div>
             </header>
 
             <div class="client-auth-content">
-                <p class="client-auth-eyebrow">CLIENT SIGN-IN</p>
+                <p class="client-auth-eyebrow">MEMBER SIGN-IN</p>
                 <h1 id="client-login-title">Welcome back</h1>
-                <p class="client-auth-intro">Sign in with the email linked to your active Legend Client Portal subscription.</p>
+                <p class="client-auth-intro">Sign in with the email linked to your active LEGEND membership.</p>
 
                 @if (!string.IsNullOrWhiteSpace(Model.Message))
                 {
@@ -38,7 +38,7 @@
                     <input asp-for="ReturnUrl" type="hidden" />
 
                     <div class="client-auth-field">
-                        <label asp-for="Email">Email on your client subscription</label>
+                        <label asp-for="Email">Email on your membership</label>
                         <input asp-for="Email" autocomplete="email" placeholder="you@example.com" />
                         <span asp-validation-for="Email" class="client-auth-validation"></span>
                     </div>
@@ -46,7 +46,7 @@
                     <button type="submit" class="client-auth-primary">Continue securely</button>
                 </form>
 
-                <p class="client-auth-help">New to the portal? Use the activation link sent by your Legend agent.</p>
+                <p class="client-auth-help">New to the portal? Use the activation link sent by your LEGEND guide.</p>
             </div>
         </section>
     </main>

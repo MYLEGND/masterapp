@@ -19,6 +19,7 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
 {
     [Fact]
@@ -146,17 +147,20 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         }
     }
 
-    [Fact]
-    public async Task HeldOutCorrection_ReplacesCompetingOrdinalChoiceWithoutProviderClients()
+    [Theory]
+    [InlineData("No, I meant the first option.", false)]
+    [InlineData("No, please use the first option instead.", true)]
+    public async Task HeldOutCorrection_RequiresAGroundedFunctionBeforeAnsweringTheBoundOrdinalWithoutProviders(
+        string currentRequest, bool hasGroundedCorrection)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var actor = Guid.NewGuid().ToString("D");
         var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
-        Environment.SetEnvironmentVariable("FOUNDER_OID", actor);
-        db.AgentProfiles.Add(Profile(actor, "heldout"));
-        await db.SaveChangesAsync();
         try
         {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", actor);
+            db.AgentProfiles.Add(Profile(actor, "heldout"));
+            await db.SaveChangesAsync();
             var curriculum = CreateCurriculum(db);
             for (var family = 1; family <= 3; family++)
             {
@@ -167,7 +171,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
 
             Assert.DoesNotContain(
                 await db.LegendLanguageTextUnits.Select(item => item.Text).ToListAsync(),
-                text => string.Equals(text, "No, I meant the first option.", StringComparison.Ordinal));
+                text => string.Equals(text, currentRequest, StringComparison.Ordinal));
 
             var operations = CreateOperations(db);
             var profiles = new AgentProfileAccessResolver(db);
@@ -191,8 +195,10 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             }
 
             var currentGraph = await operations.AnalyzeReusableMeaningGraphAsync(
-                "No, I meant the first option.");
+                currentRequest);
             Assert.True(currentGraph.IsComposed, currentGraph.ReasonCode);
+            Assert.Equal(hasGroundedCorrection, currentGraph.Nodes.Any(node =>
+                node.SemanticDimension == "conversation_function" && node.SemanticValue == "correction"));
             await discourse.RecordObservationAsync(
                 founder,
                 directConversationId.ToString(),
@@ -202,26 +208,47 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var directState = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
                 await discourse.GetStateAsync(founder, directConversationId.ToString()));
             var directPlan = await operations.TryPlanConversationAsync(
-                "No, I meant the first option.",
+                currentRequest,
                 directState);
-            Assert.True(directPlan.Supported, directPlan.ReasonCode);
-            var directStructuredPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
-                directPlan.Plan);
-            var directBinding = Assert.Single(directStructuredPlan.ResolvedDiscourseBindings);
-            Assert.Equal("bound", directBinding.ResolutionState);
-            Assert.Equal("choice", directBinding.EntitySemanticDimension);
-            Assert.Equal("alpha", directBinding.EntitySemanticValue);
-            Assert.True(directBinding.ReplacesActiveBinding);
+            if (hasGroundedCorrection)
+            {
+                Assert.True(directPlan.Supported, directPlan.ReasonCode);
+                var directStructuredPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+                    directPlan.Plan);
+                var directBinding = Assert.Single(directStructuredPlan.ResolvedDiscourseBindings);
+                Assert.Equal("bound", directBinding.ResolutionState);
+                Assert.Equal("choice", directBinding.EntitySemanticDimension);
+                Assert.Equal("alpha", directBinding.EntitySemanticValue);
+                Assert.True(directBinding.ReplacesActiveBinding);
+                Assert.False(directBinding.HasSupersededCurrentTurnEntity);
+                Assert.Null(directBinding.SupersededCurrentTurnNodeIndex);
+                Assert.Null(directBinding.SupersededCurrentTurnSemanticDimension);
+                Assert.Null(directBinding.SupersededCurrentTurnSemanticSignature);
+                Assert.Null(directBinding.SupersededCurrentTurnSemanticValue);
+                Assert.Null(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
+                Assert.Null(directBinding.SupersededCurrentTurnNodeTokenLength);
+            }
+            else
+            {
+                // An ordinal replacement binds the choice; it does not supply
+                // the separate, unobserved correction-function premise.
+                Assert.False(directPlan.Supported);
+                Assert.Equal("semantic_transition_not_supported", directPlan.ReasonCode);
+                Assert.Null(directPlan.Plan);
+            }
 
             var directNative = await operations.TryInferConversationWithDiscourseAsync(
-                "No, I meant the first option.",
+                currentRequest,
                 priorMessages.Select(message => new LegendConnectConversationContextItem(
                         message.Role ?? string.Empty,
                         message.Content ?? string.Empty))
                     .ToArray(),
                 directState);
-            Assert.True(directNative.Supported, directNative.ReasonCode);
-            Assert.Equal("I understand the correction.", directNative.Answer);
+            Assert.Equal(hasGroundedCorrection, directNative.Supported);
+            if (hasGroundedCorrection)
+                Assert.Equal("I understand the correction.", directNative.Answer);
+            else
+                Assert.Null(directNative.Answer);
 
             var replyConversationId = Guid.NewGuid();
             foreach (var message in priorMessages)
@@ -250,19 +277,27 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 {
                     Mode = "legend",
                     NativeOnly = true,
+                    SourceLanguageCode = "en",
                     ConversationId = replyConversationId.ToString(),
                     Messages =
                     [
                         .. priorMessages,
-                        new LegendFounderAiChatMessage("user", "No, I meant the first option.")
+                        new LegendFounderAiChatMessage("user", currentRequest)
                     ]
                 });
 
-            Assert.True(
-                reply.Succeeded,
-                $"stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}; message={reply.Message}");
-            Assert.Equal("I understand the correction.", reply.Message);
-            Assert.Equal("LegendAi", reply.ResponseAuthority);
+            // A governed diagnostic is not a successfully answered correction.
+            Assert.Equal(hasGroundedCorrection, reply.Succeeded);
+            if (hasGroundedCorrection)
+            {
+                Assert.Equal("I understand the correction.", reply.Message);
+                Assert.Equal("LegendAi", reply.ResponseAuthority);
+            }
+            else
+            {
+                Assert.Equal("SystemDiagnostic", reply.ResponseAuthority);
+                Assert.NotEqual("I understand the correction.", reply.Message);
+            }
             Assert.Equal(0, countingFactory.CreateClientCalls);
         }
         finally
@@ -301,6 +336,15 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 true,
                 "selector",
                 "rule")
+            {
+                HasSupersededCurrentTurnEntity = true,
+                SupersededCurrentTurnNodeIndex = 2,
+                SupersededCurrentTurnSemanticSignature = "one",
+                SupersededCurrentTurnSemanticDimension = "choice",
+                SupersededCurrentTurnSemanticValue = "one",
+                SupersededCurrentTurnNodeStartTokenIndex = 2,
+                SupersededCurrentTurnNodeTokenLength = 1
+            }
         };
 
         var result = InvokeReplacementPruning(nodes, relations, bindings);
@@ -344,7 +388,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
     }
 
     [Fact]
-    public void ReplacementPruning_FailsClosedWhenSelectorComponentContainsMultipleSupersededChoices()
+    public void ReplacementPruning_DoesNotInferSupersededOccurrenceFromGraphShape()
     {
         var nodes = new[]
         {
@@ -374,7 +418,38 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 "rule")
         };
 
-        Assert.False(InvokeReplacementPruning(nodes, relations, bindings).Succeeded);
+        var result = InvokeReplacementPruning(nodes, relations, bindings);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(nodes, result.Nodes);
+        Assert.Equal(relations, result.Relations);
+    }
+
+    [Fact]
+    public void ReplacementPruning_FailsClosedForTamperedPersistedOccurrenceIdentity()
+    {
+        var nodes = new[]
+        {
+            new LegendConnectUtteranceMeaningNode("selector", "reference_selector", "ordinal_one", 0, 1, 3),
+            new LegendConnectUtteranceMeaningNode("one", "choice", "one", 1, 1, 3)
+        };
+        var relations = new[]
+        {
+            new LegendConnectUtteranceMeaningRelation("r1", "references", 0, 1, 3)
+        };
+        var binding = new LegendConnectDiscourseReferenceBindingSnapshot(
+            "bound", "ok", "choice", "alpha", "alpha", 1, 0, true, "selector", "rule")
+        {
+            HasSupersededCurrentTurnEntity = true,
+            SupersededCurrentTurnNodeIndex = 1,
+            SupersededCurrentTurnSemanticSignature = "tampered",
+            SupersededCurrentTurnSemanticDimension = "choice",
+            SupersededCurrentTurnSemanticValue = "one",
+            SupersededCurrentTurnNodeStartTokenIndex = 1,
+            SupersededCurrentTurnNodeTokenLength = 1
+        };
+
+        Assert.False(InvokeReplacementPruning(nodes, relations, [binding]).Succeeded);
     }
 
     private static MasterAppDbContext CreateDb(

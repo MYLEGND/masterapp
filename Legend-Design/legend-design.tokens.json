@@ -7,8 +7,13 @@
     "navy": { "light": "#10254C" },
     "navyElevated": { "light": "#3159BF" },
     "royal": { "light": "#234284" },
+    "aiResponseRoyal": { "light": "#315FD1", "dark": "#315FD1" },
     "gold": { "light": "#A68023" },
     "goldBright": { "light": "#E0B853" },
+    "bookingGoldLight": { "light": "#FFE58A" },
+    "bookingGold": { "light": "#F6C343" },
+    "bookingGoldDark": { "light": "#D99A13" },
+    "bookingOnGold": { "light": "#08111F" },
     "goldSoft": { "light": "#F6E8BF" },
     "onNavy": { "light": "#FFFFFF" },
     "onGold": { "light": "#0A162E" },
@@ -27,7 +32,24 @@
     "fillSecondary": { "light": "#10254C", "dark": "#FFFFFF", "lightOpacity": 0.035, "darkOpacity": 0.045 },
     "contactNavy": { "light": "#142E5B" },
     "contactConnected": { "light": "#4AE28B" },
-    "verified": { "light": "#1F7AEB" }
+    "verified": { "light": "#1F7AEB" },
+    "chatTimestamp": { "light": "#0072E5", "dark": "#42BFFF" }
+  },
+  "messaging": {
+    "reactionBubble": {
+      "height": 32,
+      "horizontalPadding": 8,
+      "itemSpacing": 4,
+      "borderWidth": 1,
+      "emojiSize": 20,
+      "ownFillColor": "chatTimestamp",
+      "ownFillOpacity": 0.16,
+      "otherFillColor": "surfaceElevated",
+      "borderColor": "gold",
+      "borderOpacity": 0.35,
+      "outsideFraction": 0.25,
+      "trailingInset": 0
+    }
   },
   "platformSemanticColors": {
     "success": { "ios": "systemGreen", "android": "#34C759" },
@@ -61,6 +83,7 @@
     "disabledControl": 0.48,
     "pressedControl": 0.88,
     "pressedSurface": 0.86,
+    "callControlSurface": 0.16,
     "pressedControlScale": 0.975,
     "pressedIconScale": 0.94
   },
@@ -94,6 +117,7 @@
   },
   "sizes": {
     "minimumTapTarget": 44,
+    "callControl": 54,
     "compactControlHeight": 36,
     "controlHeight": 46,
     "prominentControlHeight": 50,
@@ -212,6 +236,14 @@
     "accountDeletion": "Request account deletion"
   },
   "copy": {
+    "localization.preferenceDescription": "Choose your language for LEGEND screens and messages. Original messages remain available.",
+    "localization.preferenceSummary": "Your language is used across LEGEND.",
+    "localization.updating": "Updating your language…",
+    "localization.unavailable": "Some text could not be translated. Your language preference is saved.",
+    "search.messaging": "Search people and conversations",
+    "search.people": "Search people",
+    "search.connections": "Search connections",
+    "search.groupMembers": "Search group members",
     "tab.home": "Home",
     "tab.clients": "Clients",
     "tab.discover": "Discover",
@@ -219,8 +251,10 @@
     "tab.messages": "Messages",
     "tab.account": "Account",
     "content.post": "Post",
+    "content.posts": "Posts",
     "content.story": "Story",
     "content.hac": "Hac",
+    "content.hacs": "Hacs",
     "message.original": "Original",
     "account.deletion": "Request account deletion",
     "account.add": "Add account",

@@ -78,17 +78,24 @@ struct MobileSignedInAccount: Codable, Equatable, Sendable, Identifiable {
     var displayName: String
     var participantType: ParticipantType
     var lastUsedAt: Date
+    var requiresSignIn: Bool = false
+    var avatar: ProfileAvatar?
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, participantType, lastUsedAt, avatar
+    }
 
     init(
         id: String,
         displayName: String,
         participantType: ParticipantType,
-        lastUsedAt: Date = Date()
+        lastUsedAt: Date = Date(),
+        avatar: ProfileAvatar? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.participantType = participantType
         self.lastUsedAt = lastUsedAt
+        self.avatar = avatar
     }
 }
 
@@ -152,8 +159,11 @@ struct KeychainTokenStore: MultiAccountSecureTokenStoring {
 
     func signedInAccounts() throws -> [MobileSignedInAccount] {
         try readCatalog().accounts
-            .filter { !$0.tokens.requiresInteractiveSignIn }
-            .map(\.account)
+            .map { stored in
+                var account = stored.account
+                account.requiresSignIn = stored.tokens.requiresInteractiveSignIn
+                return account
+            }
             .sorted { $0.lastUsedAt > $1.lastUsedAt }
     }
 
@@ -182,7 +192,7 @@ struct KeychainTokenStore: MultiAccountSecureTokenStoring {
             id: existingCredentialID ?? account.id,
             displayName: account.displayName,
             participantType: account.participantType,
-            lastUsedAt: Date())
+            lastUsedAt: Date(), avatar: account.avatar)
         if let index = catalog.accounts.firstIndex(where: { $0.account.id == normalized.id }) {
             catalog.accounts[index] = StoredAccount(account: normalized, tokens: tokens)
         } else {
@@ -288,6 +298,6 @@ enum KeychainStoreError: LocalizedError {
     case deleteFailed(OSStatus)
 
     var errorDescription: String? {
-        "Secure session storage could not be updated."
+        LegendLocalized("Secure session storage could not be updated.")
     }
 }

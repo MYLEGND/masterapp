@@ -538,16 +538,12 @@ public sealed class LegendConnectEntitlementTests
 
         Assert.True(created.Succeeded, created.ErrorMessage);
 
-        // Group creation already builds localized notification presentation
-        // through the same canonical message-translation authority used by
-        // conversation reads. The actual body language is detected once and
-        // one provider translation is created per unique target language.
-        Assert.Equal(1, translator.DetectionCalls);
-        Assert.Equal("en", translator.LastDetectedLanguage);
-        Assert.Equal(2, translator.AccountTranslationCalls);
-        Assert.Equal(1, translator.TargetCounts["ht"]);
-        Assert.Equal(1, translator.TargetCounts["fr"]);
-        Assert.Equal(2, await db.MessageTranslations.CountAsync());
+        // Durable acknowledgment must not wait for provider work. Recipient
+        // projection still creates exactly one translation per unique target.
+        Assert.Equal(0, translator.DetectionCalls);
+        Assert.Equal(0, translator.AccountTranslationCalls);
+        Assert.Empty(translator.TargetCounts);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
 
         foreach (var client in clients)
         {

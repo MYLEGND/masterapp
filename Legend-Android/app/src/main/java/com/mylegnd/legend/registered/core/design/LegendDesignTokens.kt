@@ -26,9 +26,13 @@ object LegendDesignAuthority {
                 val source = context.assets.open("legend-design.tokens.json")
                     .bufferedReader()
                     .use { it.readText() }
-                specification = decoder.decodeFromString(LegendDesignSpecification.serializer(), source)
+                loadSpecification(source)
             }
         }
+    }
+
+    internal fun loadSpecification(source: String) {
+        specification = decoder.decodeFromString(LegendDesignSpecification.serializer(), source)
     }
 
     internal fun color(name: String): Color = required().colors.required(name).asColor()
@@ -39,6 +43,7 @@ object LegendDesignAuthority {
     internal fun socialFormat(name: String) = required().socialFormats.required(name)
     internal fun accountSession() = required().accountSession
     internal fun navigation() = required().navigation
+    internal fun reactionBubble() = required().messaging.reactionBubble
     internal fun gradient(name: String): Brush = Brush.linearGradient(
         required().gradients.required(name).map(::color),
     )
@@ -59,10 +64,12 @@ object LegendDesignAuthority {
 }
 
 object LegendColors {
+    val ChatTimestamp get() = LegendDesignAuthority.color("chatTimestamp")
     val Midnight get() = LegendDesignAuthority.color("midnight")
     val Navy get() = LegendDesignAuthority.color("navy")
     val NavyElevated get() = LegendDesignAuthority.color("navyElevated")
     val Royal get() = LegendDesignAuthority.color("royal")
+    val AiResponseRoyal get() = LegendDesignAuthority.color("aiResponseRoyal")
     val Gold get() = LegendDesignAuthority.color("gold")
     val GoldBright get() = LegendDesignAuthority.color("goldBright")
     val GoldSoft get() = LegendDesignAuthority.color("goldSoft")
@@ -161,8 +168,12 @@ internal object LegendTypography {
     val Eyebrow get() = LegendDesignAuthority.typography("eyebrow")
 }
 
+@Serializable internal data class LegendReactionBubbleToken(val height: Float, val horizontalPadding: Float, val itemSpacing: Float, val borderWidth: Float, val outsideFraction: Float, val trailingInset: Float, val emojiSize: Float, val ownFillColor: String, val ownFillOpacity: Float, val otherFillColor: String, val borderColor: String, val borderOpacity: Float)
+@Serializable private data class LegendMessagingDesignToken(val reactionBubble: LegendReactionBubbleToken)
+
 @Serializable
 private data class LegendDesignSpecification(
+    val messaging: LegendMessagingDesignToken,
     val colors: Map<String, LegendColorToken>,
     val platformSemanticColors: Map<String, LegendPlatformSemanticColor>,
     val gradients: Map<String, List<String>>,
@@ -178,7 +189,7 @@ private data class LegendDesignSpecification(
 )
 
 object LegendCopy {
-    fun value(key: String): String = LegendDesignAuthority.copy(key)
+    fun value(key: String): String = legendLocalized(LegendDesignAuthority.copy(key))
 }
 
 /** The shared iOS-authored account-retention authority. */

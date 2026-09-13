@@ -6,7 +6,7 @@ public sealed class SubscriptionActivationPageViewModel
 {
     public string Token { get; set; } = string.Empty;
     public string ReturnUrl { get; set; } = "/profile";
-    public string ClientName { get; set; } = "Client";
+    public string ClientName { get; set; } = "Member";
     public string ClientEmail { get; set; } = string.Empty;
     public int MonthlyAmountCents { get; set; }
     public string MonthlyAmountDisplay { get; set; } = "$0.00";
@@ -55,7 +55,7 @@ public sealed class SubscriptionActivationPaymentInput
 public sealed class SubscriptionActivationConfirmationViewModel
 {
     public string Token { get; set; } = string.Empty;
-    public string ClientName { get; set; } = "Client";
+    public string ClientName { get; set; } = "Member";
     public string ClientEmail { get; set; } = string.Empty;
     public string MonthlyAmountDisplay { get; set; } = "$0.00";
     public string ReturnUrl { get; set; } = "/profile";
@@ -72,7 +72,7 @@ public sealed class SubscriptionActivationNoticeViewModel
 public sealed class ClientSubscriptionManagementViewModel
 {
     public Guid? ClientSubscriptionId { get; set; }
-    public string ClientName { get; set; } = "Client";
+    public string ClientName { get; set; } = "Member";
     public string CurrentPlanDisplay { get; set; } = "Not selected";
     public string BillingFrequencyDisplay { get; set; } = "Not scheduled";
     public string MonthlyAmountDisplay { get; set; } = "$0.00";
@@ -85,7 +85,7 @@ public sealed class ClientSubscriptionManagementViewModel
     public string GracePeriodEndDisplay { get; set; } = "Not applicable";
     public string CurrentPeriodDisplay { get; set; } = "Not available";
     public string CancellationState { get; set; } = "Active";
-    public string PaymentRepairInstructions { get; set; } = "Contact your agent if you need help updating billing.";
+    public string PaymentRepairInstructions { get; set; } = "Contact your LEGEND guide if you need help updating billing.";
 
     public bool HasSubscription { get; set; }
     public bool CanCancelSubscription { get; set; }

@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
 <div class="wrap density-comfort clients-crm pipeline-mode" id="legendWrap">
+<a class="btn btn-gold" asp-action="Archive">Archive / Deleted</a>
 
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
@@ -560,7 +561,6 @@ else
     </div>
 </div>
 
-<script src="~/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/js/dp-constants.js" asp-append-version="true"></script>
 <script src="~/js/dp-validators.js" asp-append-version="true"></script>
 <script src="~/js/dp-engine.js" asp-append-version="true"></script>

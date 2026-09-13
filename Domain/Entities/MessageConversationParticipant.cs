@@ -19,6 +19,9 @@ public class MessageConversationParticipant
     public DateTime? LastReadUtc { get; set; }
 
     public Guid? LastReadMessageId { get; set; }
+    public bool SuppressReadReceipts { get; set; }
+    // Public disclosure watermark is separate from private unread accounting.
+    public DateTime? SharedReadThroughUtc { get; set; }
 
     public bool IsMuted { get; set; }
 

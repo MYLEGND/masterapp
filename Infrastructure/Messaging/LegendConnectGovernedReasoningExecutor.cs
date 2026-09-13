@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
 using Domain.Messaging;
 
 namespace Infrastructure.Messaging;
@@ -19,6 +23,7 @@ namespace Infrastructure.Messaging;
 ///   reasoning.constraint.*    source and result may not coexist
 ///   reasoning.deduction.universal.*   universal fact rule -> consequence
 ///   reasoning.deduction.conditional.* conditional premises -> consequence
+///   reasoning.arithmetic.add|subtract|multiply|divide|compare.* exact bounded rational operation
 ///   reasoning.epistemic.observational-equivalence.* shared evidence -> no selection
 ///   reasoning.epistemic.insufficient-evidence.*     governed insufficiency -> no selection
 ///   reasoning.causal-diagnostic.plan.*              hypotheses -> differing predictions/test
@@ -29,6 +34,7 @@ namespace Infrastructure.Messaging;
 ///   reasoning.constrained-planning.block.*          violated constraint -> blocked plan
 ///   reasoning.constrained-planning.evidence-branch.* governed evidence -> branch cursor
 ///   reasoning.constrained-planning.stop.*           observed stop condition -> stopped plan
+///   reasoning.constrained-planning.batch.*          workload/capacity/resources -> homogeneous batch schedule
 /// The suffix is opaque curriculum meaning, allowing new skill domains without
 /// adding code or a topic router.
 /// </summary>
@@ -47,6 +53,28 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const int MaximumRuleEvaluations = MaximumStates * MaximumRules;
     internal const int MaximumPlanningMinutes = 1440;
     internal const int MaximumPlanningResourceUnits = 1024;
+    internal const string NumericLeftVariable = "$numeric_left";
+    internal const string NumericRightVariable = "$numeric_right";
+    internal const string NumericResultVariable = "$numeric_result";
+    internal const string NumericComparisonVariable = "$numeric_comparison";
+    internal const int MaximumNumericLiteralCharacters = 64;
+    internal const string ScheduleWorkloadVariable = "$schedule_workload";
+    internal const string ScheduleBatchCapacityVariable = "$schedule_batch_capacity";
+    internal const string ScheduleBatchDurationVariable = "$schedule_batch_duration";
+    internal const string ScheduleAvailableResourcesVariable = "$schedule_available_resources";
+    internal const string ScheduleRequiredResourcesVariable = "$schedule_required_resources";
+    internal const string ScheduleTimeLimitVariable = "$schedule_time_limit";
+    internal const string ScheduleBatchCountVariable = "$schedule_batch_count";
+    internal const string ScheduleElapsedVariable = "$schedule_elapsed";
+    internal const string ScheduleFinalBatchSizeVariable = "$schedule_final_batch_size";
+    internal const string ScheduleStatusVariable = "$schedule_status";
+    internal const string ScheduleSignatureVariable = "$schedule_signature";
+    private static readonly string[] ScheduleInputVariables =
+    [ScheduleWorkloadVariable, ScheduleBatchCapacityVariable, ScheduleBatchDurationVariable,
+        ScheduleAvailableResourcesVariable, ScheduleRequiredResourcesVariable, ScheduleTimeLimitVariable];
+    private static readonly string[] ScheduleOutputVariables =
+    [ScheduleBatchCountVariable, ScheduleElapsedVariable, ScheduleFinalBatchSizeVariable,
+        ScheduleStatusVariable, ScheduleSignatureVariable];
     internal const string EpistemicStatusDimension = "epistemic_status";
     internal const string ObservationalEquivalenceValue = "observational_equivalence";
     internal const string InsufficientEvidenceValue = "insufficient_evidence";
@@ -130,6 +158,82 @@ internal static class LegendConnectGovernedReasoningExecutor
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
         ResolveMode(identity) is not null;
+
+    internal static bool IsComputedArithmeticResultVariable(string? operatorIdentity, string variable)
+    {
+        var mode = ResolveMode(operatorIdentity);
+        return IsArithmeticMode(mode) && variable == (mode == ReasoningMode.ArithmeticCompare
+            ? NumericComparisonVariable : NumericResultVariable);
+    }
+
+    internal static bool TryNormalizeArithmeticOperand(string value, out string canonical)
+    {
+        canonical = string.Empty;
+        if (!TryReadRational(value, out var rational))
+            return false;
+        canonical = FormatRational(rational);
+        return true;
+    }
+
+    internal static bool IsComputedScheduleResultVariable(string? operatorIdentity, string variable) =>
+        ResolveMode(operatorIdentity) == ReasoningMode.BatchSchedule &&
+        ScheduleOutputVariables.Contains(variable, StringComparer.Ordinal);
+
+    internal static bool TryNormalizeScheduleOperand(string variable, string value, out string canonical)
+    {
+        canonical = string.Empty;
+        if (!ScheduleInputVariables.Contains(variable, StringComparer.Ordinal) ||
+            !TryReadSignedInteger(value, out var integer) || integer <= 0)
+            return false;
+        var maximum = variable is ScheduleBatchDurationVariable or ScheduleTimeLimitVariable
+            ? MaximumPlanningMinutes
+            : variable is ScheduleAvailableResourcesVariable or ScheduleRequiredResourcesVariable
+                ? MaximumPlanningResourceUnits : long.MaxValue;
+        if (integer > maximum)
+            return false;
+        canonical = integer.ToString(CultureInfo.InvariantCulture);
+        return true;
+    }
+
+    /// <summary>
+    /// Checks a proposed controlled example through the same computation used
+    /// by serving. This proves numeric consistency only; it confers no
+    /// provenance, admission, family connection, or production eligibility.
+    /// </summary>
+    internal static bool TryEvaluateComputedOperatorSample(
+        string? operatorIdentity,
+        IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame,
+        IReadOnlyDictionary<string, string> sourceObserved,
+        out IReadOnlyDictionary<string, string> computed,
+        out IReadOnlyList<LegendGovernedScheduleStep> scheduleSteps,
+        out string? reason,
+        CancellationToken cancellationToken = default,
+        LegendGovernedComputedStructureReceipt? structuralConclusions = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        computed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        scheduleSteps = [];
+        reason = "governed_computation_schema_invalid";
+        var mode = ResolveMode(operatorIdentity);
+        if (!HasBoundedSemanticFrame(sourceFrame) || !HasBoundedSemanticFrame(resultFrame) ||
+            !(IsArithmeticMode(mode)
+                ? IsGovernedArithmeticFrames(sourceFrame, resultFrame, mode!.Value, operatorIdentity!, structuralConclusions)
+                : mode == ReasoningMode.BatchSchedule && IsGovernedBatchScheduleFrames(sourceFrame, resultFrame)))
+            return false;
+
+        var changed = TryApply(sourceFrame, resultFrame, sourceObserved, true, mode!.Value,
+            out _, out computed, out var conflicts, out scheduleSteps, out reason, cancellationToken);
+        // A consistent example may already state its computed value. It
+        // validates without asserting that a new serving proof was derived.
+        if (changed || (reason is null && conflicts.Count == 0 && computed.Count == resultFrame.Count))
+            return true;
+        reason ??= conflicts.Count > 0
+            ? "governed_computation_sample_contradicted" : "governed_computation_source_not_bound";
+        computed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        scheduleSteps = [];
+        return false;
+    }
 
     /// <summary>
     /// Applies the one canonical source-authority policy to a bounded external
@@ -589,8 +693,10 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal static LegendGovernedReasoningExecution Derive(
         IReadOnlyDictionary<string, string> initialValues,
         IReadOnlyList<LegendGovernedReasoningRule> rules,
-        IReadOnlyCollection<Guid> initialSemanticFamilyIds)
+        IReadOnlyCollection<Guid> initialSemanticFamilyIds,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (initialValues.Count == 0 || rules.Count == 0)
             return LegendGovernedReasoningExecution.Empty;
         if (rules.Count > MaximumRules)
@@ -659,6 +765,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                     ReasoningMode.Bidirectional));
             }
             else if (mode == ReasoningMode.Deduction ||
+                     IsArithmeticMode(mode) ||
+                     mode == ReasoningMode.BatchSchedule ||
                      IsEpistemicMode(mode) ||
                      IsCausalDiagnosticMode(mode) ||
                      IsConstrainedPlanningMode(mode))
@@ -701,9 +809,11 @@ internal static class LegendConnectGovernedReasoningExecutor
         queue.Enqueue(initialProof);
         var ruleEvaluations = 0;
         var conflictContexts = new Dictionary<string, ReasoningConflictContext>(StringComparer.Ordinal);
+        var unavailableComputationReasons = new SortedSet<string>(StringComparer.Ordinal);
 
         while (queue.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var current = queue.Dequeue();
             var currentIdentity = CanonicalProofState(
                 current.Values,
@@ -718,6 +828,7 @@ internal static class LegendConnectGovernedReasoningExecutor
 
             foreach (var rule in directional)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ruleEvaluations++;
                 if (ruleEvaluations > MaximumRuleEvaluations)
                     return new(false, false, true, [], []);
@@ -736,8 +847,20 @@ internal static class LegendConnectGovernedReasoningExecutor
                         rule.Mode,
                         out var nextValues,
                         out var instantiatedConclusions,
-                        out var applicationConflicts))
+                        out var applicationConflicts,
+                        out var scheduleSteps,
+                        out var failureReason,
+                        cancellationToken))
                 {
+                    if (failureReason is not null)
+                    {
+                        // Undefined arithmetic or an unavailable schedule is
+                        // a failed branch, not a contradiction of independent
+                        // facts or proofs. Retain the diagnostic only if the
+                        // complete bounded search yields no surviving state.
+                        unavailableComputationReasons.Add(failureReason);
+                        continue;
+                    }
                     foreach (var applicationConflict in applicationConflicts)
                     {
                         var existingStep = FindConclusionAuthority(
@@ -759,7 +882,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                             rule,
                             current,
                             proposedFamilies,
-                            instantiatedConclusions);
+                            instantiatedConclusions,
+                            scheduleSteps);
                         var context = BuildConflictContext(
                             applicationConflict,
                             current,
@@ -790,7 +914,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                         rule,
                         current,
                         nextFamilies,
-                        instantiatedConclusions)).ToArray();
+                        instantiatedConclusions,
+                        scheduleSteps)).ToArray();
                 var evidence = current.Depth == 0
                     ? rule.Rule.IndependentEvidenceCount
                     : Math.Min(current.EvidenceCount, rule.Rule.IndependentEvidenceCount);
@@ -863,19 +988,15 @@ internal static class LegendConnectGovernedReasoningExecutor
                 IsStrongerProof(candidate, best) ? candidate : best))
             .OrderBy(proof => CanonicalProofState(proof.Values, proof.SemanticFamilyIds), StringComparer.Ordinal)
             .ToArray();
-        return new(false, false, false, finalStates, conflicts);
+        return new(false, false, false, finalStates, conflicts,
+            finalStates.Length == 0 ? unavailableComputationReasons.FirstOrDefault() : null);
     }
 
     private static bool IsGovernedExecutableRule(LegendGovernedReasoningRule rule)
     {
         var mode = ResolveMode(rule.OperatorIdentity);
         if (mode is null || string.IsNullOrWhiteSpace(rule.TransitionSignature) ||
-            rule.SourceFrame.Count is < 1 or > MaximumFrameDimensions ||
-            rule.ResultFrame.Count is < 1 or > MaximumFrameDimensions ||
-            rule.SourceFrame.Any(item => string.IsNullOrWhiteSpace(item.Key) ||
-                string.IsNullOrWhiteSpace(item.Value)) ||
-            rule.ResultFrame.Any(item => string.IsNullOrWhiteSpace(item.Key) ||
-                string.IsNullOrWhiteSpace(item.Value)) ||
+            !HasBoundedSemanticFrame(rule.SourceFrame) || !HasBoundedSemanticFrame(rule.ResultFrame) ||
             rule.SourceSemanticFamilyIds.Count == 0 ||
             rule.ResultSemanticFamilyIds.Count == 0 ||
             rule.IndependentEvidenceCount <= 0)
@@ -902,6 +1023,10 @@ internal static class LegendConnectGovernedReasoningExecutor
         {
             return false;
         }
+        if (IsArithmeticMode(mode) && !IsGovernedArithmeticFrames(rule.SourceFrame, rule.ResultFrame, mode!.Value, rule.OperatorIdentity, rule.StructuralConclusions))
+            return false;
+        if (mode == ReasoningMode.BatchSchedule && !IsGovernedBatchScheduleFrames(rule.SourceFrame, rule.ResultFrame))
+            return false;
 
         if (rule.FamilyConnections.Count == 0 ||
             rule.FamilyConnections.Distinct().Count() != rule.FamilyConnections.Count ||
@@ -919,6 +1044,239 @@ internal static class LegendConnectGovernedReasoningExecutor
                rule.ResultSemanticFamilyIds.SetEquals(
                    rule.FamilyConnections.Select(item => item.ResultSemanticFamilyId));
     }
+
+    private static bool HasBoundedSemanticFrame(IReadOnlyDictionary<string, string> frame) =>
+        frame.Count is >= 1 and <= MaximumFrameDimensions &&
+        frame.All(item => !string.IsNullOrWhiteSpace(item.Key) && !string.IsNullOrWhiteSpace(item.Value));
+
+    private static bool IsGovernedArithmeticFrames(
+        IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame,
+        ReasoningMode mode,
+        string operatorIdentity,
+        LegendGovernedComputedStructureReceipt? structuralConclusions = null)
+    {
+        if (structuralConclusions is not null && !structuralConclusions.Matches(operatorIdentity, sourceFrame, resultFrame))
+            return false;
+        var output = mode == ReasoningMode.ArithmeticCompare
+            ? NumericComparisonVariable : NumericResultVariable;
+        // Roles belong to the authored operator, not to names or ordering of
+        // domain dimensions. Result-only computation prevents stored answers
+        // from masquerading as arithmetic and supports ordinary proof chains.
+        return sourceFrame.Values.Count(value => value == NumericLeftVariable) == 1 &&
+            sourceFrame.Values.Count(value => value == NumericRightVariable) == 1 &&
+            !sourceFrame.Values.Any(value => value.StartsWith("$numeric_", StringComparison.Ordinal) &&
+                value is not (NumericLeftVariable or NumericRightVariable)) &&
+            !sourceFrame.Values.Contains(NumericResultVariable, StringComparer.Ordinal) &&
+            !sourceFrame.Values.Contains(NumericComparisonVariable, StringComparer.Ordinal) &&
+            resultFrame.Values.Contains(output, StringComparer.Ordinal) &&
+            resultFrame.All(item => item.Value == output ||
+                (IsVariable(item.Value) && sourceFrame.Values.Contains(item.Value, StringComparer.Ordinal)) ||
+                structuralConclusions?.Authorizes(item.Key, item.Value) == true);
+    }
+
+    private static bool IsGovernedBatchScheduleFrames(
+        IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame) =>
+        ScheduleInputVariables.All(variable => sourceFrame.Values.Count(value => value == variable) == 1) &&
+        !sourceFrame.Values.Any(value => value.StartsWith("$schedule_", StringComparison.Ordinal) &&
+            !ScheduleInputVariables.Contains(value, StringComparer.Ordinal)) &&
+        !sourceFrame.Values.Any(value => ScheduleOutputVariables.Contains(value, StringComparer.Ordinal)) &&
+        ScheduleOutputVariables.All(variable => resultFrame.Values.Count(value => value == variable) == 1) &&
+        resultFrame.All(item => ScheduleOutputVariables.Contains(item.Value, StringComparer.Ordinal) ||
+            (IsVariable(item.Value) && sourceFrame.Values.Contains(item.Value, StringComparer.Ordinal)));
+
+    private static bool TryComputeBatchScheduleBindings(
+        IReadOnlyDictionary<string, string> bindings,
+        out IReadOnlyDictionary<string, string> computedBindings,
+        out IReadOnlyList<LegendGovernedScheduleStep> scheduleSteps,
+        out string? failureReason,
+        CancellationToken cancellationToken)
+    {
+        computedBindings = bindings;
+        scheduleSteps = [];
+        failureReason = "governed_schedule_operand_invalid";
+        var inputs = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var variable in ScheduleInputVariables)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!bindings.TryGetValue(variable, out var value) ||
+                !TryNormalizeScheduleOperand(variable, value, out var canonical) ||
+                !long.TryParse(canonical, NumberStyles.None, CultureInfo.InvariantCulture, out var number))
+                return false;
+            inputs.Add(variable, number);
+        }
+        var workload = inputs[ScheduleWorkloadVariable];
+        var capacity = inputs[ScheduleBatchCapacityVariable];
+        // Quotient/remainder ceiling avoids the overflowing workload+capacity-1 formula.
+        var count = workload / capacity + (workload % capacity == 0 ? 0 : 1);
+        if (count > MaximumStates)
+        {
+            failureReason = "governed_schedule_batch_bound_exceeded";
+            return false;
+        }
+        var available = (int)inputs[ScheduleAvailableResourcesVariable];
+        var required = (int)inputs[ScheduleRequiredResourcesVariable];
+        var lanes = Math.Min(available / required, (int)count);
+        if (lanes == 0)
+        {
+            failureReason = "governed_schedule_resources_insufficient";
+            return false;
+        }
+        var duration = (int)inputs[ScheduleBatchDurationVariable];
+        var steps = new List<LegendGovernedScheduleStep>((int)count);
+        var remaining = workload;
+        for (var index = 0; index < count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var size = Math.Min(remaining, capacity);
+            var start = checked(index / lanes * duration);
+            steps.Add(new LegendGovernedScheduleStep(index + 1, size, start,
+                checked(start + duration), checked(index % lanes * required + 1), required));
+            remaining -= size;
+        }
+        var elapsed = steps.Max(step => step.EndMinute);
+        var status = elapsed <= inputs[ScheduleTimeLimitVariable] ? "feasible" : "time_limit_exceeded";
+        var certificate = string.Join("\n", ScheduleInputVariables.Select(variable =>
+                variable + "=" + inputs[variable].ToString(CultureInfo.InvariantCulture))) + "\n" +
+            string.Join("\n", steps.Select(step => FormattableString.Invariant(
+                $"{step.BatchNumber}|{step.WorkUnits}|{step.StartMinute}|{step.EndMinute}|{step.FirstResourceUnit}|{step.ResourceUnitCount}")));
+        var signature = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            "governed-homogeneous-batch-schedule:v1\n" + certificate))).ToLowerInvariant();
+        var computed = new Dictionary<string, string>(bindings, StringComparer.Ordinal)
+        {
+            [ScheduleBatchCountVariable] = count.ToString(CultureInfo.InvariantCulture),
+            [ScheduleElapsedVariable] = elapsed.ToString(CultureInfo.InvariantCulture),
+            [ScheduleFinalBatchSizeVariable] = steps[^1].WorkUnits.ToString(CultureInfo.InvariantCulture),
+            [ScheduleStatusVariable] = status,
+            [ScheduleSignatureVariable] = signature
+        };
+        computedBindings = computed;
+        scheduleSteps = steps;
+        failureReason = null;
+        return true;
+    }
+
+    private static bool TryComputeArithmeticBindings(
+        ReasoningMode mode,
+        IReadOnlyDictionary<string, string> bindings,
+        out IReadOnlyDictionary<string, string> computedBindings)
+    {
+        computedBindings = bindings;
+        if (!bindings.TryGetValue(NumericLeftVariable, out var leftText) ||
+            !bindings.TryGetValue(NumericRightVariable, out var rightText) ||
+            !TryReadRational(leftText, out var left) || !TryReadRational(rightText, out var right))
+            return false;
+
+        string result;
+        var output = NumericResultVariable;
+        if (mode == ReasoningMode.ArithmeticCompare)
+        {
+            var comparison = (left.Numerator * right.Denominator)
+                .CompareTo(right.Numerator * left.Denominator);
+            result = comparison < 0 ? "less" : comparison > 0 ? "greater" : "equal";
+            output = NumericComparisonVariable;
+        }
+        else
+        {
+            BigInteger numerator;
+            BigInteger denominator;
+            switch (mode)
+            {
+                case ReasoningMode.ArithmeticAdd:
+                    numerator = left.Numerator * right.Denominator + right.Numerator * left.Denominator;
+                    denominator = left.Denominator * right.Denominator;
+                    break;
+                case ReasoningMode.ArithmeticSubtract:
+                    numerator = left.Numerator * right.Denominator - right.Numerator * left.Denominator;
+                    denominator = left.Denominator * right.Denominator;
+                    break;
+                case ReasoningMode.ArithmeticMultiply:
+                    numerator = left.Numerator * right.Numerator;
+                    denominator = left.Denominator * right.Denominator;
+                    break;
+                case ReasoningMode.ArithmeticDivide when !right.Numerator.IsZero:
+                    numerator = left.Numerator * right.Denominator;
+                    denominator = left.Denominator * right.Numerator;
+                    break;
+                default:
+                    return false;
+            }
+            if (!TryNormalizeRational(numerator, denominator, out var rational))
+                return false;
+            result = FormatRational(rational);
+        }
+        var computed = new Dictionary<string, string>(bindings, StringComparer.Ordinal)
+        {
+            [output] = result
+        };
+        computedBindings = computed;
+        return true;
+    }
+
+    private static bool TryReadRational(string text, out BoundedRational rational)
+    {
+        rational = default;
+        if (text.Length is < 1 or > MaximumNumericLiteralCharacters || text != text.Trim())
+            return false;
+        var separator = text.IndexOf('/');
+        if (separator >= 0)
+        {
+            return text.IndexOf('/', separator + 1) < 0 &&
+                TryReadSignedInteger(text[..separator], out var numerator) &&
+                TryReadSignedInteger(text[(separator + 1)..], out var denominator) &&
+                denominator > 0 && TryNormalizeRational(numerator, denominator, out rational);
+        }
+        var point = text.IndexOf('.');
+        if (point < 0)
+            return TryReadSignedInteger(text, out var integer) &&
+                TryNormalizeRational(integer, BigInteger.One, out rational);
+        var fraction = text[(point + 1)..];
+        var whole = text[..point];
+        if (fraction.Length is < 1 or > 18 || !fraction.All(IsAsciiDigit) ||
+            !TryReadSignedInteger(whole, out _) || whole.TrimStart('+', '-').Length > 19)
+            return false;
+        var combined = whole + fraction;
+        return BigInteger.TryParse(combined, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var scaled) &&
+            TryNormalizeRational(scaled, BigInteger.Pow(10, fraction.Length), out rational);
+    }
+
+    private static bool TryReadSignedInteger(string text, out BigInteger value)
+    {
+        value = default;
+        var digits = text.StartsWith('+') || text.StartsWith('-') ? text[1..] : text;
+        return digits.Length is >= 1 and <= 19 && digits.All(IsAsciiDigit) &&
+            BigInteger.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out value) &&
+            value >= long.MinValue && value <= long.MaxValue;
+    }
+
+    private static bool IsAsciiDigit(char value) => value is >= '0' and <= '9';
+
+    private static bool TryNormalizeRational(BigInteger numerator, BigInteger denominator, out BoundedRational rational)
+    {
+        rational = default;
+        if (denominator.IsZero)
+            return false;
+        if (denominator.Sign < 0)
+        {
+            numerator = -numerator;
+            denominator = -denominator;
+        }
+        var divisor = BigInteger.GreatestCommonDivisor(BigInteger.Abs(numerator), denominator);
+        numerator /= divisor;
+        denominator /= divisor;
+        if (numerator < long.MinValue || numerator > long.MaxValue || denominator > long.MaxValue)
+            return false;
+        rational = new BoundedRational(numerator, denominator);
+        return true;
+    }
+
+    private readonly record struct BoundedRational(BigInteger Numerator, BigInteger Denominator);
+
+    private static string FormatRational(BoundedRational rational) => rational.Denominator.IsOne
+        ? rational.Numerator.ToString(CultureInfo.InvariantCulture)
+        : rational.Numerator.ToString(CultureInfo.InvariantCulture) + "/" +
+            rational.Denominator.ToString(CultureInfo.InvariantCulture);
 
     private static bool IsGovernedEpistemicRule(
         LegendGovernedReasoningRule rule,
@@ -1417,7 +1775,8 @@ internal static class LegendConnectGovernedReasoningExecutor
         DirectionalRule rule,
         LegendGovernedReasoningProof current,
         IReadOnlySet<Guid> resultFamilies,
-        IReadOnlyDictionary<string, string> conclusions) =>
+        IReadOnlyDictionary<string, string> conclusions,
+        IReadOnlyList<LegendGovernedScheduleStep>? scheduleSteps = null) =>
         new(
             rule.Rule.TransitionSignature,
             rule.Rule.OperatorIdentity,
@@ -1437,7 +1796,8 @@ internal static class LegendConnectGovernedReasoningExecutor
             rule.FamilyConnections.Any(item =>
                 current.SemanticFamilyIds.Contains(item.SourceSemanticFamilyId) &&
                 item.HasExplicitGovernedTransfer),
-            rule.Reversed);
+            rule.Reversed,
+            scheduleSteps);
 
     private static LegendGovernedReasoningProofStep? FindConclusionAuthority(
         LegendGovernedReasoningProof proof,
@@ -1638,10 +1998,30 @@ internal static class LegendConnectGovernedReasoningExecutor
         ReasoningMode mode,
         out IReadOnlyDictionary<string, string> nextValues,
         out IReadOnlyDictionary<string, string> instantiatedConclusions,
-        out IReadOnlyList<ReasoningApplicationConflict> conflicts)
+        out IReadOnlyList<ReasoningApplicationConflict> conflicts,
+        out IReadOnlyList<LegendGovernedScheduleStep> scheduleSteps,
+        out string? failureReason,
+        CancellationToken cancellationToken)
     {
         conflicts = [];
+        scheduleSteps = [];
+        failureReason = null;
         if (!TryBindFrame(sourceFrame, currentValues, null, out var bindings))
+        {
+            nextValues = currentValues;
+            instantiatedConclusions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return false;
+        }
+
+        if (IsArithmeticMode(mode) && !TryComputeArithmeticBindings(mode, bindings, out bindings))
+        {
+            nextValues = currentValues;
+            instantiatedConclusions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            failureReason = "governed_arithmetic_operation_undefined_or_out_of_bounds";
+            return false;
+        }
+        if (mode == ReasoningMode.BatchSchedule &&
+            !TryComputeBatchScheduleBindings(bindings, out bindings, out scheduleSteps, out failureReason, cancellationToken))
         {
             nextValues = currentValues;
             instantiatedConclusions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -2311,6 +2691,20 @@ internal static class LegendConnectGovernedReasoningExecutor
             return ReasoningMode.Bidirectional;
         if (value == "reasoning.constraint" || value.StartsWith("reasoning.constraint.", StringComparison.Ordinal))
             return ReasoningMode.Constraint;
+        if (value == "reasoning.constrained-planning.batch" ||
+            value.StartsWith("reasoning.constrained-planning.batch.", StringComparison.Ordinal))
+            return ReasoningMode.BatchSchedule;
+        foreach (var arithmetic in new[]
+                 {
+                     ("add", ReasoningMode.ArithmeticAdd), ("subtract", ReasoningMode.ArithmeticSubtract),
+                     ("multiply", ReasoningMode.ArithmeticMultiply), ("divide", ReasoningMode.ArithmeticDivide),
+                     ("compare", ReasoningMode.ArithmeticCompare)
+                 })
+        {
+            var prefix = "reasoning.arithmetic." + arithmetic.Item1;
+            if (value == prefix || value.StartsWith(prefix + ".", StringComparison.Ordinal))
+                return arithmetic.Item2;
+        }
         if (value == "reasoning.deduction.universal" ||
             value.StartsWith("reasoning.deduction.universal.", StringComparison.Ordinal) ||
             value == "reasoning.deduction.conditional" ||
@@ -2367,12 +2761,22 @@ internal static class LegendConnectGovernedReasoningExecutor
             ReasoningMode.ConstrainedPlanningEvidenceBranch or
             ReasoningMode.ConstrainedPlanningStop;
 
+    private static bool IsArithmeticMode(ReasoningMode? mode) =>
+        mode is ReasoningMode.ArithmeticAdd or ReasoningMode.ArithmeticSubtract or
+            ReasoningMode.ArithmeticMultiply or ReasoningMode.ArithmeticDivide or ReasoningMode.ArithmeticCompare;
+
     private enum ReasoningMode
     {
         Forward,
         Bidirectional,
         Constraint,
         Deduction,
+        ArithmeticAdd,
+        ArithmeticSubtract,
+        ArithmeticMultiply,
+        ArithmeticDivide,
+        ArithmeticCompare,
+        BatchSchedule,
         ObservationalEquivalence,
         InsufficientEvidence,
         CausalDiagnosticPlan,
@@ -2422,6 +2826,73 @@ internal static class LegendConnectGovernedReasoningExecutor
         string SafetyStatus);
 }
 
+// Only the curriculum authority may supply these after current graph/parent qualification.
+// These internal receipts grant exact derived graph coordinates, never arbitrary literal facts.
+internal sealed record LegendGovernedComputedRelationEvidence(
+    Guid RelationEvidenceId, Guid SourceNodeEvidenceId, Guid TargetNodeEvidenceId,
+    string RelationKind, string SourceDimension, string TargetDimension, string? ClauseKey);
+
+internal sealed class LegendGovernedComputedStructureReceipt
+{
+    private readonly string _operatorIdentity;
+    private readonly Dictionary<string, string> _sourceFrame;
+    private readonly Dictionary<string, string> _resultFrame;
+    private readonly HashSet<string> _coordinates;
+    internal Guid SourceExampleId { get; }
+    internal Guid ResultExampleId { get; }
+    internal IReadOnlyList<LegendGovernedComputedRelationEvidence> Relations { get; }
+
+    private LegendGovernedComputedStructureReceipt(Guid sourceExampleId, Guid resultExampleId,
+        string operatorIdentity, IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame, HashSet<string> coordinates,
+        IReadOnlyList<LegendGovernedComputedRelationEvidence> relations)
+    {
+        SourceExampleId = sourceExampleId;
+        ResultExampleId = resultExampleId;
+        _operatorIdentity = operatorIdentity;
+        _sourceFrame = new(sourceFrame, StringComparer.Ordinal);
+        _resultFrame = new(resultFrame, StringComparer.Ordinal);
+        _coordinates = coordinates;
+        Relations = Array.AsReadOnly(relations.ToArray());
+    }
+
+    internal static LegendGovernedComputedStructureReceipt? FromGraph(
+        Guid sourceExampleId, Guid resultExampleId, string operatorIdentity,
+        IReadOnlyDictionary<string, string> sourceFrame, IReadOnlyDictionary<string, string> resultFrame,
+        IReadOnlyList<LegendGovernedComputedRelationEvidence> relations)
+    {
+        if (sourceExampleId == Guid.Empty || resultExampleId == Guid.Empty || sourceExampleId == resultExampleId ||
+            string.IsNullOrWhiteSpace(operatorIdentity) || relations.Count == 0)
+            return null;
+        var coordinates = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var relation in relations)
+        {
+            if (relation.RelationEvidenceId == Guid.Empty || relation.SourceNodeEvidenceId == Guid.Empty ||
+                relation.TargetNodeEvidenceId == Guid.Empty || string.IsNullOrWhiteSpace(relation.RelationKind) ||
+                string.IsNullOrWhiteSpace(relation.SourceDimension) || string.IsNullOrWhiteSpace(relation.TargetDimension) ||
+                !resultFrame.ContainsKey(relation.SourceDimension) || !resultFrame.ContainsKey(relation.TargetDimension))
+                return null;
+            var coordinate = LegendConnectCurriculumService.StructuralRelationFrameDimension(relation.RelationKind,
+                relation.SourceDimension, relation.TargetDimension, relation.ClauseKey);
+            if (!resultFrame.TryGetValue(coordinate, out var value) || value != "present")
+                return null;
+            coordinates.Add(coordinate);
+        }
+        return new(sourceExampleId, resultExampleId, operatorIdentity, sourceFrame, resultFrame, coordinates, relations);
+    }
+
+    internal bool Matches(string operatorIdentity, IReadOnlyDictionary<string, string> sourceFrame,
+        IReadOnlyDictionary<string, string> resultFrame) =>
+        string.Equals(operatorIdentity, _operatorIdentity, StringComparison.Ordinal) &&
+        SameFrame(_sourceFrame, sourceFrame) && SameFrame(_resultFrame, resultFrame);
+
+    internal bool Authorizes(string dimension, string value) => value == "present" && _coordinates.Contains(dimension);
+
+    private static bool SameFrame(IReadOnlyDictionary<string, string> expected, IReadOnlyDictionary<string, string> actual) =>
+        expected.Count == actual.Count && expected.All(item => actual.TryGetValue(item.Key, out var value) &&
+            string.Equals(value, item.Value, StringComparison.Ordinal));
+}
+
 internal sealed record LegendGovernedReasoningFamilyConnection(
     Guid SourceSemanticFamilyId,
     Guid ResultSemanticFamilyId,
@@ -2437,7 +2908,10 @@ internal sealed record LegendGovernedReasoningRule(
     IReadOnlySet<Guid> SourceSemanticFamilyIds,
     IReadOnlySet<Guid> ResultSemanticFamilyIds,
     IReadOnlyList<string> IndependentEvidenceIdentities,
-    IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections);
+    IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections)
+{
+    internal LegendGovernedComputedStructureReceipt? StructuralConclusions { get; init; }
+}
 
 internal sealed record LegendGovernedReasoningProofStep(
     string TransitionSignature,
@@ -2450,7 +2924,16 @@ internal sealed record LegendGovernedReasoningProofStep(
     IReadOnlySet<Guid> SourceSemanticFamilyIds,
     IReadOnlySet<Guid> ResultSemanticFamilyIds,
     bool HasExplicitGovernedTransfer,
-    bool Reversed);
+    bool Reversed,
+    IReadOnlyList<LegendGovernedScheduleStep>? ScheduleSteps = null);
+
+internal sealed record LegendGovernedScheduleStep(
+    int BatchNumber,
+    long WorkUnits,
+    int StartMinute,
+    int EndMinute,
+    int FirstResourceUnit,
+    int ResourceUnitCount);
 
 internal sealed record LegendGovernedReasoningProof(
     IReadOnlyDictionary<string, string> Values,
@@ -2489,7 +2972,8 @@ internal sealed record LegendGovernedReasoningExecution(
     bool DerivedContradiction,
     bool BudgetExceeded,
     IReadOnlyList<LegendGovernedReasoningProof> DerivedStates,
-    IReadOnlyList<LegendGovernedReasoningConflict> Conflicts)
+    IReadOnlyList<LegendGovernedReasoningConflict> Conflicts,
+    string? FailureReasonCode = null)
 {
     internal static readonly LegendGovernedReasoningExecution Empty = new(false, false, false, [], []);
 }

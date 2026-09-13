@@ -15,7 +15,6 @@ internal sealed class MessagingRealtimeNotificationHostedService : BackgroundSer
     private readonly ILogger<MessagingRealtimeNotificationHostedService> _logger;
     private readonly TimeSpan _pollInterval;
     private readonly HashSet<Guid> _recentMessageIds = new();
-    private readonly Queue<Guid> _recentMessageOrder = new();
     private DateTime _lastSeenUtc;
 
     public MessagingRealtimeNotificationHostedService(
@@ -63,10 +62,10 @@ internal sealed class MessagingRealtimeNotificationHostedService : BackgroundSer
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-        var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+        var remembered = _recentMessageIds.ToArray();
         var messages = await db.InternalMessages
             .AsNoTracking()
-            .Where(x => x.SentUtc >= _lastSeenUtc)
+            .Where(x => x.SentUtc >= _lastSeenUtc && !remembered.Contains(x.Id))
             .OrderBy(x => x.SentUtc)
             .Take(100)
             .Select(x => new PendingMessage(x.Id, x.ConversationId, x.SentUtc))
@@ -76,10 +75,6 @@ internal sealed class MessagingRealtimeNotificationHostedService : BackgroundSer
 
         foreach (var message in messages)
         {
-            _lastSeenUtc = message.SentUtc;
-            if (!RememberMessage(message.Id))
-                continue;
-
             var participants = await db.MessageConversationParticipants
                 .AsNoTracking()
                 .Where(x => x.ConversationId == message.ConversationId && x.IsActive)
@@ -87,48 +82,19 @@ internal sealed class MessagingRealtimeNotificationHostedService : BackgroundSer
                 .Select(x => new PendingParticipant(x.UserId, x.ParticipantType))
                 .ToListAsync(cancellationToken);
 
-            MessagingConversationDetail? conversation = null;
-            foreach (var participant in participants)
-            {
-                var result = await messagingService.GetConversationAsync(
-                    new MessagingActor(participant.UserId, participant.ParticipantType),
-                    message.ConversationId,
-                    cancellationToken);
-                if (result.Succeeded)
-                {
-                    conversation = result.Conversation;
-                    break;
-                }
-            }
-
-            if (conversation is not null)
-            {
-                await _realtimePublisher.PublishAsync(
-                    new MessagingRealtimeEvent(
-                        "messageReceived",
-                        conversation.Id,
-                        message.Id,
-                        message.SentUtc,
-                        conversation.Participants
-                            .Select(x => new MessagingRealtimeRecipient(x.UserId, x.ParticipantType))
-                            .ToArray()),
-                    cancellationToken);
-            }
+            await _realtimePublisher.PublishAsync(
+                new MessagingRealtimeEvent(
+                    "messageReceived", message.ConversationId, message.Id, message.SentUtc,
+                    participants.Select(participant => new MessagingRealtimeRecipient(
+                        participant.UserId, participant.ParticipantType)).ToArray()),
+                cancellationToken);
+            // Only successful publication advances the cursor. Excluding remembered
+            // IDs in SQL lets subsequent pages drain identical SentUtc timestamps.
+            if (message.SentUtc > _lastSeenUtc)
+                _recentMessageIds.Clear();
+            _lastSeenUtc = message.SentUtc;
+            _recentMessageIds.Add(message.Id);
         }
-    }
-
-    private bool RememberMessage(Guid messageId)
-    {
-        if (!_recentMessageIds.Add(messageId))
-            return false;
-
-        _recentMessageOrder.Enqueue(messageId);
-        while (_recentMessageOrder.Count > 1_000)
-        {
-            _recentMessageIds.Remove(_recentMessageOrder.Dequeue());
-        }
-
-        return true;
     }
 
     private static int ParsePollingIntervalSeconds(string? configuredValue)

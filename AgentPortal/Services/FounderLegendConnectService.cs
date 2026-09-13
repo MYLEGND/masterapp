@@ -240,25 +240,29 @@ public sealed class FounderLegendConnectService
             string input,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.DecideResearchNeededAsync(
             input,
             sourceLanguageCode,
             internalInference,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
     }
 
     internal async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         ClaimsPrincipal user,
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         var outcome = await _operations.ExecuteResearchAsync(
             request,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
         var lineage = LegendConnectResearchRetentionContracts
             .CreateExternalObservation(outcome);
         outcome = outcome with
@@ -302,7 +306,8 @@ public sealed class FounderLegendConnectService
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
             string sourceLanguageCode,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.TryInferConversationWithDiscourseAsync(
@@ -310,7 +315,8 @@ public sealed class FounderLegendConnectService
             context,
             discourseState,
             cancellationToken,
-            sourceLanguageCode);
+            sourceLanguageCode,
+            providerPolicy);
     }
 
     /// <summary>
@@ -326,14 +332,50 @@ public sealed class FounderLegendConnectService
             LegendConnectDiscourseStateSnapshot? discourseState,
             string sourceLanguageCode,
             LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+
+        // An undeclared policy is the existing provider-enabled default, so
+        // the request keeps using the operations authority's established
+        // entry point. Only a request that actually declares a policy needs
+        // the policy-carrying entry point.
+        return providerPolicy is null
+            ? await _operations.TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode)
+            : await _operations.TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode,
+                providerPolicy);
+    }
+
+    /// <summary>
+    /// Founder-gated observational content planning through the existing
+    /// operations authority. Returns governed intent/read scope without native
+    /// answer generation, provider inference, or executing the selected tool.
+    /// </summary>
+    internal async Task<LegendConnectContentBoundResponseMeaningPlanResult>
+        TryBindConversationContentAsync(
+            ClaimsPrincipal user,
+            string input,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            string sourceLanguageCode,
             CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.TryInferConversationWithReadOnlyContentAsync(
+        return await _operations.TryBindConversationContentAsync(
             input,
-            context,
             discourseState,
-            receipt,
             cancellationToken,
             sourceLanguageCode);
     }
@@ -490,10 +532,14 @@ public sealed class FounderLegendConnectService
 
     public async Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
         ClaimsPrincipal user,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.GetProviderCapacityAsync(cancellationToken);
+        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
+        return nativeOnly
+            ? await _operations.GetProviderCapacityAsync(cancellationToken, providerPolicy)
+            : await _operations.GetProviderCapacityAsync(cancellationToken);
     }
 
     /// <summary>
@@ -505,9 +551,11 @@ public sealed class FounderLegendConnectService
     internal async Task<FounderLegendOperationalDiagnosticsSnapshot>
         GetOperationalDiagnosticsAsync(
             ClaimsPrincipal user,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
         var unavailablePolicy = new LegendConnectRuntimePolicySnapshot(
             false, 0, 0, 0, false, true, "Shadow", 0.98m,
             null, null, DateTime.MinValue);
@@ -539,12 +587,16 @@ public sealed class FounderLegendConnectService
             : await ReadOperationalDiagnosticStageAsync(
                 "production_readiness",
                 unavailableReadiness,
-                token => _runtimePolicy.GetReadinessAsync(token),
+                token => nativeOnly
+                    ? _runtimePolicy.GetReadinessAsync(token, providerPolicy)
+                    : _runtimePolicy.GetReadinessAsync(token),
                 cancellationToken);
         var capacity = await ReadOperationalDiagnosticStageAsync(
             "provider_capacity",
             unavailableCapacity,
-            token => _operations.GetProviderCapacityAsync(token),
+            token => nativeOnly
+                ? _operations.GetProviderCapacityAsync(token, providerPolicy)
+                : _operations.GetProviderCapacityAsync(token),
             cancellationToken);
 
         return new(
@@ -552,6 +604,23 @@ public sealed class FounderLegendConnectService
             readiness.Value,
             capacity.Value,
             [policy.Stage, readiness.Stage, capacity.Stage]);
+    }
+
+    internal async Task<FounderLegendOperationalDiagnosticRead<LegendConnectFounderSectionPageSnapshot?>>
+        GetOperationalDiagnosticSectionAsync(
+            ClaimsPrincipal user,
+            string section,
+            string language,
+            CancellationToken cancellationToken = default)
+    {
+        // The existing section authority resolves the active Founder account.
+        // Denials must propagate rather than become diagnostic receipts.
+        FounderGuard.EnsureFounderOrThrow(user);
+        return await ReadOperationalDiagnosticStageAsync<LegendConnectFounderSectionPageSnapshot?>(
+            "selected_section_page",
+            null,
+            async token => await GetSectionPageAsync(user, section, language, null, null, null, token),
+            cancellationToken);
     }
 
     private static async Task<FounderLegendOperationalDiagnosticRead<T>>
@@ -567,9 +636,9 @@ public sealed class FounderLegendConnectService
 
         try
         {
-            return FounderLegendOperationalDiagnosticRead<T>.Available(
-                name,
-                await read(stageBudget.Token));
+            var value = await read(stageBudget.Token);
+            stageBudget.Token.ThrowIfCancellationRequested();
+            return FounderLegendOperationalDiagnosticRead<T>.Available(name, value);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -583,13 +652,18 @@ public sealed class FounderLegendConnectService
                 fallback,
                 OperationalDiagnosticStageBudget);
         }
-        catch (Exception)
+        catch (ForbidResultException)
+        {
+            throw;
+        }
+        catch (Exception exception)
         {
             // Diagnostics are an observation surface. A failed observation is
             // reported as such and must not suppress the other authorities.
             return FounderLegendOperationalDiagnosticRead<T>.Failed(
                 name,
-                fallback);
+                fallback,
+                exception.GetType().Name);
         }
     }
 
@@ -635,9 +709,11 @@ public sealed class FounderLegendConnectService
             ClaimsPrincipal user,
             string language,
             string? pair,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
         var knowledge = await _operations.GetLanguageKnowledgeAsync(
             language,
             cancellationToken);
@@ -657,7 +733,9 @@ public sealed class FounderLegendConnectService
                 false,
                 "Legend Connect runtime policy authority is unavailable.",
                 [], 0, 0, 0, 0, 0)
-            : await _runtimePolicy.GetReadinessAsync(cancellationToken);
+            : nativeOnly
+                ? await _runtimePolicy.GetReadinessAsync(cancellationToken, providerPolicy)
+                : await _runtimePolicy.GetReadinessAsync(cancellationToken);
         return new(
             knowledge,
             pairHealth,
@@ -673,10 +751,14 @@ public sealed class FounderLegendConnectService
     public async Task<LegendConnectMetricDetailSnapshot> GetMetricDetailAsync(
         ClaimsPrincipal user,
         string? metricKey,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.GetMetricDetailAsync(metricKey, cancellationToken);
+        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
+        return nativeOnly
+            ? await _operations.GetMetricDetailAsync(metricKey, cancellationToken, providerPolicy)
+            : await _operations.GetMetricDetailAsync(metricKey, cancellationToken);
     }
 
     /// <summary>
@@ -686,17 +768,21 @@ public sealed class FounderLegendConnectService
     /// </summary>
     public async Task<FounderLegendConnectLiveMetricsSnapshot> GetLiveMetricsAsync(
         ClaimsPrincipal user,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var dashboard = await _operations.GetDashboardAsync(cancellationToken);
-        var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
+        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
+        var dashboard = await _operations.GetDashboardCountersAsync(cancellationToken, providerPolicy);
+        var translationQuality = await _operations.GetTranslationQualitySummaryAsync(cancellationToken);
         var accountScale = _entitlements is null
             ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
             : await _entitlements.GetFounderScaleAsync(cancellationToken);
         var readiness = _runtimePolicy is null
             ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
-            : await _runtimePolicy.GetReadinessAsync(cancellationToken);
+            : nativeOnly
+                ? await _runtimePolicy.GetReadinessAsync(cancellationToken, providerPolicy)
+                : await _runtimePolicy.GetReadinessAsync(cancellationToken);
         var runtimeAuditCount = _runtimePolicy is null
             ? 0
             : (await _runtimePolicy.GetRecentAuditAsync(cancellationToken: cancellationToken)).Count;
@@ -804,6 +890,23 @@ public sealed class FounderLegendConnectService
         return new FounderLegendConnectOperationResult(true, "Autonomous acquisition is paused. Live communication and Azure fallback remain available.");
     }
 
+    public async Task<TranslationLimitsPageVm> GetTranslationLimitsAsync(ClaimsPrincipal user,
+        string? search, CancellationToken cancellationToken = default)
+    {
+        await ResolveFounderActorAsync(user, cancellationToken);
+        if (_entitlements is null) throw new InvalidOperationException("Translation entitlement authority is unavailable.");
+        return new(await _entitlements.GetGlobalLimitAsync(cancellationToken),
+            await _entitlements.SearchFounderAccountsAsync(search, 8, cancellationToken));
+    }
+
+    public async Task UpdateGlobalTranslationLimitAsync(ClaimsPrincipal user, TranslationGlobalLimitInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        if (_entitlements is null) throw new InvalidOperationException("Translation entitlement authority is unavailable.");
+        await _entitlements.SetGlobalLimitAsync(founder, input.CharacterAllowance ?? -1, input.Version, cancellationToken);
+    }
+
     public async Task<FounderLegendConnectEntitlementResult> UpdateEntitlementAsync(
         ClaimsPrincipal user,
         FounderLegendConnectEntitlementInput input,
@@ -823,31 +926,24 @@ public sealed class FounderLegendConnectService
         {
             return new FounderLegendConnectEntitlementResult(
                 false,
-                "Translation access can be managed only for active, current-paying Client CRM accounts.");
+                "Choose an active agent or an eligible current-paying member account.");
         }
-
-        var grant = await _messaging.SetControlledResourceGrantAsync(
-            new SetControlledResourceGrantCommand(
-                new MessagingActor(founder, MessagingParticipantTypes.Agent),
-                ControlledResourceTypes.LanguageTranslation,
-                targetUserId,
-                participantType,
-                input.AccessGranted),
-            cancellationToken);
-        if (!grant.Succeeded)
-            return new FounderLegendConnectEntitlementResult(false, grant.ErrorMessage ?? "Legend could not update translation access.");
-
-        // Permission controls whether a provider call can start. Retaining a
-        // prior entitlement on revoke preserves the audit trail while ensuring
-        // it cannot be consumed until access is granted again.
-        if (!input.AccessGranted)
-            return new FounderLegendConnectEntitlementResult(true, "Translation access was revoked. Existing entitlement history remains auditable.");
 
         var mode = input.EntitlementMode?.Trim() ?? string.Empty;
         var unlimited = string.Equals(mode, "Unlimited", StringComparison.OrdinalIgnoreCase);
         long allowance;
         string source;
-        if (unlimited)
+        if (!input.AccessGranted)
+        {
+            allowance = 0;
+            source = "GlobalPolicy";
+        }
+        else if (string.Equals(mode, "Global", StringComparison.OrdinalIgnoreCase))
+        {
+            allowance = (await _entitlements.GetGlobalLimitAsync(cancellationToken)).CharacterAllowance;
+            source = "GlobalPolicy";
+        }
+        else if (unlimited)
         {
             allowance = 0;
             source = "FounderUnlimited";
@@ -870,6 +966,24 @@ public sealed class FounderLegendConnectService
         if (allowance < 0)
             return new FounderLegendConnectEntitlementResult(false, "Enter a non-negative monthly character allowance.");
 
+        var grant = await _messaging.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                new MessagingActor(founder, MessagingParticipantTypes.Agent),
+                ControlledResourceTypes.LanguageTranslation,
+                targetUserId,
+                participantType,
+                input.AccessGranted),
+            cancellationToken);
+        if (!grant.Succeeded)
+            return new FounderLegendConnectEntitlementResult(false, grant.ErrorMessage ?? "Legend could not update translation access.");
+
+        // Permission controls whether a provider call can start. Retaining a
+        // prior entitlement on revoke preserves the audit trail while ensuring
+        // it cannot be consumed until access is granted again.
+        if (!input.AccessGranted)
+            return new FounderLegendConnectEntitlementResult(true, "Translation access was revoked. Existing entitlement history remains auditable.");
+
+
         try
         {
             await _entitlements.SetEntitlementAsync(
@@ -879,7 +993,7 @@ public sealed class FounderLegendConnectService
                     allowance,
                     unlimited,
                     source,
-                    IsFounderOverride: true),
+                    IsFounderOverride: source != "GlobalPolicy"),
                 cancellationToken);
         }
         catch (ArgumentException exception)
@@ -1836,7 +1950,9 @@ internal sealed record FounderLegendOperationalDiagnosticsSnapshot(
 internal sealed record FounderLegendOperationalDiagnosticStage(
     string Name,
     string State,
-    string Detail);
+    string Detail,
+    string? ReasonCode = null,
+    string? ExceptionType = null);
 
 internal sealed record FounderLegendOperationalDiagnosticRead<T>(
     T Value,
@@ -1862,17 +1978,22 @@ internal sealed record FounderLegendOperationalDiagnosticRead<T>(
             new(
                 name,
                 "timed_out",
-                $"The canonical authority exceeded its {budget.TotalSeconds:F0}-second diagnostic stage budget."));
+                $"The canonical authority exceeded its {budget.TotalSeconds:F0}-second diagnostic stage budget.",
+                "operational_diagnostic_stage_deadline_exceeded",
+                nameof(OperationCanceledException)));
 
     public static FounderLegendOperationalDiagnosticRead<T> Failed(
         string name,
-        T fallback) =>
+        T fallback,
+        string? exceptionType = null) =>
         new(
             fallback,
             new(
                 name,
                 "failed",
-                "The canonical authority failed while producing this diagnostic stage."));
+                "The canonical authority failed while producing this diagnostic stage.",
+                "operational_diagnostic_stage_failed",
+                exceptionType));
 }
 
 internal sealed record FounderLegendLanguageDiagnosticSnapshot(

@@ -38,11 +38,49 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         _logger = logger;
     }
 
+    public async Task<TranslationGlobalLimitSnapshot> GetGlobalLimitAsync(CancellationToken cancellationToken = default)
+    {
+        var policy = await _db.Set<LegendTranslationGlobalPolicy>().AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == 1, cancellationToken);
+        return new(policy?.MonthlyCharacterAllowance ?? DefaultAllowance(), policy?.Version, policy?.UpdatedUtc);
+    }
+
+    public async Task<TranslationGlobalLimitSnapshot> SetGlobalLimitAsync(string founderUserId,
+        long characterAllowance, Guid? expectedVersion, CancellationToken cancellationToken = default)
+    {
+        if (!await _access.IsCanonicalFounderManagerAsync(
+            new MessagingActor(founderUserId, MessagingParticipantTypes.Agent), cancellationToken))
+            throw new UnauthorizedAccessException("Founder authority is required to manage translation limits.");
+        if (characterAllowance < 0)
+            throw new ArgumentException("Enter a non-negative monthly character allowance.");
+        var policy = await _db.Set<LegendTranslationGlobalPolicy>()
+            .SingleOrDefaultAsync(item => item.Id == 1, cancellationToken);
+        if (policy?.Version != expectedVersion)
+            throw new DbUpdateConcurrencyException("The global limit changed. Refresh before saving.");
+        if (policy is null)
+        {
+            policy = new LegendTranslationGlobalPolicy();
+            _db.Add(policy);
+        }
+        policy.MonthlyCharacterAllowance = characterAllowance;
+        policy.Version = Guid.NewGuid();
+        policy.UpdatedUtc = DateTime.UtcNow;
+        policy.UpdatedByUserId = Normalize(founderUserId);
+        await _db.SaveChangesAsync(cancellationToken);
+        return new(policy.MonthlyCharacterAllowance, policy.Version, policy.UpdatedUtc);
+    }
+
     public async Task<TranslationAccountEntitlementSnapshot> GetSnapshotAsync(
         MessagingActor account,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        (await ReadAccountSnapshotAsync(account, cancellationToken)).Entitlement;
+
+    private async Task<(TranslationAccountEntitlementSnapshot Entitlement, LegendTranslationUsagePeriod? Usage)> ReadAccountSnapshotAsync(
+        MessagingActor account,
+        CancellationToken cancellationToken)
     {
-        account = Normalize(account);
+        var identity = await ResolveAccountAsync(account, cancellationToken);
+        account = identity.Account;
         var access = await _access.GetAccessAsync(
             account,
             ControlledResourceTypes.LanguageTranslation,
@@ -54,14 +92,17 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                 item.UserId == account.UserId &&
                 item.ParticipantType == account.ParticipantType,
                 cancellationToken);
-        var usage = await _db.Set<LegendTranslationUsagePeriod>()
+        var usageRows = await _db.Set<LegendTranslationUsagePeriod>()
             .AsNoTracking()
-            .SingleOrDefaultAsync(item =>
-                item.UserId == account.UserId &&
+            .Where(item =>
+                identity.UserIdForms.Contains(item.UserId) &&
                 item.ParticipantType == account.ParticipantType &&
-                item.PeriodStart == period,
-                cancellationToken);
-        return ToSnapshot(access, entitlement, usage, period);
+                item.PeriodStart == period)
+            .ToListAsync(cancellationToken);
+        // Historical alias balances remain visible until they settle or the
+        // period ends. Reading an identity alias must never restore its quota.
+        var usage = AggregateUsage(usageRows);
+        return (ToSnapshot(access, entitlement, usage, period, (await GetGlobalLimitAsync(cancellationToken)).CharacterAllowance), usage);
     }
 
     public async Task<TranslationFounderAccountSearchSnapshot> SearchFounderAccountsAsync(
@@ -69,7 +110,6 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         int take,
         CancellationToken cancellationToken = default)
     {
-        var currentPeriod = CurrentPeriod();
         var normalizedSearch = NormalizeSearch(search);
         var limit = Math.Clamp(take, 1, 8);
         var profiles = ActiveCurrentPayingClients();
@@ -93,13 +133,23 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                 profile.Id))
             .Take(limit + 1)
             .ToListAsync(cancellationToken);
+        var agents = ActiveAgents();
+        if (normalizedSearch is not null)
+            agents = agents.Where(profile =>
+                (profile.FullName ?? string.Empty).ToLower().Contains(normalizedSearch) ||
+                (profile.AgentUpn ?? string.Empty).ToLower().Contains(normalizedSearch) ||
+                profile.AgentUserId.ToLower().Contains(normalizedSearch));
+        candidates.AddRange(await agents.OrderBy(profile => profile.FullName).ThenBy(profile => profile.Id)
+            .Select(profile => new AccountDirectoryRow(profile.AgentUserId, MessagingParticipantTypes.Agent,
+                profile.FullName ?? string.Empty, profile.Id)).Take(limit + 1).ToListAsync(cancellationToken));
+        candidates = candidates.OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.ParticipantType, StringComparer.Ordinal).ThenBy(item => item.UserId, StringComparer.Ordinal).ToList();
         var hasMore = candidates.Count > limit;
         var accounts = candidates
             .Take(limit)
             .Select(item => item with
             {
                 UserId = Normalize(item.UserId),
-                ParticipantType = MessagingParticipantTypes.Client,
                 DisplayName = string.IsNullOrWhiteSpace(item.DisplayName) ? item.UserId : item.DisplayName.Trim()
             })
             .Where(item => item.UserId.Length > 0)
@@ -112,45 +162,28 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                 false);
         }
 
-        var userIds = accounts.Select(item => item.UserId).Distinct(StringComparer.Ordinal).ToArray();
-        var entitlements = await _db.Set<LegendTranslationEntitlement>().AsNoTracking()
-            .Where(item => item.ParticipantType == MessagingParticipantTypes.Client && userIds.Contains(item.UserId))
-            .ToListAsync(cancellationToken);
-        var usage = await _db.Set<LegendTranslationUsagePeriod>().AsNoTracking()
-            .Where(item => item.ParticipantType == MessagingParticipantTypes.Client &&
-                           item.PeriodStart == currentPeriod &&
-                           userIds.Contains(item.UserId))
-            .ToListAsync(cancellationToken);
-        var entitlementByAccount = entitlements.ToDictionary(
-            item => (Normalize(item.UserId), item.ParticipantType),
-            item => item);
-        var usageByAccount = usage.ToDictionary(
-            item => (Normalize(item.UserId), item.ParticipantType),
-            item => item);
         var profileIds = accounts.Select(item => item.ProfileId!.Value).ToArray();
         var languagesByProfile = await _db.MobileProfileSettings.AsNoTracking()
             .Where(item => profileIds.Contains(item.ProfileId))
-            .ToDictionaryAsync(item => item.ProfileId, item => item.PreferredCommunicationLanguage, cancellationToken);
+            .ToDictionaryAsync(item => new { item.ProfileId, item.ParticipantType }, item => item.PreferredCommunicationLanguage, cancellationToken);
 
         var result = new List<TranslationFounderAccountUsageSnapshot>(accounts.Length);
         foreach (var account in accounts)
         {
             var actor = new MessagingActor(account.UserId, account.ParticipantType);
-            var access = await _access.GetAccessAsync(actor, ControlledResourceTypes.LanguageTranslation, cancellationToken);
-            entitlementByAccount.TryGetValue((account.UserId, account.ParticipantType), out var entitlement);
-            usageByAccount.TryGetValue((account.UserId, account.ParticipantType), out var currentUsage);
-            var preferredLanguage = access.State == ControlledResourceAccessStates.Granted &&
+            var current = await ReadAccountSnapshotAsync(actor, cancellationToken);
+            var preferredLanguage = current.Entitlement.AccessState == ControlledResourceAccessStates.Granted &&
                                     account.ProfileId.HasValue &&
-                                    languagesByProfile.TryGetValue(account.ProfileId.Value, out var language)
+                                    languagesByProfile.TryGetValue(new { ProfileId = account.ProfileId.Value, account.ParticipantType }, out var language)
                 ? language
                 : null;
             result.Add(new TranslationFounderAccountUsageSnapshot(
                 actor,
                 account.DisplayName,
-                access.State,
+                current.Entitlement.AccessState,
                 preferredLanguage,
-                ToSnapshot(access, entitlement, currentUsage, currentPeriod),
-                ToUsageMetrics(currentUsage)));
+                current.Entitlement,
+                ToUsageMetrics(current.Usage)));
         }
 
         return new TranslationFounderAccountSearchSnapshot(result, normalizedSearch, hasMore);
@@ -160,7 +193,9 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         MessagingActor account,
         CancellationToken cancellationToken = default)
     {
-        account = Normalize(account);
+        account = (await ResolveAccountAsync(account, cancellationToken)).Account;
+        if (account.ParticipantType == MessagingParticipantTypes.Agent)
+            return await ActiveAgents().AnyAsync(profile => profile.AgentUserId.ToLower() == account.UserId, cancellationToken);
         return account.ParticipantType == MessagingParticipantTypes.Client &&
                await ActiveCurrentPayingClients().AnyAsync(
                    profile => profile.ClientUserId.ToLower() == account.UserId,
@@ -197,11 +232,12 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         var entitlementByAccount = entitlements.ToDictionary(
             item => (item.UserId.Trim().ToLowerInvariant(), item.ParticipantType),
             item => item);
+        var globalAllowance = (await GetGlobalLimitAsync(cancellationToken)).CharacterAllowance;
         var highConsumption = 0L;
         foreach (var item in usage)
         {
             entitlementByAccount.TryGetValue((item.UserId.Trim().ToLowerInvariant(), item.ParticipantType), out var entitlement);
-            var allowance = Math.Max(0, entitlement?.MonthlyCharacterAllowance ?? DefaultAllowance());
+            var allowance = Math.Max(0, EffectiveAllowance(entitlement, globalAllowance));
             if (!(entitlement?.IsUnlimited ?? false) && allowance > 0 &&
                 ((decimal)(Math.Max(0, item.ConsumedCharacters) + Math.Max(0, item.ReservedCharacters)) / allowance) >= 0.8m)
             {
@@ -233,13 +269,13 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         if (!await _access.IsFounderManagerAsync(founder, cancellationToken))
             throw new UnauthorizedAccessException("Founder authority is required to manage translation entitlement.");
 
-        var target = Normalize(mutation.Target);
+        var target = (await ResolveAccountAsync(mutation.Target, cancellationToken)).Account;
         if (target.UserId.Length == 0 || target.ParticipantType.Length == 0 || mutation.CharacterAllowance < 0)
             throw new ArgumentException("The requested translation entitlement is invalid.", nameof(mutation));
         if (!await IsFounderEntitlementEligibleAsync(target, cancellationToken))
         {
             throw new ArgumentException(
-                "Translation entitlement management is limited to active, current-paying Client CRM accounts.",
+                "Translation entitlement management requires an active eligible account.",
                 nameof(mutation));
         }
 
@@ -273,7 +309,8 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         TranslationQuotaReservationRequest request,
         CancellationToken cancellationToken = default)
     {
-        var account = Normalize(request.Account);
+        var identity = await ResolveAccountAsync(request.Account, cancellationToken);
+        var account = identity.Account;
         var characters = Math.Max(0, request.BillableCharacters);
         if (characters == 0)
         {
@@ -297,6 +334,15 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
 
         var now = DateTime.UtcNow;
         var period = CurrentPeriod();
+        // Do not silently migrate or omit an old alias's outstanding/consumed
+        // balance. Existing ledger completion still settles its persisted owner.
+        if (await _db.Set<LegendTranslationUsagePeriod>().AsNoTracking().AnyAsync(item =>
+                identity.UserIdForms.Contains(item.UserId) && item.UserId != account.UserId &&
+                item.ParticipantType == account.ParticipantType && item.PeriodStart == period &&
+                (item.ConsumedCharacters > 0 || item.ReservedCharacters > 0), cancellationToken))
+        {
+            return new TranslationQuotaReservationResult(false, false, false, "translation_accounting_unavailable", null);
+        }
         await using var transaction = _db.Database.IsRelational()
             ? await _db.Database.BeginTransactionAsync(cancellationToken)
             : null;
@@ -364,8 +410,8 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         var entitlement = await _db.Set<LegendTranslationEntitlement>()
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.UserId == account.UserId && item.ParticipantType == account.ParticipantType, cancellationToken);
-        var allowance = entitlement?.MonthlyCharacterAllowance ?? DefaultAllowance();
-        var isUnlimited = entitlement?.IsUnlimited ?? false;
+        var allowance = EffectiveAllowance(entitlement, (await GetGlobalLimitAsync(cancellationToken)).CharacterAllowance);
+        var isUnlimited = access.CanManage || (entitlement?.IsUnlimited ?? false);
         await EnsureUsagePeriodAsync(account, period, cancellationToken);
         if (!await ReservePeriodAsync(account, period, allowance, isUnlimited, characters, cancellationToken))
         {
@@ -414,9 +460,9 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             return;
 
         await ReleasePeriodAsync(
-            reservation.Account,
-            reservation.PeriodStart,
-            reservation.Characters,
+            new MessagingActor(ledger.UserId, ledger.ParticipantType),
+            ledger.PeriodStart,
+            ledger.BillableCharacters,
             providerExecuted,
             providerSucceeded,
             cancellationToken);
@@ -437,7 +483,7 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         int characters,
         CancellationToken cancellationToken = default)
     {
-        account = Normalize(account);
+        account = (await ResolveAccountAsync(account, cancellationToken)).Account;
         var amount = Math.Max(0, characters);
         if (amount == 0 && path != TranslationAvoidedPath.GroupUniqueTargetReuse)
             return;
@@ -780,10 +826,11 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         ControlledResourceAccess access,
         LegendTranslationEntitlement? entitlement,
         LegendTranslationUsagePeriod? usage,
-        DateOnly period)
+        DateOnly period,
+        long globalAllowance)
     {
-        var allowance = Math.Max(0, entitlement?.MonthlyCharacterAllowance ?? DefaultAllowance());
-        var unlimited = entitlement?.IsUnlimited ?? false;
+        var allowance = Math.Max(0, EffectiveAllowance(entitlement, globalAllowance));
+        var unlimited = access.CanManage || (entitlement?.IsUnlimited ?? false);
         var consumed = Math.Max(0, usage?.ConsumedCharacters ?? 0);
         var reserved = Math.Max(0, usage?.ReservedCharacters ?? 0);
         long? remaining = unlimited ? null : Math.Max(0, allowance - consumed - reserved);
@@ -804,10 +851,29 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             start,
             end,
             end,
-            entitlement?.EntitlementSource ?? "DefaultPolicy",
+            access.CanManage ? "FounderIdentity" : entitlement?.EntitlementSource ?? "DefaultPolicy",
             entitlement?.IsFounderOverride ?? false,
             usage?.LastTranslationActivityUtc);
     }
+
+    private static LegendTranslationUsagePeriod? AggregateUsage(IReadOnlyList<LegendTranslationUsagePeriod> rows) =>
+        rows.Count == 0 ? null : new LegendTranslationUsagePeriod
+        {
+            ConsumedCharacters = rows.Sum(item => Math.Max(0, item.ConsumedCharacters)),
+            ReservedCharacters = rows.Sum(item => Math.Max(0, item.ReservedCharacters)),
+            ProviderBillableCharacters = rows.Sum(item => Math.Max(0, item.ProviderBillableCharacters)),
+            ProviderOperationCount = rows.Sum(item => Math.Max(0, item.ProviderOperationCount)),
+            SameLanguageCharactersAvoided = rows.Sum(item => Math.Max(0, item.SameLanguageCharactersAvoided)),
+            TranslationMemoryCharactersAvoided = rows.Sum(item => Math.Max(0, item.TranslationMemoryCharactersAvoided)),
+            StructuralCompositionCharactersAvoided = rows.Sum(item => Math.Max(0, item.StructuralCompositionCharactersAvoided)),
+            ContextualCharactersAvoided = rows.Sum(item => Math.Max(0, item.ContextualCharactersAvoided)),
+            PromotedTranslationModelCharactersAvoided = rows.Sum(item => Math.Max(0, item.PromotedTranslationModelCharactersAvoided)),
+            ProviderObservationCharactersAvoided = rows.Sum(item => Math.Max(0, item.ProviderObservationCharactersAvoided)),
+            QuotaDeniedRequestCount = rows.Sum(item => Math.Max(0, item.QuotaDeniedRequestCount)),
+            ProviderFailureCount = rows.Sum(item => Math.Max(0, item.ProviderFailureCount)),
+            GroupUniqueTargetReuseCount = rows.Sum(item => Math.Max(0, item.GroupUniqueTargetReuseCount)),
+            LastTranslationActivityUtc = rows.Max(item => item.LastTranslationActivityUtc)
+        };
 
     private static TranslationAccountUsageMetrics ToUsageMetrics(LegendTranslationUsagePeriod? usage) => new(
         usage?.ProviderOperationCount ?? 0,
@@ -821,6 +887,10 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         usage?.StructuralCompositionCharactersAvoided ?? 0,
         usage?.PromotedTranslationModelCharactersAvoided ?? 0,
         usage?.ProviderObservationCharactersAvoided ?? 0);
+
+    private static long EffectiveAllowance(LegendTranslationEntitlement? entitlement, long globalAllowance) =>
+        entitlement is null || entitlement.EntitlementSource == "GlobalPolicy"
+            ? globalAllowance : entitlement.MonthlyCharacterAllowance;
 
     private long DefaultAllowance() => Math.Max(0,
         _configuration.GetValue<long?>("LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance") ?? 0);
@@ -836,6 +906,11 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
 
     private static bool IsRequestReference(string? reference) =>
         reference is { Length: 64 } && reference.All(character => char.IsAsciiHexDigit(character));
+
+    private IQueryable<AgentProfile> ActiveAgents() => _db.AgentProfiles.AsNoTracking()
+        .Where(profile => profile.IsActive && !_db.AccountLifecycleRecords.Any(record =>
+            record.ProfileId == profile.Id && record.ParticipantType == MessagingParticipantTypes.Agent &&
+            record.State == Domain.Accounts.AccountLifecycleStates.Closed));
 
     private IQueryable<ClientProfile> ActiveCurrentPayingClients() =>
         _db.ClientProfiles
@@ -858,6 +933,31 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         var now = DateTime.UtcNow;
         return new DateOnly(now.Year, now.Month, 1);
     }
+
+    private async Task<ResolvedTranslationAccount> ResolveAccountAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken)
+    {
+        actor = Normalize(actor);
+        if (actor.ParticipantType != MessagingParticipantTypes.Client || actor.UserId.Length == 0)
+            return new(actor, [actor.UserId]);
+
+        var profile = await _db.ClientProfiles.AsNoTracking()
+            .Where(candidate => candidate.ClientUserId.ToLower() == actor.UserId ||
+                (candidate.ExternalIdentityObjectId != null && candidate.ExternalIdentityObjectId.ToLower() == actor.UserId))
+            .Select(candidate => new { candidate.ClientUserId, candidate.ExternalIdentityObjectId })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (profile is null || string.IsNullOrWhiteSpace(profile.ClientUserId))
+            return new(actor, [actor.UserId]);
+
+        // The existing profile/participant identity contract owns equivalence;
+        // the Founder directory already keys entitlement by ClientUserId.
+        return new(
+            new MessagingActor(Normalize(profile.ClientUserId), MessagingParticipantTypes.Client),
+            LogicalParticipantIdentity.ClientUserIdForms(profile.ClientUserId, profile.ExternalIdentityObjectId));
+    }
+
+    private sealed record ResolvedTranslationAccount(MessagingActor Account, string[] UserIdForms);
 
     private static MessagingActor Normalize(MessagingActor actor) => new(
         actor.UserId?.Trim().ToLowerInvariant() ?? string.Empty,

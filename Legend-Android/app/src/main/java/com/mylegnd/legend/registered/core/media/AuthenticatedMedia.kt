@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -21,8 +24,12 @@ import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.core.model.MobileAvatar
 import com.mylegnd.legend.registered.ui.LegendAvatar
 import com.mylegnd.legend.registered.core.design.LegendColors
+import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
+import com.mylegnd.legend.registered.core.design.legendLocalized
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resumeWithException
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -30,6 +37,42 @@ import coil3.compose.AsyncImage
 
 /** Protected social assets are cached as an authenticated performance layer, never made public for Android. */
 class AuthenticatedMediaRepository(private val context: Context, private val client: LegendApiClient) {
+    fun sharedPostUrl(postId: String): String = Uri.parse(client.baseUrl).buildUpon()
+        .appendPath("Social").appendPath("Posts").appendPath(postId).build().toString()
+
+    suspend fun messageAttachmentFile(attachment: com.mylegnd.legend.registered.core.model.MessageAttachment,
+        participantType: String): File = withContext(Dispatchers.IO) {
+        check(attachment.canDownload) { "Attachment is not ready." }
+        val directory = File(context.cacheDir, "message-attachments").apply { mkdirs() }
+        val safeName = attachment.originalFileName.substringAfterLast('/').substringAfterLast('\\')
+            .takeIf { it.isNotBlank() && it != "." && it != ".." } ?: "attachment"
+        val target = File(directory, "${java.util.UUID.randomUUID()}-$safeName")
+        val request = Request.Builder().url("${client.baseUrl}/api/v1/mobile/messaging/attachments/${attachment.id}")
+            .header("X-Legend-Participant-Type", participantType).build()
+        suspendCancellableCoroutine { continuation ->
+            val call = client.httpClient.newCall(request)
+            continuation.invokeOnCancellation { call.cancel(); target.delete() }
+            call.enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, failure: java.io.IOException) {
+                    target.delete()
+                    if (continuation.isActive) continuation.resumeWithException(failure)
+                }
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    try {
+                        response.use {
+                            check(it.isSuccessful) { "Attachment is unavailable." }
+                            it.body.byteStream().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+                        }
+                        continuation.resume(target) { _, file, _ -> file.delete() }
+                    } catch (failure: Exception) {
+                        target.delete()
+                        if (continuation.isActive) continuation.resumeWithException(failure)
+                    }
+                }
+            })
+        }
+    }
+
     /**
      * Profile avatar routes are stable after an account owner replaces an image.
      * Revalidating once per process prevents the former path-only disk cache
@@ -83,7 +126,7 @@ class AuthenticatedMediaRepository(private val context: Context, private val cli
     showControls: Boolean = true,
     loop: Boolean = false,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val player = remember(file) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
@@ -110,7 +153,7 @@ class AuthenticatedMediaRepository(private val context: Context, private val cli
 
 /** Native, temporary creator preview. The URI stays on-device until the user publishes through the existing social API. */
 @Composable fun LegendLocalVideoPreview(uri: Uri, modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val player = remember(uri) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(uri)); prepare() } }
     DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(factory = { PlayerView(it).apply { this.player = player } }, modifier = modifier)
@@ -125,7 +168,7 @@ fun LegendProtectedSocialMedia(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
-    videoHeight: androidx.compose.ui.unit.Dp? = 220.dp,
+    videoHeight: Dp? = 220.dp,
     autoPlayVideo: Boolean = false,
     showVideoControls: Boolean = true,
     loopVideo: Boolean = false,
@@ -155,7 +198,7 @@ fun LegendProtectedSocialMedia(
             modifier = modifier.fillMaxWidth(),
         )
         unavailable -> Unit
-        else -> androidx.compose.material3.LinearProgressIndicator(modifier = modifier.fillMaxWidth())
+        else -> LinearProgressIndicator(modifier = modifier.fillMaxWidth())
     }
 }
 
@@ -171,7 +214,7 @@ fun LegendProtectedAvatar(
     participantType: String,
     repository: AuthenticatedMediaRepository,
     modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 40.dp,
+    size: Dp = 40.dp,
 ) {
     var file by remember(avatar?.resourcePath) { mutableStateOf<File?>(null) }
     LaunchedEffect(avatar?.resourcePath, participantType) {
@@ -186,7 +229,11 @@ fun LegendProtectedAvatar(
     } else {
         AsyncImage(
             model = file,
-            contentDescription = "$displayName profile image",
+            contentDescription = legendLocalized(
+                "{name} profile image",
+                LegendLocalizationRuntime.AccessibilityContext,
+                mapOf("name" to displayName),
+            ),
             modifier = modifier
                 .size(size)
                 .clip(CircleShape)

@@ -72,3 +72,13 @@ public sealed class LegendTranslationUsageLedger
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedUtc { get; set; }
 }
+
+/// <summary>The single persisted default for accounts without an individual allowance.</summary>
+public sealed class LegendTranslationGlobalPolicy
+{
+    public int Id { get; set; } = 1;
+    public long MonthlyCharacterAllowance { get; set; }
+    public Guid Version { get; set; } = Guid.NewGuid();
+    public DateTime UpdatedUtc { get; set; }
+    public string UpdatedByUserId { get; set; } = string.Empty;
+}

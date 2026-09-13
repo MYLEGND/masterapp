@@ -204,18 +204,18 @@ enum MobileSocialFollowListKind: String, Codable, CaseIterable, Identifiable, Se
     var title: String {
         switch self {
         case .follows:
-            return "Following"
+            return LegendLocalized("Following")
         case .followers:
-            return "Followers"
+            return LegendLocalized("Followers")
         }
     }
 
     var emptyMessage: String {
         switch self {
         case .follows:
-            return "When you follow people in Legend, they will appear here."
+            return LegendLocalized("When you follow people in Legend, they will appear here.")
         case .followers:
-            return "People who follow you in Legend will appear here."
+            return LegendLocalized("People who follow you in Legend will appear here.")
         }
     }
 }
@@ -676,15 +676,15 @@ struct MobileSocialActivity: Codable, Equatable, Identifiable, Sendable {
     var summary: String {
         switch kind {
         case "reaction":
-            return "appreciated your update"
+            return LegendLocalized("appreciated your update")
         case "comment":
-            return "commented on your update"
+            return LegendLocalized("commented on your update")
         case "follow":
-            return "followed your Legend profile"
+            return LegendLocalized("followed your Legend profile")
         case "repost":
-            return "reposted your update"
+            return LegendLocalized("reposted your update")
         default:
-            return "interacted with your update"
+            return LegendLocalized("interacted with your update")
         }
     }
 
@@ -797,11 +797,11 @@ enum MobileSocialPublicationStage: Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .preparing: "Preparing update"
-        case .uploading: "Uploading update"
-        case .processing: "Publishing update"
-        case .published: "Update shared"
-        case .failed: "Upload needs attention"
+        case .preparing: LegendLocalized("Preparing update")
+        case .uploading: LegendLocalized("Uploading update")
+        case .processing: LegendLocalized("Publishing update")
+        case .published: LegendLocalized("Update shared")
+        case .failed: LegendLocalized("Upload needs attention")
         }
     }
 
@@ -921,9 +921,11 @@ struct LegendSocialContentFormat: Equatable, Sendable {
     var maximumVideoDurationDescription: String? {
         guard let maximumVideoDurationSeconds else { return nil }
         if maximumVideoDurationSeconds == LegendSocialVideoUploadPolicy.maximumDurationSeconds {
-            return "10 minutes or less"
+            return LegendLocalized("10 minutes or less")
         }
-        return "up to \(Int(maximumVideoDurationSeconds)) seconds"
+        return LegendLocalized(
+            "up to {seconds} seconds",
+            arguments: ["seconds": Int(maximumVideoDurationSeconds)])
     }
 }
 
@@ -955,36 +957,36 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .post: "Post"
-        case .story: "Story"
-        case .hac: "Hac"
+        case .post: LegendLocalized("Post")
+        case .story: LegendLocalized("Story")
+        case .hac: LegendLocalized("Hac")
         }
     }
 
     var newContentTitle: String {
         switch self {
-        case .post: "New post"
-        case .story: "New story"
-        case .hac: "New Hac"
+        case .post: LegendLocalized("New post")
+        case .story: LegendLocalized("New story")
+        case .hac: LegendLocalized("New Hac")
         }
     }
 
     var editingTitle: String {
         switch self {
-        case .post: "Edit post"
-        case .story: "Edit story"
-        case .hac: "Edit Hac"
+        case .post: LegendLocalized("Edit post")
+        case .story: LegendLocalized("Edit story")
+        case .hac: LegendLocalized("Edit Hac")
         }
     }
 
     var creationPrompt: String {
         switch self {
         case .post:
-            "Share a focused update with your Legend network."
+            LegendLocalized("Share a focused update with your Legend network.")
         case .story:
-            "Share a 24-hour moment with your Legend network."
+            LegendLocalized("Share a 24-hour moment with your Legend network.")
         case .hac:
-            "Share a practical insight with your Legend network."
+            LegendLocalized("Share a practical insight with your Legend network.")
         }
     }
 
@@ -1032,25 +1034,31 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
     var mediaSelectionTitle: String {
         switch self {
         case .post:
-            "Add photos or video"
+            LegendLocalized("Add photos or video")
         case .story:
-            "Add a photo or video"
+            LegendLocalized("Add a photo or video")
         case .hac:
-            "Add a video"
+            LegendLocalized("Add a video")
         }
     }
 
     var mediaSelectionHint: String {
         let maximumItems = format.maximumMediaItems
-        let duration = format.maximumVideoDurationDescription ?? "the supported duration"
+        let duration = format.maximumVideoDurationDescription ?? LegendLocalized("the supported duration")
 
         switch self {
         case .post:
-            return "Choose up to \(maximumItems) photos or videos. Videos can be \(duration)."
+            return LegendLocalized(
+                "Choose up to {maximumItems} photos or videos. Videos can be {duration}.",
+                arguments: ["maximumItems": maximumItems, "duration": duration])
         case .story:
-            return "Share one visual moment that disappears after 24 hours. Videos can be \(duration)."
+            return LegendLocalized(
+                "Share one visual moment that disappears after 24 hours. Videos can be {duration}.",
+                arguments: ["duration": duration])
         case .hac:
-            return "Choose one vertical video \(duration) for your Hac, or record one with your camera."
+            return LegendLocalized(
+                "Choose one vertical video {duration} for your Hac, or record one with your camera.",
+                arguments: ["duration": duration])
         }
     }
 

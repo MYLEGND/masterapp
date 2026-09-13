@@ -62,9 +62,32 @@ extension MobileJourneyCirclesAPI {
 }
 
 protocol MobileAgentWorkspaceAPI: Sendable {
+    func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess
+    func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL
+    func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws
+    func outcome(kind: String, id: String, code: String, note: String, accessToken: String) async throws
+    func cancelAppointment(id: UUID, accessToken: String) async throws
+    func schedule(accessToken: String) async throws -> [MobileCrmAppointment]
+    func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord
+    func restoreClient(id: String, accessToken: String) async throws -> MobileCrmRecord
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary]
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary]
     func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch
+}
+
+extension MobileAgentWorkspaceAPI {
+    func restoreClient(id: String, accessToken: String) async throws -> MobileCrmRecord { throw MobileAPIError.invalidServerResponse }
+    func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess { throw MobileAPIError.invalidServerResponse }
+    func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
+    func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
+    func outcome(kind: String, id: String, code: String, note: String, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
+    func cancelAppointment(id: UUID, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
+    func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
+        throw MobileAPIError.invalidServerResponse
+    }
+    func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord {
+        throw MobileAPIError.invalidServerResponse
+    }
 }
 
 struct MobileUnavailableHomeAPI: MobileHomeAPI {
@@ -235,9 +258,66 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
 
     private let participantHeader = ["X-Legend-Participant-Type": ParticipantType.agent.rawValue]
 
+    func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess {
+        try await client.get("/api/v1/mobile/agent/clients/\(profileID.uuidString)/booking-access",
+            accessToken: accessToken, headers: participantHeader, response: MobileBookingAccess.self)
+    }
+    func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL {
+        let result: MobileClientCreationPortalLaunch = try await client.post(
+            "/api/v1/mobile/agent/clients/\(profileID.uuidString)/booking-launch", body: MobileEmptyRequest(),
+            accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader,
+            response: MobileClientCreationPortalLaunch.self)
+        guard let url = URL(string: result.launchPath, relativeTo: client.baseURL)?.absoluteURL,
+              url.scheme == client.baseURL.scheme, url.host == client.baseURL.host, url.port == client.baseURL.port,
+              url.path == "/mobile/agent/booking" else { throw MobileAPIError.invalidServerResponse }
+        return url
+    }
+
+    func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws {
+        guard ["clients", "leads"].contains(kind), let encoded = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { throw MobileAPIError.invalidServerResponse }
+        let _: MobileCrmMutationResponse = try await client.post("/api/v1/mobile/agent/crm/\(kind)/\(encoded)/contact",
+            body: input, accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmMutationResponse.self)
+    }
+    func outcome(kind: String, id: String, code: String, note: String, accessToken: String) async throws {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics), ["clients", "leads"].contains(kind) else { throw MobileAPIError.invalidServerResponse }
+        let _: MobileCrmMutationResponse = try await client.post("/api/v1/mobile/agent/crm/\(kind)/\(encoded)/outcome",
+            body: MobileCrmOutcomeInput(outcomeCode: code, note: note.isEmpty ? nil : note), accessToken: accessToken,
+            idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmMutationResponse.self)
+    }
+    func cancelAppointment(id: UUID, accessToken: String) async throws {
+        let _: MobileCrmMutationResponse = try await client.post("/api/v1/mobile/agent/crm/appointments/\(id.uuidString)/cancel",
+            body: MobileEmptyRequest(), accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmMutationResponse.self)
+    }
+
+    func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
+        try await client.get("/api/v1/mobile/agent/crm/schedule", accessToken: accessToken,
+                             headers: participantHeader, response: [MobileCrmAppointment].self)
+    }
+
+    func restoreClient(id: String, accessToken: String) async throws -> MobileCrmRecord {
+        guard let profileID = UUID(uuidString: id) else { throw MobileAPIError.invalidServerResponse }
+        return try await client.post("/api/v1/mobile/agent/crm/clients/\(profileID.uuidString)/restore",
+            body: MobileEmptyRequest(), accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmRecord.self)
+    }
+
+    func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+              ["clients", "leads"].contains(kind) else { throw MobileAPIError.invalidServerResponse }
+        var record: MobileCrmRecord = try await client.get("/api/v1/mobile/agent/crm/\(kind)/\(encoded)",
+            accessToken: accessToken, headers: participantHeader, response: MobileCrmRecord.self)
+        func absolute(_ path: String) throws -> String {
+            guard let url = URL(string: path, relativeTo: client.baseURL)?.absoluteURL,
+                  url.scheme == client.baseURL.scheme, url.host == client.baseURL.host,
+                  url.port == client.baseURL.port else { throw MobileAPIError.invalidServerResponse }
+            return url.absoluteString
+        }
+        record.managementPath = try absolute(record.managementPath)
+        return record
+    }
+
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary] {
         try await client.get(
-            "/api/v1/mobile/agent/clients",
+            "/api/v1/mobile/agent/clients?includeArchived=true",
             accessToken: accessToken,
             headers: participantHeader,
             response: [MobileAgentClientSummary].self)
@@ -245,7 +325,7 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
 
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary] {
         try await client.get(
-            "/api/v1/mobile/agent/leads",
+            "/api/v1/mobile/agent/leads?includeArchived=true",
             accessToken: accessToken,
             headers: participantHeader,
             response: [MobileAgentLeadSummary].self)
@@ -340,8 +420,8 @@ final class MobileHomeStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Home unavailable",
-                    message: "The home store is no longer available.",
+                    title: LegendLocalized("Home unavailable"),
+                    message: LegendLocalized("The home store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLoad(
@@ -365,7 +445,7 @@ final class MobileHomeStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Home unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Home unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
             } else {
@@ -383,7 +463,7 @@ final class MobileHomeStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }
@@ -456,8 +536,8 @@ final class MobileFinancialStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Financial intelligence unavailable",
-                    message: "The financial store is no longer available.",
+                    title: LegendLocalized("Financial intelligence unavailable"),
+                    message: LegendLocalized("The financial store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLoad(
@@ -481,8 +561,8 @@ final class MobileFinancialStore: ObservableObject {
             return .loaded
         } catch is CancellationError {
             return .failed(UserFacingFailure(
-                title: "Financial intelligence unavailable",
-                message: "The financial request was cancelled.",
+                title: LegendLocalized("Financial intelligence unavailable"),
+                message: LegendLocalized("The financial request was cancelled."),
                 correlationID: nil))
         } catch {
             let presentation = failure(for: error)
@@ -512,7 +592,7 @@ final class MobileFinancialStore: ObservableObject {
             return .projectionUnavailable(
                 snapshot,
                 detail:
-                    "The financial service did not return the saved Expense Lens projection."
+                    LegendLocalized("The financial service did not return the saved Expense Lens projection.")
             )
         }
 
@@ -533,7 +613,7 @@ final class MobileFinancialStore: ObservableObject {
             return .incomplete(
                 snapshot,
                 detail:
-                    "Your saved cash-flow projection is available, but Financial Health Snapshot has not been saved."
+                    LegendLocalized("Your saved cash-flow projection is available, but Financial Health Snapshot has not been saved.")
             )
         }
 
@@ -564,9 +644,9 @@ final class MobileFinancialStore: ObservableObject {
 
         return UserFacingFailure(
             title: isAuthenticationFailure(error)
-                ? "Sign-in required"
-                : "Financial intelligence unavailable",
-            message: error.localizedDescription,
+                ? LegendLocalized("Sign-in required")
+                : LegendLocalized("Financial intelligence unavailable"),
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID
         )
     }
@@ -629,8 +709,8 @@ final class MobileJourneyCirclesStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Journey Circles unavailable",
-                    message: "The Journey Circles store is no longer available.",
+                    title: LegendLocalized("Journey Circles unavailable"),
+                    message: LegendLocalized("The Journey Circles store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLoad(
@@ -676,7 +756,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     /// Sends a connection request and reports whether the server accepted it, so a
     /// caller such as Discover can update one row instead of reloading a dashboard.
     func requestConnectionConfirmed(to profileID: UUID) async -> Bool {
-        await performConfirmedAction(title: "Could not send the request") {
+        await performConfirmedAction(title: LegendLocalized("Could not send the request")) {
             try await api.requestConnection(
                 MobileJourneyConnectionRequestBody(
                     targetClientProfileID: profileID,
@@ -687,7 +767,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     }
 
     func disconnectConnectionConfirmed(id: UUID) async -> Bool {
-        await performConfirmedAction(title: "Could not remove the connection") {
+        await performConfirmedAction(title: LegendLocalized("Could not remove the connection")) {
             try await self.api.disconnectConnection(
                 id: id,
                 accessToken: try await self.accessTokenProvider())
@@ -695,7 +775,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     }
 
     func blockProfileConfirmed(id: UUID) async -> Bool {
-        await performConfirmedAction(title: "Could not block this profile") {
+        await performConfirmedAction(title: LegendLocalized("Could not block this profile")) {
             try await self.api.blockProfile(
                 id: id,
                 accessToken: try await self.accessTokenProvider())
@@ -707,7 +787,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
         category: String,
         detail: String? = nil
     ) async -> Bool {
-        await performConfirmedAction(title: "Could not submit this report") {
+        await performConfirmedAction(title: LegendLocalized("Could not submit this report")) {
             try await self.api.reportProfile(
                 id: id,
                 request: MobileJourneyReportRequestBody(
@@ -748,7 +828,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
                 try await operation()
                 _ = await refresh()
             } catch {
-                actionFailure = failure(for: error, title: "Journey Circles unavailable")
+                actionFailure = failure(for: error, title: LegendLocalized("Journey Circles unavailable"))
             }
         }
     }
@@ -768,7 +848,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
         }
     }
 
-    private func failure(for error: Error, title: String = "Journey Circles unavailable") -> UserFacingFailure {
+    private func failure(for error: Error, title: String = LegendLocalized("Journey Circles unavailable")) -> UserFacingFailure {
         let apiError = error as? MobileAPIError
         diagnostics.record(
             category: .networking,
@@ -776,7 +856,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }
@@ -804,6 +884,45 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
+    }
+
+    @Published private(set) var bookingRevision = 0
+    func bookingAccess(profileID: UUID) async throws -> Bool {
+        try await api.bookingAccess(profileID: profileID, accessToken: accessTokenProvider()).allowed
+    }
+    func bookingLaunch(profileID: UUID) async throws -> URL {
+        try await api.bookingLaunch(profileID: profileID, accessToken: accessTokenProvider())
+    }
+    func bookingClosed() {
+        bookingRevision += 1
+        Task { _ = await refreshClients(); _ = await refreshLeads() }
+    }
+
+    func contact(kind: String, id: String, input: MobileCrmContactInput) async throws {
+        try await api.contact(kind: kind, id: id, input: input, accessToken: accessTokenProvider())
+        _ = await refreshClients(); _ = await refreshLeads()
+    }
+    func outcome(kind: String, id: String, code: String, note: String) async throws {
+        try await api.outcome(kind: kind, id: id, code: code, note: note, accessToken: accessTokenProvider())
+        _ = await refreshLeads()
+    }
+    func cancelAppointment(id: UUID) async throws {
+        try await api.cancelAppointment(id: id, accessToken: accessTokenProvider())
+        bookingRevision += 1
+    }
+
+    func schedule() async throws -> [MobileCrmAppointment] {
+        try await api.schedule(accessToken: accessTokenProvider())
+    }
+
+    func restoreClient(id: String) async throws -> MobileCrmRecord {
+        let restored = try await api.restoreClient(id: id, accessToken: accessTokenProvider())
+        _ = await refreshClients(); _ = await refreshLeads()
+        return restored
+    }
+
+    func record(kind: String, id: String) async throws -> MobileCrmRecord {
+        try await api.record(kind: kind, id: id, accessToken: accessTokenProvider())
     }
 
     func loadClients() {
@@ -870,8 +989,8 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Client CRM unavailable",
-                    message: "The client CRM store is no longer available.",
+                    title: LegendLocalized("Client CRM unavailable"),
+                    message: LegendLocalized("The client CRM store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeClientsLoad(
@@ -896,8 +1015,8 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Lead CRM unavailable",
-                    message: "The lead CRM store is no longer available.",
+                    title: LegendLocalized("Lead CRM unavailable"),
+                    message: LegendLocalized("The lead CRM store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLeadsLoad(
@@ -956,8 +1075,8 @@ final class MobileAgentWorkspaceStore: ObservableObject {
             summary: "A native agent \(resource) request could not be completed.",
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
-            title: "\(resource.capitalized) unavailable",
-            message: error.localizedDescription,
+            title: LegendLocalized("{value1} unavailable", arguments: ["value1": String(describing: (resource.capitalized))]),
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }

@@ -4,8 +4,11 @@ import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -22,6 +25,14 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.concurrent.TimeUnit
+import com.mylegnd.legend.registered.feature.calling.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonArray
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Server events are intentionally small wake-up signals. The Android UI never
@@ -31,6 +42,7 @@ import java.util.concurrent.TimeUnit
  * server-issued notification projection, versioned by the server revision.
  */
 data class LegendMessagingRealtimeEvent(
+    val requiresResync: Boolean = false,
     val conversationId: String? = null,
     val messageId: String? = null,
     val notificationId: String? = null,
@@ -70,17 +82,51 @@ class MobileMessagingRealtimeClient(
     private var shouldRemainConnected = false
     private var reconnectAttempt = 0
     private var generation = 0L
+    private var heartbeat: Job? = null
+    @Volatile private var retiring = false
+    @Volatile private var callReady = false
+    private val callRequests = ConcurrentHashMap<String, CompletableDeferred<LegendCallResult>>()
+    var onCall: ((LegendCallEvent) -> Unit)? = null
+    var onCallReconnect: (() -> Unit)? = null
+
+    suspend fun call(command: LegendCallCommand, existingConnectionOnly: Boolean = false): LegendCallResult = withTimeout(12_000) {
+        if (existingConnectionOnly) check(callReady) { "Calling is disconnected." } else start()
+        while (!callReady) delay(100)
+        ensureActive()
+        val id = java.util.UUID.randomUUID().toString()
+        val pending = CompletableDeferred<LegendCallResult>()
+        callRequests[id] = pending
+        try {
+            val frame = buildJsonObject {
+                put("type", 1); put("invocationId", id); put("target", "Call")
+                put("arguments", JsonArray(listOf(json.parseToJsonElement(json.encodeToString(command)))))
+            }
+            check(socket?.send(frame.toString() + RECORD_SEPARATOR) == true) { "Calling is disconnected." }
+            pending.await()
+        } finally { callRequests.remove(id) }
+    }
+
+    fun retireAccountConnection() {
+        retiring = true
+        onCall = null; onCallReconnect = null
+        if (!callReady) stop()
+    }
 
     fun start() {
-        if (shouldRemainConnected || hubUrl == null) return
+        if (retiring || shouldRemainConnected || hubUrl == null) return
         shouldRemainConnected = true
         reconnectAttempt = 0
         connect(generation)
     }
 
     fun stop() {
+        callReady = false
+        callRequests.values.forEach { it.cancel() }
+        callRequests.clear()
         shouldRemainConnected = false
         generation += 1
+        heartbeat?.cancel()
+        heartbeat = null
         socket?.close(1000, "legend-background")
         socket = null
     }
@@ -98,7 +144,7 @@ class MobileMessagingRealtimeClient(
                 scheduleReconnect(connectionGeneration)
                 return@launch
             }
-            if (!shouldRemainConnected || connectionGeneration != generation) return@launch
+            if (retiring || !shouldRemainConnected || connectionGeneration != generation) return@launch
             val request = Request.Builder()
                 .url(endpoint)
                 .header("Authorization", "Bearer $token")
@@ -111,27 +157,53 @@ class MobileMessagingRealtimeClient(
 
     private fun listener(connectionGeneration: Long) = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            if (!shouldRemainConnected || connectionGeneration != generation) {
+            if (retiring || !shouldRemainConnected || connectionGeneration != generation) {
                 webSocket.close(1000, "legend-stale")
                 return
             }
             // ASP.NET Core SignalR JSON handshake. The record separator is part
             // of the established protocol and matches the iOS implementation.
             webSocket.send("{\"protocol\":\"json\",\"version\":1}\u001e")
-            reconnectAttempt = 0
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (socket !== webSocket || connectionGeneration != generation) return
+            if (text.split(RECORD_SEPARATOR).any { it.trim() == "{}" }) {
+                callReady = true
+                onCallReconnect?.invoke()
+                reconnectAttempt = 0
+                heartbeat?.cancel()
+                heartbeat = scope.launch {
+                    while (shouldRemainConnected && socket === webSocket && connectionGeneration == generation) {
+                        delay(15_000)
+                        if (!webSocket.send("{\"type\":6}$RECORD_SEPARATOR")) {
+                            webSocket.cancel()
+                            return@launch
+                        }
+                    }
+                }
+                LegendRealtimeEvents.publish(LegendMessagingRealtimeEvent(requiresResync = true))
+            }
             text.split(RECORD_SEPARATOR).forEach(::reconcileFrame)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            if (socket === webSocket) socket = null
+            if (socket !== webSocket) return
+            callReady = false
+            heartbeat?.cancel()
+            socket = null
             scheduleReconnect(connectionGeneration)
         }
 
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            webSocket.close(code, reason)
+        }
+
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            if (socket === webSocket) socket = null
+            if (socket !== webSocket) return
+            callReady = false
+            heartbeat?.cancel()
+            socket = null
             scheduleReconnect(connectionGeneration)
         }
     }
@@ -139,6 +211,19 @@ class MobileMessagingRealtimeClient(
     private fun reconcileFrame(frame: String) {
         if (frame.isBlank()) return
         val envelope = runCatching { json.parseToJsonElement(frame).jsonObject }.getOrNull() ?: return
+        if (envelope["type"]?.jsonPrimitive?.content == "3") {
+            val id = envelope.string("invocationId") ?: return
+            val pending = callRequests.remove(id) ?: return
+            val result = envelope["result"]?.let { runCatching { json.decodeFromString<LegendCallResult>(it.toString()) }.getOrNull() }
+            if (result != null) pending.complete(result) else pending.completeExceptionally(IllegalStateException("The call request could not be completed."))
+            return
+        }
+        if (envelope.string("target")?.lowercase() == "callupdated") {
+            envelope["arguments"]?.jsonArray?.firstOrNull()?.let { value ->
+                runCatching { json.decodeFromString<LegendCallEvent>(value.toString()) }.getOrNull()?.let { onCall?.invoke(it) }
+            }
+            return
+        }
         if (envelope["type"]?.jsonPrimitive?.content != "1") return
         val target = envelope["target"]?.jsonPrimitive?.content?.lowercase() ?: return
         if (target !in EVENT_TARGETS) return
@@ -157,11 +242,11 @@ class MobileMessagingRealtimeClient(
     }
 
     private fun scheduleReconnect(connectionGeneration: Long) {
-        if (!shouldRemainConnected || connectionGeneration != generation) return
+        if (retiring || !shouldRemainConnected || connectionGeneration != generation) return
         val delayMillis = RECONNECT_DELAYS_MILLIS[minOf(reconnectAttempt, RECONNECT_DELAYS_MILLIS.lastIndex)]
         reconnectAttempt += 1
         scope.launch {
-            delay(delayMillis)
+            delay(delayMillis.milliseconds)
             if (shouldRemainConnected && connectionGeneration == generation && socket == null) connect(connectionGeneration)
         }
     }

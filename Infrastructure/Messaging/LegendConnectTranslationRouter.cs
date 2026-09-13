@@ -567,7 +567,7 @@ internal sealed class LegendConnectActiveModelInference
             >= 'a' and <= 'f');
 }
 
-internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslationService
+internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslationService, IRetainedTranslationService
 {
     private readonly ITranslationProvider _azure;
     private readonly ILegendLanguageRegistry _languages;
@@ -580,6 +580,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly ILegendConnectStructuralCompositionGate? _structuralComposition;
     private readonly ILegendConnectActiveModelInference? _activeModelInference;
+    private readonly ITranslationRequestCoalescer _coalescer;
     private readonly ILogger<LegendConnectTranslationRouter> _logger;
 
     public LegendConnectTranslationRouter(
@@ -594,7 +595,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         ITranslationEntitlementAuthority? entitlements = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
         ILegendConnectStructuralCompositionGate? structuralComposition = null,
-        ILegendConnectActiveModelInference? activeModelInference = null)
+        ILegendConnectActiveModelInference? activeModelInference = null,
+        ITranslationRequestCoalescer? coalescer = null)
     {
         _azure = azure;
         _languages = languages;
@@ -608,37 +610,252 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         _runtimePolicy = runtimePolicy;
         _structuralComposition = structuralComposition;
         _activeModelInference = activeModelInference;
+        _coalescer = coalescer ?? new TranslationRequestCoalescer();
     }
+
+    public Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken = default) =>
+        DetectLanguageAsync(text, cancellationToken, null);
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
-        var result = await _azure.DetectLanguageAsync(text, cancellationToken);
-        if (!result.Succeeded)
+        var policy = LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
+        var started = Stopwatch.GetTimestamp();
+        var authorityMethod = "LegendConnectTranslationRouter.DetectLanguageAsync";
+        var stage = "language_identification";
+        var outcome = "unresolved";
+        var reason = "none";
+        var exceptionType = "none";
+        var considered = 0;
+        var candidateCount = 0;
+        var analyzed = 0;
+        var composed = 0;
+        var incomplete = 0;
+        TranslationDetectionResult Finish(TranslationDetectionResult result)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            outcome = result.Succeeded ? "resolved" : "unresolved";
+            reason = LegendConnectTelemetry.NormalizeDiagnosticReason(result.ErrorCode);
             return result;
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_structuralComposition is not null &&
+                !string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(text)))
+            {
+                var governedMatches = new List<string>();
+                var governedAnalysisIncomplete = false;
+                authorityMethod = _languages.GetType().Name + "." + nameof(ILegendLanguageRegistry.ListEnabledTranslationLanguagesReadOnlyAsync);
+                stage = "language_registry";
+                var registryStarted = Stopwatch.GetTimestamp();
+                var languages = await _languages
+                    .ListEnabledTranslationLanguagesReadOnlyAsync(
+                        cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                considered = languages.Count;
+                candidateCount = considered;
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} LanguagesConsidered={LanguagesConsidered}",
+                    "LanguageRegistryRead", authorityMethod, stage, "completed", "none",
+                    (long)Math.Ceiling(Stopwatch.GetElapsedTime(registryStarted).TotalMilliseconds), considered);
+                var candidateStarted = Stopwatch.GetTimestamp();
+                try
+                {
+                    authorityMethod = _structuralComposition.GetType().Name + "." + nameof(ILegendConnectStructuralCompositionGate.GetReusableMeaningLanguageCandidatesAsync);
+                    stage = "language_candidates";
+                    var originalCodes = languages.Select(item => item.Code).ToArray();
+                    var candidates = await _structuralComposition.GetReusableMeaningLanguageCandidatesAsync(
+                        originalCodes, text, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // The prefilter may only exclude languages that cannot have
+                    // a governed graph. Unknown, duplicate or incomplete output
+                    // retains the original set; it cannot establish uniqueness.
+                    if (candidates is { IsComplete: true, CandidateLanguageCodes: not null } &&
+                        candidates.CandidateLanguageCodes.Count == candidates.CandidateLanguageCodes
+                            .Distinct(StringComparer.Ordinal).Count() &&
+                        candidates.CandidateLanguageCodes.All(code => originalCodes.Contains(code, StringComparer.Ordinal)))
+                    {
+                        var candidateCodes = candidates.CandidateLanguageCodes.ToHashSet(StringComparer.Ordinal);
+                        languages = languages.Where(item => candidateCodes.Contains(item.Code)).ToArray();
+                    }
+                    candidateCount = languages.Count;
+                    _logger.LogInformation(
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} LanguagesConsidered={LanguagesConsidered} LanguagesCandidate={LanguagesCandidate}",
+                        "LanguageCandidatesRead", authorityMethod, stage,
+                        candidateCount < considered ? "excluded" : "retained",
+                        LegendConnectTelemetry.NormalizeDiagnosticReason(candidates?.ReasonCode),
+                        (long)Math.Ceiling(Stopwatch.GetElapsedTime(candidateStarted).TotalMilliseconds), considered, candidateCount);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // An optional exclusion read cannot weaken the ordinary
+                    // graph analysis or turn an unavailable read into no match.
+                    _logger.LogWarning(
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType}",
+                        "LanguageCandidatesRead", authorityMethod, stage, "failed", "candidate_read_failed",
+                        (long)Math.Ceiling(Stopwatch.GetElapsedTime(candidateStarted).TotalMilliseconds), exception.GetType().Name);
+                }
+                foreach (var candidate in languages)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    authorityMethod = _structuralComposition.GetType().Name + "." + nameof(ILegendConnectStructuralCompositionGate.AnalyzeReusableMeaningGraphAsync);
+                    stage = "language_graph";
+                    var graphStarted = Stopwatch.GetTimestamp();
+                    var understanding = await _structuralComposition
+                        .AnalyzeReusableMeaningGraphAsync(
+                            candidate.Code,
+                            text,
+                            cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    analyzed++;
+                    if (understanding.IsComposed)
+                        composed++;
+                    _logger.LogInformation(
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} GraphNodes={GraphNodes} GraphRelations={GraphRelations} UnknownComponents={UnknownComponents}",
+                        "LanguageGraphAnalyzed", authorityMethod, stage,
+                        understanding.IsComposed ? "composed" : "uncomposed", LegendConnectTelemetry.NormalizeDiagnosticReason(understanding.ReasonCode),
+                        (long)Math.Ceiling(Stopwatch.GetElapsedTime(graphStarted).TotalMilliseconds),
+                        understanding.Nodes.Count, understanding.Relations.Count, understanding.UnknownSurfaceComponents.Count);
+                    // An exhausted or unavailable graph analysis is not evidence
+                    // that this enabled language cannot match. Only completed
+                    // component/relation analysis may exclude a candidate from
+                    // the uniqueness decision. Unresolved source-slot outcomes
+                    // likewise cannot prove that another language is unique.
+                    if (!understanding.IsComposed && understanding.ReasonCode is not
+                        ("meaning_graph_component_unknown" or "meaning_graph_relation_unproven"))
+                    {
+                        governedAnalysisIncomplete = true;
+                        incomplete++;
+                    }
+                    if (understanding.IsComposed &&
+                        understanding.Nodes.Count > 0 &&
+                        understanding.UnknownSurfaceComponents.Count == 0)
+                    {
+                        governedMatches.Add(candidate.Code);
+                        if (governedMatches.Count > 1)
+                            break;
+                    }
+                }
 
-        var language = await _languages.NormalizeEnabledTranslationLanguageAsync(result.Language, cancellationToken);
-        return language is null
-            ? new TranslationDetectionResult(false, null, "translation_language_unsupported")
-            : new TranslationDetectionResult(
-                true,
-                language,
-                Confidence: result.Confidence);
+                if (governedMatches.Count == 1 && !governedAnalysisIncomplete)
+                {
+                    return Finish(new TranslationDetectionResult(
+                        true,
+                        governedMatches[0],
+                        Confidence: 1m));
+                }
+            }
+
+            // The governed reusable meaning graph is the identification
+            // authority a native-only request may use. When it cannot name exactly
+            // one governed language the request fails closed here: the external
+            // detection provider is not consulted and no client is constructed.
+            cancellationToken.ThrowIfCancellationRequested();
+            if (policy.ForbidsExternalProviders)
+            {
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ProviderPolicy={ProviderPolicy}",
+                    "TranslationProviderBoundary", _azure.GetType().Name + "." + nameof(ITranslationProvider.DetectLanguageAsync), "external_language_detection", "blocked", "native_only");
+                return Finish(new TranslationDetectionResult(
+                    false,
+                    null,
+                    "native_only_governed_source_language_undetermined"));
+            }
+
+            authorityMethod = _azure.GetType().Name + "." + nameof(ITranslationProvider.DetectLanguageAsync);
+            stage = "external_language_detection";
+            var providerStarted = Stopwatch.GetTimestamp();
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ProviderPolicy={ProviderPolicy}",
+                "TranslationProviderBoundary", authorityMethod, stage, "allowed", "provider_enabled");
+            var result = await _azure.DetectLanguageAsync(
+                text,
+                cancellationToken,
+                policy);
+            cancellationToken.ThrowIfCancellationRequested();
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs}",
+                "TranslationProviderCompleted", authorityMethod, stage, result.Succeeded ? "resolved" : "unresolved",
+                LegendConnectTelemetry.NormalizeDiagnosticReason(result.ErrorCode), (long)Math.Ceiling(Stopwatch.GetElapsedTime(providerStarted).TotalMilliseconds));
+            if (!result.Succeeded)
+                return Finish(result);
+
+            authorityMethod = _languages.GetType().Name + "." + nameof(ILegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync);
+            stage = "detected_language_registry";
+            var language = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+                result.Language,
+                cancellationToken);
+            return Finish(language is null
+                ? new TranslationDetectionResult(false, null, "translation_language_unsupported")
+                : new TranslationDetectionResult(
+                    true,
+                    language,
+                    Confidence: result.Confidence));
+        }
+        catch (OperationCanceledException exception)
+        {
+            outcome = "cancelled";
+            reason = "operation_cancelled";
+            exceptionType = exception.GetType().Name;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            outcome = "failed";
+            reason = "authority_exception";
+            exceptionType = exception.GetType().Name;
+            throw;
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType} ProviderPolicy={ProviderPolicy} LanguagesConsidered={LanguagesConsidered} LanguagesCandidate={LanguagesCandidate} LanguagesAnalyzed={LanguagesAnalyzed} LanguagesComposed={LanguagesComposed} LanguagesIncomplete={LanguagesIncomplete}",
+                "LanguageDetectionCompleted", authorityMethod, stage, outcome, reason,
+                (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType,
+                policy.ForbidsExternalProviders ? "native_only" : "provider_enabled", considered, candidateCount, analyzed, composed, incomplete);
+        }
     }
+
+
+    public Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage = null,
+        CancellationToken cancellationToken = default) =>
+        TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken, null);
 
     public async Task<TranslationProviderResult> TranslateAsync(
         string text,
         string targetLanguage,
-        string? sourceLanguage = null,
-        CancellationToken cancellationToken = default)
-        => await TranslateCoreAsync(
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
+    {
+        // Native-only forbids the external boundary, not Legend's own
+        // translation authority. The policy is carried into the core so every
+        // internal stage - same-language, trusted exact memory, structural
+        // composition, contextual composition and reusable governed
+        // observation - still runs, and only the external model and the
+        // quota/capacity/Azure fallback are refused.
+        return await TranslateCoreAsync(
             text,
             targetLanguage,
             sourceLanguage,
             account: null,
             requestReference: null,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy: providerPolicy);
+    }
 
     public async Task<TranslationProviderResult> TranslateForAccountAsync(
         string text,
@@ -655,23 +872,710 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             requestReference,
             cancellationToken);
 
+    public async Task<RetainedTranslationResult> TranslateRetainedAsync(
+        RetainedTranslationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var source = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            request.SourceLanguageCode,
+            cancellationToken);
+        var target = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            request.TargetLanguageCode,
+            cancellationToken);
+        var validationError = ValidateRetainedRequest(request, source, target);
+        if (validationError is not null)
+        {
+            ApplicationLocalizationTelemetry.Failure(validationError, source, target);
+            return RetainedFailure(request, source, target, validationError);
+        }
+
+        source ??= request.SourceLanguageCode;
+        target ??= request.TargetLanguageCode;
+        if (string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+        {
+            ApplicationLocalizationTelemetry.SameLanguage(source);
+            return new RetainedTranslationResult(
+                true,
+                request.SourceText,
+                source,
+                target,
+                "LegendConnectSameLanguage",
+                "Source",
+                "Source",
+                DateTime.UtcNow,
+                Reused: true);
+        }
+
+        if (_intelligence is null)
+            return RetainedFailure(request, source, target, "translation_memory_unavailable");
+
+        var identity = RetainedIdentity(request, source, target, _azure.ProviderName, _azure.ProviderVersion);
+        var trusted = await _intelligence.TryGetTrustedScopedMemoryAsync(
+            source,
+            target,
+            request.SourceText,
+            request.StableSourceContentId.Trim(),
+            request.SourceRevision.Trim(),
+            request.TranslationContext.Trim(),
+            Hash(request.PlaceholderContract),
+            request.ReuseScope,
+            request.ScopeIdentityHash,
+            cancellationToken);
+        if (trusted is not null && TranslationOutputValidator.IsValid(
+                request.SourceText,
+                trusted.Text,
+                request.PlaceholderContract))
+        {
+            ApplicationLocalizationTelemetry.ApprovedMemoryHit(source, target);
+            return new RetainedTranslationResult(
+                true,
+                trusted.Text,
+                source,
+                target,
+                "LegendConnectTranslationMemory",
+                trusted.Provenance,
+                trusted.QualityState,
+                DateTime.UtcNow,
+                Reused: true);
+        }
+
+        var retained = await _intelligence.TryGetRetainedTranslationAsync(identity, cancellationToken);
+        if (retained is not null && TranslationOutputValidator.IsValid(
+                request.SourceText,
+                retained.Text,
+                request.PlaceholderContract))
+        {
+            ApplicationLocalizationTelemetry.RetainedHit(source, target);
+            return ToRetainedResult(retained, source, target, reused: true);
+        }
+        if (retained is not null)
+        {
+            await _intelligence.InvalidateRetainedTranslationAsync(identity, cancellationToken);
+            ApplicationLocalizationTelemetry.Failure("translation_memory_invalid", source, target);
+        }
+
+        ApplicationLocalizationTelemetry.Miss(source, target);
+        var coalesced = await _coalescer.ExecuteAsync(identity, async () =>
+        {
+            var afterFence = await _intelligence.TryGetRetainedTranslationAsync(identity, cancellationToken);
+            if (afterFence is not null && TranslationOutputValidator.IsValid(
+                    request.SourceText,
+                    afterFence.Text,
+                    request.PlaceholderContract))
+            {
+                return ToRetainedResult(afterFence, source, target, reused: true);
+            }
+            if (afterFence is not null)
+                await _intelligence.InvalidateRetainedTranslationAsync(identity, cancellationToken);
+
+            var reservationReference = $"retained:{identity}:{DateTime.UtcNow:yyyyMMddHHmm}";
+            var protectedSource = TranslationOutputValidator.ProtectNonTranslatableBrands(
+                request.SourceText,
+                request.PlaceholderContract);
+            var result = await TranslateCoreAsync(
+                protectedSource.Text,
+                target,
+                source,
+                account: null,
+                requestReference: reservationReference,
+                cancellationToken,
+                allowProviderObservationReuse: false,
+                allowLegacyIntelligence: false);
+            if (string.Equals(result.Provider, _azure.ProviderName, StringComparison.Ordinal))
+            {
+                ApplicationLocalizationTelemetry.ProviderOperation(
+                    source,
+                    target,
+                    _azure.RequestCharacterCount(protectedSource.Text),
+                    result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText));
+            }
+
+            if (!result.Succeeded || string.IsNullOrWhiteSpace(result.TranslatedText))
+            {
+                if (result.ErrorCode == "translation_capacity_unavailable")
+                {
+                    var concurrent = await WaitForRetainedTranslationAsync(identity, cancellationToken);
+                    if (concurrent is not null && TranslationOutputValidator.IsValid(
+                            request.SourceText,
+                            concurrent.Text,
+                            request.PlaceholderContract))
+                        return ToRetainedResult(concurrent, source, target, reused: true);
+                }
+
+                ApplicationLocalizationTelemetry.Failure(
+                    result.ErrorCode ?? "translation_provider_failed",
+                    source,
+                    target);
+                return RetainedFailure(
+                    request,
+                    source,
+                    target,
+                    result.ErrorCode ?? "translation_provider_failed");
+            }
+
+            if (!TranslationOutputValidator.IsValid(
+                    protectedSource.Text,
+                    result.TranslatedText,
+                    protectedSource.PlaceholderContract))
+            {
+                ApplicationLocalizationTelemetry.Failure(
+                    "translation_output_invalid",
+                    source,
+                    target);
+                return RetainedFailure(request, source, target, "translation_output_invalid");
+            }
+
+            var restoredTranslation = protectedSource.Restore(result.TranslatedText);
+            if (!TranslationOutputValidator.IsValid(
+                    request.SourceText,
+                    restoredTranslation,
+                    request.PlaceholderContract))
+            {
+                ApplicationLocalizationTelemetry.Failure(
+                    "translation_output_invalid",
+                    source,
+                    target);
+                return RetainedFailure(request, source, target, "translation_output_invalid");
+            }
+            result = result with { TranslatedText = restoredTranslation };
+
+            if (!string.Equals(result.Provider, _azure.ProviderName, StringComparison.Ordinal))
+            {
+                return new RetainedTranslationResult(
+                    true,
+                    result.TranslatedText,
+                    source,
+                    target,
+                    result.Provider,
+                    "LegendHeld",
+                    "Approved",
+                    DateTime.UtcNow,
+                    Reused: true);
+            }
+
+            var stored = await _intelligence.RetainProviderTranslationAsync(
+                new LegendRetainedTranslationWrite(
+                    identity,
+                    request.StableSourceContentId.Trim(),
+                    request.SourceText,
+                    result.TranslatedText,
+                    source,
+                    target,
+                    request.SourceRevision.Trim(),
+                    request.TranslationContext.Trim(),
+                    Hash(request.PlaceholderContract),
+                    request.ReuseScope,
+                    request.ScopeIdentityHash,
+                    result.Provider,
+                    _azure.ProviderVersion),
+                cancellationToken);
+            ApplicationLocalizationTelemetry.ProviderPersisted(source, target);
+            return ToRetainedResult(stored, source, target, reused: false);
+        });
+
+        if (coalesced.JoinedExistingRequest)
+            ApplicationLocalizationTelemetry.Coalesced(source, target);
+        return coalesced.Result;
+    }
+
+    public async Task<IReadOnlyList<RetainedTranslationResult>> TranslateRetainedBatchAsync(
+        IReadOnlyList<RetainedTranslationRequest> requests,
+        CancellationToken cancellationToken = default,
+        int maximumProviderBatches = int.MaxValue)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumProviderBatches);
+        if (requests.Count == 0)
+            return Array.Empty<RetainedTranslationResult>();
+
+        var first = requests[0];
+        if (requests.Any(request =>
+                !string.Equals(request.SourceLanguageCode, first.SourceLanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(request.TargetLanguageCode, first.TargetLanguageCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            var individual = new List<RetainedTranslationResult>(requests.Count);
+            foreach (var request in requests)
+                individual.Add(await TranslateRetainedAsync(request, cancellationToken));
+            return individual;
+        }
+
+        var source = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            first.SourceLanguageCode,
+            cancellationToken);
+        var target = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            first.TargetLanguageCode,
+            cancellationToken);
+        if (source is null || target is null || requests.Any(request =>
+                ValidateRetainedRequest(request, source, target) is not null))
+        {
+            var invalid = new List<RetainedTranslationResult>(requests.Count);
+            foreach (var request in requests)
+                invalid.Add(await TranslateRetainedAsync(request, cancellationToken));
+            return invalid;
+        }
+
+        var identities = requests.Select(request => RetainedIdentity(
+            request,
+            source,
+            target,
+            _azure.ProviderName,
+            _azure.ProviderVersion)).ToArray();
+        var batchIdentity = "retained-batch:" + maximumProviderBatches + ":" + Hash(string.Join('\n', identities.Order(StringComparer.Ordinal)));
+        var coalesced = await _coalescer.ExecuteAsync(batchIdentity, () =>
+            TranslateRetainedBatchCoreAsync(requests, identities, source, target, maximumProviderBatches, cancellationToken));
+        if (coalesced.JoinedExistingRequest)
+            ApplicationLocalizationTelemetry.Coalesced(source, target);
+        return coalesced.Result;
+    }
+
+    private async Task<IReadOnlyList<RetainedTranslationResult>> TranslateRetainedBatchCoreAsync(
+        IReadOnlyList<RetainedTranslationRequest> requests,
+        IReadOnlyList<string> identities,
+        string source,
+        string target,
+        int maximumProviderBatches,
+        CancellationToken cancellationToken)
+    {
+        var results = new RetainedTranslationResult?[requests.Count];
+        if (string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+        {
+            for (var index = 0; index < requests.Count; index++)
+            {
+                results[index] = new RetainedTranslationResult(
+                    true,
+                    requests[index].SourceText,
+                    source,
+                    target,
+                    "LegendConnectSameLanguage",
+                    "Source",
+                    "Source",
+                    DateTime.UtcNow,
+                    Reused: true);
+            }
+            return results.Select(result => result!).ToArray();
+        }
+
+        if (_intelligence is null)
+            return requests.Select(request =>
+                RetainedFailure(request, source, target, "translation_memory_unavailable")).ToArray();
+
+        var groups = identities
+            .Select((identity, index) => (identity, index))
+            .GroupBy(item => item.identity, StringComparer.Ordinal)
+            .ToArray();
+        var misses = new List<(string Identity, int RepresentativeIndex, int[] Indices)>();
+        var groupedRequests = groups.Select(group =>
+        {
+            var indices = group.Select(item => item.index).ToArray();
+            var representative = indices[0];
+            return (Identity: group.Key, RepresentativeIndex: representative, Indices: indices);
+        }).ToArray();
+        var trustedLookups = groupedRequests.Select(group =>
+        {
+            var request = requests[group.RepresentativeIndex];
+            return new LegendTrustedTranslationLookup(
+                group.Identity,
+                source,
+                target,
+                request.SourceText,
+                request.StableSourceContentId.Trim(),
+                request.SourceRevision.Trim(),
+                request.TranslationContext.Trim(),
+                Hash(request.PlaceholderContract),
+                request.ReuseScope,
+                request.ScopeIdentityHash);
+        }).ToArray();
+        var trustedMatches = await _intelligence.TryGetTrustedScopedMemoriesAsync(
+            trustedLookups,
+            cancellationToken);
+        var unresolved = new List<(string Identity, int RepresentativeIndex, int[] Indices)>();
+        foreach (var group in groupedRequests)
+        {
+            var request = requests[group.RepresentativeIndex];
+            trustedMatches.TryGetValue(group.Identity, out var trusted);
+            if (trusted is not null && TranslationOutputValidator.IsValid(
+                    request.SourceText,
+                    trusted.Text,
+                    request.PlaceholderContract))
+            {
+                var resolved = new RetainedTranslationResult(
+                    true,
+                    trusted.Text,
+                    source,
+                    target,
+                    "LegendConnectTranslationMemory",
+                    trusted.Provenance,
+                    trusted.QualityState,
+                    trusted.CreatedUtc,
+                    Reused: true);
+                foreach (var index in group.Indices)
+                    results[index] = resolved;
+                ApplicationLocalizationTelemetry.ApprovedMemoryHit(source, target);
+                continue;
+            }
+            if (trusted is not null)
+                ApplicationLocalizationTelemetry.Failure("trusted_translation_invalid", source, target);
+            unresolved.Add(group);
+        }
+
+        var retainedMatches = await _intelligence.TryGetRetainedTranslationsAsync(
+            unresolved.Select(group => group.Identity).ToArray(),
+            cancellationToken);
+        foreach (var group in unresolved)
+        {
+            var request = requests[group.RepresentativeIndex];
+            retainedMatches.TryGetValue(group.Identity, out var retained);
+            if (retained is not null && TranslationOutputValidator.IsValid(
+                    request.SourceText,
+                    retained.Text,
+                    request.PlaceholderContract))
+            {
+                var resolved = ToRetainedResult(retained, source, target, reused: true);
+                foreach (var index in group.Indices)
+                    results[index] = resolved;
+                ApplicationLocalizationTelemetry.RetainedHit(source, target);
+                continue;
+            }
+            if (retained is not null)
+            {
+                await _intelligence.InvalidateRetainedTranslationAsync(group.Identity, cancellationToken);
+                ApplicationLocalizationTelemetry.Failure("translation_memory_invalid", source, target);
+            }
+
+            ApplicationLocalizationTelemetry.Miss(source, target);
+            misses.Add(group);
+        }
+
+        var batches = 0;
+        foreach (var chunk in BatchChunks(misses, requests))
+        {
+            if (batches++ >= maximumProviderBatches)
+            {
+                foreach (var miss in chunk)
+                    foreach (var index in miss.Indices)
+                        results[index] = RetainedFailure(requests[index], source, target, "translation_pending");
+                continue;
+            }
+            var protectedSources = chunk.Select(item =>
+                TranslationOutputValidator.ProtectNonTranslatableBrands(
+                    requests[item.RepresentativeIndex].SourceText,
+                    requests[item.RepresentativeIndex].PlaceholderContract)).ToArray();
+            var characters = protectedSources.Sum(item => _azure.RequestCharacterCount(item.Text));
+            var chunkIdentity = Hash(string.Join('\n', chunk.Select(item => item.Identity).Order(StringComparer.Ordinal)));
+            var reservation = await _capacity.TryReserveAsync(
+                _azure.ProviderName,
+                characters,
+                TranslationCapacityPurpose.Live,
+                $"retained-batch:{chunkIdentity}:{DateTime.UtcNow:yyyyMMddHHmm}",
+                cancellationToken);
+            if (reservation is null)
+            {
+                await ResolveCrossInstanceBatchAsync(
+                    chunk,
+                    requests,
+                    results,
+                    source,
+                    target,
+                    cancellationToken);
+                continue;
+            }
+
+            IReadOnlyList<TranslationProviderResult> providerResults;
+            var providerExecuted = false;
+            var providerSucceeded = false;
+            try
+            {
+                providerExecuted = true;
+                providerResults = await _azure.TranslateBatchAsync(
+                    protectedSources.Select(item => item.Text).ToArray(),
+                    target,
+                    source,
+                    cancellationToken);
+                providerSucceeded = providerResults.Count == chunk.Count &&
+                    providerResults.All(result =>
+                        result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText));
+            }
+            finally
+            {
+                await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
+                if (providerExecuted)
+                    ApplicationLocalizationTelemetry.ProviderOperation(
+                        source,
+                        target,
+                        characters,
+                        providerSucceeded);
+            }
+
+            if (providerResults.Count != chunk.Count)
+                providerResults = Enumerable.Range(0, chunk.Count)
+                    .Select(_ => new TranslationProviderResult(
+                        false,
+                        null,
+                        source,
+                        _azure.ProviderName,
+                        "translation_provider_failed"))
+                    .ToArray();
+
+            var validWrites = new List<(int Offset, LegendRetainedTranslationWrite Write)>();
+            for (var offset = 0; offset < chunk.Count; offset++)
+            {
+                var miss = chunk[offset];
+                var request = requests[miss.RepresentativeIndex];
+                var provider = providerResults[offset];
+                RetainedTranslationResult resolved;
+                if (!provider.Succeeded || string.IsNullOrWhiteSpace(provider.TranslatedText))
+                {
+                    var error = provider.ErrorCode ?? "translation_provider_failed";
+                    ApplicationLocalizationTelemetry.Failure(error, source, target);
+                    resolved = RetainedFailure(request, source, target, error);
+                }
+                else if (!TranslationOutputValidator.IsValid(
+                             protectedSources[offset].Text,
+                             provider.TranslatedText,
+                             protectedSources[offset].PlaceholderContract))
+                {
+                    ApplicationLocalizationTelemetry.Failure(
+                        "translation_output_invalid",
+                        source,
+                        target);
+                    resolved = RetainedFailure(
+                        request,
+                        source,
+                        target,
+                        "translation_output_invalid");
+                }
+                else
+                {
+                    var restoredTranslation = protectedSources[offset].Restore(provider.TranslatedText);
+                    if (!TranslationOutputValidator.IsValid(
+                            request.SourceText,
+                            restoredTranslation,
+                            request.PlaceholderContract))
+                    {
+                        ApplicationLocalizationTelemetry.Failure(
+                            "translation_output_invalid",
+                            source,
+                            target);
+                        resolved = RetainedFailure(
+                            request,
+                            source,
+                            target,
+                            "translation_output_invalid");
+                        foreach (var index in miss.Indices)
+                            results[index] = resolved;
+                        continue;
+                    }
+                    validWrites.Add((offset, new LegendRetainedTranslationWrite(
+                            miss.Identity,
+                            request.StableSourceContentId.Trim(),
+                            request.SourceText,
+                            restoredTranslation,
+                            source,
+                            target,
+                            request.SourceRevision.Trim(),
+                            request.TranslationContext.Trim(),
+                            Hash(request.PlaceholderContract),
+                            request.ReuseScope,
+                            request.ScopeIdentityHash,
+                            provider.Provider,
+                            _azure.ProviderVersion)));
+                    continue;
+                }
+
+                foreach (var index in miss.Indices)
+                    results[index] = resolved;
+            }
+
+            if (validWrites.Count > 0)
+            {
+                var stored = await _intelligence.RetainProviderTranslationsAsync(
+                    validWrites.Select(item => item.Write).ToArray(),
+                    cancellationToken);
+                for (var index = 0; index < validWrites.Count; index++)
+                {
+                    var miss = chunk[validWrites[index].Offset];
+                    var resolved = ToRetainedResult(stored[index], source, target, reused: false);
+                    foreach (var resultIndex in miss.Indices)
+                        results[resultIndex] = resolved;
+                    ApplicationLocalizationTelemetry.ProviderPersisted(source, target);
+                }
+            }
+        }
+
+        return results.Select((result, index) => result ?? RetainedFailure(
+            requests[index],
+            source,
+            target,
+            "translation_provider_failed")).ToArray();
+    }
+
+    private IReadOnlyList<IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)>> BatchChunks(
+        IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)> misses,
+        IReadOnlyList<RetainedTranslationRequest> requests)
+    {
+        var chunks = new List<IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)>>();
+        var current = new List<(string Identity, int RepresentativeIndex, int[] Indices)>();
+        var characters = 0;
+        foreach (var miss in misses)
+        {
+            var request = requests[miss.RepresentativeIndex];
+            var length = _azure.RequestCharacterCount(TranslationOutputValidator.ProtectNonTranslatableBrands(request.SourceText, request.PlaceholderContract).Text);
+            if (current.Count == 100 || characters + length > 50_000)
+            {
+                chunks.Add(current.ToArray());
+                current.Clear();
+                characters = 0;
+            }
+            current.Add(miss);
+            characters += length;
+        }
+        if (current.Count > 0)
+            chunks.Add(current.ToArray());
+        return chunks;
+    }
+
+    private async Task ResolveCrossInstanceBatchAsync(
+        IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)> chunk,
+        IReadOnlyList<RetainedTranslationRequest> requests,
+        RetainedTranslationResult?[] results,
+        string source,
+        string target,
+        CancellationToken cancellationToken)
+    {
+        var unresolved = chunk.ToDictionary(item => item.Identity, StringComparer.Ordinal);
+        for (var attempt = 0; attempt < 14 && unresolved.Count > 0; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            var retainedMatches = await _intelligence!.TryGetRetainedTranslationsAsync(
+                unresolved.Keys.ToArray(), cancellationToken);
+            foreach (var identity in unresolved.Keys.ToArray())
+            {
+                if (!retainedMatches.TryGetValue(identity, out var retained))
+                    continue;
+                var miss = unresolved[identity];
+                var request = requests[miss.RepresentativeIndex];
+                if (!TranslationOutputValidator.IsValid(
+                        request.SourceText,
+                        retained.Text,
+                        request.PlaceholderContract))
+                    continue;
+                var resolved = ToRetainedResult(retained, source, target, reused: true);
+                foreach (var index in miss.Indices)
+                    results[index] = resolved;
+                unresolved.Remove(identity);
+            }
+        }
+
+        foreach (var miss in unresolved.Values)
+        {
+            var failure = RetainedFailure(
+                requests[miss.RepresentativeIndex],
+                source,
+                target,
+                "translation_capacity_unavailable");
+            foreach (var index in miss.Indices)
+                results[index] = failure;
+        }
+    }
+
+    private async Task<T> TraceTranslationStageAsync<T>(
+        string stage, string authorityMethod, Func<Task<T>> action, LegendConnectExternalProviderPolicy policy)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var outcome = "completed";
+        var reason = "none";
+        var exceptionType = "none";
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ProviderPolicy={ProviderPolicy}",
+            "TranslationStageStarted", authorityMethod, stage, "started", policy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
+        try
+        {
+            var result = await action();
+            if (result is null)
+                outcome = "no_match";
+            if (result is TranslationProviderResult translated)
+            {
+                outcome = translated.Succeeded ? "resolved" : "unresolved";
+                reason = LegendConnectTelemetry.NormalizeDiagnosticReason(translated.ErrorCode);
+            }
+            if (result is TranslationQuotaReservationResult quota)
+            {
+                outcome = quota.Succeeded ? "allowed" : "blocked";
+                reason = LegendConnectTelemetry.NormalizeDiagnosticReason(quota.ErrorCode);
+            }
+            if (result is LegendConnectActiveModelInferenceResult model)
+            {
+                outcome = model.Succeeded ? "resolved" : "unresolved";
+                reason = LegendConnectTelemetry.NormalizeDiagnosticReason(model.ErrorCode);
+            }
+            return result;
+        }
+        catch (OperationCanceledException exception)
+        {
+            outcome = "cancelled";
+            reason = "operation_cancelled";
+            exceptionType = exception.GetType().Name;
+            throw;
+        }
+        catch (Exception exception)
+        {
+            outcome = "failed";
+            reason = "authority_exception";
+            exceptionType = exception.GetType().Name;
+            throw;
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType} ProviderPolicy={ProviderPolicy}",
+                "TranslationStageEnded", authorityMethod, stage, outcome, reason,
+                (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType,
+                policy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
+        }
+    }
+
+    private async Task TraceTranslationStageAsync(
+        string stage, string authorityMethod, Func<Task> action, LegendConnectExternalProviderPolicy policy)
+    {
+        await TraceTranslationStageAsync(stage, authorityMethod, async () =>
+        {
+            await action();
+            return true;
+        }, policy);
+    }
+
     private async Task<TranslationProviderResult> TranslateCoreAsync(
         string text,
         string targetLanguage,
         string? sourceLanguage,
         MessagingActor? account,
         string? requestReference,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowProviderObservationReuse = true,
+        bool allowLegacyIntelligence = true,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
-        var target = await _languages.NormalizeEnabledTranslationLanguageAsync(targetLanguage, cancellationToken);
+        var externalProviderPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
+        TranslationProviderResult Finish(TranslationProviderResult result)
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "TranslationCompleted", "LegendConnectTranslationRouter.TranslateCoreAsync", "translation_result", result.Succeeded ? "resolved" : "unresolved",
+                LegendConnectTelemetry.NormalizeDiagnosticReason(result.ErrorCode), externalProviderPolicy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
+            return result;
+        }
+
+        var target = await TraceTranslationStageAsync("translation_language_registry", _languages.GetType().Name + ".NormalizeEnabledTranslationLanguageAsync",
+                    () => _languages.NormalizeEnabledTranslationLanguageAsync(targetLanguage, cancellationToken), externalProviderPolicy);
         if (target is null)
-            return new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported");
+            return Finish(new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported"));
 
         var source = sourceLanguage is null
             ? null
-            : await _languages.NormalizeEnabledTranslationLanguageAsync(sourceLanguage, cancellationToken);
+            : await TraceTranslationStageAsync("translation_language_registry", _languages.GetType().Name + ".NormalizeEnabledTranslationLanguageAsync",
+                    () => _languages.NormalizeEnabledTranslationLanguageAsync(sourceLanguage, cancellationToken), externalProviderPolicy);
         if (sourceLanguage is not null && source is null)
-            return new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported");
+            return Finish(new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported"));
 
         LegendConnectTelemetry.TranslationRequested(source, target);
 
@@ -681,7 +1585,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             if (_systemUsage is not null)
                 await _systemUsage.TryRecordSameLanguageBypassAsync(text?.Length ?? 0, cancellationToken);
             await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.SameLanguage, text?.Length ?? 0, cancellationToken);
-            return new TranslationProviderResult(true, text, source, "LegendConnectSameLanguage");
+            return Finish(new TranslationProviderResult(true, text, source, "LegendConnectSameLanguage"));
         }
 
         LegendContextualTranslationSuggestion? contextualSuggestion = null;
@@ -692,10 +1596,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         {
             try
             {
-                enabledPair = await _languages.GetEnabledPairAsync(
+                enabledPair = await TraceTranslationStageAsync("translation_pair", _languages.GetType().Name + ".GetEnabledPairAsync",
+                    () => _languages.GetEnabledPairAsync(
                     source,
                     target,
-                    cancellationToken);
+                    cancellationToken), externalProviderPolicy);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -703,16 +1608,16 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 // not permission to strand recipient translation. Preserve the
                 // established provider path and make the internal outage clear.
                 _logger.LogWarning(
-                    exception,
-                    "Legend Connect pair eligibility was unavailable; Azure fallback remains active. Pair={PairKey}",
-                    pairKey);
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                    "TranslationBoundaryFailed", _languages.GetType().Name + ".GetEnabledPairAsync", "translation_pair", "failed", "authority_exception", exception.GetType().Name);
             }
         }
-        if (enabledPair is not null && _intelligence is not null && source is not null)
+        if (allowLegacyIntelligence && enabledPair is not null && _intelligence is not null && source is not null)
         {
             try
             {
-                var memory = await _intelligence.TryGetTrustedExactMemoryAsync(source, target, text ?? string.Empty, cancellationToken);
+                var memory = await TraceTranslationStageAsync("translation_memory", _intelligence.GetType().Name + ".TryGetTrustedExactMemoryAsync",
+                    () => _intelligence.TryGetTrustedExactMemoryAsync(source, target, text ?? string.Empty, cancellationToken), externalProviderPolicy);
                 if (memory is not null)
                 {
                     if (_demand is not null)
@@ -724,7 +1629,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             TranslationMemoryCharactersAvoided: text?.Length ?? 0), cancellationToken);
                     }
                     await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.TranslationMemory, text?.Length ?? 0, cancellationToken);
-                    return new TranslationProviderResult(true, memory.Text, source, "LegendConnectTranslationMemory");
+                    return Finish(new TranslationProviderResult(true, memory.Text, source, "LegendConnectTranslationMemory"));
                 }
 
                 // Structural curriculum is evaluated after exact memory and
@@ -733,11 +1638,12 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 // composition engine exists.
                 if (_structuralComposition is not null)
                 {
-                    var structural = await _structuralComposition.TryComposeAsync(
+                    var structural = await TraceTranslationStageAsync("translation_structural", _structuralComposition.GetType().Name + ".TryComposeAsync",
+                    () => _structuralComposition.TryComposeAsync(
                         source,
                         target,
                         text ?? string.Empty,
-                        cancellationToken);
+                        cancellationToken), externalProviderPolicy);
                     if (structural is not null)
                     {
                         if (_demand is not null)
@@ -764,20 +1670,22 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             text?.Length ?? 0,
                             cancellationToken);
 
-                        return new TranslationProviderResult(
+                        return Finish(new TranslationProviderResult(
                             true,
                             structural.Text,
                             source,
-                            "LegendConnectStructuralComposition");
+                            "LegendConnectStructuralComposition"));
                     }
                 }
 
-                contextualSuggestion = await _intelligence.EvaluateContextAsync(source, target, text ?? string.Empty, cancellationToken);
+                contextualSuggestion = await TraceTranslationStageAsync("translation_context", _intelligence.GetType().Name + ".EvaluateContextAsync",
+                    () => _intelligence.EvaluateContextAsync(source, target, text ?? string.Empty, cancellationToken), externalProviderPolicy);
                 var contextualCompositionActive = _intelligence.IsContextualCompositionActive;
                 if (_runtimePolicy is not null)
                 {
                     contextualCompositionActive = string.Equals(
-                        (await _runtimePolicy.GetEffectiveAsync(cancellationToken)).ContextualCompositionMode,
+                        (await TraceTranslationStageAsync("translation_runtime_policy", _runtimePolicy.GetType().Name + ".GetEffectiveAsync",
+                    () => _runtimePolicy.GetEffectiveAsync(cancellationToken), externalProviderPolicy)).ContextualCompositionMode,
                         "Active",
                         StringComparison.OrdinalIgnoreCase);
                 }
@@ -798,21 +1706,23 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             ContextualCharactersAvoided: text?.Length ?? 0), cancellationToken);
                     }
                     await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.ContextualComposition, text?.Length ?? 0, cancellationToken);
-                    return new TranslationProviderResult(
+                    return Finish(new TranslationProviderResult(
                         true,
                         contextualSuggestion.Text,
                         source,
-                        "LegendConnectContextualComposition");
+                        "LegendConnectContextualComposition"));
                 }
 
-                if (_activeModelInference is not null)
+                if (_activeModelInference is not null &&
+                    !externalProviderPolicy.ForbidsExternalProviders)
                 {
                     var neural =
-                        await _activeModelInference.TryTranslateAsync(
+                        await TraceTranslationStageAsync("translation_promoted_model", _activeModelInference.GetType().Name + ".TryTranslateAsync",
+                    () => _activeModelInference.TryTranslateAsync(
                             source,
                             target,
                             text ?? string.Empty,
-                            cancellationToken);
+                            cancellationToken), externalProviderPolicy);
 
                     if (neural.Succeeded &&
                         !string.IsNullOrWhiteSpace(
@@ -842,11 +1752,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             text?.Length ?? 0,
                             cancellationToken);
 
-                        return new TranslationProviderResult(
+                        return Finish(new TranslationProviderResult(
                             true,
                             neural.Text,
                             source,
-                            "LegendConnectPromotedTranslationModel");
+                            "LegendConnectPromotedTranslationModel"));
                     }
 
                     promotedTranslationModelFailed =
@@ -856,12 +1766,14 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             StringComparison.Ordinal);
                 }
 
-                var providerObservation =
-                    await _intelligence.TryGetReusableProviderObservationAsync(
+                var providerObservation = allowProviderObservationReuse
+                    ? await TraceTranslationStageAsync("translation_provider_observation", _intelligence.GetType().Name + ".TryGetReusableProviderObservationAsync",
+                    () => _intelligence.TryGetReusableProviderObservationAsync(
                         source,
                         target,
                         text ?? string.Empty,
-                        cancellationToken);
+                        cancellationToken), externalProviderPolicy)
+                    : null;
 
                 if (providerObservation is not null)
                 {
@@ -891,16 +1803,18 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         text?.Length ?? 0,
                         cancellationToken);
 
-                    return new TranslationProviderResult(
+                    return Finish(new TranslationProviderResult(
                         true,
                         providerObservation.Text,
                         source,
-                        "LegendConnectProviderObservation");
+                        "LegendConnectProviderObservation"));
                 }
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning(exception, "Legend Connect intelligence evaluation failed; Azure fallback remains authoritative. Pair={PairKey}", pairKey);
+                _logger.LogWarning(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                    "TranslationBoundaryFailed", "LegendConnectTranslationRouter.TranslateCoreAsync", "translation_intelligence", "failed", "context_evaluation_failed", exception.GetType().Name);
                 if (_operations is not null)
                 {
                     await _operations.TryRecordAsync(
@@ -914,6 +1828,24 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         cancellationToken: cancellationToken);
                 }
             }
+        }
+
+        // Every internal Legend stage above has been given its chance. What
+        // remains below is the external boundary: quota and capacity
+        // accounting for the external provider, and the Azure fallback call
+        // itself. A native-only request fails closed here, with no provider
+        // identity claimed, rather than being attributed to Azure.
+        if (externalProviderPolicy.ForbidsExternalProviders)
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "TranslationProviderBoundary", _azure.GetType().Name + ".TranslateAsync", "translation_provider", "blocked", "external_provider_forbidden_by_native_only_policy", "native_only");
+            return Finish(new TranslationProviderResult(
+                false,
+                null,
+                source,
+                "None",
+                "external_provider_forbidden_by_native_only_policy"));
         }
 
         if (pairKey is not null && _demand is not null)
@@ -933,7 +1865,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             TranslationQuotaReservationResult quota;
             try
             {
-                quota = await _entitlements.TryReserveAsync(
+                quota = await TraceTranslationStageAsync("translation_quota", _entitlements.GetType().Name + ".TryReserveAsync",
+                    () => _entitlements.TryReserveAsync(
                     new TranslationQuotaReservationRequest(
                         account,
                         requestReference ?? string.Empty,
@@ -941,12 +1874,14 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         target,
                         _azure.ProviderName,
                         text?.Length ?? 0),
-                    cancellationToken);
+                    cancellationToken), externalProviderPolicy);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
-                _logger.LogError(exception, "Legend Connect account quota reservation failed. Target={TargetLanguage}", target);
-                return new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_accounting_unavailable");
+                _logger.LogError(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                    "TranslationBoundaryFailed", _entitlements.GetType().Name + ".TryReserveAsync", "translation_quota", "failed", "translation_accounting_unavailable", exception.GetType().Name);
+                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_accounting_unavailable"));
             }
 
             if (!quota.Succeeded)
@@ -958,17 +1893,18 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         new TranslationSystemUsageDelta(QuotaDeniedRequests: 1),
                         cancellationToken);
                 }
-                return new TranslationProviderResult(false, null, source, _azure.ProviderName, quota.ErrorCode ?? "translation_accounting_unavailable");
+                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, quota.ErrorCode ?? "translation_accounting_unavailable"));
             }
             quotaReservation = quota.Reservation;
         }
 
-        var reservation = await _capacity.TryReserveAsync(
+        var reservation = await TraceTranslationStageAsync("translation_capacity", _capacity.GetType().Name + ".TryReserveAsync",
+                    () => _capacity.TryReserveAsync(
             _azure.ProviderName,
-            text?.Length ?? 0,
+            string.IsNullOrEmpty(text) ? 0 : _azure.RequestCharacterCount(text),
             TranslationCapacityPurpose.Live,
             reservationReference: requestReference,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken), externalProviderPolicy);
         if (reservation is null)
         {
             await CompleteQuotaSafelyAsync(
@@ -989,7 +1925,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     summary: "Live translation capacity could not be reserved.",
                     cancellationToken: cancellationToken);
             }
-            return new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_capacity_unavailable");
+            return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_capacity_unavailable"));
         }
 
         var providerSucceeded = false;
@@ -998,7 +1934,13 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         try
         {
             providerExecuted = true;
-            var result = await _azure.TranslateAsync(text ?? string.Empty, target, source, cancellationToken);
+            var result = await TraceTranslationStageAsync("translation_provider", _azure.GetType().Name + ".TranslateAsync",
+                    () => _azure.TranslateAsync(
+                text ?? string.Empty,
+                target,
+                source,
+                cancellationToken,
+                externalProviderPolicy), externalProviderPolicy);
             providerSucceeded = result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText);
             providerFailureCode = providerSucceeded ? null : result.ErrorCode ?? "translation_provider_failed";
             if (providerSucceeded && source is not null)
@@ -1015,7 +1957,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     summary: "Azure translation did not return a usable result.",
                     cancellationToken: cancellationToken);
             }
-            return result;
+            return Finish(result);
         }
         catch
         {
@@ -1030,13 +1972,16 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 // billed its input even if a response is lost. Retain that
                 // character cost in the rolling ledger rather than releasing
                 // it and risking a tier overrun on a retry.
-                await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
+                await TraceTranslationStageAsync("translation_capacity_finalization", _capacity.GetType().Name + ".CompleteAsync",
+                    () => _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken), externalProviderPolicy);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 // A ledger-write failure must not alter a successfully returned
                 // provider result. It remains observable without logging text.
-                _logger.LogError(exception, "Legend Connect capacity finalization failed. Provider={Provider} Characters={Characters}", _azure.ProviderName, reservation.Characters);
+                _logger.LogError(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                    "TranslationBoundaryFailed", _capacity.GetType().Name + ".CompleteAsync", "translation_capacity_finalization", "failed", "capacity_finalization_failed", exception.GetType().Name);
                 if (_operations is not null)
                 {
                     await _operations.TryRecordAsync(
@@ -1067,6 +2012,100 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         }
     }
 
+    private async Task<LegendRetainedTranslationMemoryMatch?> WaitForRetainedTranslationAsync(
+        string identity,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 70; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            var match = await _intelligence!.TryGetRetainedTranslationAsync(identity, cancellationToken);
+            if (match is not null)
+                return match;
+        }
+        return null;
+    }
+
+    private static string? ValidateRetainedRequest(
+        RetainedTranslationRequest request,
+        string? source,
+        string? target)
+    {
+        if (source is null || target is null)
+            return "translation_language_unsupported";
+        if (string.IsNullOrWhiteSpace(request.SourceText) || request.SourceText.Length > 10_000)
+            return "translation_source_invalid";
+        if (string.IsNullOrWhiteSpace(request.StableSourceContentId) || request.StableSourceContentId.Length > 180 ||
+            string.IsNullOrWhiteSpace(request.SourceRevision) || request.SourceRevision.Length > 80 ||
+            string.IsNullOrWhiteSpace(request.TranslationContext) || request.TranslationContext.Length > 180)
+            return "translation_identity_invalid";
+        if (!TranslationReuseScopes.IsSupported(request.ReuseScope))
+            return "translation_scope_invalid";
+        if (request.ReuseScope == TranslationReuseScopes.Global)
+            return string.IsNullOrEmpty(request.ScopeIdentityHash) ? null : "translation_scope_invalid";
+        return IsLowerHex(request.ScopeIdentityHash, 64)
+            ? null
+            : "translation_scope_invalid";
+    }
+
+    private static RetainedTranslationResult RetainedFailure(
+        RetainedTranslationRequest request,
+        string? source,
+        string? target,
+        string errorCode) => new(
+            false,
+            request.SourceText,
+            source ?? request.SourceLanguageCode,
+            target ?? request.TargetLanguageCode,
+            "SourceFallback",
+            "Source",
+            "Fallback",
+            DateTime.UtcNow,
+            Reused: false,
+            errorCode);
+
+    private static RetainedTranslationResult ToRetainedResult(
+        LegendRetainedTranslationMemoryMatch match,
+        string source,
+        string target,
+        bool reused) => new(
+            true,
+            match.Text,
+            source,
+            target,
+            match.Provider,
+            match.Provenance,
+            match.QualityState,
+            match.CreatedUtc,
+            reused);
+
+    private static string RetainedIdentity(
+        RetainedTranslationRequest request,
+        string source,
+        string target,
+        string provider,
+        string providerVersion) => Hash(string.Join('\n',
+            "retained-translation-v1",
+            request.StableSourceContentId.Trim(),
+            LegendLanguageIdentity.TextHash(request.SourceText),
+            source,
+            target,
+            request.SourceRevision.Trim(),
+            request.TranslationContext.Trim(),
+            Hash(request.PlaceholderContract),
+            provider,
+            providerVersion,
+            request.ReuseScope,
+            request.ScopeIdentityHash));
+
+    private static string Hash(string value) => Convert.ToHexString(
+        SHA256.HashData(Encoding.UTF8.GetBytes(value ?? string.Empty)))
+        .ToLowerInvariant();
+
+    private static bool IsLowerHex(string value, int length) =>
+        value.Length == length && value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
     private async Task RecordAvoidedSafelyAsync(
         MessagingActor? account,
         TranslationAvoidedPath path,
@@ -1081,7 +2120,9 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(exception, "Legend Connect avoided-translation usage write failed. Path={Path}", path);
+            _logger.LogWarning(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "TranslationBoundaryFailed", _entitlements.GetType().Name + ".RecordAvoidedAsync", "translation_usage", "failed", "translation_usage_recording_failed", exception.GetType().Name);
         }
     }
 
@@ -1108,7 +2149,9 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             // The translation result must remain non-blocking for messaging.
             // The reservation ledger is durable and therefore auditable if a
             // finalization outage needs reconciliation.
-            _logger.LogError(exception, "Legend Connect account quota finalization failed.");
+            _logger.LogError(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "TranslationBoundaryFailed", _entitlements.GetType().Name + ".CompleteAsync", "translation_quota_finalization", "failed", "translation_quota_finalization_failed", exception.GetType().Name);
         }
     }
 }

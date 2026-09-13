@@ -118,6 +118,6 @@ struct LegendNextSkeletonCard: View {
                 Spacer(minLength: 0)
             }
         }
-        .accessibilityLabel("Loading content")
+        .accessibilityLabel(LegendLocalized("Loading content", context: "accessibility copy"))
     }
 }

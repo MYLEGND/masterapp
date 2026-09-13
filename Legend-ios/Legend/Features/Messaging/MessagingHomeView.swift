@@ -1,3 +1,6 @@
+import Combine
+import ImageIO
+import QuickLook
 import SwiftUI
 import UIKit
 import PhotosUI
@@ -13,7 +16,7 @@ private func publicAgentRoleLabel(
         return nil
     }
 
-    return roleLabel
+    return publicRelationshipLabel(roleLabel)
 }
 
 private func publicRelationshipLabel(
@@ -125,6 +128,7 @@ struct MessagingHomeView: View {
     let openConversation: (UUID) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var inboxSearch = ""
     @State private var isPresentingNewConversation = false
     @State private var isPresentingCallDirectory = false
     @State private var conversationPendingRemoval: ConversationSummary?
@@ -139,6 +143,7 @@ struct MessagingHomeView: View {
         .sheet(isPresented: $isPresentingNewConversation) {
             LegendRecipientPicker(
                 store: store,
+                initialSearch: inboxSearch,
                 selectConversation: { conversationID in
                     isPresentingNewConversation = false
                     openConversation(conversationID)
@@ -150,32 +155,33 @@ struct MessagingHomeView: View {
             .legendNextSheetChrome(detents: [.large])
         }
         .sheet(isPresented: $isPresentingCallDirectory) {
-            if case .loaded(let conversations) = store.state {
-                LegendMessagingCallDirectory(
-                    store: store,
-                    conversations: conversations,
-                    dismiss: { isPresentingCallDirectory = false })
-                    .legendNextSheetChrome(detents: [.medium, .large])
-            }
+            LegendRecipientPicker(
+                store: store,
+                initialSearch: inboxSearch,
+                forCalling: true,
+                selectConversation: openConversation,
+                dismiss: { isPresentingCallDirectory = false })
+                .legendNextSheetChrome(detents: [.large])
         }
+
         .alert(
-            "Remove conversation?",
+            LegendLocalized("Remove conversation?"),
             isPresented: Binding(
                 get: { conversationPendingRemoval != nil },
                 set: { if !$0 { conversationPendingRemoval = nil } }
             )
         ) {
-            Button("Cancel", role: .cancel) {
+            Button(LegendLocalized("Cancel"), role: .cancel) {
                 conversationPendingRemoval = nil
             }
-            Button("Remove", role: .destructive) {
+            Button(LegendLocalized("Remove"), role: .destructive) {
                 if let conversationPendingRemoval {
                     store.removeConversation(conversationID: conversationPendingRemoval.id)
                 }
                 conversationPendingRemoval = nil
             }
         } message: {
-            Text("This removes the conversation from your inbox only. A new message will bring it back.")
+            Text(LegendLocalized("This removes the conversation from your inbox only. A new message will bring it back."))
         }
         .refreshable {
             _ = await store.refresh()
@@ -193,7 +199,7 @@ struct MessagingHomeView: View {
 
         case .unavailable(let message):
             inboxFailure(
-                title: "Messaging is unavailable",
+                title: LegendLocalized("Messaging is unavailable"),
                 message: message,
                 symbol: "lock.message",
                 canRetry: false
@@ -215,25 +221,43 @@ struct MessagingHomeView: View {
     private func inbox(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        LegendScrollView {
+        let query = inboxSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = conversations.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }
+        return LegendScrollView {
             LazyVStack(spacing: 0) {
                 inboxHeader
+                LegendMessagingSearchField(search: $inboxSearch, placeholder: LegendSharedDesign.copy("search.messaging"))
+                if !query.isEmpty {
+                    Button {
+                        isPresentingNewConversation = true
+                    } label: {
+                        Label(LegendLocalized("Search profiles to message or call"), systemImage: "person.crop.circle.badge.magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                }
 
                 if let refreshFailure = store.refreshFailure {
                     LegendMessagingStatusBanner(
                         symbol: "exclamationmark.arrow.triangle.2.circlepath",
-                        title: "Messages could not refresh",
+                        title: LegendLocalized("Messages could not refresh"),
                         message: refreshFailure.message
                     )
                     .padding(.horizontal, LegendNextSpacing.pageHorizontal)
                     .padding(.top, LegendNextSpacing.sm)
                 }
 
-                if conversations.isEmpty {
+                if matches.isEmpty && !query.isEmpty {
+                    LegendMessagingEmptyState(symbol: "magnifyingglass", title: LegendLocalized("No matching conversations"),
+                        message: LegendLocalized("Search profiles to start a message or call."), actionTitle: nil, action: nil)
+                } else if conversations.isEmpty {
                     inboxEmptyState
                         .padding(.top, LegendNextSpacing.display)
                 } else {
-                    conversationSection(conversations)
+                    conversationSection(matches)
                         .padding(.top, LegendNextSpacing.intermediate)
                 }
             }
@@ -250,7 +274,7 @@ struct MessagingHomeView: View {
         ) {
             HStack(alignment: .center, spacing: LegendNextSpacing.md) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    Text("Messages")
+                    Text(LegendLocalized("Messages"))
                         .font(LegendNextTypography.section)
                         .foregroundStyle(.white)
                 }
@@ -278,7 +302,7 @@ struct MessagingHomeView: View {
                             )
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Start a new conversation")
+                    .accessibilityLabel(LegendLocalized("Start a new conversation", context: "accessibility copy"))
 
                     Button {
                         isPresentingCallDirectory = true
@@ -294,7 +318,7 @@ struct MessagingHomeView: View {
                             }
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Call a connection")
+                    .accessibilityLabel(LegendLocalized("Call a connection", context: "accessibility copy"))
                 }
             }
         }
@@ -330,7 +354,7 @@ struct MessagingHomeView: View {
                         .controlSize(.small)
                         .tint(LegendNextColor.gold)
 
-                    Text("Updating")
+                    Text(LegendLocalized("Updating"))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(
                             LegendNextColor.textSecondary
@@ -383,8 +407,8 @@ struct MessagingHomeView: View {
 
                         Text(
                             store.isLoadingMoreConversations
-                                ? "Loading earlier conversations"
-                                : "Load earlier conversations"
+                                ? LegendLocalized("Loading earlier conversations")
+                                : LegendLocalized("Load earlier conversations")
                         )
                     }
                 }
@@ -402,7 +426,7 @@ struct MessagingHomeView: View {
                     LegendNextSpacing.pageHorizontal
                 )
                 .accessibilityHint(
-                    "Loads the next oldest conversations without delaying the latest messages."
+                    LegendLocalized("Loads the next oldest conversations without delaying the latest messages.", context: "accessibility copy")
                 )
             }
         }
@@ -430,7 +454,7 @@ struct MessagingHomeView: View {
             children: .contain
         )
         .accessibilityLabel(
-            "Pinned conversations"
+            LegendLocalized("Pinned conversations", context: "accessibility copy")
         )
     }
 
@@ -496,7 +520,7 @@ struct MessagingHomeView: View {
                             y: -6
                         )
                         .accessibilityLabel(
-                            "\(conversation.unreadCount) unread messages"
+                            LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))])
                         )
                     }
                 }
@@ -528,10 +552,10 @@ struct MessagingHomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(conversation.title), pinned conversation"
+            LegendLocalized("{value1}, pinned conversation", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))])
         )
         .accessibilityHint(
-            "Open conversation"
+            LegendLocalized("Open conversation", context: "accessibility copy")
         )
         .contextMenu {
             conversationContextMenu(
@@ -554,7 +578,7 @@ struct MessagingHomeView: View {
             LegendMessagingPressButtonStyle()
         )
         .accessibilityHint(
-            "Open conversation"
+            LegendLocalized("Open conversation", context: "accessibility copy")
         )
         .contextMenu {
             conversationContextMenu(
@@ -608,7 +632,7 @@ struct MessagingHomeView: View {
                 conversation
         } label: {
             Label(
-                "Remove from inbox",
+                LegendLocalized("Remove from inbox"),
                 systemImage: "trash"
             )
         }
@@ -617,8 +641,8 @@ struct MessagingHomeView: View {
     private var inboxEmptyState: some View {
         LegendMessagingEmptyState(
             symbol: "message.badge.waveform.fill",
-            title: "Start a private conversation",
-            message: "Choose someone in your Legend network to begin.",
+            title: LegendLocalized("Start a private conversation"),
+            message: LegendLocalized("Choose someone in your Legend network to begin."),
             actionTitle: "New message",
             action: {
                 isPresentingNewConversation = true
@@ -644,7 +668,7 @@ struct MessagingHomeView: View {
             .padding(.bottom, 118)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Loading conversations")
+        .accessibilityLabel(LegendLocalized("Loading conversations", context: "accessibility copy"))
     }
 
     private func inboxFailure(
@@ -675,151 +699,33 @@ struct MessagingHomeView: View {
     }
 }
 
-private struct LegendMessagingCallDirectory: View {
-    @ObservedObject var store: MessagingStore
-    let conversations: [ConversationSummary]
-    let dismiss: () -> Void
-
-    @State private var selectedConversation: ConversationSummary?
-
-    private var directConversations: [ConversationSummary] {
-        conversations.filter { $0.conversationType != "Group" }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                LegendNextCanvas()
-
-                LegendScrollView {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                        Text("Call a connection")
-                            .font(LegendNextTypography.section)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-
-                        Text("Calls open through your device’s secure Phone or FaceTime experience.")
-                            .font(.subheadline)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-
-                        if directConversations.isEmpty {
-                            LegendMessagingEmptyState(
-                                symbol: "phone.down.fill",
-                                title: "No direct conversations",
-                                message: "Start a private conversation to call a connection.",
-                                actionTitle: nil,
-                                action: nil)
-                        } else {
-                            LazyVStack(spacing: LegendNextSpacing.sm) {
-                                ForEach(directConversations) { conversation in
-                                    Button {
-                                        selectedConversation = conversation
-                                    } label: {
-                                        LegendConversationRow(conversation: conversation)
-                                    }
-                                    .buttonStyle(LegendMessagingPressButtonStyle())
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-                    .padding(.vertical, LegendNextSpacing.md)
-                }
-                .scrollIndicators(.hidden)
-            }
-            .navigationTitle("Call")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: dismiss)
-                        .foregroundStyle(LegendNextColor.gold)
-                }
-            }
-        }
-        .sheet(item: $selectedConversation) { conversation in
-            LegendConversationCallSheet(
-                store: store,
-                conversationID: conversation.id,
-                fallbackName: conversation.title)
-                .legendNextSheetChrome(detents: [.height(340)])
-        }
-    }
+private struct LegendCallRecipient: Identifiable {
+    let id: UUID
+    let name: String
 }
 
 private struct LegendConversationCallSheet: View {
     @ObservedObject var store: MessagingStore
     let conversationID: UUID
     let fallbackName: String
-
     @Environment(\.dismiss) private var dismiss
-    @State private var options: ConversationCallOptions?
-    @State private var isLoading = true
 
     var body: some View {
         ZStack {
             LegendNextCanvas()
-
             VStack(spacing: LegendNextSpacing.md) {
-                if isLoading {
-                    ProgressView()
-                        .tint(LegendNextColor.gold)
-                    Text("Preparing secure call options")
-                        .font(.subheadline)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                } else if let options {
-                    Image(systemName: "phone.connection.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(LegendNextColor.gold)
-                        .frame(width: 68, height: 68)
-                        .background(LegendNextColor.navy, in: Circle())
-
-                    Text(options.displayName)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-
-                    if let phone = options.phoneNumber {
-                        LegendCallActionButton(
-                            title: "Phone call",
-                            subtitle: "Use your carrier",
-                            symbol: "phone.fill",
-                            action: { openSystemCall(scheme: "tel", address: phone) })
-                    }
-
-                    if let faceTime = options.faceTimeAddress {
-                        LegendCallActionButton(
-                            title: "FaceTime video",
-                            subtitle: "Open FaceTime",
-                            symbol: "video.fill",
-                            action: { openSystemCall(scheme: "facetime", address: faceTime) })
-
-                        LegendCallActionButton(
-                            title: "FaceTime Audio",
-                            subtitle: "Open FaceTime Audio",
-                            symbol: "phone.badge.waveform.fill",
-                            action: { openSystemCall(scheme: "facetime-audio", address: faceTime) })
-                    }
-                } else {
-                    LegendMessagingEmptyState(
-                        symbol: "phone.down.fill",
-                        title: "Calling unavailable",
-                        message: "\(fallbackName) has not shared a call address for this private conversation.",
-                        actionTitle: nil,
-                        action: nil)
+                Text(fallbackName).font(.title3.bold())
+                LegendCallActionButton(title: LegendLocalized("Legend voice call"), subtitle: LegendLocalized("Private in-app audio"), symbol: "phone.fill") {
+                    dismiss()
+                    store.calling?.start(conversationId: conversationID, video: false, recipientName: fallbackName)
                 }
-            }
-            .padding(LegendNextSpacing.pageHorizontal)
+                LegendCallActionButton(title: LegendLocalized("Legend video call"), subtitle: LegendLocalized("Connect face to face"), symbol: "video.fill") {
+                    dismiss()
+                    store.calling?.start(conversationId: conversationID, video: true, recipientName: fallbackName)
+                }
+                Button(LegendLocalized("Cancel")) { dismiss() }
+            }.padding(LegendNextSpacing.pageHorizontal)
         }
-        .task {
-            options = await store.callOptions(for: conversationID)
-            isLoading = false
-        }
-    }
-
-    private func openSystemCall(scheme: String, address: String) {
-        let allowed = CharacterSet.urlPathAllowed
-        guard let encoded = address.addingPercentEncoding(withAllowedCharacters: allowed),
-              let url = URL(string: "\(scheme)://\(encoded)") else { return }
-        UIApplication.shared.open(url)
-        dismiss()
     }
 }
 
@@ -867,12 +773,15 @@ private struct LegendCallActionButton: View {
 
 private struct LegendRecipientPicker: View {
     @ObservedObject var store: MessagingStore
+    var initialSearch = ""
+    var forCalling = false
     let selectConversation: (UUID) -> Void
     let dismiss: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchIsFocused: Bool
     @State private var search = ""
+    @State private var selectedCall: LegendCallRecipient?
     @State private var isCreatingGroup = false
     @State private var groupSubject = ""
     @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
@@ -889,7 +798,7 @@ private struct LegendRecipientPicker: View {
 
                 VStack(spacing: 0) {
                     recipientHeader
-                    searchField
+                    LegendMessagingSearchField(search: $search)
                     recipientScopes
                     if isCreatingGroup {
                         groupCreationBar
@@ -898,8 +807,16 @@ private struct LegendRecipientPicker: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                search = initialSearch
+                store.loadRecipients(search: initialSearch)
+            }
             .onChange(of: search) { _, value in
                 store.searchRecipients(value)
+            }
+            .sheet(item: $selectedCall) { target in
+                LegendConversationCallSheet(store: store, conversationID: target.id, fallbackName: target.name)
+                    .legendNextSheetChrome(detents: [.height(340)])
             }
         }
     }
@@ -907,7 +824,7 @@ private struct LegendRecipientPicker: View {
     private var recipientHeader: some View {
         VStack(spacing: LegendNextSpacing.md) {
             HStack(spacing: LegendNextSpacing.md) {
-                Button("Cancel", action: dismiss)
+                Button(LegendLocalized("Cancel"), action: dismiss)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(minWidth: 68, minHeight: 44)
@@ -921,19 +838,20 @@ private struct LegendRecipientPicker: View {
                 Spacer()
 
                 VStack(spacing: 2) {
-                    Text(isCreatingGroup ? "New group" : "New message")
+                    Text(forCalling ? LegendLocalized("Call a connection") : isCreatingGroup ? LegendLocalized("New group") : LegendLocalized("New message"))
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
 
                     Text(isCreatingGroup
-                         ? "Choose at least two connections"
-                         : "Search your Legend network")
+                         ? LegendLocalized("Choose at least two connections")
+                         : LegendLocalized("Search your Legend network"))
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.66))
                 }
 
                 Spacer()
 
+                if !forCalling {
                 Button {
                     isCreatingGroup.toggle()
                     groupRecipients.removeAll()
@@ -950,7 +868,11 @@ private struct LegendRecipientPicker: View {
                         .background(.white.opacity(0.10), in: Circle())
                 }
                 .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel(isCreatingGroup ? "Create a direct message" : "Create a group chat")
+                .accessibilityLabel(
+                    isCreatingGroup
+                        ? LegendLocalized("Create a direct message", context: "accessibility copy")
+                        : LegendLocalized("Create a group chat", context: "accessibility copy"))
+                }
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -966,60 +888,6 @@ private struct LegendRecipientPicker: View {
                 )
                 .ignoresSafeArea(edges: .top)
         }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
-            Image(systemName: "magnifyingglass")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(
-                    searchIsFocused
-                        ? LegendNextColor.gold
-                        : LegendNextColor.textTertiary
-                )
-
-            TextField("Search people", text: $search)
-                .font(.body)
-                .foregroundStyle(LegendNextColor.textPrimary)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .focused($searchIsFocused)
-
-            if !search.isEmpty {
-                Button {
-                    search = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(LegendNextColor.textTertiary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.horizontal, LegendNextSpacing.md)
-        .frame(minHeight: 50)
-        .background(
-            LegendNextColor.surfaceElevated,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-            .stroke(
-                searchIsFocused
-                    ? LegendNextColor.gold.opacity(0.72)
-                    : LegendNextColor.separator,
-                lineWidth: searchIsFocused ? 1.25 : 1
-            )
-        }
-        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.top, LegendNextSpacing.intermediate)
-        .padding(.bottom, LegendNextSpacing.sm)
     }
 
     private var groupCreationBar: some View {
@@ -1038,10 +906,10 @@ private struct LegendRecipientPicker: View {
                             },
                             size: 42)
                     }
-                    .accessibilityLabel("Choose group photo")
+                    .accessibilityLabel(LegendLocalized("Choose group photo", context: "accessibility copy"))
                     .disabled(isPreparingGroupImage)
 
-                TextField("Group name", text: $groupSubject)
+                TextField(LegendLocalized("Group name"), text: $groupSubject)
                     .textInputAutocapitalization(.words)
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, LegendNextSpacing.sm)
@@ -1060,7 +928,10 @@ private struct LegendRecipientPicker: View {
                 hostOptions: groupHostOptions,
                 canManageMeeting: true)
 
-            Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
+            Button(
+                store.isCreatingGroup
+                    ? LegendLocalized("Creating group…")
+                    : LegendLocalized("Create group ({count})", arguments: ["count": groupRecipients.count])) {
                 let recipients = Array(groupRecipients.values)
                 store.createGroup(
                     subject: groupSubject,
@@ -1081,10 +952,10 @@ private struct LegendRecipientPicker: View {
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.bottom, LegendNextSpacing.sm)
-        .alert("Group photo could not be prepared", isPresented: $isShowingGroupPhotoPreparationFailure) {
-            Button("OK", role: .cancel) {}
+        .alert(LegendLocalized("Group photo could not be prepared"), isPresented: $isShowingGroupPhotoPreparationFailure) {
+            Button(LegendLocalized("OK"), role: .cancel) {}
         } message: {
-            Text("Choose another photo and try again. Your group was not created without the selected photo.")
+            Text(LegendLocalized("Choose another photo and try again. Your group was not created without the selected photo."))
         }
         .onChange(of: selectedGroupPhoto) { _, item in
             guard let item else { return }
@@ -1108,7 +979,7 @@ private struct LegendRecipientPicker: View {
                 LegendGroupHostOption(
                     identity: recipient.identity,
                     displayName: recipient.displayName,
-                    detail: recipient.relationshipLabel ?? "Group member")
+                    detail: recipient.relationshipLabel ?? LegendLocalized("Group member"))
             }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
@@ -1121,7 +992,7 @@ private struct LegendRecipientPicker: View {
                         search = ""
                         store.selectRecipientScope(scope)
                     } label: {
-                        Label(scope.rawValue, systemImage: scope.icon)
+                        Label(store.recipientScopeTitle(scope), systemImage: scope.icon)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(
                                 store.selectedRecipientScope == scope
@@ -1150,7 +1021,7 @@ private struct LegendRecipientPicker: View {
                             }
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Show \(scope.rawValue.lowercased())")
+                    .accessibilityLabel(LegendLocalized("Show {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (store.recipientScopeTitle(scope).lowercased()))]))
                 }
             }
             .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -1187,7 +1058,7 @@ private struct LegendRecipientPicker: View {
                         : "No matches found",
                     message: search.isEmpty
                         ? "Try another category or search."
-                        : "No \(store.selectedRecipientScope.rawValue.lowercased()) match “\(search)”.",
+                        : "No \(store.recipientScopeTitle(store.selectedRecipientScope).lowercased()) match “\(search)”.",
                     actionTitle: nil,
                     action: nil
                 )
@@ -1204,7 +1075,7 @@ private struct LegendRecipientPicker: View {
     ) -> some View {
         LegendScrollView(tracksNavigationChrome: false) {
             LazyVStack(alignment: .leading, spacing: 3) {
-                Text(store.selectedRecipientScope.rawValue)
+                Text(store.recipientScopeTitle(store.selectedRecipientScope))
                     .font(.system(.headline, design: .rounded).weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .padding(.bottom, LegendNextSpacing.tiny)
@@ -1285,9 +1156,16 @@ private struct LegendRecipientPicker: View {
             return
         }
 
+        if forCalling, let existingID = recipient.existingConversationID {
+            selectedCall = LegendCallRecipient(id: existingID, name: recipient.displayName)
+            return
+        }
         store.startConversation(
             with: recipient,
-            completion: selectConversation
+            completion: { id in
+                if forCalling { selectedCall = LegendCallRecipient(id: id, name: recipient.displayName) }
+                else { selectConversation(id) }
+            }
         )
     }
 
@@ -1306,7 +1184,7 @@ private struct LegendRecipientPicker: View {
         recipient.identity.participantType == .agent
             ? publicAgentRoleLabel(
                 roleLabel: recipient.roleLabel)
-            : publicRelationshipLabel(recipient.relationshipLabel) ?? "Connection"
+            : publicRelationshipLabel(recipient.relationshipLabel) ?? LegendLocalized("Connection")
     }
 
     private var recipientLoading: some View {
@@ -1320,7 +1198,7 @@ private struct LegendRecipientPicker: View {
             .padding(.top, LegendNextSpacing.sm)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Loading people")
+        .accessibilityLabel(LegendLocalized("Loading people", context: "accessibility copy"))
     }
 }
 
@@ -1332,7 +1210,6 @@ private struct LegendGroupMemberPicker: View {
     let conversationID: UUID
     let dismiss: () -> Void
 
-    @FocusState private var searchIsFocused: Bool
     @State private var search = ""
 
     var body: some View {
@@ -1342,7 +1219,7 @@ private struct LegendGroupMemberPicker: View {
 
                 VStack(spacing: 0) {
                     header
-                    searchField
+                    LegendMessagingSearchField(search: $search, placeholder: LegendSharedDesign.copy("search.connections"))
                     scopes
                     content
                 }
@@ -1357,17 +1234,17 @@ private struct LegendGroupMemberPicker: View {
 
     private var header: some View {
         HStack {
-            Button("Cancel", action: dismiss)
+            Button(LegendLocalized("Cancel"), action: dismiss)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
 
             Spacer()
 
             VStack(spacing: 2) {
-                Text("Add group member")
+                Text(LegendLocalized("Add group member"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
-                Text("Choose one of your connections")
+                Text(LegendLocalized("Choose one of your connections"))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -1381,30 +1258,11 @@ private struct LegendGroupMemberPicker: View {
         .background(LegendNextGradient.hero)
     }
 
-    private var searchField: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(LegendNextColor.textTertiary)
-
-            TextField("Search connections", text: $search)
-                .focused($searchIsFocused)
-                .autocorrectionDisabled()
-        }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .frame(minHeight: 44)
-        .background(
-            LegendNextColor.surfaceElevated,
-            in: RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
-        )
-        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.vertical, LegendNextSpacing.sm)
-    }
-
     private var scopes: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: LegendNextSpacing.xs) {
                 ForEach(store.availableRecipientScopes) { scope in
-                    Button(scope.rawValue) {
+                    Button(store.recipientScopeTitle(scope)) {
                         search = ""
                         store.selectRecipientScope(scope)
                     }
@@ -1431,14 +1289,14 @@ private struct LegendGroupMemberPicker: View {
     private var content: some View {
         switch store.recipientState {
         case .idle, .loading:
-            ProgressView("Loading connections")
+            ProgressView(LegendLocalized("Loading connections"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .unavailable(let failure):
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { store.loadRecipients(search: search) }
             )
             .padding(LegendNextSpacing.md)
@@ -1457,7 +1315,7 @@ private struct LegendGroupMemberPicker: View {
                                 subtitle: recipient.identity.participantType == .agent
                                     ? publicAgentRoleLabel(
                                         roleLabel: recipient.roleLabel)
-                                    : publicRelationshipLabel(recipient.relationshipLabel) ?? "Connection",
+                                    : publicRelationshipLabel(recipient.relationshipLabel) ?? LegendLocalized("Connection"),
                                 detail: recipient.email,
                                 isVerified: recipient.isVerified == true,
                                 avatar: {
@@ -1498,9 +1356,11 @@ private struct LegendGroupCollaboratorSheet: View {
     let currentIdentity: LogicalParticipantIdentity
     let dismiss: () -> Void
 
+    @State private var search = ""
+
     private var manageableParticipants: [MessagingParticipant] {
         conversation.participants
-            .filter { $0.identity != currentIdentity }
+            .filter { $0.identity != currentIdentity && (search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.displayName.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines))) }
             .sorted {
                 $0.displayName.localizedCaseInsensitiveCompare(
                     $1.displayName) == .orderedAscending
@@ -1514,6 +1374,7 @@ private struct LegendGroupCollaboratorSheet: View {
 
                 VStack(spacing: 0) {
                     header
+                    LegendMessagingSearchField(search: $search, placeholder: LegendSharedDesign.copy("search.groupMembers"))
 
                     if let failure = store.sendFailure {
                         LegendMessagingStatusBanner(
@@ -1546,18 +1407,18 @@ private struct LegendGroupCollaboratorSheet: View {
 
     private var header: some View {
         HStack {
-            Button("Done", action: dismiss)
+            Button(LegendLocalized("Done"), action: dismiss)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
 
             Spacer()
 
             VStack(spacing: 2) {
-                Text("Collaborators")
+                Text(LegendLocalized("Collaborators"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
 
-                Text("Co-manage this group")
+                Text(LegendLocalized("Co-manage this group"))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -1575,13 +1436,13 @@ private struct LegendGroupCollaboratorSheet: View {
     private var explanatoryCard: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             Label(
-                "Owner-controlled access",
+                LegendLocalized("Owner-controlled access"),
                 systemImage: "lock.shield.fill")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(LegendNextColor.textPrimary)
 
             Text(
-                "Collaborators can edit the group and add members. "
+                LegendLocalized("Collaborators can edit the group and add members. ")
                 + "They cannot appoint other collaborators or delete the group."
             )
             .font(.footnote)
@@ -1637,8 +1498,8 @@ private struct LegendGroupCollaboratorSheet: View {
 
                             Text(
                                 isManager
-                                    ? "Collaborator"
-                                    : "Make collaborator")
+                                    ? LegendLocalized("Collaborator")
+                                    : LegendLocalized("Make collaborator"))
                                 .font(.caption.weight(.bold))
                         }
                         .foregroundStyle(
@@ -1653,8 +1514,14 @@ private struct LegendGroupCollaboratorSheet: View {
         .disabled(store.isCreatingGroup)
         .accessibilityLabel(
             isManager
-                ? "Remove \(participant.displayName) as collaborator"
-                : "Make \(participant.displayName) a collaborator")
+                ? LegendLocalized(
+                    "Remove {displayName} as collaborator",
+                    context: "accessibility copy",
+                    arguments: ["displayName": participant.displayName])
+                : LegendLocalized(
+                    "Make {displayName} a collaborator",
+                    context: "accessibility copy",
+                    arguments: ["displayName": participant.displayName]))
     }
 }
 
@@ -1670,12 +1537,12 @@ private enum LegendGroupMeetingFrequency: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .oneTime: return "One time"
-        case .daily: return "Daily"
-        case .weekly: return "Weekly"
-        case .biweekly: return "Every other week"
-        case .monthly: return "Monthly"
-        case .custom: return "Custom"
+        case .oneTime: return LegendLocalized("One time")
+        case .daily: return LegendLocalized("Daily")
+        case .weekly: return LegendLocalized("Weekly")
+        case .biweekly: return LegendLocalized("Every other week")
+        case .monthly: return LegendLocalized("Monthly")
+        case .custom: return LegendLocalized("Custom")
         }
     }
 
@@ -1698,6 +1565,17 @@ private enum LegendGroupMeetingWeekday: String, CaseIterable, Identifiable {
     case saturday = "Saturday"
 
     var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .sunday: LegendLocalized("Sunday")
+        case .monday: LegendLocalized("Monday")
+        case .tuesday: LegendLocalized("Tuesday")
+        case .wednesday: LegendLocalized("Wednesday")
+        case .thursday: LegendLocalized("Thursday")
+        case .friday: LegendLocalized("Friday")
+        case .saturday: LegendLocalized("Saturday")
+        }
+    }
 }
 
 private struct LegendGroupHostOption: Identifiable {
@@ -1823,7 +1701,7 @@ private struct LegendGroupMeetingEditor: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Group host")
+                    Text(LegendLocalized("Group host"))
                         .font(.caption.weight(.bold))
                         .foregroundStyle(LegendNextColor.textSecondary)
                     Text(hostName)
@@ -1833,23 +1711,23 @@ private struct LegendGroupMeetingEditor: View {
 
                 Spacer()
 
-                Button("Choose by name") {
+                Button(LegendLocalized("Choose by name")) {
                     isPresentingHostPicker = true
                 }
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.bordered)
             }
 
-            Toggle("Add an online meeting", isOn: $draft.isMeetingEnabled)
+            Toggle(LegendLocalized("Add an online meeting"), isOn: $draft.isMeetingEnabled)
                 .font(.subheadline.weight(.semibold))
                 .tint(LegendNextColor.gold)
 
             if draft.isMeetingEnabled {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    TextField("Meeting link name (for example, Wednesday Zoom)", text: $draft.linkLabel)
+                    TextField(LegendLocalized("Meeting link name (for example, Wednesday Zoom)"), text: $draft.linkLabel)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
-                    TextField("Zoom, Teams, or Google Meet URL", text: $draft.linkURL)
+                    TextField(LegendLocalized("Zoom, Teams, or Google Meet URL"), text: $draft.linkURL)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -1862,7 +1740,7 @@ private struct LegendGroupMeetingEditor: View {
                         cornerRadius: LegendNextRadius.compact,
                         style: .continuous))
 
-                Toggle("Add a recurring schedule", isOn: $draft.isScheduleEnabled)
+                Toggle(LegendLocalized("Add a recurring schedule"), isOn: $draft.isScheduleEnabled)
                     .font(.subheadline.weight(.semibold))
                     .tint(LegendNextColor.gold)
 
@@ -1888,7 +1766,7 @@ private struct LegendGroupMeetingEditor: View {
     @ViewBuilder
     private var meetingScheduleControls: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            Picker("Frequency", selection: $draft.frequency) {
+            Picker(LegendLocalized("Frequency"), selection: $draft.frequency) {
                 ForEach(LegendGroupMeetingFrequency.allCases) { frequency in
                     Text(frequency.title).tag(frequency)
                 }
@@ -1896,9 +1774,9 @@ private struct LegendGroupMeetingEditor: View {
             .pickerStyle(.menu)
 
             if draft.frequency.needsWeekday {
-                Picker("Day", selection: $draft.weekday) {
+                Picker(LegendLocalized("Day"), selection: $draft.weekday) {
                     ForEach(LegendGroupMeetingWeekday.allCases) { weekday in
-                        Text(weekday.rawValue).tag(weekday)
+                        Text(weekday.title).tag(weekday)
                     }
                 }
                 .pickerStyle(.menu)
@@ -1915,14 +1793,14 @@ private struct LegendGroupMeetingEditor: View {
 
             if draft.frequency.usesLocalTime {
                 DatePicker("Time", selection: $draft.time, displayedComponents: .hourAndMinute)
-                TextField("Time zone", text: $draft.timeZoneID)
+                TextField(LegendLocalized("Time zone"), text: $draft.timeZoneID)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
 
             if draft.frequency == .custom {
                 TextField(
-                    "Custom schedule (for example, first and third Wednesday)",
+                    LegendLocalized("Custom schedule (for example, first and third Wednesday)"),
                     text: $draft.customDescription,
                     axis: .vertical)
                     .lineLimit(2...4)
@@ -1939,10 +1817,10 @@ private struct LegendGroupMeetingEditor: View {
 
     private var hostName: String {
         guard let hostIdentity = draft.hostIdentity else {
-            return "You (group owner)"
+            return LegendLocalized("You (group owner)")
         }
         return hostOptions.first(where: { $0.identity == hostIdentity })?.displayName
-            ?? "Selected group member"
+            ?? LegendLocalized("Selected group member")
     }
 }
 
@@ -1960,7 +1838,7 @@ private struct LegendGroupHostPicker: View {
                     selectedHost = nil
                     dismiss()
                 } label: {
-                    Label("You (group owner)", systemImage: "person.crop.circle")
+                    Label(LegendLocalized("You (group owner)"), systemImage: "person.crop.circle")
                 }
 
                 ForEach(filteredOptions) { option in
@@ -1978,12 +1856,12 @@ private struct LegendGroupHostPicker: View {
                     }
                 }
             }
-            .searchable(text: $search, prompt: "Search group members by name")
-            .navigationTitle("Choose group host")
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search group members by name")
+            .navigationTitle(LegendLocalized("Choose group host"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         dismiss()
                     }
                 }
@@ -2039,14 +1917,14 @@ private struct LegendGroupProfileEditor: View {
                                 avatar: replacementAvatar ?? conversation.groupAvatar,
                                 size: 92)
                         }
-                        .accessibilityLabel("Change group photo")
+                        .accessibilityLabel(LegendLocalized("Change group photo", context: "accessibility copy"))
                         .disabled(isPreparingReplacementImage)
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text("Group name")
+                        Text(LegendLocalized("Group name"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(LegendNextColor.textSecondary)
-                        TextField("Group name", text: $subject)
+                        TextField(LegendLocalized("Group name"), text: $subject)
                             .textInputAutocapitalization(.words)
                             .padding(.horizontal, LegendNextSpacing.md)
                             .frame(minHeight: 48)
@@ -2066,8 +1944,8 @@ private struct LegendGroupProfileEditor: View {
 
                     Text(
                         conversation.canManageMeeting == true
-                            ? "Only the group owner can set the host, meeting link, and schedule. Collaborators can still manage the group name, photo, and membership."
-                            : "Group owners and collaborators can manage the group name, photo, and membership.")
+                            ? LegendLocalized("Only the group owner can set the host, meeting link, and schedule. Collaborators can still manage the group name, photo, and membership.")
+                            : LegendLocalized("Group owners and collaborators can manage the group name, photo, and membership."))
                         .font(.footnote)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2076,16 +1954,16 @@ private struct LegendGroupProfileEditor: View {
                 }
                 .padding(LegendNextSpacing.pageHorizontal)
             }
-            .navigationTitle("Group profile")
+            .navigationTitle(LegendLocalized("Group profile"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(store.isCreatingGroup ? "Saving…" : "Save") {
+                    Button(store.isCreatingGroup ? LegendLocalized("Saving…") : LegendLocalized("Save")) {
                         store.updateGroup(
                             conversationID: conversation.id,
                             subject: subject,
@@ -2102,10 +1980,10 @@ private struct LegendGroupProfileEditor: View {
                         (conversation.canManageMeeting == true && !meetingDraft.isValid))
                 }
             }
-            .alert("Group photo could not be prepared", isPresented: $isShowingGroupPhotoPreparationFailure) {
-                Button("OK", role: .cancel) {}
+            .alert(LegendLocalized("Group photo could not be prepared"), isPresented: $isShowingGroupPhotoPreparationFailure) {
+                Button(LegendLocalized("OK"), role: .cancel) {}
             } message: {
-                Text("Choose another photo and try again. Your existing group photo was not changed.")
+                Text(LegendLocalized("Choose another photo and try again. Your existing group photo was not changed."))
             }
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
@@ -2139,7 +2017,7 @@ private struct LegendGroupProfileEditor: View {
                 LegendGroupHostOption(
                     identity: participant.identity,
                     displayName: participant.displayName,
-                    detail: participant.roleLabel ?? "Group member")
+                    detail: publicAgentRoleLabel(roleLabel: participant.roleLabel) ?? LegendLocalized("Group member"))
             }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
@@ -2155,6 +2033,9 @@ struct ConversationThreadView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismissThread
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var sharedPostID: UUID?
+    @State private var isThreadVisible = false
     @FocusState private var composerIsFocused: Bool
     @State private var draft = ""
     @State private var stagedAttachments: [MessagingAttachmentDraft] = []
@@ -2167,6 +2048,7 @@ struct ConversationThreadView: View {
     @State private var isPresentingGroupCollaborators = false
     @State private var isConfirmingDeleteGroup = false
     @State private var isPresentingCallSheet = false
+    @State private var isPresentingReceiptPrivacy = false
     @State private var verificationProfile: LegendVerificationProfileRoute?
 
     var body: some View {
@@ -2175,7 +2057,25 @@ struct ConversationThreadView: View {
 
             threadContent
         }
+        .sheet(isPresented: Binding(get: { sharedPostID != nil }, set: { if !$0 { sharedPostID = nil; social.closePost() } })) {
+            if let sharedPostID {
+                NavigationStack {
+                    if let post = social.focusedPost, post.id == sharedPostID {
+                        LegendPostDetailView(post: post, currentIdentity: currentIdentity, social: social)
+                    } else {
+                        VStack(spacing: 16) {
+                            Text(social.focusedPostFailure?.message ?? LegendLocalized("Opening shared content…"))
+                            if social.focusedPostFailure != nil {
+                                Button(LegendLocalized("Retry")) { Task { await social.loadPost(sharedPostID) } }
+                            }
+                        }.padding()
+                    }
+                }.task(id: sharedPostID) { await social.loadPost(sharedPostID) }
+            }
+        }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { isThreadVisible = true }
+        .onDisappear { isThreadVisible = false }
         .task {
             if store.selectedConversationID != conversationID {
                 store.openConversation(conversationID)
@@ -2213,22 +2113,35 @@ struct ConversationThreadView: View {
             }
         }
         .confirmationDialog(
-            "Delete this group?",
+            LegendLocalized("Delete this group?"),
             isPresented: $isConfirmingDeleteGroup,
             titleVisibility: .visible
         ) {
-            Button("Delete Group for Everyone", role: .destructive) {
+            Button(LegendLocalized("Delete Group for Everyone"), role: .destructive) {
                 store.deleteGroup(conversationID: conversationID) {
                     dismissThread()
                 }
             }
 
-            Button("Cancel", role: .cancel) {}
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
             Text(
-                "This permanently closes the group for every member. "
+                LegendLocalized("This permanently closes the group for every member. ")
                 + "Only the group owner can perform this action."
             )
+        }
+        .confirmationDialog(LegendLocalized("Read receipt privacy"), isPresented: $isPresentingReceiptPrivacy, titleVisibility: .visible) {
+            if case .loaded(let conversation) = store.detailState, let privacy = conversation.readReceipts {
+                Button(privacy.conversationEnabled ? LegendLocalized("Turn off for this chat") : LegendLocalized("Turn on for this chat")) {
+                    store.setReadReceipts(conversationID: conversation.id, enabled: !privacy.conversationEnabled, globally: false)
+                }
+                Button(privacy.globalEnabled ? LegendLocalized("Turn off for all chats") : LegendLocalized("Turn on for all chats")) {
+                    store.setReadReceipts(conversationID: conversation.id, enabled: !privacy.globalEnabled, globally: true)
+                }
+            }
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
+        } message: {
+            Text(LegendLocalized("Your unread counts stay accurate. Turning receipts off for all chats takes precedence over individual chat settings."))
         }
         .sheet(isPresented: $isPresentingCallSheet) {
             if case .loaded(let conversation) = store.detailState {
@@ -2256,18 +2169,27 @@ struct ConversationThreadView: View {
         }
     }
 
+    private var selectedTitle: String? {
+        guard case .loaded(let summaries) = store.state else { return nil }
+        return summaries.first(where: { $0.id == conversationID })?.title
+    }
+
     @ViewBuilder
     private var threadContent: some View {
         switch store.detailState {
         case .idle, .loading:
-            LegendConversationLoadingView()
+            LegendConversationLoadingView(title: selectedTitle)
 
         case .loaded(let conversation):
-            conversationView(conversation)
+            if conversation.id == conversationID {
+                conversationView(conversation)
+            } else {
+                LegendConversationLoadingView(title: selectedTitle)
+            }
 
         case .unavailable(let message):
             conversationFailure(
-                title: "Conversation unavailable",
+                title: LegendLocalized("Conversation unavailable"),
                 message: message,
                 canRetry: false
             )
@@ -2290,6 +2212,7 @@ struct ConversationThreadView: View {
         VStack(spacing: 0) {
             LegendConversationHeader(
                 conversation: conversation,
+                currentIdentity: currentIdentity,
                 addMember: { isPresentingAddMember = true },
                 editGroup: { isPresentingGroupProfile = true },
                 manageCollaborators: {
@@ -2304,11 +2227,16 @@ struct ConversationThreadView: View {
                         isPromoted: isPromoted)
                 },
                 isFounder: store.isFounder,
-                startCall: { isPresentingCallSheet = true }
+                startCall: { isPresentingCallSheet = true },
+                receiptPrivacy: { isPresentingReceiptPrivacy = true }
             )
 
             LegendMessageTimeline(
-                messages: conversation.messages,
+                messages: conversation.messages.filter { !$0.isDeleted },
+                readReceipts: conversation.readReceipts,
+                reactionOptions: conversation.reactionOptions ?? [],
+                openSharedPost: { sharedPostID = $0 },
+                onReact: { message, emoji in store.react(to: message, emoji: emoji) },
                 participantAvatar: { identity in
                     conversation.participants.first(where: {
                         $0.identity == identity
@@ -2333,6 +2261,12 @@ struct ConversationThreadView: View {
             )
             .id(conversation.id)
         }
+        .onChange(of: conversation.messages.last?.id, initial: true) { _, _ in
+            if isThreadVisible && scenePhase == .active { store.markViewed(conversation.id) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if isThreadVisible && phase == .active { store.markViewed(conversation.id) }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if conversation.isClosed {
                 closedConversationBanner
@@ -2347,8 +2281,17 @@ struct ConversationThreadView: View {
             if let sendFailure = store.sendFailure {
                 LegendMessagingStatusBanner(
                     symbol: "exclamationmark.circle.fill",
-                    title: "Message not sent",
+                    title: sendFailure.title,
                     message: sendFailure.message
+                )
+                .padding(.top, LegendNextSpacing.xs)
+            }
+
+            if MessagingAttachmentDraft.hasPendingAcknowledgedUploads(stagedAttachments) {
+                LegendMessagingStatusBanner(
+                    symbol: "exclamationmark.circle.fill",
+                    title: "Attachments pending",
+                    message: "Retry or remove attachments from the previous message before sending another message."
                 )
                 .padding(.top, LegendNextSpacing.xs)
             }
@@ -2393,13 +2336,13 @@ struct ConversationThreadView: View {
                     matching: .images,
                     photoLibrary: PHPhotoLibrary.shared()
                 ) {
-                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                    Label(LegendLocalized("Photo Library"), systemImage: "photo.on.rectangle")
                 }
 
                 Button {
                     isImportingFile = true
                 } label: {
-                    Label("Files", systemImage: "doc")
+                    Label(LegendLocalized("Files"), systemImage: "doc")
                 }
             } label: {
                 Image(systemName: "plus")
@@ -2409,10 +2352,10 @@ struct ConversationThreadView: View {
                     .background(LegendNextColor.fill, in: Circle())
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
-            .accessibilityLabel("Add photo or file")
+            .accessibilityLabel(LegendLocalized("Add photo or file", context: "accessibility copy"))
 
             TextField(
-                "Write a message",
+                LegendLocalized("Write a message"),
                 text: $draft,
                 axis: .vertical
             )
@@ -2451,7 +2394,7 @@ struct ConversationThreadView: View {
                     lineWidth: 1
                 )
             }
-            .accessibilityLabel("Message")
+            .accessibilityLabel(LegendLocalized("Message", context: "accessibility copy"))
 
             Button {
                 if canSend {
@@ -2510,11 +2453,11 @@ struct ConversationThreadView: View {
                 .foregroundStyle(LegendNextColor.gold)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Conversation closed")
+                Text(LegendLocalized("Conversation closed"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
 
-                Text("New messages cannot be sent in this conversation.")
+                Text(LegendLocalized("New messages cannot be sent in this conversation."))
                     .font(.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
@@ -2533,22 +2476,32 @@ struct ConversationThreadView: View {
     private var canSend: Bool {
         !store.isSending &&
         !store.isUploadingAttachment &&
+        !MessagingAttachmentDraft.hasPendingAcknowledgedUploads(stagedAttachments) &&
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendDraft() {
-        let outgoing = draft.trimmingCharacters(
+        guard canSend else { return }
+        let submittedAttachmentIDs = Set(stagedAttachments.map(\.id))
+        let submittedReply = replyingToMessage
+        let submittedDraft = MessagingDraftSnapshot(body: draft, replyToMessageID: submittedReply?.id)
+        let outgoing = submittedDraft.body.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
 
         guard !outgoing.isEmpty else { return }
 
         Task {
-            guard let message = await store.send(body: outgoing) else { return }
-            draft = ""
-            replyingToMessage = nil
+            guard let message = await store.send(body: outgoing, replyingTo: submittedReply) else { return }
+            if submittedDraft.matches(body: draft, replyToMessageID: replyingToMessage?.id) {
+                draft = ""
+                replyingToMessage = nil
+            }
+            for index in stagedAttachments.indices where submittedAttachmentIDs.contains(stagedAttachments[index].id) {
+                stagedAttachments[index].acknowledgedMessageID = message.id
+            }
             messageForStagedAttachments = message
-            await uploadStagedAttachments(to: message)
+            await uploadStagedAttachments(to: message, attachmentIDs: submittedAttachmentIDs)
         }
     }
 
@@ -2625,8 +2578,8 @@ struct ConversationThreadView: View {
         attachmentIDs: Set<UUID>? = nil
     ) async {
         let uploads = stagedAttachments.filter { attachment in
-            (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true) &&
-                attachment.state != .uploading
+            attachment.canUpload(to: message.id) &&
+                (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true)
         }
 
         for attachment in uploads {
@@ -2717,7 +2670,7 @@ private struct LegendMessageAttachmentStaging: View {
             .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Attachments ready to send")
+        .accessibilityLabel(LegendLocalized("Attachments ready to send", context: "accessibility copy"))
     }
 
     @ViewBuilder
@@ -2748,14 +2701,14 @@ private struct LegendMessageAttachmentStaging: View {
     ) -> some View {
         switch attachment.state {
         case .ready:
-            Text("Ready to send")
+            Text(LegendLocalized("Ready to send"))
                 .font(.caption2)
                 .foregroundStyle(LegendNextColor.textSecondary)
         case .uploading:
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.mini)
-                Text("Uploading")
+                Text(LegendLocalized("Uploading"))
             }
             .font(.caption2)
             .foregroundStyle(LegendNextColor.textSecondary)
@@ -2781,7 +2734,7 @@ private struct LegendMessageAttachmentStaging: View {
                     .foregroundStyle(LegendNextColor.textTertiary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(attachment.fileName)")
+            .accessibilityLabel(LegendLocalized("Remove {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (attachment.fileName))]))
         case .failed:
             Button {
                 onRetry(attachment.id)
@@ -2790,7 +2743,7 @@ private struct LegendMessageAttachmentStaging: View {
                     .foregroundStyle(LegendNextColor.gold)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Retry \(attachment.fileName)")
+            .accessibilityLabel(LegendLocalized("Retry {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (attachment.fileName))]))
         }
     }
 }
@@ -2805,7 +2758,7 @@ private struct LegendConversationRow: View {
     var body: some View {
         LegendContactCard(
             displayName: conversation.title,
-            subtitle: conversation.lastMessagePreview ?? "Start your conversation",
+            subtitle: conversation.lastMessagePreview ?? LegendLocalized("Start your conversation"),
             detail: relationshipTitle,
             isVerified: !isGroup && conversation.counterparty.isVerified == true,
             avatar: {
@@ -2833,7 +2786,7 @@ private struct LegendConversationRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(LegendNextColor.gold)
-                            .accessibilityLabel("Pinned conversation")
+                            .accessibilityLabel(LegendLocalized("Pinned conversation", context: "accessibility copy"))
                     }
 
                     if conversation.unreadCount > 0 {
@@ -2843,7 +2796,7 @@ private struct LegendConversationRow: View {
                             .frame(minWidth: 21, minHeight: 21)
                             .padding(.horizontal, conversation.unreadCount > 9 ? 4 : 0)
                             .background(unreadColor, in: Capsule())
-                            .accessibilityLabel("\(conversation.unreadCount) unread messages")
+                            .accessibilityLabel(LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))]))
                     } else if conversation.isMuted {
                         Image(systemName: "bell.slash.fill")
                             .font(.caption.weight(.semibold))
@@ -2861,7 +2814,7 @@ private struct LegendConversationRow: View {
 
     private var relationshipTitle: String? {
         if isGroup {
-            return "Group chat"
+            return LegendLocalized("Group chat")
         }
 
         switch conversation.counterparty.identity.participantType {
@@ -2869,7 +2822,7 @@ private struct LegendConversationRow: View {
             return publicAgentRoleLabel(roleLabel: conversation.counterparty.roleLabel)
 
         case .client:
-            return "Connection"
+            return LegendLocalized("Connection")
         }
     }
 
@@ -2915,7 +2868,10 @@ private struct LegendRecipientRow: View {
                         .tint(LegendNextColor.gold)
                 } else {
                     HStack(spacing: 5) {
-                        Text(recipient.existingConversationID == nil ? "Message" : "Open")
+                        Text(
+                            recipient.existingConversationID == nil
+                                ? LegendLocalized("Message")
+                                : LegendLocalized("Open"))
                             .font(.caption.weight(.bold))
 
                         Image(systemName: "arrow.up.right")
@@ -2938,7 +2894,7 @@ private struct LegendRecipientRow: View {
 
         case .client:
             return publicRelationshipLabel(recipient.relationshipLabel)
-                ?? "Connection"
+                ?? LegendLocalized("Connection")
         }
     }
 
@@ -2980,6 +2936,7 @@ private struct LegendRecipientRow: View {
 
 private struct LegendConversationHeader: View {
     let conversation: ConversationDetail
+    let currentIdentity: LogicalParticipantIdentity
     let addMember: () -> Void
     let editGroup: () -> Void
     let manageCollaborators: () -> Void
@@ -2987,7 +2944,9 @@ private struct LegendConversationHeader: View {
     let setGroupPromotion: (Bool) -> Void
     let isFounder: Bool
     let startCall: () -> Void
+    var receiptPrivacy: (() -> Void)? = nil
 
+    @State private var showingMembers = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -3006,18 +2965,16 @@ private struct LegendConversationHeader: View {
                     }
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
-            .accessibilityLabel("Back")
+            .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
 
             if isGroup {
                 LegendMessagingGroupAvatar(
                     avatar: conversation.groupAvatar,
                     size: 46)
             } else if let counterparty {
-                LegendMessagingAvatar(
-                    participant: counterparty,
-                    size: 46,
-                    showsGoldRing: true
-                )
+                LegendMemberProfileLink(profile: counterparty.legendProfile) {
+                    LegendMessagingAvatar(participant: counterparty, size: 46, showsGoldRing: true)
+                }.buttonStyle(.plain)
             } else {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 18, weight: .semibold))
@@ -3027,12 +2984,11 @@ private struct LegendConversationHeader: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                LegendVerifiedName(
-                    conversation.title,
-                    isVerified: !isGroup && counterparty?.isVerified == true,
-                    font: .system(.headline, design: .rounded).weight(.bold),
-                    textColor: .white,
-                    badgePlacement: .alongsideProfileImage)
+                if isGroup {
+                    Button { showingMembers = true } label: { titleLabel }.buttonStyle(.plain)
+                } else if let counterparty {
+                    LegendMemberProfileLink(profile: counterparty.legendProfile) { titleLabel }.buttonStyle(.plain)
+                } else { titleLabel }
 
                 if isGroup {
                     HStack(spacing: 5) {
@@ -3041,8 +2997,8 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? "CLOSED LEGEND CONVERSATION"
-                             : "PRIVATE GROUP CHAT")
+                             ? LegendLocalized("CLOSED LEGEND® CONVERSATION")
+                             : LegendLocalized("PRIVATE GROUP CHAT"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.72))
                             .lineLimit(1)
@@ -3058,7 +3014,7 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? "Closed Legend conversation"
+                             ? LegendLocalized("Closed Legend® conversation")
                              : relationshipSubtitle)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
@@ -3069,80 +3025,93 @@ private struct LegendConversationHeader: View {
 
             Spacer()
 
-            if isGroup &&
-                (
-                    conversation.canManageMembers ||
-                    conversation.canManageCollaborators == true ||
-                    conversation.canDeleteGroup == true ||
-                    (isFounder && conversation.canManagePromotion == true)
-                ) {
-                Menu {
-                    if conversation.canManageMembers {
-                        Button(action: editGroup) {
-                            Label("Edit Group", systemImage: "pencil")
-                        }
-
-                        Button(action: addMember) {
-                            Label(
-                                "Add Members",
-                                systemImage: "person.badge.plus")
-                        }
+            Menu {
+                if isGroup {
+                    Button { showingMembers = true } label: {
+                        Label(LegendLocalized("View group members"), systemImage: "person.3.fill")
                     }
-
-                    if conversation.canManageCollaborators == true {
-                        Divider()
-
-                        Button(action: manageCollaborators) {
-                            Label(
-                                "Collaborators",
-                                systemImage: "person.2.badge.gearshape")
-                        }
+                } else {
+                    Button(action: startCall) {
+                        Label(LegendLocalized("Voice or video call"), systemImage: "phone.fill")
                     }
-
-                    if conversation.canDeleteGroup == true {
-                        Divider()
-
-                        Button(role: .destructive, action: deleteGroup) {
-                            Label(
-                                "Delete Group",
-                                systemImage: "trash")
-                        }
-                    }
-
-                    if isFounder, conversation.canManagePromotion == true {
-                        Divider()
-
-                        Button {
-                            setGroupPromotion(!(conversation.isPromoted ?? false))
-                        } label: {
-                            Label(
-                                conversation.isPromoted == true
-                                    ? "Stop Promoting Group"
-                                    : "Promote Group",
-                                systemImage: conversation.isPromoted == true
-                                    ? "megaphone.fill"
-                                    : "megaphone")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Group management")
-            } else if !isGroup {
-                Button(action: startCall) {
-                    Image(systemName: "phone.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
+                if let receiptPrivacy {
+                    Button(action: receiptPrivacy) {
+                        Label(LegendLocalized("Read receipt privacy"), systemImage: "eye")
+                    }
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Call \(conversation.title)")
+                if conversation.canManageMembers {
+                    Button(action: editGroup) {
+                        Label(LegendLocalized("Edit Group"), systemImage: "pencil")
+                    }
+
+                    Button(action: addMember) {
+                        Label(
+                            LegendLocalized("Add Members"),
+                            systemImage: "person.badge.plus")
+                    }
+                }
+
+                if conversation.canManageCollaborators == true {
+                    Divider()
+
+                    Button(action: manageCollaborators) {
+                        Label(
+                            LegendLocalized("Collaborators"),
+                            systemImage: "person.2.badge.gearshape")
+                    }
+                }
+
+                if conversation.canDeleteGroup == true {
+                    Divider()
+
+                    Button(role: .destructive, action: deleteGroup) {
+                        Label(
+                            LegendLocalized("Delete Group"),
+                            systemImage: "trash")
+                    }
+                }
+
+                if isFounder, conversation.canManagePromotion == true {
+                    Divider()
+
+                    Button {
+                        setGroupPromotion(!(conversation.isPromoted ?? false))
+                    } label: {
+                        Label(
+                            conversation.isPromoted == true
+                                ? "Stop Promoting Group"
+                                : "Promote Group",
+                            systemImage: conversation.isPromoted == true
+                                ? "megaphone.fill"
+                                : "megaphone")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 38, height: 38)
+                    .background(LegendNextGradient.gold, in: Circle())
+            }
+            .buttonStyle(LegendMessagingPressButtonStyle())
+            .accessibilityLabel(LegendLocalized("Conversation options", context: "accessibility copy"))
+
+        }
+        .sheet(isPresented: $showingMembers) {
+            NavigationStack {
+                List(conversation.participants) { member in
+                    LegendMemberProfileLink(profile: member.legendProfile) {
+                        HStack {
+                            LegendMessagingAvatar(participant: member, size: 42, showsGoldRing: true)
+                            Text(member.displayName).font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                        }
+                    }.buttonStyle(.plain)
+                }
+                .navigationTitle(LegendLocalized("Group members"))
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { showingMembers = false } } }
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -3160,22 +3129,29 @@ private struct LegendConversationHeader: View {
         }
     }
 
+    private var titleLabel: some View {
+        LegendVerifiedName(conversation.title,
+            isVerified: !isGroup && counterparty?.isVerified == true,
+            font: .system(.headline, design: .rounded).weight(.bold),
+            textColor: .white, badgePlacement: .alongsideProfileImage)
+    }
+
     private var counterparty: MessagingParticipant? {
-        conversation.participants.first
+        conversation.participants.first { $0.identity != currentIdentity }
     }
 
     private var relationshipSubtitle: String {
         guard let counterparty else {
-            return "Private Legend conversation"
+            return LegendLocalized("Private Legend® conversation")
         }
 
         switch counterparty.identity.participantType {
         case .agent:
             return publicAgentRoleLabel(roleLabel: counterparty.roleLabel)
-                ?? "Private Legend conversation"
+                ?? LegendLocalized("Private Legend® conversation")
 
         case .client:
-            return "Private connection"
+            return LegendLocalized("Private connection")
         }
     }
 
@@ -3208,7 +3184,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
                         .foregroundStyle(LegendNextColor.goldBright)
                         .lineLimit(1)
                 }
-                .accessibilityLabel("Open \(link.label)")
+                .accessibilityLabel(LegendLocalized("Open {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (link.label))]))
             }
 
             Text(detail)
@@ -3231,7 +3207,9 @@ private struct LegendGroupMeetingHeaderDetail: View {
     }
 
     private var detail: String {
-        let host = "Hosted by \(meeting.host.displayName)"
+        let host = LegendLocalized(
+            "Hosted by {displayName}",
+            arguments: ["displayName": meeting.host.displayName])
         guard let schedule = meeting.schedule else { return host }
         return "\(host) · \(scheduleDescription(schedule))"
     }
@@ -3244,26 +3222,53 @@ private struct LegendGroupMeetingHeaderDetail: View {
         switch schedule.frequency {
         case "OneTime":
             if let startsUTC = schedule.startsUTC {
-                return startsUTC.formatted(date: .abbreviated, time: .shortened)
+                return startsUTC.formatted(
+                    .dateTime
+                        .year().month(.abbreviated).day()
+                        .hour().minute()
+                        .locale(LegendActiveLocale()))
             }
-            return "One-time meeting"
+            return LegendLocalized("One-time meeting")
         case "Daily":
-            return "Daily\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Daily")
+                : LegendLocalized("Daily at {time}", arguments: ["time": timeDetail])
         case "Weekly":
-            return "Weekly on \(weekdayText(schedule))\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Weekly on {weekdays}", arguments: ["weekdays": weekdayText(schedule)])
+                : LegendLocalized("Weekly on {weekdays} at {time}", arguments: ["weekdays": weekdayText(schedule), "time": timeDetail])
         case "Biweekly":
-            return "Every other \(weekdayText(schedule))\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Every other {weekdays}", arguments: ["weekdays": weekdayText(schedule)])
+                : LegendLocalized("Every other {weekdays} at {time}", arguments: ["weekdays": weekdayText(schedule), "time": timeDetail])
         case "Monthly":
-            return "Monthly\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Monthly")
+                : LegendLocalized("Monthly at {time}", arguments: ["time": timeDetail])
         case "Custom":
-            return normalized(schedule.customDescription) ?? "Custom schedule"
+            return normalized(schedule.customDescription) ?? LegendLocalized("Custom schedule")
         default:
-            return "Scheduled meeting"
+            return LegendLocalized("Scheduled meeting")
         }
     }
 
     private func weekdayText(_ schedule: MessagingGroupMeetingSchedule) -> String {
-        schedule.weekdays.isEmpty ? "selected days" : schedule.weekdays.joined(separator: ", ")
+        schedule.weekdays.isEmpty
+            ? LegendLocalized("selected days")
+            : schedule.weekdays.map(localizedWeekday).joined(separator: ", ")
+    }
+
+    private func localizedWeekday(_ value: String) -> String {
+        switch value.lowercased() {
+        case "monday": return LegendLocalized("Monday")
+        case "tuesday": return LegendLocalized("Tuesday")
+        case "wednesday": return LegendLocalized("Wednesday")
+        case "thursday": return LegendLocalized("Thursday")
+        case "friday": return LegendLocalized("Friday")
+        case "saturday": return LegendLocalized("Saturday")
+        case "sunday": return LegendLocalized("Sunday")
+        default: return value
+        }
     }
 
     private func displayTime(_ value: String?) -> String? {
@@ -3273,6 +3278,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
         parser.dateFormat = "HH:mm"
         guard let date = parser.date(from: value) else { return value }
         let formatter = DateFormatter()
+        formatter.locale = LegendActiveLocale()
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }
@@ -3287,6 +3293,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
 }
 
 private struct LegendConversationFallbackHeader: View {
+    var title: String? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -3301,9 +3308,9 @@ private struct LegendConversationFallbackHeader: View {
                     .background(.white.opacity(0.08), in: Circle())
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
-            .accessibilityLabel("Back")
+            .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
 
-            Text("Conversation")
+            Text(title ?? LegendLocalized("Conversation"))
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(.white)
 
@@ -3327,6 +3334,10 @@ private struct LegendConversationFallbackHeader: View {
 
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
+    var readReceipts: MessagingReadReceiptSettings? = nil
+    let reactionOptions: [String]
+    let openSharedPost: (UUID) -> Void
+    let onReact: (ConversationMessage, String?) -> Void
     let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
     let isLoadingOlderMessages: Bool
@@ -3336,16 +3347,16 @@ private struct LegendMessageTimeline: View {
     let onOpenVerificationProfile: (ConversationMessage) -> Void
 
     var body: some View {
+        let receiptLabels = messageReceiptLabels(messages: messages, readers: readReceipts?.readers ?? [])
         ScrollViewReader { proxy in
             LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(spacing: 2) {
                     if hasOlderMessages {
                         Button(action: loadOlderMessages) {
                             if isLoadingOlderMessages {
-                                ProgressView()
-                                    .controlSize(.small)
+                                Text(LegendLocalized("Loading earlier messages…"))
                             } else {
-                                Label("Load earlier messages", systemImage: "arrow.up.circle")
+                                Label(LegendLocalized("Load earlier messages"), systemImage: "arrow.up.circle")
                                     .font(.caption.weight(.semibold))
                             }
                         }
@@ -3357,8 +3368,8 @@ private struct LegendMessageTimeline: View {
                     if messages.isEmpty {
                         LegendMessagingEmptyState(
                             symbol: "bubble.left.and.bubble.right.fill",
-                            title: "Begin the conversation",
-                            message: "Your messages will appear here.",
+                            title: LegendLocalized("Begin the conversation"),
+                            message: LegendLocalized("Your messages will appear here."),
                             actionTitle: nil,
                             action: nil
                         )
@@ -3390,11 +3401,22 @@ private struct LegendMessageTimeline: View {
                                 onDelete: {
                                     onDelete(message)
                                 },
+                                onReact: { emoji in onReact(message, emoji) },
+                                reactionOptions: reactionOptions,
+                                openSharedPost: openSharedPost,
                                 onOpenVerificationProfile: message.verificationReview?.status != "Pending"
                                     ? nil
                                     : { onOpenVerificationProfile(message) }
                             )
                             .id(message.id)
+                            if let label = receiptLabels[message.id] {
+                                Text(LegendLocalized(label))
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(label == "Read" ? LegendNextColor.success : LegendNextColor.danger)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background((label == "Read" ? LegendNextColor.success : LegendNextColor.danger).opacity(0.12), in: Capsule())
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
                         }
                     }
 
@@ -3462,10 +3484,10 @@ private struct LegendMessageDateSeparator: View {
     var body: some View {
         Text(LegendMessagingDateFormatter.threadDate(date))
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(LegendNextColor.textTertiary)
+            .foregroundStyle(LegendNextColor.chatTimestamp)
             .padding(.horizontal, 9)
             .padding(.vertical, 3)
-            .background(LegendNextColor.fill, in: Capsule())
+            .background(LegendNextColor.chatTimestamp.opacity(0.10), in: Capsule())
             .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
     }
@@ -3493,7 +3515,7 @@ private struct LegendMessageReplyComposerPreview: View {
                     Image(systemName: "arrowshape.turn.up.left.fill")
                         .font(.system(size: 9, weight: .bold))
 
-                    Text("Replying to \(replyTargetName)")
+                    Text(LegendLocalized("Replying to {value1}", arguments: ["value1": String(describing: (replyTargetName))]))
                         .font(.caption.weight(.bold))
                 }
                 .foregroundStyle(LegendNextColor.gold)
@@ -3519,7 +3541,7 @@ private struct LegendMessageReplyComposerPreview: View {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
-            .accessibilityLabel("Cancel reply")
+            .accessibilityLabel(LegendLocalized("Cancel reply", context: "accessibility copy"))
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.vertical, 10)
@@ -3565,11 +3587,10 @@ private struct LegendMessageContextPreview: View {
             alignment: message.isMine ? .trailing : .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            LegendVerifiedName(
-                message.sender.displayName,
-                isVerified: message.sender.isVerified == true,
-                font: .caption.weight(.semibold),
-                textColor: LegendNextColor.textSecondary)
+            LegendMemberProfileLink(profile: message.sender.legendProfile) {
+                LegendVerifiedName(message.sender.displayName, isVerified: message.sender.isVerified == true,
+                    font: .caption.weight(.semibold), textColor: LegendNextColor.textSecondary)
+            }.buttonStyle(.plain)
 
             Text(message.body)
                 .font(.body)
@@ -3622,15 +3643,28 @@ private struct LegendMessageContextPreview: View {
 }
 
 private struct LegendMessageBubble: View {
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var sharingAttachments = false
+
     let message: ConversationMessage
     let senderAvatar: ProfileAvatar?
     let showsSender: Bool
     let onReply: () -> Void
     let onDelete: () -> Void
+    let onReact: (String?) -> Void
+    let reactionOptions: [String]
+    let openSharedPost: (UUID) -> Void
     let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
     @State private var isShowingOriginal = false
+    @State private var emojiPicker = false
+    @State private var actionMenu = false
+    @State private var preferredTone = 0
+    @State private var reactionHeight = LegendSharedDesign.reactionBubble.height
+    private var reactionOverflow: CGFloat { reactionHeight * LegendSharedDesign.reactionBubble.outsideFraction }
+    @Environment(\.layoutDirection) private var layoutDirection
+    private var physicalBottomRight: Alignment { layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing }
 
     private let senderBubbleColor = LegendNextColor.gold
 
@@ -3664,36 +3698,101 @@ private struct LegendMessageBubble: View {
                 style: .continuous
             )
         )
-        .contextMenu {
+        .onTapGesture(count: 2) { if !message.isDeleted { onReact("❤️") } }
+        .onReceive(messaging?.$preferredReactionSkinTone.eraseToAnyPublisher() ?? Just(0).eraseToAnyPublisher()) { preferredTone = $0 }
+        .sheet(isPresented: $sharingAttachments) {
+            NavigationStack {
+                List(message.attachments) { attachment in
+                    LegendMessageAttachmentChip(attachment: attachment, isMine: false)
+                }
+                .navigationTitle(LegendLocalized("Open or share attachments"))
+            }
+        }
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+            if !message.isDeleted { actionMenu = true }
+        })
+        .popover(isPresented: $actionMenu) {
+          VStack(alignment: .leading, spacing: 12) {
+            LegendMessageContextPreview(message: message).frame(maxHeight: 90).clipped()
             if !message.isDeleted {
+                ScrollView(.horizontal, showsIndicators: false) {
+                  HStack(spacing: 6) {
+                    ForEach(reactionOptions, id: \.self) { sourceEmoji in
+                        let emoji = LegendReactionEmojiCatalog.bundled?.applyingSkinTone(preferredTone, to: sourceEmoji) ?? sourceEmoji
+                        Button { actionMenu = false; onReact(emoji) } label: {
+                            Text(emoji).font(.system(size: 25))
+                                .frame(width: 40, height: 44)
+                                .background(message.reactions.contains { $0.emoji == emoji && $0.reactedByCurrentActor }
+                                            ? LegendNextColor.gold.opacity(0.22) : LegendNextColor.surface, in: RoundedRectangle(cornerRadius: 14))
+                        }.buttonStyle(.plain)
+                    }
+                    Button { emojiPicker = true } label: {
+                        Image(systemName: "plus.circle.fill").font(.title2).frame(width: 40, height: 44)
+                            .accessibilityLabel(LegendLocalized("More reactions"))
+                    }
+                  }
+                }
+                if let messaging { LegendReactionSkinToneControl(store: messaging) }
+                if message.reactions.contains(where: { $0.reactedByCurrentActor }) {
+                    Button(LegendLocalized("Remove reaction")) { actionMenu = false; onReact(nil) }
+                }
+                Divider()
                 Button {
-                    onReply()
+                    actionMenu = false; onReply()
                 } label: {
                     Label(
-                        "Reply",
+                        LegendLocalized("Reply"),
                         systemImage: "arrowshape.turn.up.left.fill"
                     )
                 }
 
                 Button {
+                    actionMenu = false
                     UIPasteboard.general.string = message.body
                     copyFeedbackTrigger += 1
                 } label: {
                     Label(
-                        "Copy",
+                        LegendLocalized("Copy"),
                         systemImage: "doc.on.doc.fill"
                     )
                 }
 
+                if let shared = message.sharedContent, let url = messaging?.sharedPostURL(shared.sourcePostId) {
+                    ShareLink(item: url) { Label(LegendLocalized("Share content"), systemImage: "square.and.arrow.up") }
+                } else if !message.attachments.isEmpty {
+                    Button { sharingAttachments = true } label: {
+                        Label(LegendLocalized("Open or share attachments"), systemImage: "square.and.arrow.up")
+                    }
+                } else {
+                    ShareLink(item: message.body) {
+                        Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                    }
+                }
+                if let original = message.originalBody, original != message.body {
+                    Button { UIPasteboard.general.string = original } label: {
+                        Label(LegendLocalized("Copy original text"), systemImage: "text.quote")
+                    }
+                }
                 if message.isMine {
                     Divider()
-                    Button(role: .destructive, action: onDelete) {
-                        Label("Unsend", systemImage: "trash")
+                    Button(role: .destructive) { actionMenu = false; onDelete() } label: {
+                        Label(LegendLocalized("Unsend"), systemImage: "trash")
                     }
                 }
             }
-        } preview: {
-            LegendMessageContextPreview(message: message)
+          }
+          .font(.subheadline.weight(.semibold))
+          .buttonStyle(.plain)
+          .foregroundStyle(LegendNextColor.textPrimary)
+          .padding(16).frame(width: 340)
+          .sheet(isPresented: $emojiPicker, onDismiss: { actionMenu = false }) {
+              LegendReactionEmojiPicker(store: messaging) { emoji in
+                  emojiPicker = false
+                  onReact(emoji)
+              }
+          }
+          .presentationCompactAdaptation(.popover)
+          .task { await messaging?.refreshReactionPreferences() }
         }
         .sensoryFeedback(
             .success,
@@ -3724,24 +3823,29 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                Text(message.isDeleted ? "Message unsent" : displayedMessageBody)
+                if !displayedMessageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(displayedMessageBody)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)
                     .foregroundStyle(
-                        message.isMine
-                            ? LegendNextColor.midnight
-                            : Color.white
+                        isMediaMessage ? LegendNextColor.textPrimary : message.isMine ? LegendNextColor.midnight : Color.white
                     )
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
 
+                }
+                if !message.isDeleted, let shared = message.sharedContent {
+                    LegendSharedMessageCard(content: shared, reactionBadge: AnyView(reactionBadges), hasReactions: !message.reactions.isEmpty, reactionOverflow: reactionOverflow, open: { openSharedPost(shared.sourcePostId) })
+                }
                 if !message.isDeleted {
                     ForEach(message.attachments) { attachment in
                         LegendMessageAttachmentChip(
                             attachment: attachment,
-                            isMine: message.isMine
+                            isMine: message.isMine,
+                            reactionBadge: attachment.id == message.attachments.last?.id && message.sharedContent == nil && !message.reactions.isEmpty
+                                ? AnyView(reactionBadges) : nil,
+                            reactionOverflow: reactionOverflow
                         )
                     }
                 }
@@ -3757,13 +3861,11 @@ private struct LegendMessageBubble: View {
                                 : "Translated from \(languageName(translation.originalLanguage)) · View original",
                             systemImage: "character.bubble")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(message.isMine
-                                             ? LegendNextColor.midnight
-                                             : LegendNextColor.goldBright)
+                            .foregroundStyle(isMediaMessage ? LegendNextColor.textPrimary : message.isMine ? LegendNextColor.midnight : LegendNextColor.goldBright)
                             .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Switch between the translated and original message")
+                    .accessibilityHint(LegendLocalized("Switch between the translated and original message", context: "accessibility copy"))
                 }
 
                 if let onOpenVerificationProfile,
@@ -3781,25 +3883,32 @@ private struct LegendMessageBubble: View {
                             .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Open this member’s profile for \(review.resourceType.displayName) review")
+                    .accessibilityHint(LegendLocalized("Open this member’s profile for {value1} review", context: "accessibility copy", arguments: ["value1": String(describing: (review.resourceType.displayName))]))
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
-                bubbleColor,
+                isMediaMessage ? Color.clear : bubbleColor,
                 in: RoundedRectangle(
                     cornerRadius: 16,
                     style: .continuous
                 )
             )
 
+            .overlay(alignment: physicalBottomRight) {
+                if !isMediaMessage {
+                    reactionBadges.offset(y: reactionOverflow)
+                }
+            }
+            .padding(.bottom, message.reactions.isEmpty || isMediaMessage ? 0 : reactionOverflow)
+
             Text(
                 message.sentUTC,
                 format: .dateTime.hour().minute()
             )
             .font(.system(size: 10, weight: .regular))
-            .foregroundStyle(LegendNextColor.textTertiary)
+            .foregroundStyle(LegendNextColor.chatTimestamp)
             .padding(
                 message.isMine ? .trailing : .leading,
                 3
@@ -3808,24 +3917,32 @@ private struct LegendMessageBubble: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    private var reactionBadges: some View {
+        LegendReactionFlow(spacing: LegendSharedDesign.reactionBubble.itemSpacing) {
+            ForEach(message.reactions, id: \.emoji) { reaction in
+                Button { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) } label: {
+                    Text(reaction.emoji)
+                        .font(.system(size: LegendSharedDesign.reactionBubble.emojiSize))
+                        .padding(.horizontal, LegendSharedDesign.reactionBubble.horizontalPadding)
+                        .frame(height: LegendSharedDesign.reactionBubble.height)
+                        .background(reaction.reactedByCurrentActor ? LegendSharedDesign.color(LegendSharedDesign.reactionBubble.ownFillColor).opacity(LegendSharedDesign.reactionBubble.ownFillOpacity) : LegendSharedDesign.color(LegendSharedDesign.reactionBubble.otherFillColor), in: Capsule())
+                        .overlay(Capsule().strokeBorder(LegendSharedDesign.color(LegendSharedDesign.reactionBubble.borderColor).opacity(LegendSharedDesign.reactionBubble.borderOpacity), lineWidth: LegendSharedDesign.reactionBubble.borderWidth))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(reaction.emoji), \(reaction.count)")
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { reactionHeight = $0 }
+    }
+
+    private var isMediaMessage: Bool { !message.isDeleted && (message.sharedContent != nil || !message.attachments.isEmpty) }
+
     private var displayedMessageBody: String {
         isShowingOriginal ? (message.originalBody ?? message.body) : message.body
     }
 
     private func languageName(_ code: String) -> String {
-        switch code {
-        case "ht": "Haitian Creole"
-        case "en": "English"
-        case "es": "Spanish"
-        case "fr": "French"
-        case "pt": "Portuguese"
-        case "de": "German"
-        case "ja": "Japanese"
-        case "ko": "Korean"
-        case "zh-Hans": "Chinese (Simplified)"
-        case "ar": "Arabic"
-        default: code
-        }
+        LegendActiveLocale().localizedString(forLanguageCode: code) ?? code
     }
 
     @ViewBuilder
@@ -3854,6 +3971,7 @@ private struct LegendMessageBubble: View {
     @ViewBuilder
     private var incomingAvatar: some View {
         if showsSender {
+            LegendMemberProfileLink(profile: message.sender.legendProfile) {
             LegendAvatarImageContent(
                 avatar: senderAvatar
             ) {
@@ -3873,7 +3991,7 @@ private struct LegendMessageBubble: View {
             )
             .clipShape(Circle())
             .padding(.bottom, 13)
-            .accessibilityHidden(true)
+            }.buttonStyle(.plain).accessibilityLabel(message.sender.displayName)
         } else {
             Color.clear
                 .frame(
@@ -3903,30 +4021,54 @@ private struct LegendMessageBubble: View {
     private var accessibilityDescription: String {
         if message.isDeleted {
             return message.isMine
-                ? "Sent message unsent."
-                : "Received message unsent by " + message.sender.displayName + "."
+                ? LegendLocalized("Sent message unsent.", context: "accessibility copy")
+                : LegendLocalized(
+                    "Received message unsent by {displayName}.",
+                    context: "accessibility copy",
+                    arguments: ["displayName": message.sender.displayName])
         }
 
         let attachmentDescription = message.attachments.isEmpty
             ? ""
-            : " Includes \(message.attachments.count) attachment"
-                + (message.attachments.count == 1 ? "." : "s.")
+            : LegendLocalized(
+                message.attachments.count == 1
+                    ? " Includes {count} attachment."
+                    : " Includes {count} attachments.",
+                context: "accessibility copy",
+                arguments: ["count": message.attachments.count])
 
         if message.isMine {
-            return "Sent message. \(message.body)\(attachmentDescription)"
+            return LegendLocalized(
+                "Sent message. {body}{attachmentDescription}",
+                context: "accessibility copy",
+                arguments: ["body": message.body, "attachmentDescription": attachmentDescription])
         }
 
-        return "Received message from "
-            + message.sender.displayName
-            + ". "
-            + message.body
-            + attachmentDescription
+        return LegendLocalized(
+            "Received message from {displayName}. {body}{attachmentDescription}",
+            context: "accessibility copy",
+            arguments: [
+                "displayName": message.sender.displayName,
+                "body": message.body,
+                "attachmentDescription": attachmentDescription
+            ])
     }
 }
 
 private struct LegendMessageAttachmentChip: View {
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var inlineImage: UIImage?
+    @State private var previewURL: URL?
+    @State private var downloadedURL: URL?
+    @State private var isLoading = false
+    @State private var failed = false
+
     let attachment: MessagingAttachment
     let isMine: Bool
+    var reactionBadge: AnyView? = nil
+    var reactionOverflow: CGFloat = 0
+    @Environment(\.layoutDirection) private var layoutDirection
+    private var physicalBottomRight: Alignment { layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing }
 
     private var isImage: Bool {
         attachment.contentType.hasPrefix("image/")
@@ -3936,51 +4078,88 @@ private struct LegendMessageAttachmentChip: View {
         "\(attachment.scanStatus.capitalized) scan"
     }
 
+    private func openAttachment() {
+        guard let messaging, attachment.canDownload, !isLoading else { return }
+        failed = false
+        isLoading = true
+        Task {
+            defer { isLoading = false }
+            do {
+                let url: URL
+                if let downloadedURL { url = downloadedURL }
+                else { url = try await messaging.downloadAttachment(attachment) }
+                downloadedURL = url
+                previewURL = url
+            } catch { failed = true }
+        }
+    }
+
     var body: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            Image(systemName: isImage ? "photo.fill" : "doc.fill")
-                .font(.caption.weight(.semibold))
-
-            Text(attachment.originalFileName)
-                .lineLimit(1)
-
-            Text(scanStatusLabel)
-                .font(.caption2.weight(.semibold))
-                .opacity(0.78)
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            if let inlineImage {
+                Button(action: openAttachment) {
+                    Image(uiImage: inlineImage).resizable().scaledToFit()
+                        .frame(maxWidth: 300, maxHeight: 320)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(!attachment.canDownload || isLoading)
+                .overlay(alignment: physicalBottomRight) { reactionBadge?.offset(y: reactionOverflow) }
+                .padding(.bottom, reactionBadge == nil ? 0 : reactionOverflow)
+            }
+            Button(action: openAttachment) {
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Image(systemName: isImage ? "photo.fill" : "doc.fill").font(.caption.weight(.semibold))
+                    Text(attachment.originalFileName).lineLimit(1)
+                    Text(scanStatusLabel).font(.caption2.weight(.semibold)).opacity(0.78)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .padding(.horizontal, LegendNextSpacing.sm).padding(.vertical, 6)
+                .background(inlineImage != nil ? Color.clear : LegendNextColor.surfaceElevated, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!attachment.canDownload || isLoading)
+            .overlay(alignment: physicalBottomRight) {
+                if inlineImage == nil { reactionBadge?.offset(y: reactionOverflow) }
+            }
+            .padding(.bottom, inlineImage == nil && reactionBadge != nil ? reactionOverflow : 0)
+            .accessibilityLabel("\(attachment.originalFileName), \(scanStatusLabel)")
         }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(
-            isMine
-                ? LegendNextColor.midnight
-                : Color.white
-        )
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, 6)
-        .background(
-            isMine
-                ? LegendNextColor.midnight.opacity(0.09)
-                : Color.white.opacity(0.14),
-            in: Capsule()
-        )
-        .overlay {
-            Capsule()
-                .stroke(
-                    isMine
-                        ? LegendNextColor.midnight.opacity(0.12)
-                        : Color.white.opacity(0.12),
-                    lineWidth: 0.75
-                )
+        .task(id: attachment.id) {
+            guard isImage, attachment.canDownload, attachment.sizeBytes <= 8 * 1_024 * 1_024, let messaging else { return }
+            do {
+                let url = try await messaging.downloadAttachment(attachment)
+                guard !Task.isCancelled else { try? FileManager.default.removeItem(at: url); return }
+                downloadedURL = url
+                if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                   let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 1024, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) {
+                    inlineImage = UIImage(cgImage: image)
+                }
+            } catch { if !Task.isCancelled { failed = true } }
         }
-        .accessibilityLabel(
-            "\(attachment.originalFileName), \(scanStatusLabel)"
-        )
+        .onDisappear {
+            if previewURL == nil, let downloadedURL { try? FileManager.default.removeItem(at: downloadedURL.deletingLastPathComponent()); self.downloadedURL = nil }
+        }
+        .quickLookPreview($previewURL)
+        .onChange(of: previewURL) { _, current in
+            if current == nil, let downloadedURL {
+                try? FileManager.default.removeItem(at: downloadedURL.deletingLastPathComponent())
+                self.downloadedURL = nil
+            }
+        }
+        .alert(LegendLocalized("Attachment unavailable"), isPresented: $failed) {
+            Button(LegendLocalized("OK"), role: .cancel) { }
+        }
+
     }
 }
 
 private struct LegendConversationLoadingView: View {
+    var title: String? = nil
     var body: some View {
         VStack(spacing: 0) {
-            LegendConversationFallbackHeader()
+            LegendConversationFallbackHeader(title: title)
 
             VStack(spacing: LegendNextSpacing.sm) {
                 ForEach(0..<5, id: \.self) { index in
@@ -4010,7 +4189,7 @@ private struct LegendConversationLoadingView: View {
             }
             .padding(LegendNextSpacing.pageHorizontal)
         }
-        .accessibilityLabel("Loading conversation")
+        .accessibilityLabel(LegendLocalized("Loading conversation", context: "accessibility copy"))
     }
 }
 
@@ -4232,8 +4411,8 @@ private struct LegendMessagingPressButtonStyle: ButtonStyle {
         configuration: Configuration
     ) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .opacity(configuration.isPressed ? 0.86 : 1)
+            .scaleEffect(configuration.isPressed ? LegendSharedDesign.opacity("pressedControlScale") : 1)
+            .opacity(configuration.isPressed ? LegendSharedDesign.opacity("pressedSurface") : 1)
             .animation(
                 .easeOut(duration: 0.14),
                 value: configuration.isPressed
@@ -4249,13 +4428,13 @@ private enum LegendMessagingDateFormatter {
 
         if calendar.isDateInToday(date) {
             return date.formatted(
-                date: .omitted,
-                time: .shortened
+                .dateTime.hour().minute()
+                    .locale(LegendActiveLocale())
             )
         }
 
         if calendar.isDateInYesterday(date) {
-            return "Yesterday"
+            return LegendLocalized("Yesterday")
         }
 
         if let weekAgo = calendar.date(
@@ -4266,11 +4445,13 @@ private enum LegendMessagingDateFormatter {
            date >= weekAgo {
             return date.formatted(
                 .dateTime.weekday(.abbreviated)
+                    .locale(LegendActiveLocale())
             )
         }
 
         return date.formatted(
             .dateTime.month(.abbreviated).day()
+                .locale(LegendActiveLocale())
         )
     }
 
@@ -4280,11 +4461,11 @@ private enum LegendMessagingDateFormatter {
         let calendar = Calendar.current
 
         if calendar.isDateInToday(date) {
-            return "Today"
+            return LegendLocalized("Today")
         }
 
         if calendar.isDateInYesterday(date) {
-            return "Yesterday"
+            return LegendLocalized("Yesterday")
         }
 
         return date.formatted(
@@ -4292,6 +4473,225 @@ private enum LegendMessagingDateFormatter {
                 .weekday(.abbreviated)
                 .month(.abbreviated)
                 .day()
+                .locale(LegendActiveLocale())
         )
+    }
+}
+
+extension MessagingParticipant {
+    var legendProfile: MobileSocialAuthor {
+        MobileSocialAuthor(identity: identity, profileID: profileID, displayName: displayName, avatar: avatar)
+    }
+}
+
+private struct LegendMessagingSearchField: View {
+    @Binding var search: String
+    var placeholder = LegendSharedDesign.copy("search.people")
+    @FocusState private var searchIsFocused: Bool
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(
+                    searchIsFocused
+                        ? LegendNextColor.gold
+                        : LegendNextColor.textTertiary
+                )
+
+            TextField(LegendLocalized(placeholder), text: $search)
+                .font(.body)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .focused($searchIsFocused)
+
+            if !search.isEmpty {
+                Button {
+                    search = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(LegendNextColor.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(LegendLocalized("Clear search", context: "accessibility copy"))
+            }
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .frame(minHeight: 50)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+            .stroke(
+                searchIsFocused
+                    ? LegendNextColor.gold.opacity(0.72)
+                    : LegendNextColor.separator,
+                lineWidth: searchIsFocused ? 1.25 : 1
+            )
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.top, LegendNextSpacing.intermediate)
+        .padding(.bottom, LegendNextSpacing.sm)
+    }
+
+}
+
+private struct LegendSharedMessageCard: View {
+    let content: MessagingSharedContent
+    let reactionBadge: AnyView
+    let hasReactions: Bool
+    let reactionOverflow: CGFloat
+    let open: () -> Void
+    @Environment(\.legendSocialStore) private var social
+    @Environment(\.layoutDirection) private var layoutDirection
+    private var physicalBottomRight: Alignment { layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if content.status == "available", let social {
+                Button(action: open) {
+                    Label(content.authorDisplayName ?? LegendLocalized("Open shared content"), systemImage: "person.crop.circle.fill")
+                        .font(.caption.weight(.semibold)).lineLimit(1)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .background(LegendNextColor.gold.opacity(0.12), in: Capsule())
+                }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 6) {
+                if let body = content.body, !body.isEmpty { Text(body) }
+                ForEach(content.media.sorted { $0.displayOrder < $1.displayOrder }) { media in
+                    if media.mediaKind == "Image" {
+                        LegendSocialMediaImage(media: media, social: social).onTapGesture(perform: open)
+                    } else if media.mediaKind == "Video" {
+                        LegendSocialMediaVideo(postID: content.sourcePostId, media: media, music: nil, social: social)
+                    }
+                }
+                }.overlay(alignment: physicalBottomRight) { reactionBadge.offset(y: reactionOverflow) }
+                .padding(.bottom, hasReactions ? reactionOverflow : 0)
+                Button(action: open) {
+                    Label(LegendLocalized("Open original"), systemImage: "arrow.up.right")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(LegendNextColor.chatTimestamp)
+                        .background(LegendNextColor.chatTimestamp.opacity(0.09), in: Capsule())
+                }.buttonStyle(.plain).padding(.trailing, 64)
+            } else {
+                Text(LegendLocalized("Shared content is unavailable."))
+                    .overlay(alignment: physicalBottomRight) { reactionBadge.offset(y: reactionOverflow) }
+                    .padding(.bottom, hasReactions ? reactionOverflow : 0)
+            }
+        }
+    }
+}
+
+
+private struct LegendReactionEmojiPicker: View {
+    let store: MessagingStore?
+    let select: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var preferredTone = 0
+    private let columns = [GridItem(.adaptive(minimum: 44), spacing: 8)]
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if let store { LegendReactionSkinToneControl(store: store).padding(.horizontal, 16) }
+                if let catalog = LegendReactionEmojiCatalog.bundled {
+                    let entries = catalog.palette(query)
+                    if entries.isEmpty {
+                        ContentUnavailableView.search(text: query)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(entries) { entry in
+                                let emoji = catalog.applyingSkinTone(preferredTone, to: entry.emoji)
+                                Button { select(emoji) } label: {
+                                    Text(emoji).font(.system(size: 32)).frame(minWidth: 44, minHeight: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(entry.name)
+                            }
+                        }.padding(.horizontal, 16).padding(.vertical, 12)
+                    }
+                } else {
+                    ContentUnavailableView(LegendLocalized("Emoji unavailable"), systemImage: "face.smiling")
+                }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: LegendLocalized("Search emoji"))
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark").accessibilityLabel(LegendLocalized("Close")) }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .onReceive(store?.$preferredReactionSkinTone.eraseToAnyPublisher() ?? Just(0).eraseToAnyPublisher()) { preferredTone = $0 }
+        .task { await store?.refreshReactionPreferences() }
+    }
+}
+
+private struct LegendReactionSkinToneControl: View {
+    @ObservedObject var store: MessagingStore
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(LegendLocalized("Skin tone")).font(.caption.weight(.semibold))
+                Spacer(minLength: 0)
+                ForEach(0..<6, id: \.self) { tone in
+                    Button { store.setReactionSkinTone(tone) } label: {
+                        Text(LegendReactionEmojiCatalog.bundled?.applyingSkinTone(tone, to: "👋") ?? "👋")
+                            .font(.system(size: 22)).frame(width: 32, height: 44)
+                            .background(store.preferredReactionSkinTone == tone ? LegendNextColor.gold.opacity(0.22) : .clear, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.isSavingReactionPreferences)
+                    .accessibilityLabel(LegendLocalized("Skin tone") + " \(tone)")
+                    .accessibilityAddTraits(store.preferredReactionSkinTone == tone ? .isSelected : [])
+                }
+            }
+            if let error = store.reactionPreferencesFailure {
+                Text(error).font(.caption).foregroundStyle(LegendNextColor.danger)
+            }
+        }
+    }
+}
+
+/// Reaction groups wrap within their actual message surface; their physical right edge stays anchored in every writing direction.
+private struct LegendReactionFlow: Layout {
+    let spacing: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arranged(subviews, width: proposal.width ?? .greatestFiniteMagnitude).size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arranged(subviews, width: bounds.width)
+        for (index, frame) in result.frames.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+        }
+    }
+    private func arranged(_ subviews: Subviews, width: CGFloat) -> (size: CGSize, frames: [CGRect]) {
+        var rows: [[CGRect]] = [[]]
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > width {
+                y += rowHeight + spacing; x = 0; rowHeight = 0; rows.append([])
+            }
+            rows[rows.count - 1].append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            x += size.width + spacing; rowHeight = max(rowHeight, size.height)
+        }
+        let usedWidth = rows.compactMap { $0.last?.maxX }.max() ?? 0
+        let frames = rows.flatMap { row in
+            row.map { $0.offsetBy(dx: usedWidth - (row.last?.maxX ?? 0), dy: 0) }
+        }
+        return (CGSize(width: usedWidth, height: subviews.isEmpty ? 0 : y + rowHeight), frames)
     }
 }

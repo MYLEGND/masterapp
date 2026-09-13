@@ -130,6 +130,13 @@ final class MobileDiscoveryStore: ObservableObject {
         self.actorParticipantType = actorParticipantType
     }
 
+    /// Professional directory copy belongs only to the active agent workspace.
+    /// The server scope still controls directory data; it cannot relabel a
+    /// member's interface as CRM when a cached projection changes.
+    var showsProfessionalDirectory: Bool {
+        actorParticipantType == .agent && scope == .ownedClients
+    }
+
     var results: [MobileDiscoveryResult] {
         if case .loaded(let results) = state { return results }
         return []
@@ -163,7 +170,7 @@ final class MobileDiscoveryStore: ObservableObject {
             let token = try await accessTokenProvider()
             return try await api.profile(clientProfileID: clientProfileID, accessToken: token)
         } catch {
-            actionFailure = failure(for: error, title: "Profile unavailable")
+            actionFailure = failure(for: error, title: LegendLocalized("Profile unavailable"))
             return nil
         }
     }
@@ -294,7 +301,7 @@ final class MobileDiscoveryStore: ObservableObject {
             }
         } catch {
             guard generation == requestGeneration else { return }
-            let presentation = failure(for: error, title: "Discover unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Discover unavailable"))
             if hasLoadedResults {
                 actionFailure = presentation
             } else {
@@ -333,7 +340,7 @@ final class MobileDiscoveryStore: ObservableObject {
             hasMore = page.hasMore
         } catch {
             guard generation == requestGeneration else { return }
-            actionFailure = failure(for: error, title: "Could not load more members")
+            actionFailure = failure(for: error, title: LegendLocalized("Could not load more members"))
         }
     }
 
@@ -411,7 +418,7 @@ final class MobileDiscoveryStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import androidx.core.graphics.scale
 import java.io.ByteArrayOutputStream
 
 /** Converts an Android-picked profile image to the existing account avatar payload. */
@@ -39,6 +40,6 @@ object ProfileAvatarPreparer {
         val longest = maxOf(width, height)
         if (longest <= maxDimension) return this
         val ratio = maxDimension.toFloat() / longest
-        return Bitmap.createScaledBitmap(this, (width * ratio).toInt(), (height * ratio).toInt(), true)
+        return scale((width * ratio).toInt(), (height * ratio).toInt(), true)
     }
 }

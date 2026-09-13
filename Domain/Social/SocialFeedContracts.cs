@@ -412,6 +412,10 @@ public sealed record SocialOperationResult<T>(bool Succeeded, string? ErrorCode 
 
 public interface ISocialFeedService
 {
+    Task<SocialOperationResult<SocialPostView>> GetPostAsync(SocialFeedActor actor, Guid postId,
+        CancellationToken cancellationToken = default) => Task.FromResult(
+            SocialOperationResult<SocialPostView>.Failure("social_post_unavailable", "This post is unavailable."));
+
     Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetCurrentProfilePostsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetPublicProfilePostsAsync(SocialFeedActor actor, SocialAuthor profile, CancellationToken cancellationToken = default);
@@ -438,6 +442,7 @@ public interface ISocialFeedService
     Task<SocialOperationResult<SocialPostMetrics>> RecordViewAsync(RecordSocialPostViewCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialProfileMetrics>> GetProfileMetricsAsync(SocialFeedActor actor, SocialAuthor? profile = null, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetCurrentProfileFollowListAsync(SocialFeedActor actor, string listKind, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetProfileFollowListAsync(SocialFeedActor actor, SocialAuthor profile, string listKind, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialFollowRequestView>>> GetIncomingFollowRequestsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialFollowResult>> DecideFollowRequestAsync(SocialFollowRequestDecisionCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialCreatorInsights>> GetCreatorInsightsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);

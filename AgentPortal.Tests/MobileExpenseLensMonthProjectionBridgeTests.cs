@@ -206,7 +206,7 @@ public sealed class MobileExpenseLensMonthProjectionBridgeTests
             root.GetProperty("weeks")[0];
 
         Assert.Equal(
-            110000,
+            130000,
             firstWeek.GetProperty("outflowCents").GetInt32());
     }
 

@@ -1,0 +1,2138 @@
+{
+  "CandidateSha": "377251c0fbedc990fd79c200721dc6175e4575c7",
+  "Purpose": "Restricted static table-reference starting set for existing ProductionReadOnlyCandidateObservation; not a proved minimal runtime set or live permission evidence. Intersect with existing physical model tables accepted by RequireSafePhysicalSourcesAsync. Grant object SELECT only.",
+  "MappingAuthority": "Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs",
+  "Excluded": "Unrelated app tables including CRM, billing/usage entitlements, calls, private messaging bodies and account stores; no wildcard/schema grants.",
+  "Tables": [
+    {
+      "Entity": "AgentProfile",
+      "Schema": "dbo",
+      "Table": "AgentProfiles",
+      "QualifiedTable": "dbo.AgentProfiles",
+      "SourceAuthorities": [
+        {
+          "Source": "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+          "Authority": "ProductionReadOnlyCandidateObservation active Founder preflight"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendConnectModelPromotionPair",
+      "Schema": "dbo",
+      "Table": "LegendConnectModelPromotionPairs",
+      "QualifiedTable": "dbo.LegendConnectModelPromotionPairs",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+          "Line": 151,
+          "Authority": "LegendConnectActiveModelInference"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendConnectModelTrainingRun",
+      "Schema": "dbo",
+      "Table": "LegendConnectModelTrainingRuns",
+      "QualifiedTable": "dbo.LegendConnectModelTrainingRuns",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+          "Line": 153,
+          "Authority": "LegendConnectActiveModelInference"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+          "Line": 235,
+          "Authority": "LegendConnectActiveModelInference"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+          "Line": 387,
+          "Authority": "LegendConnectActiveModelInference"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendConnectOperationalEvent",
+      "Schema": "dbo",
+      "Table": "LegendConnectOperationalEvents",
+      "QualifiedTable": "dbo.LegendConnectOperationalEvents",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14199,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendCorpusCandidate",
+      "Schema": "dbo",
+      "Table": "LegendCorpusCandidates",
+      "QualifiedTable": "dbo.LegendCorpusCandidates",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1542,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3529,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17416,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendCurriculumExample",
+      "Schema": "dbo",
+      "Table": "LegendCurriculumExamples",
+      "QualifiedTable": "dbo.LegendCurriculumExamples",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2148,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2283,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2450,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2605,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2670,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2765,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2766,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2803,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2848,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2943,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3022,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3033,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3064,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3190,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3297,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3320,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3396,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3553,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3616,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4254,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5812,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5818,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 6249,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7663,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7681,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7729,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7755,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7757,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7888,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8000,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8002,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8406,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8408,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8810,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9703,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 10089,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11431,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13573,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14039,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14083,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14136,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15427,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15469,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15471,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15549,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15551,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17339,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17372,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17514,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17991,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendCurriculumExampleVariation",
+      "Schema": "dbo",
+      "Table": "LegendCurriculumExampleVariations",
+      "QualifiedTable": "dbo.LegendCurriculumExampleVariations",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8838,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9756,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9760,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9770,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9774,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9802,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11476,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11641,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12690,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12886,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13293,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13727,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14094,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14099,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14161,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14166,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14171,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14247,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14706,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17238,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendCurriculumFamily",
+      "Schema": "dbo",
+      "Table": "LegendCurriculumFamilies",
+      "QualifiedTable": "dbo.LegendCurriculumFamilies",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2149,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2246,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3347,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3388,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3522,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3626,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5814,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7890,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13568,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13997,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17341,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17515,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendFounderSemanticExampleRelationEvidence",
+      "Schema": "dbo",
+      "Table": "LegendFounderSemanticExampleRelationEvidence",
+      "QualifiedTable": "dbo.LegendFounderSemanticExampleRelationEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2725,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7759,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8008,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8404,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17623,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17625,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17650,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17691,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17979,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 18128,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageCompositionalAnchor",
+      "Schema": "dbo",
+      "Table": "LegendLanguageCompositionalAnchors",
+      "QualifiedTable": "dbo.LegendLanguageCompositionalAnchors",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2597,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2881,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3131,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4218,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4221,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4230,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4556,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4722,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4802,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5213,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5701,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5848,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 6262,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8942,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9852,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11306,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11320,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11613,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11747,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12116,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12726,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12733,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12917,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12943,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13342,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13368,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13769,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15271,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15735,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17337,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17370,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageContextRelationship",
+      "Schema": "dbo",
+      "Table": "LegendLanguageContextRelationships",
+      "QualifiedTable": "dbo.LegendLanguageContextRelationships",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2790,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageDefinition",
+      "Schema": "dbo",
+      "Table": "LegendLanguageDefinitions",
+      "QualifiedTable": "dbo.LegendLanguageDefinitions",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5229,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageDerivationArtifact",
+      "Schema": "dbo",
+      "Table": "LegendLanguageDerivationArtifacts",
+      "QualifiedTable": "dbo.LegendLanguageDerivationArtifacts",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3230,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3263,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageDiscourseReferenceRule",
+      "Schema": "dbo",
+      "Table": "LegendLanguageDiscourseReferenceRules",
+      "QualifiedTable": "dbo.LegendLanguageDiscourseReferenceRules",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12322,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12324,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12344,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12583,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12607,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13632,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageDiscourseReferenceRuleEvidence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageDiscourseReferenceRuleEvidence",
+      "QualifiedTable": "dbo.LegendLanguageDiscourseReferenceRuleEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2715,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12127,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12373,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12609,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13631,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageLexeme",
+      "Schema": "dbo",
+      "Table": "LegendLanguageLexemes",
+      "QualifiedTable": "dbo.LegendLanguageLexemes",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4551,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5224,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5804,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11321,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12705,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageLexicalOccurrence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageLexicalOccurrences",
+      "QualifiedTable": "dbo.LegendLanguageLexicalOccurrences",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1893,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2581,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2855,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4248,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4552,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5225,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5805,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11970,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12009,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12109,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12704,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13360,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13782,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageLexicalRelationship",
+      "Schema": "dbo",
+      "Table": "LegendLanguageLexicalRelationships",
+      "QualifiedTable": "dbo.LegendLanguageLexicalRelationships",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2589,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2868,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12018,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12062,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageMeaningNodeEvidence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageMeaningNodeEvidence",
+      "QualifiedTable": "dbo.LegendLanguageMeaningNodeEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1964,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1980,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1982,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1987,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2685,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3143,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4612,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5421,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5423,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5700,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5795,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5847,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5876,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5878,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 6261,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 6474,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7661,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7887,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9247,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9249,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12119,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12207,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12415,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13241,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17336,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17369,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17540,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 18011,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageMeaningPrimitive",
+      "Schema": "dbo",
+      "Table": "LegendLanguageMeaningPrimitives",
+      "QualifiedTable": "dbo.LegendLanguageMeaningPrimitives",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1965,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4618,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5705,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5850,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9251,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9254,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12424,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12448,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12509,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17345,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageMeaningPrimitiveEvidence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageMeaningPrimitiveEvidence",
+      "QualifiedTable": "dbo.LegendLanguageMeaningPrimitiveEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2695,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3155,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12428,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12481,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12511,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageMeaningRelation",
+      "Schema": "dbo",
+      "Table": "LegendLanguageMeaningRelations",
+      "QualifiedTable": "dbo.LegendLanguageMeaningRelations",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5419,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5874,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9245,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12239,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12242,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12260,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12532,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13310,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17564,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 18034,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageMeaningRelationEvidence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageMeaningRelationEvidence",
+      "QualifiedTable": "dbo.LegendLanguageMeaningRelationEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2705,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3173,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5418,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5873,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9244,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12124,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12291,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12534,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13309,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17563,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 18033,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguagePair",
+      "Schema": "dbo",
+      "Table": "LegendLanguagePairs",
+      "QualifiedTable": "dbo.LegendLanguagePairs",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3603,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+          "Line": 130,
+          "Authority": "LegendConnectActiveModelInference"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageStructuralEvidence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageStructuralEvidence",
+      "QualifiedTable": "dbo.LegendLanguageStructuralEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2616,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2776,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2818,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11734,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14477,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14514,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 16038,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 16114,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageStructuralPattern",
+      "Schema": "dbo",
+      "Table": "LegendLanguageStructuralPatterns",
+      "QualifiedTable": "dbo.LegendLanguageStructuralPatterns",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3656,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11343,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14382,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14386,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14450,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 16104,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 16106,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageStructuralRelationship",
+      "Schema": "dbo",
+      "Table": "LegendLanguageStructuralRelationships",
+      "QualifiedTable": "dbo.LegendLanguageStructuralRelationships",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11723,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15886,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15890,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15914,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 16028,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 16030,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageTargetRealizationCandidate",
+      "Schema": "dbo",
+      "Table": "LegendLanguageTargetRealizationCandidates",
+      "QualifiedTable": "dbo.LegendLanguageTargetRealizationCandidates",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4079,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4110,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4111,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4112,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4113,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4153,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4287,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14785,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14791,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14813,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14835,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15091,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15093,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15123,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15203,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15244,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15286,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageTargetRealizationEvidence",
+      "Schema": "dbo",
+      "Table": "LegendLanguageTargetRealizationEvidence",
+      "QualifiedTable": "dbo.LegendLanguageTargetRealizationEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4090,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4164,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15167,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15169,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15175,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15202,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15260,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageTeacherProposal",
+      "Schema": "dbo",
+      "Table": "LegendLanguageTeacherProposals",
+      "QualifiedTable": "dbo.LegendLanguageTeacherProposals",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1380,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1414,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1456,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1501,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3528,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17415,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendLanguageTextUnit",
+      "Schema": "dbo",
+      "Table": "LegendLanguageTextUnits",
+      "QualifiedTable": "dbo.LegendLanguageTextUnits",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 1766,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2151,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2255,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2275,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2276,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2937,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3023,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3034,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3058,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3060,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3554,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3608,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3610,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4091,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4092,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4554,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4721,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4803,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5212,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5703,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5816,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 6251,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7680,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7892,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8004,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8006,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8812,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8943,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9704,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 10092,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11289,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11433,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12102,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12665,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 12868,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13275,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13580,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13720,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 14001,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15428,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15470,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15550,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17343,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17374,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17516,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17992,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendSemanticTransitionEvidence",
+      "Schema": "dbo",
+      "Table": "LegendSemanticTransitionEvidence",
+      "QualifiedTable": "dbo.LegendSemanticTransitionEvidence",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2623,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3197,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3411,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 4818,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 5811,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 6248,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7660,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7728,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7754,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 7999,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8403,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8446,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8629,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 8809,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 9732,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11430,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13692,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17216,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17281,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17288,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17297,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17770,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17871,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17912,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17915,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 17944,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 18102,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendTranslationAlignment",
+      "Schema": "dbo",
+      "Table": "LegendTranslationAlignments",
+      "QualifiedTable": "dbo.LegendTranslationAlignments",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2850,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2949,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 2968,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3057,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 3599,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 11288,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 13991,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15204,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15473,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15553,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15605,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        },
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+          "Line": 15608,
+          "Authority": "LegendConnectCurriculumService (static entity-reference superset; runtime subset depends on corpus)"
+        }
+      ]
+    },
+    {
+      "Entity": "LegendTranslationLearningEvent",
+      "Schema": "dbo",
+      "Table": "LegendTranslationLearningEvents",
+      "QualifiedTable": "dbo.LegendTranslationLearningEvents",
+      "SourceAuthorities": [
+        {
+          "Source": "Infrastructure/Messaging/LegendConnectOperations.cs",
+          "Authority": "GetLearningPageAsync"
+        }
+      ]
+    }
+  ]
+}

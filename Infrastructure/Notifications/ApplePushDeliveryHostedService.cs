@@ -31,7 +31,9 @@ internal sealed record ApplePushDeliveryRequest(
     string Body,
     Guid NotificationId,
     int BadgeCount,
-    Guid? ConversationId);
+    Guid? ConversationId,
+    Shared.Calling.LegendCallSnapshot? Call = null,
+    NotificationSenderPresentation? Sender = null);
 
 internal sealed record ApplePushDeliveryResult(
     ApplePushDeliveryOutcome Outcome,
@@ -227,17 +229,21 @@ internal sealed class ApplePushGateway : IApplePushGateway
                 VersionPolicy = HttpVersionPolicy.RequestVersionExact
             };
             message.Headers.Authorization = new AuthenticationHeaderValue("bearer", providerToken);
-            message.Headers.TryAddWithoutValidation("apns-topic", configuration.BundleId);
-            message.Headers.TryAddWithoutValidation("apns-push-type", "alert");
+            message.Headers.TryAddWithoutValidation("apns-topic", configuration.BundleId + (request.Call == null ? "" : ".voip"));
+            message.Headers.TryAddWithoutValidation("apns-push-type", request.Call == null ? "alert" : "voip");
             message.Headers.TryAddWithoutValidation("apns-priority", "10");
             // APNs defaults this to immediate expiry. Keep an authenticated alert
             // available for a day when the phone is briefly offline, while still
             // using priority 10 for immediate delivery whenever it is reachable.
             message.Headers.TryAddWithoutValidation(
                 "apns-expiration",
-                DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds().ToString());
+                request.Call == null ? DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds().ToString() : "0");
             message.Content = new StringContent(
-                JsonSerializer.Serialize(new
+                JsonSerializer.Serialize(request.Call != null ? (object)new
+                {
+                    aps = new Dictionary<string, object?> { ["content-available"] = 1 },
+                    legendCall = request.Call
+                } : new
                 {
                     aps = new Dictionary<string, object?>
                     {
@@ -246,6 +252,7 @@ internal sealed class ApplePushGateway : IApplePushGateway
                         ["sound"] = "default",
                         ["mutable-content"] = 1
                     },
+                    sender = request.Sender,
                     notificationId = request.NotificationId,
                     conversationId = request.ConversationId,
                     unreadCount = Math.Max(0, request.BadgeCount)
@@ -258,7 +265,7 @@ internal sealed class ApplePushGateway : IApplePushGateway
             if (response.IsSuccessStatusCode)
                 return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Sent);
 
-            var failure = await ReadFailureAsync(response, request, configuration.BundleId, cancellationToken);
+            var failure = await ReadFailureAsync(response, request, configuration.BundleId + (request.Call != null ? ".voip" : ""), cancellationToken);
             if (IsPermanentlyInvalidDevice(response.StatusCode, failure.Reason))
                 return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.InvalidDevice, failure.Detail);
             if (string.Equals(failure.Reason, "ExpiredProviderToken", StringComparison.Ordinal))
@@ -590,19 +597,40 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                 continue;
             }
 
-            var snapshot = await engine.GetSnapshotAsync(
+            var presentation = await engine.PrepareDeliveryPresentationAsync(
                 new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
-                take: 1,
+                candidate.NotificationId, cancellationToken);
+            if (presentation is null)
+            {
+                // Count delivery preparation against the existing bounded delivery
+                // policy; this is not a gateway attempt or provider outcome.
+                delivery.AttemptCount++;
+                var failedAt = DateTime.UtcNow;
+                delivery.NextAttemptUtc = failedAt.AddSeconds(Math.Min(300, Math.Pow(2, delivery.AttemptCount)));
+                delivery.LastError = "notification_presentation_unavailable";
+                if (delivery.AttemptCount >= MaximumAttempts)
+                {
+                    delivery.AbandonedUtc = failedAt;
+                    delivery.LastError = "notification_presentation_exhausted";
+                }
+                continue;
+            }
+
+            var badge = await engine.GetBadgeSnapshotAsync(
+                new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
                 cancellationToken);
             var result = await _gateway.SendAsync(
                 new ApplePushDeliveryRequest(
                     candidate.DeviceToken,
                     candidate.Environment,
                     candidate.Title,
-                    candidate.Detail,
+                    presentation,
                     candidate.NotificationId,
-                    snapshot.Badge.UnreadCount,
-                    candidate.ConversationId),
+                    badge.UnreadCount,
+                    candidate.ConversationId,
+                    Sender: await engine.GetSenderPresentationAsync(
+                        new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
+                        candidate.NotificationId, cancellationToken)),
                 cancellationToken);
             ApplyResult(delivery, result, now);
 

@@ -49,7 +49,10 @@ struct DailyScripturePassageParagraph: Identifiable, Equatable {
     var accessibilityText: String {
         segments.map { segment in
             guard let number = segment.number else { return segment.text }
-            return "Verse \(number). \(segment.text)"
+            return LegendLocalized(
+                "Verse {number}. {text}",
+                context: "accessibility copy",
+                arguments: ["number": number, "text": segment.text])
         }
         .joined(separator: " ")
     }

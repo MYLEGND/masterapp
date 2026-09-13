@@ -29,7 +29,10 @@ internal sealed record FirebasePushDeliveryRequest(
     string Body,
     Guid NotificationId,
     int BadgeCount,
-    Guid? ConversationId);
+    Guid? ConversationId,
+    Shared.Calling.LegendCallSnapshot? Call = null,
+    NotificationSenderPresentation? Sender = null,
+    bool SupportsCommunicationNotifications = false);
 
 internal sealed record FirebasePushDeliveryResult(
     FirebasePushDeliveryOutcome Outcome,
@@ -162,9 +165,15 @@ internal sealed class FirebasePushGateway : IFirebasePushGateway
                         token = request.DeviceToken,
                         // Both Android foreground handling and background system-tray delivery use
                         // this server-authoritative localized presentation.
-                        notification = new { title = request.Title, body = request.Body },
-                        data = new Dictionary<string, string>
+                        notification = request.Call == null && !request.SupportsCommunicationNotifications ? new { title = request.Title, body = request.Body } : null,
+                        data = request.Call != null ? new Dictionary<string, string>
                         {
+                            ["legendCall"] = JsonSerializer.Serialize(request.Call, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                        } : new Dictionary<string, string>
+                        {
+                            ["title"] = request.Title,
+                            ["body"] = request.Body,
+                            ["sender"] = request.Sender is null ? string.Empty : JsonSerializer.Serialize(request.Sender, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
                             ["notificationId"] = request.NotificationId.ToString("D"),
                             ["conversationId"] = request.ConversationId?.ToString("D") ?? string.Empty,
                             ["unreadCount"] = Math.Max(0, request.BadgeCount).ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -172,12 +181,13 @@ internal sealed class FirebasePushGateway : IFirebasePushGateway
                         android = new
                         {
                             priority = "HIGH",
-                            notification = new
+                            ttl = request.Call == null ? "86400s" : "45s",
+                            notification = request.Call == null && !request.SupportsCommunicationNotifications ? new
                             {
                                 channel_id = ChannelId,
                                 sound = "default",
                                 notification_priority = "PRIORITY_DEFAULT"
-                            }
+                            } : null
                         }
                     }
                 }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
@@ -344,7 +354,7 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
                     notification.IsRead,
                     notification.IsCleared,
                     device.Id,
-                    device.DeviceToken))
+                    device.DeviceToken, device.SupportsCommunicationNotifications))
             .Take(50)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
@@ -362,18 +372,40 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
                 continue;
             }
 
-            var snapshot = await engine.GetSnapshotAsync(
+            var presentation = await engine.PrepareDeliveryPresentationAsync(
                 new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
-                take: 1,
+                candidate.NotificationId, cancellationToken);
+            if (presentation is null)
+            {
+                // Count delivery preparation against the existing bounded delivery
+                // policy; this is not a gateway attempt or provider outcome.
+                delivery.AttemptCount++;
+                var failedAt = DateTime.UtcNow;
+                delivery.NextAttemptUtc = failedAt.AddSeconds(Math.Min(300, Math.Pow(2, delivery.AttemptCount)));
+                delivery.LastError = "notification_presentation_unavailable";
+                if (delivery.AttemptCount >= MaximumAttempts)
+                {
+                    delivery.AbandonedUtc = failedAt;
+                    delivery.LastError = "notification_presentation_exhausted";
+                }
+                continue;
+            }
+
+            var badge = await engine.GetBadgeSnapshotAsync(
+                new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
                 cancellationToken);
             var result = await _gateway.SendAsync(
                 new FirebasePushDeliveryRequest(
                     candidate.DeviceToken,
                     candidate.Title,
-                    candidate.Detail,
+                    presentation,
                     candidate.NotificationId,
-                    snapshot.Badge.UnreadCount,
-                    candidate.ConversationId),
+                    badge.UnreadCount,
+                    candidate.ConversationId,
+                    Sender: await engine.GetSenderPresentationAsync(
+                        new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
+                        candidate.NotificationId, cancellationToken),
+                    SupportsCommunicationNotifications: candidate.SupportsCommunicationNotifications),
                 cancellationToken);
             ApplyResult(delivery, result, now);
 
@@ -426,5 +458,6 @@ internal sealed class FirebasePushDeliveryHostedService : BackgroundService
         bool IsRead,
         bool IsCleared,
         Guid DeviceId,
-        string DeviceToken);
+        string DeviceToken,
+        bool SupportsCommunicationNotifications);
 }

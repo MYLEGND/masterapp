@@ -1,0 +1,359 @@
+using System.Data;
+using Domain.Entities;
+using Domain.Messaging;
+using Microsoft.EntityFrameworkCore;
+using Shared.Calling;
+using Shared.Messaging;
+
+namespace Infrastructure.Messaging;
+
+internal sealed partial class MessagingService : ILegendCallingAuthority
+{
+    // Shared media policy; optional relay credentials are minted only on authenticated call requests.
+    internal static readonly LegendCallPolicy DirectCallPolicy = new(
+        ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"], Adaptation: new(), ScreenShare: new());
+
+    private static LegendCallPolicy CurrentCallPolicy(LegendCallSession call, LegendCallPolicy policy) =>
+        call.ExpiresUtc > DateTime.UtcNow && call.Status is "ringing" or "connecting" or "active"
+            ? policy : DirectCallPolicy;
+
+    internal static LegendCallPolicy BuildCallPolicy(Microsoft.Extensions.Configuration.IConfiguration? configuration)
+    {
+        var (urls, secret) = ValidateRelayConfiguration(configuration);
+        if (urls.Length == 0) return DirectCallPolicy;
+        var expires = DateTimeOffset.UtcNow.AddHours(12);
+        var username = expires.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + Guid.NewGuid().ToString("N");
+        var credential = Convert.ToBase64String(System.Security.Cryptography.HMACSHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(secret!), System.Text.Encoding.UTF8.GetBytes(username)));
+        return DirectCallPolicy with { Relay = new(urls, username, credential, expires.UtcDateTime) };
+    }
+
+    internal static (string[] Urls, string? Secret) ValidateRelayConfiguration(Microsoft.Extensions.Configuration.IConfiguration? configuration)
+    {
+        var urls = configuration?.GetSection("Calling:Relay:Urls").GetChildren()
+            .Select(entry => entry.Value?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).ToArray() ?? [];
+        var secret = configuration?["Calling:Relay:SharedSecret"];
+        if (urls.Length == 0 && string.IsNullOrWhiteSpace(secret)) return (urls, secret);
+        if (!LegendCallRelay.IsConfigurationValid(urls, secret))
+            throw new InvalidOperationException("Calling relay configuration is incomplete or invalid.");
+        return (urls, secret);
+    }
+
+    public async Task<LegendCallResult> ExecuteAsync(string userId, string participantType,
+        LegendCallCommand command, CancellationToken cancellationToken)
+    {
+        var actor = NormalizeActor(new MessagingActor(userId, participantType));
+        if (command.DeviceId == Guid.Empty || !await IsValidActorAsync(actor, cancellationToken))
+            return new(false, "Calling is unavailable for this account.");
+        if (command.SignalData?.Length > 24_000)
+            return new(false, "The call signal is too large.");
+        if (command.Action is "register-voip" or "unregister-voip")
+        {
+            if (string.IsNullOrWhiteSpace(command.PushToken) || command.PushToken.Length > 512 ||
+                command.PushToken.Any(c => !Uri.IsHexDigit(c)) || command.PushEnvironment is not ("sandbox" or "production"))
+                return new(false, "Invalid VoIP device registration.");
+            if (command.Action == "register-voip")
+                await _notifications.RegisterVoipDeviceAsync(actor, command.PushToken, command.PushEnvironment, cancellationToken);
+            else await _notifications.DeactivateVoipDeviceAsync(actor, command.PushToken, cancellationToken);
+            return new(true, null);
+        }
+        // Reject invalid infrastructure before creating or advancing a call. Ending a call
+        // must remain available even while relay configuration is being repaired.
+        var policy = DirectCallPolicy;
+        if (command.Action is not ("cancel" or "end" or "decline"))
+        {
+            try { policy = BuildCallPolicy(_callConfiguration); }
+            catch (InvalidOperationException)
+            {
+                return new(false, "The call relay configuration is unavailable. Please try again later.");
+            }
+        }
+        try
+        {
+            if (command.Action is "invite" or "cancel")
+            {
+                return await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+                {
+                    await using var transaction = _db.Database.IsRelational()
+                        ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken) : null;
+                    var result = await InviteCallAsync(actor, command, policy, cancellationToken);
+                    if (transaction != null) await transaction.CommitAsync(cancellationToken);
+                    // Notify only after commit: the other device can immediately fetch the saved call.
+                    if (result.Succeeded && result.Call?.Status == "ringing")
+                    {
+                        LegendCallPushWakeup.Notify();
+                    }
+                    return result;
+                });
+            }
+            // SQL Server error 1205 guarantees that the victim transaction
+            // was rolled back. Retry that known outcome once; never retry an
+            // ambiguous connection/commit failure or an enclosing transaction.
+            for (var attempt = 0; ; attempt++)
+            {
+                try { return await HandleCallAsync(actor, command, policy, cancellationToken); }
+                catch (CallWriteDeadlockException) when (attempt == 0 && !cancellationToken.IsCancellationRequested)
+                {
+                    _db.ChangeTracker.Clear();
+                    await Task.Delay(75, cancellationToken);
+                }
+            }
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (command.Action is "heartbeat" or "connected" or "received")
+            {
+                _db.ChangeTracker.Clear();
+                try { return await HandleCallAsync(actor, command, policy, cancellationToken); }
+                catch (DbUpdateConcurrencyException) { }
+            }
+            return new(false, "This call changed on another device. Refresh the call status.");
+        }
+    }
+
+    // Only a failed atomic SaveChanges is retryable. A later snapshot read can
+    // deadlock after the call/outbox has committed and must never replay it.
+    private sealed class CallWriteDeadlockException(Exception inner) : Exception("Call write transaction was rolled back by SQL Server.", inner);
+
+    private async Task SaveCallChangesAsync(CancellationToken cancellationToken)
+    {
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (Exception exception) when (_db.Database.CurrentTransaction is null && IsCallDeadlock(exception))
+        {
+            throw new CallWriteDeadlockException(exception);
+        }
+    }
+
+    internal static bool IsCallDeadlock(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is Microsoft.Data.SqlClient.SqlException { Number: 1205 }) return true;
+        return false;
+    }
+
+    private static bool IsValidCallMediaState(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload) || payload.Length > 256) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payload);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object ||
+                !root.TryGetProperty("screenSharing", out var sharing) ||
+                sharing.ValueKind is not (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)) return false;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in root.EnumerateObject())
+            {
+                if (!seen.Add(field.Name) || field.Name is not ("screenSharing" or "request")) return false;
+                if (field.Name == "request" && field.Value.ValueKind is not (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)) return false;
+            }
+            return true;
+        }
+        catch (System.Text.Json.JsonException) { return false; }
+    }
+
+    private async Task<LegendCallResult> InviteCallAsync(MessagingActor actor, LegendCallCommand command, LegendCallPolicy policy, CancellationToken ct)
+    {
+        if (command.CallId == null || command.CallId == Guid.Empty || command.ConversationId == null)
+            return new(false, "A call and conversation are required.");
+        var prior = await _db.LegendCallSessions.SingleOrDefaultAsync(c => c.Id == command.CallId, ct);
+        if (prior != null)
+        {
+            if (!IsSameParticipant(prior.CallerUserId, prior.CallerType, actor.UserId, actor.ParticipantType) || prior.CallerDeviceId != command.DeviceId)
+                return new(false, "Call unavailable.");
+            if (command.Action != "cancel" && !await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking()
+                .AnyAsync(c => c.Id == prior.ConversationId && !c.IsClosed, ct))
+                return new(false, "Call unavailable.");
+            if (command.Action == "cancel" && prior.Status is "ringing" or "connecting" or "active")
+            {
+                prior.Status = "ended";
+                await SaveCallAsync(prior, ct);
+            }
+            return new(true, null, await SnapshotAsync(prior, ct), Policy: CurrentCallPolicy(prior, policy));
+        }
+        var conversation = await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == command.ConversationId && !c.IsClosed, ct);
+        if (conversation == null || conversation.ConversationType == MessagingConversationTypes.Group)
+            return new(false, "Open an available direct conversation to call.");
+        var actorIds = await ParticipantUserIdFormsAsync(actor, ct);
+        var members = await _db.MessageConversationParticipants.AsNoTracking()
+            .Where(p => p.ConversationId == conversation.Id && p.IsActive).ToArrayAsync(ct);
+        if (members.Length != 2) return new(false, "This participant is unavailable for calling.");
+        var other = members.SingleOrDefault(p => !IsCurrentActor(p.UserId, p.ParticipantType, actorIds, actor.ParticipantType));
+        if (members.Length != 2 || other == null || !await IsValidActorAsync(new(other.UserId, other.ParticipantType), ct))
+            return new(false, "This participant is unavailable for calling.");
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(
+            [new(actor.UserId, actor.ParticipantType), new(other.UserId, other.ParticipantType)], ct);
+        var caller = identities.Values.FirstOrDefault(p => IsSameParticipant(p.UserId, p.ParticipantType, actor.UserId, actor.ParticipantType));
+        var callee = identities.Values.FirstOrDefault(p => IsSameParticipant(p.UserId, p.ParticipantType, other.UserId, other.ParticipantType));
+        if (caller == null || callee == null) return new(false, "Call identity unavailable.");
+        var now = DateTime.UtcNow;
+        var otherIds = await ParticipantUserIdFormsAsync(new(other.UserId, other.ParticipantType), ct);
+        var busy = await _db.LegendCallSessions.AnyAsync(c => c.ExpiresUtc > now &&
+            (c.Status == "ringing" || c.Status == "connecting" || c.Status == "active") &&
+            ((actorIds.Contains(c.CallerUserId.ToLower()) && c.CallerType == actor.ParticipantType) ||
+             (actorIds.Contains(c.CalleeUserId.ToLower()) && c.CalleeType == actor.ParticipantType) ||
+             (otherIds.Contains(c.CallerUserId.ToLower()) && c.CallerType == other.ParticipantType) ||
+             (otherIds.Contains(c.CalleeUserId.ToLower()) && c.CalleeType == other.ParticipantType)), ct);
+        if (busy && command.Action != "cancel") return new(false, "One of you is already in a call.");
+        // Bound repeated ringing without introducing a separate identity/rate-limit store.
+        if (await _db.LegendCallSessions.CountAsync(c => c.CallerUserId == actor.UserId && c.CallerType == actor.ParticipantType && c.CreatedUtc > now.AddMinutes(-1), ct) >= 5)
+            return new(false, "Please wait before calling again.");
+        var call = new LegendCallSession
+        {
+            Id = command.CallId.Value, ConversationId = conversation.Id,
+            CallerUserId = actor.UserId, CallerType = actor.ParticipantType,
+            CalleeUserId = other.UserId, CalleeType = other.ParticipantType,
+            CallerDeviceId = command.DeviceId, CallerName = caller.DisplayName, CalleeName = callee.DisplayName,
+            // An early cancellation creates a terminal record under the same
+            // serializable transaction as invite. A later invite cannot resurrect it.
+            Status = command.Action == "cancel" ? "ended" : "ringing",
+            Video = command.Video, CreatedUtc = now,
+            ExpiresUtc = command.Action == "cancel" ? now : now.AddSeconds(DirectCallPolicy.RingSeconds)
+        };
+        _db.LegendCallSessions.Add(call);
+        await _db.SaveChangesAsync(ct);
+        await PublishCallAsync(new(await SnapshotAsync(call, ct)), ct);
+        return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
+    }
+
+    private async Task<LegendCallResult> HandleCallAsync(MessagingActor actor, LegendCallCommand command, LegendCallPolicy policy, CancellationToken ct)
+    {
+        var actorIds = await ParticipantUserIdFormsAsync(actor, ct);
+        var query = _db.LegendCallSessions.Where(c =>
+            (actorIds.Contains(c.CallerUserId.ToLower()) && c.CallerType == actor.ParticipantType) ||
+            (actorIds.Contains(c.CalleeUserId.ToLower()) && c.CalleeType == actor.ParticipantType));
+        if (command.Action == "sync")
+        {
+            var now = DateTime.UtcNow;
+            var calls = await query.AsNoTracking().Where(c => c.ExpiresUtc > now &&
+                (c.Status == "ringing" || c.Status == "connecting" || c.Status == "active"))
+                .OrderByDescending(c => c.CreatedUtc).Take(8).ToArrayAsync(ct);
+            // Membership/block/privacy checks remain the messaging authority's responsibility.
+            var allowed = await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking()
+                .Where(c => !c.IsClosed).Select(c => c.Id).ToArrayAsync(ct);
+            var snapshots = new List<LegendCallSnapshot>();
+            foreach (var item in calls.Where(c => allowed.Contains(c.ConversationId))) snapshots.Add(await SnapshotAsync(item, ct));
+            return new(true, null, ActiveCalls: snapshots.ToArray(), Policy: snapshots.Count == 0 ? DirectCallPolicy : CurrentCallPolicy(calls.First(c => c.Id == snapshots[0].Id), policy));
+        }
+        var call = await query.SingleOrDefaultAsync(c => c.Id == command.CallId, ct);
+        if (call == null) return new(false, "Call unavailable.");
+        var permitted = await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking().AnyAsync(c => c.Id == call.ConversationId && !c.IsClosed, ct);
+        if (!permitted) return new(false, "Call unavailable.");
+        var caller = IsCurrentActor(call.CallerUserId, call.CallerType, actorIds, actor.ParticipantType);
+        var ownDevice = caller ? call.CallerDeviceId : call.CalleeDeviceId;
+        if (call.ExpiresUtc <= DateTime.UtcNow && call.Status is "ringing" or "connecting" or "active")
+        {
+            call.Status = call.Status == "ringing" ? "missed" : "ended";
+            await SaveCallAsync(call, ct);
+        }
+        if (command.Action == "get") return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
+        if (call.Status is "ended" or "declined" or "missed")
+            return command.Action == "end" ? new(true, null, await SnapshotAsync(call, ct)) : new(false, "This call has ended.", await SnapshotAsync(call, ct));
+        if (command.Action == "received")
+        {
+            // Only an authenticated receiving account may confirm presentation.
+            // Receipt never claims the answering-device slot or extends the lease.
+            if (caller) return new(false, "Only the recipient can confirm call delivery.");
+            if (call.Status == "ringing" && call.ReceivedUtc == null)
+            {
+                call.ReceivedUtc = DateTime.UtcNow;
+                await SaveCallAsync(call, ct);
+            }
+        }
+        else if (command.Action == "accept")
+        {
+            if (caller || (call.CalleeDeviceId != null && call.CalleeDeviceId != command.DeviceId))
+                return new(false, "This call was answered on another device.", await SnapshotAsync(call, ct));
+            if (call.Status == "ringing")
+            {
+                call.ReceivedUtc ??= DateTime.UtcNow;
+                call.CalleeDeviceId = command.DeviceId;
+                call.Status = "connecting";
+                call.ExpiresUtc = DateTime.UtcNow.AddSeconds(60);
+                await SaveCallAsync(call, ct);
+            }
+        }
+        else if (command.Action == "decline" && !caller && call.Status == "ringing")
+        {
+            call.Status = "declined";
+            await SaveCallAsync(call, ct);
+        }
+        else
+        {
+            if (ownDevice != command.DeviceId) return new(false, "Use the device participating in this call.");
+            switch (command.Action)
+            {
+                case "end": call.Status = "ended"; await SaveCallAsync(call, ct); break;
+                case "heartbeat":
+                case "connected":
+                    if (call.Status == "ringing") return new(false, "The call has not been answered.");
+                    if (command.Action == "connected") call.Status = "active";
+                    call.ExpiresUtc = DateTime.UtcNow.AddSeconds(90);
+                    await SaveCallAsync(call, ct, publish: command.Action == "connected"); break;
+                case "signal":
+                    if (call.Status == "ringing") return new(false, "The call has not been answered.");
+                    var signalWindow = DateTime.UtcNow.AddMinutes(-1);
+                    if (await _db.LegendCallSignals.CountAsync(s => s.CallId == call.Id && s.CreatedUtc > signalWindow, ct) >= 1024)
+                        return new(false, "Too many call signals. Please call again.");
+                    if (command.SignalKind is not ("offer" or "answer" or "candidate" or "restart" or "media-state")) return new(false, "Invalid call signal.");
+                    if (command.SignalKind != "restart" && string.IsNullOrWhiteSpace(command.SignalData)) return new(false, "A call signal is required.");
+                    if (command.SignalKind == "media-state" && !IsValidCallMediaState(command.SignalData))
+                        return new(false, "Invalid call media state.");
+                    if (command.SignalKind == "offer")
+                    {
+                        if (!caller || command.Epoch != call.Epoch + 1) return new(false, "Refresh the call before negotiating.");
+                        call.Epoch = command.Epoch;
+                        call.Version = Guid.NewGuid();
+                        // PublishCallAsync saves the epoch and SDP outbox in one
+                        // EF transaction. Advancing the epoch alone strands peers.
+
+                    }
+                    else if (command.Epoch != call.Epoch || (command.SignalKind == "answer" && caller)) return new(false, "This call signal has expired.");
+                    await PublishCallAsync(new(await SnapshotAsync(call, ct), command.SignalKind, command.SignalData, command.DeviceId,
+                        caller ? call.CalleeDeviceId : call.CallerDeviceId), ct);
+                    break;
+                default: return new(false, "Unknown call action.");
+            }
+        }
+        return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
+    }
+
+    private async Task SaveCallAsync(LegendCallSession call, CancellationToken ct, bool publish = true)
+    {
+        call.Version = Guid.NewGuid();
+        if (publish) await PublishCallAsync(new(await SnapshotAsync(call, ct)), ct);
+        else await SaveCallChangesAsync(ct);
+    }
+
+    private async Task PublishCallAsync(LegendCallEvent callEvent, CancellationToken ct)
+    {
+        var call = callEvent.Call;
+        var callerIds = call.CallerUserIds ?? [call.CallerUserId];
+        var calleeIds = call.CalleeUserIds ?? [call.CalleeUserId];
+        var groups = callerIds.Select(id => MessagingHub.GroupName(id, call.CallerType))
+            .Concat(calleeIds.Select(id => MessagingHub.GroupName(id, call.CalleeType))).Distinct();
+        var now = DateTime.UtcNow;
+        var payload = System.Text.Json.JsonSerializer.Serialize(callEvent);
+        foreach (var group in groups)
+            _db.LegendCallSignals.Add(new LegendCallSignal { CallId = call.Id, RecipientGroup = group,
+                Payload = payload, CreatedUtc = now, ExpiresUtc = now.AddSeconds(60) });
+        await SaveCallChangesAsync(ct);
+    }
+
+    internal async Task<LegendCallSnapshot> SnapshotAsync(LegendCallSession call, CancellationToken ct)
+    {
+        var callerIds = await ParticipantUserIdFormsAsync(new(call.CallerUserId, call.CallerType), ct);
+        var calleeIds = await ParticipantUserIdFormsAsync(new(call.CalleeUserId, call.CalleeType), ct);
+        return CallSnapshot(call) with { CallerUserIds = callerIds, CalleeUserIds = calleeIds, CallerImagePath = call.Status == "ringing" ? await _notifications.GetCallSenderImagePathAsync(call.Id, ct) : null };
+    }
+
+    internal static LegendCallSnapshot CallSnapshot(LegendCallSession call) => new(
+        call.Id, call.ConversationId, call.CallerUserId, call.CallerType, call.CalleeUserId, call.CalleeType,
+        call.CallerDeviceId, call.CalleeDeviceId, call.CallerName, call.CalleeName,
+        // SQL datetime2 preserves the UTC clock value but not DateTime.Kind.
+        // Restore that contract once for status, signaling and push payloads.
+        call.Video, call.Status, DateTime.SpecifyKind(call.CreatedUtc, DateTimeKind.Utc),
+        DateTime.SpecifyKind(call.ExpiresUtc, DateTimeKind.Utc), call.Epoch,
+        ReceivedUtc: call.ReceivedUtc is { } received ? DateTime.SpecifyKind(received, DateTimeKind.Utc) : null);
+}

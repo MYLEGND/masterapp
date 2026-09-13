@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Reflection;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
 using AgentPortal.Mobile;
@@ -14,6 +15,11 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendFounderAiProgressContractTests
 {
+    private static ClaimsPrincipal Actor(string id = "founder-1") =>
+        new(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, id)],
+            "test"));
+
     [Fact]
     public void WebProgress_IsSeparateGetRoute()
     {
@@ -45,13 +51,14 @@ public sealed class LegendFounderAiProgressContractTests
     {
         var broker = new LegendFounderAiProgressBroker();
         var id = Guid.NewGuid();
-        var reader = broker.Subscribe(id);
+        var actor = Actor();
+        var reader = broker.Subscribe(actor, id);
         var expected = new LegendFounderAiProgressEvent("planning", "Planning governed checks.", 1);
-        await broker.PublishAsync(id, expected);
+        await broker.PublishAsync(actor, id, expected);
         Assert.True(await reader.WaitToReadAsync());
         Assert.True(reader.TryRead(out var actual));
         Assert.Equal(expected, actual);
-        broker.Complete(id);
+        broker.Complete(actor, id);
         Assert.False(await reader.WaitToReadAsync());
     }
 
@@ -60,10 +67,12 @@ public sealed class LegendFounderAiProgressContractTests
     {
         var broker = new LegendFounderAiProgressBroker();
         var operationId = Guid.NewGuid();
+        var actor = Actor();
 
-        var reader = broker.Subscribe(operationId);
+        var reader = broker.Subscribe(actor, operationId);
 
         await broker.PublishAsync(
+            actor,
             operationId,
             new LegendFounderAiProgressEvent(
                 "planning",
@@ -72,7 +81,7 @@ public sealed class LegendFounderAiProgressContractTests
 
         Assert.Equal(1, broker.ActiveOperationCount);
 
-        broker.Complete(operationId);
+        broker.Complete(actor, operationId);
 
         Assert.Equal(0, broker.ActiveOperationCount);
 
@@ -89,9 +98,10 @@ public sealed class LegendFounderAiProgressContractTests
 
         var firstOperationId = Guid.NewGuid();
         var secondOperationId = Guid.NewGuid();
+        var actor = Actor();
 
-        var firstReader = broker.Subscribe(firstOperationId);
-        var secondReader = broker.Subscribe(secondOperationId);
+        var firstReader = broker.Subscribe(actor, firstOperationId);
+        var secondReader = broker.Subscribe(actor, secondOperationId);
 
         var first = new LegendFounderAiProgressEvent(
             "first",
@@ -103,8 +113,8 @@ public sealed class LegendFounderAiProgressContractTests
             "Second operation.",
             1);
 
-        await broker.PublishAsync(firstOperationId, first);
-        await broker.PublishAsync(secondOperationId, second);
+        await broker.PublishAsync(actor, firstOperationId, first);
+        await broker.PublishAsync(actor, secondOperationId, second);
 
         Assert.Equal(first, await firstReader.ReadAsync());
         Assert.Equal(second, await secondReader.ReadAsync());
@@ -112,8 +122,8 @@ public sealed class LegendFounderAiProgressContractTests
         Assert.False(firstReader.TryRead(out _));
         Assert.False(secondReader.TryRead(out _));
 
-        broker.Complete(firstOperationId);
-        broker.Complete(secondOperationId);
+        broker.Complete(actor, firstOperationId);
+        broker.Complete(actor, secondOperationId);
 
         Assert.Equal(0, broker.ActiveOperationCount);
     }
@@ -123,12 +133,14 @@ public sealed class LegendFounderAiProgressContractTests
     {
         var broker = new LegendFounderAiProgressBroker();
         var operationId = Guid.NewGuid();
+        var actor = Actor();
 
-        var reader = broker.Subscribe(operationId);
+        var reader = broker.Subscribe(actor, operationId);
 
         for (var sequence = 1; sequence <= 32; sequence++)
         {
             await broker.PublishAsync(
+                actor,
                 operationId,
                 new LegendFounderAiProgressEvent(
                     "working",
@@ -136,7 +148,7 @@ public sealed class LegendFounderAiProgressContractTests
                     sequence));
         }
 
-        broker.Complete(operationId);
+        broker.Complete(actor, operationId);
 
         var received = new List<LegendFounderAiProgressEvent>();
 
@@ -161,11 +173,12 @@ public sealed class LegendFounderAiProgressContractTests
 
         var completedOperationId = Guid.NewGuid();
         var activeOperationId = Guid.NewGuid();
+        var actor = Actor();
 
-        var completedReader = broker.Subscribe(completedOperationId);
-        var activeReader = broker.Subscribe(activeOperationId);
+        var completedReader = broker.Subscribe(actor, completedOperationId);
+        var activeReader = broker.Subscribe(actor, activeOperationId);
 
-        broker.Complete(completedOperationId);
+        broker.Complete(actor, completedOperationId);
 
         Assert.False(await completedReader.WaitToReadAsync());
 
@@ -174,12 +187,12 @@ public sealed class LegendFounderAiProgressContractTests
             "Still working.",
             2);
 
-        await broker.PublishAsync(activeOperationId, expected);
+        await broker.PublishAsync(actor, activeOperationId, expected);
 
         Assert.Equal(expected, await activeReader.ReadAsync());
         Assert.Equal(1, broker.ActiveOperationCount);
 
-        broker.Complete(activeOperationId);
+        broker.Complete(actor, activeOperationId);
 
         Assert.Equal(0, broker.ActiveOperationCount);
     }
@@ -189,6 +202,7 @@ public sealed class LegendFounderAiProgressContractTests
     {
         var broker = new LegendFounderAiProgressBroker();
         var operationId = Guid.NewGuid();
+        var actor = Actor();
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -197,6 +211,7 @@ public sealed class LegendFounderAiProgressContractTests
             async () =>
             {
                 await broker.PublishAsync(
+                    actor,
                     operationId,
                     new LegendFounderAiProgressEvent(
                         "working",
@@ -206,6 +221,29 @@ public sealed class LegendFounderAiProgressContractTests
             });
 
         Assert.Equal(0, broker.ActiveOperationCount);
+    }
+
+    [Fact]
+    public async Task Broker_DoesNotExposeAnotherFoundersOperation()
+    {
+        var broker = new LegendFounderAiProgressBroker();
+        var operationId = Guid.NewGuid();
+        var owner = Actor("founder-owner");
+        var otherFounder = Actor("founder-other");
+        var ownerReader = broker.Subscribe(owner, operationId);
+        var otherReader = broker.Subscribe(otherFounder, operationId);
+        var expected = new LegendFounderAiProgressEvent(
+            "working",
+            "Owner-only progress.",
+            1);
+
+        await broker.PublishAsync(owner, operationId, expected);
+
+        Assert.Equal(expected, await ownerReader.ReadAsync());
+        Assert.False(otherReader.TryRead(out _));
+
+        broker.Complete(owner, operationId);
+        broker.Complete(otherFounder, operationId);
     }
 
 }

@@ -1,4 +1,5 @@
 (() => {
+  if (window.LegendModal) return;
   const api = {};
   let viewportSyncFrame = 0;
   const SHIM_BACKDROP_ATTR = "data-bootstrap-shim-backdrop";
@@ -142,23 +143,108 @@
     return latest;
   }
 
+  const surfaces = new WeakSet();
+  let header;
+  let footer;
+  let content;
+  let impersonation;
+
+  function writeVariable(name, value){
+    const style = document.documentElement.style;
+    if (style.getPropertyValue(name) !== value) style.setProperty(name, value);
+  }
+
+  function registerDialog(dialog){
+    if (!dialog || dialog.nodeType !== 1) return;
+    let surface = dialog.matches('.modal') ? dialog : null;
+    if (!surface){
+      for (let node = dialog; node && node !== document.body; node = node.parentElement){
+        if (window.getComputedStyle(node).position === 'fixed'){ surface = node; break; }
+      }
+    }
+    if (!surface) return;
+    if (!surfaces.has(surface)){
+      surfaces.add(surface);
+      surface.setAttribute('data-legend-modal-surface', '');
+    }
+    if (dialog !== surface) dialog.setAttribute('data-legend-modal-panel', '');
+    surface.querySelectorAll(':scope > .modal-dialog, :scope > [class*="-panel"], :scope > [class*="-dialog"], :scope > [class*="-card"], :scope > [class*="-window"]').forEach(panel => {
+      panel.setAttribute('data-legend-modal-panel', '');
+    });
+    surface.querySelectorAll('.modal-content').forEach(panel => panel.setAttribute('data-legend-modal-panel', ''));
+  }
+
+  function registerDialogs(node){
+    if (node.nodeType !== 1) return;
+    if (node.matches('.modal, [role="dialog"], [role="alertdialog"]')) registerDialog(node);
+    node.querySelectorAll('.modal, [role="dialog"], [role="alertdialog"]').forEach(registerDialog);
+  }
+
   function syncViewportOffsets(){
     const root = document.documentElement;
-    if (!root) return;
+    if (!root || !header) return;
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop || 0;
+    const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
+    let top = viewportTop;
+    for (const element of [header, impersonation]){
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.height > 0 && rect.bottom > viewportTop && rect.top < viewportBottom)
+        top = Math.max(top, Math.min(viewportBottom, rect.bottom));
+    }
+    if (content){
+      const rect = content.getBoundingClientRect();
+      if (rect.top > top && rect.top < viewportBottom) top = rect.top;
+    }
+    let bottom = viewportBottom;
+    if (footer){
+      const rect = footer.getBoundingClientRect();
+      if (rect.height > 0 && rect.top < viewportBottom && rect.bottom > viewportTop)
+        bottom = Math.max(top, rect.top);
+    }
+    const nominalMargin = window.matchMedia?.('(max-width: 900px)')?.matches ? 10 : 24;
+    const safeMargin = Math.min(nominalMargin, Math.max(0, (bottom - top) / 4));
+    const areaStart = top + safeMargin;
+    const safeHeight = Math.max(0, bottom - top - 2 * safeMargin);
+    const areaEnd = Math.max(0, window.innerHeight - (bottom - safeMargin));
+    writeVariable('--legend-modal-safe-margin', `${safeMargin}px`);
+    writeVariable('--legend-modal-clearance-top', `${top}px`);
+    writeVariable('--legend-modal-area-start', `${areaStart}px`);
+    writeVariable('--legend-modal-area-end', `${areaEnd}px`);
+    writeVariable('--legend-modal-safe-height', `${safeHeight}px`);
+    writeVariable('--legend-modal-safe-center', `${areaStart + safeHeight / 2}px`);
+    root.setAttribute('data-legend-modal-region', '');
+  }
 
-    const mobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
-    const safeMargin = mobile ? 10 : 24;
-    const header = document.querySelector("header .navbar");
-    const headerBottom = header ? Math.max(0, Math.ceil(header.getBoundingClientRect().bottom)) : 0;
-    const areaStart = Math.max(safeMargin, headerBottom + safeMargin);
-    const safeHeight = Math.max(280, window.innerHeight - areaStart - safeMargin);
-    const safeCenter = areaStart + (safeHeight / 2);
-
-    root.style.setProperty("--legend-modal-safe-margin", `${safeMargin}px`);
-    root.style.setProperty("--legend-modal-clearance-top", `${headerBottom}px`);
-    root.style.setProperty("--legend-modal-area-start", `${areaStart}px`);
-    root.style.setProperty("--legend-modal-safe-height", `${safeHeight}px`);
-    root.style.setProperty("--legend-modal-safe-center", `${safeCenter}px`);
+  function observeContentRegion(){
+    header = document.querySelector('body > header');
+    footer = document.querySelector('body > footer.footer');
+    content = document.querySelector('body > .layout-content');
+    impersonation = document.querySelector('body > .impersonation-banner');
+    if (!header) return;
+    registerDialogs(document.body);
+    syncViewportOffsets();
+    if (window.ResizeObserver){
+      const observer = new ResizeObserver(scheduleViewportOffsets);
+      [header, footer, content, impersonation].filter(Boolean).forEach(element => observer.observe(element));
+    }
+    const mutations = new MutationObserver(records => {
+      let changed = false;
+      for (const record of records){
+        if (record.type === 'childList'){
+          record.addedNodes.forEach(node => { registerDialogs(node); });
+          if (surfaces.has(record.target)) registerDialog(record.target);
+          changed = changed || record.addedNodes.length > 0 || record.removedNodes.length > 0;
+        } else if (surfaces.has(record.target)) changed = true;
+      }
+      if (changed) scheduleViewportOffsets();
+    });
+    mutations.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+    document.addEventListener('show.bs.modal', event => {
+      registerDialogs(event.target);
+      syncViewportOffsets();
+    });
   }
 
   function scheduleViewportOffsets(){
@@ -239,11 +325,15 @@
 
   installBootstrapModalShim();
 
-  if (document.readyState === "loading"){
-    document.addEventListener("DOMContentLoaded", syncViewportOffsets, { once: true });
+  // Shared layouts load this owner after their banner and content. Initialize
+  // before page scripts can auto-open a dialog, even while DOMContentLoaded waits.
+  if (document.querySelector('body > header') || document.readyState !== "loading"){
+    observeContentRegion();
   } else {
-    syncViewportOffsets();
+    document.addEventListener("DOMContentLoaded", observeContentRegion, { once: true });
   }
+  window.visualViewport?.addEventListener("resize", scheduleViewportOffsets, { passive: true });
+  window.visualViewport?.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
   window.addEventListener("resize", scheduleViewportOffsets, { passive: true });
   window.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
 

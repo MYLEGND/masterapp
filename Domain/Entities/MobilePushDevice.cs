@@ -26,6 +26,8 @@ public sealed class MobilePushDevice
     /// </summary>
     public string Environment { get; set; } = "production";
 
+    public bool SupportsCommunicationNotifications { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
@@ -40,5 +42,6 @@ public sealed class MobilePushDevice
 public static class MobilePushProviders
 {
     public const string Apns = "apns";
+    public const string ApnsVoip = "apns-voip";
     public const string Fcm = "fcm";
 }

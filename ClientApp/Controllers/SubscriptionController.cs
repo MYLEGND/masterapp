@@ -54,7 +54,7 @@ public sealed class SubscriptionController : Controller
             return RedirectToAction("ActivationRequired", "Account", new
             {
                 returnUrl = target,
-                message = "Use the client activation flow or client sign-in form before opening subscription management."
+                message = "Use the activation flow or member sign-in form before opening subscription management."
             });
         }
 
@@ -70,7 +70,7 @@ public sealed class SubscriptionController : Controller
             return RedirectToAction("ActivationRequired", "Account", new
             {
                 returnUrl = target,
-                message = "Your client subscription is not active. Use the activation link from your agent to continue."
+                message = "Your membership is not active. Use the activation link from your LEGEND guide to continue."
             });
         }
 
@@ -283,7 +283,7 @@ public sealed class SubscriptionController : Controller
             return RedirectToAction("ActivationRequired", "Account", new
             {
                 returnUrl = target,
-                message = "Client sign-in is required before subscription changes can be made."
+                message = "Member sign-in is required before subscription changes can be made."
             });
         }
 
@@ -302,7 +302,7 @@ public sealed class SubscriptionController : Controller
             return RedirectToAction("ActivationRequired", "Account", new
             {
                 returnUrl = target,
-                message = "Your client subscription is not active. Use the activation link from your agent to continue."
+                message = "Your membership is not active. Use the activation link from your LEGEND guide to continue."
             });
         }
 
@@ -313,7 +313,7 @@ public sealed class SubscriptionController : Controller
 
         if (latestSubscription is null)
         {
-            TempData["SubscriptionNotice"] = "No client subscription was found to cancel.";
+            TempData["SubscriptionNotice"] = "No membership was found to cancel.";
             return RedirectToAction(nameof(Index), new { returnUrl = target });
         }
 
@@ -399,7 +399,7 @@ public sealed class SubscriptionController : Controller
 
         return subscription.MonthlyAmountCents == 0
             ? "Complimentary Membership"
-            : "Legend Client Portal Membership";
+            : "LEGEND Membership";
     }
 
     private static string BuildPaymentMethodDisplay(ClientPaymentMethod? paymentMethod)
@@ -519,7 +519,7 @@ public sealed class SubscriptionController : Controller
     private static string BuildRepairInstructions(ClientSubscription? subscription, ClientEntitlementStatus entitlementStatus, string? entitlementReasonCode)
     {
         if (subscription is null)
-            return "Use your activation link or contact your agent to begin service.";
+            return "Use your activation link or contact your LEGEND guide to begin service.";
 
         if (subscription.Status == ClientSubscriptionStatus.GracePeriod ||
             subscription.PaymentStanding == ClientSubscriptionPaymentStanding.GracePeriod ||
@@ -533,8 +533,8 @@ public sealed class SubscriptionController : Controller
             return "Your subscription is in good standing. You can cancel anytime from View / Edit Profile.";
 
         if (subscription.PaymentStanding is ClientSubscriptionPaymentStanding.PastDue or ClientSubscriptionPaymentStanding.Failed or ClientSubscriptionPaymentStanding.RequiresAction)
-            return "Billing needs attention. Update your payment method, then try the payment again. Contact your agent if you need help.";
+            return "Billing needs attention. Update your payment method, then try the payment again. Contact your LEGEND guide if you need help.";
 
-        return "If you need billing help, contact your agent before the current period ends.";
+        return "If you need billing help, contact your LEGEND guide before the current period ends.";
     }
 }

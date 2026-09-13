@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Solutions.BookingBusinesses.Item.GetStaffAvailability;
 using Microsoft.Kiota.Abstractions;
 using Microsoft.Kiota.Abstractions.Serialization;
 using Microsoft.Kiota.Serialization.Json;
@@ -55,8 +56,8 @@ public class CalendarControllerTests
             LastName = "Calendar",
             Email = "taylor@example.com",
             Phone = "6025550188",
-            CreatedUtc = new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc),
-            UpdatedUtc = new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc)
+            CreatedUtc = new DateTime(2027, 5, 21, 7, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2027, 5, 21, 7, 0, 0, DateTimeKind.Utc)
         });
         db.AgentProfiles.Add(new AgentProfile
         {
@@ -72,8 +73,8 @@ public class CalendarControllerTests
             WorkstationLeadId = "L-CALENDAR-1",
             AgentUserId = "agent-1",
             Bucket = "MortgageProtection",
-            SubmittedUtc = new DateTime(2026, 5, 21, 7, 30, 0, DateTimeKind.Utc),
-            CapturedUtc = new DateTime(2026, 5, 21, 7, 31, 0, DateTimeKind.Utc),
+            SubmittedUtc = new DateTime(2027, 5, 21, 7, 30, 0, DateTimeKind.Utc),
+            CapturedUtc = new DateTime(2027, 5, 21, 7, 31, 0, DateTimeKind.Utc),
             SourcePageKey = "mortgage_protection_paid"
         });
         await db.SaveChangesAsync();
@@ -96,7 +97,8 @@ public class CalendarControllerTests
                         Id = "booking-service-30",
                         DisplayName = "30-minute review",
                         DefaultDuration = TimeSpan.FromMinutes(30),
-                        IsHiddenFromCustomers = false
+                        IsHiddenFromCustomers = false,
+                        StaffMemberIds = new List<string> { "staff-1" }
                     }
                 }
             });
@@ -112,6 +114,23 @@ public class CalendarControllerTests
                 SelfServiceAppointmentId = "https://outlook.test/events/evt-123"
             });
 
+        requestAdapter.Setup(adapter => adapter.SendAsync(
+            It.Is<RequestInformation>(request => request.HttpMethod == Method.POST),
+            It.IsAny<ParsableFactory<GetStaffAvailabilityPostResponse>>(),
+            It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GetStaffAvailabilityPostResponse { Value = new List<StaffAvailabilityItem> {
+                new() { AvailabilityItems = new List<AvailabilityItem> { new() {
+                    Status = BookingsAvailabilityStatus.Available,
+                    StartDateTime = new DateTimeTimeZone { DateTime = "2027-05-21T07:00:00", TimeZone = "UTC" },
+                    EndDateTime = new DateTimeTimeZone { DateTime = "2027-05-21T19:00:00", TimeZone = "UTC" }
+                } } }
+            } });
+        requestAdapter.Setup(adapter => adapter.SendAsync(
+            It.Is<RequestInformation>(request => request.HttpMethod == Method.GET),
+            It.IsAny<ParsableFactory<BookingAppointmentCollectionResponse>>(),
+            It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingAppointmentCollectionResponse { Value = new List<BookingAppointment>() });
+
         var graphClient = new GraphServiceClient(requestAdapter.Object);
         var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var controller = ControllerTestHelpers.BuildCalendarController(db, ControllerTestHelpers.BuildUser(), handler, graphClient);
@@ -120,8 +139,8 @@ public class CalendarControllerTests
         {
             ClientUserId = "L-CALENDAR-1",
             Subject = "Mortgage review",
-            StartISO = "2026-05-21T09:00:00",
-            EndISO = "2026-05-21T09:30:00",
+            StartISO = "2027-05-21T09:00:00",
+            EndISO = "2027-05-21T09:30:00",
             Body = "Review mortgage protection options.",
             Location = "Phone Call",
             ZoomJoinUrl = "https://zoom.example.com/j/abc",
@@ -134,8 +153,8 @@ public class CalendarControllerTests
         var latestAppointmentPayload = payloadDoc.RootElement.GetProperty("latestAppointment");
 
         var appointment = await db.LeadAppointments.SingleAsync();
-        var expectedStartUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc);
-        var expectedEndUtc = new DateTime(2026, 5, 21, 9, 30, 0, DateTimeKind.Utc);
+        var expectedStartUtc = new DateTime(2027, 5, 21, 9, 0, 0, DateTimeKind.Utc);
+        var expectedEndUtc = new DateTime(2027, 5, 21, 9, 30, 0, DateTimeKind.Utc);
 
         Assert.Equal("L-CALENDAR-1", appointment.WorkstationLeadId);
         Assert.Equal("agent-1", appointment.OwnerAgentUserId);
@@ -151,6 +170,19 @@ public class CalendarControllerTests
         Assert.Equal("https://zoom.example.com/j/abc", appointment.MeetingUrl);
         Assert.NotNull(appointment.RequestedUtc);
         Assert.NotNull(appointment.BookedUtc);
+
+        var availability = Assert.IsType<OkObjectResult>(await controller.DayAvailability("2027-05-21"));
+        var live = JsonSerializer.SerializeToElement(availability.Value);
+        Assert.DoesNotContain(live.GetProperty("freeSlots").EnumerateArray(), slot =>
+            DateTime.Parse(slot.GetProperty("startIso").GetString()!, CultureInfo.InvariantCulture) <= expectedStartUtc &&
+            DateTime.Parse(slot.GetProperty("endIso").GetString()!, CultureInfo.InvariantCulture) >= expectedEndUtc);
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile { LeadId = "second-client", AgentUserId = "agent-1", FirstName = "Second" });
+        await db.SaveChangesAsync();
+        var staleBooking = await controller.CreateEvent(new CalendarController.CreateEventRequest {
+            ClientUserId = "second-client", Subject = "Conflicting booking", StartISO = "2027-05-21T09:00:00", EndISO = "2027-05-21T09:30:00"
+        });
+        Assert.IsType<ConflictObjectResult>(staleBooking);
+        Assert.Single(await db.LeadAppointments.ToListAsync());
 
         var lead = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-CALENDAR-1");
         var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
@@ -172,6 +204,32 @@ public class CalendarControllerTests
         Assert.Equal("internal_calendar", latestAppointmentPayload.GetProperty("confirmationSource").GetString());
         Assert.True(latestAppointmentPayload.GetProperty("confirmationVerified").GetBoolean());
         Assert.Equal("Booked / verified", latestAppointmentPayload.GetProperty("confirmationStateLabel").GetString());
+        requestAdapter.Setup(adapter => adapter.SendAsync(
+            It.Is<RequestInformation>(request => request.HttpMethod == Method.PATCH),
+            It.IsAny<ParsableFactory<BookingAppointment>>(),
+            It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingAppointment { Id = "evt-123" });
+        var changed = await controller.UpdateAppointment(new CalendarController.UpdateAppointmentRequest {
+            AppointmentId = appointment.Id, ClientUserId = "L-CALENDAR-1",
+            StartISO = "2027-05-21T10:00:00", EndISO = "2027-05-21T10:30:00"
+        });
+        Assert.IsType<OkObjectResult>(changed);
+        Assert.Single(await db.LeadAppointments.ToListAsync());
+        Assert.Equal(LeadAppointmentStatus.Rescheduled, appointment.Status);
+        Assert.Equal(new DateTime(2027, 5, 21, 10, 0, 0, DateTimeKind.Utc), appointment.ScheduledStartUtc);
+        requestAdapter.Setup(adapter => adapter.SendNoContentAsync(
+            It.Is<RequestInformation>(request => request.HttpMethod == Method.DELETE),
+            It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        Assert.IsType<OkObjectResult>(await controller.CancelAppointment(new CalendarController.CancelAppointmentRequest {
+            AppointmentId = appointment.Id, ClientUserId = "L-CALENDAR-1"
+        }));
+        Assert.Equal(LeadAppointmentStatus.Cancelled, appointment.Status);
+        var reopened = Assert.IsType<OkObjectResult>(await controller.DayAvailability("2027-05-21"));
+        var released = JsonSerializer.SerializeToElement(reopened.Value);
+        Assert.Contains(released.GetProperty("freeSlots").EnumerateArray(), slot =>
+            DateTime.Parse(slot.GetProperty("startIso").GetString()!, CultureInfo.InvariantCulture) <= expectedStartUtc &&
+            DateTime.Parse(slot.GetProperty("endIso").GetString()!, CultureInfo.InvariantCulture) >= appointment.ScheduledEndUtc);
     }
 
     private static GraphServiceClient BuildGraphClient()
@@ -180,6 +238,7 @@ public class CalendarControllerTests
         requestAdapter.SetupGet(adapter => adapter.BaseUrl).Returns("https://graph.microsoft.com/v1.0");
         requestAdapter.SetupGet(adapter => adapter.SerializationWriterFactory).Returns(new JsonSerializationWriterFactory());
         return new GraphServiceClient(requestAdapter.Object);
+
     }
 
     // SECURITY REGRESSION (Calendar appointment IDOR):

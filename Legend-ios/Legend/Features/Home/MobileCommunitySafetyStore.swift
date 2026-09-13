@@ -30,9 +30,9 @@ enum MobileCommunitySafetyResolution: String, CaseIterable, Identifiable, Sendab
 
     var title: String {
         switch self {
-        case .dismissed: "Dismiss"
-        case .needsInvestigation: "Needs investigation"
-        case .actioned: "Remove reported content"
+        case .dismissed: LegendLocalized("Dismiss")
+        case .needsInvestigation: LegendLocalized("Needs investigation")
+        case .actioned: LegendLocalized("Remove reported content")
         }
     }
 }
@@ -120,7 +120,7 @@ final class MobileCommunitySafetyStore: ObservableObject {
         do {
             state = .loaded(try await api.reports(accessToken: accessTokenProvider()))
         } catch {
-            let failure = failure(for: error, title: "Community review unavailable")
+            let failure = failure(for: error, title: LegendLocalized("Community review unavailable"))
             state = .unavailable(failure)
             diagnostics.record(
                 category: .networking,
@@ -148,7 +148,7 @@ final class MobileCommunitySafetyStore: ObservableObject {
             }
             return true
         } catch {
-            let failure = failure(for: error, title: "Report not updated")
+            let failure = failure(for: error, title: LegendLocalized("Report not updated"))
             actionFailure = failure
             diagnostics.record(
                 category: .networking,
@@ -165,7 +165,7 @@ final class MobileCommunitySafetyStore: ObservableObject {
     private func failure(for error: Error, title: String) -> UserFacingFailure {
         UserFacingFailure(
             title: title,
-            message: "Legend could not complete this community-review action. Try again.",
+            message: LegendLocalized("Legend could not complete this community-review action. Try again."),
             correlationID: (error as? MobileAPIError)?.correlationID)
     }
 }

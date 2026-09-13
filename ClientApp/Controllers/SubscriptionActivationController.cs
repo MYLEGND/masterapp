@@ -101,7 +101,7 @@ public sealed class SubscriptionActivationController : Controller
             return View("Unavailable", new SubscriptionActivationNoticeViewModel
             {
                 Title = "Continuation Unavailable",
-                Message = validation.SanitizedMessage ?? "This activation continuation is no longer available. Use the client sign-in page instead.",
+                Message = validation.SanitizedMessage ?? "This activation continuation is no longer available. Use the member sign-in page instead.",
                 ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
             });
         }
@@ -120,7 +120,7 @@ public sealed class SubscriptionActivationController : Controller
                 View("Expired", new SubscriptionActivationNoticeViewModel
                 {
                     Title = "Activation Link Expired",
-                    Message = messageOverride ?? context.Message ?? "This activation link expired. Contact your agent for a fresh invitation.",
+                    Message = messageOverride ?? context.Message ?? "This activation link expired. Contact your LEGEND guide for a fresh invitation.",
                     ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
                 }),
             _ =>

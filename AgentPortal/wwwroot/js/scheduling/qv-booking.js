@@ -104,7 +104,7 @@
     }
 
     function todayLocal() {
-        const today = new Date();
+        const today = window.quickViewCalendarAdapter?.calendarNow?.() || new Date();
         return new Date(today.getFullYear(), today.getMonth(), today.getDate());
     }
 
@@ -199,6 +199,8 @@
         return {
             duration: Number.isInteger(duration) && duration > 0 ? duration : null,
             serviceId: option?.dataset?.serviceId || "",
+            preBufferMinutes: Number(option?.dataset?.preBufferMinutes || 0),
+            postBufferMinutes: Number(option?.dataset?.postBufferMinutes || 0),
             serviceName: (option?.textContent || "").trim()
         };
     }
@@ -234,6 +236,8 @@
                 return {
                     serviceId: service.serviceId || service.id || "",
                     serviceName: service.serviceName || service.name || "",
+                    preBufferMinutes: Number(service.preBufferMinutes || 0),
+                    postBufferMinutes: Number(service.postBufferMinutes || 0),
                     durationMinutes:
                         Number.isInteger(duration) && duration > 0
                             ? duration
@@ -256,6 +260,8 @@
             const option = document.createElement("option");
             option.value = String(service.durationMinutes);
             option.dataset.serviceId = service.serviceId;
+            option.dataset.preBufferMinutes = String(service.preBufferMinutes);
+            option.dataset.postBufferMinutes = String(service.postBufferMinutes);
             option.textContent = service.serviceName;
 
             if (
@@ -491,8 +497,8 @@
             return false;
         }
 
-        const start = parseLocalSlotDate(appointment.scheduledStartUtc);
-        const end = parseLocalSlotDate(appointment.scheduledEndUtc);
+        const start = window.quickViewCalendarAdapter?.appointmentDate?.(appointment.scheduledStartUtc) || parseLocalSlotDate(appointment.scheduledStartUtc);
+        const end = window.quickViewCalendarAdapter?.appointmentDate?.(appointment.scheduledEndUtc) || parseLocalSlotDate(appointment.scheduledEndUtc);
         if (!start || !end || end <= start) {
             return false;
         }
@@ -657,11 +663,12 @@
             const end = getSlotEnd(slot);
             if (!start || !end || end <= start) continue;
 
-            let cursor = new Date(start);
-            while (cursor.getTime() + durationMinutes * 60000 <= end.getTime()) {
+            const service = selectedBookingService();
+            let cursor = new Date(start.getTime() + service.preBufferMinutes * 60000);
+            while (cursor.getTime() + (durationMinutes + service.postBufferMinutes) * 60000 <= end.getTime()) {
                 const candidate = new Date(cursor);
                 const timeValue = toTimeValue(candidate);
-                const now = new Date();
+                const now = window.quickViewCalendarAdapter?.calendarNow?.() || new Date();
                 const isPastCandidate = candidate.getTime() <= now.getTime();
 
                 if (!isPastCandidate && !isOptimisticallyBookedSlot(selectedDateValue, timeValue)) {
@@ -732,6 +739,7 @@
     }
 
     async function loadSlots(options = {}) {
+        if (options.clearReservations === true) clearOptimisticBookedSlots();
         const date = $("qvBookDate")?.value || "";
         const selectedDate = parseDateInputValue(date);
         let duration = selectedBookingService().duration;
@@ -764,8 +772,11 @@
                 query.set("excludeEventId", excludeEventId);
             }
 
-            const response = await fetch(`/calendar/day-availability?${query.toString()}`, {
-                credentials: "include"
+            // Embedded mobile booking supplies only the scoped transport; the
+            // calendar, service durations and slot rendering remain shared.
+            const availabilityTransport = window.quickViewCalendarAdapter?.fetchAvailability || fetch;
+            const response = await availabilityTransport(`/calendar/day-availability?${query.toString()}`, {
+                credentials: "include", cache: "no-store"
             });
 
             if (!response.ok) {
@@ -806,7 +817,7 @@
             }
             console.error(error);
             if (background) {
-                setStatus("Live availability refresh failed. Keeping the current times on screen.", "warning");
+                clearSlots("Live availability could not be refreshed. Refresh before choosing a time.", "error");
             } else {
                 clearSlots("Could not load slots for that day right now.", "error");
             }
@@ -1602,6 +1613,7 @@
 
         const payload = {
             appointmentId: rescheduleMode ? appointmentId : null,
+            serviceId: selectedBookingService().serviceId,
             clientUserId: recordId,
             clientProfileId: context.clientProfileId || null,
             workstationLeadId: context.workstationLeadId || null,

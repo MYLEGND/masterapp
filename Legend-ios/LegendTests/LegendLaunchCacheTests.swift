@@ -4,6 +4,15 @@ import XCTest
 
 @MainActor
 final class LegendLaunchCacheTests: XCTestCase {
+    func testUnchangedLocalizationDoesNotInvalidateAuthenticatedPresentation() {
+        let localization = LegendApplicationLocalization()
+        let revision = localization.revision
+        localization.clearPresentation()
+        localization.clearPresentation()
+        XCTAssertEqual(localization.revision, revision)
+        XCTAssertEqual(LegendLocalized("Settings"), "Settings")
+    }
+
     /// A returning user opens straight into their own shell with no network involved.
     func testCachedSessionOpensTheShellWithoutWaitingOnTheNetwork() async throws {
         let cache = InMemoryLaunchCache()
@@ -130,7 +139,7 @@ final class LegendLaunchCacheTests: XCTestCase {
         XCTAssertEqual(coordinator.state, .loading)
     }
 
-    func testNinetyDayCheckpointClearsTheStoredSessionAndRequiresInteractiveSignIn() throws {
+    func testNinetyDayCheckpointRetainsAccountButClearsLaunchAccessAndRequiresInteractiveSignIn() throws {
         let store = MutableTokenStore(tokens: OAuthTokenSet(
             accessToken: "access",
             refreshToken: "refresh",
@@ -154,7 +163,7 @@ final class LegendLaunchCacheTests: XCTestCase {
         coordinator.restore()
 
         XCTAssertEqual(coordinator.state, .signedOut)
-        XCTAssertNil(try store.read())
+        XCTAssertEqual(try store.read()?.requiresInteractiveSignIn, true)
         XCTAssertNil(cache.readSession())
     }
 

@@ -10,6 +10,7 @@ import com.mylegnd.legend.registered.core.push.LegendFirebaseMessagingService
 import com.mylegnd.legend.registered.core.navigation.LegendNotificationNavigation
 import com.mylegnd.legend.registered.core.config.LegendRuntimeConfigurationLoader
 import com.mylegnd.legend.registered.core.design.LegendDesignAuthority
+import com.mylegnd.legend.registered.core.design.LegendApplicationLocalization
 import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.core.media.AuthenticatedMediaRepository
 import com.mylegnd.legend.registered.core.realtime.MobileMessagingRealtimeClient
@@ -24,7 +25,15 @@ class LegendContainer(application: Application) {
     val notificationNavigation = LegendNotificationNavigation()
     private val sessionStore = SecureSessionStore(application)
     private val apiClient by lazy { require(configuration.isReady) { "Legend mobile configuration is incomplete." }; LegendApiClient.create(configuration.apiBaseUrl, bearerTokenAuthority) }
+    val guestRepository by lazy {
+        GuestRepository(LegendApiClient.create(configuration.apiBaseUrl,
+            object : com.mylegnd.legend.registered.core.network.AccessTokenProvider {
+                override suspend fun accessToken(): String? = null
+            }))
+    }
     private val notificationDeviceRepository by lazy { NotificationDeviceRepository(apiClient) }
+    private val localizationRepository by lazy { ApplicationLocalizationRepository(apiClient) }
+    val localization by lazy { LegendApplicationLocalization(application, localizationRepository, sessionStore) }
     val fcmPushRegistration = FcmPushRegistrationCoordinator(application, notificationDeviceRepository, sessionStore)
     val sessionRepository = SessionRepository(configuration, auth, bearerTokenAuthority, { apiClient }, sessionStore) { fcmPushRegistration.deactivateForCurrentActor() }
     val homeRepository by lazy { HomeRepository(apiClient) }; val founderAiRepository by lazy { FounderAiRepository(apiClient) }; val agentWorkspaceRepository by lazy { AgentWorkspaceRepository(apiClient) }; val financialRepository by lazy { FinancialRepository(apiClient) }; val accountRepository by lazy { AccountRepository(apiClient) }; val founderAccountRepository by lazy { FounderAccountRepository(apiClient) }; val dailyScriptureManagementRepository by lazy { DailyScriptureManagementRepository(apiClient) }

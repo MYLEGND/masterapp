@@ -56,6 +56,7 @@ agentportal.pp.xml
 infra.pp.xml
 pp.xml
 web.config
+!AgentPortal/web.config
 
 # =========================
 # Logs & diagnostics

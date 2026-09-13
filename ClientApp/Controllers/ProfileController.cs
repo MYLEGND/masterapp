@@ -208,7 +208,7 @@ public class ProfileController : Controller
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies);
         if (context == null)
-            return NotFound("No client profile found for this user.");
+            return NotFound("No profile found for this account.");
 
         var model = await BuildProfileViewModelAsync(context.Profile);
         return await ProfileViewAsync(model, context);
@@ -249,7 +249,7 @@ public class ProfileController : Controller
 
         if (emailInUse)
         {
-            ModelState.AddModelError(nameof(EditClientViewModel.Email), "That email is already used by another client.");
+            ModelState.AddModelError(nameof(EditClientViewModel.Email), "That email is already used by another member.");
             return await ProfileViewAsync(model, context);
         }
 
@@ -384,14 +384,14 @@ public class ProfileController : Controller
         var clientId = Norm(clientUserId);
 
         if (string.IsNullOrWhiteSpace(clientId))
-            return NotFound("Client profile not found.");
+            return NotFound("Profile not found.");
 
         var profile = await _db.ClientProfiles
             .AsNoTracking()
             .FirstOrDefaultAsync(candidate => candidate.ClientUserId == clientId);
 
         if (profile == null)
-            return NotFound("Client profile not found.");
+            return NotFound("Profile not found.");
 
         // All managed access goes through the same ownership-checked support context as AgentPortal.
         return LocalRedirect($"/support/view-as-client/{profile.Id}?returnUrl={Uri.EscapeDataString("/profile")}");

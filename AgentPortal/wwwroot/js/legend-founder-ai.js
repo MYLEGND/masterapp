@@ -879,18 +879,31 @@
 
             const hasNamedAuthority =
                 responseAuthority === 'LegendAi' ||
-                responseAuthority === 'OpenAITeacher';
+                responseAuthority === 'GovernedResearch' ||
+                responseAuthority === 'OpenAITeacher' ||
+                responseAuthority === 'SystemDiagnostic';
 
             if (responseAuthority === 'LegendAi') {
                 authority.classList.add('is-native');
                 authority.textContent =
                     'Legend® Ai';
             } else if (
+                responseAuthority === 'GovernedResearch'
+            ) {
+                authority.classList.add('is-native');
+                authority.textContent =
+                    'LEGEND governed research';
+            } else if (
                 responseAuthority === 'OpenAITeacher'
             ) {
                 authority.classList.add('is-provider');
                 authority.textContent =
                     'OpenAI';
+            } else if (
+                responseAuthority === 'SystemDiagnostic'
+            ) {
+                authority.textContent =
+                    'System diagnostic';
             }
 
             if (hasNamedAuthority) {

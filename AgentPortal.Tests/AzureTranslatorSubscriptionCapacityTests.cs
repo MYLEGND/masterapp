@@ -3,12 +3,17 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Core;
+using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Data;
 using Infrastructure.Messaging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -18,6 +23,290 @@ namespace AgentPortal.Tests;
 
 public sealed class AzureTranslatorSubscriptionCapacityTests
 {
+    [Theory]
+    [InlineData("F0", 1_932_766L, 67_234L)]
+    [InlineData("S1", 4500L, null)]
+    public async Task RecognizedTier_ObservesMonitorWithoutAddingProviderTotalsToLedger(string sku, long reported, long? remaining)
+    {
+        var handler = new JsonHandler(JsonSerializer.Serialize(new { name = "translator", sku = new { name = sku } }),
+            """{"value":[{"name":{"value":"TextCharactersTranslated"},"timeseries":[{"data":[{"total":4500}]}]}]}""".Replace("4500", reported.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(factory.Object, Configuration(),
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, new StaticTokenCredential());
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
+        var reservation = await authority.TryReserveAsync("AzureTranslator", 12, TranslationCapacityPurpose.Live, "monitor-ledger");
+        Assert.NotNull(reservation);
+        await authority.CompleteAsync(reservation!, providerMayHaveConsumed: true);
+        var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
+        Assert.Equal(reported, snapshot.MonthlyAzureReportedCharacters);
+        Assert.Equal(remaining, snapshot.MonthlyAzureReportedRemainingCharacters);
+        Assert.Equal(12L, snapshot.MonthlyCharactersConsumed);
+        Assert.False(snapshot.IsAzureUsageVerified);
+        Assert.True(snapshot.RemainingIsEstimate);
+        Assert.NotNull(snapshot.AzureUsageRetrievedUtc);
+        Assert.Equal(2, handler.SendAttempts);
+        Assert.Equal(reported + 12, snapshot.MonthlyCapacityAccountedCharacters);
+        if (sku == "F0")
+        {
+            Assert.Equal(67_222L, snapshot.MonthlyRemainingCharacters);
+            Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap, "protected-corpus"));
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 67_235, TranslationCapacityPurpose.Live, "observed-overage"));
+            var remainingReservation = await authority.TryReserveAsync("AzureTranslator", 67_222, TranslationCapacityPurpose.Live, "observed-live");
+            Assert.NotNull(remainingReservation);
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "observed-reserved-overage"));
+            Assert.Equal(0L, (await authority.GetSnapshotAsync("AzureTranslator")).MonthlyRemainingCharacters);
+            await authority.CompleteAsync(remainingReservation!, providerMayHaveConsumed: true);
+            var afterCompletion = await authority.GetSnapshotAsync("AzureTranslator");
+            Assert.Equal(0L, afterCompletion.MonthlyRemainingCharacters);
+            Assert.Equal(2_000_000L, afterCompletion.MonthlyCapacityAccountedCharacters);
+            Assert.Equal(0L, afterCompletion.MonthlyReservedCharacters);
+            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "completed-does-not-refill"));
+            Assert.Equal(2, handler.SendAttempts);
+        }
+    }
+
+    [Theory]
+    [InlineData("{\"value\":[]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":null}]}]}]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":0}]}]}]}", 0L)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":30}]}]}]}", 42L)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":null}]}]}]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12}]},{}]}]}", null)]
+    [InlineData("{\"value\":[{\"name\":{\"value\":\"TextCharactersTranslated\"},\"timeseries\":[{\"data\":[{\"total\":12},{\"total\":-1}]}]}]}", null)]
+    public void MonitorUsage_DistinguishesMissingObservationsFromMeasuredZero(string json, long? expected)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(expected, AzureTranslatorSubscriptionCapacitySource.ReadMonthlyTranslatedCharacters(document.RootElement));
+    }
+
+    [Fact]
+    public async Task SaturatedProviderConsumptionWithReservationsNeverWrapsRemainingPositive()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.LegendTranslationProviderReservations.Add(new LegendTranslationProviderReservation
+        {
+            Id = Guid.NewGuid(), Provider = "AzureTranslator", ReservationReference = "large-reserved",
+            BillingPeriodStart = new DateOnly(now.Year, now.Month, 1),
+            Purpose = TranslationCapacityPurpose.Live.ToString(), Characters = 3_000_000,
+            State = "Reserved", CreatedUtc = now, ReservationExpiresUtc = now.AddHours(1)
+        });
+        await db.SaveChangesAsync();
+        var source = new StaticAzureCapacitySource(Available("F0", 2_000_000) with
+        {
+            MonthlyAzureReportedCharacters = long.MaxValue,
+            AzureUsageQueryEndUtc = now.AddMinutes(-1)
+        });
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
+        var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
+        Assert.Equal(0L, snapshot.MonthlyRemainingCharacters);
+        Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
+        Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "saturated-overage"));
+    }
+
+    [Fact]
+    public async Task Snapshot_CountsDebtDespiteFutureTimestampsAndMarksLedgerAsEstimate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.LegendTranslationProviderReservations.Add(new LegendTranslationProviderReservation
+        {
+            Id = Guid.NewGuid(), Provider = "AzureTranslator", ReservationReference = "future-consumption",
+            BillingPeriodStart = new DateOnly(now.Year, now.Month, 1),
+            Purpose = TranslationCapacityPurpose.Live.ToString(), Characters = 100,
+            State = "Completed", CreatedUtc = now.AddHours(1), CompletedUtc = now.AddHours(1),
+            ReservationExpiresUtc = now.AddHours(2)
+        });
+        db.LegendTranslationProviderReservations.Add(new LegendTranslationProviderReservation
+        {
+            Id = Guid.NewGuid(), Provider = "AzureTranslator", ReservationReference = "future-reservation",
+            BillingPeriodStart = new DateOnly(now.Year, now.Month, 1),
+            Purpose = TranslationCapacityPurpose.Live.ToString(), Characters = 100,
+            State = "Reserved", CreatedUtc = now.AddHours(1), ReservationExpiresUtc = now.AddHours(2)
+        });
+        await db.SaveChangesAsync();
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance,
+            azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
+        var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
+        Assert.Equal(100, snapshot.MonthlyCharactersConsumed);
+        Assert.Equal(100, snapshot.HourlyCharactersConsumed);
+        Assert.Equal(100, snapshot.MonthlyReservedCharacters);
+        Assert.Equal(1_999_800L, snapshot.MonthlyRemainingCharacters);
+        Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1_999_801, TranslationCapacityPurpose.Live, "future-debt-overage"));
+        Assert.True(snapshot.RemainingIsEstimate);
+        Assert.False(snapshot.IsAzureUsageVerified);
+        Assert.Null(snapshot.MonthlyAzureReportedCharacters);
+        Assert.Null(snapshot.MonthlyAzureReportedRemainingCharacters);
+        Assert.True(snapshot.UsageRefreshedUtc >= now);
+    }
+
+    [Fact]
+    public async Task NativeCapacity_ColdFreshAndExpiredCacheNeverRefreshesOrReplacesProviderState()
+    {
+        var clock = new CapacityTimeProvider();
+        var credential = new StaticTokenCredential();
+        var handler = new JsonHandler("""{"name":"translator","sku":{"name":"F0"}}""");
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(
+            factory.Object, Configuration(), NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance,
+            credential, timeProvider: clock);
+
+        var cold = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.False(cold.IsAvailable);
+        Assert.Contains("native_only_capacity_refresh_forbidden", cold.Detail, StringComparison.Ordinal);
+        Assert.Equal(0, credential.TokenRequests);
+        Assert.Equal(0, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient(It.IsAny<string>()), Times.Never);
+
+        var synchronized = await source.GetCurrentAsync();
+        Assert.True(synchronized.IsAvailable);
+        Assert.Equal(1, credential.TokenRequests);
+        Assert.Equal(2, handler.SendAttempts);
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = new TranslationCapacityAuthority(db, Configuration(),
+            NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
+        var available = await authority.GetSnapshotAsync("AzureTranslator", CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.Equal(2_000_000, available.HourlyRemainingCharacters);
+        Assert.True(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            CapacityBindingRequest("hourlyRemainingCharacters"),
+            JsonSerializer.Serialize(available, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+            DateTime.UtcNow, out var availableReceipt, out _));
+        Assert.Equal("2000000", availableReceipt!.SemanticValue);
+        var local = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.True(local.IsAvailable);
+        Assert.Equal("Cached", local.Status);
+        Assert.Equal(synchronized.RefreshedUtc, local.RefreshedUtc);
+        Assert.Equal(synchronized.HourlyCharacterLimit, local.HourlyCharacterLimit);
+        Assert.Same(synchronized, await source.GetCurrentAsync());
+        Assert.Equal(1, credential.TokenRequests);
+        Assert.Equal(2, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(2));
+
+        clock.UtcNow = clock.UtcNow.AddMinutes(3);
+        var expired = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.False(expired.IsAvailable);
+        Assert.Null(expired.HourlyCharacterLimit);
+        Assert.Equal(1, credential.TokenRequests);
+        Assert.Equal(2, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(2));
+
+        var refreshed = await source.GetCurrentAsync();
+        Assert.True(refreshed.IsAvailable);
+        Assert.Equal("Synchronized", refreshed.Status);
+        Assert.Equal(clock.UtcNow.UtcDateTime, refreshed.RefreshedUtc);
+        Assert.Equal(2, credential.TokenRequests);
+        Assert.Equal(4, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Exactly(4));
+    }
+
+    [Fact]
+    public async Task NativeCapacity_DoesNotWaitForProviderRefreshAndHonorsCancellation()
+    {
+        var credential = new StaticTokenCredential();
+        var handler = new HeldCapacityHandler();
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(
+            factory.Object, Configuration(), NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance,
+            credential, refreshTimeout: TimeSpan.FromSeconds(30));
+        var providerRefresh = source.GetCurrentAsync();
+        try
+        {
+            await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var local = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly)
+                .WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.False(local.IsAvailable);
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                source.GetCurrentAsync(canceled.Token, LegendConnectExternalProviderPolicy.NativeOnly));
+            Assert.Equal(1, credential.TokenRequests);
+            Assert.Equal(1, handler.SendAttempts);
+            factory.Verify(item => item.CreateClient("AzureResourceManager"), Times.Once);
+        }
+        finally
+        {
+            handler.Release.TrySetResult();
+        }
+        Assert.True((await providerRefresh.WaitAsync(TimeSpan.FromSeconds(5))).IsAvailable);
+    }
+
+    [Fact]
+    public async Task NativeReadinessAndCapacity_ColdRegistryAndCacheAttemptNoWritesOrExternalCalls()
+    {
+        var sentinel = new NoWriteCapacitySentinel();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(sentinel).Options);
+        var credential = new StaticTokenCredential();
+        var handler = new JsonHandler("""{"name":"translator","sku":{"name":"F0"}}""");
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
+        var configuration = Configuration();
+        configuration["LegendConnect:ContextualComposition:Mode"] = "Shadow";
+        var source = new AzureTranslatorSubscriptionCapacitySource(
+            factory.Object, configuration, NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, credential);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, Mock.Of<IControlledResourceAccessService>(), new LegendLanguageRegistry(db, configuration),
+            configuration, NullLogger<LegendConnectRuntimePolicyAuthority>.Instance, source);
+        var capacity = new TranslationCapacityAuthority(
+            db, configuration, NullLogger<TranslationCapacityAuthority>.Instance, runtime, source);
+
+        var readiness = await runtime.GetReadinessAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        var snapshot = await capacity.GetSnapshotAsync("AzureTranslator", CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+
+        Assert.Equal("BLOCKED", Assert.Single(readiness.Checks, item => item.Name == "Language Registry").State);
+        Assert.False(snapshot.IsSynchronized);
+        Assert.Null(snapshot.HourlyCharacterLimit);
+        Assert.Null(snapshot.HourlyRemainingCharacters);
+        Assert.Null(snapshot.SafeAcquisitionCharacters);
+        Assert.Contains("native_only_capacity_refresh_forbidden", snapshot.Detail, StringComparison.Ordinal);
+        Assert.Equal(0, sentinel.Attempts);
+        Assert.Equal(0, credential.TokenRequests);
+        Assert.Equal(0, handler.SendAttempts);
+        factory.Verify(item => item.CreateClient(It.IsAny<string>()), Times.Never);
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
+        Assert.Empty(db.ChangeTracker.Entries());
+
+        var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var directOutput = JsonSerializer.Serialize(snapshot, jsonOptions);
+        var nestedOutput = JsonSerializer.Serialize(new
+        {
+            providerCapacity = snapshot,
+            stages = new[] { new { name = "provider_capacity", state = "available" } }
+        }, jsonOptions);
+        foreach (var path in new[] { "hourlyRemainingCharacters", "safeAcquisitionCharacters" })
+        {
+            var request = CapacityBindingRequest(path);
+            Assert.False(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+                request, directOutput, DateTime.UtcNow, out _, out _));
+            Assert.False(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+                request with { ToolName = "legend_operational_diagnostics", ValuePath = "providerCapacity." + path },
+                nestedOutput, DateTime.UtcNow, out _, out _));
+        }
+        Assert.True(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            CapacityBindingRequest("status"), directOutput, DateTime.UtcNow, out var statusReceipt, out _));
+        Assert.Equal("Unavailable", statusReceipt!.SemanticValue);
+        Assert.True(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            CapacityBindingRequest("monthlyCharactersConsumed"), directOutput, DateTime.UtcNow, out var usageReceipt, out _));
+        Assert.Equal("0", usageReceipt!.SemanticValue);
+    }
+
+    private static LegendConnectReadOnlyContentBindingRequest CapacityBindingRequest(string path) =>
+        new("capacity-request", "capacity-transition", "capacity-result", "legend_provider_capacity",
+            "{}", path, null, 60, "$capacity", "capacity");
+
     [Theory]
     [InlineData("F0", 2_000_000)]
     [InlineData("S1", 40_000_000)]
@@ -45,7 +334,9 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.Equal(expectedLimit - expectedLimit / 20, capacity.MaximumSafeHourlyCorpusCharacters);
         Assert.Equal(sku == "F0" ? expectedLimit / 20 : null, capacity.MonthlyLiveReserveCharacters);
         Assert.Equal(HttpMethod.Get, handler.Method);
-        Assert.Contains("api-version=2024-10-01", handler.RequestUri!.Query, StringComparison.Ordinal);
+        Assert.Contains("api-version=2023-10-01", handler.RequestUri!.Query, StringComparison.Ordinal);
+        Assert.Equal(2, handler.SendAttempts);
+        Assert.Null(capacity.MonthlyAzureReportedCharacters);
         Assert.Equal("Bearer", handler.AuthorizationScheme);
     }
 
@@ -350,8 +641,12 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
 
     private sealed class StaticTokenCredential : TokenCredential
     {
-        public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
-            new("unit-test-token", DateTimeOffset.UtcNow.AddHours(1));
+        public int TokenRequests { get; private set; }
+        public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken)
+        {
+            TokenRequests++;
+            return new("unit-test-token", DateTimeOffset.UtcNow.AddHours(1));
+        }
 
         public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
             ValueTask.FromResult(GetToken(requestContext, cancellationToken));
@@ -378,20 +673,67 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     private sealed class JsonHandler : HttpMessageHandler
     {
         private readonly string _json;
-        public JsonHandler(string json) => _json = json;
+        private readonly string? _metricsJson;
+        public JsonHandler(string json, string? metricsJson = null)
+        {
+            _json = json;
+            _metricsJson = metricsJson;
+        }
         public HttpMethod? Method { get; private set; }
         public Uri? RequestUri { get; private set; }
         public string? AuthorizationScheme { get; private set; }
+        public int SendAttempts { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            SendAttempts++;
             Method = request.Method;
             RequestUri = request.RequestUri;
             AuthorizationScheme = request.Headers.Authorization?.Scheme;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(_json, Encoding.UTF8, "application/json")
+                Content = new StringContent(request.RequestUri!.AbsolutePath.EndsWith("/metrics", StringComparison.Ordinal) ? _metricsJson ?? _json : _json, Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    private sealed class CapacityTimeProvider : TimeProvider
+    {
+        public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => UtcNow;
+    }
+
+    private sealed class HeldCapacityHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int SendAttempts { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            SendAttempts++;
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"name":"translator","sku":{"name":"F0"}}""", Encoding.UTF8, "application/json")
+            };
+        }
+    }
+
+    private sealed class NoWriteCapacitySentinel : SaveChangesInterceptor
+    {
+        public int Attempts { get; private set; }
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+        {
+            Attempts++;
+            throw new InvalidOperationException("Native diagnostic attempted a database write.");
+        }
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            throw new InvalidOperationException("Native diagnostic attempted a database write.");
         }
     }
 

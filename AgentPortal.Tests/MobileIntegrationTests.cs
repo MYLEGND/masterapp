@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
+using System.Xml.Linq;
 using AgentPortal.Mobile;
 using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
@@ -37,10 +38,39 @@ namespace AgentPortal.Tests;
 public sealed class MobileIntegrationTests
 {
     [Fact]
-    public void MobileSocialMediaEndpoint_AdmitsTheConfiguredSecureVideoPayload()
+    public void IisIngress_AdmitsTheSamePayloadAsMobileMediaEndpoints()
+    {
+        var root = Path.GetDirectoryName(GetSourcePath())!;
+        var config = XDocument.Load(
+            Path.Combine(root, "..", "AgentPortal", "web.config"));
+        // Independent runtime/test review: Docs/social/ingress-review-20260911.md.
+        var location = Assert.Single(config.Root!.Elements("location"));
+        Assert.Equal(".", (string?)location.Attribute("path"));
+        Assert.Equal("false", (string?)location.Attribute("inheritInChildApplications"));
+        var server = Assert.Single(location.Elements("system.webServer"));
+        var handler = Assert.Single(server.Element("handlers")!.Elements("add"));
+        Assert.Equal("aspNetCore", (string?)handler.Attribute("name"));
+        Assert.Equal("*", (string?)handler.Attribute("path"));
+        Assert.Equal("*", (string?)handler.Attribute("verb"));
+        Assert.Equal("AspNetCoreModuleV2", (string?)handler.Attribute("modules"));
+        Assert.Equal("Unspecified", (string?)handler.Attribute("resourceType"));
+        Assert.Single(server.Elements("aspNetCore"));
+        var limits = Assert.Single(config.Descendants("requestLimits"));
+        Assert.Same(server.Element("security")!.Element("requestFiltering"), limits.Parent);
+        Assert.Equal(SocialMediaUploadLimits.MaximumMultipartRequestBytes,
+            (long)limits.Attribute("maxAllowedContentLength")!);
+    }
+
+    private static string GetSourcePath(
+        [System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+
+    [Theory]
+    [InlineData(nameof(MobileSocialController.CreateMediaPost))]
+    [InlineData(nameof(MobileSocialController.StageMediaPost))]
+    public void MobileSocialMediaEndpoint_AdmitsTheConfiguredSecureVideoPayload(string actionName)
     {
         var action = typeof(MobileSocialController).GetMethod(
-            nameof(MobileSocialController.CreateMediaPost));
+            actionName);
         Assert.NotNull(action);
 
         var requestLimit = action!.GetCustomAttribute<RequestSizeLimitAttribute>();
@@ -587,12 +617,13 @@ public sealed class MobileIntegrationTests
             .ReturnsAsync(MessagingMessageResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "Not available."));
         var controller = CreateController(db, messaging.Object, Principal("agent-oid"));
 
-        var result = await controller.SendMessage(conversationId, new MobileSendMessageRequest("server-owned actor only"), CancellationToken.None);
+        var result = await controller.SendMessage(conversationId, new MobileSendMessageRequest("server-owned actor only", ClientMessageId: "stable-send-attempt"), CancellationToken.None);
         var response = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, response.StatusCode);
         Assert.NotNull(sent);
         Assert.Equal(new MessagingActor("agent-oid", MessagingParticipantTypes.Agent), sent!.Actor);
         Assert.Equal("server-owned actor only", sent.Body);
+        Assert.Equal("stable-send-attempt", sent.ClientMessageId);
     }
 
     [Fact]
@@ -770,14 +801,18 @@ public sealed class MobileIntegrationTests
         storage.VerifyAll();
     }
 
-    [Fact]
-    public async Task MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor(bool historyPage)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         db.AgentProfiles.Add(new AgentProfile { AgentUserId = "agent-oid", AgentUpn = "agent@example.test", FullName = "Agent", IsActive = true });
         await db.SaveChangesAsync();
 
         var conversationId = Guid.NewGuid();
+        DateTime? beforeUtc = historyPage ? DateTime.UtcNow : null;
+        Guid? beforeMessageId = historyPage ? Guid.NewGuid() : null;
         var actor = new MessagingActor("agent-oid", MessagingParticipantTypes.Agent);
         var detail = new MessagingConversationDetail(
             conversationId,
@@ -814,7 +849,8 @@ public sealed class MobileIntegrationTests
                 actor,
                 conversationId,
                 It.Is<MessagingConversationMessagePageQuery>(query =>
-                    query.BeforeUtc == null &&
+                    query.BeforeUtc == beforeUtc &&
+                    query.BeforeMessageId == beforeMessageId &&
                     query.Take == 60 &&
                     query.IncludeGroupImage),
                 It.IsAny<CancellationToken>()))
@@ -823,7 +859,8 @@ public sealed class MobileIntegrationTests
                 actor,
                 conversationId,
                 It.Is<MessagingConversationMessagePageQuery>(query =>
-                    query.BeforeUtc == null &&
+                    query.BeforeUtc == beforeUtc &&
+                    query.BeforeMessageId == beforeMessageId &&
                     query.Take == 60 &&
                     !query.IncludeGroupImage),
                 It.IsAny<CancellationToken>()))
@@ -836,9 +873,10 @@ public sealed class MobileIntegrationTests
 
         var conversationResult = await controller.Conversation(
             conversationId,
+            beforeUtc,
             null,
-            null,
-            CancellationToken.None);
+            CancellationToken.None,
+            beforeMessageId);
         var conversation = Assert.IsType<OkObjectResult>(conversationResult).Value as MobileConversationDetailDto;
         Assert.NotNull(conversation);
         Assert.Single(conversation!.Messages);
@@ -846,9 +884,10 @@ public sealed class MobileIntegrationTests
 
         var messagesResult = await controller.Messages(
             conversationId,
+            beforeUtc,
             null,
-            null,
-            CancellationToken.None);
+            CancellationToken.None,
+            beforeMessageId);
         var messages = Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(Assert.IsType<OkObjectResult>(messagesResult).Value);
         Assert.Single(messages);
         Assert.Equal("Mesaj sèvè a tradui", messages[0].Body);

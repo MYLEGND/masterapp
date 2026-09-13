@@ -16,14 +16,14 @@
     <main class="activation-page">
         <section class="activation-notice-card activation-confirmation-card">
             <header>
-                <p class="activation-brand">Legend Client Portal</p>
+                <p class="activation-brand">LEGEND</p>
                 <h1>Membership confirmed</h1>
                 <p>@Model.ClientName · @Model.ClientEmail</p>
             </header>
             <div class="activation-confirmation-body">
                 <div class="activation-membership-confirmation">
                     <h2>You are subscribed</h2>
-                    <p>Your $0.00/month Legend Client Portal membership is active. Sign in with @Model.ClientEmail to open your portal.</p>
+                    <p>Your $0.00/month LEGEND membership is active. Sign in with @Model.ClientEmail to open your portal.</p>
                 </div>
                 <form asp-action="Continue" asp-route-token="@Model.Token" method="post">
                     @Html.AntiForgeryToken()

@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.102.0" />
     <PackageReference Include="xunit.core" Version="2.9.3" />
     <PackageReference Include="xunit.assert" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -65,6 +66,9 @@
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\core\\network\\LegendApi.kt"
           Link="LegendApi.kt"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\core\\network\\FounderAiChatStream.kt"
+          Link="FounderAiChatStream.kt"
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\core\\model\\MobileContracts.kt"
           Link="LegendMobileContracts.kt"

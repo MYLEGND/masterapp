@@ -1,4 +1,6 @@
 (() => {
+  // Source marker; translation still comes from the shared application catalog.
+  const applicationCopy = value => value;
   const root = document.querySelector('[data-messaging-command-center]');
   if (!root) return;
 
@@ -58,6 +60,17 @@
     scrollPositions: readSession('scroll-positions', {}),
     searchTimer: null,
     searchRequestId: 0,
+    inboxRequestId: 0,
+    inboxFlight: null,
+    inboxController: null,
+    inboxDirty: false,
+    detailFlights: new Map(),
+    detailRevisions: new Map(),
+    readFlights: new Map(),
+    reactionFlights: new Map(),
+    readAcknowledged: new Map(),
+    requestedConversationId: null,
+    navigationVersion: 0,
     isSearchingContacts: false,
     searchResultNodes: new Map(),
     searchStatusNode: null,
@@ -69,7 +82,8 @@
     isJourneyOpen: false,
     journeyDashboard: null,
     lastTrigger: null,
-    pendingSubmission: null
+    pendingSubmission: null,
+    pendingSubmissions: new Map()
   };
   syncRecipientScopeControls();
 
@@ -204,7 +218,7 @@
 
   function isConversationInRecipientScope(conversation) {
     const participantType = recipientScopeParticipantType();
-    return !participantType || conversation?.counterparty?.participantType === participantType;
+    return !participantType || (conversation?.counterparty || currentCounterparty(conversation))?.participantType === participantType;
   }
 
   function syncRecipientScopeControls() {
@@ -228,6 +242,9 @@
     state.recipientMatchesQuery = '';
     state.recipientsLoaded = false;
     state.searchRequestId += 1;
+    state.navigationVersion += 1;
+    state.requestedConversationId = null;
+    cancelDetailRequests();
     state.pendingSubmission = null;
     elements.search.value = '';
     elements.newMessages.hidden = true;
@@ -385,7 +402,9 @@
     let data = null;
     try { data = await response.json(); } catch (_) { }
     if (!response.ok) {
-      throw new Error(data?.errorMessage || 'The messaging request could not be completed.');
+      const error = new Error(data?.errorMessage || 'The messaging request could not be completed.');
+      error.status = response.status;
+      throw error;
     }
     return data;
   }
@@ -803,7 +822,7 @@
       identity.append(createAvatar(conversation.counterparty));
       const copy = document.createElement('span');
       copy.className = 'messaging-conversation-copy';
-      copy.append(createTextElement('span', 'messaging-conversation-title', conversation.counterparty?.displayName || 'Conversation'));
+      copy.append(createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member'));
       copy.append(createTextElement('span', 'messaging-conversation-preview', conversation.lastMessagePreview || conversation.subject || 'No messages yet.'));
       if (state.drafts[`conversation:${conversation.id}`]) {
         copy.append(createTextElement('span', 'messaging-conversation-draft', 'Draft'));
@@ -839,7 +858,7 @@
 
   function currentCounterparty(conversation) {
     return conversation?.participants?.find(participant =>
-      !isCurrentParticipant(participant.userId, participant.participantType)) || null;
+      !isCurrentParticipant(participant.userId, participant.participantType)) || conversation?.counterparty || null;
   }
 
   function setComposerState(target, isClosed) {
@@ -847,7 +866,8 @@
     const isAvailable =
       Boolean(target?.contactKey || state.active?.id) &&
       !isClosed &&
-      !isArchivedMembership;
+      !isArchivedMembership &&
+      state.active?.isDetailPending !== true;
 
     elements.messageBody.disabled = !isAvailable;
     elements.files.disabled = !isAvailable;
@@ -879,6 +899,352 @@
     return elements.messages.scrollHeight - elements.messages.scrollTop - elements.messages.clientHeight < 96;
   }
 
+  async function setMessageReaction(conversationId, message, emoji) {
+    const key = `${conversationId}:${message.id}`;
+    const version = state.navigationVersion;
+    state.reactionConfirmed ||= new Map();
+    if (!state.reactionFlights.has(key)) state.reactionConfirmed.set(key,
+      (state.active?.messages || []).find(item => item.id === message.id)?.reactions || []);
+    const previous = state.reactionFlights.get(key) || Promise.resolve();
+    const flight = previous.catch(() => {}).then(() => request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Messages/${encodeURIComponent(message.id)}/Reaction`, {
+      method: emoji ? 'PUT' : 'DELETE',
+      ...(emoji ? { body: JSON.stringify({ emoji }) } : {})
+    }));
+    state.reactionFlights.set(key, flight);
+    const before = (state.active?.messages || []).find(item => item.id === message.id)?.reactions || [];
+    const pending = before.map(item => ({ ...item, count: item.count - (item.reactedByCurrentActor ? 1 : 0), reactedByCurrentActor: false })).filter(item => item.count > 0);
+    if (emoji) {
+      const existing = pending.find(item => item.emoji === emoji);
+      if (existing) { existing.count++; existing.reactedByCurrentActor = true; }
+      else pending.push({ emoji, count: 1, reactedByCurrentActor: true });
+    }
+    if (state.active?.id === conversationId) {
+      state.active = { ...state.active, messages: state.active.messages.map(item => item.id === message.id ? { ...item, reactions: pending } : item) };
+      renderConversation();
+    }
+    try {
+      const result = await flight;
+      if (state.active?.id !== conversationId || version !== state.navigationVersion) return;
+      state.reactionConfirmed.set(key, result.reactions || []);
+      if (state.reactionFlights.get(key) !== flight) return;
+      state.active = { ...state.active, messages: state.active.messages.map(item =>
+        item.id === message.id ? { ...item, reactions: result.reactions || [] } : item) };
+      renderConversation();
+    } catch (error) {
+      if (state.active?.id === conversationId && version === state.navigationVersion && state.reactionFlights.get(key) === flight) {
+        state.active = { ...state.active, messages: state.active.messages.map(item =>
+          item.id === message.id && item.reactions === pending ? { ...item, reactions: state.reactionConfirmed.get(key) || [] } : item) };
+        renderConversation();
+        showError(error.message);
+      }
+    } finally {
+      if (state.reactionFlights.get(key) === flight) {
+        state.reactionFlights.delete(key);
+        state.reactionConfirmed.delete(key);
+      }
+    }
+  }
+
+  let reactionBubbleSettings = null;
+  function reserveReactionOverlap(group) {
+    if (!reactionBubbleSettings || !group.isConnected) return;
+    group.parentElement.style.setProperty('--messaging-reaction-reserve', `${group.getBoundingClientRect().height * reactionBubbleSettings.outsideFraction}px`);
+  }
+  const reactionBubbleObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
+    entries.forEach(({ target }) => { if (target.isConnected) reserveReactionOverlap(target); else reactionBubbleObserver.unobserve(target); });
+  }) : null;
+  const reactionToneKeys = ['default', 'light', 'mediumLight', 'medium', 'mediumDark', 'dark'];
+  function toneVariant(entry, tone) { return entry.skinToneVariants?.[reactionToneKeys[tone]] || entry.baseEmoji; }
+  async function loadReactionTone() {
+    const result = await request('/Messaging/ReactionPreferences');
+    if (!Number.isInteger(result?.preferredReactionSkinTone) || result.preferredReactionSkinTone < 0 || result.preferredReactionSkinTone > 5) throw new Error('Reaction preference unavailable');
+    return result.preferredReactionSkinTone;
+  }
+  let reactionEmojiCatalogFlight;
+  function loadReactionEmojiCatalog() {
+    if (!reactionEmojiCatalogFlight) reactionEmojiCatalogFlight = fetch('/design/legend-reaction-emoji.json')
+      .then(response => { if (!response.ok) throw new Error('Emoji catalog unavailable'); return response.json(); })
+      .then(catalog => {
+        if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.entries)) throw new Error('Emoji catalog unavailable');
+        return catalog.entries.filter(entry => typeof entry.emoji === 'string' && typeof entry.baseEmoji === 'string' && typeof entry.name === 'string' && Array.isArray(entry.keywords) && entry.skinToneVariants);
+      }).catch(error => { reactionEmojiCatalogFlight = null; throw error; });
+    return reactionEmojiCatalogFlight;
+  }
+
+  function createReactionEmojiPicker(select, close) {
+    const picker = document.createElement('div');
+    picker.className = 'messaging-emoji-picker';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'messaging-emoji-search';
+    search.placeholder = 'Search emoji';
+    search.setAttribute('aria-label', 'Search emoji');
+    const grid = document.createElement('div');
+    grid.className = 'messaging-emoji-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Emoji');
+    const status = createTextElement('div', 'messaging-emoji-status', 'Loading emoji…');
+    status.setAttribute('role', 'status');
+    let entries = [], results = [], shown = 0, preferredTone = null, savingTone = false;
+    const tones = document.createElement('div');
+    tones.className = 'messaging-emoji-tones';
+    tones.setAttribute('role', 'group');
+    tones.setAttribute('aria-label', 'Saved skin tone');
+    const preferenceStatus = document.createElement('div');
+    preferenceStatus.className = 'messaging-emoji-status';
+    preferenceStatus.setAttribute('role', 'status');
+    function renderTones() {
+      tones.replaceChildren();
+      const hand = entries.find(entry => entry.emoji === '👍');
+      reactionToneKeys.forEach((key, tone) => {
+        const button = createTextElement('button', 'messaging-emoji-option', hand ? toneVariant(hand, tone) : '');
+        button.type = 'button';
+        button.setAttribute('aria-label', `${key} skin tone`);
+        button.setAttribute('aria-pressed', String(preferredTone === tone));
+        button.disabled = preferredTone === null || savingTone || !hand;
+        button.addEventListener('click', async () => {
+          savingTone = true; preferenceStatus.textContent = ''; renderTones(); render();
+          try {
+            const result = await request('/Messaging/ReactionPreferences', { method: 'PUT', body: JSON.stringify({ preferredReactionSkinTone: tone }) });
+            if (result?.preferredReactionSkinTone !== tone) throw new Error('Reaction preference was not saved');
+            preferredTone = tone;
+          } catch { preferenceStatus.textContent = 'Skin tone could not be saved. Try again.'; }
+          finally { savingTone = false; if (picker.isConnected) { renderTones(); render(); } }
+        });
+        tones.append(button);
+      });
+    }
+    async function refreshPreference() {
+      preferenceStatus.textContent = 'Loading saved skin tone…';
+      try { preferredTone = await loadReactionTone(); preferenceStatus.textContent = ''; }
+      catch {
+        preferenceStatus.replaceChildren();
+        const retry = createTextElement('button', 'messaging-emoji-retry', 'Reaction preference unavailable. Retry');
+        retry.type = 'button'; retry.addEventListener('click', refreshPreference); preferenceStatus.append(retry);
+      }
+      if (picker.isConnected) { renderTones(); render(); }
+    }
+    function appendBatch() {
+      const fragment = document.createDocumentFragment();
+      results.slice(shown, shown + 120).forEach(entry => {
+        const button = createTextElement('button', 'messaging-emoji-option', toneVariant(entry, preferredTone ?? 0));
+        button.type = 'button';
+        button.setAttribute('aria-label', entry.name);
+        button.title = entry.name;
+        button.disabled = savingTone;
+        button.addEventListener('click', () => select(toneVariant(entry, preferredTone ?? 0)));
+        fragment.append(button);
+      });
+      shown = Math.min(shown + 120, results.length);
+      grid.append(fragment);
+    }
+    function render() {
+      const query = search.value.trim();
+      const exactBase = entries.find(entry => entry.emoji === query)?.baseEmoji;
+      const words = query.normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      results = entries.filter(entry => entry.emoji === entry.baseEmoji).filter(entry => !query || entry.baseEmoji === exactBase ||
+        (words.length && words.every(word => entry.keywords.some(keyword => keyword.includes(word)))));
+      grid.replaceChildren();
+      grid.scrollTop = 0;
+      shown = 0;
+      status.textContent = results.length ? '' : 'No emoji found';
+      appendBatch();
+    }
+    async function load() {
+      status.textContent = 'Loading emoji…';
+      try {
+        entries = await loadReactionEmojiCatalog();
+        if (picker.isConnected) { renderTones(); render(); }
+      } catch {
+        status.replaceChildren();
+        const retry = createTextElement('button', 'messaging-emoji-retry', 'Retry loading emoji');
+        retry.type = 'button';
+        retry.addEventListener('click', load);
+        status.append(retry);
+      }
+    }
+    search.addEventListener('input', render);
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+    });
+    grid.addEventListener('scroll', () => {
+      if (shown < results.length && grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 100) appendBatch();
+    });
+    picker.append(search, tones, preferenceStatus, status, grid);
+    queueMicrotask(() => { load(); refreshPreference(); });
+    requestAnimationFrame(() => { if (picker.isConnected) search.focus({ preventScroll: true }); });
+    return picker;
+  }
+
+  function appendMessageInteractions(card, conversation, message) {
+    const reactions = document.createElement('div');
+    reactions.className = 'messaging-reactions';
+    (message.reactions || []).forEach(reaction => {
+      const button = createTextElement('button', 'messaging-reaction', reaction.emoji);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(reaction.reactedByCurrentActor));
+      button.setAttribute('aria-label', `${reaction.emoji}, ${reaction.count} reactions`);
+      button.addEventListener('click', () => setMessageReaction(conversation.id, message,
+        reaction.reactedByCurrentActor ? null : reaction.emoji));
+      reactions.append(button);
+    });
+    const menu = document.createElement('details');
+    menu.className = 'messaging-message-actions';
+    const trigger = createTextElement('summary', '', 'React');
+    menu.append(trigger);
+    const palette = document.createElement('div');
+    palette.className = 'messaging-reaction-palette';
+    palette.setAttribute('aria-label', 'Choose a reaction');
+    let quickTone = null, quickCatalog = [];
+    const quickButtons = [];
+    (conversation.reactionOptions || []).forEach(emoji => {
+      const button = createTextElement('button', 'messaging-reaction', emoji);
+      button.type = 'button';
+      button.setAttribute('aria-label', `React ${emoji}`);
+      button.disabled = false;
+      quickButtons.push({ button, emoji });
+      button.addEventListener('click', () => {
+        menu.open = false;
+        const entry = quickCatalog.find(item => item.emoji === emoji);
+        setMessageReaction(conversation.id, message, entry ? toneVariant(entry, quickTone) : emoji);
+      });
+      palette.append(button);
+    });
+    const plus = createTextElement('button', 'messaging-reaction', '+');
+    plus.type = 'button';
+    plus.setAttribute('aria-label', 'Choose another emoji');
+    plus.addEventListener('click', event => {
+      event.preventDefault(); event.stopPropagation(); menu.open = true;
+      const picker = createReactionEmojiPicker(emoji => {
+        menu.open = false;
+        setMessageReaction(conversation.id, message, emoji);
+      }, () => { menu.open = false; trigger.focus(); });
+      palette.replaceWith(picker);
+    });
+    palette.append(plus);
+    menu.append(palette);
+    menu.addEventListener('toggle', async () => {
+      if (!menu.open) return;
+      try {
+        [quickTone, quickCatalog] = await Promise.all([loadReactionTone(), loadReactionEmojiCatalog()]);
+        if (!menu.isConnected) return;
+        quickButtons.forEach(({ button, emoji }) => {
+          const entry = quickCatalog.find(item => item.emoji === emoji);
+          button.textContent = entry ? toneVariant(entry, quickTone) : emoji;
+          button.disabled = false;
+        });
+      } catch { if (menu.isConnected) showError('Reaction preference unavailable. Reopen to retry.'); }
+    });
+    const media = Array.from(card.querySelectorAll('.messaging-shared-media, .messaging-attachment')).at(-1);
+    const content = media?.parentElement?.matches('.messaging-shared-original') ? media.parentElement : media;
+    if (content) {
+      const anchor = document.createElement('div');
+      anchor.className = 'messaging-reacted-content';
+      content.replaceWith(anchor);
+      anchor.append(content, reactions);
+      card.append(menu);
+    } else { card.append(menu, reactions); }
+    reactionBubbleObserver?.observe(reactions);
+    card.addEventListener('dblclick', event => {
+      if (event.target.closest('a, button, input, summary, video, audio')) return;
+      setMessageReaction(conversation.id, message, '❤️');
+    });
+    card.addEventListener('contextmenu', event => {
+      if (event.target.closest('a, button, input, video, audio') || window.getSelection()?.toString()) return;
+      event.preventDefault();
+      menu.open = true;
+      trigger.focus();
+    });
+    let hold;
+    card.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' || event.target.closest('a, button, input, summary')) return;
+      hold = window.setTimeout(() => { menu.open = true; }, 500);
+    });
+    ['pointerup', 'pointercancel', 'pointermove'].forEach(name => card.addEventListener(name, () => window.clearTimeout(hold)));
+  }
+
+  function appendLinkedText(container, text) {
+    const value = String(text || '');
+    const pattern = /https?:\/\/[^\s<>]+/gi;
+    let offset = 0;
+    for (const match of value.matchAll(pattern)) {
+      const urlText = match[0].replace(/[.,!?;:)]+$/, '');
+      container.append(document.createTextNode(value.slice(offset, match.index)));
+      const link = createTextElement('a', '', urlText);
+      try {
+        const url = new URL(urlText, window.location.href);
+        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported link');
+        link.href = url.href;
+        if (url.origin !== window.location.origin) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+        container.append(link);
+      } catch (_) { container.append(document.createTextNode(urlText)); }
+      offset = match.index + urlText.length;
+    }
+    container.append(document.createTextNode(value.slice(offset)));
+  }
+
+  function appendSharedContent(card, content) {
+    if (!content) return;
+    const shared = document.createElement('div');
+    shared.className = 'messaging-shared-content';
+    if (content.status !== 'available') {
+      shared.append(createTextElement('p', '', applicationCopy("This shared content is unavailable.")));
+    } else {
+      const originalUrl = `/Social/Posts/${encodeURIComponent(content.sourcePostId)}`;
+      const contentName = content.contentType === 'Reel' ? 'Hac' : content.contentType || 'post';
+      const author = createTextElement('a', 'messaging-shared-author', content.authorDisplayName || `Shared ${contentName}`);
+      author.href = originalUrl;
+      author.dataset.userContent = '';
+      shared.append(author);
+      if (content.body) {
+        const body = createTextElement('p', 'messaging-message-body', '');
+        appendLinkedText(body, content.body);
+        shared.append(body);
+      }
+      (content.media || []).slice().sort((a, b) => a.displayOrder - b.displayOrder).forEach(asset => {
+        if (!['Image', 'Video'].includes(asset.mediaKind)) return;
+        const media = document.createElement(asset.mediaKind === 'Image' ? 'img' : 'video');
+        media.src = `/Social/Media/${encodeURIComponent(asset.id)}`;
+        media.className = 'messaging-shared-media';
+        if (asset.mediaKind === 'Image') {
+          media.alt = asset.accessibilityText || `Shared ${contentName} image`;
+          media.loading = 'lazy';
+          const open = createTextElement('a', 'messaging-shared-original', '');
+          open.href = originalUrl;
+          open.setAttribute('aria-label', `Open original ${contentName}`);
+          open.append(media);
+          shared.append(open);
+        } else {
+          media.controls = true;
+          media.playsInline = true;
+          media.preload = 'metadata';
+          shared.append(media);
+        }
+        media.addEventListener('error', () => {
+          media.replaceWith(createTextElement('p', '', applicationCopy("This media is unavailable. Open the original to check access.")));
+        });
+      });
+      const openLabel = { Post: applicationCopy("Open original post"), Story: applicationCopy("Open original story"), Reel: applicationCopy("Open original Hac") }[content.contentType] || applicationCopy("Open original post");
+      const link = createTextElement('a', 'messaging-shared-open', openLabel);
+      link.href = originalUrl;
+      shared.append(link);
+    }
+    card.append(shared);
+  }
+
+  function latestReadMessageIndex(conversation, messages) {
+    const readers = (conversation.readReceipts?.readers || []).filter(reader =>
+      !isCurrentParticipant(reader.userId, reader.participantType));
+    let latest = -1;
+    messages.forEach((message, index) => {
+      if (!isCurrentParticipant(message.senderUserId, message.senderType)) return;
+      const sent = parseUtcTimestamp(message.sentUtc)?.getTime();
+      if (sent != null && readers.some(reader =>
+        (parseUtcTimestamp(reader.readThroughUtc)?.getTime() || 0) >= sent)) latest = index;
+    });
+    return latest;
+  }
+
   function renderConversation(shouldScrollToBottom = false) {
     const conversation = state.active;
     const target = conversation ? currentCounterparty(conversation) : state.draftTarget;
@@ -887,9 +1253,10 @@
 
     elements.threadEmpty.hidden = Boolean(conversation || isDraft);
     elements.threadContent.hidden = !(conversation || isDraft);
+    reactionBubbleObserver?.disconnect();
     elements.messages.replaceChildren();
-    elements.mute.hidden = !conversation;
-    elements.closeConversation.hidden = !conversation;
+    elements.mute.hidden = !conversation || conversation.isDetailPending === true;
+    elements.closeConversation.hidden = !conversation || conversation.isDetailPending === true;
 
     if (!conversation && !isDraft) {
       setComposerState(null, false);
@@ -898,7 +1265,7 @@
     }
 
     elements.threadAvatar.replaceChildren(createAvatar(target, 'eager'));
-    elements.threadTitle.textContent = target?.displayName || 'Conversation';
+    elements.threadTitle.textContent = conversation?.displayTitle || target?.displayName || 'Member';
     elements.threadSubject.textContent = [
       roleLabel(target?.participantType),
       'Secure conversation',
@@ -908,8 +1275,25 @@
       elements.mute.textContent = conversation.isMuted ? 'Unmute' : 'Mute';
       elements.closeConversation.textContent = isClosed ? 'Reopen' : 'Close';
 
+      if (conversation.hasOlderMessages) {
+        const older = createTextElement('button', 'messaging-history-button', 'Load earlier messages');
+        older.type = 'button';
+        older.addEventListener('click', () => loadOlderMessages(older));
+        elements.messages.append(older);
+      }
+      if (conversation.isDetailPending) {
+        elements.messages.append(createTextElement('p', 'messaging-draft-intro', conversation.detailLoadFailed ? applicationCopy("Recent messages could not be loaded.") : applicationCopy("Loading recent messages…")));
+        if (conversation.detailLoadFailed) {
+          const retry = createTextElement('button', 'messaging-history-button', applicationCopy("Retry recent messages"));
+          retry.type = 'button';
+          retry.addEventListener('click', () => loadConversation(conversation.id, false).catch(error => showError(error.message)));
+          elements.messages.append(retry);
+        }
+      }
+      const visibleMessages = (conversation.messages || []).filter(message => !message.isDeleted);
+      const latestReadIndex = latestReadMessageIndex(conversation, visibleMessages);
       let previousDay = '';
-      (conversation.messages || []).forEach(message => {
+      visibleMessages.forEach((message, messageIndex) => {
         const label = dayLabel(message.sentUtc);
         if (label && label !== previousDay) {
           elements.messages.append(createTextElement('p', 'messaging-day-divider', label));
@@ -917,16 +1301,25 @@
         }
 
         const card = document.createElement('article');
-        card.className = 'messaging-message';
+        card.className = message.sharedContent ? 'messaging-message messaging-message-share' : 'messaging-message';
         const isOwn = isCurrentParticipant(message.senderUserId, message.senderType);
         if (isOwn) card.classList.add('is-own');
         const meta = document.createElement('div');
         meta.className = 'messaging-message-meta';
         meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId, message.senderType)));
         meta.append(createTextElement('time', '', formatMessageTime(message.sentUtc)));
+        if (isOwn && messageIndex >= latestReadIndex) {
+          const read = messageIndex === latestReadIndex;
+          meta.append(createTextElement('span', `messaging-receipt is-${read ? 'read' : 'sent'}`, read ? 'Read' : 'Sent'));
+        }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
         card.append(meta);
-        card.append(createTextElement('p', 'messaging-message-body', message.isDeleted ? 'This message was deleted.' : message.body));
+        if (message.body) {
+          const body = createTextElement('p', 'messaging-message-body', '');
+          appendLinkedText(body, message.body);
+          card.append(body);
+        }
+        appendSharedContent(card, message.sharedContent);
 
         if (message.attachments?.length) {
           const attachments = document.createElement('div');
@@ -949,6 +1342,7 @@
           });
           card.append(attachments);
         }
+        appendMessageInteractions(card, conversation, message);
         elements.messages.append(card);
       });
       restoreMessageScroll(conversation.id, shouldScrollToBottom);
@@ -1069,7 +1463,7 @@
       ...matchingConversations.map(conversation => ({
         key: searchResultKey('conversation', conversation.id, 'conversation'),
         person: conversation.counterparty,
-        title: conversation.counterparty?.displayName || 'Conversation',
+        title: conversation.displayTitle || conversation.counterparty?.displayName || 'Member',
         subtitle: `Existing conversation${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ''}`,
         select: () => {
           elements.search.value = '';
@@ -1092,9 +1486,7 @@
             loadConversation(recipient.existingConversationId, true).catch(error => showError(error.message));
             return;
           }
-          state.active = null;
-          state.draftTarget = recipient;
-          state.pendingSubmission = null;
+          selectDraftRecipient(recipient);
           elements.search.value = '';
           renderSearchResults();
           renderConversations();
@@ -1132,40 +1524,203 @@
     elements.searchResults.hidden = false;
   }
 
-  async function refreshList() {
-    const result = await request('/Messaging/Conversations');
-    state.conversations = result.conversations || [];
-    setUnreadCount();
-    renderConversations();
-    renderSearchResults();
+  function cancelDetailRequests(exceptId = null) {
+    state.detailFlights.forEach((flight, id) => {
+      if (id === exceptId) return;
+      flight.controller?.abort();
+      state.detailFlights.delete(id);
+    });
   }
 
-  async function loadConversation(conversationId, markRead, shouldScrollToBottom = false) {
+  function selectDraftRecipient(recipient) {
+    cancelDetailRequests();
+    state.navigationVersion += 1;
+    state.requestedConversationId = null;
+    state.active = null;
+    state.draftTarget = recipient;
+    state.pendingSubmission = null;
+  }
+
+  async function waitForSelectedDetail() {
+    while (state.isOpen && state.requestedConversationId) {
+      const selected = state.detailFlights.get(state.requestedConversationId);
+      if (!selected) return;
+      try { await selected; } catch (_) { }
+      if (state.detailFlights.get(state.requestedConversationId) === selected) return;
+    }
+  }
+
+  async function refreshList() {
+    state.inboxDirty = true;
+    if (state.inboxFlight) return state.inboxFlight;
+    state.inboxFlight = (async () => {
+      do {
+        state.inboxDirty = false;
+        await waitForSelectedDetail();
+        const controller = new AbortController();
+        state.inboxController = controller;
+        let result;
+        try { result = await request('/Messaging/Conversations', { signal: controller.signal, priority: 'low' }); }
+        catch (error) {
+          if (!controller.signal.aborted) throw error;
+          state.inboxDirty = true;
+          continue;
+        } finally {
+          if (state.inboxController === controller) state.inboxController = null;
+        }
+        if (controller.signal.aborted) { state.inboxDirty = true; continue; }
+        state.conversations = result.conversations || [];
+        setUnreadCount();
+        renderConversations();
+        renderSearchResults();
+      } while (state.inboxDirty);
+    })();
+    try { await state.inboxFlight; }
+    finally { state.inboxFlight = null; }
+  }
+
+  async function acknowledgeVisibleConversation(conversation) {
+    const id = conversation.id;
+    const latest = conversation.messages?.at(-1)?.id;
+    if (!latest || state.readAcknowledged.get(id) === latest) return;
+    if (state.readFlights.has(id)) {
+      await state.readFlights.get(id);
+      if (state.active?.id === id) return acknowledgeVisibleConversation(state.active);
+      return;
+    }
+    const flight = request(`/Messaging/Conversations/${encodeURIComponent(id)}/Read?readThroughMessageId=${encodeURIComponent(latest)}`, { method: 'POST' });
+    state.readFlights.set(id, flight);
+    try {
+      await flight;
+      state.readAcknowledged.set(id, latest);
+    } finally { state.readFlights.delete(id); }
+  }
+
+  function clearUnavailableConversation(conversationId, error) {
+    if (![401, 403, 404, 410].includes(error?.status) || state.active?.id !== conversationId) return false;
+    state.active = null;
+    state.draftTarget = null;
+    state.requestedConversationId = null;
+    state.navigationVersion += 1;
+    cancelDetailRequests();
+    state.conversations = state.conversations.filter(conversation => conversation.id !== conversationId);
+    state.readAcknowledged.delete(conversationId);
+    removeSession('last-conversation');
+    renderConversation();
+    renderConversations();
+    renderSearchResults();
+    setUnreadCount();
+    return true;
+  }
+
+  async function loadConversation(conversationId, markRead, shouldScrollToBottom = false, invalidate = false) {
+    if (state.requestedConversationId !== conversationId) {
+      state.requestedConversationId = conversationId;
+      state.navigationVersion += 1;
+      cancelDetailRequests(conversationId);
+    }
+    const version = state.navigationVersion;
     if (state.active?.id !== conversationId) elements.newMessages.hidden = true;
     if (state.active?.id) {
       state.scrollPositions[state.active.id] = elements.messages.scrollTop;
       writeSession('scroll-positions', state.scrollPositions);
     }
-    const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}`);
+    if (state.active?.id !== conversationId) {
+      saveDraft();
+      const summary = state.conversations.find(conversation => conversation.id === conversationId);
+      state.active = { ...summary, id: conversationId, messages: [], isDetailPending: true };
+      state.draftTarget = null;
+      renderConversation(shouldScrollToBottom);
+      renderConversations();
+    } else if (state.active.detailLoadFailed) {
+      state.active.detailLoadFailed = false;
+      renderConversation();
+    }
+    let flight = state.detailFlights.get(conversationId);
+    if (invalidate) state.detailRevisions.set(conversationId, (state.detailRevisions.get(conversationId) || 0) + 1);
+    const detailRevision = state.detailRevisions.get(conversationId) || 0;
+    if (invalidate && flight) {
+      // An event can arrive after the server captured the in-flight snapshot.
+      // Coalesce the burst into a fresh read after that snapshot completes.
+      try { await flight; } catch (_) { }
+      if (version !== state.navigationVersion || state.requestedConversationId !== conversationId) return;
+      return loadConversation(conversationId, markRead, shouldScrollToBottom);
+    }
+    if (!flight) {
+      if (state.isOpen) state.inboxController?.abort();
+      const controller = new AbortController();
+      flight = request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}?take=60`, { signal: controller.signal, priority: 'high' });
+      flight.controller = controller;
+      state.detailFlights.set(conversationId, flight);
+      flight.finally(() => {
+        if (state.detailFlights.get(conversationId) === flight) state.detailFlights.delete(conversationId);
+      }).catch(() => {});
+    }
+    let result;
+    try { result = await flight; }
+    catch (error) {
+      if (flight.controller?.signal.aborted || version !== state.navigationVersion ||
+          state.requestedConversationId !== conversationId || detailRevision !== (state.detailRevisions.get(conversationId) || 0)) return;
+      if (clearUnavailableConversation(conversationId, error)) throw error;
+      if (state.active?.id === conversationId && state.active.isDetailPending) {
+        state.active.detailLoadFailed = true;
+        renderConversation();
+      }
+      throw error;
+    }
+    if (version !== state.navigationVersion || state.requestedConversationId !== conversationId ||
+        detailRevision !== (state.detailRevisions.get(conversationId) || 0)) return;
+    if (!isConversationInRecipientScope(result.conversation)) {
+      state.active = null;
+      state.requestedConversationId = null;
+      renderConversation();
+      return;
+    }
     state.active = result.conversation;
     state.draftTarget = null;
-    state.pendingSubmission = null;
+    // A refresh cannot acknowledge or discard an uncertain send transaction.
     writeSession('last-conversation', conversationId);
     renderConversation(shouldScrollToBottom);
     renderConversations();
-    if (markRead) {
-      try {
-        await request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Read`, { method: 'POST' });
-        await refreshList();
-      } catch (error) {
-        showError(error.message);
-      }
+    if (markRead && state.isOpen && !document.hidden) {
+      try { await acknowledgeVisibleConversation(state.active); }
+      catch (error) { if (version === state.navigationVersion) showError(error.message); }
     }
+  }
+
+  async function loadOlderMessages(button) {
+    const conversation = state.active;
+    const oldestMessage = conversation?.messages?.[0];
+    const oldest = oldestMessage?.sentUtc;
+    if (!oldest || !conversation.hasOlderMessages) return;
+    const version = state.navigationVersion;
+    button.disabled = true;
+    try {
+      const result = await request(`/Messaging/Conversations/${encodeURIComponent(conversation.id)}?take=60&beforeUtc=${encodeURIComponent(oldest)}&beforeMessageId=${encodeURIComponent(oldestMessage.id)}`);
+      if (version !== state.navigationVersion || state.active?.id !== conversation.id) return;
+      const existing = state.active.messages || [];
+      const ids = new Set(existing.map(message => message.id));
+      const older = (result.conversation.messages || []).filter(message => !ids.has(message.id));
+      const height = elements.messages.scrollHeight;
+      const top = elements.messages.scrollTop;
+      state.active = { ...state.active, messages: [...older, ...existing], hasOlderMessages: result.conversation.hasOlderMessages };
+      renderConversation();
+      elements.messages.scrollTop = top + elements.messages.scrollHeight - height;
+    } catch (error) {
+      if (version !== state.navigationVersion || state.active?.id !== conversation.id) return;
+      clearUnavailableConversation(conversation.id, error);
+      showError(error.message);
+    }
+    finally { button.disabled = false; }
   }
 
   async function loadRecipients() {
     if (state.recipientsLoaded) return;
-    const result = await request(recipientRequestUrl());
+    const scope = state.recipientScope;
+    await waitForSelectedDetail();
+    if (scope !== state.recipientScope) return;
+    const result = await request(recipientRequestUrl(), { priority: 'low' });
+    if (scope !== state.recipientScope) return;
     state.recipients = result.recipients || [];
     if (!state.recipientMatchesQuery) state.recipientMatches = state.recipients;
     state.recipientsLoaded = true;
@@ -1210,7 +1765,7 @@
   }
 
   async function uploadAttachments(messageId, submission) {
-    const files = Array.from(elements.files.files || []);
+    const files = submission.files;
     for (let index = 0; index < files.length; index += 1) {
       if (submission.uploadedFileIndexes.includes(index)) continue;
       const formData = new FormData();
@@ -1226,35 +1781,69 @@
 
   function createSubmission(body) {
     const key = activeDraftKey();
-    if (state.pendingSubmission?.key === key && state.pendingSubmission.body === body) return state.pendingSubmission;
+    const retained = state.pendingSubmissions.get(key);
+    const files = Array.from(elements.files.files || []);
+    const sameFiles = retained && files.length === retained.files.length && files.every((file, index) => file === retained.files[index]);
+    if (retained && retained.body === body && sameFiles) return retained;
+    if (retained?.sending) throw new Error('The current message is still sending.');
+    if (retained?.messageId && retained.uploadedFileIndexes.length < retained.files.length)
+      throw new Error('Retry the pending attachment delivery before sending another message.');
     state.pendingSubmission = {
       key,
       body,
+      conversationId: state.active?.id || null,
+      target: state.draftTarget,
+      files: Array.from(elements.files.files || []),
       clientMessageId: clientMessageId(),
       messageId: null,
       uploadedFileIndexes: [],
       draftKeys: [key]
     };
+    state.pendingSubmissions.set(key, state.pendingSubmission);
     return state.pendingSubmission;
   }
 
-  async function sendMessage() {
-    const body = elements.messageBody.value.trim();
+  function offerPendingRetry(submission) {
+    if (!submission || submission.sending) return;
+    const retry = createTextElement('button', 'messaging-retry',
+      submission.messageId ? 'Retry pending attachments' : 'Retry previous message');
+    retry.type = 'button';
+    retry.addEventListener('click', () => sendMessage(submission));
+    elements.error.append(retry);
+  }
+
+  async function sendMessage(ownedSubmission = null) {
+    const body = ownedSubmission?.body ?? elements.messageBody.value.trim();
     if (!body || (!state.active && !state.draftTarget)) return;
 
-    const submission = createSubmission(body);
+    let submission;
+    try { submission = ownedSubmission || createSubmission(body); }
+    catch (error) {
+      showError(error.message);
+      offerPendingRetry(state.pendingSubmissions.get(activeDraftKey()));
+      return;
+    }
+    if (submission.sending) return;
+    submission.sending = true;
+    const navigationVersion = state.navigationVersion;
     elements.sendButton.disabled = true;
     showError('');
     try {
       if (!submission.messageId) {
-        if (state.active) {
-          const result = await request(`/Messaging/Conversations/${encodeURIComponent(state.active.id)}/Messages`, {
+        if (submission.conversationId) {
+          const result = await request(`/Messaging/Conversations/${encodeURIComponent(submission.conversationId)}/Messages`, {
             method: 'POST',
             body: JSON.stringify({ body, clientMessageId: submission.clientMessageId })
           });
           submission.messageId = result.message?.id;
+          if (state.active?.id === submission.conversationId && result.message) {
+            const messages = state.active.messages || [];
+            if (!messages.some(message => message.id === result.message.id)) messages.push(result.message);
+            state.active = { ...state.active, messages };
+            renderConversation(true);
+          }
         } else {
-          const target = state.draftTarget;
+          const target = submission.target;
           const result = await request('/Messaging/Conversations', {
             method: 'POST',
             body: JSON.stringify({
@@ -1268,28 +1857,47 @@
           submission.messageId = [...(created?.messages || [])]
             .reverse()
             .find(message => isCurrentParticipant(message.senderUserId, message.senderType) && message.body === body)?.id || null;
-          state.active = created;
-          state.draftTarget = null;
-          submission.key = activeDraftKey();
-          if (!submission.draftKeys.includes(submission.key)) submission.draftKeys.push(submission.key);
+          submission.conversationId = created?.id;
+          if (created?.id) {
+            submission.key = `conversation:${created.id}`;
+            state.pendingSubmissions.set(submission.key, submission);
+            if (!submission.draftKeys.includes(submission.key)) submission.draftKeys.push(submission.key);
+          }
+          if (navigationVersion === state.navigationVersion && state.draftTarget === target) {
+            state.active = created;
+            state.draftTarget = null;
+            state.requestedConversationId = created?.id;
+          }
         }
       }
 
       if (!submission.messageId) throw new Error('The message was created, but its attachment target could not be determined.');
       await uploadAttachments(submission.messageId, submission);
-      const sentConversationId = state.active?.id;
-      submission.draftKeys.forEach(key => delete state.drafts[key]);
+      const stillSelected = navigationVersion === state.navigationVersion && state.active?.id === submission.conversationId;
+      const unchangedBody = elements.messageBody.value.trim() === submission.body;
+      submission.draftKeys.forEach(key => {
+        if (state.drafts[key] === submission.body) delete state.drafts[key];
+        if (state.pendingSubmissions.get(key) === submission) state.pendingSubmissions.delete(key);
+      });
       writeSession('drafts', state.drafts);
-      elements.messageBody.value = '';
-      elements.files.value = '';
+      if (stillSelected && unchangedBody) elements.messageBody.value = '';
+      const selectedFiles = Array.from(elements.files.files || []);
+      if (stillSelected && selectedFiles.length === submission.files.length && selectedFiles.every((file, index) => file === submission.files[index]))
+        elements.files.value = '';
       renderSelectedFiles();
-      state.pendingSubmission = null;
-      if (sentConversationId) await loadConversation(sentConversationId, false);
-      await refreshList();
-      renderConversation(true);
+      if (state.pendingSubmission === submission) state.pendingSubmission = null;
+      if (stillSelected) {
+        saveDraft();
+        renderConversation(true);
+        loadConversation(submission.conversationId, false, false, true).catch(error => showError(error.message));
+      }
+      refreshList().catch(() => {});
     } catch (error) {
-      showError(error.message);
+      submission.sending = false;
+      showError(navigationVersion === state.navigationVersion ? error.message : `Previous message delivery: ${error.message}`);
+      offerPendingRetry(submission);
     } finally {
+      submission.sending = false;
       elements.sendButton.disabled = Boolean(state.active?.isClosed) || (!state.active && !state.draftTarget);
     }
   }
@@ -1307,7 +1915,10 @@
   function startPolling() {
     if (state.pollTimer) return;
     state.pollTimer = window.setInterval(() => {
-      refreshList().catch(() => { });
+      const refresh = state.isOpen && !document.hidden && state.active?.id
+        ? loadConversation(state.active.id, false)
+        : Promise.resolve();
+      refresh.catch(() => {}).then(() => refreshList()).catch(() => {});
     }, 45000);
   }
 
@@ -1319,6 +1930,10 @@
 
   async function startRealtime() {
     if (state.realtimeStarted) return;
+    if (!window.signalR?.HubConnectionBuilder) {
+      startPolling();
+      return;
+    }
     state.realtimeStarted = true;
 
     const connection = new window.signalR.HubConnectionBuilder()
@@ -1326,18 +1941,20 @@
       .withAutomaticReconnect()
       .build();
     state.realtime = connection;
-    const refreshForEvent = async event => {
+    const refreshForEvent = async (event, incomingMessage = false) => {
       try {
-        await refreshList();
-        if (state.active && event?.conversationId === state.active.id) {
+        if (state.active && event?.conversationId === state.active.id &&
+            (!state.requestedConversationId || state.requestedConversationId === state.active.id)) {
           const shouldScrollToBottom = isNearMessageBottom();
-          await loadConversation(state.active.id, false, shouldScrollToBottom);
+          const viewed = incomingMessage && state.isOpen && !document.hidden && shouldScrollToBottom;
+          await loadConversation(state.active.id, viewed, shouldScrollToBottom, true);
           if (!shouldScrollToBottom) elements.newMessages.hidden = false;
         }
+        await refreshList();
       } catch (_) { }
     };
-    connection.on('messageReceived', refreshForEvent);
-    connection.on('conversationUpdated', refreshForEvent);
+    connection.on('messageReceived', event => refreshForEvent(event, true));
+    connection.on('conversationUpdated', event => refreshForEvent(event));
     connection.onreconnecting(startPolling);
     connection.onreconnected(stopPolling);
     connection.onclose(startPolling);
@@ -1364,12 +1981,22 @@
       markCommandCenterOpen();
       showError('');
       elements.window.focus({ preventScroll: true });
-      await Promise.all([refreshList(), loadRecipients()]);
-      const lastConversationId = readSession('last-conversation', '');
-      if (!state.active && lastConversationId && state.conversations.some(conversation =>
-        conversation.id === lastConversationId && isConversationInRecipientScope(conversation))) {
-        await loadConversation(lastConversationId, false);
+      // The retained thread and shell are already visible. Detail does not wait
+      // for inbox enumeration or the authorized-contact directory.
+      const version = state.navigationVersion;
+      const lastConversationId = state.active?.id || readSession('last-conversation', '');
+      const known = state.conversations.find(conversation => conversation.id === lastConversationId);
+      if (lastConversationId && (!known || isConversationInRecipientScope(known)) && !state.draftTarget) {
+        loadConversation(lastConversationId, false).catch(error => {
+          if (state.isOpen && state.requestedConversationId === lastConversationId) showError(error.message);
+        });
       }
+      refreshList().catch(error => {
+        if (state.isOpen && version === state.navigationVersion) showError(error.message);
+      });
+      loadRecipients().catch(error => {
+        if (state.isOpen && version === state.navigationVersion) showError(error.message);
+      });
     } catch (error) {
       showError(error.message);
     } finally {
@@ -1397,6 +2024,9 @@
     document.body.classList.remove('messaging-command-center-open');
     unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'false'));
     state.isOpen = false;
+    cancelDetailRequests();
+    state.navigationVersion += 1;
+    state.requestedConversationId = null;
     clearCommandCenterOpenMark();
     state.lastTrigger?.focus?.({ preventScroll: true });
   }
@@ -1540,5 +2170,39 @@
   } else {
     refreshList().catch(() => { });
   }
+  // Both web hosts publish the same design document already used by native.
+  fetch('/design/legend-design.tokens.json', { credentials: 'same-origin', cache: 'no-cache' })
+    .then(response => { if (!response.ok) throw new Error('Design unavailable'); return response.json(); })
+    .then(design => {
+      for (const [role, key] of [['incoming-background', 'navy'], ['incoming-text', 'onNavy'],
+        ['outgoing-background', 'gold'], ['outgoing-text', 'onGold'], ['timestamp', 'chatTimestamp'], ['surface', 'surface']]) {
+        const color = design.colors?.[key]?.light;
+        if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-${role}`, color);
+      }
+      const bubble = design.messaging?.reactionBubble;
+      if (bubble) {
+        reactionBubbleSettings = bubble;
+        for (const [key, css] of [['height','height'], ['horizontalPadding','padding'], ['itemSpacing','gap'], ['borderWidth','border'], ['trailingInset','trailing'], ['emojiSize','emoji-size']]) {
+          if (Number.isFinite(bubble[key])) root.style.setProperty(`--messaging-reaction-${css}`, `${bubble[key]}px`);
+        }
+        for (const [key, css] of [['ownFillColor','own-fill'], ['otherFillColor','other-fill'], ['borderColor','border-color']]) {
+          const color = design.colors?.[bubble[key]]?.light;
+          if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-reaction-${css}`, color);
+        }
+        if (Number.isFinite(bubble.ownFillOpacity)) root.style.setProperty('--messaging-reaction-own-opacity', `${bubble.ownFillOpacity * 100}%`);
+        if (Number.isFinite(bubble.borderOpacity)) root.style.setProperty('--messaging-reaction-border-opacity', `${bubble.borderOpacity * 100}%`);
+        if (Number.isFinite(bubble.outsideFraction)) {
+          root.style.setProperty('--messaging-reaction-outside', `${bubble.outsideFraction * 100}%`);
+          root.style.setProperty('--messaging-reaction-reserve', `${bubble.height * bubble.outsideFraction}px`);
+        }
+      }
+      root.querySelectorAll('.messaging-reactions').forEach(reserveReactionOverlap);
+      const semantic = design.platformSemanticColors;
+      for (const [status, key] of [['read', 'success'], ['sent', 'danger']]) {
+        const color = semantic?.[key]?.android;
+        if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-receipt-${status}`, color);
+      }
+    }).catch(() => {});
+  window.addEventListener('legend-signalr-ready', startRealtime);
   startRealtime();
 })();

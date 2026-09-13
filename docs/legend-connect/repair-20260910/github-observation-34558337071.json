@@ -1,0 +1,386 @@
+{
+  "candidate_sha": "16388fe014310388d73ba16f684b010c8eb8ad88",
+  "workflow_sha": "16388fe014310388d73ba16f684b010c8eb8ad88",
+  "run_id": 34558337071,
+  "run_url": "https://github.com/MYLEGND/masterapp/actions/runs/34558337071",
+  "workflow_result": "failure",
+  "regression": {
+    "total": 2278,
+    "passed": 2265,
+    "failed": 9,
+    "skipped": 4,
+    "duration_seconds": 503,
+    "local_environmental_early_returns_must_not_be_credited_as_live_checks": true
+  },
+  "observation": {
+    "Status": "failed",
+    "FailureCode": "observation_aggregate_assertions_failed",
+    "FailedPhase": "aggregate_assertions",
+    "SqlPrincipalVerified": true,
+    "SelectCommandCount": 39,
+    "BlockedCommandCount": 0,
+    "SaveChangesAttempts": 0,
+    "ProviderClientCount": 0,
+    "ProviderHttpCallCount": 0,
+    "ExecutedCases": 6,
+    "ElapsedMilliseconds": 71987.3866
+  },
+  "cases": [
+    {
+      "Category": "learning",
+      "Status": "passed",
+      "FailureCode": null,
+      "Rows": 2,
+      "LanguageCode": "ar",
+      "MinimumRows": 0,
+      "ElapsedMilliseconds": 184.5143
+    },
+    {
+      "Category": "machine-learning-lifecycle",
+      "Status": "passed",
+      "FailureCode": null,
+      "Rows": 50,
+      "LanguageCode": "en",
+      "MinimumRows": 1,
+      "ElapsedMilliseconds": 1175.4996
+    },
+    {
+      "Category": "governed_cohort",
+      "Status": "passed",
+      "Rows": 3357,
+      "ElapsedMilliseconds": 35.9781
+    },
+    {
+      "Category": "held-out-competing-hypotheses",
+      "Status": "failed",
+      "FailureCode": "sql_error_-2",
+      "ExpectedNative": true,
+      "NativeSupported": null,
+      "NativeReason": null,
+      "EvidenceCount": null,
+      "EvidenceStandard": null,
+      "ArticulationMode": null,
+      "GraphComposed": null,
+      "GraphReason": null,
+      "GraphNodeCount": null,
+      "GraphRelationCount": null,
+      "UnknownComponentCount": null,
+      "ProviderClientCount": 0,
+      "ProviderHttpCallCount": 0,
+      "ElapsedMilliseconds": 18228.7216
+    },
+    {
+      "Category": "held-out-discriminating-check",
+      "Status": "failed",
+      "FailureCode": "sql_error_-2",
+      "ExpectedNative": true,
+      "NativeSupported": null,
+      "NativeReason": null,
+      "EvidenceCount": null,
+      "EvidenceStandard": null,
+      "ArticulationMode": null,
+      "GraphComposed": null,
+      "GraphReason": null,
+      "GraphNodeCount": null,
+      "GraphRelationCount": null,
+      "UnknownComponentCount": null,
+      "ProviderClientCount": 0,
+      "ProviderHttpCallCount": 0,
+      "ElapsedMilliseconds": 21615.4701
+    },
+    {
+      "Category": "native-only-provider-isolation",
+      "Status": "passed",
+      "FailureCode": null,
+      "ExpectedNative": false,
+      "NativeSupported": false,
+      "NativeReason": "meaning_graph_component_unknown",
+      "EvidenceCount": 0,
+      "EvidenceStandard": "Unavailable",
+      "ArticulationMode": "Unavailable",
+      "GraphComposed": false,
+      "GraphReason": "meaning_graph_component_unknown",
+      "GraphNodeCount": 0,
+      "GraphRelationCount": 0,
+      "UnknownComponentCount": 3,
+      "ProviderClientCount": 0,
+      "ProviderHttpCallCount": 0,
+      "ElapsedMilliseconds": 15356.4667
+    }
+  ],
+  "sql_windows": [
+    {
+      "reference": "observation-preflight/sql",
+      "succeeded": 5,
+      "failed": 0,
+      "commands": []
+    },
+    {
+      "reference": "learning/sql",
+      "succeeded": 3,
+      "failed": 0,
+      "commands": []
+    },
+    {
+      "reference": "machine-learning-lifecycle/sql",
+      "succeeded": 3,
+      "failed": 0,
+      "commands": []
+    },
+    {
+      "reference": "governed_cohort/sql",
+      "succeeded": 1,
+      "failed": 0,
+      "commands": []
+    },
+    {
+      "reference": "held-out-competing-hypotheses/sql",
+      "succeeded": 6,
+      "failed": 1,
+      "commands": [
+        {
+          "Ordinal": 3,
+          "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 85.3731,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadExactActiveSemanticAnchorIdsAsync",
+          "QueryOperation": "exact_semantic_anchors"
+        },
+        {
+          "Ordinal": 4,
+          "QueryFingerprint": "f627397d42eda2964cd62d8646a4e9abd107bf668af03604bbf9a30f8e7c7714",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 1627.2311,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadIndexedSemanticAnchorIdsAsync",
+          "QueryOperation": "indexed_semantic_anchors"
+        },
+        {
+          "Ordinal": 5,
+          "QueryFingerprint": "31af49a77585992b0d4ed7ddb1617b238c5689b70eb089dd8f6d8eeeb66f8caf",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 431.0279,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "QueryOperation": "reusable_meaning_candidates"
+        },
+        {
+          "Ordinal": 6,
+          "QueryFingerprint": "a7075401e6ee9125dd22b5cdf30b567573a1ff9c7c7393efb0e82dc1a8f1a19a",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 66.4134,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_examples"
+        },
+        {
+          "Ordinal": 7,
+          "QueryFingerprint": "e396919415f19101b1d0a343d0dd720c07b406e893eeaf0041fe61d2c38c1e82",
+          "Outcome": "failed",
+          "ElapsedMilliseconds": 15070.4792,
+          "ExceptionType": "Microsoft.Data.SqlClient.SqlException",
+          "HResult": -2146232060,
+          "SqlErrorNumber": -2,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_declarations"
+        }
+      ]
+    },
+    {
+      "reference": "held-out-discriminating-check/sql",
+      "succeeded": 6,
+      "failed": 1,
+      "commands": [
+        {
+          "Ordinal": 3,
+          "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 29.3264,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadExactActiveSemanticAnchorIdsAsync",
+          "QueryOperation": "exact_semantic_anchors"
+        },
+        {
+          "Ordinal": 4,
+          "QueryFingerprint": "f627397d42eda2964cd62d8646a4e9abd107bf668af03604bbf9a30f8e7c7714",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 5080.0258,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadIndexedSemanticAnchorIdsAsync",
+          "QueryOperation": "indexed_semantic_anchors"
+        },
+        {
+          "Ordinal": 5,
+          "QueryFingerprint": "31af49a77585992b0d4ed7ddb1617b238c5689b70eb089dd8f6d8eeeb66f8caf",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 31.142,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
+          "QueryOperation": "reusable_meaning_candidates"
+        },
+        {
+          "Ordinal": 6,
+          "QueryFingerprint": "a7075401e6ee9125dd22b5cdf30b567573a1ff9c7c7393efb0e82dc1a8f1a19a",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 33.8903,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_examples"
+        },
+        {
+          "Ordinal": 7,
+          "QueryFingerprint": "e396919415f19101b1d0a343d0dd720c07b406e893eeaf0041fe61d2c38c1e82",
+          "Outcome": "failed",
+          "ElapsedMilliseconds": 15030.0955,
+          "ExceptionType": "Microsoft.Data.SqlClient.SqlException",
+          "HResult": -2146232060,
+          "SqlErrorNumber": -2,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_declarations"
+        }
+      ]
+    },
+    {
+      "reference": "native-only-provider-isolation/sql",
+      "succeeded": 13,
+      "failed": 0,
+      "commands": [
+        {
+          "Ordinal": 2,
+          "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 181.5688,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadExactActiveSemanticAnchorIdsAsync",
+          "QueryOperation": "exact_semantic_anchors"
+        },
+        {
+          "Ordinal": 3,
+          "QueryFingerprint": "e0f38d7d4cef45e7888c5317da325f79501dce62a977c6df2bb3bbdbf007474f",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 4347.6915,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadIndexedSemanticAnchorIdsAsync",
+          "QueryOperation": "indexed_semantic_anchors"
+        },
+        {
+          "Ordinal": 4,
+          "QueryFingerprint": "964e11f2ba74da88c5b56e582cce9930e68469411a71dccdff0ad24bc48beada",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 3838.9846,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_declarations"
+        },
+        {
+          "Ordinal": 5,
+          "QueryFingerprint": "29d278edd6015862618deb8b6c5a53b7a3c1a1b2f350749f41b85121f85fd1c6",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 819.6021,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_nodes"
+        },
+        {
+          "Ordinal": 6,
+          "QueryFingerprint": "d85a098890c9a6875956d05cd8d1b1002f7688b78303ac594e45702de3c257cc",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 4639.1688,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_relations"
+        },
+        {
+          "Ordinal": 8,
+          "QueryFingerprint": "cd7a04cf63b3fbd0ca898964c50deca2faa4d3d5dd9efaa1c9e345da6a875907",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 156.2772,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadExactActiveSemanticAnchorIdsAsync",
+          "QueryOperation": "exact_semantic_anchors"
+        },
+        {
+          "Ordinal": 9,
+          "QueryFingerprint": "e0f38d7d4cef45e7888c5317da325f79501dce62a977c6df2bb3bbdbf007474f",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 142.2029,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.LoadIndexedSemanticAnchorIdsAsync",
+          "QueryOperation": "indexed_semantic_anchors"
+        },
+        {
+          "Ordinal": 10,
+          "QueryFingerprint": "964e11f2ba74da88c5b56e582cce9930e68469411a71dccdff0ad24bc48beada",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 408.4826,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_declarations"
+        },
+        {
+          "Ordinal": 11,
+          "QueryFingerprint": "29d278edd6015862618deb8b6c5a53b7a3c1a1b2f350749f41b85121f85fd1c6",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 124.7121,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_nodes"
+        },
+        {
+          "Ordinal": 12,
+          "QueryFingerprint": "d85a098890c9a6875956d05cd8d1b1002f7688b78303ac594e45702de3c257cc",
+          "Outcome": "succeeded",
+          "ElapsedMilliseconds": 109.4979,
+          "ExceptionType": null,
+          "HResult": null,
+          "SqlErrorNumber": null,
+          "QueryAuthority": "LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync",
+          "QueryOperation": "source_slot_relations"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Complete runner evidence gate failed; this is failure analysis, not accepted production proof.",
+    "SELECT-only guard recorded verified; configured identity was independently verified before this run.",
+    "Two failed SQL commands produce six repeated failure observations; not six distinct SQL failures.",
+    "No authenticated HTTP, device, concurrency or deployed revision verification.",
+    "Native-only negative case passed isolation expectations but exceeded 500ms performance target.",
+    "No deployment performed."
+  ]
+}

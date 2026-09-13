@@ -5,6 +5,9 @@
   const MAX_SESSION_EVENTS = 18;
   const MAX_BREADCRUMBS = 12;
   const MAX_KNOWN_PATTERNS = 24;
+  const observedRequestErrors = new WeakSet();
+  let requestSequence = 0;
+  const settledRequests = new Map();
 
   const pageTitle = resolvePageTitle();
   const pageKey = `${window.location.host}${window.location.pathname}`.toLowerCase();
@@ -155,7 +158,7 @@
     try {
       const parsed = new URL(raw, window.location.origin);
       const path = parsed.pathname.replace(/\/+$/, "") || "/";
-      return `${parsed.origin.toLowerCase()}${path.toLowerCase()}`;
+      return `${parsed.origin.toLowerCase()}${path}${parsed.search}`;
     } catch {
       return raw.replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
     }
@@ -198,14 +201,15 @@
     if (changed) saveKnowledge();
   }
 
-  function resolveTransientNetworkFailures(url, method) {
+  function resolveNetworkFailures(url, method, sequence) {
     const target = normalizeNetworkTarget(url);
     const normalizedMethod = normalizeMethod(method);
     if (!target || !normalizedMethod) return;
 
     const resolved = state.events.filter(event => {
       const payload = event.payload;
-      return payload.isTransientNetworkFailure
+      return payload.scope === "network"
+        && payload.requestSequence > 0 && payload.requestSequence <= sequence
         && normalizeMethod(payload.method) === normalizedMethod
         && normalizeNetworkTarget(payload.url) === target;
     });
@@ -232,6 +236,7 @@
 
   function classifyIssue(payload) {
     const text = [payload.scope, payload.message, payload.errorName, payload.errorMessage, payload.url].join(" ").toLowerCase();
+    if (payload.errorName === "TimeoutError") return issue("high", "A server request exceeded its time limit.", "The page stopped waiting before this request completed.", "Check the request status before repeating a change. A successful refresh clears this issue.");
     if (payload.isTransientNetworkFailure) return issue("high", "The page is temporarily unable to reach the server.", "This request ended before the server returned a response.", "Page Health removes this issue automatically when the same request succeeds.");
     if (payload.status === 401) return issue("high", "Your session expired.", "The current sign-in session is no longer valid.", "Sign back in or refresh this page and try again.");
     if (payload.status === 403) return issue("high", "This action is blocked by permissions.", "The server rejected this request.", "Check account access or try the action with an authorized user.");
@@ -264,6 +269,7 @@
       status: extractStatus(detail),
       url: extractUrl(detail),
       method: normalizeMethod(detail?.method),
+      requestSequence: Number(detail?.requestSequence) || 0,
       detail: safeClone(detail),
       occurredAt: nowIso()
     };
@@ -286,7 +292,8 @@
 
     if (!payload.isTransientNetworkFailure) updateKnowledge(event);
     render();
-    if (level === "error" || payload.user.severity === "critical") setDrawerOpen(true);
+    // The status badge exposes new failures without interrupting the current task.
+    // Opening diagnostics is an explicit user action, including after dismissal.
     const prefix = `[page-health:${pageKey}] ${payload.scope}: ${payload.message}`;
     (level === "warn" ? console.warn : console.error)(prefix, detail);
     return event;
@@ -321,29 +328,53 @@
       current.error("Unhandled window error", { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno, error: event.error }, "global");
     });
     window.addEventListener("unhandledrejection", event => {
+      if (event.reason && typeof event.reason === "object" && observedRequestErrors.has(event.reason)) return;
       current.error("Unhandled promise rejection", { reason: event.reason }, "global");
     });
+  }
+
+  function acceptRequestOutcome(key, sequence) {
+    const request = settledRequests.get(key);
+    if (request.sequence > sequence) return false;
+    request.sequence = sequence;
+    return true;
   }
 
   function wrapFetch() {
     if (typeof window.fetch !== "function") return;
     const fetchWithPageHealth = window.fetch.bind(window);
     window.fetch = async function (input, init) {
-      const url = typeof input === "string" ? input : normalizeText(input?.url);
+      const url = typeof input === "string" || input instanceof URL ? String(input) : normalizeText(input?.url);
       const method = normalizeText(init?.method || input?.method || "GET").toUpperCase();
       const startedAt = Date.now();
+      const sequence = ++requestSequence;
+      const signal = init?.signal ?? input?.signal;
+      const requestKey = `${method} ${normalizeNetworkTarget(url)}`;
+      const requestState = settledRequests.get(requestKey) || { pending: 0, sequence: 0 };
+      requestState.pending += 1;
+      settledRequests.set(requestKey, requestState);
       try {
         const response = await fetchWithPageHealth(input, init);
+        if (!acceptRequestOutcome(requestKey, sequence)) return response;
         if (response.ok) {
-          resolveTransientNetworkFailures(url, method);
+          resolveNetworkFailures(url, method, sequence);
         } else {
-          const detail = { url, method, status: response.status, statusText: response.statusText, durationMs: Date.now() - startedAt };
+          const detail = { url, method, requestSequence: sequence, status: response.status, statusText: response.statusText, durationMs: Date.now() - startedAt };
           (response.status >= 500 || response.status === 401 || response.status === 403 ? current.error : current.warn)(`HTTP ${response.status} from ${method} ${url}`, detail, "network");
         }
         return response;
       } catch (error) {
-        current.error(`Network request failed for ${method} ${url}`, { url, method, durationMs: Date.now() - startedAt, error }, "network");
+        if (error && typeof error === "object") observedRequestErrors.add(error);
+        // Superseded/closed views deliberately abort requests. A deadline is still a failure.
+        const cancelled = signal?.aborted && signal.reason?.name !== "TimeoutError"
+          && (error === signal.reason || error?.name === "AbortError");
+        if (!cancelled && acceptRequestOutcome(requestKey, sequence)) current.error(`Network request failed for ${method} ${url}`, { url, method, requestSequence: sequence, durationMs: Date.now() - startedAt, error }, "network");
         throw error;
+      } finally {
+        // Keep ordering evidence until every overlapping request has completed.
+        // Completed keys need no retained history and cannot evict active keys.
+        requestState.pending -= 1;
+        if (requestState.pending === 0) settledRequests.delete(requestKey);
       }
     };
   }
@@ -355,7 +386,7 @@
     root.innerHTML = `
       <button type="button" class="legend-page-health-toggle is-healthy" aria-expanded="false">
         <span class="legend-page-health-dot" aria-hidden="true"></span>
-        <span class="legend-page-health-copy"><span class="legend-page-health-label">Page Health</span><span class="legend-page-health-status">No active issues</span></span>
+        <span class="legend-page-health-copy"><span class="legend-page-health-label">Page Health</span><span class="legend-page-health-status" role="status" aria-live="polite">No active issues</span></span>
         <span class="legend-page-health-count">0</span>
       </button>
       <div class="legend-page-health-backdrop" hidden></div>
@@ -468,8 +499,9 @@
     state.ui.toggle.classList.add(`is-${severity}`);
     state.ui.status.textContent = errors ? `${errors} active error${errors === 1 ? "" : "s"}` : warnings ? `${warnings} active warning${warnings === 1 ? "" : "s"}` : "No active issues";
     state.ui.count.textContent = String(issueCount);
+    state.ui.toggle.setAttribute("aria-label", `Page Health: ${state.ui.status.textContent}`);
     state.ui.summary.textContent = issueCount ? `${issueCount} current issue${issueCount === 1 ? "" : "s"} detected on ${pageTitle}.` : `Monitoring ${pageTitle}. No active issues detected in this session.`;
-    state.ui.events.innerHTML = state.events.length ? state.events.map(renderEvent).join("") : '<div class="legend-page-health-empty">No active failures in this session. Page Health opens automatically when a new error is detected.</div>';
+    state.ui.events.innerHTML = state.events.length ? state.events.map(renderEvent).join("") : '<div class="legend-page-health-empty">No active failures in this session. Open Page Health to review diagnostics at any time.</div>';
     const patterns = Object.entries(state.knowledge[pageKey] || {}).sort((left, right) => (right[1].count - left[1].count) || String(right[1].lastSeen).localeCompare(String(left[1].lastSeen))).slice(0, 6);
     state.ui.patterns.innerHTML = patterns.length ? patterns.map(renderPattern).join("") : '<div class="legend-page-health-empty">No recurring issue patterns have been recorded for this page.</div>';
   }

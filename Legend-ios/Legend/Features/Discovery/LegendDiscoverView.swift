@@ -57,22 +57,22 @@ struct LegendDiscoverView: View {
                     })
             }
             .alert(
-                store.actionFailure?.title ?? "Discover unavailable",
+                store.actionFailure?.title ?? LegendLocalized("Discover unavailable"),
                 isPresented: Binding(
                     get: { store.actionFailure != nil },
                     set: { if !$0 { store.dismissActionFailure() } }),
                 actions: {
-                    Button("OK", role: .cancel) { store.dismissActionFailure() }
+                    Button(LegendLocalized("OK"), role: .cancel) { store.dismissActionFailure() }
                 },
                 message: {
-                    Text(store.actionFailure?.message ?? "The request could not be completed.")
+                    Text(store.actionFailure?.message ?? LegendLocalized("The request could not be completed."))
                 })
     }
 
     private var searchPrompt: String {
-        store.scope == .ownedClients
-            ? "Search clients and agents"
-            : "Search people, goals, interests"
+        store.showsProfessionalDirectory
+            ? LegendLocalized("Search clients and agents")
+            : LegendLocalized("Search people, goals, interests")
     }
 
     private var hasJourneyProfile: Bool {
@@ -110,7 +110,7 @@ struct LegendDiscoverView: View {
                             .foregroundStyle(.white.opacity(0.68))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
+                    .accessibilityLabel(LegendLocalized("Clear search", context: "accessibility copy"))
                 }
             }
             .padding(.horizontal, LegendNextSpacing.sm)
@@ -164,7 +164,7 @@ struct LegendDiscoverView: View {
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { Task { await store.refresh() } })
                 .padding(LegendNextSpacing.sm)
 
@@ -183,14 +183,14 @@ struct LegendDiscoverView: View {
                     header
 
                     if !store.recommendations.isEmpty {
-                        directorySectionHeader("Recommended for you", detail: "Selected for your Legend")
+                        directorySectionHeader("Recommended for you", detail: LegendLocalized("Selected for your Legend"))
                         ForEach(store.recommendations) { result in
                             resultCard(result, loadsMore: false)
                         }
                     }
 
                     if !directoryResults.isEmpty {
-                        if store.scope == .ownedClients {
+                        if store.showsProfessionalDirectory {
                             let clients = directoryResults.filter {
                                 $0.identity.participantType == .client
                             }
@@ -206,13 +206,13 @@ struct LegendDiscoverView: View {
                             }
 
                             if !agents.isEmpty {
-                                directorySectionHeader("Legend agents", detail: "Search and follow your professional peers")
+                                directorySectionHeader("Legend agents", detail: LegendLocalized("Search and follow your professional peers"))
                                 ForEach(agents) { result in
                                     resultCard(result, loadsMore: true)
                                 }
                             }
                         } else {
-                            directorySectionHeader("Explore Legend", detail: "Active member and agent profiles")
+                            directorySectionHeader("Explore Legend", detail: LegendLocalized("People in the LEGEND network"))
                             ForEach(directoryResults) { result in
                                 resultCard(result, loadsMore: true)
                             }
@@ -243,7 +243,7 @@ struct LegendDiscoverView: View {
                 if store.isSearching {
                     // A quiet, non-spinning hint: results are already on screen and
                     // are being replaced, not awaited.
-                    Text("Updating…")
+                    Text(LegendLocalized("Updating…"))
                         .font(.caption2)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .transition(.opacity)
@@ -257,29 +257,29 @@ struct LegendDiscoverView: View {
 
     private var resultsSummary: String {
         let count = store.totalCount
-        let noun = count == 1 ? "member" : "members"
+        let noun = count == 1 ? LegendLocalized("member") : LegendLocalized("members")
         if !store.searchText.isEmpty {
             return "\(count) \(noun) matching your search"
         }
-        return store.scope == .ownedClients
+        return store.showsProfessionalDirectory
             ? "\(count) \(noun) across your clients and Legend agents"
             : "\(count) \(noun) in your Legend community"
     }
 
     private var emptyState: some View {
         LegendNextEmptyState(
-            title: store.searchText.isEmpty ? "No members yet" : "No members found",
+            title: store.searchText.isEmpty ? LegendLocalized("No members yet") : LegendLocalized("No members found"),
             message: emptyMessage,
             systemImage: store.searchText.isEmpty ? "person.3" : "magnifyingglass")
     }
 
     private var emptyMessage: String {
         if !store.searchText.isEmpty {
-            return "Try another name, goal, interest, or location."
+            return LegendLocalized("Try another name, goal, interest, or location.")
         }
-        return store.scope == .ownedClients
-            ? "Your clients and active Legend agents will appear here."
-            : "Active Legend members and agents will appear here."
+        return store.showsProfessionalDirectory
+            ? LegendLocalized("Your clients and active Legend agents will appear here.")
+            : LegendLocalized("People in the LEGEND network will appear here.")
     }
 
     private var directoryResults: [MobileDiscoveryResult] {
@@ -381,7 +381,7 @@ private struct LegendDiscoverResultCard: View {
         )
         .onTapGesture(perform: open)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Open \(result.displayName)'s profile")
+        .accessibilityLabel(LegendLocalized("Open {value1}'s profile", context: "accessibility copy", arguments: ["value1": String(describing: (result.displayName))]))
     }
 
     private var subtitle: String? {

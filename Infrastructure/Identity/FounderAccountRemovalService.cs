@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Infrastructure.Identity;
 
 /// <summary>
-/// Founder-only account closure orchestration. This service deliberately uses
+/// Account closure orchestration for Founder management and assigned-agent client removal. It uses
 /// the established lifecycle and closure authorities so billing, identity,
 /// social content, device registrations, and retention-safe profile handling
 /// stay in one audited flow instead of introducing a second delete path.
@@ -21,6 +21,12 @@ public interface IFounderAccountRemovalService
         int take,
         FounderAccountDirectoryScope scope = FounderAccountDirectoryScope.Active,
         CancellationToken cancellationToken = default);
+
+    Task<FounderAccountRemovalResult> RestoreAsync(FounderAccountRemovalCommand command, CancellationToken cancellationToken = default);
+    Task<FounderAccountRemovalResult> RestoreAssignedClientAsync(Guid profileId, string agentUserId, CancellationToken cancellationToken = default);
+
+    Task<FounderAccountRemovalResult> RemoveAssignedClientAsync(
+        Guid profileId, string agentUserId, string? correlationId = null, CancellationToken cancellationToken = default);
 
     Task<FounderAccountRemovalResult> RemoveAsync(
         FounderAccountRemovalCommand command,
@@ -53,7 +59,7 @@ public sealed record FounderManagedAccount(
     string? Email,
     string LifecycleState,
     bool HasCancelableSubscription,
-    bool IsActive);
+    bool IsActive, bool CanRestore = false);
 
 public sealed record FounderAccountRemovalCommand(
     Guid ProfileId,
@@ -120,17 +126,20 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
     private readonly IAccountLifecycleService _lifecycle;
     private readonly IAccountClosureService _closure;
     private readonly ILogger<FounderAccountRemovalService> _logger;
+    private readonly IClientEntraLifecycleService? _clientEntra;
 
     public FounderAccountRemovalService(
         MasterAppDbContext db,
         IAccountLifecycleService lifecycle,
         IAccountClosureService closure,
-        ILogger<FounderAccountRemovalService> logger)
+        ILogger<FounderAccountRemovalService> logger,
+        IClientEntraLifecycleService? clientEntra = null)
     {
         _db = db;
         _lifecycle = lifecycle;
         _closure = closure;
         _logger = logger;
+        _clientEntra = clientEntra;
     }
 
     public async Task<IReadOnlyList<FounderManagedAccount>> ListAsync(
@@ -247,6 +256,9 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
             row => new LifecycleProfileKey(row.ProfileId, row.ParticipantType),
             row => row.State);
 
+        var recoverable = await _db.AccountLifecycleRecords.AsNoTracking()
+            .Where(r => r.RetainClientContact && r.State == AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(r => r.ProfileId).ToListAsync(cancellationToken);
         var accounts = rows.Select(row => new FounderManagedAccount(
                 row.ProfileId,
                 Normalize(row.ExternalIdentityObjectId) is { Length: > 0 } externalIdentityObjectId
@@ -264,7 +276,8 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
                 row.HasCancelableSubscription,
                 row.ParticipantType == MessagingParticipantTypes.Agent
                     ? string.Equals(row.Status, AccountLifecycleStates.Active, StringComparison.OrdinalIgnoreCase)
-                    : !string.Equals(row.Status, "Deleted", StringComparison.OrdinalIgnoreCase)))
+                    : !string.Equals(row.Status, "Deleted", StringComparison.OrdinalIgnoreCase),
+                recoverable.Contains(row.ProfileId)))
             .ToArray();
 
         return scope == FounderAccountDirectoryScope.Archive
@@ -272,9 +285,73 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
             : accounts.Where(account => !IsClosed(account.LifecycleState)).ToArray();
     }
 
-    public async Task<FounderAccountRemovalResult> RemoveAsync(
-        FounderAccountRemovalCommand command,
-        CancellationToken cancellationToken = default)
+    public Task<FounderAccountRemovalResult> RemoveAsync(FounderAccountRemovalCommand command, CancellationToken cancellationToken = default)
+        => RemoveCoreAsync(command, founderInitiated: true, cancellationToken);
+
+    public async Task<FounderAccountRemovalResult> RemoveAssignedClientAsync(
+        Guid profileId, string agentUserId, string? correlationId = null, CancellationToken cancellationToken = default)
+    {
+        var actor = Normalize(agentUserId);
+        var owned = await _db.ClientProfiles.AsNoTracking().AnyAsync(p => p.Id == profileId &&
+            _db.AgentClients.Any(link => link.AgentUserId.ToLower() == actor && link.ClientUserId.ToLower() == p.ClientUserId.ToLower()), cancellationToken);
+        if (!owned) return FounderAccountRemovalResult.Failure("account_removal_not_assigned", "This client is not assigned to your account.");
+        return await RemoveCoreAsync(new FounderAccountRemovalCommand(profileId, MessagingParticipantTypes.Client, actor, correlationId), false, cancellationToken);
+    }
+
+    public async Task<FounderAccountRemovalResult> RestoreAssignedClientAsync(Guid profileId, string agentUserId, CancellationToken cancellationToken = default)
+    {
+        var actor = Normalize(agentUserId);
+        var owned = actor.Length > 0 && await _db.ClientProfiles.AsNoTracking().AnyAsync(p => p.Id == profileId &&
+            _db.AgentClients.Any(link => link.AgentUserId.ToLower() == actor && link.ClientUserId.ToLower() == p.ClientUserId.ToLower()), cancellationToken);
+        if (!owned) return FounderAccountRemovalResult.Failure("account_restore_not_assigned", "This client is not assigned to your account.");
+        return await RestoreAsync(new FounderAccountRemovalCommand(profileId, MessagingParticipantTypes.Client, actor), cancellationToken);
+    }
+
+    // Founder entry points enforce FounderOnly; assigned-agent entry points use the ownership check above.
+    public async Task<FounderAccountRemovalResult> RestoreAsync(FounderAccountRemovalCommand command, CancellationToken cancellationToken = default)
+    {
+        if (command.ParticipantType != MessagingParticipantTypes.Client || string.IsNullOrWhiteSpace(command.FounderUserId))
+            return FounderAccountRemovalResult.Failure("account_restore_invalid", "Choose an archived client account.");
+        var record = await _db.AccountLifecycleRecords.SingleOrDefaultAsync(r => r.ProfileId == command.ProfileId &&
+            r.ParticipantType == MessagingParticipantTypes.Client, cancellationToken);
+        if (record is null || !record.RetainClientContact || record.State != AccountLifecycleStates.Closed)
+            return FounderAccountRemovalResult.Failure("account_restore_unavailable", "Only a completed, recoverable client archive can be restored. Previously erased information cannot be recovered here.");
+        if (record.ClosureLeaseExpiresUtc > DateTime.UtcNow)
+            return FounderAccountRemovalResult.Failure("account_restore_busy", "This account is being processed. Try again shortly.");
+        var lease = Guid.NewGuid();
+        record.ClosureLeaseId = lease;
+        record.ClosureLeaseExpiresUtc = DateTime.UtcNow.AddMinutes(15);
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return FounderAccountRemovalResult.Failure("account_restore_busy", "This account changed. Refresh and try again."); }
+        try
+        {
+            await (_clientEntra ?? throw new InvalidOperationException("Client identity authority is unavailable."))
+                .RestoreClientApplicationAccessAsync(command.ProfileId, cancellationToken);
+            record.State = AccountLifecycleStates.Active;
+            record.DeletionRequestedUtc = null;
+            record.ClosedUtc = null;
+            record.PausedUtc = null;
+            record.LastClosureErrorCode = null;
+            record.UpdatedUtc = DateTime.UtcNow;
+            record.ClosureLeaseId = null;
+            record.ClosureLeaseExpiresUtc = null;
+            _db.AccountLifecycleAuditEntries.Add(new AccountLifecycleAuditEntry {
+                AccountLifecycleRecordId = record.Id, AttemptNumber = record.ClosureAttemptCount,
+                Action = "client_archive_restored", ResultCode = "authorized", OccurredUtc = DateTime.UtcNow });
+            await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Client archive restored. Actor={Actor} ProfileId={ProfileId}", Normalize(command.FounderUserId), command.ProfileId);
+            return new FounderAccountRemovalResult(true, true, null,
+                "Client account restored. Cancelled subscriptions remain cancelled.", AccountLifecycleStates.Active);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Client archive restoration failed. ProfileId={ProfileId}", command.ProfileId);
+            return FounderAccountRemovalResult.Failure("account_restore_failed", "The account could not be restored. Refresh and try again after the current operation completes.");
+        }
+    }
+
+    private async Task<FounderAccountRemovalResult> RemoveCoreAsync(
+        FounderAccountRemovalCommand command, bool founderInitiated, CancellationToken cancellationToken)
     {
         if (command.ProfileId == Guid.Empty)
             return FounderAccountRemovalResult.Failure(
@@ -315,7 +392,7 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
                 current.State);
         }
 
-        var requested = await _lifecycle.RequestDeletionAsync(
+        var requested = await _lifecycle.RequestArchiveAsync(
             target.Subject,
             command.CorrelationId,
             cancellationToken);
@@ -345,7 +422,7 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
         {
             AccountLifecycleRecordId = lifecycleRecord.Id,
             AttemptNumber = lifecycleRecord.ClosureAttemptCount,
-            Action = "founder_removal_requested",
+            Action = founderInitiated ? "founder_removal_requested" : "agent_removal_requested",
             ResultCode = "authorized",
             OccurredUtc = DateTime.UtcNow
         });
@@ -355,7 +432,7 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
         if (execution.Closed)
         {
             _logger.LogInformation(
-                "Founder completed immediate account removal. FounderUserId={FounderUserId} TargetProfileId={TargetProfileId} TargetParticipantType={TargetParticipantType} CorrelationId={CorrelationId}",
+                "Authorized account removal completed. ActorUserId={ActorUserId} TargetProfileId={TargetProfileId} TargetParticipantType={TargetParticipantType} CorrelationId={CorrelationId}",
                 Normalize(command.FounderUserId),
                 target.Subject.ProfileId,
                 target.Subject.ParticipantType,
@@ -364,14 +441,14 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
                 true,
                 true,
                 null,
-                "Subscription access was cancelled and this account is now in the Founder Archive.",
+                "Subscription access was cancelled and this account is now in Archive / Deleted.",
                 AccountLifecycleStates.Closed);
         }
 
         var pending = await _lifecycle.GetAsync(target.Subject, cancellationToken);
         var errorCode = execution.DeferredCode ?? "founder_account_removal_incomplete";
         _logger.LogWarning(
-            "Founder account removal remains incomplete. FounderUserId={FounderUserId} TargetProfileId={TargetProfileId} TargetParticipantType={TargetParticipantType} ErrorCode={ErrorCode} CorrelationId={CorrelationId}",
+            "Authorized account removal remains incomplete. ActorUserId={ActorUserId} TargetProfileId={TargetProfileId} TargetParticipantType={TargetParticipantType} ErrorCode={ErrorCode} CorrelationId={CorrelationId}",
             Normalize(command.FounderUserId),
             target.Subject.ProfileId,
             target.Subject.ParticipantType,
@@ -468,6 +545,22 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
             return FounderAccountPurgeResult.Failure(
                 "founder_account_purge_not_archived",
                 "Only accounts whose protected removal is complete can be erased from the Archive.");
+        }
+
+        var archiveRecord = await _db.AccountLifecycleRecords.SingleOrDefaultAsync(r => r.ProfileId == command.ProfileId && r.ParticipantType == participantType, cancellationToken);
+        if (archiveRecord is not null)
+        {
+            if (archiveRecord.State != AccountLifecycleStates.Closed)
+                return FounderAccountPurgeResult.Failure("account_purge_not_archived", "This account changed. Refresh before erasing it.");
+            if (archiveRecord.ClosureLeaseExpiresUtc > DateTime.UtcNow)
+                return FounderAccountPurgeResult.Failure("account_purge_busy", "This account is being processed. Try again shortly.");
+            archiveRecord.ClosureLeaseId = Guid.NewGuid();
+            archiveRecord.ClosureLeaseExpiresUtc = DateTime.UtcNow.AddMinutes(15);
+            try { await _db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateConcurrencyException) { return FounderAccountPurgeResult.Failure("account_purge_busy", "This account changed. Refresh and try again."); }
+            if (archiveRecord.RetainClientContact)
+                await (_clientEntra ?? throw new InvalidOperationException("Client identity authority is unavailable."))
+                    .DeleteClientIdentityAsync(command.ProfileId, cancellationToken);
         }
 
         var transaction = _db.Database.IsRelational()

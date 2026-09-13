@@ -1,0 +1,25 @@
+# Deferred recipient presentation
+
+Before this change, SendMessageAsync translated every recipient before saving the original message and durable notification delivery rows. After commit it also awaited translation learning and badge/realtime publication. Provider latency could therefore prevent a durable send, and later failures could obscure a send that had already committed.
+
+SendMessageAsync now saves the original message, notification ledger and existing device delivery outbox together, then signals the existing worker and returns its durable acknowledgment. APNs and FCM workers prepare recipient presentation through the same messaging authority before sending; unsuccessful preparation leaves delivery pending without counting a gateway attempt. No new worker, queue, database schema, translation provider, or serving authority is introduced. Activity snapshots invoke the same preparation path for accounts without push devices. Typed recipient and current conversation access are checked before message presentation. Translation learning remains part of the existing translation authority when deferred preparation actually translates.
+
+The existing SendMessage_PersistsOriginalAndStagesRecipientLocalizedNotification test changes only timing: it now first proves zero provider translation/detection calls at send acknowledgment, then invokes deferred preparation and retains its original translated notification, original body, language and cache reuse assertions. New controlled tests exercise both real delivery worker paths with successful and unavailable translation, durable idempotent acknowledgment, unauthorized recipient rejection, no-device activity projection, no gateway credit on preparation failure, and subsequent retry.
+
+The existing realtime poller now publishes already-selected active participant IDs directly instead of loading and translating a full conversation. It advances its cursor only after publication succeeds and excludes successfully published IDs when draining equal-timestamp pages. This remains an in-memory realtime synchronization mechanism, not a durable push-delivery claim. The new authorized lightweight participant lookup lets HTTP controllers avoid full conversation projection before acknowledgment.
+
+No held-out prompts, expected answers, capability thresholds, or production gates change. These changes have not established the cause of any particular production language mismatch. Validation is performed serially by the integration owner.
+
+## First-message extension
+
+Direct-conversation and group initial messages now use the same atomic staging and deferred presentation. Their acknowledgment retains the authorized conversation, participants and original message projection while skipping translation, including historical translation when an initial send resumes an existing direct conversation. Ordinary conversation reads still translate. The obsolete pre-save presentation/learning queue helpers have no remaining callers and are removed; the existing translation learning publisher remains in deferred translation.
+
+The same-language regression's immediate detection expectations move to recipient read: zero after first-message creation, one after its read, unchanged at the second send, and two after the second recipient read. The final two detections, zero translations, exact original bodies and detected language metadata assertions remain. Initial-message localized-notification assertions now invoke deferred preparation before checking the same translated result/cache. Two new cases prove direct/group first-message acknowledgments precede provider translation while preserving membership and eventual recipient presentation.
+
+## Bounded retries and acknowledgment history
+
+Unavailable notification preparation now consumes the existing six-attempt delivery budget with existing exponential backoff. It never calls a gateway or records a successful provider outcome. Exhaustion sets AbandonedUtc and a fixed presentation-specific reason; tests exercise exhaustion for APNs and FCM with zero gateway calls as well as recovery before exhaustion. This corrects the original indefinitely pending preparation behavior.
+
+Resuming a direct conversation with an initial send returns only the exact acknowledged message through the existing bounded page projection, with older-history indication. It no longer returns raw historical messages in place of previously translated history. A cached-history regression checks the acknowledgment window, zero new translation calls at acknowledgment, and preserved translated history on ordinary reads.
+
+Two additional existing timing assertions now explicitly consume the existing authorities before asserting their results: the relationship test reads the badge authority before verifying the persisted unread row; the detected-French routing test prepares the persisted notification before verifying its unchanged French-to-Spanish route, notification and cache. No behavioral result assertion is removed.

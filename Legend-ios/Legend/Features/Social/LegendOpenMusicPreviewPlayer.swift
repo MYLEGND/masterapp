@@ -209,7 +209,7 @@ final class LegendOpenMusicPreviewPlayer: ObservableObject {
     private func fail(trackID: String?, error: Error) {
         player?.pause()
         LegendSocialAudioSession.endPlayback(for: .musicPreview)
-        state = .failed(trackID: trackID, message: "This music preview could not be played. Please try another track.")
+        state = .failed(trackID: trackID, message: LegendLocalized("This music preview could not be played. Please try another track."))
     }
 
     private func configureAudioSession() throws {
@@ -235,9 +235,9 @@ private enum LegendOpenMusicPreviewError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidStreamURL:
-            return "This music stream has an invalid URL."
+            return LegendLocalized("This music stream has an invalid URL.")
         case .unplayableStream:
-            return "This music stream is not playable."
+            return LegendLocalized("This music stream is not playable.")
         }
     }
 }

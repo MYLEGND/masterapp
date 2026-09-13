@@ -8128,7 +8128,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 monthlyMinimumPaymentsCents: 0,
                 projectedPayoffDate: null,
                 projectedInterestExcluded: true,
-                extraPaymentStrategy: 'remaining-cash',
                 paymentHistory: [],
                 adjustments: []
             };
@@ -8276,30 +8275,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 projectionSettings: cloneProjectionSettings(projectionSettingsState),
                 monthlyStartingBalanceOverrides: { ...monthBalanceOverrides },
                 occurrenceHistory: cloneOccurrenceHistory(occurrenceHistoryState),
-                mobileWeekProjection:
-                    !isBusinessExpenseLens &&
-                    expenseLensProjectionApi?.buildMobileWeekSnapshot
-                        ? expenseLensProjectionApi.buildMobileWeekSnapshot(
-                            latestExpenseLensProjection,
-                            new Date()
-                        )
-                        : undefined,
-                mobileMonthProjection:
-                    !isBusinessExpenseLens &&
-                    expenseLensProjectionApi?.buildMobileMonthSnapshot
-                        ? expenseLensProjectionApi.buildMobileMonthSnapshot(
-                            latestExpenseLensProjection,
-                            new Date()
-                        )
-                        : undefined,
-                mobilePeriodProjection:
-                    !isBusinessExpenseLens &&
-                    expenseLensProjectionApi?.buildMobilePeriodProjection
-                        ? expenseLensProjectionApi.buildMobilePeriodProjection(
-                            latestExpenseLensProjection,
-                            new Date()
-                        )
-                        : undefined,
                 ...extraState
             };
         };
@@ -8537,7 +8512,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             syncPersonalIncomeDisplay();
         };
 
+        let loadingExpenseLensState = false;
         const saveExpenseLensState = (extraState = {}) => {
+            if (loadingExpenseLensState) return null;
             try {
                 const normalizedState = applyNormalizedExpenseLensMemory(buildRawExpenseLensState(extraState));
                 savePersistedState(expenseLensToolStateId, normalizedState);
@@ -8547,6 +8524,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const loadExpenseLensState = async () => {
+            loadingExpenseLensState = true;
             try {
                 const state = applyNormalizedExpenseLensMemory(await loadPersistedState(expenseLensToolStateId));
                 categoriesContainer.innerHTML = '';
@@ -8620,6 +8598,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
+            finally { loadingExpenseLensState = false; }
         };
 
         const EL_WEEK_FILTER_ALL_VALUE = 'all';
@@ -8750,7 +8729,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const totals = new Map();
             (selectedWeek.events || []).forEach((eventItem) => {
                 if (eventItem?.kind !== 'expense') return;
-                if (String(eventItem?.debtCategory || '').trim() === 'tracked-unsecured-minimum') return;
                 if (
                     normalizedPaymentFilter
                     && normalizeBillPaymentMethod(eventItem?.paymentMethod) !== normalizedPaymentFilter
@@ -9254,11 +9232,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             if (expenseLensProjectionApi?.projectExpenseLensTimeline) {
                 latestExpenseLensProjection = getExpenseLensProjection({ force: true });
-                const projectedCurrentMonth = latestExpenseLensProjection?.months?.find?.((month) => month.monthKey === latestExpenseLensProjection.currentMonthKey) || null;
-                debtState.projectedPayoffDate = latestExpenseLensProjection?.summary?.debtPayoffDate || null;
-                if (projectedCurrentMonth && !isBusinessExpenseLens) {
-                    debtState.currentBalanceCents = Math.max(0, Math.round(projectedCurrentMonth.endingDebtCents || 0));
-                }
+                // Forecast balances are outputs of the shared calculator, never saved
+                // over the debt entered on the finance page.
             }
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent, monthlyRemaining });
@@ -9614,6 +9589,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (
                 eventItem?.kind === 'extraDebt'
                 || eventItem?.kind === 'debtAdjustment'
+                || eventItem?.kind === 'debtBaseline'
             ) {
                 return 'debt';
             }
@@ -9643,6 +9619,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     return 'Credit Bill';
 
                 case 'debt':
+                    if (eventItem?.kind === 'debtBaseline') return 'Recorded Debt';
                     return eventItem?.kind === 'debtAdjustment'
                         ? 'Debt Adjustment'
                         : 'Debt Payment';
@@ -9660,9 +9637,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ? `${elFrequencyLabel(eventItem.frequency)} pay hit`
                 : eventItem.kind === 'expense'
                     ? `${elFrequencyLabel(eventItem.frequency)} · ${elGetPaymentMethodMeta(eventItem.paymentMethod).label}`
+                    : eventItem.kind === 'debtBaseline'
+                        ? 'Finance page balance as of this date'
                     : eventItem.kind === 'debtAdjustment'
                         ? 'Manual debt balance adjustment'
-                        : 'Remaining-cash debt payoff';
+                        : 'Monthly extra debt payment';
 
             const signedImpactCents = eventItem.kind === 'income'
                 ? Math.abs(Math.round(eventItem.amountCents || eventItem.impactCashCents || 0))
@@ -10053,43 +10032,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 .flatMap((week) => week.events)
                 .filter((eventItem) => eventItem.kind === 'expense');
 
-            const selectedMonthDebitBillsCents = selectedMonthExpenseEvents
-                .filter(
-                    (eventItem) =>
-                        eventItem.debtCategory !== 'tracked-unsecured-minimum'
-                        && normalizeBillPaymentMethod(eventItem.paymentMethod) !== 'credit'
-                )
-                .reduce(
-                    (sum, eventItem) =>
-                        sum
-                        + Math.abs(
-                            Math.round(
-                                eventItem.impactCashCents
-                                || eventItem.amountCents
-                                || 0
-                            )
-                        ),
-                    0
-                );
-
-            const selectedMonthCreditBillsCents = selectedMonthExpenseEvents
-                .filter(
-                    (eventItem) =>
-                        eventItem.debtCategory !== 'tracked-unsecured-minimum'
-                        && normalizeBillPaymentMethod(eventItem.paymentMethod) === 'credit'
-                )
-                .reduce(
-                    (sum, eventItem) =>
-                        sum
-                        + Math.abs(
-                            Math.round(
-                                eventItem.impactCashCents
-                                || eventItem.amountCents
-                                || 0
-                            )
-                        ),
-                    0
-                );
+            const monthSnapshot = expenseLensProjectionApi.buildMobileMonthSnapshot(
+                projection, expenseLensProjectionApi.parseMonthKey(selectedMonth.monthKey)
+            );
+            const selectedMonthDebitBillsCents = monthSnapshot.debitBillsCents;
+            const selectedMonthCreditBillsCents = monthSnapshot.creditBillsCents;
             const selectedMonthIndex = projection.months.findIndex((month) => month.monthKey === selectedMonth.monthKey);
             const previousMonth = selectedMonthIndex > 0 ? projection.months[selectedMonthIndex - 1] : null;
             const calculatedOpeningCashCents = previousMonth ? previousMonth.endingCashCents : selectedMonth.openingCashCents;
@@ -10194,7 +10141,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                                 <input type="text"
                                                        class="legend-money-field"
                                                        data-field="override-amount"
-                                                       value="${expenseLensEscapeAttr(expenseLensFormatInputValue(override?.amountCents ?? selectedMonth.openingCashCents, { allowZero: true }))}" />
+                                                       value="${override ? expenseLensEscapeAttr(expenseLensFormatInputValue(override.amountCents, { allowZero: true })) : ''}"
+                                                       placeholder="Calculated automatically" />
                                             </div>
                                         </label>
                                         <label class="el-projection-field">
@@ -10241,6 +10189,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         isOpen: projectionAdjustmentsExpanded,
                         content: `
                             <div class="el-projection-adjustments">
+                                <div class="el-projection-form-grid">
+                                    <label class="el-projection-field">
+                                        <span>Monthly extra debt payment</span>
+                                        <select class="form-control" data-field="extra-debt-mode">
+                                            <option value="remaining-cash" ${projectionSettingsState.extraDebtPaymentMode === 'remaining-cash' ? 'selected' : ''}>All remaining cash</option>
+                                            <option value="percentage" ${projectionSettingsState.extraDebtPaymentMode === 'percentage' ? 'selected' : ''}>Percentage of remaining monthly income</option>
+                                            <option value="fixed" ${projectionSettingsState.extraDebtPaymentMode === 'fixed' ? 'selected' : ''}>Fixed dollar amount per month</option>
+                                        </select>
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Percentage after bills (%)</span>
+                                        <input type="number" class="form-control" data-field="extra-debt-percent" required ${projectionSettingsState.extraDebtPaymentMode !== 'percentage' ? 'disabled' : ''} min="0" max="100" step="0.01" value="${expenseLensEscapeAttr(projectionSettingsState.extraDebtPaymentPercent ?? 100)}" />
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Monthly amount ($)</span>
+                                        <input type="number" class="form-control" data-field="extra-debt-amount" required ${projectionSettingsState.extraDebtPaymentMode !== 'fixed' ? 'disabled' : ''} min="0" step="0.01" value="${expenseLensEscapeAttr(((projectionSettingsState.extraDebtPaymentAmountCents || 0) / 100).toFixed(2))}" />
+                                    </label>
+                                    <div class="el-projection-form-actions">
+                                        <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="save-extra-debt">Save Payment Plan</button>
+                                    </div>
+                                </div>
+                                <p class="el-projection-notice">Percentage uses this month's income after bills and required debt payments. Every extra payment is capped by available cash after your reserve and the outstanding debt. The rest stays in cash. Set 0 to pause extra payments. Your plan applies across projected months.</p>
                                 <div class="el-projection-adjustment-form">
                                     <label class="el-projection-field">
                                         <span>Date</span>
@@ -10355,13 +10325,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                             ${!isBusinessExpenseLens
                                 ? buildProjectionMetricHtml({
-                                    label: 'Extra Debt Payoff · Remaining Cash',
+                                    label: 'Extra Debt Payoff · Payment Plan',
                                     value: expenseLensFormatCurrency(
                                         selectedMonth.extraDebtPaymentsCents
                                     ),
-                                    note: debtState.projectedInterestExcluded === false
-                                        ? 'Using configured debt assumptions.'
-                                        : 'Applied only after debit and credit bills.',
+                                    note: projectionSettingsState.extraDebtPaymentMode === 'percentage'
+                                        ? `${projectionSettingsState.extraDebtPaymentPercent}% of monthly income after bills and required payments.`
+                                        : projectionSettingsState.extraDebtPaymentMode === 'fixed'
+                                            ? `${expenseLensFormatCurrency(projectionSettingsState.extraDebtPaymentAmountCents)} per month, limited to available cash and debt.`
+                                            : 'All available cash after bills and required payments.',
                                     tone: selectedMonth.extraDebtPaymentsCents > 0
                                         ? 'debt'
                                         : 'neutral',
@@ -10422,7 +10394,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weekPanel.querySelector('[data-action="save-override"]')?.addEventListener('click', () => {
                 const amountField = weekPanel.querySelector('[data-field="override-amount"]');
                 const noteField = weekPanel.querySelector('[data-field="override-note"]');
-                setStartingBalanceOverride(selectedMonth.monthKey, amountField?.value || '0', noteField?.value || '');
+                const amount = amountField?.value?.trim() || '';
+                if (!amount) {
+                    clearStartingBalanceOverride(selectedMonth.monthKey);
+                    return;
+                }
+                setStartingBalanceOverride(selectedMonth.monthKey, amount, noteField?.value || '');
             });
 
             weekPanel.querySelector('[data-action="clear-override"]')?.addEventListener('click', () => {
@@ -10455,6 +10432,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     elExpandedWeekId = elExpandedWeekId === weekId ? '' : weekId;
                     renderWeekPanel();
                 });
+            });
+
+            const extraDebtModeField = weekPanel.querySelector('[data-field="extra-debt-mode"]');
+            extraDebtModeField?.addEventListener('change', () => {
+                weekPanel.querySelector('[data-field="extra-debt-percent"]').disabled = extraDebtModeField.value !== 'percentage';
+                weekPanel.querySelector('[data-field="extra-debt-amount"]').disabled = extraDebtModeField.value !== 'fixed';
+            });
+            weekPanel.querySelector('[data-action="save-extra-debt"]')?.addEventListener('click', () => {
+                const mode = extraDebtModeField.value;
+                const field = weekPanel.querySelector(mode === 'percentage' ? '[data-field="extra-debt-percent"]' : '[data-field="extra-debt-amount"]');
+                if (mode !== 'remaining-cash' && !field.reportValidity()) return;
+                projectionSettingsState.extraDebtPaymentMode = mode;
+                if (mode === 'percentage') projectionSettingsState.extraDebtPaymentPercent = Number(field.value);
+                if (mode === 'fixed') projectionSettingsState.extraDebtPaymentAmountCents = Math.round(Number(field.value) * 100);
+                invalidateExpenseLensProjection();
+                refreshExpenseLensViews({ sortRows: false });
             });
 
             weekPanel.querySelector('[data-action="add-adjustment"]')?.addEventListener('click', () => {
@@ -10594,6 +10587,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             elDebtInput.addEventListener('input', () => {
                 const next = readDebtInputCents();
                 if (!next.valid) return;
+                if (next.cents !== debtState.openingBalanceCents) {
+                    debtState.asOfDate = expenseLensProjectionApi.formatDateKey(new Date());
+                }
                 debtState.openingBalanceCents = next.cents;
                 debtState.currentBalanceCents = next.cents;
                 debtState.projectedPayoffDate = null;

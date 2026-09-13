@@ -5,9 +5,11 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,8 +28,10 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Data.SqlClient;
+using Microsoft.SqlServer.TransactSql.ScriptDom;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -444,6 +448,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     new LegendFounderAiChatRequest
                     {
                         Mode = "legend",
+                        // This fixture's admitted curriculum and native probe
+                        // both explicitly use English; detection is tested separately.
+                        SourceLanguageCode = "en",
                         Messages =
                         [
                             new LegendFounderAiChatMessage(
@@ -721,7 +728,685 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         Assert.Null(supported);
     }
 
+    // Candidate-only SQL observation. This does not invoke chat, persist discourse,
+    // replay a corpus, or claim complete release/device/capability coverage.
+    [ProductionObservationFact]
+    public async Task ProductionReadOnlyCandidateObservation()
+    {
+        var startedUtc = DateTime.UtcNow;
+        var started = Stopwatch.GetTimestamp();
+        var (candidateSha, runIdentity, resultPath) = RequireCandidateEvidenceIdentity();
+        var connectionString = RequiredObservationSetting("LEGEND_PRODUCTION_READONLY_CONNECTION");
+        var founderId = RequiredObservationSetting("LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+        const int queryTimeoutSeconds = 15;
+        const int observationTimeoutSeconds = 120;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(observationTimeoutSeconds));
+        var guard = new ReadOnlyLegendDbCommandInterceptor(restrictPhysicalTables: true);
+        var saves = new ObservationSaveGuard();
+        var connection = new SqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "LEGEND bounded candidate SELECT-only observation",
+            ApplicationIntent = ApplicationIntent.ReadOnly,
+            ConnectTimeout = queryTimeoutSeconds,
+            Pooling = false,
+            TrustServerCertificate = false,
+            Encrypt = SqlConnectionEncryptOption.Mandatory
+        };
+        // Keep one authenticated connection for permission checks and all reads.
+        await using var sql = new SqlConnection(connection.ConnectionString);
+        using var diagnosticCapture = new ExceptionCapturingLoggerProvider();
+        using var diagnosticLoggerFactory = LoggerFactory.Create(builder =>
+            builder.SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer(sql, options => options.CommandTimeout(queryTimeoutSeconds))
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+            .UseLoggerFactory(diagnosticLoggerFactory)
+            .AddInterceptors(guard, saves).Options);
+        var observationLogger = diagnosticCapture.CreateLogger(nameof(LegendFounderCurriculumSqlServerE2ETests));
+        var diagnosticWindows = new List<ProductionDiagnosticEvidence>();
+        ProductionFailureDiagnosis? firstFailureDiagnosis = null;
+        var windowCaptured = false;
+        ProductionDiagnosticEvidence CaptureWindow(string reference, IReadOnlyDictionary<string, long>? counts = null)
+        {
+            var evidence = new ProductionDiagnosticEvidence(diagnosticCapture.SnapshotDiagnostics(),
+                guard.SnapshotDiagnostics(), reference + "/sql", counts ?? new Dictionary<string, long>());
+            diagnosticWindows.Add(evidence);
+            windowCaptured = true;
+            return evidence;
+        }
+        void BeginWindow()
+        {
+            diagnosticCapture.ResetDiagnostics();
+            guard.ResetDiagnostics();
+            windowCaptured = false;
+        }
+        void RequireHealthyWindow()
+        {
+            var sqlEvidence = guard.SnapshotDiagnostics();
+            Assert.Equal(0, sqlEvidence.FailedEvents + sqlEvidence.CanceledEvents + sqlEvidence.BlockedEvents);
+            Assert.Equal(0, diagnosticCapture.SnapshotDiagnostics().SqlFailureEvents);
+        }
+        var cases = new List<object>();
+        var observationNativeCases = HeldOutProductionNativeCases().Append(NativeOnlyProductionIsolationCase()).ToArray();
+        var coverage = new[] { "learning", "machine-learning-lifecycle", "governed_cohort" }
+            .Concat(observationNativeCases.Select(item => item.Reference)).ToArray();
+        var external = new CountingHttpClientFactory();
+        var status = "failed";
+        var phase = "connection";
+        string? failureCode = null;
+        try
+        {
+            await db.Database.OpenConnectionAsync(deadline.Token);
+            phase = "sql_principal";
+            await RequireSelectOnlyPrincipalAsync(db, deadline.Token);
+            phase = "sql_sources";
+            await RequireSafePhysicalSourcesAsync(db, guard, deadline.Token);
+            phase = "founder_identity";
+            Assert.True(await db.AgentProfiles.AsNoTracking().AnyAsync(item =>
+                item.IsActive && item.AgentUserId != null &&
+                item.AgentUserId.ToLower() == founderId.ToLower(), deadline.Token),
+                "The selected Founder identity has no active profile.");
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+                new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
+                new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
+            }).Build();
+            var services = new ServiceCollection();
+            services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
+            services.AddSignalR();
+            services.AddSingleton(db);
+            services.AddMasterAppMessaging(configuration);
+            // Exercise the production DI graph. Only the test transport is
+            // instrumented: a provider attempt is counted and cannot leave process.
+            services.RemoveAll<IHttpClientFactory>();
+            services.AddSingleton<IHttpClientFactory>(external);
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var operations = scope.ServiceProvider.GetRequiredService<ILegendConnectOperations>();
+            var language = await db.LegendLanguageDefinitions.AsNoTracking()
+                .Where(item => item.IsEnabled).OrderBy(item => item.LanguageCode)
+                .Select(item => item.LanguageCode).FirstOrDefaultAsync(deadline.Token);
+            Assert.False(string.IsNullOrWhiteSpace(language), "No enabled production language is available.");
+
+            // The failed lifecycle request inspected English records. An
+            // empty page in whichever language sorts first cannot establish
+            // recovery of that projection; its fixture requires retained rows.
+            var sectionProbes = new[]
+            {
+                (Section: "learning", LanguageCode: language!, MinimumRows: 0),
+                (Section: "machine-learning-lifecycle", LanguageCode: "en", MinimumRows: 1)
+            };
+            CaptureWindow("observation-preflight");
+            var sectionFailureCount = 0;
+            foreach (var probe in sectionProbes)
+            {
+                BeginWindow();
+                phase = probe.Section;
+                var caseStart = Stopwatch.GetTimestamp();
+                long? enabledLanguageCount = null;
+                int? rows = null;
+                string? sectionFailure = null;
+                var sectionAuthority = "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation";
+                var sectionStage = "section_prerequisite";
+                var authorityStarted = Stopwatch.GetTimestamp();
+                try
+                {
+                    enabledLanguageCount = await db.LegendLanguageDefinitions.AsNoTracking()
+                        .LongCountAsync(item => item.IsEnabled && item.LanguageCode == probe.LanguageCode, deadline.Token);
+                    Assert.True(enabledLanguageCount > 0,
+                        $"The {probe.Section} observation fixture requires its enabled language.");
+                    sectionAuthority = "LegendConnectOperations.GetFounderSectionPageAsync";
+                    sectionStage = "founder_section";
+                    authorityStarted = Stopwatch.GetTimestamp();
+                    observationLogger.LogInformation(
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome}",
+                        "StageStarted", "LegendConnectOperations.GetFounderSectionPageAsync", "founder_section", "started");
+                    var page = await operations.GetFounderSectionPageAsync(probe.Section, probe.LanguageCode, null, null,
+                        cancellationToken: deadline.Token);
+                    rows = page.Rows.Count;
+                    observationLogger.LogInformation(
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ElapsedMs={ElapsedMs}",
+                        "StageEnded", "LegendConnectOperations.GetFounderSectionPageAsync", "founder_section", "completed",
+                        Stopwatch.GetElapsedTime(authorityStarted).TotalMilliseconds);
+                    sectionAuthority = "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation";
+                    sectionStage = "case_assertions";
+                    Assert.Equal(probe.Section, page.Section);
+                    Assert.Equal(probe.LanguageCode, page.LanguageCode);
+                    Assert.InRange(page.Rows.Count, probe.MinimumRows, page.PageSize);
+                    RequireHealthyWindow();
+                }
+                catch (Exception exception)
+                {
+                    sectionFailureCount++;
+                    sectionFailure = exception is OperationCanceledException ? "observation_deadline_exceeded" : "section_observation_failed";
+                    observationLogger.LogError(exception,
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs}",
+                        "StageEnded", sectionAuthority, sectionStage, "failed",
+                        "authority_call_failed", Stopwatch.GetElapsedTime(authorityStarted).TotalMilliseconds);
+                    if (IsObservedAuthorizationFailure(exception, diagnosticCapture.SnapshotDiagnostics(), guard.SnapshotDiagnostics()) || deadline.IsCancellationRequested)
+                        throw;
+                }
+                finally
+                {
+                    var counts = new Dictionary<string, long> { ["MinimumRows"] = probe.MinimumRows };
+                    if (enabledLanguageCount is long enabled) counts["EnabledLanguageCount"] = enabled;
+                    if (rows is int observedRows) counts["ObservedRows"] = observedRows;
+                    var evidence = CaptureWindow(probe.Section, counts);
+                    var caseStatus = sectionFailure is null ? "passed" : "failed";
+                    var diagnosis = DiagnoseObservedFailure(caseStatus, "section_observation", sectionFailure, null,
+                        evidence.StageEvents, guard.SnapshotDiagnostics().FailedEvents, guard.SnapshotDiagnostics().Records);
+                    if (sectionFailure is not null) firstFailureDiagnosis ??= diagnosis;
+                    cases.Add(new { Category = probe.Section, Status = caseStatus, FailureCode = sectionFailure,
+                        Rows = rows, probe.LanguageCode, probe.MinimumRows, DiagnosticEvidence = evidence,
+                        FailureDiagnosis = diagnosis, ElapsedMilliseconds = Stopwatch.GetElapsedTime(caseStart).TotalMilliseconds });
+                }
+            }
+            BeginWindow();
+            phase = "governed_cohort";
+            var cohortStart = Stopwatch.GetTimestamp();
+            var governedExamples = await db.LegendCurriculumExamples.AsNoTracking()
+                .LongCountAsync(item => item.SupersededUtc == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved, deadline.Token);
+            Assert.True(governedExamples > 0, "No active Founder-governed corpus is present.");
+            RequireHealthyWindow();
+            var cohortEvidence = CaptureWindow("governed_cohort", new Dictionary<string, long> { ["ActiveFounderGovernedExamples"] = governedExamples });
+            cases.Add(new { Category = "governed_cohort", Status = "passed", Rows = governedExamples,
+                DiagnosticEvidence = cohortEvidence,
+                FailureDiagnosis = DiagnoseObservedFailure("passed", "governed_cohort", null, null, cohortEvidence.StageEvents),
+                ElapsedMilliseconds = Stopwatch.GetElapsedTime(cohortStart).TotalMilliseconds });
+            phase = "native_current_corpus";
+            var nativeFailureCount = 0;
+            foreach (var proofCase in observationNativeCases)
+            {
+                BeginWindow();
+                phase = proofCase.Reference;
+                var caseStart = Stopwatch.GetTimestamp();
+                LegendConnectUtteranceMeaningGraphSnapshot? graph = null;
+                LegendConnectNativeInferenceSnapshot? inference = null;
+                string? caseFailure = null;
+                var authorizationFailed = false;
+                try
+                {
+                    var prompt = proofCase.Messages[^1].Content!;
+                    if (proofCase.MustBeHeldOut)
+                    {
+                        var normalized = LegendLanguageIdentity.NormalizeText(prompt);
+                        Assert.False(await db.LegendLanguageTextUnits.AsNoTracking().AnyAsync(item =>
+                            item.LanguageCode == proofCase.NativeSourceLanguageCode && item.Text == normalized &&
+                            item.IsTrainingEligible && item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved,
+                            deadline.Token), "The original matrix prompt is no longer held out.");
+                    }
+                    graph = await operations.AnalyzeReusableMeaningGraphAsync(prompt,
+                        cancellationToken: deadline.Token, sourceLanguageCode: proofCase.NativeSourceLanguageCode);
+                    inference = await operations.TryInferConversationWithDiscourseAsync(prompt,
+                        Array.Empty<LegendConnectConversationContextItem>(), discourseState: null,
+                        cancellationToken: deadline.Token, sourceLanguageCode: proofCase.NativeSourceLanguageCode,
+                        providerPolicy: LegendConnectExternalProviderPolicy.NativeOnly);
+                    Assert.Equal(proofCase.ExpectNative, inference.Supported);
+                    if (proofCase.ExpectNative)
+                    {
+                        Assert.True(graph.IsComposed, "The live corpus has not admitted the source meaning.");
+                        Assert.Empty(graph.UnknownSurfaceComponents);
+                        Assert.True(inference.EvidenceCount > 0);
+                        Assert.False(inference.RequiresEscalation);
+                        Assert.False(string.IsNullOrWhiteSpace(inference.Answer));
+                        Assert.Equal("semantic_transition_governed_composed", inference.ReasonCode);
+                    }
+                    Assert.Equal(0, external.CreateClientCalls);
+                    Assert.Equal(0, external.SendCalls);
+                    Assert.Equal(0, saves.Attempts);
+                    Assert.Equal(0, guard.BlockedCommands);
+                    RequireHealthyWindow();
+                }
+                catch (Exception exception)
+                {
+                    observationLogger.LogError(exception,
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                        "CaseAssertionFailed", "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation", "case_assertions", "failed", "case_execution_failed");
+                    authorizationFailed = IsObservedAuthorizationFailure(exception, diagnosticCapture.SnapshotDiagnostics(), guard.SnapshotDiagnostics());
+                    nativeFailureCount++;
+                    caseFailure = exception is OperationCanceledException ? "native_case_deadline_exceeded"
+                        : exception is SqlException sqlError ? "sql_error_" + sqlError.Number
+                        : graph is { IsComposed: false } ? "current_corpus_source_meaning_unavailable"
+                        : "native_case_assertion_failed";
+                }
+                var nativeCounts = new Dictionary<string, long>();
+                if (graph is not null)
+                {
+                    nativeCounts["GraphNodes"] = graph.Nodes.Count;
+                    nativeCounts["GraphRelations"] = graph.Relations.Count;
+                    nativeCounts["UnknownComponents"] = graph.UnknownSurfaceComponents.Count;
+                }
+                if (inference is not null) nativeCounts["NativeEvidenceCount"] = inference.EvidenceCount;
+                var nativeEvidence = CaptureWindow(proofCase.Reference, nativeCounts);
+                var nativeDiagnosis = DiagnoseObservedFailure(caseFailure is null ? "passed" : "failed", "native_current_corpus",
+                    caseFailure, proofCase.ExpectNative, nativeEvidence.StageEvents, guard.SnapshotDiagnostics().FailedEvents, guard.SnapshotDiagnostics().Records);
+                if (caseFailure is not null) firstFailureDiagnosis ??= nativeDiagnosis;
+                cases.Add(new
+                {
+                    DiagnosticEvidence = nativeEvidence, FailureDiagnosis = nativeDiagnosis,
+                    Category = proofCase.Reference, Status = caseFailure is null ? "passed" : "failed",
+                    FailureCode = caseFailure, ExpectedNative = proofCase.ExpectNative,
+                    NativeSupported = inference?.Supported, NativeReason = inference?.ReasonCode is null ? null : LegendConnectTelemetry.NormalizeDiagnosticReason(inference.ReasonCode),
+                    EvidenceCount = inference?.EvidenceCount, EvidenceStandard = SafeObservationCode(inference?.EvidenceStandard),
+                    ArticulationMode = SafeObservationCode(inference?.ArticulationMode), GraphComposed = graph?.IsComposed,
+                    GraphReason = graph?.ReasonCode is null ? null : LegendConnectTelemetry.NormalizeDiagnosticReason(graph.ReasonCode), GraphNodeCount = graph?.Nodes.Count,
+                    GraphRelationCount = graph?.Relations.Count, UnknownComponentCount = graph?.UnknownSurfaceComponents.Count,
+                    AnswerSha256 = inference?.Answer is { Length: > 0 } answer
+                        ? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(answer))) : null,
+                    ProviderClientCount = external.CreateClientCalls, ProviderHttpCallCount = external.SendCalls,
+                    ElapsedMilliseconds = Stopwatch.GetElapsedTime(caseStart).TotalMilliseconds
+                });
+                if (authorizationFailed) throw new UnauthorizedAccessException("Observation authorization failed.");
+                deadline.Token.ThrowIfCancellationRequested();
+            }
+            RequireObservationCasesPassed(ref phase, sectionFailureCount, nativeFailureCount);
+            Assert.Equal(0, saves.Attempts);
+            Assert.Equal(0, guard.BlockedCommands);
+            Assert.True(guard.SelectCommands > 0);
+            status = "passed";
+        }
+        catch (Exception exception)
+        {
+            observationLogger.LogError(exception,
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                "CaseAssertionFailed", "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation", "case_assertions", "failed", "case_execution_failed");
+            // Never export raw SQL exceptions, row content, identities or credentials.
+            failureCode = exception is OperationCanceledException ? "observation_deadline_exceeded"
+                : exception is SqlException sqlError ? "sql_error_" + sqlError.Number
+                : "observation_" + phase + "_failed";
+        }
+        finally
+        {
+            if (!windowCaptured)
+            {
+                var evidence = CaptureWindow("observation-" + phase);
+                firstFailureDiagnosis ??= DiagnoseObservedFailure(status, phase, failureCode, null,
+                    evidence.StageEvents, guard.SnapshotDiagnostics().FailedEvents, guard.SnapshotDiagnostics().Records);
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
+            await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new
+            {
+                Version = "candidate-select-observation-v2", CandidateSha = candidateSha,
+                DiagnosticsVersion = "legend-runtime-diagnostic-v1",
+                DiagnosticWindows = diagnosticWindows, FailureDiagnosis = firstFailureDiagnosis,
+                SqlFailureCount = diagnosticWindows.Sum(item =>
+                    ((ReadOnlyLegendDbCommandInterceptor.SqlCommandDiagnosticSnapshot)item.SqlCommands).FailedEvents + item.StageEvents.SqlFailureEvents),
+                DiagnosticsTruncated = diagnosticWindows.Any(item => item.StageEvents.Truncated ||
+                    ((ReadOnlyLegendDbCommandInterceptor.SqlCommandDiagnosticSnapshot)item.SqlCommands).Truncated),
+                RunIdentity = runIdentity, StartedUtc = startedUtc, CompletedUtc = DateTime.UtcNow,
+                Status = status, FailureCode = failureCode, FailedPhase = status == "passed" ? null : phase,
+                Authority = "non-authoritative", DeployedSha = "unavailable",
+                Coverage = coverage,
+                CapabilityLimitations = new[] { "no_chat_or_durable_discourse_execution", "no_device_or_concurrency_proof", "no_deployed_sha_proof" },
+                ProviderClientCount = external.CreateClientCalls, ProviderHttpCallCount = external.SendCalls,
+                ExecutedCases = cases.Count, CaseResults = cases,
+                SqlPrincipalVerified = phase != "connection" && phase != "sql_principal",
+                SelectCommandCount = guard.SelectCommands, BlockedCommandCount = guard.BlockedCommands,
+                SaveChangesAttempts = saves.Attempts, QueryTimeoutSeconds = queryTimeoutSeconds,
+                ObservationTimeoutSeconds = observationTimeoutSeconds,
+                ElapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        Assert.True(status == "passed", failureCode ?? "Candidate observation failed.");
+    }
+
+    private static void RequireObservationCasesPassed(ref string phase, int sectionFailureCount, int nativeFailureCount)
+    {
+        phase = "aggregate_assertions";
+        Assert.Equal(0, sectionFailureCount + nativeFailureCount);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    [InlineData(1, 1)]
+    public void ObservationAggregateFailure_IsNotAttributedToLastVisitedCase(int sectionFailures, int nativeFailures)
+    {
+        var phase = "native-only-provider-isolation";
+        Assert.Throws<Xunit.Sdk.EqualException>(() =>
+            RequireObservationCasesPassed(ref phase, sectionFailures, nativeFailures));
+        Assert.Equal("aggregate_assertions", phase);
+        RequireObservationCasesPassed(ref phase, 0, 0);
+    }
+
+    [Theory]
+    [InlineData("exact_semantic_anchors", "LoadExactActiveSemanticAnchorIdsAsync")]
+    [InlineData("indexed_semantic_anchors", "LoadIndexedSemanticAnchorIdsAsync")]
+    [InlineData("reusable_meaning_candidates", "ReadReusableMeaningCandidatesAsync")]
+    [InlineData("source_slot_examples", "AnalyzeDeclaredSourceSlotsAsync")]
+    [InlineData("source_slot_declarations", "AnalyzeDeclaredSourceSlotsAsync")]
+    [InlineData("source_slot_nodes", "AnalyzeDeclaredSourceSlotsAsync")]
+    [InlineData("source_slot_relations", "AnalyzeDeclaredSourceSlotsAsync")]
+    [InlineData("computed_structure_examples", "LoadCurrentComputedStructuresAsync")]
+    [InlineData("computed_structure_nodes", "LoadCurrentComputedStructuresAsync")]
+    [InlineData("computed_structure_relations", "LoadCurrentComputedStructuresAsync")]
+    public void SqlQueryAttribution_UsesOnlyStaticLabelsWithoutChangingFingerprint(string operation, string authority)
+    {
+        const string sql = "SELECT 1 AS Value";
+        var tagged = "-- LEGEND_QUERY:" + operation + "\n\n" + sql;
+        var attribution = ReadOnlyLegendDbCommandInterceptor.ReadQueryAttribution(tagged);
+        Assert.Equal("LegendConnectCurriculumService." + authority, attribution.Authority);
+        Assert.Equal(operation, attribution.Operation);
+        Assert.Equal(ReadOnlyLegendDbCommandInterceptor.QueryFingerprint(sql),
+            ReadOnlyLegendDbCommandInterceptor.QueryFingerprint(tagged));
+        var diagnosis = DiagnoseObservedFailure("failed", "native_current_corpus", "authority_call_failed", true,
+            new RuntimeDiagnosticSnapshot(0, 0, false, 0, 0, []), 1,
+            [new ReadOnlyLegendDbCommandInterceptor.SqlCommandDiagnosticRecord(1, "fingerprint", "failed", 15000,
+                "SqlException", null, -2, attribution.Authority, attribution.Operation)]);
+        Assert.Equal(attribution.Authority, diagnosis.AuthorityMethod);
+        Assert.Equal("sql_command", diagnosis.ObservedStage);
+        Assert.Equal("observed_failure_only", diagnosis.RootCauseStatus);
+        Assert.Contains("no plan was captured", diagnosis.NextVerification);
+    }
+
+    [Theory]
+    [InlineData("-- LEGEND_QUERY:private-customer-secret\nSELECT 1")]
+    [InlineData("-- LEGEND_QUERY:source_slot_nodes private-customer-secret\nSELECT 1")]
+    [InlineData("SELECT '-- LEGEND_QUERY:source_slot_nodes' AS Value")]
+    [InlineData("-- LEGEND_QUERY:source_slot_nodes\n-- LEGEND_QUERY:source_slot_relations\nSELECT 1")]
+    [InlineData("SELECT 1")]
+    public void SqlQueryAttribution_RejectsUnknownAmbiguousAndValueEmbeddedLabels(string sql)
+    {
+        var attribution = ReadOnlyLegendDbCommandInterceptor.ReadQueryAttribution(sql);
+        Assert.Null(attribution.Authority);
+        Assert.Null(attribution.Operation);
+    }
+
+    private static ProductionNativeProofCase[] HeldOutProductionNativeCases() =>
+    [
+        ProductionNativeProofCase.Positive("held-out-competing-hypotheses", "held_out_paraphrase",
+            "Keep both hypotheses; plan an experiment.", mustBeHeldOut: true),
+        ProductionNativeProofCase.Positive("held-out-discriminating-check", "held_out_paraphrase",
+            "Retain the competing explanations; devise a discriminating check.", mustBeHeldOut: true)
+    ];
+
+    private static ProductionNativeProofCase NativeOnlyProductionIsolationCase() =>
+        ProductionNativeProofCase.Negative("native-only-provider-isolation", "native_only_isolation",
+            "Uncatalogued zephyr request.");
+
+    private sealed class ProductionMatrixFactAttribute : FactAttribute
+    {
+        public ProductionMatrixFactAttribute()
+        {
+            var required = string.Equals(Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_PROOF_REQUIRED"),
+                "true", StringComparison.OrdinalIgnoreCase);
+            var isolated = string.Equals(Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY"),
+                "true", StringComparison.OrdinalIgnoreCase);
+            if (!required && !isolated && string.IsNullOrWhiteSpace(
+                    Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_READONLY_CONNECTION")))
+                Skip = "NOT_CONFIGURED: canonical SQL matrix requires its selected live SQL authority.";
+        }
+    }
+
+    private sealed class ProductionObservationFactAttribute : FactAttribute
+    {
+        public ProductionObservationFactAttribute()
+        {
+            if (!string.Equals(Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_OBSERVATION_REQUIRED"),
+                    "true", StringComparison.OrdinalIgnoreCase))
+                Skip = "NOT_CONFIGURED: candidate SQL observation requires an explicitly isolated read-only run.";
+        }
+    }
+
+    private static string RequiredObservationSetting(string name) =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))
+            ? Environment.GetEnvironmentVariable(name)!
+            : throw new InvalidOperationException("NOT_CONFIGURED: missing " + name + ".");
+
+    private sealed class ObservationSaveGuard : SaveChangesInterceptor
+    {
+        public int Attempts { get; private set; }
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+        {
+            Attempts++;
+            throw new InvalidOperationException("Candidate SQL observation rejected SaveChanges.");
+        }
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            return ValueTask.FromException<InterceptionResult<int>>(
+                new InvalidOperationException("Candidate SQL observation rejected SaveChanges."));
+        }
+    }
+
+    private static async Task RequireSelectOnlyPrincipalAsync(MasterAppDbContext db, CancellationToken token)
+    {
+        // A contained SQL user cannot inherit login/server authority. Full metadata
+        // visibility is mandatory so invisible securables cannot conceal grants.
+        var identityVerified = await db.Database.SqlQueryRaw<int>("""
+            SELECT CAST(CASE WHEN USER_NAME() NOT IN ('dbo', 'guest') AND SCHEMA_NAME() = 'dbo'
+              AND EXISTS (SELECT 1 FROM sys.database_principals
+                WHERE principal_id = USER_ID() AND type = 'S' AND authentication_type_desc = 'DATABASE')
+              AND HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'VIEW DEFINITION') = 1
+              AND NOT EXISTS (SELECT 1 FROM sys.user_token AS token
+                JOIN sys.database_principals AS principal ON token.principal_id = principal.principal_id
+                WHERE principal.type = 'R' AND principal.name NOT IN ('public', 'db_datareader', 'db_denydatawriter'))
+              THEN 1 ELSE 0 END AS int) AS [Value]
+            """).SingleAsync(token);
+        Assert.Equal(1, identityVerified);
+        var permissions = await db.Database.SqlQueryRaw<ObservationPermission>("""
+            SELECT CAST('DATABASE' AS nvarchar(32)) COLLATE DATABASE_DEFAULT AS [Scope], permission_name COLLATE DATABASE_DEFAULT AS [PermissionName], CAST(0 AS bit) AS [GrantOption]
+              FROM sys.fn_my_permissions(NULL, 'DATABASE')
+            UNION ALL
+            SELECT 'SCHEMA' COLLATE DATABASE_DEFAULT, permission.permission_name COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
+              FROM sys.schemas AS scope
+              CROSS APPLY sys.fn_my_permissions(QUOTENAME(scope.name), 'SCHEMA') AS permission
+            UNION ALL
+            SELECT CASE WHEN permission.subentity_name = '' THEN 'OBJECT' ELSE 'COLUMN' END COLLATE DATABASE_DEFAULT,
+              permission.permission_name COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
+              FROM sys.objects AS scope
+              CROSS APPLY sys.fn_my_permissions(QUOTENAME(SCHEMA_NAME(scope.schema_id)) + '.' + QUOTENAME(scope.name), 'OBJECT') AS permission
+              WHERE scope.is_ms_shipped = 0
+            UNION ALL
+            SELECT 'EXPLICIT_GRANT' COLLATE DATABASE_DEFAULT, permission.permission_name COLLATE DATABASE_DEFAULT, CAST(CASE WHEN permission.state = 'W' THEN 1 ELSE 0 END AS bit)
+              FROM sys.database_permissions AS permission
+              JOIN sys.user_token AS token ON permission.grantee_principal_id = token.principal_id
+              WHERE permission.state IN ('G', 'W')
+            UNION ALL
+            SELECT 'OWNERSHIP' COLLATE DATABASE_DEFAULT, 'CONTROL' COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
+              FROM sys.schemas AS scope JOIN sys.user_token AS token ON scope.principal_id = token.principal_id
+            UNION ALL
+            SELECT 'OWNERSHIP' COLLATE DATABASE_DEFAULT, 'CONTROL' COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
+              FROM sys.objects AS scope JOIN sys.user_token AS token ON scope.principal_id = token.principal_id
+            UNION ALL
+            SELECT 'OWNERSHIP' COLLATE DATABASE_DEFAULT, 'CONTROL' COLLATE DATABASE_DEFAULT, CAST(0 AS bit)
+              FROM sys.database_principals AS scope JOIN sys.user_token AS token ON scope.owning_principal_id = token.principal_id
+            """).ToListAsync(token);
+        Assert.NotEmpty(permissions);
+        Assert.All(permissions, permission => Assert.True(IsReadOnlyPermission(permission),
+            "The SQL principal has mutation, delegation or unrecognized authority at scope " + permission.Scope + "."));
+    }
+
+    private static (string CandidateSha, string RunIdentity, string ResultPath) RequireCandidateEvidenceIdentity()
+    {
+        var candidateSha = RequiredObservationSetting("LEGEND_VALIDATION_CANDIDATE_SHA");
+        var runIdentity = RequiredObservationSetting("LEGEND_VALIDATION_RUN_IDENTITY");
+        var resultPath = RequiredObservationSetting("LEGEND_VALIDATION_RESULT_PATH");
+        Assert.Matches("^[0-9a-f]{40}$", candidateSha);
+        Assert.False(File.Exists(resultPath), "Stale candidate observation evidence exists.");
+        foreach (var assembly in new[] { typeof(LegendFounderCurriculumSqlServerE2ETests).Assembly,
+                     typeof(LegendConnectOperations).Assembly, typeof(FounderLegendConnectService).Assembly })
+        {
+            var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            Assert.True(version?.EndsWith("+" + candidateSha, StringComparison.Ordinal) == true,
+                "The executed assembly is not bound to the exact candidate commit.");
+        }
+        return (candidateSha, runIdentity, resultPath);
+    }
+
+    private static async Task RequireSafePhysicalSourcesAsync(MasterAppDbContext db,
+        ReadOnlyLegendDbCommandInterceptor guard, CancellationToken token)
+    {
+        // The EF model remains the only table mapping. Only existing physical
+        // local tables without indirect computation/security modules are admitted.
+        var mappedTables = db.Model.GetEntityTypes()
+            .Where(item => item.GetTableName() is not null)
+            .Select(item => (item.GetSchema() ?? "dbo") + "." + item.GetTableName())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var physicalTables = await db.Database.SqlQueryRaw<ObservationPhysicalTable>("""
+            SELECT schemaName.name AS [SchemaName], target.name AS [TableName]
+            FROM sys.tables AS target JOIN sys.schemas AS schemaName ON target.schema_id = schemaName.schema_id
+            WHERE target.is_external = 0
+            AND NOT EXISTS (SELECT 1 FROM sys.computed_columns AS col WHERE col.object_id = target.object_id)
+            AND NOT EXISTS (SELECT 1 FROM sys.security_predicates AS predicate WHERE predicate.target_object_id = target.object_id)
+            """).ToListAsync(token);
+        var allowedTables = physicalTables
+            .Where(item => mappedTables.Contains(item.SchemaName + "." + item.TableName))
+            .SelectMany(item => item.SchemaName == "dbo"
+                ? new[] { item.SchemaName + "." + item.TableName, item.TableName }
+                : new[] { item.SchemaName + "." + item.TableName }).ToArray();
+        Assert.NotEmpty(allowedTables);
+        guard.AllowPhysicalTables(allowedTables);
+    }
+
+    private static string? SafeObservationCode(string? code)
+    {
+        if (code is null) return null;
+        return code.Length is > 0 and <= 128 && code.All(character =>
+                char.IsAsciiLetterOrDigit(character) || character is '_' or '-')
+            ? code
+            : "withheld_" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code)));
+    }
+
+    private static ProductionNativeProofResult ToIsolatedMatrixResult(ProductionNativeProofResult result) =>
+        result with
+        {
+            Reference = SafeObservationCode(result.Reference)!, Category = SafeObservationCode(result.Category)!,
+            Phase = SafeObservationCode(result.Phase)!, Status = SafeObservationCode(result.Status)!,
+            Failure = result.Failure is null ? null : "Diagnostic: " + SafeObservationCode(result.FailureCode),
+            FailureKind = SafeObservationCode(result.FailureKind), FailureCode = SafeObservationCode(result.FailureCode),
+            ReasonCode = result.ReasonCode is null ? null : LegendConnectTelemetry.NormalizeDiagnosticReason(result.ReasonCode), ResponseAuthority = SafeObservationCode(result.ResponseAuthority),
+            Stage = SafeObservationCode(result.Stage)
+        };
+
     [Fact]
+    public void IsolatedMatrixEvidence_WithholdsRawFailureAndUnexpectedDiagnosticText()
+    {
+        var original = ProductionNativeProofResult.FailedCase("fixed-test-label", "held_out_paraphrase", true,
+            "SQL failure password=private-sentinel-secret", 0, 1) with
+        {
+            ReasonCode = "Unexpected private record content.", ResponseAuthority = "Unexpected private authority text."
+        };
+        var serialized = JsonSerializer.Serialize(ToIsolatedMatrixResult(original));
+        Assert.DoesNotContain("private-sentinel-secret", serialized);
+        Assert.DoesNotContain("private record", serialized);
+        Assert.DoesNotContain("private authority", serialized);
+        Assert.Contains("execution_failed", serialized);
+        Assert.Contains("withheld_", serialized);
+        Assert.Contains("private-sentinel-secret", original.Failure);
+        Assert.Equal("source_meaning_unavailable", SafeObservationCode("source_meaning_unavailable"));
+    }
+
+    private sealed class ObservationPhysicalTable
+    {
+        public string SchemaName { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
+    }
+
+    private sealed class ObservationPermission
+    {
+        public string Scope { get; set; } = string.Empty;
+        public string PermissionName { get; set; } = string.Empty;
+        public bool GrantOption { get; set; }
+    }
+
+    private static bool IsReadOnlyPermission(ObservationPermission permission) =>
+        !permission.GrantOption &&
+        (permission.PermissionName is "SELECT" or "CONNECT" or "VIEW DEFINITION"
+            or "VIEW ANY COLUMN MASTER KEY DEFINITION" or "VIEW ANY COLUMN ENCRYPTION KEY DEFINITION" ||
+         // Current Azure SQL reports these read-only metadata subpermissions
+         // with the required database VIEW DEFINITION. Admit only the observed
+         // database scope; this does not grant permissions or admit delegation.
+         (permission.Scope == "DATABASE" && permission.PermissionName is
+             "VIEW SECURITY DEFINITION" or "VIEW PERFORMANCE DEFINITION"));
+
+    [Theory]
+    [InlineData("VIEW SECURITY DEFINITION")]
+    [InlineData("VIEW PERFORMANCE DEFINITION")]
+    public void ReadOnlyPrincipalGuard_AdmitsMetadataSubpermissionsOnlyAtDatabaseWithoutDelegation(string permission)
+    {
+        Assert.True(IsReadOnlyPermission(new ObservationPermission
+            { Scope = "DATABASE", PermissionName = permission }));
+        Assert.False(IsReadOnlyPermission(new ObservationPermission
+            { Scope = "DATABASE", PermissionName = permission, GrantOption = true }));
+        foreach (var scope in new[] { "SCHEMA", "OBJECT", "COLUMN", "EXPLICIT_GRANT", "OWNERSHIP", "SERVER", "", "database" })
+        {
+            Assert.False(IsReadOnlyPermission(new ObservationPermission
+                { Scope = scope, PermissionName = permission }));
+            Assert.False(IsReadOnlyPermission(new ObservationPermission
+                { Scope = scope, PermissionName = permission, GrantOption = true }));
+        }
+        foreach (var rejected in new[] { "INSERT", "UPDATE", "DELETE", "ALTER", "EXECUTE", "CONTROL", "IMPERSONATE",
+                     "VIEW DATABASE SECURITY STATE", "VIEW DATABASE PERFORMANCE STATE", "FUTURE_PERMISSION" })
+            Assert.False(IsReadOnlyPermission(new ObservationPermission
+                { Scope = "DATABASE", PermissionName = rejected }));
+    }
+
+    [Fact]
+    public void ReadOnlyObservationGuards_RetainCaughtWriteAttempts()
+    {
+        var commands = new ReadOnlyLegendDbCommandInterceptor();
+        using var command = new SqlCommand("DELETE FROM dbo.Records");
+        Assert.Throws<InvalidOperationException>(() => commands.NonQueryExecuting(command, null!, default));
+        Assert.Equal(1, commands.BlockedCommands);
+        Assert.Equal(0, commands.SelectCommands);
+        var saves = new ObservationSaveGuard();
+        Assert.Throws<InvalidOperationException>(() => saves.SavingChanges(null!, default));
+        Assert.Equal(1, saves.Attempts);
+    }
+
+    [Theory]
+    [InlineData("DATABASE", "INSERT")]
+    [InlineData("SCHEMA", "ALTER")]
+    [InlineData("OBJECT", "EXECUTE")]
+    [InlineData("COLUMN", "UPDATE")]
+    [InlineData("EXPLICIT_GRANT", "IMPERSONATE")]
+    [InlineData("OWNERSHIP", "CONTROL")]
+    public void ReadOnlyPrincipalGuard_RejectsMutationAcrossSecurableScopes(string scope, string permission) =>
+        Assert.False(IsReadOnlyPermission(new ObservationPermission { Scope = scope, PermissionName = permission }));
+
+    [Fact]
+    public void ReadOnlyPrincipalGuard_RejectsSelectDelegationAndUnknownPermissions()
+    {
+        Assert.False(IsReadOnlyPermission(new ObservationPermission { PermissionName = "SELECT", GrantOption = true }));
+        Assert.False(IsReadOnlyPermission(new ObservationPermission { PermissionName = "FUTURE_PERMISSION" }));
+        Assert.True(IsReadOnlyPermission(new ObservationPermission { PermissionName = "SELECT" }));
+    }
+
+    [Theory]
+    [InlineData("SELECT * INTO dbo.copy FROM dbo.source")]
+    [InlineData("SELECT 1; DELETE FROM dbo.source")]
+    [InlineData("SELECT 1 SELECT 2")]
+    [InlineData("SELECT NEXT VALUE FOR dbo.sequence")]
+    [InlineData("SELECT * FROM OPENQUERY(remote, 'SELECT 1')")]
+    [InlineData("SELECT * FROM OPENROWSET('provider', 'connection', 'SELECT 1')")]
+    [InlineData("SELECT * FROM otherdb.dbo.source")]
+    [InlineData("EXEC dbo.procedure")]
+    [InlineData("SELECT dbo.side_effect_function()")]
+    [InlineData("SELECT * FROM dbo.side_effect_table_function()") ]
+    public void ReadOnlySqlGuard_RejectsMutationAndExternalSelectForms(string sql) =>
+        Assert.Throws<InvalidOperationException>(() => ReadOnlyLegendDbCommandInterceptor.ValidateSelect(sql));
+
+    [Fact]
+    public void ReadOnlySqlGuard_RejectsUnverifiedIndirectTableSources()
+    {
+        var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dbo.VerifiedTable" };
+        ReadOnlyLegendDbCommandInterceptor.ValidateSelect("SELECT [Id] FROM dbo.VerifiedTable", tables);
+        Assert.Throws<InvalidOperationException>(() => ReadOnlyLegendDbCommandInterceptor.ValidateSelect(
+            "SELECT [Id] FROM dbo.UnverifiedSynonym", tables));
+    }
+
+    [Theory]
+    [InlineData("-- query tag\nSELECT [Name] FROM [dbo].[Rows] WHERE [Name] = @name")]
+    [InlineData("SELECT 'INTO; DELETE' AS [Value]")]
+    [InlineData("SELECT COUNT(*) FROM (SELECT [Id] FROM [dbo].[Rows]) AS [rows]")]
+    public void ReadOnlySqlGuard_AcceptsSingleLocalSelect(string sql) =>
+        ReadOnlyLegendDbCommandInterceptor.ValidateSelect(sql);
+
+    [ProductionMatrixFact]
     public async Task ProductionReadOnlyNativeProofMatrix()
     {
         const string matrixVersion = "lai-027-029-v1";
@@ -729,6 +1414,17 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_PROOF_REQUIRED"),
             "true",
             StringComparison.OrdinalIgnoreCase);
+        var isolated = string.Equals(Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY"),
+            "true", StringComparison.OrdinalIgnoreCase);
+        if (isolated) Assert.True(proofRequired, "Isolated matrix execution must require complete production proof evidence.");
+        var matrixStartedUtc = DateTime.UtcNow;
+        var matrixStarted = Stopwatch.GetTimestamp();
+        (string CandidateSha, string RunIdentity, string ResultPath)? isolatedIdentity =
+            isolated ? RequireCandidateEvidenceIdentity() : null;
+        using var matrixDeadline = isolated ? new CancellationTokenSource(TimeSpan.FromSeconds(600)) : null;
+        var matrixToken = matrixDeadline?.Token ?? CancellationToken.None;
+        var isolatedPhase = "connection";
+        var isolatedPrincipalVerified = false;
         var requestedMatrixVersion = Environment.GetEnvironmentVariable(
             "LEGEND_PRODUCTION_PROOF_MATRIX_VERSION");
         if (!string.IsNullOrWhiteSpace(requestedMatrixVersion))
@@ -762,14 +1458,43 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 ApplicationName = "LEGEND production native zero-write proof matrix",
                 ApplicationIntent = ApplicationIntent.ReadOnly
             };
-            var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
+            if (isolated)
+            {
+                connection.ConnectTimeout = 15;
+                connection.Pooling = false;
+                connection.TrustServerCertificate = false;
+                connection.Encrypt = SqlConnectionEncryptOption.Mandatory;
+            }
+            var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor(restrictPhysicalTables: isolated);
+            var productionSaves = new ObservationSaveGuard();
+            using var diagnosticCapture = new ExceptionCapturingLoggerProvider();
+            using var diagnosticLoggerFactory = LoggerFactory.Create(builder =>
+                builder.SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
             await using var db = new MasterAppDbContext(
                 new DbContextOptionsBuilder<MasterAppDbContext>()
-                    .UseSqlServer(connection.ConnectionString)
+                    .UseSqlServer(connection.ConnectionString, options =>
+                    {
+                        if (isolated) options.CommandTimeout(15);
+                    })
                     .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                    .AddInterceptors(readOnlyGuard)
+                    .UseLoggerFactory(diagnosticLoggerFactory)
+                    .AddInterceptors(readOnlyGuard, productionSaves)
                     .Options);
 
+            // Every production proof uses a database-enforced SELECT-only
+            // principal. Keep its audited connection open for all subsequent
+            // business reads; ApplicationIntent alone is not authorization.
+            await db.Database.OpenConnectionAsync(matrixToken);
+            isolatedPhase = "sql_principal";
+            await RequireSelectOnlyPrincipalAsync(db, matrixToken);
+            isolatedPrincipalVerified = true;
+            if (isolated)
+            {
+                isolatedPhase = "sql_sources";
+                await RequireSafePhysicalSourcesAsync(db, readOnlyGuard, matrixToken);
+            }
+
+            isolatedPhase = "founder_identity";
             var founderId = Environment.GetEnvironmentVariable(
                 "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
             Assert.False(
@@ -779,7 +1504,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     .AsNoTracking()
                     .AnyAsync(item => item.IsActive &&
                         item.AgentUserId != null &&
-                        item.AgentUserId.ToLower() == founderId!.ToLower()),
+                        item.AgentUserId.ToLower() == founderId!.ToLower(), matrixToken),
                 "The configured production Founder OID has no active AgentProfile.");
             Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
 
@@ -795,8 +1520,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var corpus = new LegendConnectCorpusService(
                 db,
                 registry,
-                NullLogger<LegendConnectCorpusService>.Instance);
-            var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+                diagnosticLoggerFactory.CreateLogger<LegendConnectCorpusService>());
+            var curriculum = new LegendConnectCurriculumService(db, registry, corpus,
+                logger: diagnosticLoggerFactory.CreateLogger<LegendConnectCurriculumService>());
             var operations = new LegendConnectOperations(
                 db,
                 registry,
@@ -822,24 +1548,39 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NormalizedEmail = "legend-production-proof-discourse@legend.local",
                 IsActive = true
             });
-            await discourseDb.SaveChangesAsync();
+            await discourseDb.SaveChangesAsync(matrixToken);
             var discourseProfiles = new AgentProfileAccessResolver(discourseDb);
             var discourse = new LegendFounderAiDiscourseStateService(
                 discourseDb,
                 discourseProfiles,
                 operations);
+            // The SQL matrix must exercise the same governed language router
+            // as serving. Only its external boundary is replaced; an attempted
+            // provider call remains counted even when a caller catches it.
+            var translationBoundary = new CountingForbiddenTranslationProvider();
+            var translation = new LegendConnectTranslationRouter(
+                translationBoundary,
+                registry,
+                new TranslationCapacityAuthority(
+                    db, configuration, diagnosticLoggerFactory.CreateLogger<TranslationCapacityAuthority>()),
+                diagnosticLoggerFactory.CreateLogger<LegendConnectTranslationRouter>(),
+                structuralComposition: curriculum);
             var chat = new LegendFounderAiConversationService(
                 factory,
                 configuration,
                 founderLegend,
-                NullLogger<LegendFounderAiConversationService>.Instance,
+                diagnosticLoggerFactory.CreateLogger<LegendFounderAiConversationService>(),
                 discourse,
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                translation);
 
-            async Task<string?> FindReasoningSourceAsync(string operatorPrefix)
+            isolatedPhase = "fixture_preflight";
+            diagnosticCapture.ResetDiagnostics();
+            readOnlyGuard.ResetDiagnostics();
+            var prerequisiteCounts = new Dictionary<string, IReadOnlyDictionary<string, long>>(StringComparer.Ordinal);
+            async Task<string?> FindReasoningSourceAsync(string operatorPrefix, string reference)
             {
-                var text = await (
+                var sources = (
                     from relation in db.LegendFounderSemanticExampleRelationEvidence.AsNoTracking()
                     join source in db.LegendCurriculumExamples.AsNoTracking()
                         on relation.SourceCurriculumExampleId equals source.Id
@@ -857,7 +1598,13 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         unit.IsTrainingEligible &&
                         unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
                     orderby relation.RelationshipSemanticIdentity, unit.NormalizedHash
-                    select unit.Text).FirstOrDefaultAsync();
+                    select new { unit.Id, unit.Text });
+                var eligibleCount = await sources.Select(item => item.Id).Distinct().LongCountAsync(matrixToken);
+                prerequisiteCounts[reference] = new Dictionary<string, long>
+                {
+                    ["EligibleDistinctSourceUnits"] = eligibleCount
+                };
+                var text = await sources.Select(item => item.Text).FirstOrDefaultAsync(matrixToken);
                 return string.IsNullOrWhiteSpace(text) ? null : text;
             }
 
@@ -872,7 +1619,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 string? source;
                 try
                 {
-                    source = await FindReasoningSourceAsync(operatorPrefix);
+                    source = await FindReasoningSourceAsync(operatorPrefix, reference);
                 }
                 catch (Exception exception)
                 {
@@ -914,7 +1661,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             string? audienceConstraintSource = null;
             try
             {
-                audienceConstraintSource = await (
+                var audienceSources = (
                     from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
                     join source in db.LegendCurriculumExamples.AsNoTracking()
                         on transition.SourceCurriculumExampleId equals source.Id
@@ -934,7 +1681,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                         resultVariation.Dimension == "response_audience"
                     orderby resultVariation.Value, sourceUnit.NormalizedHash
-                    select sourceUnit.Text).FirstOrDefaultAsync();
+                    select new { sourceUnit.Id, sourceUnit.Text });
+                prerequisiteCounts["fixture-governed-audience-constraints"] = new Dictionary<string, long>
+                {
+                    ["EligibleDistinctSourceUnits"] = await audienceSources.Select(item => item.Id).Distinct().LongCountAsync(matrixToken)
+                };
+                audienceConstraintSource = await audienceSources.Select(item => item.Text).FirstOrDefaultAsync(matrixToken);
             }
             catch (Exception exception)
             {
@@ -956,19 +1708,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 }
             }
 
-            var heldOutCases = new[]
-            {
-                ProductionNativeProofCase.Positive(
-                    "held-out-competing-hypotheses",
-                    "held_out_paraphrase",
-                    "Keep both hypotheses; plan an experiment.",
-                    mustBeHeldOut: true),
-                ProductionNativeProofCase.Positive(
-                    "held-out-discriminating-check",
-                    "held_out_paraphrase",
-                    "Retain the competing explanations; devise a discriminating check.",
-                    mustBeHeldOut: true)
-            };
+            var heldOutCases = HeldOutProductionNativeCases();
             var crossFamilyCases = new[]
             {
                 ProductionNativeProofCase.Negative(
@@ -1002,7 +1742,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
                     founder,
                     prompt,
-                    proofCase.NativeSourceLanguageCode);
+                    proofCase.NativeSourceLanguageCode, matrixToken);
+                prerequisiteCounts[proofCase.Reference] = new Dictionary<string, long>
+                {
+                    ["GraphComposed"] = graph.IsComposed ? 1 : 0,
+                    ["GraphNodes"] = graph.Nodes.Count,
+                    ["GraphRelations"] = graph.Relations.Count,
+                    ["UnknownComponents"] = graph.UnknownSurfaceComponents.Count
+                };
                 return ProductionMeaningFixtureFailure(
                     prompt,
                     graph,
@@ -1028,10 +1775,18 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     declaredSourceLanguageCode: " en_US ",
                     nativeSourceLanguageCode: "en",
                     expectedEvidenceStandard: "HigherStandard"),
-                ProductionNativeProofCase.Negative(
-                    "native-only-provider-isolation",
-                    "native_only_isolation",
-                    "Uncatalogued zephyr request.")
+                ProductionNativeProofCase.Positive(
+                    "automatic-language-governed-greeting",
+                    "language_routing",
+                    "Hello.",
+                    declaredSourceLanguageCode: null,
+                    expectedEvidenceStandard: "HigherStandard"),
+                ProductionNativeProofCase.Positive(
+                    "automatic-language-native-arithmetic",
+                    "language_routing",
+                    "What is 147 minus 26?",
+                    declaredSourceLanguageCode: null),
+                NativeOnlyProductionIsolationCase()
             };
             foreach (var heldOutCase in heldOutCases)
             {
@@ -1098,12 +1853,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     var selectorGraph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
                         founder,
                         discourseCase.Messages[^1].Content!,
-                        discourseCase.NativeSourceLanguageCode);
+                        discourseCase.NativeSourceLanguageCode, matrixToken);
                     var rules = await operations.GetProductionDiscourseReferenceRulesAsync(
                         discourseCase.NativeSourceLanguageCode,
                         selectorGraph.Nodes.Select(item => item.SemanticSignature)
                             .Distinct(StringComparer.Ordinal)
-                            .ToArray());
+                            .ToArray(), matrixToken);
                     if (rules.Count != 1)
                     {
                         discourseFailure = rules.Count == 0
@@ -1118,17 +1873,18 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
                                 founder,
                                 message.Content ?? string.Empty,
-                                discourseCase.NativeSourceLanguageCode);
+                                discourseCase.NativeSourceLanguageCode, matrixToken);
                             await discourse.RecordObservationAsync(
                                 founder,
                                 preflightConversationId.ToString(),
                                 message.Role ?? string.Empty,
                                 graph,
+                                cancellationToken: matrixToken,
                                 sourceLanguageCode: discourseCase.NativeSourceLanguageCode);
                         }
                         var preflightState = await discourse.GetStateAsync(
                             founder,
-                            preflightConversationId.ToString());
+                            preflightConversationId.ToString(), matrixToken);
                         var selectorBindings = preflightState?.Turns.LastOrDefault()?.Bindings ?? [];
                         if (!selectorBindings.Any(item => item.ResolutionState == "bound"))
                         {
@@ -1214,6 +1970,30 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             };
             var results = new List<ProductionNativeProofResult>(fixtureFailures);
             results.AddRange(preflightFailures);
+            var preflightStageEvents = diagnosticCapture.SnapshotDiagnostics();
+            var preflightSqlCommands = readOnlyGuard.SnapshotDiagnostics();
+            IReadOnlyDictionary<string, long> CountsFor(string reference) =>
+                prerequisiteCounts.GetValueOrDefault(reference) ??
+                prerequisiteCounts.GetValueOrDefault("fixture-" + reference) ??
+                (reference.StartsWith("fixture-", StringComparison.Ordinal)
+                    ? prerequisiteCounts.GetValueOrDefault(reference["fixture-".Length..]) : null) ??
+                new Dictionary<string, long>();
+            if (preflightSqlCommands.FailedEvents > 0 || preflightSqlCommands.CanceledEvents > 0 ||
+                preflightSqlCommands.BlockedEvents > 0 || preflightStageEvents.SqlFailureEvents > 0)
+                results.Add(ProductionNativeProofResult.FailedFixture("matrix-preflight-sql-failure", "matrix_summary",
+                    "A SQL failure was observed during prerequisite inspection; later success cannot erase it."));
+            for (var index = 0; index < results.Count; index++)
+            {
+                var result = results[index];
+                results[index] = result with
+                {
+                    DiagnosticEvidence = new(preflightStageEvents, preflightSqlCommands,
+                        "matrix-preflight/sql", CountsFor(result.Reference)),
+                    FailureDiagnosis = DiagnoseObservedFailure(result.Status, result.Phase,
+                        result.FailureCode, result.ExpectedNative, preflightStageEvents,
+                        sqlFailureEvents: preflightSqlCommands.FailedEvents, sqlCommands: preflightSqlCommands.Records)
+                };
+            }
             var representedCategories = matrix.Select(item => item.Category)
                 .Concat(fixtureFailures.Select(item => item.Category))
                 .Concat(preflightFailures.Select(item => item.Category))
@@ -1249,7 +2029,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 _output.WriteLine(
                     $"MATRIX CASE FAILED: reference={fixtureFailure.Reference}; " +
                     $"category={fixtureFailure.Category}; phase=fixture; " +
-                    $"failure={fixtureFailure.Failure}; provider_clients=0; elapsed_ms=0");
+                    $"failure_code={SafeObservationCode(fixtureFailure.FailureCode)}; provider_clients=0; elapsed_ms=0");
             }
             foreach (var preflightFailure in preflightFailures)
             {
@@ -1257,7 +2037,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     $"MATRIX CASE FAILED: reference={preflightFailure.Reference}; " +
                     $"category={preflightFailure.Category}; phase=preflight; " +
                     $"failure_code={preflightFailure.FailureCode}; " +
-                    $"failure={preflightFailure.Failure}; provider_clients=0; elapsed_ms=0");
+                    "provider_clients=0; elapsed_ms=0");
             }
 
             var executed = preflightFailures.Count;
@@ -1266,25 +2046,36 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             async Task RecordDiscourseMessagesAsync(
                 Guid conversationId,
                 IReadOnlyList<LegendFounderAiChatMessage> messages,
-                string sourceLanguageCode)
+                string sourceLanguageCode,
+                CancellationToken cancellationToken)
             {
                 foreach (var message in messages)
                 {
                     var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
                         founder,
                         message.Content ?? string.Empty,
-                        sourceLanguageCode);
+                        sourceLanguageCode, cancellationToken);
                     await discourse.RecordObservationAsync(
                         founder,
                         conversationId.ToString(),
                         message.Role ?? string.Empty,
                         graph,
-                        sourceLanguageCode: sourceLanguageCode);
+                        cancellationToken: cancellationToken, sourceLanguageCode: sourceLanguageCode);
                 }
             }
 
+            isolatedPhase = "matrix_execution";
+            string? stopRemainingReason = null;
             foreach (var proofCase in matrix)
             {
+                diagnosticCapture.ResetDiagnostics();
+                readOnlyGuard.ResetDiagnostics();
+                var resultStart = results.Count;
+                prerequisiteCounts[proofCase.Reference] = new Dictionary<string, long>(CountsFor(proofCase.Reference))
+                {
+                    ["RequestMessageCount"] = proofCase.Messages.Count,
+                    ["DeclaredSourceLanguagePresent"] = proofCase.DeclaredSourceLanguageCode is null ? 0 : 1
+                };
                 var caseStarted = Stopwatch.GetTimestamp();
                 executed++;
                 try
@@ -1299,7 +2090,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 item.LanguageCode == proofCase.NativeSourceLanguageCode &&
                                 item.Text == normalizedPrompt &&
                                 item.IsTrainingEligible &&
-                                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
+                                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved, matrixToken),
                             $"Matrix case '{proofCase.Reference}' is no longer held out.");
                     }
 
@@ -1317,7 +2108,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                                 source.SupersededUtc == null &&
                                 unit.Text == normalizedPrompt
-                            select transition.Id).AnyAsync(),
+                            select transition.Id).AnyAsync(matrixToken),
                         $"Matrix case '{proofCase.Reference}' is not an active exact transition endpoint.");
                 }
 
@@ -1334,7 +2125,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
                         founder,
                         currentPrompt,
-                        proofCase.NativeSourceLanguageCode);
+                        proofCase.NativeSourceLanguageCode, matrixToken);
                     Assert.True(
                         graph.IsComposed,
                         $"Cross-family case '{proofCase.Reference}' did not compose governed primitives: {graph.ReasonCode}.");
@@ -1348,7 +2139,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         currentPrompt,
                         Array.Empty<LegendConnectConversationContextItem>(),
                         discourseState: null,
-                        proofCase.NativeSourceLanguageCode);
+                        proofCase.NativeSourceLanguageCode, matrixToken,
+                        providerPolicy: isolated ? LegendConnectExternalProviderPolicy.NativeOnly : null);
                     Assert.False(
                         withoutContext.Supported,
                         "The discourse case must require its bounded prior-turn context.");
@@ -1357,10 +2149,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     await RecordDiscourseMessagesAsync(
                         directConversationId,
                         proofCase.Messages,
-                        proofCase.NativeSourceLanguageCode);
+                        proofCase.NativeSourceLanguageCode, matrixToken);
                     discourseState = await discourse.GetStateAsync(
                         founder,
-                        directConversationId.ToString());
+                        directConversationId.ToString(), matrixToken);
                     Assert.NotNull(discourseState);
                     Assert.Contains(
                         discourseState!.Turns.SelectMany(item => item.Bindings),
@@ -1373,13 +2165,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     await RecordDiscourseMessagesAsync(
                         Guid.Parse(replyConversationId),
                         proofCase.Messages.Take(proofCase.Messages.Count - 1).ToArray(),
-                        proofCase.NativeSourceLanguageCode);
+                        proofCase.NativeSourceLanguageCode, matrixToken);
                 }
                 if (proofCase.Category is "deduction" or "uncertainty" or "diagnosis" or "planning")
                 {
                     var planned = await operations.TryPlanConversationAsync(
                         currentPrompt,
                         discourseState: null,
+                        cancellationToken: matrixToken,
                         sourceLanguageCode: proofCase.NativeSourceLanguageCode);
                     Assert.True(
                         planned.Supported,
@@ -1395,6 +2188,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     var planned = await operations.TryPlanConversationAsync(
                         currentPrompt,
                         discourseState: null,
+                        cancellationToken: matrixToken,
                         sourceLanguageCode: proofCase.NativeSourceLanguageCode);
                     Assert.True(planned.Supported, planned.ReasonCode);
                     var audiencePlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
@@ -1409,7 +2203,13 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     currentPrompt,
                     context,
                     discourseState,
-                    proofCase.NativeSourceLanguageCode);
+                    proofCase.NativeSourceLanguageCode, matrixToken,
+                    providerPolicy: isolated ? LegendConnectExternalProviderPolicy.NativeOnly : null);
+                prerequisiteCounts[proofCase.Reference] = new Dictionary<string, long>(CountsFor(proofCase.Reference))
+                {
+                    ["NativeEvidenceCount"] = native.EvidenceCount,
+                    ["NativeSupported"] = native.Supported ? 1 : 0
+                };
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -1419,9 +2219,16 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         ConversationId = replyConversationId,
                         SourceLanguageCode = proofCase.DeclaredSourceLanguageCode,
                         Messages = proofCase.Messages
-                    });
+                    }, matrixToken);
 
                 Assert.Equal(providerCallsBefore, factory.CreateClientCalls);
+                Assert.Equal(0, translationBoundary.CallAttempts);
+                var stageEvidence = diagnosticCapture.SnapshotDiagnostics();
+                var sqlEvidence = readOnlyGuard.SnapshotDiagnostics();
+                Assert.Equal(0, stageEvidence.SqlFailureEvents);
+                Assert.Equal(0, sqlEvidence.FailedEvents);
+                Assert.Equal(0, sqlEvidence.CanceledEvents);
+                Assert.Equal(0, sqlEvidence.BlockedEvents);
                 if (proofCase.ExpectNative)
                 {
                     Assert.True(
@@ -1434,6 +2241,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     Assert.Equal("LegendAi", reply.ResponseAuthority);
                     Assert.Equal("native_response", reply.Stage);
                     Assert.Equal(native.Answer, reply.Message);
+                    if (proofCase.Reference == "automatic-language-native-arithmetic")
+                    {
+                        // Reproduce the live request without teaching its answer.
+                        // This assertion certifies the numeric result only in the
+                        // bare or existing computed-response rendering contract;
+                        // other wording remains unverified, never substring-matched.
+                        Assert.Contains(reply.Message, new[] { "121", "The result is 121." });
+                    }
                     if (proofCase.ExpectedEvidenceStandard is not null)
                     {
                         Assert.Equal(
@@ -1476,6 +2291,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 }
                 catch (Exception exception)
                 {
+                    if (IsObservedAuthorizationFailure(exception, diagnosticCapture.SnapshotDiagnostics(), readOnlyGuard.SnapshotDiagnostics()))
+                        stopRemainingReason = "authorization_failure";
+                    else if (matrixToken.IsCancellationRequested)
+                        stopRemainingReason = "matrix_deadline_exceeded";
+                    diagnosticLoggerFactory.CreateLogger<LegendFounderCurriculumSqlServerE2ETests>().LogWarning(exception,
+                        "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                        "CaseAssertionFailed", "LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix",
+                        "case_assertions", "failed", "case_execution_failed");
                     var elapsedMilliseconds = Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds;
                     results.Add(ProductionNativeProofResult.FailedCase(
                         proofCase.Reference,
@@ -1487,8 +2310,41 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     _output.WriteLine(
                         $"MATRIX CASE FAILED: reference={proofCase.Reference}; " +
                         $"category={proofCase.Category}; expected_native={proofCase.ExpectNative}; " +
-                        $"failure={exception.Message}; provider_clients={factory.CreateClientCalls}; " +
+                        $"failure_type={exception.GetType().Name}; provider_clients={factory.CreateClientCalls}; " +
                         $"elapsed_ms={elapsedMilliseconds:0}");
+                }
+                finally
+                {
+                    var stageEvents = diagnosticCapture.SnapshotDiagnostics();
+                    var sqlCommands = readOnlyGuard.SnapshotDiagnostics();
+                    for (var index = resultStart; index < results.Count; index++)
+                    {
+                        var result = results[index];
+                        results[index] = result with
+                        {
+                            UsesAutomaticLanguageIdentification = proofCase.DeclaredSourceLanguageCode is null,
+                            DiagnosticEvidence = new(stageEvents, sqlCommands,
+                                proofCase.Reference + "/sql", CountsFor(proofCase.Reference)),
+                            FailureDiagnosis = DiagnoseObservedFailure(result.Status, result.Phase,
+                                result.FailureCode ?? result.ReasonCode, proofCase.ExpectNative, stageEvents,
+                                sqlFailureEvents: sqlCommands.FailedEvents, sqlCommands: sqlCommands.Records)
+                        };
+                    }
+                }
+                if (stopRemainingReason is not null)
+                {
+                    foreach (var pending in matrix.Skip(matrix.IndexOf(proofCase) + 1))
+                        results.Add(new ProductionNativeProofResult(pending.Reference, pending.Category,
+                            "not_executed", "not_executed", "Execution stopped at an authorization or deadline boundary.",
+                            "execution_stopped", stopRemainingReason, pending.ExpectNative, null, null, null, null,
+                            "not_executed", factory.CreateClientCalls, 0)
+                        {
+                            UsesAutomaticLanguageIdentification = pending.DeclaredSourceLanguageCode is null,
+                            FailureDiagnosis = new("not_executed", stopRemainingReason,
+                                "ProductionReadOnlyNativeProofMatrix", "execution_stopped", "insufficient_diagnostic_evidence",
+                                "Resolve the recorded authorization or deadline boundary before executing this case.")
+                        });
+                    break;
                 }
             }
 
@@ -1520,13 +2376,33 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "matrix_summary",
                     $"The native-only production matrix created {factory.CreateClientCalls} provider clients."));
             }
+            if (translationBoundary.CallAttempts != 0)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-translation-provider-isolation",
+                    "matrix_summary",
+                    $"The native-only production matrix attempted {translationBoundary.CallAttempts} external translation-provider calls."));
+            }
+            if (readOnlyGuard.BlockedCommands != 0 || productionSaves.Attempts != 0)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-production-write-attempt", "matrix_summary",
+                    "The production read-only matrix attempted a blocked command or SaveChanges."));
+            }
             _output.WriteLine($"PRODUCTION PROOF MATRIX CASES EXECUTED: {executed}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NATIVE PASSES: {nativePasses}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NEGATIVE PASSES: {negativePasses}");
-            _output.WriteLine("OPENAI HTTP CALLS: 0");
-            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+            _output.WriteLine($"OPENAI HTTP CALLS: {factory.SendCalls}");
+            _output.WriteLine($"EXTERNAL TRANSLATION PROVIDER CALL ATTEMPTS: {translationBoundary.CallAttempts}");
+            _output.WriteLine($"PRODUCTION WRITE COMMANDS REJECTED BEFORE SQL: {readOnlyGuard.BlockedCommands}");
+            _output.WriteLine($"PRODUCTION SAVE CHANGES ATTEMPTS: {productionSaves.Attempts}");
+            var sqlDiagnosticWindows = results.Where(item => item.DiagnosticEvidence is not null)
+                .GroupBy(item => item.DiagnosticEvidence!.SqlSnapshotReference, StringComparer.Ordinal)
+                .Select(group => group.First().DiagnosticEvidence!.SqlCommands)
+                .OfType<ReadOnlyLegendDbCommandInterceptor.SqlCommandDiagnosticSnapshot>().ToArray();
+            var observedSqlFailures = sqlDiagnosticWindows.Sum(item => item.FailedEvents);
 
-            var resultPath = Environment.GetEnvironmentVariable(
+            var resultPath = isolatedIdentity?.ResultPath ?? Environment.GetEnvironmentVariable(
                 "LEGEND_PRODUCTION_PROOF_RESULT_PATH");
             if (!string.IsNullOrWhiteSpace(resultPath))
             {
@@ -1540,6 +2416,25 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         new
                         {
                             MatrixVersion = matrixVersion,
+                            DiagnosticsVersion = "legend-runtime-diagnostic-v1",
+                            ExercisedBoundaries = new { InProcessNativeSql = true, LiveProvider = false, AuthenticatedHttp = false },
+                            SqlFailureCount = observedSqlFailures,
+                            NotExecutedCases = results.Count(item => item.Status == "not_executed"),
+                            DiagnosticsTruncated = results.Any(item => item.DiagnosticEvidence?.StageEvents.Truncated == true) ||
+                                sqlDiagnosticWindows.Any(item => item.Truncated),
+                            IsolatedReadOnlyMode = isolated,
+                            Authority = isolated ? "non-authoritative" : "release_workflow_matrix",
+                            DeployedSha = isolated ? "unavailable" : null,
+                            CandidateSha = isolatedIdentity?.CandidateSha,
+                            RunIdentity = isolatedIdentity?.RunIdentity,
+                            StartedUtc = matrixStartedUtc, CompletedUtc = DateTime.UtcNow,
+                            ElapsedMilliseconds = Stopwatch.GetElapsedTime(matrixStarted).TotalMilliseconds,
+                            SqlPrincipalVerified = isolatedPrincipalVerified,
+                            QueryTimeoutSeconds = isolated ? (int?)15 : null,
+                            ObservationTimeoutSeconds = isolated ? (int?)600 : null,
+                            SelectCommandCount = readOnlyGuard.SelectCommands,
+                            ProviderHttpCallCount = factory.SendCalls,
+                            ExternalTranslationProviderCallAttempts = translationBoundary.CallAttempts,
                             Status = results.All(item => item.Status == "passed")
                                 ? "passed"
                                 : "failed",
@@ -1549,21 +2444,60 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             NativePasses = nativePasses,
                             NegativePasses = negativePasses,
                             ProviderClientCount = factory.CreateClientCalls,
-                            ProductionWriteCommandCount = 0,
+                            ProductionWriteCommandCount = readOnlyGuard.BlockedCommands,
+                            ProductionSaveChangesAttempts = productionSaves.Attempts,
                             Categories = requiredCategories,
-                            CaseResults = results
+                            CaseResults = results.Select(ToIsolatedMatrixResult).ToArray()
                         },
                         new JsonSerializerOptions { WriteIndented = true }));
             }
 
             var failures = results
-                .Where(item => item.Status == "failed")
-                .Select(item => $"{item.Reference}: {item.Failure}")
+                .Where(item => item.Status != "passed")
+                .Select(item => $"{SafeObservationCode(item.Reference)}: {SafeObservationCode(item.FailureCode)}")
                 .ToArray();
             Assert.True(
                 failures.Length == 0,
                 "The production native proof matrix completed with independent failures: " +
                 string.Join(" | ", failures));
+        }
+        catch (Exception exception) when (isolatedIdentity.HasValue)
+        {
+            var identity = isolatedIdentity.Value;
+            if (!File.Exists(identity.ResultPath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(identity.ResultPath))!);
+                await File.WriteAllTextAsync(identity.ResultPath, JsonSerializer.Serialize(new
+                {
+                    MatrixVersion = matrixVersion, IsolatedReadOnlyMode = true,
+                    DiagnosticsVersion = "legend-runtime-diagnostic-v1",
+                    Authority = "non-authoritative", DeployedSha = "unavailable",
+                    identity.CandidateSha, identity.RunIdentity,
+                    StartedUtc = matrixStartedUtc, CompletedUtc = DateTime.UtcNow,
+                    Status = "failed", FailedPhase = isolatedPhase,
+                    FailureCode = exception is OperationCanceledException ? "isolated_matrix_deadline_exceeded"
+                        : exception is SqlException sqlFailure ? "sql_error_" + sqlFailure.Number
+                        : "isolated_matrix_" + isolatedPhase + "_failed",
+                    FailureDiagnosis = new ProductionFailureDiagnosis(isolatedPhase,
+                        exception is SqlException earlySql ? "sql_error_" + earlySql.Number : exception.GetType().Name,
+                        isolatedPhase switch
+                        {
+                            "sql_principal" => "RequireSelectOnlyPrincipalAsync",
+                            "sql_sources" => "RequireSafePhysicalSourcesAsync",
+                            _ => "ProductionReadOnlyNativeProofMatrix"
+                        }, "observed_preflight_failure", "observed_failure_only",
+                        "Inspect the recorded preflight boundary; later runtime stages were not proven to execute."),
+                    ExceptionType = exception.GetType().Name, HResult = exception.HResult,
+                    SqlErrorNumber = exception is SqlException earlySqlNumber ? (int?)earlySqlNumber.Number : null,
+                    DiagnosticEvidence = (object?)null,
+                    SqlPrincipalVerified = isolatedPrincipalVerified,
+                    // A preflight exception does not prove zero executed cases,
+                    // provider calls or write attempts: no counters are invented.
+                    ExecutedCases = (int?)null,
+                    ElapsedMilliseconds = Stopwatch.GetElapsedTime(matrixStarted).TotalMilliseconds
+                }, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            throw;
         }
         finally
         {
@@ -3449,7 +4383,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     private sealed record ProductionNativeProofCase(
         string Reference,
         string Category,
-        string DeclaredSourceLanguageCode,
+        string? DeclaredSourceLanguageCode,
         string NativeSourceLanguageCode,
         IReadOnlyList<LegendFounderAiChatMessage> Messages,
         bool ExpectNative,
@@ -3461,7 +4395,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             string category,
             string prompt,
             bool mustBeHeldOut = false,
-            string declaredSourceLanguageCode = "en",
+            string? declaredSourceLanguageCode = "en",
             string nativeSourceLanguageCode = "en",
             string? expectedEvidenceStandard = null) =>
             new(
@@ -3533,6 +4467,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         int ProviderClientCount,
         double ElapsedMilliseconds)
     {
+        public bool UsesAutomaticLanguageIdentification { get; init; }
+        public ProductionDiagnosticEvidence? DiagnosticEvidence { get; init; }
+        public ProductionFailureDiagnosis? FailureDiagnosis { get; init; }
+
         internal static ProductionNativeProofResult FailedFixture(
             string reference,
             string category,
@@ -3635,6 +4573,61 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 0,
                 0);
         }
+    }
+
+    private static bool IsObservedAuthorizationFailure(Exception exception, RuntimeDiagnosticSnapshot events,
+        ReadOnlyLegendDbCommandInterceptor.SqlCommandDiagnosticSnapshot sql) =>
+        exception is UnauthorizedAccessException or AgentPortal.Security.ForbidResultException ||
+        events.Records.Any(item => item.ExceptionType is "UnauthorizedAccessException" or "ForbidResultException") ||
+        sql.Records.Any(item => item.SqlErrorNumber is 18456 or 18452 or 4060 or 916 or 229);
+
+    internal sealed record ProductionDiagnosticEvidence(
+        RuntimeDiagnosticSnapshot StageEvents, object SqlCommands, string SqlSnapshotReference,
+        IReadOnlyDictionary<string, long> EvidencePrerequisites);
+
+    internal sealed record ProductionFailureDiagnosis(
+        string ObservedStage, string? ObservedReason, string AuthorityMethod,
+        string Classification, string RootCauseStatus, string NextVerification);
+
+    internal static ProductionFailureDiagnosis DiagnoseObservedFailure(
+        string status, string phase, string? reason, bool? expectedNative, RuntimeDiagnosticSnapshot events,
+        long sqlFailureEvents = 0,
+        IReadOnlyList<ReadOnlyLegendDbCommandInterceptor.SqlCommandDiagnosticRecord>? sqlCommands = null)
+    {
+        var attributedCommand = sqlCommands?.FirstOrDefault(command =>
+            (command.Outcome is "failed" or "canceled") && command.QueryAuthority is not null);
+        var observedSqlFailure = events.SqlFailureEvents > 0 || sqlFailureEvents > 0;
+        // SQL and runtime ordinals are independent. Only the command's own
+        // exact static query label establishes its authority; never infer it
+        // from the nearest runtime event in a case window.
+        var failed = observedSqlFailure
+            ? events.Records.FirstOrDefault(item => item.SqlErrorNumber is not null || item.Event == "QueryIterationFailed")
+            : events.Records.FirstOrDefault(item =>
+                item.Event is not "LanguageCandidatesRead" && item.ReasonCode != "candidate_read_failed" &&
+                (item.Outcome is "failed" or "cancelled" ||
+                (item.Event is "LanguageDetectionCompleted" or "SourceLanguageResolved" or "NativeInferenceCompleted" &&
+                    (item.Supported == false || item.Outcome is "unresolved" or "blocked" or "rejected" or "uncomposed" or "unsupported" or "unavailable" or
+                        "InvalidDeclaration" or "UnsupportedLanguage" or "SemanticAmbiguity" or "ProviderPolicyBlocked" or "TransientIdentificationUnavailable"))));
+        if (status == "passed" && events.SqlFailureEvents == 0 && sqlFailureEvents == 0)
+            return new("case_assertions", reason is null ? null : LegendConnectTelemetry.NormalizeDiagnosticReason(reason), "ProductionReadOnlyNativeProofMatrix",
+                expectedNative == true ? "observed_native_response" : expectedNative == false ? "expected_negative" : "observed_read_only_result",
+                events.Truncated ? "insufficient_diagnostic_evidence" : "no_failure_observed",
+                "This result covers the exercised in-process SQL path; verify authenticated HTTP and production latency separately.");
+        return new(attributedCommand is not null ? "sql_command" :
+            failed?.Stage ?? (observedSqlFailure ? "unresolved_from_capture" : SafeObservationCode(phase)) ?? "unreported",
+            failed?.ReasonCode is { } capturedReason && capturedReason != "none"
+                ? capturedReason : reason is null ? null : LegendConnectTelemetry.NormalizeDiagnosticReason(reason),
+            attributedCommand?.QueryAuthority ?? failed?.AuthorityMethod ?? "unresolved_from_capture",
+            events.SqlFailureEvents > 0 || sqlFailureEvents > 0 ? "observed_sql_failure"
+                : phase == "fixture" ? "fixture_prerequisite_missing" : "observed_case_failure",
+            "observed_failure_only",
+            attributedCommand is not null
+                ? "The failed SQL command carries an exact code-defined query label. Inspect that query's execution plan and runtime waits before assigning a code repair; no plan was captured by this observation."
+                : events.SqlFailureEvents > 0 || sqlFailureEvents > 0
+                ? "The SQL snapshot and runtime trace share a case window, not a command-to-stage correlation. Reproduce the failed fingerprint or materialization event in its existing query before assigning a code repair."
+                : phase == "fixture"
+                    ? "Inspect the counted active evidence prerequisites and their canonical admission states; do not seed an expected answer or bypass eligibility."
+                    : "Reproduce the first failed stage on this exact candidate and inspect its existing authority; the captured symptom does not establish a code repair.");
     }
 
     private static async Task<ShadowCorpusCounts> ReadShadowCountsAsync(
@@ -4189,34 +5182,218 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         bool RequireNative,
         IReadOnlyList<LegendFounderAiChatMessage>? History = null);
 
-    private sealed class ExceptionCapturingLoggerProvider : ILoggerProvider
+    internal sealed record RuntimeDiagnosticEvent(
+        long Ordinal, string Event, string AuthorityMethod, string SourcePath,
+        string Stage, string Outcome, string? ReasonCode, long? ElapsedMs,
+        string? ExceptionType, int? HResult, int? SqlErrorNumber,
+        string? ProviderPolicy, bool? Supported, bool? RequiresEscalation,
+        IReadOnlyDictionary<string, long> Counts)
     {
-        private readonly ConcurrentQueue<Exception> _exceptions = new();
-
-        public IEnumerable<Exception> Exceptions => _exceptions;
-
-        public ILogger CreateLogger(string categoryName) => new ExceptionCapturingLogger(_exceptions);
-
-        public void Dispose() { }
+        public bool? ResearchRequired { get; init; }
+        public bool? RequiresGovernedReadReceipt { get; init; }
+        public bool? ReadScopeEstablished { get; init; }
     }
 
-    private sealed class ExceptionCapturingLogger(
-        ConcurrentQueue<Exception> exceptions) : ILogger
+    internal sealed record RuntimeDiagnosticSnapshot(
+        long ObservedEvents, long RecordsDropped, bool Truncated, long ExceptionEvents, long SqlFailureEvents,
+        IReadOnlyList<RuntimeDiagnosticEvent> Records);
+
+    internal sealed class ExceptionCapturingLoggerProvider(int maxEvents = 256) : ILoggerProvider
     {
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        private readonly ConcurrentQueue<Exception> _exceptions = new();
+        private readonly object _diagnosticLock = new();
+        private readonly List<RuntimeDiagnosticEvent> _events = [];
+        private readonly int _maximumEvents = Math.Clamp(maxEvents, 1, 4096);
+        private long _observedEvents;
+        private long _exceptionEvents;
+        private long _sqlFailureEvents;
+        public IEnumerable<Exception> Exceptions => _exceptions;
+        public ILogger CreateLogger(string categoryName) => new ExceptionCapturingLogger(this, categoryName);
+        public void ResetDiagnostics()
         {
+            lock (_diagnosticLock)
+            {
+                _events.Clear();
+                _observedEvents = 0;
+                _exceptionEvents = 0;
+                _sqlFailureEvents = 0;
+            }
+        }
+
+        public RuntimeDiagnosticSnapshot SnapshotDiagnostics()
+        {
+            lock (_diagnosticLock)
+                return new(_observedEvents, _observedEvents - _events.Count,
+                    _observedEvents > _events.Count, _exceptionEvents, _sqlFailureEvents, Array.AsReadOnly(_events.ToArray()));
+        }
+
+        private void Capture<TState>(string category, EventId eventId, TState state, Exception? exception)
+        {
+            // Neither the formatter, scopes, exception message nor stack is
+            // read. Only fixed structured fields enter the public evidence.
+            var fields = state is IEnumerable<KeyValuePair<string, object?>> values
+                ? values.GroupBy(item => item.Key, StringComparer.Ordinal)
+                    .Where(group => group.Count() == 1)
+                    .ToDictionary(group => group.Key, group => group.Single().Value, StringComparer.Ordinal)
+                : new Dictionary<string, object?>(StringComparer.Ordinal);
+            var format = fields.GetValueOrDefault("{OriginalFormat}") as string;
+            var structured = format?.StartsWith("LEGEND RuntimeDiagnostic", StringComparison.Ordinal) == true;
+            var legacyStage = format?.StartsWith("LEGEND Founder AI stage", StringComparison.Ordinal) == true;
+            var queryIterationFailed = category == "Microsoft.EntityFrameworkCore.Query" &&
+                eventId.Id == CoreEventId.QueryIterationFailed.Id;
+            if (!structured && !legacyStage && !queryIterationFailed && exception is null)
+                return;
             if (exception is not null)
-                exceptions.Enqueue(exception);
+            {
+                _exceptions.Enqueue(exception);
+                while (_exceptions.Count > _maximumEvents)
+                    _exceptions.TryDequeue(out _);
+            }
+            string? Code(string key) => fields.GetValueOrDefault(key) is string value
+                ? SafeObservationCode(value) : null;
+            long? Number(string key) => fields.GetValueOrDefault(key) switch
+            {
+                byte value => value, short value => value, int value => value,
+                long value when value >= 0 => value,
+                // Runtime stopwatch measurements may be fractional; preserve
+                // an upper-rounded millisecond rather than dropping the field.
+                double value when double.IsFinite(value) && value >= 0 && value < long.MaxValue => (long)Math.Ceiling(value),
+                _ => null
+            };
+            bool? Flag(string key) => fields.GetValueOrDefault(key) is bool value ? value : null;
+            var counts = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var key in new[] { "LanguagesConsidered", "LanguagesCandidate", "LanguagesAnalyzed",
+                         "LanguagesComposed", "LanguagesIncomplete", "GraphNodes", "GraphRelations",
+                         "UnknownComponents", "EvidenceCount", "Candidates", "EligibleCandidates",
+                         "SourceSlotBindings", "DiscourseTurns", "InvalidatedTurns", "TokenCount", "CandidateCount",
+                         "NodeCount", "RelationCount", "UnknownCount", "DeclarationCount", "TemplateCount", "MatchCount", "Bound",
+                         "FounderNodes", "MachineNodes", "CurrentTurnAssertionNodes", "SourceSlotBindingNodes", "BindingsBound",
+                         "BindingsUnresolved", "StatusCode", "Attempt", "RetryDelayMs" })
+                if (Number(key) is long value && value >= 0)
+                    counts[key] = value;
+            var declaredMethod = fields.GetValueOrDefault("AuthorityMethod") as string;
+            var qualifiedParts = declaredMethod?.Split('.');
+            var authorityType = qualifiedParts?.Length == 2 ? qualifiedParts[0] : category.Split('.').Last();
+            var sourcePath = authorityType switch
+            {
+                "LegendFounderAiConversationService" => "AgentPortal/Services/LegendFounderAiConversationService.cs",
+                "LegendFounderAiHttpTransport" => "AgentPortal/Services/LegendFounderAiHttpTransport.cs",
+                "LegendFounderAiDiscourseStateService" => "AgentPortal/Services/LegendFounderAiDiscourseStateService.cs",
+                "FounderLegendConnectService" => "AgentPortal/Services/FounderLegendConnectService.cs",
+                "LegendFounderToolAuthority" => "AgentPortal/Services/LegendFounderToolAuthority.cs",
+                "LegendConnectTranslationRouter" => "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+                "LegendConnectCurriculumService" => "Infrastructure/Messaging/LegendConnectCurriculum.cs",
+                "LegendConnectOperations" => "Infrastructure/Messaging/LegendConnectOperations.cs",
+                "LegendConnectCorpusService" => "Infrastructure/Messaging/LegendConnectLearning.cs",
+                "TranslationCapacityAuthority" => "Infrastructure/Messaging/LegendConnectCapacity.cs",
+                "LegendLanguageRegistry" => "Infrastructure/Messaging/LegendConnectLanguageRegistry.cs",
+                "AzureTranslatorService" => "Infrastructure/Messaging/AzureTranslatorService.cs",
+                "LegendConnectTranslationIntelligence" => "Infrastructure/Messaging/LegendConnectIntelligence.cs",
+                "LegendConnectRuntimePolicyAuthority" => "Infrastructure/Messaging/LegendConnectRuntimePolicyAuthority.cs",
+                "LegendConnectActiveModelInference" => "Infrastructure/Messaging/LegendConnectTranslationRouter.cs",
+                "TranslationEntitlementAuthority" => "Infrastructure/Messaging/TranslationEntitlementAuthority.cs",
+                "OpenAiKeyResolver" => "AgentPortal/Services/Analytics/OpenAiKeyResolver.cs",
+                "LegendFounderCurriculumSqlServerE2ETests" => "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
+                _ => "unmapped_runtime_authority"
+            };
+            SqlException? sqlException = null;
+            var inspected = 0;
+            for (var current = exception; current is not null && inspected++ < 8; current = current.InnerException)
+                if (current is SqlException sql)
+                {
+                    sqlException = sql;
+                    break;
+                }
+            var outcome = exception is OperationCanceledException ? "cancelled" : exception is not null ? "failed" :
+                Code("Outcome") is { } candidateOutcome &&
+                candidateOutcome is "started" or "completed" or "failed" or "cancelled" or "resolved" or "unresolved" or "allowed" or "blocked" or "rejected" or "composed" or "uncomposed" or "retrying" or
+                    "Resolved" or "InvalidDeclaration" or "UnsupportedLanguage" or "SemanticAmbiguity" or "ProviderPolicyBlocked" or "TransientIdentificationUnavailable" or
+                    "excluded" or "retained" or "observed" or "unavailable" or "supported" or "unsupported" or "not_required" or "no_match" or
+                    "Unknown" or "OwnedRecordStateInspection" or "AnalysisUnavailable" or "Conclusion" or "InsufficientEvidence" or "UnresolvedConflict" or "Failure"
+                    ? candidateOutcome : "unreported";
+            var methodName = declaredMethod?.Split('.').Last();
+            var allowedMethods = new[] { "ReplyAsync", "ResolveSourceLanguageAsync", "TraceNativeStageAsync",
+                "ObserveDiscourseMeaningAsync", "AnalyzeReusableMeaningGraphAsync", "ReadReusableMeaningCandidatesAsync",
+                "AnalyzeDeclaredSourceSlotsAsync", "DetectLanguageAsync", "GetReusableMeaningLanguageCandidatesAsync",
+                "TryInferConversationWithDiscourseAsync", "TryInferConversationWithReadOnlyContentAsync",
+                "BindReadOnlyResultAsync", "EnsureFounderAuthorizedAsync", "RecordCurrentObservationAsync", "GetStateAsync",
+                "ClassifyOwnedRecordIntentAsync", "ExecuteResearchAsync", "TryPlanConversationAsync",
+                "ListEnabledTranslationLanguagesReadOnlyAsync", "NormalizeEnabledTranslationLanguageReadOnlyAsync",
+                "ProductionReadOnlyNativeProofMatrix", "ProductionReadOnlyCandidateObservation", "GetFounderSectionPageAsync", "ObserveRuntimeStageAsync", "TryBindConversationContentAsync", "SendResponseAsync", "ResearchAsync", "Resolve",
+                "NormalizeEnabledTranslationLanguageAsync", "GetEnabledPairAsync", "TryGetTrustedExactMemoryAsync",
+                "EvaluateContextAsync", "TryGetReusableProviderObservationAsync", "TryComposeAsync", "GetEffectiveAsync",
+                "TryTranslateAsync", "TryReserveAsync", "CompleteAsync", "RecordAvoidedAsync", "TranslateAsync", "TranslateCoreAsync",
+                "DecideResearchNeeded", "ExecuteAsync", "ChatAsync", "TryReadResearchOutcome" };
+            var authorityMethod = sourcePath != "unmapped_runtime_authority" &&
+                methodName is not null && allowedMethods.Contains(methodName, StringComparer.Ordinal)
+                    ? authorityType + "." + methodName : "unresolved_from_capture";
+            var eventName = Code("Event") is { } declaredEvent && declaredEvent is "StageStarted" or "StageEnded" or "ResponseCompleted" or
+                "LanguageDetectionCompleted" or "LanguageGraphAnalyzed" or "LanguageCandidatesRead" or
+                "SourceLanguageResolved" or "NativeInferenceCompleted" or "ResearchDecision" or "ProviderEscalation" or
+                "CaseAssertionFailed" or "stage_completed" or "MeaningGraphObserved" or "DiscourseStateObserved" or "OwnedRecordClassified" or
+                "ProviderRetry" or "ProviderRejected" or "ProviderEscalationRejected" or "ProviderTransportFailed" or "ProviderJsonInvalid" or
+                "OwnedRecordClassificationException" or "DiscourseObservationException" or "SourceLanguageException" or "LanguageRegistryRead" or "ResearchCompleted" or
+                "TranslationProviderBoundary" or "TranslationProviderCompleted" or "NativeInferenceException" or "NativeAnswer" or "GovernedExecutionFailed" or
+                "TranslationStageStarted" or "TranslationStageEnded" or "TranslationCompleted" or "TranslationBoundaryFailed" or
+                "ResearchOutcomeValidated" or "GovernedToolFailed" or "GovernedToolTimedOut"
+                    ? declaredEvent : exception is not null ? "caught_exception" : "unreported";
+            var stageName = Code("Stage") is { } declaredStage && declaredStage is "founder_authorization" or
+                "source_language" or "language_detection" or "language_candidates" or "language_registry" or
+                "meaning_graph" or "meaning_candidates" or "source_slots" or "meaning_relations" or
+                "native_semantic_inference" or "native_read_binding" or "native_read_realization" or
+                "discourse_meaning_analysis" or "discourse_persistence" or "discourse_reload" or
+                "native_inference" or "case_assertions" or "provider_escalation" or "research" or "language_graph" or
+                "source_language_identification" or "source_language_normalization" or "language_candidate_prefilter" or "provider_detection" or
+                "external_response" or "owned_record_classification" or "discourse_observation" or "source_language_detection" or
+                "external_language_detection" or "detected_language_registry" or "declared_language_registry" or "resolved_language_registry" or "language_identification" or "native_response" or "governed_execution" or "founder_section" or "section_prerequisite" or
+                "translation_language_registry" or "translation_pair" or "translation_memory" or "translation_structural" or
+                "translation_context" or "translation_runtime_policy" or "translation_promoted_model" or "translation_provider_observation" or
+                "translation_quota" or "translation_capacity" or "translation_provider" or "translation_capacity_finalization" or
+                "translation_result" or "translation_intelligence" or "translation_usage" or "translation_quota_finalization" or
+                "research_decision" or "research_tool" or "governed_tool" or "request" or "response_transport"
+                    ? declaredStage : "unreported";
+            var capturedReason = fields.GetValueOrDefault("ReasonCode") as string;
+            var reasonCode = capturedReason is null ? null :
+                LegendConnectTelemetry.NormalizeDiagnosticReason(capturedReason);
+            lock (_diagnosticLock)
+            {
+                var ordinal = ++_observedEvents;
+                if (exception is not null) _exceptionEvents++;
+                if (sqlException is not null || queryIterationFailed) _sqlFailureEvents++;
+                if (_events.Count >= _maximumEvents)
+                    return;
+                _events.Add(new(ordinal,
+                    queryIterationFailed ? "QueryIterationFailed" : eventName,
+                    authorityMethod, sourcePath,
+                    queryIterationFailed ? "sql_row_materialization" : stageName,
+                    queryIterationFailed ? "failed" : outcome,
+                    queryIterationFailed ? "query_iteration_failed" : reasonCode, Number("ElapsedMs"),
+                    exception?.GetType().Name ?? (Code("ExceptionType") is { } typeName && typeName is
+                        "none" or "Exception" or "InvalidOperationException" or "ArgumentException" or "ArgumentNullException" or
+                        "OperationCanceledException" or "TaskCanceledException" or "TimeoutException" or "SqlException" or
+                        "UnauthorizedAccessException" or "ForbidResultException" or "HttpRequestException" or "JsonException" or
+                        "NotSupportedException" or "FormatException" or "OverflowException" or "DbUpdateException"
+                        ? typeName : null), exception?.HResult,
+                    sqlException?.Number, Code("ProviderPolicy") is "native_only" or "provider_enabled" ? Code("ProviderPolicy") : null,
+                    Flag("Supported"), Flag("RequiresEscalation"),
+                    new System.Collections.ObjectModel.ReadOnlyDictionary<string, long>(counts))
+                {
+                    ResearchRequired = Flag("ResearchRequired"),
+                    RequiresGovernedReadReceipt = Flag("RequiresGovernedReadReceipt"),
+                    ReadScopeEstablished = Flag("ReadScopeEstablished")
+                });
+            }
+        }
+        public void Dispose() { }
+
+        private sealed class ExceptionCapturingLogger(
+            ExceptionCapturingLoggerProvider owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+                Exception? exception, Func<TState, Exception?, string> formatter) =>
+                owner.Capture(category, eventId, state, exception);
         }
     }
 
@@ -4255,8 +5432,63 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     /// is read-only by design, and this turns that design requirement into an
     /// executable invariant for the diagnostic.
     /// </summary>
-    private sealed class ReadOnlyLegendDbCommandInterceptor : DbCommandInterceptor
+    internal sealed class ReadOnlyLegendDbCommandInterceptor : DbCommandInterceptor
     {
+        private const int MaximumDiagnosticRecords = 256;
+        private readonly object _diagnosticLock = new();
+        private readonly List<SqlCommandDiagnosticRecord> _diagnosticRecords = [];
+        private int _selectCommands;
+        private int _blockedCommands;
+        private long _eventsObserved;
+        private long _succeededEvents;
+        private long _failedEvents;
+        private long _canceledEvents;
+        private long _blockedEvents;
+        public int SelectCommands => Volatile.Read(ref _selectCommands);
+        public int BlockedCommands => Volatile.Read(ref _blockedCommands);
+        private HashSet<string>? _physicalTables;
+
+        // These are terminal interception events, not inferred request stages.
+        // Reader success measures execution through obtaining the reader; it
+        // does not claim successful enumeration or materialization of its rows.
+        internal sealed record SqlCommandDiagnosticRecord(
+            long Ordinal, string QueryFingerprint, string Outcome,
+            double ElapsedMilliseconds, string? ExceptionType, int? HResult,
+            int? SqlErrorNumber, string? QueryAuthority = null, string? QueryOperation = null);
+
+        internal sealed record SqlCommandDiagnosticSnapshot(
+            long EventsObserved, long SucceededEvents, long FailedEvents,
+            long CanceledEvents, long BlockedEvents, long RecordsDropped,
+            bool Truncated, IReadOnlyList<SqlCommandDiagnosticRecord> Records);
+
+        // Call only between awaited cases. Guard counts and physical-table
+        // permissions are deliberately cumulative and cannot be reset here.
+        public void ResetDiagnostics()
+        {
+            lock (_diagnosticLock)
+            {
+                _diagnosticRecords.Clear();
+                _eventsObserved = _succeededEvents = _failedEvents =
+                    _canceledEvents = _blockedEvents = 0;
+            }
+        }
+
+        public SqlCommandDiagnosticSnapshot SnapshotDiagnostics()
+        {
+            lock (_diagnosticLock)
+            {
+                var dropped = _eventsObserved - _diagnosticRecords.Count;
+                return new(_eventsObserved, _succeededEvents, _failedEvents,
+                    _canceledEvents, _blockedEvents, dropped, dropped > 0,
+                    Array.AsReadOnly(_diagnosticRecords.ToArray()));
+            }
+        }
+        public ReadOnlyLegendDbCommandInterceptor(bool restrictPhysicalTables = false)
+        {
+            if (restrictPhysicalTables) _physicalTables = new(StringComparer.OrdinalIgnoreCase);
+        }
+        public void AllowPhysicalTables(IEnumerable<string> tables) =>
+            _physicalTables = new HashSet<string>(tables, StringComparer.OrdinalIgnoreCase);
         public override InterceptionResult<int> NonQueryExecuting(
             DbCommand command,
             CommandEventData eventData,
@@ -4308,21 +5540,236 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             return ValueTask.FromResult(result);
         }
 
-        private static void EnsureSelect(DbCommand command)
+        public override DbDataReader ReaderExecuted(
+            DbCommand command, CommandExecutedEventData eventData, DbDataReader result)
         {
-            if (!command.CommandText.TrimStart().StartsWith(
-                    "SELECT",
-                    StringComparison.OrdinalIgnoreCase))
+            RecordDiagnostic(command, "succeeded", eventData.Duration);
+            return result;
+        }
+
+        public override ValueTask<DbDataReader> ReaderExecutedAsync(
+            DbCommand command, CommandExecutedEventData eventData, DbDataReader result,
+            CancellationToken cancellationToken = default)
+        {
+            RecordDiagnostic(command, "succeeded", eventData.Duration);
+            return ValueTask.FromResult(result);
+        }
+
+        public override object? ScalarExecuted(
+            DbCommand command, CommandExecutedEventData eventData, object? result)
+        {
+            RecordDiagnostic(command, "succeeded", eventData.Duration);
+            return result;
+        }
+
+        public override ValueTask<object?> ScalarExecutedAsync(
+            DbCommand command, CommandExecutedEventData eventData, object? result,
+            CancellationToken cancellationToken = default)
+        {
+            RecordDiagnostic(command, "succeeded", eventData.Duration);
+            return ValueTask.FromResult(result);
+        }
+
+        public override void CommandFailed(DbCommand command, CommandErrorEventData eventData) =>
+            RecordDiagnostic(command, "failed", eventData.Duration, eventData.Exception);
+
+        public override Task CommandFailedAsync(
+            DbCommand command, CommandErrorEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            RecordDiagnostic(command, "failed", eventData.Duration, eventData.Exception);
+            return Task.CompletedTask;
+        }
+
+        public override void CommandCanceled(DbCommand command, CommandEndEventData eventData) =>
+            RecordDiagnostic(command, "canceled", eventData.Duration);
+
+        public override Task CommandCanceledAsync(
+            DbCommand command, CommandEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            RecordDiagnostic(command, "canceled", eventData.Duration);
+            return Task.CompletedTask;
+        }
+
+        private void RecordDiagnostic(
+            DbCommand command, string outcome, TimeSpan duration, Exception? exception = null)
+        {
+            lock (_diagnosticLock)
             {
-                throw NewWriteBlocked(command);
+                var ordinal = ++_eventsObserved;
+                switch (outcome)
+                {
+                    case "succeeded": _succeededEvents++; break;
+                    case "failed": _failedEvents++; break;
+                    case "canceled": _canceledEvents++; break;
+                    case "blocked": _blockedEvents++; break;
+                }
+                if (_diagnosticRecords.Count >= MaximumDiagnosticRecords)
+                {
+                    // A late swallowed failure must remain inspectable even
+                    // after a case has already emitted 256 successful reads.
+                    // Evicted successes still contribute to RecordsDropped.
+                    var replaceable = outcome == "succeeded" ? -1 :
+                        _diagnosticRecords.FindIndex(item => item.Outcome == "succeeded");
+                    if (replaceable < 0)
+                        return;
+                    _diagnosticRecords.RemoveAt(replaceable);
+                }
+                var type = exception?.GetType().FullName;
+                if (type is not null)
+                    type = new string(type.Take(160).Where(character =>
+                        char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '+').ToArray());
+                var attribution = ReadQueryAttribution(command.CommandText);
+                _diagnosticRecords.Add(new(ordinal, QueryFingerprint(command.CommandText), outcome,
+                    Math.Max(0, duration.TotalMilliseconds), type, exception?.HResult,
+                    (exception as SqlException)?.Number, attribution.Authority, attribution.Operation));
             }
         }
 
-        private static InvalidOperationException NewWriteBlocked(DbCommand command) =>
-            new("Production read-only proof rejected a non-SELECT database command: " +
-                command.CommandText.TrimStart().Split(
-                    new[] { '\r', '\n', ' ' },
-                    StringSplitOptions.RemoveEmptyEntries)[0]);
+        internal static (string? Authority, string? Operation) ReadQueryAttribution(string sql)
+        {
+            var parser = new TSql160Parser(initialQuotedIdentifiers: true);
+            var tokens = parser.GetTokenStream(new StringReader(sql), out var errors);
+            if (errors.Count != 0)
+                return (null, null);
+            var labels = tokens.Where(token => token.TokenType == TSqlTokenType.SingleLineComment)
+                .Select(token => token.Text.Trim())
+                .Where(comment => comment.StartsWith("-- LEGEND_QUERY:", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal).ToArray();
+            if (labels.Length != 1)
+                return (null, null);
+            // Static code-defined labels only; never emit arbitrary SQL comments,
+            // parameters, private values or an unrecognized label suffix.
+            return labels[0] switch
+            {
+                "-- LEGEND_QUERY:exact_semantic_anchors" =>
+                    ("LegendConnectCurriculumService.LoadExactActiveSemanticAnchorIdsAsync", "exact_semantic_anchors"),
+                "-- LEGEND_QUERY:indexed_semantic_anchors" =>
+                    ("LegendConnectCurriculumService.LoadIndexedSemanticAnchorIdsAsync", "indexed_semantic_anchors"),
+                "-- LEGEND_QUERY:reusable_meaning_candidates" =>
+                    ("LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync", "reusable_meaning_candidates"),
+                "-- LEGEND_QUERY:source_slot_examples" =>
+                    ("LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync", "source_slot_examples"),
+                "-- LEGEND_QUERY:source_slot_declarations" =>
+                    ("LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync", "source_slot_declarations"),
+                "-- LEGEND_QUERY:source_slot_nodes" =>
+                    ("LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync", "source_slot_nodes"),
+                "-- LEGEND_QUERY:source_slot_relations" =>
+                    ("LegendConnectCurriculumService.AnalyzeDeclaredSourceSlotsAsync", "source_slot_relations"),
+                "-- LEGEND_QUERY:computed_structure_examples" =>
+                    ("LegendConnectCurriculumService.LoadCurrentComputedStructuresAsync", "computed_structure_examples"),
+                "-- LEGEND_QUERY:computed_structure_nodes" =>
+                    ("LegendConnectCurriculumService.LoadCurrentComputedStructuresAsync", "computed_structure_nodes"),
+                "-- LEGEND_QUERY:computed_structure_relations" =>
+                    ("LegendConnectCurriculumService.LoadCurrentComputedStructuresAsync", "computed_structure_relations"),
+                _ => (null, null)
+            };
+        }
+
+        internal static string QueryFingerprint(string sql)
+        {
+            // Tokenize locally, drop comments, and replace literal/parameter
+            // values before hashing. No SQL, parameter, connection, exception
+            // message, or token text is retained in the diagnostic snapshot.
+            var parser = new TSql160Parser(initialQuotedIdentifiers: true);
+            var tokens = parser.GetTokenStream(new StringReader(sql), out var errors);
+            var shape = errors.Count == 0
+                ? string.Join("|", tokens.Where(token =>
+                        !string.IsNullOrWhiteSpace(token.Text) &&
+                        !token.Text.StartsWith("--", StringComparison.Ordinal) &&
+                        !token.Text.StartsWith("/*", StringComparison.Ordinal))
+                    .Select(token =>
+                    {
+                        var kind = token.TokenType.ToString();
+                        return kind.Contains("Literal", StringComparison.Ordinal) ||
+                            kind is "Integer" or "Numeric" or "Real" or "Money" ||
+                            token.Text.StartsWith("@", StringComparison.Ordinal)
+                                ? kind
+                                : kind + ":" + token.Text.ToUpperInvariant();
+                    }))
+                : "unparseable_sql";
+            return Convert.ToHexString(SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(shape))).ToLowerInvariant();
+        }
+
+        private void EnsureSelect(DbCommand command)
+        {
+            try
+            {
+                if (command.CommandType != System.Data.CommandType.Text)
+                    throw new InvalidOperationException("Only text SELECT commands are allowed.");
+                ValidateSelect(command.CommandText, _physicalTables);
+                Interlocked.Increment(ref _selectCommands);
+            }
+            catch (InvalidOperationException exception)
+            {
+                Interlocked.Increment(ref _blockedCommands);
+                RecordDiagnostic(command, "blocked", TimeSpan.Zero, exception);
+                throw;
+            }
+        }
+
+        internal static void ValidateSelect(string sql, HashSet<string>? physicalTables = null)
+        {
+            var parser = new TSql160Parser(initialQuotedIdentifiers: true);
+            var fragment = parser.Parse(new StringReader(sql), out var errors);
+            if (errors.Count != 0 || fragment is not TSqlScript script || script.Batches.Count != 1 ||
+                script.Batches[0].Statements.Count != 1 ||
+                script.Batches[0].Statements[0] is not SelectStatement select || select.Into is not null)
+                throw new InvalidOperationException("Production read-only proof requires one parsed SELECT without INTO.");
+            var visitor = new SelectSideEffectVisitor(physicalTables);
+            select.Accept(visitor);
+            if (visitor.Rejected)
+                throw new InvalidOperationException("Production read-only proof rejected an external or state-changing SELECT.");
+        }
+
+        private sealed class SelectSideEffectVisitor : TSqlFragmentVisitor
+        {
+            private readonly HashSet<string>? _physicalTables;
+            public SelectSideEffectVisitor(HashSet<string>? physicalTables) => _physicalTables = physicalTables;
+            public bool Rejected { get; private set; }
+            public override void ExplicitVisit(NamedTableReference node)
+            {
+                var name = string.Join(".", node.SchemaObject.Identifiers.Select(item => item.Value));
+                if (_physicalTables is not null && !_physicalTables.Contains(name) &&
+                    name is not ("sys.tables" or "sys.schemas" or "sys.objects" or "sys.database_principals"
+                        or "sys.database_permissions" or "sys.user_token" or "sys.computed_columns" or "sys.security_predicates"))
+                    Rejected = true;
+                base.ExplicitVisit(node);
+            }
+            public override void ExplicitVisit(FunctionCall node)
+            {
+                // Schema-qualified and CLR member functions may hide indirect side effects.
+                if (node.CallTarget is not null) Rejected = true;
+                base.ExplicitVisit(node);
+            }
+            public override void ExplicitVisit(SchemaObjectFunctionTableReference node)
+            {
+                if (string.Join(".", node.SchemaObject.Identifiers.Select(item => item.Value)) != "sys.fn_my_permissions")
+                    Rejected = true;
+                base.ExplicitVisit(node);
+            }
+            public override void ExplicitVisit(NextValueForExpression node) => Rejected = true;
+            public override void ExplicitVisit(OpenRowsetTableReference node) => Rejected = true;
+            public override void ExplicitVisit(BulkOpenRowset node) => Rejected = true;
+            public override void ExplicitVisit(OpenQueryTableReference node) => Rejected = true;
+            public override void ExplicitVisit(AdHocTableReference node) => Rejected = true;
+            public override void ExplicitVisit(SchemaObjectName node)
+            {
+                if (node.Identifiers.Count > 2)
+                    Rejected = true;
+                base.ExplicitVisit(node);
+            }
+        }
+
+        private InvalidOperationException NewWriteBlocked(DbCommand command)
+        {
+            Interlocked.Increment(ref _blockedCommands);
+            var exception = new InvalidOperationException("Production read-only proof rejected a non-SELECT database command.");
+            RecordDiagnostic(command, "blocked", TimeSpan.Zero, exception);
+            return exception;
+        }
     }
 
     private sealed class FounderAccess : IControlledResourceAccessService
@@ -4349,25 +5796,75 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 
+    [Fact]
+    public async Task NativeObservationCounter_RetainsDeniedProviderSendAttempts()
+    {
+        var factory = new CountingHttpClientFactory();
+        using var client = factory.CreateClient("native-observation-counter");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetAsync("blocked"));
+        Assert.Equal(1, factory.CreateClientCalls);
+        Assert.Equal(1, factory.SendCalls);
+    }
+
+    private sealed class CountingForbiddenTranslationProvider : ITranslationProvider
+    {
+        private int _callAttempts;
+        public int CallAttempts => Volatile.Read(ref _callAttempts);
+        public string ProviderName => "ForbiddenExternalTranslation";
+
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text, CancellationToken cancellationToken = default) =>
+            Refuse<TranslationDetectionResult>();
+
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text, CancellationToken cancellationToken,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
+            Refuse<TranslationDetectionResult>();
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text, string targetLanguage, string? sourceLanguage = null,
+            CancellationToken cancellationToken = default) =>
+            Refuse<TranslationProviderResult>();
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text, string targetLanguage, string? sourceLanguage,
+            CancellationToken cancellationToken,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
+            Refuse<TranslationProviderResult>();
+
+        private Task<T> Refuse<T>()
+        {
+            Interlocked.Increment(ref _callAttempts);
+            return Task.FromException<T>(new InvalidOperationException(
+                "Native SQL proof must not invoke an external translation provider."));
+        }
+    }
+
     private sealed class CountingHttpClientFactory : IHttpClientFactory
     {
-        public int CreateClientCalls { get; private set; }
+        private int _createClientCalls;
+        private int _sendCalls;
+        public int CreateClientCalls => Volatile.Read(ref _createClientCalls);
+        public int SendCalls => Volatile.Read(ref _sendCalls);
 
         public HttpClient CreateClient(string name)
         {
-            CreateClientCalls++;
-            return new HttpClient(new NoNetworkHandler())
+            Interlocked.Increment(ref _createClientCalls);
+            return new HttpClient(new NoNetworkHandler(() => Interlocked.Increment(ref _sendCalls)))
             {
                 BaseAddress = new Uri("https://legend-e2e.invalid/")
             };
         }
     }
 
-    private sealed class NoNetworkHandler : HttpMessageHandler
+    private sealed class NoNetworkHandler(Action recordSend) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            System.Threading.CancellationToken cancellationToken) =>
+            System.Threading.CancellationToken cancellationToken)
+        {
+            recordSend();
             throw new InvalidOperationException("The OpenAI test client must not be used by native inference.");
+        }
     }
 }

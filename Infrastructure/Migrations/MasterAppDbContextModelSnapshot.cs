@@ -96,6 +96,9 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("ProfileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("RetainClientContact")
+                        .HasColumnType("bit");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -4278,6 +4281,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("SentUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("SharedSocialPostId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("VerificationReviewRequestId")
                         .HasColumnType("uniqueidentifier");
 
@@ -4762,6 +4768,131 @@ namespace Infrastructure.Migrations
                     b.HasIndex("OwnerAgentUserId", "Status", "ScheduledStartUtc");
 
                     b.ToTable("LeadAppointments", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.LegendCallSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CalleeDeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CalleeName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("CalleeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CalleeUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("CallerDeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CallerName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("CallerType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CallerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Epoch")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("InvitationDispatchedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextPushUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PushAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ReceivedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Video")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalleeUserId", "CalleeType", "ExpiresUtc");
+
+                    b.HasIndex("CallerUserId", "CallerType", "ExpiresUtc");
+
+                    b.ToTable("LegendCallSessions");
+                });
+
+            modelBuilder.Entity("Domain.Entities.LegendCallSignal", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CallId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasMaxLength(32000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecipientGroup")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.HasIndex("CallId", "CreatedUtc");
+
+                    b.HasIndex("RecipientGroup", "ExpiresUtc");
+
+                    b.ToTable("LegendCallSignals");
                 });
 
             modelBuilder.Entity("Domain.Entities.LegendConnectAutonomousLanguageFocus", b =>
@@ -5466,12 +5597,12 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("SourceLanguageCode")
+                    b.Property<string>("ProcessingState")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
-                    b.Property<string>("ProcessingState")
+                    b.Property<string>("SourceLanguageCode")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
@@ -5484,12 +5615,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
-                        .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
-
                     b.HasIndex("FounderUserId", "ManifestHash")
                         .IsUnique()
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Identity");
+
+                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
+                        .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
 
                     b.HasIndex("ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
@@ -5925,11 +6056,11 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Identity");
 
-                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
-                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
-
                     b.HasIndex("EvaluatorVersion", "Phase", "ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Claim");
+
+                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
+                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
 
                     b.ToTable("LegendHistoricalReevaluationWorkItems", (string)null);
                 });
@@ -8174,6 +8305,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(72)
                         .HasColumnType("nvarchar(72)");
 
+                    b.Property<string>("PlaceholderContractHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("Provenance")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -8188,13 +8323,37 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
+                    b.Property<string>("ProviderVersion")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<string>("QualityState")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<string>("RetainedTranslationIdentity")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ReuseScope")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("ReuseScopeIdentityHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SourceContentRevision")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<Guid>("SourceTextUnitId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StableSourceContentId")
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
 
                     b.Property<Guid?>("SupersededByAlignmentId")
                         .HasColumnType("uniqueidentifier");
@@ -8205,10 +8364,18 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("TargetTextUnitId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("TranslationContext")
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
+
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RetainedTranslationIdentity")
+                        .IsUnique()
+                        .HasFilter("[RetainedTranslationIdentity] IS NOT NULL");
 
                     b.HasIndex("SourceTextUnitId");
 
@@ -8220,8 +8387,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PairKey", "QualityState");
 
-                    b.HasIndex("PairKey", "SourceTextUnitId", "TargetTextUnitId")
-                        .IsUnique();
+                    b.HasIndex("PairKey", "SourceTextUnitId", "TargetTextUnitId");
 
                     b.ToTable("LegendTranslationAlignments", (string)null);
                 });
@@ -8275,6 +8441,34 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("LegendTranslationEntitlements", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.LegendTranslationGlobalPolicy", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<long>("MonthlyCharacterAllowance")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LegendTranslationGlobalPolicies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LegendTranslationGlobalPolicies_Singleton", "[Id] = 1 AND [MonthlyCharacterAllowance] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Domain.Entities.LegendTranslationLearningEvent", b =>
@@ -8659,19 +8853,19 @@ namespace Infrastructure.Migrations
                     b.Property<long>("GroupUniqueTargetReuseCount")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("ProviderBillableCharacters")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderFailureCount")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("ProviderOperationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
-                        .HasColumnType("bigint");
-
                     b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")
@@ -8813,19 +9007,19 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("PeriodStart")
                         .HasColumnType("date");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("ProviderBillableCharacters")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderFailureCount")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("ProviderOperationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
-                        .HasColumnType("bigint");
-
                     b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")
@@ -9090,6 +9284,12 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("PinnedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("SharedReadThroughUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("SuppressReadReceipts")
+                        .HasColumnType("bit");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -9107,6 +9307,32 @@ namespace Infrastructure.Migrations
                     b.HasIndex("UserId", "ParticipantType", "PinnedUtc");
 
                     b.ToTable("MessageConversationParticipants", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.MessageReaction", b =>
+                {
+                    b.Property<Guid>("InternalMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActorProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ParticipantType")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Emoji")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("InternalMessageId", "ActorProfileId", "ParticipantType");
+
+                    b.ToTable("MessageReactions", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.MessageTranslation", b =>
@@ -9548,12 +9774,22 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<int>("PreferredReactionSkinTone")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("ProfileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("PublicEmail")
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("SendReadReceipts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");
@@ -9663,6 +9899,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)")
                         .HasDefaultValue("apns");
+
+                    b.Property<bool>("SupportsCommunicationNotifications")
+                        .HasColumnType("bit");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
@@ -12760,6 +12999,17 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("Domain.Entities.MessageReaction", b =>
+                {
+                    b.HasOne("Domain.Entities.InternalMessage", "InternalMessage")
+                        .WithMany()
+                        .HasForeignKey("InternalMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("InternalMessage");
                 });
 
             modelBuilder.Entity("Domain.Entities.MessageTranslation", b =>

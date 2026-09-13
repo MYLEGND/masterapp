@@ -5,8 +5,59 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.cert.CertificateFactory
 import java.util.Base64
 import java.util.Properties
+import java.io.RandomAccessFile
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+
+abstract class LegendSigningPassword : ValueSource<String, LegendSigningPassword.Parameters> {
+    interface Parameters : ValueSourceParameters { val account: Property<String> }
+    override fun obtain(): String? {
+        if (!System.getProperty("os.name").startsWith("Mac")) return null
+        val process = ProcessBuilder(
+            "/usr/bin/security", "find-generic-password", "-s",
+            "com.mylegnd.legend.android.release", "-a", parameters.account.get(), "-w",
+        ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        val value = process.inputStream.bufferedReader().use { it.readText() }.removeSuffix("\n")
+        return if (process.waitFor() == 0) value.takeIf { it.isNotEmpty() } else null
+    }
+}
+
+// A ValueSource is rechecked even when Gradle restores its configuration cache.
+// Keep the reservation outside build/ so clean and separate checkouts cannot reset it.
+abstract class LegendReleaseVersionCode : ValueSource<Int, LegendReleaseVersionCode.Parameters> {
+    interface Parameters : ValueSourceParameters {
+        val reservationFile: RegularFileProperty
+    }
+
+    override fun obtain(): Int {
+        val file = parameters.reservationFile.get().asFile
+        file.parentFile.mkdirs()
+        return RandomAccessFile(file, "rw").use { state ->
+            state.channel.lock().use {
+                check(state.length() > 0L) {
+                    "Android release version history is missing: $file. Restore the verified release reservation before building; refusing to guess a Play version code."
+                }
+                val saved = state.readLine().trim().toLongOrNull()
+                    ?: error("Invalid Android release version reservation: $file")
+                // Advance by one; wall-clock timestamps cause large Play version jumps.
+                val next = saved + 1L
+                check(saved in 7L..2_100_000_000L && next in 8L..2_100_000_000L) {
+                    "Android release version code is outside the Google Play range."
+                }
+                state.seek(0)
+                state.writeBytes("$next\n")
+                state.setLength(state.filePointer)
+                state.fd.sync()
+                next.toInt()
+            }
+        }
+    }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -27,6 +78,17 @@ val legendProperties = Properties().apply {
 fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
 
 val legendApplicationId = "com.mylegnd.legend.registered"
+val releaseRequested = gradle.startParameter.taskNames.any {
+    val task = it.substringAfterLast(':')
+    task.contains("Release", ignoreCase = true) || task in setOf("build", "assemble", "bundle")
+}
+val automaticReleaseVersionCode = if (releaseRequested) {
+    providers.of(LegendReleaseVersionCode::class) {
+        parameters.reservationFile.set(
+            gradle.gradleUserHomeDir.resolve("legend-release/$legendApplicationId.version-code"),
+        )
+    }.get().also { logger.lifecycle("LEGEND release versionCode: $it") }
+} else 7
 val legendDebugRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/debug")
 val legendReleaseRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/release")
 val legendDebugRuntimeAssets = legendDebugRuntimeRoot.map { it.dir("assets") }
@@ -34,6 +96,7 @@ val legendDebugRuntimeRes = legendDebugRuntimeRoot.map { it.dir("res") }
 val legendReleaseRuntimeAssets = legendReleaseRuntimeRoot.map { it.dir("assets") }
 val legendReleaseRuntimeRes = legendReleaseRuntimeRoot.map { it.dir("res") }
 val sharedLegendDesignSpec = rootProject.file("../Legend-Design/legend-design.tokens.json")
+val sharedLegendApplicationCopy = rootProject.file("../Legend-Design/legend-application-copy.json")
 val legendDesignAssets = layout.buildDirectory.dir("generated/legend-design/assets")
 // The iOS asset catalog owns the brand artwork. Android packages that source
 // at build time instead of keeping a second, drift-prone copy in res/.
@@ -48,7 +111,18 @@ val sharedLegendAppIcon = rootProject.file(
 )
 val legendBrandAssets = layout.buildDirectory.dir("generated/legend-brand/assets")
 val legendBrandRes = layout.buildDirectory.dir("generated/legend-brand/res")
-val productionMsalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
+// Google Play signs installed APKs with this public certificate, not the upload key.
+// Derive the MSAL configuration and manifest from that certificate in every release build.
+val playSigningCertificate = file("signing/play-app-signing.pem")
+val playSigningHash = playSigningCertificate.inputStream().use {
+    Base64.getEncoder().encodeToString(
+        MessageDigest.getInstance("SHA-1").digest(
+            CertificateFactory.getInstance("X.509").generateCertificate(it).encoded,
+        ),
+    )
+}
+val productionMsalRedirectUri =
+    "msauth://$legendApplicationId/${URLEncoder.encode(playSigningHash, StandardCharsets.UTF_8)}"
 
 fun signingCertificateHash(keyStoreFile: File): String? = runCatching {
     val keyStore = KeyStore.getInstance("JKS")
@@ -100,6 +174,7 @@ val generateLegendDebugRuntimeConfiguration by tasks.registering(Sync::class) {
 }
 
 val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) {
+    inputs.file(playSigningCertificate)
     inputs.file(rootProject.file("legend.properties")).optional()
     from("src/main/legend-template")
     into(legendReleaseRuntimeRoot)
@@ -118,6 +193,8 @@ val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) 
 /** Bundles the single cross-platform design authority without copying it into Android source. */
 val bundleLegendDesignSpecification by tasks.registering(Sync::class) {
     from(sharedLegendDesignSpec)
+    from(sharedLegendApplicationCopy)
+    from(rootProject.file("../Legend-Design/legend-reaction-emoji.json"))
     into(legendDesignAssets)
 }
 
@@ -148,11 +225,44 @@ android {
         applicationId = legendApplicationId
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
+        versionCode = automaticReleaseVersionCode
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
+    }
+
+    // CI retains its existing external signing step. Local builds use env or Keychain.
+    val externalCiSigning = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+    val signingRequested = releaseRequested || gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':') == "signingReport"
+    }
+    fun signingPassword(environment: String, account: String): String? =
+        providers.environmentVariable(environment).orNull?.takeIf { it.isNotEmpty() }
+            ?: if (signingRequested && !externalCiSigning) providers.of(LegendSigningPassword::class) {
+                parameters.account.set(account)
+            }.orNull else null
+    val localReleaseStorePassword = signingPassword("LEGEND_STORE_PASSWORD", "store-password")
+    val localReleaseKeyPassword = signingPassword("LEGEND_KEY_PASSWORD", "key-password")
+    val localReleaseKeystore = rootProject.file("Legend.jks")
+    val hasLocalReleaseSigning = localReleaseKeystore.exists() &&
+        !localReleaseStorePassword.isNullOrBlank() && !localReleaseKeyPassword.isNullOrBlank()
+    val releaseArtifactRequested = gradle.startParameter.taskNames.any {
+        val task = it.substringAfterLast(':')
+        task in setOf("build", "assemble", "bundle") ||
+            (task.contains("release", ignoreCase = true) &&
+                (task.startsWith("bundle", true) || task.startsWith("assemble", true) || task.startsWith("package", true)))
+    }
+    check(!releaseArtifactRequested || hasLocalReleaseSigning || externalCiSigning) {
+        "Release signing is not configured. Run: swift tools/setup-release-signing.swift (one-time macOS Keychain setup). No unsigned release will be built."
+    }
+    if (hasLocalReleaseSigning) {
+        signingConfigs.create("release") {
+            storeFile = localReleaseKeystore
+            storePassword = localReleaseStorePassword
+            keyAlias = "legend-upload-2026"
+            keyPassword = localReleaseKeyPassword
+        }
     }
 
     buildTypes {
@@ -161,6 +271,9 @@ android {
             manifestPlaceholders["msalSignatureHash"] = debugMsalSignatureHash
         }
         release {
+            if (hasLocalReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
@@ -192,6 +305,7 @@ android {
     }
 
     sourceSets.getByName("main") {
+        res.directories.add(rootProject.file("../SHARED/Calling/Resources").absolutePath)
         assets.directories.add(legendDesignAssets.get().asFile.absolutePath)
         assets.directories.add(legendBrandAssets.get().asFile.absolutePath)
         res.directories.add(legendBrandRes.get().asFile.absolutePath)
@@ -221,6 +335,7 @@ tasks.named("preBuild").configure {
 }
 
 dependencies {
+    implementation("io.github.webrtc-sdk:android:144.7559.09")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -246,8 +361,10 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    implementation(libs.media3.transformer)
     implementation(libs.msal)
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.installations)
     implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)

@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,6 +21,57 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectMachineLearningLifecycleTests
 {
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("pending", false)]
+    [InlineData("74189f90-20e2-4925-a1d7-f461b93f7a63", false)]
+    [InlineData(null, true)]
+    [InlineData("pending", true)]
+    [InlineData("74189f90-20e2-4925-a1d7-f461b93f7a63", true)]
+    public async Task LifecycleSurface_CompilesSqlServerQueryBeforeOpeningAConnection(string? search, bool hasCursor)
+    {
+        var interceptor = new TranslationOnlyConnectionInterceptor();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer("Server=translation-only.invalid;Database=translation-only;Integrated Security=true;TrustServerCertificate=true")
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var db = new MasterAppDbContext(options);
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var method = typeof(LegendConnectOperations).GetMethod(
+            "GetMachineLearningLifecyclePageAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        var cursorType = typeof(LegendConnectOperations).GetNestedType(
+            "FounderSectionCursor", BindingFlags.NonPublic);
+        Assert.NotNull(cursorType);
+        var cursor = hasCursor
+            ? Activator.CreateInstance(cursorType!, DateTime.UtcNow, Guid.NewGuid())
+            : null;
+
+        await Assert.ThrowsAsync<QueryTranslatedException>(async () =>
+            await (Task<LegendConnectFounderSectionPageSnapshot>)method!.Invoke(
+                operations, ["en", search, cursor, CancellationToken.None])!);
+        Assert.Equal(1, interceptor.Attempts);
+    }
+
+    private sealed class QueryTranslatedException : Exception { }
+
+    private sealed class TranslationOnlyConnectionInterceptor : DbConnectionInterceptor
+    {
+        public int Attempts { get; private set; }
+
+        public override ValueTask<InterceptionResult> ConnectionOpeningAsync(
+            DbConnection connection, ConnectionEventData eventData,
+            InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            throw new QueryTranslatedException();
+        }
+    }
+
     [Fact]
     public async Task LifecycleSurface_PreservesCorrelationIdentityAcrossEachPersistedTransition()
     {

@@ -1,6 +1,7 @@
 package com.mylegnd.legend.registered
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
@@ -18,6 +19,6 @@ class MainActivity : FragmentActivity() {
         container.notificationNavigation.capture(intent)
         setContent { LegendTheme { val session: SessionViewModel = viewModel(factory = LegendViewModelFactory { SessionViewModel(container.sessionRepository) }); LaunchedEffect(Unit) { session.restore() }; LegendRoot(session, container) } }
     }
-    override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); setIntent(intent); (application as LegendApplication).container.notificationNavigation.capture(intent) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); (application as LegendApplication).container.notificationNavigation.capture(intent) }
 }
 class LegendViewModelFactory<T : ViewModel>(private val creator: () -> T) : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <R : ViewModel> create(modelClass: Class<R>): R = creator() as R }

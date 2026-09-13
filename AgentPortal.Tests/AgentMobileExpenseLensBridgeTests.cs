@@ -42,24 +42,8 @@ public sealed class AgentMobileExpenseLensBridgeTests
             JsonState =
                 """
                 {
-                  "mobileWeekProjection": {
-                    "schemaVersion": 1,
-                    "weekId": "2026-07-27_2026-08-02",
-                    "weekLabel": "Jul 27 – Aug 2",
-                    "startDate": "2026-07-27",
-                    "endDate": "2026-08-02",
-                    "status": "current",
-                    "openingCashCents": 100000,
-                    "incomeCents": 240000,
-                    "debitBillsCents": 60000,
-                    "creditBillsCents": 25000,
-                    "requiredDebtMinimumCents": 10000,
-                    "extraDebtPaymentCents": 5000,
-                    "closingCashCents": 150000,
-                    "openingDebtCents": 500000,
-                    "closingDebtCents": 485000,
-                    "events": []
-                  }
+                  "incomeStreams": { "primary": [{ "id": "salary", "amount": "2400", "frequency": "monthly", "anchorDate": "2026-07-29" }] },
+                  "categories": [{ "id": "bill", "name": "Insurance", "amount": "600", "due": "2026-07-29", "frequency": "monthly", "paymentMethod": "Debit" }]
                 }
                 """
         });
@@ -69,14 +53,15 @@ public sealed class AgentMobileExpenseLensBridgeTests
         Assert.Equal(agentOid, persisted.AgentUserId);
         Assert.Equal("ExpenseLens", persisted.ToolId);
 
-        var mobile = await new MobileFinancialOperatingSystemProjectionService(db)
+        var mobile = await new MobileFinancialOperatingSystemProjectionService(db, Mock.Of<Infrastructure.Households.IHouseholdMembershipService>())
             .ProjectAgentAsync(
                 agentOid,
                 new DateOnly(2026, 7, 29));
 
         Assert.Equal("Available", mobile.Projection.Status);
         var week = Assert.IsType<MobileFinancialWeekAtGlance>(mobile.WeekAtGlance);
-        Assert.Equal("2026-07-27_2026-08-02", week.WeekKey);
-        Assert.Equal(150000, week.EndingCashCents);
+        Assert.Equal(240000, week.IncomeCents);
+        Assert.Equal(60000, week.DebitExpenseCents);
+        Assert.NotNull(mobile.MonthAtGlance);
     }
 }

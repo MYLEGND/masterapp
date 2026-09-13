@@ -135,7 +135,7 @@
                 }
                 else
                 {
-                    <text>Client setup workspace. Select what you currently have in place so your agent can review gaps and recommend next steps.</text>
+                    <text>Your protection workspace. Select what you currently have in place so your LEGEND guide can review gaps and recommend next steps.</text>
                 }
             </p>
             <div class="snapshot-meta-row">
@@ -201,11 +201,11 @@
                 </div>
                 <div class="snapshot-start-grid">
                     <div class="snapshot-start-step">
-                        <strong>Client responsibility</strong>
+                        <strong>@(Model.IsAgentView ? "Client responsibility" : "Your role")</strong>
                         <span>Complete selections based on what is currently in force. Keep this snapshot updated as life changes.</span>
                     </div>
                     <div class="snapshot-start-step">
-                        <strong>Agent responsibility</strong>
+                        <strong>@(Model.IsAgentView ? "Agent responsibility" : "Your guide’s role")</strong>
                         <span>Review submitted inputs, find gaps/opportunities, and drive recommendations and follow-up plan.</span>
                     </div>
                 </div>
@@ -350,7 +350,7 @@
                     </div>
 
                     <div class="snapshot-library-group">
-                        <div class="snapshot-library-title">Business Protection (Business Clients)</div>
+                        <div class="snapshot-library-title">Business Protection</div>
                         <div class="snapshot-chip-wrap snapshot-chip-wrap-wide" id="foundationProtectionLibraryBusiness">
                             <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Business Disability">Business Disability</button>
                             <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="General Liability">General Liability</button>
@@ -472,7 +472,7 @@
                  data-step-lesson="Select current priorities and life changes so planning stays relevant and not generic.">
                 <div class="snapshot-card-head">
                     <h2>Priority Focus &amp; Life Events</h2>
-                    <p>Select what matters most right now so both client and agent stay aligned on the next best move. Coverage lines are selected above in Protection Foundation.</p>
+                    <p>Select what matters most right now so you and your LEGEND guide can agree on the next step. Coverage lines are selected above in Protection Foundation.</p>
                 </div>
 
                 <div class="snapshot-chip-section">
@@ -533,12 +533,12 @@
 
                 <div class="snapshot-two-col">
                     <label class="snapshot-field snapshot-field-full">
-                        <span>Agent follow-up focus</span>
+                        <span>@(Model.IsAgentView ? "Agent follow-up focus" : "Guide follow-up focus")</span>
                         <textarea id="agentFollowUpFocus" rows="4" placeholder="What should be reviewed, clarified, quoted, or coordinated next?"></textarea>
                     </label>
 
                     <label class="snapshot-field snapshot-field-full">
-                        <span>Client notes</span>
+                        <span>@(Model.IsAgentView ? "Client notes" : "My notes")</span>
                         <textarea id="clientNotes" rows="4" placeholder="Add context that should stay visible for future reviews."></textarea>
                     </label>
                 </div>
@@ -549,7 +549,7 @@
             <div class="snapshot-card snapshot-sticky">
                 <div class="snapshot-card-head">
                     <h2>Live Summary</h2>
-                    <p>Shared with the connected agent workspace for consistent follow-up.</p>
+                    <p>Shared with your LEGEND guide for consistent follow-up.</p>
                 </div>
 
                 <div class="snapshot-summary-list" id="snapshotSummaryList"></div>

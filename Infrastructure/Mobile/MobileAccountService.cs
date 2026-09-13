@@ -238,18 +238,7 @@ public sealed class MobileAccountService : IMobileAccountService
                 mobileSettingsValidationError);
         }
 
-        var translationAccess = await _controlledResources.GetAccessAsync(
-            actor.Actor,
-            ControlledResourceTypes.LanguageTranslation,
-            cancellationToken);
         var preferredLanguage = TrimOptional(update.PreferredCommunicationLanguage);
-        if (update.PreferredCommunicationLanguage is not null &&
-            translationAccess.State != ControlledResourceAccessStates.Granted)
-        {
-            return MobileAccountResult.Failure(
-                "MOBILE_TRANSLATION_ACCESS_REQUIRED",
-                "Language Translation Access must be granted before choosing a communication language.");
-        }
         if (update.PreferredCommunicationLanguage is not null &&
             preferredLanguage is not null)
         {
@@ -438,9 +427,11 @@ public sealed class MobileAccountService : IMobileAccountService
             UsernameChangesRemaining = UsernameChangesRemaining(settings),
             TranslationAccess = translationAccess,
             TranslationEntitlement = translationEntitlement,
-            PreferredCommunicationLanguage = translationAccess.State == ControlledResourceAccessStates.Granted
-                ? await _languages.NormalizeEnabledTranslationLanguageAsync(settings.PreferredCommunicationLanguage, cancellationToken)
-                : null
+            // Application language is an account preference for every member.
+            // Message-translation entitlement remains a separate capability.
+            PreferredCommunicationLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+                settings.PreferredCommunicationLanguage,
+                cancellationToken)
         });
     }
 

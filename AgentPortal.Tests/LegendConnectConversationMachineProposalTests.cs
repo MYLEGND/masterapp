@@ -55,9 +55,10 @@ public sealed class LegendConnectConversationMachineProposalTests
         Assert.Equal("MachineProposed", proposal.Provenance);
         Assert.Equal("AwaitingCritic", proposal.ValidationState);
         Assert.False(proposal.CriticApproved);
-        var family = Assert.IsType<LegendLanguageTeacherFamilyProposal>(
-            JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
-                proposal.ProposalPayloadJson));
+        Assert.True(LegendConnectAutonomousLearningService.TryReadMachineProposalPayload(
+            proposal.ProposalPayloadJson, out var family, out var evidenceBinding));
+        Assert.NotNull(family);
+        Assert.NotNull(evidenceBinding);
         Assert.Equal(
             LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
             family.CapabilityIdentity);
@@ -84,6 +85,248 @@ public sealed class LegendConnectConversationMachineProposalTests
         Assert.Equal(before, await CanonicalCountsAsync(fixture.Db));
     }
 
+    [Theory]
+    [InlineData("none")]
+    [InlineData("proposal_identity")]
+    [InlineData("founder_revoked")]
+    [InlineData("node_receipt")]
+    public async Task NovelSameLanguageSurfaces_ReuseOnlyWhileTheirAdmissionAndFounderProofRemainValid(string corruption)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await SeedGovernedSameLanguageSemanticsAsync(fixture.Db, fixture.Curriculum);
+        var submission = NovelSameLanguageSubmission();
+        var initial = await fixture.Curriculum.AnalyzeShadowSourceSemanticsAsync("en", submission.Examples[0].SourceText);
+        Assert.NotEqual(LegendShadowSourceUnderstanding.SupportedForShadowEvaluation, initial.State);
+        var initialHumanSupport = await fixture.Db.Set<LegendLanguageMeaningPrimitiveEvidence>()
+            .CountAsync(item => item.IsHumanVerifiedSupport);
+
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("AwaitingCritic", result.State);
+        await fixture.Service.ProcessOneAsync();
+        var critique = Assert.IsType<LegendLanguageTeacherCritiqueRequest>(fixture.Teacher.LastRequest);
+        Assert.All(critique.Context.Evidence, evidence =>
+        {
+            Assert.Equal("FounderApproved", evidence.Provenance);
+            Assert.Contains(evidence.SourceText, new[] { "Hello.", "Welcome." });
+            Assert.DoesNotContain(submission.Examples, proposed => proposed.SourceText == evidence.SourceText);
+        });
+        await fixture.Service.ProcessOneAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var qualified = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(item => item.Id == result.ProposalId);
+        Assert.Equal("SystemValidated", qualified.ValidationState);
+        Assert.Equal("SystemValidatedMachine", qualified.Provenance);
+        await fixture.Service.ProcessOneAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var admitted = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(item => item.Id == result.ProposalId);
+        Assert.Equal("CurriculumAdmitted", admitted.ValidationState);
+        Assert.Null(admitted.CurriculumAdmissionFailureCode);
+        Assert.Equal(1, fixture.Teacher.CritiqueCalls);
+        Assert.Equal(0, fixture.Teacher.ProposeCalls);
+        Assert.Equal(initialHumanSupport, await fixture.Db.Set<LegendLanguageMeaningPrimitiveEvidence>()
+            .CountAsync(item => item.IsHumanVerifiedSupport));
+        foreach (var example in submission.Examples)
+        {
+            var hash = LegendLanguageIdentity.TextHash(example.SourceText);
+            var unit = await fixture.Db.LegendLanguageTextUnits.SingleAsync(item => item.LanguageCode == "en" && item.NormalizedHash == hash);
+            Assert.Equal("SystemValidatedMachine", unit.Provenance);
+            Assert.True(unit.IsTrainingEligible);
+        }
+        var reloadedGraph = await fixture.Curriculum.AnalyzeReusableMeaningGraphAsync(
+            "en", submission.Examples[0].SourceText);
+        Assert.True(reloadedGraph.IsComposed, reloadedGraph.ReasonCode);
+        var learnedNode = Assert.Single(reloadedGraph.Nodes);
+        Assert.Equal("SystemValidatedMachine", learnedNode.Provenance);
+        Assert.NotNull(learnedNode.SourceMeaningNodeEvidenceId);
+        Assert.Equal(1, learnedNode.IndependentSupportCount);
+        var configuration = Configuration();
+        var router = new LegendConnectTranslationRouter(
+            new NoopTranslationProvider(),
+            new LegendLanguageRegistry(fixture.Db, configuration),
+            new TranslationCapacityAuthority(fixture.Db, configuration, NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            structuralComposition: fixture.Curriculum);
+        var language = await router.DetectLanguageAsync(
+            submission.Examples[0].SourceText, CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.True(language.Succeeded, language.ErrorCode);
+        Assert.Equal("en", language.Language);
+        var inference = await fixture.Curriculum.TryInferComposedSemanticTransitionAsync(
+            "en", submission.Examples[0].SourceText, [], null);
+        Assert.Equal(LegendSemanticTransitionInference.Supported, inference.State);
+        Assert.Contains("broad_governed_semantic_transition", inference.Reasons);
+        Assert.False(string.IsNullOrWhiteSpace(inference.RealizedText));
+        var responseMeaning = await fixture.Curriculum.AnalyzeReusableMeaningGraphAsync("en", inference.RealizedText!);
+        Assert.True(responseMeaning.IsComposed, responseMeaning.ReasonCode);
+        Assert.Equal("welcome", Assert.Single(responseMeaning.Nodes).SemanticValue);
+        var duplicate = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+        Assert.True(duplicate.ProposalAlreadyExisted);
+        Assert.Equal(result.ProposalId, duplicate.ProposalId);
+
+        if (corruption == "none")
+        {
+            // A recognized lexical component is insufficient to identify an
+            // otherwise ungoverned utterance without external assistance.
+            var sparseText = submission.Examples[0].SourceText + " unretainedtoken";
+            var sparseGraph = await fixture.Curriculum.AnalyzeReusableMeaningGraphAsync("en", sparseText);
+            Assert.True(sparseGraph.IsComposed);
+            Assert.NotEmpty(sparseGraph.UnknownSurfaceComponents);
+            var sparseDetection = await router.DetectLanguageAsync(
+                sparseText, CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+            Assert.False(sparseDetection.Succeeded);
+            Assert.Equal("native_only_governed_source_language_undetermined", sparseDetection.ErrorCode);
+
+            // The same legitimate surface has governed meaning in a second
+            // registered language. Language identification must retain that
+            // ambiguity even though both complete graphs are admissible.
+            var french = await fixture.Curriculum.SubmitFounderBatchAsync(
+                new LegendConnectCurriculumBatchSubmission(
+                    "conversation.french.greeting", submission.SemanticCategory,
+                    [
+                        new LegendConnectCurriculumExampleSubmission("Salutations.",
+                            new Dictionary<string, string> { ["conversation_function"] = "greeting" },
+                            new LegendConnectMeaningGraphSubmission(
+                                [new LegendConnectMeaningNodeSubmission("meaning", "conversation_function", "greeting", "Salutations")], [])),
+                        new LegendConnectCurriculumExampleSubmission("Bienvenue.",
+                            new Dictionary<string, string> { ["conversation_function"] = "welcome" },
+                            new LegendConnectMeaningGraphSubmission(
+                                [new LegendConnectMeaningNodeSubmission("meaning", "conversation_function", "welcome", "Bienvenue")], []))
+                    ], submission.SemanticTransitions),
+                sourceLanguageCode: "fr");
+            Assert.True(french.Succeeded, french.Message);
+            fixture.Db.ChangeTracker.Clear();
+            var secondLanguage = await fixture.Curriculum.AnalyzeReusableMeaningGraphAsync(
+                "fr", submission.Examples[0].SourceText);
+            Assert.True(secondLanguage.IsComposed, secondLanguage.ReasonCode);
+            Assert.Empty(secondLanguage.UnknownSurfaceComponents);
+            var ambiguousLanguage = await router.DetectLanguageAsync(
+                submission.Examples[0].SourceText, CancellationToken.None,
+                LegendConnectExternalProviderPolicy.NativeOnly);
+            Assert.False(ambiguousLanguage.Succeeded);
+            Assert.Equal("native_only_governed_source_language_undetermined", ambiguousLanguage.ErrorCode);
+            return;
+        }
+        if (corruption == "proposal_identity")
+            admitted.ProposalIdentity = LegendLanguageIdentity.TextHash("unrelated-admission");
+        else if (corruption == "founder_revoked")
+        {
+            var family = await fixture.Db.LegendCurriculumFamilies.SingleAsync(item => item.FamilyKey == submission.FamilyKey);
+            var founderNode = await fixture.Db.Set<LegendLanguageMeaningNodeEvidence>().SingleAsync(item =>
+                item.CurriculumFamilyId == family.Id && item.Provenance == "FounderApproved" && item.SemanticValue == "greeting");
+            founderNode.SupersededUtc = DateTime.UtcNow;
+        }
+        else
+        {
+            var machineNode = await fixture.Db.Set<LegendLanguageMeaningNodeEvidence>()
+                .SingleAsync(item => item.Id == learnedNode.SourceMeaningNodeEvidenceId);
+            machineNode.NodeKey = "machine." + Guid.NewGuid().ToString("N") + "." + machineNode.SemanticSignature[..16];
+        }
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var revoked = await fixture.Curriculum.AnalyzeReusableMeaningGraphAsync("en", submission.Examples[0].SourceText);
+        Assert.False(revoked.IsComposed);
+        var rejected = await fixture.Curriculum.TryInferComposedSemanticTransitionAsync(
+            "en", submission.Examples[0].SourceText, [], null);
+        Assert.NotEqual(LegendSemanticTransitionInference.Supported, rejected.State);
+        var ungovernedLanguage = await router.DetectLanguageAsync(
+            submission.Examples[0].SourceText, CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.False(ungovernedLanguage.Succeeded);
+    }
+
+    [Theory]
+    [InlineData("family")]
+    [InlineData("primitive")]
+    [InlineData("transition")]
+    public async Task SameLanguageTeaching_UnprovenLineageDoesNotEnterCritique(string corruption)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await SeedGovernedSameLanguageSemanticsAsync(fixture.Db, fixture.Curriculum);
+        var submission = NovelSameLanguageSubmission();
+        if (corruption == "family")
+            submission = submission with { FamilyKey = "unrelated.semantic.family" };
+        else if (corruption == "primitive")
+            submission = submission with
+            {
+                Examples =
+                [
+                    submission.Examples[0] with
+                    {
+                        Components = [new LegendConnectMachineTeachingComponentSubmission(
+                            "conversation_function", "unsupported", "Salutations")]
+                    },
+                    submission.Examples[1]
+                ]
+            };
+        else
+            submission = submission with
+            {
+                SemanticTransitions = [new LegendConnectSemanticTransitionSubmission(
+                    submission.SemanticTransitions![0].Result,
+                    submission.SemanticTransitions[0].Source)]
+            };
+
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("machine_teaching_same_language_evidence_unproven", result.ErrorCode);
+        Assert.Empty(await fixture.Db.LegendLanguageTeacherProposals.ToListAsync());
+        Assert.Equal(0, fixture.Teacher.CritiqueCalls);
+    }
+
+    [Fact]
+    public async Task SameLanguageCriticRejection_DoesNotAdmitNovelSurfaces()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await SeedGovernedSameLanguageSemanticsAsync(fixture.Db, fixture.Curriculum);
+        fixture.Teacher.Approve = false;
+        var before = await CanonicalCountsAsync(fixture.Db);
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(NovelSameLanguageSubmission());
+        Assert.True(result.Succeeded, result.Message);
+        await fixture.Service.ProcessOneAsync();
+        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(item => item.Id == result.ProposalId);
+        Assert.Equal("CriticRejected", proposal.ValidationState);
+        Assert.Equal("MachineProposed", proposal.Provenance);
+        Assert.Null(proposal.CanonicalValidatedUtc);
+        Assert.Null(proposal.CurriculumAdmittedUtc);
+        Assert.Equal(before, await CanonicalCountsAsync(fixture.Db));
+    }
+
+    [Fact]
+    public async Task ChangedFounderSourceAfterSameLanguageCritique_InvalidatesEvidenceIdentity()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await SeedGovernedSameLanguageSemanticsAsync(fixture.Db, fixture.Curriculum);
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(NovelSameLanguageSubmission());
+        Assert.True(result.Succeeded, result.Message);
+        await fixture.Service.ProcessOneAsync();
+        var source = await fixture.Db.LegendLanguageTextUnits.SingleAsync(item => item.LanguageCode == "en" && item.Text == "Hello.");
+        source.Text = "Updated greeting.";
+        source.NormalizedHash = LegendLanguageIdentity.TextHash(source.Text);
+        await fixture.Db.SaveChangesAsync();
+        await fixture.Service.ProcessOneAsync();
+        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(item => item.Id == result.ProposalId);
+        Assert.Equal("Rejected", proposal.ValidationState);
+        Assert.Equal("canonical_evidence_identity_mismatch", proposal.CanonicalValidationFailureCode);
+        Assert.Equal("MachineProposed", proposal.Provenance);
+        Assert.Null(proposal.CurriculumAdmittedUtc);
+    }
+
+    [Fact]
+    public async Task KnownSameLanguageSurfaces_RemainRejectedByCanonicalNoveltyGate()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await SeedGovernedSameLanguageSemanticsAsync(fixture.Db, fixture.Curriculum);
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(SameLanguageSubmission());
+        Assert.True(result.Succeeded, result.Message);
+        await fixture.Service.ProcessOneAsync();
+        await fixture.Service.ProcessOneAsync();
+        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(item => item.Id == result.ProposalId);
+        Assert.Equal("Rejected", proposal.ValidationState);
+        Assert.Equal("canonical_proposal_already_known", proposal.CanonicalValidationFailureCode);
+        Assert.Null(proposal.CurriculumAdmittedUtc);
+    }
+
     [Fact]
     public async Task TranslationTeaching_UsesEnabledDirectionalPairAndExplicitIdentity()
     {
@@ -106,9 +349,10 @@ public sealed class LegendConnectConversationMachineProposalTests
             candidate.Category);
         var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync();
         Assert.Equal("MachineProposed", proposal.Provenance);
-        var family = Assert.IsType<LegendLanguageTeacherFamilyProposal>(
-            JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
-                proposal.ProposalPayloadJson));
+        Assert.True(LegendConnectAutonomousLearningService.TryReadMachineProposalPayload(
+            proposal.ProposalPayloadJson, out var family, out var evidenceBinding));
+        Assert.NotNull(family);
+        Assert.NotNull(evidenceBinding);
         Assert.Equal(
             LegendConnectMachineTeachingSubmission.TranslationCapability,
             family.CapabilityIdentity);
@@ -338,7 +582,7 @@ public sealed class LegendConnectConversationMachineProposalTests
                     null,
                     [
                         new LegendConnectMachineTeachingComponentSubmission(
-                            "conversation_response",
+                            "conversation_function",
                             "welcome",
                             "Welcome")
                     ])
@@ -353,11 +597,23 @@ public sealed class LegendConnectConversationMachineProposalTests
                     new LegendConnectSemanticFrameSubmission(
                         new Dictionary<string, string>
                         {
-                            ["conversation_response"] = "welcome"
+                            ["conversation_function"] = "welcome"
                         }))
             ],
             LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
             LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
+
+    internal static LegendConnectMachineTeachingSubmission NovelSameLanguageSubmission() =>
+        SameLanguageSubmission() with
+        {
+            Examples =
+            [
+                new LegendConnectMachineTeachingExampleSubmission("Salutations.", null,
+                    [new LegendConnectMachineTeachingComponentSubmission("conversation_function", "greeting", "Salutations")]),
+                new LegendConnectMachineTeachingExampleSubmission("Be welcome.", null,
+                    [new LegendConnectMachineTeachingComponentSubmission("conversation_function", "welcome", "Be welcome")])
+            ]
+        };
 
     private static LegendConnectMachineTeachingSubmission ResearchObservationSubmission()
     {
@@ -625,62 +881,41 @@ public sealed class LegendConnectConversationMachineProposalTests
             LegendConnectMachineTeachingSubmission.TranslationCapability,
             LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
 
-    private static async Task SeedGovernedSameLanguageSemanticsAsync(
+    internal static async Task SeedGovernedSameLanguageSemanticsAsync(
         MasterAppDbContext db,
         LegendConnectCurriculumService curriculum)
     {
-        var familyIds = new List<Guid>();
+        var submission = SameLanguageSubmission();
         for (var index = 1; index <= 3; index++)
         {
+            var surfaces = index switch
+            {
+                1 => new[] { "Hello.", "Welcome." },
+                2 => new[] { "Hi.", "Come aboard." },
+                _ => new[] { "Good morning.", "Glad you joined." }
+            };
             var result = await curriculum.SubmitFounderBatchAsync(
                 new LegendConnectCurriculumBatchSubmission(
-                    $"lai013.governed.primitives.{index}",
-                    "Founder-governed primitives for same-language proposal admission.",
-                    [
-                        new LegendConnectCurriculumExampleSubmission(
-                            "Hello.",
-                            new Dictionary<string, string>
-                            {
-                                ["conversation_function"] = "greeting"
-                            },
+                    index == 1 ? submission.FamilyKey : submission.FamilyKey + "." + index,
+                    submission.SemanticCategory,
+                    submission.Examples.Select((example, position) =>
+                    {
+                        var component = Assert.Single(example.Components);
+                        return new LegendConnectCurriculumExampleSubmission(
+                            surfaces[position],
+                            new Dictionary<string, string> { [component.Dimension] = component.Value },
                             new LegendConnectMeaningGraphSubmission(
-                                [
-                                    new LegendConnectMeaningNodeSubmission(
-                                        "source",
-                                        "conversation_function",
-                                        "greeting",
-                                        "Hello")
-                                ],
-                                [])),
-                        new LegendConnectCurriculumExampleSubmission(
-                            "Welcome.",
-                            new Dictionary<string, string>
-                            {
-                                ["conversation_response"] = "welcome"
-                            },
-                            new LegendConnectMeaningGraphSubmission(
-                                [
-                                    new LegendConnectMeaningNodeSubmission(
-                                        "result",
-                                        "conversation_response",
-                                        "welcome",
-                                        "Welcome")
-                                ],
-                                []))
-                    ]));
+                                [new LegendConnectMeaningNodeSubmission("meaning", component.Dimension,
+                                    component.Value, surfaces[position].TrimEnd('.'))], []));
+                    }).ToArray(),
+                    submission.SemanticTransitions));
             Assert.True(result.Succeeded, result.Message);
             Assert.True(result.CurriculumFamilyId.HasValue);
-            familyIds.Add(result.CurriculumFamilyId.Value);
-        }
-
-        foreach (var familyId in familyIds)
-        {
             await curriculum.ReevaluateHistoricalWorkItemAsync(
                 LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
-                familyId,
+                result.CurriculumFamilyId.Value,
                 "en");
         }
-
         db.ChangeTracker.Clear();
     }
 
@@ -915,7 +1150,7 @@ public sealed class LegendConnectConversationMachineProposalTests
         int StructuralPatterns,
         int SemanticTransitions);
 
-    private sealed class Fixture : IAsyncDisposable
+    internal sealed class Fixture : IAsyncDisposable
     {
         private Fixture(
             MasterAppDbContext db,
@@ -934,9 +1169,9 @@ public sealed class LegendConnectConversationMachineProposalTests
         internal LegendConnectAutonomousLearningService Service { get; }
         internal RecordingCritic Teacher { get; }
 
-        internal static Task<Fixture> CreateAsync()
+        internal static Task<Fixture> CreateAsync(MasterAppDbContext? existingDb = null)
         {
-            var db = ControllerTestHelpers.BuildDb();
+            var db = existingDb ?? ControllerTestHelpers.BuildDb();
             var configuration = Configuration();
             var registry = new LegendLanguageRegistry(db, configuration);
             var corpus = new LegendConnectCorpusService(
@@ -985,7 +1220,7 @@ public sealed class LegendConnectConversationMachineProposalTests
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(new TranslationDetectionResult(true, "en"));
+            throw new InvalidOperationException("Native learned-language identification cannot invoke a provider.");
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
@@ -996,10 +1231,12 @@ public sealed class LegendConnectConversationMachineProposalTests
                 "Conversation proposal submission cannot invoke translation.");
     }
 
-    private sealed class RecordingCritic : ILegendConnectLanguageTeacher
+    internal sealed class RecordingCritic : ILegendConnectLanguageTeacher
     {
         internal int ProposeCalls { get; private set; }
         internal int CritiqueCalls { get; private set; }
+        internal bool Approve { get; set; } = true;
+        internal LegendLanguageTeacherCritiqueRequest? LastRequest { get; private set; }
 
         public LegendLanguageTeacherConfigurationPreflight Preflight(
             string role) =>
@@ -1021,10 +1258,11 @@ public sealed class LegendConnectConversationMachineProposalTests
             CancellationToken cancellationToken = default)
         {
             CritiqueCalls++;
+            LastRequest = request;
             return Task.FromResult(
                 new LegendLanguageTeacherCritiqueResult(
                     true,
-                    true,
+                    Approve,
                     0.95m,
                     ["requires_canonical_validation"]));
         }

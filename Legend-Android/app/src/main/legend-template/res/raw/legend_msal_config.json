@@ -5,6 +5,7 @@
   "account_mode": "MULTIPLE",
   "authorities": [{
     "type": "AAD",
+    "default": true,
     "audience": {
       "type": "AzureADMyOrg",
       "tenant_id": "${entraTenantId}"

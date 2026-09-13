@@ -34,6 +34,7 @@ protocol LegendLaunchCaching: Sendable {
 enum LegendLaunchPayloadKind: String, Sendable, CaseIterable {
     case home
     case socialFeed
+    case localization
 }
 
 /// The identity half of a launch: enough to render the correct shell before the
@@ -49,19 +50,22 @@ struct MobileSessionCacheEntry: Codable, Equatable, Sendable {
     /// Legacy entries omit this value and are deliberately not used for eager
     /// presentation.
     let credentialFingerprint: String?
+    let preferredLanguageCode: String?
 
     init(
         actor: MobileActor,
         capabilities: [String],
         permittedParticipantTypes: [ParticipantType],
         cachedUtc: Date,
-        credentialFingerprint: String? = nil
+        credentialFingerprint: String? = nil,
+        preferredLanguageCode: String? = nil
     ) {
         self.actor = actor
         self.capabilities = capabilities
         self.permittedParticipantTypes = permittedParticipantTypes
         self.cachedUtc = cachedUtc
         self.credentialFingerprint = credentialFingerprint
+        self.preferredLanguageCode = preferredLanguageCode
     }
 
     /// Cached identity is only trusted briefly. Past this the app resolves the session
@@ -82,7 +86,8 @@ struct MobileSessionCacheEntry: Codable, Equatable, Sendable {
         MobileSession(
             actor: actor,
             capabilities: Set(capabilities),
-            permittedParticipantTypes: permittedParticipantTypes)
+            permittedParticipantTypes: permittedParticipantTypes,
+            preferredLanguageCode: preferredLanguageCode)
     }
 }
 

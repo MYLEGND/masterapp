@@ -148,15 +148,21 @@ public sealed class AccountClosureService : IAccountClosureService
 
             if (record.ParticipantType == MessagingParticipantTypes.Client)
             {
-                await _clientEntra.DeleteClientIdentityAsync(record.ProfileId, cancellationToken);
-                await RedactClientPresentationAsync(record.ProfileId, cancellationToken);
+                if (record.RetainClientContact)
+                    await _clientEntra.RevokeClientApplicationAccessAsync(record.ProfileId, cancellationToken);
+                else
+                {
+                    await _clientEntra.DeleteClientIdentityAsync(record.ProfileId, cancellationToken);
+                    await RedactClientPresentationAsync(record.ProfileId, cancellationToken);
+                }
             }
             else
             {
                 await DeactivateAgentApplicationProfileAsync(record.ProfileId, cancellationToken);
             }
 
-            await RemoveMobileProfileSettingsAsync(record, cancellationToken);
+            if (!record.RetainClientContact)
+                await RemoveMobileProfileSettingsAsync(record, cancellationToken);
 
             if (!OwnsLease(record, leaseId))
                 return new AccountClosureExecutionResult(false, false);

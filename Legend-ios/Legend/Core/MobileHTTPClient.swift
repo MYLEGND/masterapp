@@ -119,17 +119,32 @@ struct MobileHTTPClient: Sendable {
         return try await perform(request, response: response)
     }
 
+    func postStreamLines<Body: Encodable>(
+        _ path: String,
+        body: Body,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) throws -> AsyncThrowingStream<String, Error> {
+        streamLines(path, accessToken: accessToken, headers: headers,
+            httpBody: try JSONEncoder.mobile.encode(body))
+    }
+
     func streamLines(
         _ path: String,
         accessToken: String,
         queryItems: [URLQueryItem] = [],
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        httpBody: Data? = nil
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     var request = URLRequest(url: try endpointURL(path, queryItems: queryItems))
-                    request.httpMethod = "GET"
+                    request.httpMethod = httpBody == nil ? "GET" : "POST"
+                    request.httpBody = httpBody
+                    if httpBody != nil {
+                        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    }
                     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
                     headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
@@ -207,6 +222,17 @@ struct MobileHTTPClient: Sendable {
     /// Used only for endpoints that are deliberately anonymous at the
     /// server boundary, such as the dedicated App Review credential exchange.
     /// Protected application APIs continue to require the bearer overloads.
+    func getPublic<Response: Decodable>(
+        _ path: String,
+        response: Response.Type
+    ) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "GET"
+        request.httpShouldHandleCookies = false
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await perform(request, response: response)
+    }
+
     func postPublic<Body: Encodable, Response: Decodable>(
         _ path: String,
         body: Body,
@@ -275,6 +301,7 @@ struct MobileHTTPClient: Sendable {
 
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "POST"
+        request.timeoutInterval = 180
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(
@@ -313,6 +340,15 @@ struct MobileHTTPClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         request.httpBody = try JSONEncoder.mobile.encode(body)
+        return try await perform(request, response: response)
+    }
+
+    func delete<Response: Decodable>(_ path: String, accessToken: String,
+        headers: [String: String] = [:], response: Response.Type) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await perform(request, response: response)
     }
 
@@ -763,21 +799,21 @@ enum MobileAPIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidBaseURL, .invalidPath:
-            return "The mobile service configuration is invalid."
+            return LegendLocalized("The mobile service configuration is invalid.")
         case .invalidServerResponse, .decodingFailed:
-            return "The service returned an unexpected response."
+            return LegendLocalized("The service returned an unexpected response.")
         case .networkUnavailable:
-            return "The network connection is unavailable."
+            return LegendLocalized("The network connection is unavailable.")
         case .unauthorized, .apiUnauthorized:
-            return "Your session has ended. Please sign in again."
+            return LegendLocalized("Your session has ended. Please sign in again.")
         case .forbidden, .apiForbidden:
-            return "You do not have access to this action."
+            return LegendLocalized("You do not have access to this action.")
         case .conflict, .apiConflict:
-            return "Choose an authorized role before continuing."
+            return LegendLocalized("Choose an authorized role before continuing.")
         case .apiServer(_, _, let message, _):
-            return message ?? "The service could not complete this request."
+            return message.map { LegendLocalized($0) } ?? LegendLocalized("The service could not complete this request.")
         case .server:
-            return "The service could not complete this request."
+            return LegendLocalized("The service could not complete this request.")
         }
     }
 }

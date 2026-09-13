@@ -3,12 +3,15 @@ package com.mylegnd.legend.registered.core.auth
 import android.app.Activity
 import android.content.Context
 import com.microsoft.identity.client.*
+import com.microsoft.identity.client.exception.MsalClientException
 import com.microsoft.identity.client.exception.MsalException
 import com.mylegnd.legend.registered.R
 import com.mylegnd.legend.registered.core.config.LegendRuntimeConfiguration
 import com.mylegnd.legend.registered.core.logging.LegendLogger
 import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import java.time.Instant
@@ -31,6 +34,11 @@ data class LegendAuthenticatedAccount(val id: String, val displayName: String)
 class LegendBearerTokenAuthority(
     private val auth: LegendAuthClient,
 ) : AccessTokenProvider {
+    private var accountSession: CachedLegendSession? = null
+    fun activateAccount(session: CachedLegendSession?) { accountSession = session }
+    fun requiresInteractiveSignIn(): Boolean = accountSession?.requiresInteractiveSignIn(
+        com.mylegnd.legend.registered.core.design.LegendAccountSessionPolicy.InteractiveSignInRetentionDays) == true
+
     private data class ReviewCredential(val token: String, val expiresUtc: Instant)
     @Volatile private var reviewCredential: ReviewCredential? = null
     @Volatile private var reviewSessionActive = false
@@ -55,20 +63,33 @@ class LegendBearerTokenAuthority(
             reviewCredential = null
             return null
         }
-        return auth.restoreAccessToken()
+        if (requiresInteractiveSignIn()) throw AuthenticationReauthenticationRequiredException()
+        return auth.restoreAccessToken(accountSession?.accountId)
     }
 }
 
 class MsalLegendAuthClient(private val context: Context, private val configuration: LegendRuntimeConfiguration) : LegendAuthClient {
     private var activeAccountId: String? = null
+    private val applicationMutex = Mutex()
+    @Volatile private var cachedApplication: IMultipleAccountPublicClientApplication? = null
 
-    private suspend fun application(): IMultipleAccountPublicClientApplication = suspendCancellableCoroutine { continuation ->
+    private suspend fun application(): IMultipleAccountPublicClientApplication {
+        cachedApplication?.let { return it }
+        return applicationMutex.withLock {
+            cachedApplication?.let { return@withLock it }
+            createApplication().also { cachedApplication = it }
+        }
+    }
+
+    private suspend fun createApplication(): IMultipleAccountPublicClientApplication = suspendCancellableCoroutine { continuation ->
         PublicClientApplication.createMultipleAccountPublicClientApplication(context.applicationContext, R.raw.legend_msal_config,
             object : IPublicClientApplication.IMultipleAccountApplicationCreatedListener {
-                override fun onCreated(application: IMultipleAccountPublicClientApplication) = continuation.resume(application)
+                override fun onCreated(application: IMultipleAccountPublicClientApplication) {
+                    if (continuation.isActive) continuation.resume(application)
+                }
                 override fun onError(exception: MsalException) {
                     LegendLogger.authenticationFailure("initialize", exception)
-                    continuation.resumeWithException(exception)
+                    if (continuation.isActive) continuation.resumeWithException(exception.asLegendAuthenticationError())
                 }
             })
     }
@@ -78,8 +99,9 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
         val app = application()
         val requestedAccountId = accountId ?: activeAccountId
         val account = accounts(app).firstOrNull { requestedAccountId == null || it.id == requestedAccountId } ?: return null
+        val token = acquireSilent(app, account)
         activeAccountId = account.id
-        return acquireSilent(app, account)
+        return token
     }
 
     override suspend fun signIn(activity: Activity, forceReauthentication: Boolean): LegendAuthenticatedAccount {
@@ -98,9 +120,11 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
                     }
                     override fun onError(exception: MsalException) {
                         LegendLogger.authenticationFailure("interactive", exception)
-                        continuation.resumeWithException(exception)
+                        if (continuation.isActive) continuation.resumeWithException(exception.asLegendAuthenticationError())
                     }
-                    override fun onCancel() = continuation.resumeWithException(AuthenticationCancelledException())
+                    override fun onCancel() {
+                        if (continuation.isActive) continuation.resumeWithException(AuthenticationCancelledException())
+                    }
                 }).build()
             app.acquireToken(parameters)
         }
@@ -140,7 +164,7 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
     }
 
     private suspend fun acquireSilent(app: IMultipleAccountPublicClientApplication, account: IAccount): String? = suspendCancellableCoroutine { continuation ->
-        val parameters = AcquireTokenSilentParameters.Builder().forAccount(account).fromAuthority(configuration.entraAuthority)
+        val parameters = AcquireTokenSilentParameters.Builder().forAccount(account).fromAuthority(account.authority)
             .withScopes(resourceScopes())
             .withCallback(object : SilentAuthenticationCallback {
                 override fun onSuccess(result: IAuthenticationResult) = continuation.resume(result.accessToken)
@@ -158,3 +182,13 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
 }
 
 class AuthenticationCancelledException : IllegalStateException("Sign-in was cancelled.")
+class AuthenticationConnectivityException(cause: MsalException) :
+    IllegalStateException("Microsoft identity could not be reached.", cause)
+
+private fun MsalException.asLegendAuthenticationError(): Throwable = when (errorCode) {
+    MsalClientException.IO_ERROR,
+    MsalClientException.DEVICE_NETWORK_NOT_AVAILABLE -> AuthenticationConnectivityException(this)
+    else -> this
+}
+
+class AuthenticationReauthenticationRequiredException : Exception("This account requires a fresh secure sign-in.")

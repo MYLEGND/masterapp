@@ -5,6 +5,7 @@ struct LegendApp: App {
     @StateObject private var diagnostics: LegendDiagnostics
     @StateObject private var session: MobileSessionCoordinator
     @StateObject private var scrollChrome: LegendScrollChrome
+    @StateObject private var localization: LegendApplicationLocalization
     @UIApplicationDelegateAdaptor(LegendPushNotificationDelegate.self) private var pushNotifications
 
     init() {
@@ -20,6 +21,7 @@ struct LegendApp: App {
             )
         )
         _scrollChrome = StateObject(wrappedValue: LegendScrollChrome())
+        _localization = StateObject(wrappedValue: LegendApplicationLocalization())
     }
 
     var body: some Scene {
@@ -28,6 +30,7 @@ struct LegendApp: App {
                 .environmentObject(session)
                 .environmentObject(diagnostics)
                 .environmentObject(scrollChrome)
+                .environmentObject(localization)
                 .environmentObject(pushNotifications)
                 .scrollIndicators(.hidden)
                 .task {

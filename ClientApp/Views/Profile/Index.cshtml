@@ -29,7 +29,7 @@
         <div class="client-create-panel">
             <div class="client-create-header">
                 <div>
-                    <div class="dashboard-eyebrow">Client Profile</div>
+                    <div class="dashboard-eyebrow">@(isAgentView ? "Client Profile" : "My Profile")</div>
                     <h2 class="client-create-title">View / Edit Profile</h2>
                     <p class="client-create-subtitle">@(isAgentView ? $"Managing {managedClientName}'s contact details, household information, and profile picture." : "Update your contact details, household information, and profile picture in one place.")</p>
                 </div>
@@ -50,7 +50,7 @@
                         <div class="client-edit-section-head">
                             <div>
                                 <div class="client-create-section-title">Profile Picture</div>
-                                <p class="client-edit-note">Choose the image that appears throughout your client portal and to your agent.</p>
+                                <p class="client-edit-note">Choose the image that appears on your profile and in My Network.</p>
                             </div>
                         </div>
 
@@ -85,7 +85,7 @@
                             <div class="client-create-section-head">
                                 <div>
                                     <div class="client-create-section-title">Primary Profile</div>
-                                    <p class="client-create-section-copy">These are the main contact details your agent will use when working your account.</p>
+                                    <p class="client-create-section-copy">Keep your contact details up to date for your LEGEND guide.</p>
                                 </div>
                             </div>
                             <div class="client-create-grid">
@@ -115,14 +115,14 @@
                                 <div class="client-create-section-head">
                                     <div>
                                         <div class="client-create-section-title">Account Privacy</div>
-                                        <p class="client-edit-note">Choose whether your agent can open your full Legend client workspace. Your CRM contact remains visible either way.</p>
+                                        <p class="client-edit-note">Choose whether your LEGEND guide can open your full account. Your contact record remains visible to your guide either way.</p>
                                     </div>
                                 </div>
                                 <div class="client-create-grid">
                                     <div class="client-create-full">
-                                        <label asp-for="AccountManagementMode" class="client-create-label is-required">Agent Access</label>
+                                        <label asp-for="AccountManagementMode" class="client-create-label is-required">Guide Access</label>
                                         <select asp-for="AccountManagementMode" class="client-create-input">
-                                            <option value="SharedAccount">Shared Account — allow my agent to work in my account</option>
+                                            <option value="SharedAccount">Shared Account — allow my LEGEND guide to work in my account</option>
                                             <option value="SelfManaged">Self Managed — keep my account private</option>
                                         </select>
                                         <span asp-validation-for="AccountManagementMode" class="client-create-validation"></span>
@@ -152,7 +152,7 @@
                             <div class="client-edit-section-head">
                                 <div>
                                     <div class="client-create-section-title">Children</div>
-                                    <p class="client-edit-note">Household members shared with your agent.</p>
+                                    <p class="client-edit-note">Household members shared with your LEGEND guide.</p>
                                 </div>
                                 <button type="button" class="client-create-button client-create-button-secondary client-edit-button-small" id="addChildBtn">Add Child</button>
                             </div>

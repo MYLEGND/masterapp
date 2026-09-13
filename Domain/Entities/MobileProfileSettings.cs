@@ -44,6 +44,10 @@ public sealed class MobileProfileSettings
     // Public is the default. A private profile keeps its public identity
     // discoverable, but its social content is limited to approved followers.
     public bool IsPrivate { get; set; }
+    public bool SendReadReceipts { get; set; } = true;
+    // One preference for this typed account across conversations and devices.
+    // 0 is the default emoji presentation; 1..5 are Unicode skin tones.
+    public int PreferredReactionSkinTone { get; set; }
 
     /// <summary>
     /// Explicit, member-controlled consent for future successful translated

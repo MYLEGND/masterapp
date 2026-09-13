@@ -22,6 +22,10 @@
              Link="wwwroot\design\legend-design.tokens.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-reaction-emoji.json"
+             Link="wwwroot\design\legend-reaction-emoji.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

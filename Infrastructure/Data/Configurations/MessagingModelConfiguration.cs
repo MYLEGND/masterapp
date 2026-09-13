@@ -17,6 +17,7 @@ internal static class MessagingModelConfiguration
         ConfigureVerificationReviewRequest(modelBuilder.Entity<VerificationReviewRequest>(), providerName);
         ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
         ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
+        ConfigureMessageReaction(modelBuilder.Entity<MessageReaction>(), providerName);
         ConfigureLegendConnect(modelBuilder, providerName);
         ConfigureTranslationAccountUsage(modelBuilder, providerName);
         ConfigureMobileActivityNotification(modelBuilder.Entity<MobileActivityNotification>(), providerName);
@@ -257,6 +258,19 @@ internal static class MessagingModelConfiguration
         entity.HasIndex(x => new { x.ResourceType, x.IsActive });
     }
 
+    private static void ConfigureMessageReaction(EntityTypeBuilder<MessageReaction> entity, string? providerName)
+    {
+        entity.ToTable("MessageReactions");
+        entity.HasKey(x => new { x.InternalMessageId, x.ActorProfileId, x.ParticipantType });
+        entity.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
+        var emoji = entity.Property(x => x.Emoji).IsRequired().HasMaxLength(64);
+        // SQL Server linguistic collations may equate distinct emoji. Counts
+        // must group the exact stored sequence, as SQLite's binary default does.
+        if (IsSqlServer(providerName)) emoji.UseCollation("Latin1_General_100_BIN2");
+        entity.HasOne(x => x.InternalMessage).WithMany()
+            .HasForeignKey(x => x.InternalMessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+
     private static void ConfigureMessageTranslation(EntityTypeBuilder<MessageTranslation> entity)
     {
         entity.ToTable("MessageTranslations");
@@ -436,11 +450,26 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.Property(item => item.ProviderModel).HasMaxLength(120);
+            entity.Property(item => item.RetainedTranslationIdentity).HasMaxLength(64);
+            entity.Property(item => item.StableSourceContentId).HasMaxLength(180);
+            entity.Property(item => item.SourceContentRevision).HasMaxLength(80);
+            entity.Property(item => item.TranslationContext).HasMaxLength(180);
+            entity.Property(item => item.PlaceholderContractHash).HasMaxLength(64);
+            entity.Property(item => item.ReuseScope).HasMaxLength(24);
+            entity.Property(item => item.ReuseScopeIdentityHash).HasMaxLength(64);
+            entity.Property(item => item.ProviderVersion).HasMaxLength(80);
             entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Confidence).HasPrecision(5, 4);
             entity.HasIndex(item => item.SupersededByAlignmentId);
             entity.HasIndex(item => item.SupersededUtc);
-            entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId }).IsUnique();
+            entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId });
+            var retainedIdentityIndex = entity
+                .HasIndex(item => item.RetainedTranslationIdentity)
+                .IsUnique();
+            if (IsSqlServer(providerName))
+                retainedIdentityIndex.HasFilter("[RetainedTranslationIdentity] IS NOT NULL");
+            else if (IsSqlite(providerName))
+                retainedIdentityIndex.HasFilter("\"RetainedTranslationIdentity\" IS NOT NULL");
             entity.HasIndex(item => new { item.PairKey, item.QualityState });
             entity.HasOne<LegendLanguageTextUnit>()
                 .WithMany()
@@ -1539,6 +1568,16 @@ internal static class MessagingModelConfiguration
         ModelBuilder modelBuilder,
         string? providerName)
     {
+        modelBuilder.Entity<LegendTranslationGlobalPolicy>(entity =>
+        {
+            entity.ToTable("LegendTranslationGlobalPolicies", table => table.HasCheckConstraint(
+                "CK_LegendTranslationGlobalPolicies_Singleton", "[Id] = 1 AND [MonthlyCharacterAllowance] >= 0"));
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).ValueGeneratedNever();
+            entity.Property(item => item.Version).IsConcurrencyToken();
+            entity.Property(item => item.UpdatedByUserId).IsRequired().HasMaxLength(450);
+        });
+
         modelBuilder.Entity<LegendTranslationEntitlement>(entity =>
         {
             entity.ToTable("LegendTranslationEntitlements");

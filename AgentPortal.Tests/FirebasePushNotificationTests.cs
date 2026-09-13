@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Mobile;
@@ -20,6 +21,23 @@ namespace AgentPortal.Tests;
 
 public sealed class FirebasePushNotificationTests
 {
+    [Fact]
+    public async Task Fcm_call_is_high_priority_data_only_with_bounded_expiry()
+    {
+        using var handler = new RecordingHandler(_ => JsonResponse(HttpStatusCode.OK, "{}"));
+        using var client = new HttpClient(handler, disposeHandler: false);
+        var call = new Shared.Calling.LegendCallSnapshot(Guid.NewGuid(), Guid.NewGuid(), "a", "Agent", "c", "Client", Guid.NewGuid(), null, "Caller", "Callee", false, "ringing", DateTime.UtcNow, DateTime.UtcNow.AddSeconds(45), 0);
+        var result = await CreateGateway(client, new FirebaseAccessTokenResult("test", null)).SendAsync(new("token", "Caller", "Incoming call", call.Id, 0, call.ConversationId, call));
+        Assert.Equal(FirebasePushDeliveryOutcome.Sent, result.Outcome);
+        using var body = JsonDocument.Parse(handler.Body!);
+        var message = body.RootElement.GetProperty("message");
+        Assert.Equal(JsonValueKind.Null, message.GetProperty("notification").ValueKind);
+        Assert.Equal("45s", message.GetProperty("android").GetProperty("ttl").GetString());
+        Assert.Equal("HIGH", message.GetProperty("android").GetProperty("priority").GetString());
+        using var payload = JsonDocument.Parse(message.GetProperty("data").GetProperty("legendCall").GetString()!);
+        Assert.Equal(call.Id, payload.RootElement.GetProperty("id").GetGuid());
+    }
+
     [Fact]
     public async Task Fcm_registration_is_provider_scoped_and_does_not_change_apns_registration()
     {
@@ -90,6 +108,39 @@ public sealed class FirebasePushNotificationTests
         Assert.Equal(FirebasePushDeliveryOutcome.InvalidDevice, result.Outcome);
         Assert.Contains("UNREGISTERED", result.Detail, StringComparison.Ordinal);
         Assert.DoesNotContain("fcm_opaque", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Communication_capability_preserves_legacy_background_alerts(bool capable)
+    {
+        using var handler = new RecordingHandler(_ => JsonResponse(HttpStatusCode.OK, "{}"));
+        using var client = new HttpClient(handler, disposeHandler: false);
+        var sender = new NotificationSenderPresentation("Agent:one", "Sender", "/api/v1/mobile/notifications/id/sender-image?token=scoped");
+        await CreateGateway(client, new FirebaseAccessTokenResult("test", null)).SendAsync(new(
+            "token", "Sender", "Localized message", Guid.NewGuid(), 2, Guid.NewGuid(),
+            Sender: sender, SupportsCommunicationNotifications: capable));
+        using var body = JsonDocument.Parse(handler.Body!);
+        var message = body.RootElement.GetProperty("message");
+        Assert.Equal(capable ? JsonValueKind.Null : JsonValueKind.Object, message.GetProperty("notification").ValueKind);
+        Assert.Equal("Localized message", message.GetProperty("data").GetProperty("body").GetString());
+        using var identity = JsonDocument.Parse(message.GetProperty("data").GetProperty("sender").GetString()!);
+        Assert.Equal(sender.Name, identity.RootElement.GetProperty("name").GetString());
+        Assert.Equal("86400s", message.GetProperty("android").GetProperty("ttl").GetString());
+    }
+
+    [Fact]
+    public async Task Communication_capability_is_reset_when_an_older_client_registers()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var engine = CreateEngine(db);
+        var actor = new MessagingActor("user", MessagingParticipantTypes.Client);
+        await engine.RegisterFcmCommunicationDeviceAsync(actor, "fcm_opaque-registration:abc-123");
+        Assert.True(db.MobilePushDevices.Single().SupportsCommunicationNotifications);
+        await engine.RegisterFcmDeviceAsync(actor, "fcm_opaque-registration:abc-123");
+        Assert.False(db.MobilePushDevices.Single().SupportsCommunicationNotifications);
+        Assert.Single(db.MobilePushDevices);
     }
 
     private static NotificationEngine CreateEngine(Infrastructure.Data.MasterAppDbContext db) => new(

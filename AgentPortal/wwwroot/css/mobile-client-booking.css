@@ -1,0 +1,26 @@
+/* Mobile geometry only. All booking colors and controls come from qv-booking.css. */
+.mobile-client-booking .qv-booking-modal-shell .modal-dialog {
+    width:100%; max-width:none; height:auto; margin:0; min-height:100dvh;
+}
+.mobile-client-booking .qv-booking-modal-shell .modal-content {
+    height:auto; max-height:none; min-height:100dvh; overflow:visible; border-radius:0;
+}
+.mobile-client-booking .qv-booking-head { padding:18px 16px; }
+.mobile-client-booking .qv-booking-body { height:auto; display:block; padding:0 16px 24px; }
+.mobile-client-booking .qv-booking-shell,
+.mobile-client-booking .qv-booking-layout { height:auto; }
+.mobile-client-booking .qv-booking-layout { grid-template-columns:minmax(0,1fr); }
+.mobile-client-booking .qv-booking-sidebar,
+.mobile-client-booking .qv-booking-main { min-width:0; }
+.mobile-client-booking .qv-booking-close { display:none; }
+.mobile-client-booking .qv-booking-panel-head { flex-wrap:wrap; }
+.mobile-client-booking .qv-booking-field select { font-size:16px; max-width:100%; }
+.mobile-client-booking #mobileClientAppointments { margin-bottom:16px; }
+.mobile-client-booking .mobile-appointment { padding:12px 0; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.mobile-client-booking .mobile-appointment span { flex:1 1 100%; }
+.mobile-client-booking .qv-booking-calendar-grid button,
+.mobile-client-booking .qv-booking-calendar-nav,
+.mobile-client-booking .mobile-appointment button { min-height:44px; }
+.mobile-client-booking .qv-book-slots { grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:auto !important; }
+.mobile-client-booking .qv-slot-btn { height:auto !important; min-height:44px !important; padding-block:10px !important; }
+.mobile-client-booking .qv-booking-foot { grid-template-columns:minmax(0,1fr); padding-bottom:max(12px,env(safe-area-inset-bottom)); }

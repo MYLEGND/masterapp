@@ -34,6 +34,7 @@ enum MessagingControlledResourceRequestSubmission {
 /// contract. The event contains only the identifiers needed to reconcile the
 /// server-owned inbox and an already-open conversation.
 struct MobileMessagingRealtimeEvent: Decodable, Sendable {
+    let requiresResync: Bool
     let conversationID: UUID?
     let messageID: UUID?
     let notificationID: UUID?
@@ -52,11 +53,13 @@ struct MobileMessagingRealtimeEvent: Decodable, Sendable {
     init(
         conversationID: UUID?,
         messageID: UUID?,
+        requiresResync: Bool = false,
         notificationID: UUID? = nil,
         unreadCount: Int? = nil,
         revision: Int64? = nil,
         occurredUTC: Date
     ) {
+        self.requiresResync = requiresResync
         self.conversationID = conversationID
         self.messageID = messageID
         self.notificationID = notificationID
@@ -91,6 +94,34 @@ protocol MessagingRealtimeTransport: AnyObject {
 @MainActor
 final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     var onEvent: ((MobileMessagingRealtimeEvent) -> Void)?
+    var onCall: ((LegendCallEvent) -> Void)?
+    var onCallReconnect: (() -> Void)?
+    private var callRequests: [String: CheckedContinuation<LegendCallResult, Error>] = [:]
+    private var retiring = false
+    private var callReady = false
+
+    func call(_ command: LegendCallCommand, existingConnectionOnly: Bool = false) async throws -> LegendCallResult {
+        if existingConnectionOnly {
+            guard callReady else { throw CancellationError() }
+        } else { start() }
+        for _ in 0..<100 where !callReady {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard callReady, let socket else { throw LegendCallingError.unavailable("Calling could not connect. Please try again.") }
+        try Task.checkCancellation()
+        let id = UUID().uuidString
+        let argument = try JSONSerialization.jsonObject(with: JSONEncoder().encode(command))
+        let frame = try JSONSerialization.data(withJSONObject: ["type": 1, "invocationId": id, "target": "Call", "arguments": [argument]])
+        return try await withCheckedThrowingContinuation { continuation in
+            callRequests[id] = continuation
+            Task { [weak self] in
+                do { try await socket.send(.string(String(decoding: frame, as: UTF8.self) + Self.recordSeparator)) }
+                catch { self?.callRequests.removeValue(forKey: id)?.resume(throwing: error) }
+                try? await Task.sleep(for: .seconds(12))
+                self?.callRequests.removeValue(forKey: id)?.resume(throwing: LegendCallingError.unavailable("The call request timed out."))
+            }
+        }
+    }
 
     private static let recordSeparator = "\u{001E}"
     private static let reconnectDelays: [Duration] = [
@@ -124,14 +155,25 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         reconnectTask?.cancel()
     }
 
+    func retireAccountConnection() {
+        retiring = true
+        onCall = nil; onCallReconnect = nil
+        reconnectTask?.cancel(); reconnectTask = nil
+        if !callReady { stop() }
+    }
+
     func start() {
-        guard !shouldRemainConnected else { return }
+        guard !retiring, !shouldRemainConnected else { return }
         shouldRemainConnected = true
         reconnectAttempt = 0
         startConnection()
     }
 
     func stop() {
+        callReady = false
+        let pending = callRequests.values
+        callRequests.removeAll()
+        pending.forEach { $0.resume(throwing: CancellationError()) }
         shouldRemainConnected = false
         generation += 1
         reconnectTask?.cancel()
@@ -143,7 +185,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     }
 
     private func startConnection() {
-        guard shouldRemainConnected,
+        guard !retiring, shouldRemainConnected,
               connectionTask == nil,
               socket == nil else { return }
 
@@ -162,7 +204,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
 
         do {
             let token = try await accessTokenProvider()
-            guard shouldRemainConnected,
+            guard !retiring, shouldRemainConnected,
                   connectionGeneration == generation else { return }
 
             var request = URLRequest(url: hubURL)
@@ -183,6 +225,25 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
             }
 
             reconnectAttempt = 0
+            callReady = true
+            onCallReconnect?()
+            let heartbeat = Task {
+                do {
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .seconds(15))
+                        try await newSocket.send(.string("{\"type\":6}\(Self.recordSeparator)"))
+                    }
+                } catch is CancellationError {
+                    // Connection teardown cancels its own heartbeat.
+                } catch {
+                    newSocket.cancel(with: .goingAway, reason: nil)
+                }
+            }
+            defer { heartbeat.cancel() }
+            onEvent?(MobileMessagingRealtimeEvent(
+                conversationID: nil, messageID: nil,
+                requiresResync: true, occurredUTC: Date()))
+            for event in events(in: handshake) { onEvent?(event) }
             try await receiveEvents(from: newSocket, generation: connectionGeneration)
         } catch is CancellationError {
             // Explicit stop and role teardown are expected lifecycle events.
@@ -191,6 +252,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         }
 
         guard connectionGeneration == generation else { return }
+        callReady = false
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         if shouldRemainConnected {
@@ -246,6 +308,23 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         return text
             .split(separator: Character(Self.recordSeparator))
             .compactMap { frame in
+                if let object = try? JSONSerialization.jsonObject(with: Data(frame.utf8)) as? [String: Any] {
+                    if object["type"] as? Int == 3, let id = object["invocationId"] as? String,
+                       let pending = callRequests.removeValue(forKey: id) {
+                        if let result = object["result"], let data = try? JSONSerialization.data(withJSONObject: result),
+                           let decoded = try? JSONDecoder.mobile.decode(LegendCallResult.self, from: data) {
+                            pending.resume(returning: decoded)
+                        } else { pending.resume(throwing: LegendCallingError.unavailable("The call request could not be completed.")) }
+                        return nil
+                    }
+                    if (object["target"] as? String)?.lowercased() == "callupdated",
+                       let argument = (object["arguments"] as? [Any])?.first,
+                       let data = try? JSONSerialization.data(withJSONObject: argument),
+                       let callEvent = try? JSONDecoder.mobile.decode(LegendCallEvent.self, from: data) {
+                        onCall?(callEvent)
+                        return nil
+                    }
+                }
                 guard let envelope = try? JSONDecoder.mobile.decode(
                     SignalRInvocation.self,
                     from: Data(frame.utf8)),
@@ -259,7 +338,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     }
 
     private func scheduleReconnect(after connectionGeneration: Int) {
-        guard shouldRemainConnected,
+        guard !retiring, shouldRemainConnected,
               connectionGeneration == generation,
               reconnectTask == nil else { return }
 
@@ -314,6 +393,7 @@ private enum MobileMessagingRealtimeError: Error {
 
 @MainActor
 final class MessagingStore: ObservableObject {
+    let calling: LegendCallStore?
     @Published private(set) var state: MessagingLoadState = .idle
     @Published private(set) var detailState: ConversationDetailLoadState = .idle
     @Published private(set) var selectedConversationID: UUID?
@@ -333,6 +413,52 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var hasMoreConversations = true
     @Published private(set) var refreshFailure: UserFacingFailure?
 
+    @Published private(set) var preferredReactionSkinTone = 0
+    @Published private(set) var isSavingReactionPreferences = false
+    @Published private(set) var reactionPreferencesFailure: String?
+    private var reactionPreferencesRevision = 0
+
+    func refreshReactionPreferences() async {
+        guard !isSavingReactionPreferences else { return }
+        let revision = reactionPreferencesRevision
+        do {
+            let value = try await api.reactionPreferences(accessToken: try await accessTokenProvider())
+            guard revision == reactionPreferencesRevision, (0...5).contains(value.preferredReactionSkinTone) else { return }
+            preferredReactionSkinTone = value.preferredReactionSkinTone
+            reactionPreferencesFailure = nil
+        } catch {
+            guard revision == reactionPreferencesRevision else { return }
+            reactionPreferencesFailure = LegendLocalized("Skin tone preference could not be loaded.")
+        }
+    }
+
+    func setReactionSkinTone(_ tone: Int) {
+        guard (0...5).contains(tone), !isSavingReactionPreferences else { return }
+        isSavingReactionPreferences = true
+        reactionPreferencesRevision += 1
+        Task {
+            defer { isSavingReactionPreferences = false }
+            do {
+                let saved = try await api.setReactionPreferences(.init(preferredReactionSkinTone: tone),
+                    accessToken: try await accessTokenProvider())
+                guard (0...5).contains(saved.preferredReactionSkinTone) else { throw MobileMessagingContractError.unavailable }
+                preferredReactionSkinTone = saved.preferredReactionSkinTone
+                reactionPreferencesFailure = nil
+            } catch {
+                reactionPreferencesFailure = LegendLocalized("Skin tone preference could not be saved. Try again.")
+            }
+        }
+    }
+
+    private struct PendingSubmission {
+        let conversationID: UUID
+        let body: String
+        let replyToMessageID: UUID?
+        let clientMessageID: UUID
+        var sharedPostID: UUID? = nil
+    }
+    private var pendingSubmission: PendingSubmission?
+
     private let api: any MessagingAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
@@ -340,8 +466,15 @@ final class MessagingStore: ObservableObject {
     private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var inboxActivityRevision = 0
+    private var presentationRevision = 0
     private var isRefreshingActivityNotifications = false
+    private var historyTask: Task<Void, Never>?
+    private var historyRequestID: UUID?
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
+    private var conversationDetailRequestIDs: [UUID: UUID] = [:]
+    private var readAcknowledgementTasks: [UUID: Task<Void, Never>] = [:]
+    private var acknowledgedVisibleMessages: [UUID: UUID] = [:]
     /// Conversation details are a bounded, account-scoped presentation cache.
     /// The API remains authoritative and every cached thread is revalidated as
     /// soon as it is selected or receives a realtime event.
@@ -366,9 +499,11 @@ final class MessagingStore: ObservableObject {
         diagnostics: LegendDiagnostics,
         actorParticipantType: ParticipantType,
         isFounder: Bool = false,
-        realtime: (any MessagingRealtimeTransport)? = nil
+        realtime: (any MessagingRealtimeTransport)? = nil,
+        calling: LegendCallStore? = nil
     ) {
         self.api = api
+        self.calling = calling
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
         self.actorParticipantType = actorParticipantType
@@ -385,8 +520,19 @@ final class MessagingStore: ObservableObject {
         // its teardown without retaining this store. This breaks any outstanding
         // receive loop as the account shell is released.
         let realtime = realtime
-        Task { @MainActor [realtime] in
+        let calling = calling
+        Task { @MainActor [realtime, calling] in
+            if let calling { calling.shutdown(); await calling.awaitShutdown() }
             realtime?.stop()
+        }
+    }
+
+    func recipientScopeTitle(_ scope: MessagingRecipientScope) -> String {
+        guard actorParticipantType == .client else { return scope.title }
+        switch scope {
+        case .clients: return LegendLocalized("My Circle")
+        case .agents: return LegendLocalized("LEGEND guides")
+        case .leads: return LegendLocalized("My Network")
         }
     }
 
@@ -432,7 +578,30 @@ final class MessagingStore: ObservableObject {
         return result
     }
 
+    func refreshLanguagePresentation() async {
+        // Preferences may have changed on another device while disconnected.
+        // Discard localized projections, then ask the same recipient API again.
+        presentationRevision += 1
+        conversationListTask?.cancel()
+        conversationListTask = nil
+        historyTask?.cancel(); historyTask = nil; historyRequestID = nil; isLoadingOlderMessages = false
+        for task in conversationDetailTasks.values { task.cancel() }
+        conversationDetailTasks.removeAll()
+        conversationDetailRequestIDs.removeAll()
+        conversationDetailCache.removeAll()
+        conversationDetailCacheOrder.removeAll()
+        _ = await refresh()
+        if let selectedConversationID {
+            await refreshSelectedConversation(ifSelected: selectedConversationID)
+        }
+    }
+
     func openConversation(_ conversationID: UUID) {
+        if selectedConversationID != conversationID { historyTask?.cancel(); historyTask = nil; historyRequestID = nil; isLoadingOlderMessages = false }
+        for id in Array(conversationDetailTasks.keys) where id != conversationID {
+            conversationDetailTasks.removeValue(forKey: id)?.cancel()
+            conversationDetailRequestIDs.removeValue(forKey: id)
+        }
         selectedConversationID = conversationID
         sendFailure = nil
 
@@ -464,6 +633,8 @@ final class MessagingStore: ObservableObject {
 
         isLoadingMoreConversations = true
         refreshFailure = nil
+        let activityRevision = inboxActivityRevision
+        let languageRevision = presentationRevision
         Task(priority: .utility) { [weak self] in
             guard let self else { return }
             defer { self.isLoadingMoreConversations = false }
@@ -473,7 +644,9 @@ final class MessagingStore: ObservableObject {
                     offset: loadedConversations.count,
                     limit: Self.inboxPageSize,
                     accessToken: try await self.accessTokenProvider())
-                guard case .loaded(let currentConversations) = self.state else {
+                guard activityRevision == self.inboxActivityRevision,
+                      languageRevision == self.presentationRevision,
+                      case .loaded(let currentConversations) = self.state else {
                     return
                 }
 
@@ -483,7 +656,7 @@ final class MessagingStore: ObservableObject {
             } catch {
                 self.refreshFailure = self.failure(
                     for: error,
-                    title: "Earlier conversations unavailable")
+                    title: LegendLocalized("Earlier conversations unavailable"))
             }
         }
     }
@@ -550,7 +723,7 @@ final class MessagingStore: ObservableObject {
                     return
                 }
                 self.recipientState = .unavailable(
-                    self.failure(for: error, title: "Recipients unavailable")
+                    self.failure(for: error, title: LegendLocalized("Recipients unavailable"))
                 )
             }
         }
@@ -586,7 +759,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Group not created")
+                sendFailure = failure(for: error, title: LegendLocalized("Group not created"))
             }
         }
     }
@@ -596,8 +769,8 @@ final class MessagingStore: ObservableObject {
     ) async -> MessagingControlledResourceRequestSubmission {
         guard !isSubmittingControlledResourceRequest else {
             return .failed(UserFacingFailure(
-                title: "Request already sending",
-                message: "Please wait for the current request to finish.",
+                title: LegendLocalized("Request already sending"),
+                message: LegendLocalized("Please wait for the current request to finish."),
                 correlationID: nil))
         }
 
@@ -616,7 +789,7 @@ final class MessagingStore: ObservableObject {
         } catch {
             let requestFailure = failure(
                 for: error,
-                title: "Request not sent")
+                title: LegendLocalized("Request not sent"))
             sendFailure = requestFailure
             return .failed(requestFailure)
         }
@@ -652,7 +825,7 @@ final class MessagingStore: ObservableObject {
                 search: search,
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Access directory unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Access directory unavailable"))
             return nil
         }
     }
@@ -671,8 +844,21 @@ final class MessagingStore: ObservableObject {
                 scope: scope,
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Account directory unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Account directory unavailable"))
             return nil
+        }
+    }
+
+    func restoreFounderClient(_ account: FounderManagedAccount) async -> Bool {
+        guard isFounder, !isRemovingFounderAccount else { return false }
+        isRemovingFounderAccount = true; sendFailure = nil
+        defer { isRemovingFounderAccount = false }
+        do {
+            _ = try await api.restoreFounderClient(account: account, accessToken: accessTokenProvider())
+            return true
+        } catch {
+            sendFailure = failure(for: error, title: LegendLocalized("Account restoration not completed"))
+            return false
         }
     }
 
@@ -694,7 +880,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return result
         } catch {
-            sendFailure = failure(for: error, title: "Account removal not completed")
+            sendFailure = failure(for: error, title: LegendLocalized("Account removal not completed"))
             return nil
         }
     }
@@ -717,7 +903,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return result
         } catch {
-            sendFailure = failure(for: error, title: "Account removal not completed")
+            sendFailure = failure(for: error, title: LegendLocalized("Account removal not completed"))
             return nil
         }
     }
@@ -740,7 +926,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return result
         } catch {
-            sendFailure = failure(for: error, title: "Account erase not completed")
+            sendFailure = failure(for: error, title: LegendLocalized("Account erase not completed"))
             return nil
         }
     }
@@ -750,7 +936,7 @@ final class MessagingStore: ObservableObject {
             return try await api.communicationLanguages(
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Languages unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Languages unavailable"))
             return nil
         }
     }
@@ -774,7 +960,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return true
         } catch {
-            sendFailure = failure(for: error, title: "Access not updated")
+            sendFailure = failure(for: error, title: LegendLocalized("Access not updated"))
             return false
         }
     }
@@ -803,7 +989,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Member not added")
+                sendFailure = failure(for: error, title: LegendLocalized("Member not added"))
             }
         }
     }
@@ -868,7 +1054,7 @@ final class MessagingStore: ObservableObject {
             } catch {
                 sendFailure = failure(
                     for: error,
-                    title: "Group not deleted")
+                    title: LegendLocalized("Group not deleted"))
             }
         }
     }
@@ -888,7 +1074,7 @@ final class MessagingStore: ObservableObject {
                 presentConversation(conversation)
                 _ = await refresh()
             } catch {
-                sendFailure = failure(for: error, title: "Group promotion not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Group promotion not updated"))
             }
         }
     }
@@ -909,7 +1095,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return true
         } catch {
-            sendFailure = failure(for: error, title: "Group not joined")
+            sendFailure = failure(for: error, title: LegendLocalized("Group not joined"))
             return false
         }
     }
@@ -942,7 +1128,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Group not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Group not updated"))
             }
         }
     }
@@ -971,7 +1157,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return true
         } catch {
-            sendFailure = failure(for: error, title: "Verification not resolved")
+            sendFailure = failure(for: error, title: LegendLocalized("Verification not resolved"))
             return false
         }
     }
@@ -1016,31 +1202,55 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not started")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not started"))
             }
         }
     }
 
+    func sharedPostURL(_ postID: UUID) -> URL? { api.sharedPostURL(postID) }
+
+    func downloadAttachment(_ attachment: MessagingAttachment) async throws -> URL {
+        try await api.downloadAttachment(attachment, accessToken: accessTokenProvider())
+    }
+
     func send(
         body: String,
-        replyingTo replyTarget: ConversationMessage? = nil
+        replyingTo replyTarget: ConversationMessage? = nil,
+        sharedPostID: UUID? = nil
     ) async -> ConversationMessage? {
         let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedBody.isEmpty,
+        guard (!normalizedBody.isEmpty || sharedPostID != nil),
               let conversationID = selectedConversationID,
               !isSending else {
             return nil
         }
 
+        if pendingSubmission?.conversationID != conversationID ||
+            pendingSubmission?.body != normalizedBody ||
+            pendingSubmission?.replyToMessageID != replyTarget?.id ||
+            pendingSubmission?.sharedPostID != sharedPostID {
+            pendingSubmission = PendingSubmission(conversationID: conversationID, body: normalizedBody,
+                replyToMessageID: replyTarget?.id, clientMessageID: UUID(), sharedPostID: sharedPostID)
+        }
+        guard let submission = pendingSubmission else { return nil }
         isSending = true
         sendFailure = nil
         defer { isSending = false }
         do {
-            let message = try await api.send(
+            let message: ConversationMessage
+            if let sharedPostID {
+                message = try await api.sendShared(conversationID: conversationID, body: normalizedBody,
+                    sharedPostID: sharedPostID, clientMessageID: submission.clientMessageID,
+                    accessToken: try await accessTokenProvider())
+            } else {
+                message = try await api.send(
                 conversationID: conversationID,
                 body: normalizedBody,
                 replyToMessageID: replyTarget?.id,
+                clientMessageID: submission.clientMessageID,
                 accessToken: try await accessTokenProvider())
+            }
+            pendingSubmission = nil
             append(message: message, to: conversationID)
 
             // The server conversation/participant/message projection is the one
@@ -1051,11 +1261,12 @@ final class MessagingStore: ObservableObject {
             Task { [weak self] in
                 guard let self else { return }
                 _ = await self.requestConversationList(
-                    preservingCachedValue: self.hasCachedConversations)
+                    preservingCachedValue: self.hasCachedConversations,
+                    afterActivity: true)
             }
             return message
         } catch {
-            sendFailure = failure(for: error, title: "Message not sent")
+            sendFailure = failure(for: error, title: LegendLocalized("Message not sent"))
             diagnostics.record(
                 category: .messaging,
                 summary: "A native message could not be sent.",
@@ -1082,8 +1293,116 @@ final class MessagingStore: ObservableObject {
             append(attachment: uploaded, to: message.id)
             return uploaded
         } catch {
-            sendFailure = failure(for: error, title: "Attachment not sent")
+            sendFailure = failure(for: error, title: LegendLocalized("Attachment not sent"))
             return nil
+        }
+    }
+
+    private var reactionTasks: [UUID: Task<Void, Never>] = [:]
+    private var reactionVersions: [UUID: Int] = [:]
+    private var confirmedReactions: [UUID: [MessageReaction]] = [:]
+    func react(to message: ConversationMessage, emoji: String?) {
+        let emoji = emoji.map { LegendReactionEmojiCatalog.bundled?.applyingSkinTone(preferredReactionSkinTone, to: $0) ?? $0 }
+        guard !message.isDeleted, case .loaded(let conversation) = detailState,
+              conversation.id == message.conversationID,
+              let currentMessage = conversation.messages.first(where: { $0.id == message.id }) else { return }
+        let previousTask = reactionTasks[message.id]
+        let mutationVersion = (reactionVersions[message.id] ?? 0) + 1
+        reactionVersions[message.id] = mutationVersion
+        if previousTask == nil { confirmedReactions[message.id] = currentMessage.reactions }
+        let revision = presentationRevision
+        let previousReactions = currentMessage.reactions
+        var pendingReactions = previousReactions.compactMap { reaction -> MessageReaction? in
+            let count = reaction.count - (reaction.reactedByCurrentActor ? 1 : 0)
+            return count > 0 ? MessageReaction(emoji: reaction.emoji, count: count, reactedByCurrentActor: false) : nil
+        }
+        if let emoji {
+            if let index = pendingReactions.firstIndex(where: { $0.emoji == emoji }) {
+                pendingReactions[index] = MessageReaction(emoji: emoji, count: pendingReactions[index].count + 1, reactedByCurrentActor: true)
+            } else { pendingReactions.append(MessageReaction(emoji: emoji, count: 1, reactedByCurrentActor: true)) }
+        }
+        let optimisticReactions = pendingReactions
+        replaceMessage(message.id) { current in
+            var updated = current
+            updated.reactions = optimisticReactions
+            return updated
+        }
+        reactionTasks[message.id] = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.reactionVersions[message.id] == mutationVersion {
+                    self.reactionTasks[message.id] = nil
+                    self.confirmedReactions[message.id] = nil
+                }
+            }
+            await previousTask?.value
+            guard revision == self.presentationRevision, self.selectedConversationID == message.conversationID else { return }
+            do {
+                let result = try await self.api.react(conversationID: message.conversationID, messageID: message.id,
+                    emoji: emoji, accessToken: try await self.accessTokenProvider())
+                try Task.checkCancellation()
+                guard revision == self.presentationRevision, self.selectedConversationID == message.conversationID,
+                      result.messageId == message.id else { return }
+                self.confirmedReactions[message.id] = result.reactions
+                guard self.reactionVersions[message.id] == mutationVersion else { return }
+                self.replaceMessage(message.id) { current in
+                    var updated = current
+                    updated.reactions = result.reactions
+                    return updated
+                }
+            } catch {
+                guard !(error is CancellationError), !Task.isCancelled,
+                    revision == self.presentationRevision, self.selectedConversationID == message.conversationID else { return }
+                guard self.reactionVersions[message.id] == mutationVersion else { return }
+                let confirmed = self.confirmedReactions[message.id] ?? previousReactions
+                self.replaceMessage(message.id) { current in
+                    var updated = current
+                    if updated.reactions == optimisticReactions { updated.reactions = confirmed }
+                    return updated
+                }
+                self.sendFailure = self.failure(for: error, title: LegendLocalized("Reaction unavailable"))
+            }
+        }
+    }
+
+    func markViewed(_ conversationID: UUID) {
+        guard case .loaded(let conversation) = detailState, conversation.id == conversationID else { return }
+        acknowledgeVisible(conversation)
+    }
+
+    private func acknowledgeVisible(_ conversation: ConversationDetail) {
+        let id = conversation.id
+        guard let latest = conversation.messages.last?.id,
+              acknowledgedVisibleMessages[id] != latest,
+              readAcknowledgementTasks[id] == nil else { return }
+        readAcknowledgementTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.api.markRead(conversationID: id, readThroughMessageID: latest, accessToken: try await self.accessTokenProvider())
+                try Task.checkCancellation()
+                self.acknowledgedVisibleMessages[id] = latest
+                if case .loaded(let current) = self.detailState, current.id == id,
+                   current.messages.last?.id == latest { self.updateUnreadCount(for: id) }
+            } catch {
+                self.diagnostics.record(category: .messaging, summary: "Read state could not be saved.")
+            }
+            self.readAcknowledgementTasks[id] = nil
+            if self.selectedConversationID == id, case .loaded(let current) = self.detailState,
+               current.id == id, current.messages.last?.id != latest {
+                self.acknowledgeVisible(current)
+            }
+        }
+    }
+
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool) {
+        Task {
+            do {
+                try await api.setReadReceipts(conversationID: conversationID, enabled: enabled,
+                    globally: globally, accessToken: try await accessTokenProvider())
+                acknowledgedVisibleMessages.removeValue(forKey: conversationID)
+                conversationDetailCache.removeValue(forKey: conversationID)
+                await refreshConversation(conversationID, presentsResult: true, marksRead: false)
+            } catch { sendFailure = failure(for: error, title: LegendLocalized("Privacy settings not saved")) }
         }
     }
 
@@ -1109,8 +1428,9 @@ final class MessagingStore: ObservableObject {
                         isPinned: isPinned,
                         isMuted: conversation.isMuted)
                 }
+                _ = await requestConversationList(preservingCachedValue: hasCachedConversations, afterActivity: true)
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not updated"))
             }
         }
     }
@@ -1138,7 +1458,7 @@ final class MessagingStore: ObservableObject {
                         isMuted: isMuted)
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not updated"))
             }
         }
     }
@@ -1153,7 +1473,7 @@ final class MessagingStore: ObservableObject {
                 let remaining = conversations.filter { $0.id != conversationID }
                 state = .loaded(remaining)
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not removed")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not removed"))
             }
         }
     }
@@ -1166,33 +1486,15 @@ final class MessagingStore: ObservableObject {
                     conversationID: message.conversationID,
                     messageID: message.id,
                     accessToken: try await accessTokenProvider())
-                replaceMessage(message.id) { original in
-                    ConversationMessage(
-                        id: original.id,
-                        conversationID: original.conversationID,
-                        sender: original.sender,
-                        body: "Message unsent",
-                        sentUTC: original.sentUTC,
-                        attachments: [],
-                        isMine: original.isMine,
-                        isDeleted: true,
-                        reply: original.reply,
-                        verificationReview: original.verificationReview)
+                if case .loaded(let conversation) = detailState, conversation.id == message.conversationID {
+                    presentConversation(copyConversation(conversation,
+                        messages: conversation.messages.filter { $0.id != message.id }))
                 }
+                await refreshConversation(message.conversationID, presentsResult: true, marksRead: false)
+                _ = await requestConversationList(preservingCachedValue: hasCachedConversations, afterActivity: true)
             } catch {
-                sendFailure = failure(for: error, title: "Message not unsent")
+                sendFailure = failure(for: error, title: LegendLocalized("Message not unsent"))
             }
-        }
-    }
-
-    func callOptions(for conversationID: UUID) async -> ConversationCallOptions? {
-        do {
-            return try await api.callOptions(
-                conversationID: conversationID,
-                accessToken: try await accessTokenProvider())
-        } catch {
-            sendFailure = failure(for: error, title: "Calling unavailable")
-            return nil
         }
     }
 
@@ -1200,36 +1502,47 @@ final class MessagingStore: ObservableObject {
         guard !isLoadingOlderMessages,
               case .loaded(let conversation) = detailState,
               conversation.hasOlderMessages == true,
-              let oldestMessageUTC = conversation.messages.first?.sentUTC else {
+              let oldestMessage = conversation.messages.first else {
             return
         }
 
         isLoadingOlderMessages = true
-        Task {
-            defer { isLoadingOlderMessages = false }
+        let revision = presentationRevision
+        let requestID = UUID(); historyRequestID = requestID
+        historyTask = Task(priority: .userInitiated) {
+            defer { if historyRequestID == requestID { isLoadingOlderMessages = false; historyTask = nil; historyRequestID = nil } }
             do {
                 let olderPage = try await api.conversation(
                     id: conversation.id,
-                    beforeUTC: oldestMessageUTC,
+                    beforeUTC: oldestMessage.sentUTC,
+                    beforeMessageID: oldestMessage.id,
                     accessToken: try await accessTokenProvider())
-                guard selectedConversationID == conversation.id,
+                guard !Task.isCancelled, historyRequestID == requestID, revision == presentationRevision,
+                      selectedConversationID == conversation.id,
                       case .loaded(let currentConversation) = detailState,
                       currentConversation.id == conversation.id else {
                     return
                 }
 
+                // Preserve server order within timestamp ties so the next cursor
+                // remains the actual oldest message rather than a dictionary entry.
+                let currentByID = Dictionary(currentConversation.messages.map { ($0.id, $0) }, uniquingKeysWith: { _, current in current })
+                var seen = Set<UUID>()
                 let mergedMessages = (olderPage.messages + currentConversation.messages)
-                    .reduce(into: [UUID: ConversationMessage]()) { messages, message in
-                        messages[message.id] = message
-                    }
-                    .values
-                    .sorted { $0.sentUTC < $1.sentUTC }
+                    .filter { seen.insert($0.id).inserted }
+                    .map { currentByID[$0.id] ?? $0 }
+                    .enumerated()
+                    .sorted { $0.element.sentUTC == $1.element.sentUTC ? $0.offset < $1.offset : $0.element.sentUTC < $1.element.sentUTC }
+                    .map(\.element)
                 presentConversation(copyConversation(
                     currentConversation,
                     messages: mergedMessages,
                     hasOlderMessages: olderPage.hasOlderMessages))
             } catch {
-                sendFailure = failure(for: error, title: "Earlier messages unavailable")
+                guard !Task.isCancelled, historyRequestID == requestID, revision == presentationRevision, selectedConversationID == conversation.id else { return }
+                if !discardUnavailableConversation(detailFailureState(for: error), conversationID: conversation.id) {
+                    sendFailure = failure(for: error, title: LegendLocalized("Earlier messages unavailable"))
+                }
             }
         }
     }
@@ -1259,7 +1572,7 @@ final class MessagingStore: ObservableObject {
                     attachments: message.attachments + [attachment],
                     isMine: message.isMine,
                     reply: message.reply,
-                    verificationReview: message.verificationReview)
+                    verificationReview: message.verificationReview, translation: message.translation, originalBody: message.originalBody, reactions: message.reactions)
             }))
     }
 
@@ -1308,7 +1621,7 @@ final class MessagingStore: ObservableObject {
             canManagePromotion: conversation.canManagePromotion,
             meeting: conversation.meeting,
             canManageMeeting: conversation.canManageMeeting,
-            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages)
+            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages, readReceipts: conversation.readReceipts, reactionOptions: conversation.reactionOptions)
     }
 
     private var hasCachedConversations: Bool {
@@ -1321,8 +1634,11 @@ final class MessagingStore: ObservableObject {
         presentsResult: Bool,
         marksRead: Bool
     ) async {
+        let revision = presentationRevision
         do {
             let conversation = try await conversationDetail(for: conversationID)
+            try Task.checkCancellation()
+            guard revision == presentationRevision else { return }
             cacheConversationDetail(conversation)
 
             guard !presentsResult || selectedConversationID == conversationID else {
@@ -1332,29 +1648,28 @@ final class MessagingStore: ObservableObject {
                 presentConversation(conversation)
             }
 
-            guard marksRead else { return }
-            // Read acknowledgement is deliberately after presentation. It is
-            // important for inbox state, but must never hold up the thread.
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await self.api.markRead(
-                        conversationID: conversationID,
-                        accessToken: try await self.accessTokenProvider())
-                    guard self.selectedConversationID == conversationID else { return }
-                    self.updateUnreadCount(for: conversationID)
-                } catch {
-                    // A later inbox refresh reconciles the read status. The
-                    // already-authorized thread remains usable either way.
-                }
-            }
+            if marksRead { acknowledgeVisible(conversation) }
         } catch {
-            guard presentsResult, selectedConversationID == conversationID else {
+            guard !(error is CancellationError), !Task.isCancelled else { return }
+            guard revision == presentationRevision, presentsResult, selectedConversationID == conversationID else {
                 return
             }
-            if cachedConversationDetail(for: conversationID) == nil {
-                detailState = detailFailureState(for: error)
+            let failedState = detailFailureState(for: error)
+            if !discardUnavailableConversation(failedState, conversationID: conversationID), cachedConversationDetail(for: conversationID) == nil {
+                detailState = failedState
             }
+        }
+    }
+
+    @discardableResult
+    private func discardUnavailableConversation(_ state: ConversationDetailLoadState, conversationID: UUID) -> Bool {
+        switch state {
+        case .unauthorized, .forbidden, .unavailable:
+            conversationDetailCache.removeValue(forKey: conversationID)
+            conversationDetailCacheOrder.removeAll { $0 == conversationID }
+            if selectedConversationID == conversationID { detailState = state }
+            return true
+        default: return false
         }
     }
 
@@ -1363,13 +1678,23 @@ final class MessagingStore: ObservableObject {
             return try await existingTask.value
         }
 
+        let revision = presentationRevision
         let task = Task { [api, accessTokenProvider] in
-            try await api.conversation(
+            let result = try await api.conversation(
                 id: conversationID,
                 accessToken: try await accessTokenProvider())
+            try Task.checkCancellation()
+            return result
         }
+        let requestID = UUID()
         conversationDetailTasks[conversationID] = task
-        defer { conversationDetailTasks[conversationID] = nil }
+        conversationDetailRequestIDs[conversationID] = requestID
+        defer {
+            if revision == presentationRevision && conversationDetailRequestIDs[conversationID] == requestID {
+                conversationDetailTasks[conversationID] = nil
+                conversationDetailRequestIDs[conversationID] = nil
+            }
+        }
         return try await task.value
     }
 
@@ -1424,8 +1749,10 @@ final class MessagingStore: ObservableObject {
     }
 
     private func requestConversationList(
-        preservingCachedValue: Bool
+        preservingCachedValue: Bool,
+        afterActivity: Bool = false
     ) async -> MobileStoreLoadResult {
+        if afterActivity { inboxActivityRevision += 1 }
         if let conversationListTask {
             return await conversationListTask.value
         }
@@ -1437,32 +1764,47 @@ final class MessagingStore: ObservableObject {
             state = .loading
         }
 
+        let revision = presentationRevision
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Messages unavailable",
-                    message: "The messaging store is no longer available.",
+                    title: LegendLocalized("Messages unavailable"),
+                    message: LegendLocalized("The messaging store is no longer available."),
                     correlationID: nil))
             }
-            return await self.executeConversationListRequest(
-                preservingCachedValue: preservingCachedValue)
+            // A send/event may arrive after an existing HTTP snapshot was
+            // taken. Finish that request, then fetch the newer snapshot rather
+            // than letting coalescing silently lose the activity.
+            var result: MobileStoreLoadResult
+            var activityRevision: Int
+            repeat {
+                activityRevision = self.inboxActivityRevision
+                result = await self.executeConversationListRequest(
+                    preservingCachedValue: preservingCachedValue)
+            } while activityRevision != self.inboxActivityRevision && !Task.isCancelled
+            return result
         }
         conversationListTask = task
         let result = await task.value
-        conversationListTask = nil
+        if revision == presentationRevision { conversationListTask = nil }
         return result
     }
 
     private func executeConversationListRequest(
         preservingCachedValue: Bool
     ) async -> MobileStoreLoadResult {
-        defer { isRefreshing = false }
+        let revision = presentationRevision
+        let activityRevision = inboxActivityRevision
+        defer { if revision == presentationRevision { isRefreshing = false } }
         do {
             let accessToken = try await accessTokenProvider()
             let conversations = try await api.conversations(
                 offset: 0,
                 limit: Self.inboxPageSize,
                 accessToken: accessToken)
+            try Task.checkCancellation()
+            guard revision == presentationRevision,
+                  activityRevision == inboxActivityRevision else { return .loaded }
             // The server-owned messaging service is the sole authority for
             // inbox visibility. Do not apply a second client-side persistence
             // rule here. The server intentionally hides empty direct drafts,
@@ -1474,7 +1816,8 @@ final class MessagingStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Messages unavailable")
+            guard revision == presentationRevision else { return .loaded }
+            let presentation = failure(for: error, title: LegendLocalized("Messages unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
             } else {
@@ -1504,22 +1847,17 @@ final class MessagingStore: ObservableObject {
         }))
     }
 
-    /// This local presentation order is intentionally the same as the server
-    /// order: the actor's pinned chats remain first (maximum six on the
-    /// server), then every section is ordered by its latest sent or received
-    /// message. It only guards against an out-of-order response; persistence
-    /// and pin eligibility remain server-owned.
+    /// Preserve the server's static pin positions while reconciling activity
+    /// in the unpinned list. Pin eligibility and the six-pin limit are server-owned.
     private func orderedInbox(
         _ conversations: [ConversationSummary]
     ) -> [ConversationSummary] {
-        let uniqueConversations = Dictionary(
-            conversations.map { ($0.id, $0) },
-            uniquingKeysWith: { latest, _ in latest })
-
-        return uniqueConversations.values.sorted { left, right in
-            if left.isPinned != right.isPinned {
-                return left.isPinned
-            }
+        var seen = Set<UUID>()
+        let uniqueConversations = conversations.filter { seen.insert($0.id).inserted }
+        let positions = Dictionary(uniqueKeysWithValues: uniqueConversations.enumerated().map { ($0.element.id, $0.offset) })
+        return uniqueConversations.sorted { left, right in
+            if left.isPinned != right.isPinned { return left.isPinned }
+            if left.isPinned { return positions[left.id, default: 0] < positions[right.id, default: 0] }
             let leftTimestamp = left.lastMessageUTC ?? .distantPast
             let rightTimestamp = right.lastMessageUTC ?? .distantPast
             if leftTimestamp != rightTimestamp {
@@ -1530,16 +1868,20 @@ final class MessagingStore: ObservableObject {
     }
 
     private func reconcileRealtimeEvent(_ event: MobileMessagingRealtimeEvent) {
+        if event.requiresResync {
+            Task { [weak self] in await self?.refreshLanguagePresentation() }
+            return
+        }
         if let unreadCount = event.unreadCount {
             notificationBadgeUpdateHandler?(unreadCount, event.revision ?? 0)
-            return
         }
         guard let conversationID = event.conversationID else { return }
         Task { [weak self] in
             guard let self else { return }
 
             async let inbox = self.requestConversationList(
-                preservingCachedValue: self.hasCachedConversations)
+                preservingCachedValue: self.hasCachedConversations,
+                afterActivity: true)
             async let selectedConversation = self.refreshSelectedConversation(
                 ifSelected: conversationID)
             _ = await (inbox, selectedConversation)
@@ -1577,12 +1919,16 @@ final class MessagingStore: ObservableObject {
         if case MobileMessagingContractError.unavailable = error {
             return .unavailable("Secure mobile messaging is unavailable until the approved bearer API contract is configured.")
         }
-        let failure = failure(for: error, title: "Conversation unavailable")
+        let failure = failure(for: error, title: LegendLocalized("Conversation unavailable"))
         switch error as? MobileAPIError {
         case .unauthorized, .apiUnauthorized:
             return .unauthorized(failure)
         case .forbidden, .conflict, .apiForbidden, .apiConflict:
             return .forbidden(failure)
+        case .apiServer(let status, _, _, _) where status == 404 || status == 410:
+            return .unavailable(failure.message)
+        case .server(let status, _) where status == 404 || status == 410:
+            return .unavailable(failure.message)
         case .invalidServerResponse, .networkUnavailable:
             return .offline(failure)
         default:
@@ -1598,7 +1944,7 @@ final class MessagingStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 
@@ -1645,6 +1991,6 @@ private enum MobileMessagingRecipientError: LocalizedError {
     case clientNoLongerAvailable
 
     var errorDescription: String? {
-        "This CRM record is no longer an active client available for messaging."
+        LegendLocalized("This CRM record is no longer an active client available for messaging.")
     }
 }

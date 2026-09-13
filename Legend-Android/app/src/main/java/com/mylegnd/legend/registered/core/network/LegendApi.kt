@@ -2,6 +2,8 @@ package com.mylegnd.legend.registered.core.network
 
 import com.mylegnd.legend.registered.core.model.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.MultipartBody
@@ -17,23 +19,34 @@ import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import kotlinx.serialization.json.JsonObject
 
+@Serializable data class ReactionPreferences(val preferredReactionSkinTone: Int)
 interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
 interface LegendApi {
+    @GET("api/v1/mobile/guest") suspend fun guest(): Response<MobileGuestSnapshot>
+    @GET("api/v1/mobile/agent/clients/{id}/booking-access") suspend fun bookingAccess(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileBookingAccess>
+    @POST("api/v1/mobile/agent/clients/{id}/booking-launch") suspend fun bookingLaunch(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileClientCreationPortalLaunch>
+    @POST("api/v1/mobile/agent/crm/{kind}/{id}/contact") suspend fun agentCrmContact(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmContactInput): Response<MobileCrmMutationResponse>
+    @POST("api/v1/mobile/agent/crm/{kind}/{id}/outcome") suspend fun agentCrmOutcome(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmOutcomeInput): Response<MobileCrmMutationResponse>
+    @POST("api/v1/mobile/agent/crm/appointments/{id}/cancel") suspend fun cancelCrmAppointment(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmMutationResponse>
+    @GET("api/v1/mobile/agent/crm/schedule") suspend fun agentSchedule(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileCrmAppointment>>
+    @POST("api/v1/mobile/agent/crm/clients/{id}/restore") suspend fun restoreCrmClient(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmRecord>
+    @POST("api/v1/mobile/founder/accounts/restore") suspend fun restoreFounderClient(@Header("X-Legend-Participant-Type") role: String, @Body request: FounderAccountTargetRequest): Response<FounderAccountRemovalResponse>
+    @GET("api/v1/mobile/agent/crm/{kind}/{id}") suspend fun agentCrmRecord(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String): Response<MobileCrmRecord>
     @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
     @GET("api/v1/mobile/session") suspend fun session(@Header("X-Legend-Participant-Type") participantType: String? = null): Response<MobileSessionResponse>
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>
+    @GET("api/v1/mobile/localization/catalog") suspend fun localizationCatalog(@Header("X-Legend-Participant-Type") participantType: String): Response<ApplicationLocalizationCatalog>
     @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
-    @POST("api/v1/mobile/founder/legend-ai/chat") suspend fun founderAiChat(@Header("X-Legend-Participant-Type") participantType: String, @Header("X-Legend-Ai-Operation-Id") operationId: String, @Body request: FounderAiChatRequest): Response<FounderAiChatResponse>
     @GET("api/v1/mobile/home") suspend fun home(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileHomeResponse>
     @GET("api/v1/mobile/financial") suspend fun financial(
         @Header("X-Legend-Participant-Type") participantType: String,
         @Header("X-Agent-TimeZone") timeZoneId: String,
         @Header("X-Agent-TzOffset") timeZoneOffsetMinutes: String,
     ): Response<FinancialSnapshot>
-    @GET("api/v1/mobile/agent/clients") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
-    @GET("api/v1/mobile/agent/leads") suspend fun agentLeads(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentLead>>
+    @GET("api/v1/mobile/agent/clients?includeArchived=true") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
+    @GET("api/v1/mobile/agent/leads?includeArchived=true") suspend fun agentLeads(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentLead>>
     @POST("api/v1/mobile/agent/clients/portal-launch") suspend fun clientCreationPortalLaunch(@Header("X-Legend-Participant-Type") participantType: String, @Body request: EmptyRequest = EmptyRequest()): Response<MobileClientCreationPortalLaunch>
     @GET("api/v1/mobile/account") suspend fun account(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account") suspend fun updateAccount(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountUpdateRequest): Response<MobileAccountProfile>
@@ -56,11 +69,15 @@ interface LegendApi {
 
     @GET("api/v1/mobile/messaging/conversations") suspend fun conversations(@Header("X-Legend-Participant-Type") participantType: String, @Query("take") take: Int = 24, @Query("skip") skip: Int = 0): Response<List<ConversationSummary>>
     @GET("api/v1/mobile/messaging/recipients") suspend fun recipients(@Header("X-Legend-Participant-Type") participantType: String, @Query("search") search: String? = null, @Query("scope") scope: String? = null): Response<List<MessagingRecipient>>
-    @GET("api/v1/mobile/messaging/conversations/{id}") suspend fun conversation(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60): Response<ConversationDetail>
+    @GET("api/v1/mobile/messaging/conversations/{id}") suspend fun conversation(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60, @Query("beforeMessageId") beforeMessageId: String? = null): Response<ConversationDetail>
     @GET("api/v1/mobile/messaging/conversations/{id}/messages") suspend fun messages(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("take") take: Int = 60): Response<List<ConversationMessage>>
     @POST("api/v1/mobile/messaging/conversations/{id}/messages") suspend fun sendMessage(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SendMessageRequest): Response<ConversationMessage>
+    @GET("api/v1/mobile/messaging/reaction-preferences") suspend fun reactionPreferences(@Header("X-Legend-Participant-Type") role: String): Response<ReactionPreferences>
+    @PUT("api/v1/mobile/messaging/reaction-preferences") suspend fun saveReactionPreferences(@Header("X-Legend-Participant-Type") role: String, @Body request: ReactionPreferences): Response<ReactionPreferences>
+    @PUT("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/reaction") suspend fun setMessageReaction(@Header("X-Legend-Participant-Type") role: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String, @Body request: MessageReactionRequest): Response<MessageReactionResult>
+    @DELETE("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/reaction") suspend fun removeMessageReaction(@Header("X-Legend-Participant-Type") role: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String): Response<MessageReactionResult>
     @Multipart @POST("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}/attachments") suspend fun uploadMessageAttachment(@Header("X-Legend-Participant-Type") participantType: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String, @Part file: MultipartBody.Part): Response<MessageAttachment>
-    @POST("api/v1/mobile/messaging/conversations/{id}/read") suspend fun markRead(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<Unit>
+    @POST("api/v1/mobile/messaging/conversations/{id}/read") suspend fun markRead(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Query("readThroughMessageId") readThroughMessageId: String? = null): Response<Unit>
     @POST("api/v1/mobile/messaging/conversations") suspend fun startConversation(@Header("X-Legend-Participant-Type") participantType: String, @Body request: StartConversationRequest): Response<ConversationDetail>
     @POST("api/v1/mobile/messaging/groups") suspend fun createMessagingGroup(@Header("X-Legend-Participant-Type") participantType: String, @Body request: CreateMessagingGroupRequest): Response<ConversationDetail>
     @PUT("api/v1/mobile/messaging/groups/{id}") suspend fun updateMessagingGroup(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: UpdateMessagingGroupRequest): Response<Unit>
@@ -69,10 +86,10 @@ interface LegendApi {
     @DELETE("api/v1/mobile/messaging/groups/{id}") suspend fun deleteMessagingGroup(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<Unit>
     @PUT("api/v1/mobile/messaging/groups/{id}/promotion") suspend fun setGroupPromotion(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: MessagingGroupPromotionRequest): Response<ConversationDetail>
     @PUT("api/v1/mobile/messaging/conversations/{id}/pin") suspend fun setConversationPinned(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: ConversationPinnedRequest): Response<Unit>
+    @PUT("api/v1/mobile/messaging/conversations/{id}/read-receipts") suspend fun setReadReceipts(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: MessagingReadReceiptRequest): Response<Unit>
     @PUT("api/v1/mobile/messaging/conversations/{id}/mute") suspend fun setConversationMuted(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: ConversationMutedRequest): Response<Unit>
     @DELETE("api/v1/mobile/messaging/conversations/{id}") suspend fun removeConversation(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<Unit>
     @DELETE("api/v1/mobile/messaging/conversations/{conversationId}/messages/{messageId}") suspend fun deleteMessage(@Header("X-Legend-Participant-Type") participantType: String, @Path("conversationId") conversationId: String, @Path("messageId") messageId: String): Response<Unit>
-    @GET("api/v1/mobile/messaging/conversations/{id}/call-options") suspend fun conversationCallOptions(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<ConversationCallOptions>
     @POST("api/v1/mobile/messaging/groups/{id}/join") suspend fun joinPromotedGroup(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<ConversationDetail>
     @POST("api/v1/mobile/messaging/verification-requests") suspend fun requestVerification(@Header("X-Legend-Participant-Type") participantType: String): Response<MessagingVerificationRequest>
     @POST("api/v1/mobile/messaging/verification-requests/{id}/resolution") suspend fun resolveVerification(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: VerificationResolutionRequest): Response<Unit>
@@ -83,9 +100,11 @@ interface LegendApi {
     @GET("api/v1/mobile/messaging/activity") suspend fun messagingActivity(@Header("X-Legend-Participant-Type") participantType: String, @Query("take") take: Int = 50): Response<List<MessagingActivityNotification>>
     @GET("api/v1/mobile/messaging/controlled-resources/languages") suspend fun communicationLanguages(@Header("X-Legend-Participant-Type") participantType: String): Response<List<CommunicationLanguage>>
 
+    @GET("api/v1/mobile/social/posts/{postId}") suspend fun socialPost(@Header("X-Legend-Participant-Type") role: String, @Path("postId") postId: String): Response<SocialPost>
     @GET("api/v1/mobile/social/feed") suspend fun socialFeed(@Header("X-Legend-Participant-Type") participantType: String): Response<SocialSnapshot>
     @GET("api/v1/mobile/social/profile/posts") suspend fun currentProfilePosts(@Header("X-Legend-Participant-Type") participantType: String): Response<List<SocialPost>>
     @GET("api/v1/mobile/social/profiles/posts") suspend fun publicProfilePosts(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String, @Query("participantType") profileParticipantType: String, @Query("profileId") profileId: String? = null): Response<List<SocialPost>>
+    @GET("api/v1/mobile/social/profiles/follows") suspend fun profileNetwork(@Header("X-Legend-Participant-Type") participantType: String, @Query("list") list: String, @Query("userId") userId: String, @Query("participantType") targetType: String, @Query("profileId") profileId: String): Response<List<SocialFollowListEntry>>
     @GET("api/v1/mobile/social/profile/follows") suspend fun profileFollows(@Header("X-Legend-Participant-Type") participantType: String, @Query("list") list: String): Response<List<SocialFollowListEntry>>
     @GET("api/v1/mobile/social/profile/follow-requests") suspend fun incomingFollowRequests(@Header("X-Legend-Participant-Type") participantType: String): Response<List<SocialFollowRequestItem>>
     @POST("api/v1/mobile/social/posts") suspend fun createPost(@Header("X-Legend-Participant-Type") participantType: String, @Body request: CreateSocialPostRequest): Response<SocialPost>
@@ -138,35 +157,35 @@ interface LegendApi {
     @POST("api/v1/mobile/community-safety/reports/{id}/resolution") suspend fun resolveCommunityReport(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: CommunitySafetyReportResolutionRequest): Response<Unit>
 }
 
-@kotlinx.serialization.Serializable data class EmptyRequest(val value: String? = null)
-@kotlinx.serialization.Serializable data class FcmDeviceTokenRequest(val deviceToken: String)
-@kotlinx.serialization.Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
-@kotlinx.serialization.Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
-@kotlinx.serialization.Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())
-@kotlinx.serialization.Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)
-@kotlinx.serialization.Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean)
-@kotlinx.serialization.Serializable data class JourneyDashboard(val profile: JourneyProfile? = null, val preferences: JourneyPreferences? = null, val recommendations: List<JourneyRecommendation> = emptyList(), val connections: List<JourneyConnection> = emptyList(), val requests: List<JourneyConnection> = emptyList(), val taxonomy: JourneyTaxonomy = JourneyTaxonomy())
-@kotlinx.serialization.Serializable data class JourneyProfile(val clientProfileId: String, val displayName: String, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList(), val avatar: MobileAvatar? = null)
-@kotlinx.serialization.Serializable data class JourneyPreferences(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean)
-@kotlinx.serialization.Serializable data class JourneyRecommendation(val profile: JourneyProfile, val explanation: String)
-@kotlinx.serialization.Serializable data class JourneyConnection(val id: String, val profile: JourneyProfile, val status: String, val connectionReason: String? = null, val introduction: String? = null, val createdUtc: String)
-@kotlinx.serialization.Serializable data class JourneyConnectionRequest(val targetClientProfileId: String, val connectionReason: String? = null, val introduction: String? = null)
-@kotlinx.serialization.Serializable data class JourneyConnectionResponse(val accept: Boolean)
-@kotlinx.serialization.Serializable data class JourneyProfileReportRequest(val category: String, val detail: String? = null)
-@kotlinx.serialization.Serializable data class JourneyTaxonomy(val goals: List<String> = emptyList(), val circles: List<String> = emptyList(), val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val interests: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
-@kotlinx.serialization.Serializable data class JourneyProfileInput(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
-@kotlinx.serialization.Serializable data class DiscoveryPage(val results: List<DiscoveryResult> = emptyList(), val totalCount: Int, val offset: Int, val pageSize: Int, val hasMore: Boolean, val sortMode: String, val scope: String)
-@kotlinx.serialization.Serializable data class DiscoveryResult(val clientProfileId: String, val identity: MobileIdentity, val displayName: String, val headline: String? = null, val location: String? = null, val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val compatibilityScore: Int, val matchExplanation: String? = null, val relationship: DiscoveryRelationship, val avatar: MobileAvatar? = null, val username: String? = null, val bio: String? = null, val website: String? = null, val publicEmail: String? = null, val publicPhone: String? = null, val isPrivate: Boolean = false, val isVerified: Boolean = false, val roleLabel: String? = null)
-@kotlinx.serialization.Serializable data class DiscoveryRelationship(val followedByCurrentActor: Boolean, val followRequestPending: Boolean, val followsCurrentActor: Boolean, val connectionStatus: String, val connectionId: String? = null, val canRequestConnection: Boolean, val canFollow: Boolean)
-@kotlinx.serialization.Serializable data class DiscoveryProfile(val summary: DiscoveryResult, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val contentVisibleToCurrentActor: Boolean, val followerCount: Int, val followingCount: Int, val postCount: Int, val reelCount: Int, val storyCount: Int)
-@kotlinx.serialization.Serializable data class CommunityBlockRequest(val targetUserId: String, val targetParticipantType: String)
-@kotlinx.serialization.Serializable data class CommunityReportRequest(val targetUserId: String, val targetParticipantType: String, val targetKind: String, val targetEntityId: String? = null, val category: String, val detail: String? = null)
+@Serializable data class EmptyRequest(val value: String? = null)
+@Serializable data class FcmDeviceTokenRequest(val deviceToken: String, val supportsCommunicationNotifications: Boolean)
+@Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
+@Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
+@Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())
+@Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)
+@Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean)
+@Serializable data class JourneyDashboard(val profile: JourneyProfile? = null, val preferences: JourneyPreferences? = null, val recommendations: List<JourneyRecommendation> = emptyList(), val connections: List<JourneyConnection> = emptyList(), val requests: List<JourneyConnection> = emptyList(), val taxonomy: JourneyTaxonomy = JourneyTaxonomy())
+@Serializable data class JourneyProfile(val clientProfileId: String, val displayName: String, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList(), val avatar: MobileAvatar? = null)
+@Serializable data class JourneyPreferences(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean)
+@Serializable data class JourneyRecommendation(val profile: JourneyProfile, val explanation: String)
+@Serializable data class JourneyConnection(val id: String, val profile: JourneyProfile, val status: String, val connectionReason: String? = null, val introduction: String? = null, val createdUtc: String)
+@Serializable data class JourneyConnectionRequest(val targetClientProfileId: String, val connectionReason: String? = null, val introduction: String? = null)
+@Serializable data class JourneyConnectionResponse(val accept: Boolean)
+@Serializable data class JourneyProfileReportRequest(val category: String, val detail: String? = null)
+@Serializable data class JourneyTaxonomy(val goals: List<String> = emptyList(), val circles: List<String> = emptyList(), val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val interests: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
+@Serializable data class JourneyProfileInput(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
+@Serializable data class DiscoveryPage(val results: List<DiscoveryResult> = emptyList(), val totalCount: Int, val offset: Int, val pageSize: Int, val hasMore: Boolean, val sortMode: String, val scope: String)
+@Serializable data class DiscoveryResult(val clientProfileId: String, val identity: MobileIdentity, val displayName: String, val headline: String? = null, val location: String? = null, val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val compatibilityScore: Int, val matchExplanation: String? = null, val relationship: DiscoveryRelationship, val avatar: MobileAvatar? = null, val username: String? = null, val bio: String? = null, val website: String? = null, val publicEmail: String? = null, val publicPhone: String? = null, val isPrivate: Boolean = false, val isVerified: Boolean = false, val roleLabel: String? = null)
+@Serializable data class DiscoveryRelationship(val followedByCurrentActor: Boolean, val followRequestPending: Boolean, val followsCurrentActor: Boolean, val connectionStatus: String, val connectionId: String? = null, val canRequestConnection: Boolean, val canFollow: Boolean)
+@Serializable data class DiscoveryProfile(val summary: DiscoveryResult, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val contentVisibleToCurrentActor: Boolean, val followerCount: Int, val followingCount: Int, val postCount: Int, val reelCount: Int, val storyCount: Int)
+@Serializable data class CommunityBlockRequest(val targetUserId: String, val targetParticipantType: String)
+@Serializable data class CommunityReportRequest(val targetUserId: String, val targetParticipantType: String, val targetKind: String, val targetEntityId: String? = null, val category: String, val detail: String? = null)
 
 class LegendApiClient private constructor(val api: LegendApi, val httpClient: OkHttpClient, val baseUrl: String) {
     companion object {
         fun create(baseUrl: String, tokenProvider: AccessTokenProvider, json: Json = Json { ignoreUnknownKeys = true; explicitNulls = false }): LegendApiClient {
             val auth = Interceptor { chain ->
-                val token = kotlinx.coroutines.runBlocking { tokenProvider.accessToken() }
+                val token = runBlocking { tokenProvider.accessToken() }
                 val incoming = chain.request()
                 val request = incoming.newBuilder().apply {
                     // Streaming Founder-chat progress deliberately uses NDJSON. Preserve a
@@ -178,7 +197,9 @@ class LegendApiClient private constructor(val api: LegendApi, val httpClient: Ok
                     .apply {
                     if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
                 }.build()
-                chain.proceed(request)
+                if (request.url.encodedPath == "/api/v1/mobile/social/posts/media") {
+                    chain.withReadTimeout(180, TimeUnit.SECONDS).withWriteTimeout(300, TimeUnit.SECONDS).proceed(request)
+                } else chain.proceed(request)
             }
             val logger = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
             val client = OkHttpClient.Builder().addInterceptor(auth).addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()

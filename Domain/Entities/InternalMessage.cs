@@ -12,6 +12,8 @@ public class InternalMessage
 
     public string Body { get; set; } = string.Empty;
 
+    public Guid? SharedSocialPostId { get; set; }
+
     /// <summary>
     /// Detected only by the trusted server translation provider when needed.
     /// It describes the authoritative body and is never client-supplied.

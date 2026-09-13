@@ -110,6 +110,10 @@ builder.Services.AddScoped<
     IMobileFinancialOperatingSystemProjectionService,
     MobileFinancialOperatingSystemProjectionService>();
 builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
+builder.Services.AddScoped<MobileAgentCrmService>();
+builder.Services.AddScoped<AgentPortal.Controllers.CalendarController>();
+builder.Services.AddScoped<AgentPortal.Controllers.ClientsController>();
+builder.Services.AddScoped<AgentPortal.Controllers.LeadsController>();
 builder.Services.AddMasterAppSocial(builder.Configuration);
 builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();
 builder.Services.AddScoped<AgentProfileImageLegacyBackfillService>();
@@ -129,6 +133,8 @@ builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
+builder.Services.AddScoped<FounderCallRelayService>();
+builder.Services.AddHttpClient("FounderCallRelay").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendIntelligenceEvaluationService>();
 builder.Services.AddScoped<ILegendIntelligenceEvaluationService>(provider =>
     provider.GetRequiredService<LegendIntelligenceEvaluationService>());
