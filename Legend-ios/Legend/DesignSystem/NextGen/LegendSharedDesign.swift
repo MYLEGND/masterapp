@@ -542,7 +542,7 @@ final class LegendApplicationLocalization: ObservableObject {
                 transportFailures = 0
                 continuation = catalog.continuation
                 guard let next = catalog.continuation, next.isResumable else {
-                    status = catalog.isComplete || catalog.continuation?.disposition == "AwaitingApproval" ? nil : LegendSharedDesign.copy("localization.unavailable")
+                    status = catalog.isComplete ? nil : LegendSharedDesign.copy("localization.unavailable")
                     return
                 }
                 let key = catalog.catalogVersion + "\n" + catalog.languageCode

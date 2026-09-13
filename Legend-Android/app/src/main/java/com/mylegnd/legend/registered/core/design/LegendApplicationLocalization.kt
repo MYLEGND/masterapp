@@ -152,7 +152,7 @@ class LegendApplicationLocalization(
                 val next = received.continuation
                 continuation = next
                 if (next?.isResumable() != true) {
-                    _state.value = _state.value.copy(status = if (received.isComplete || next?.disposition == "AwaitingApproval") null else LegendDesignAuthority.copy("localization.unavailable"))
+                    _state.value = _state.value.copy(status = if (received.isComplete) null else LegendDesignAuthority.copy("localization.unavailable"))
                     return
                 }
                 val key = received.catalogVersion + "\n" + received.languageCode

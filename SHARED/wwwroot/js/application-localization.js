@@ -147,7 +147,7 @@
             apply(remember(value));
             continuation = validContinuation(value);
             if (!continuation) {
-                showStatus(value.isComplete || value.continuation?.disposition === 'AwaitingApproval' ? null : 'Some text could not be translated. Your language preference is saved.');
+                showStatus(value.isComplete ? null : 'Some text could not be translated. Your language preference is saved.');
                 return;
             }
             showStatus('Updating your language…');
