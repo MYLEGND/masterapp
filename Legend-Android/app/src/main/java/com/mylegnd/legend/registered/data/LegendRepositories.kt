@@ -23,6 +23,13 @@ class FounderAiRepository(private val client: LegendApiClient) {
         client.api.founderAiAccess(role).legendBody()
     }
 
+    suspend fun conversations(role: String, skip: Int = 0) = request {
+        client.api.founderAiConversations(role, skip = skip).legendBody()
+    }
+    suspend fun conversation(role: String, id: String, beforeUtc: String? = null, beforeMessageId: String? = null) = request {
+        client.api.founderAiConversation(role, id, beforeUtc, beforeMessageId).legendBody()
+    }
+
     suspend fun chat(
         role: String,
         operationId: String,

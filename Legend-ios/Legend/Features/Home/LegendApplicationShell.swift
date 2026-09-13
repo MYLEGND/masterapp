@@ -10236,6 +10236,8 @@ struct LegendFounderAiChatMessage:
     let modelVersion: String?
     let modelTrainingRunId: String?
     let modelProvenance: String?
+    let sentUtc: String?
+    let stage: String?
 
     init(
         id: UUID = UUID(),
@@ -10253,7 +10255,9 @@ struct LegendFounderAiChatMessage:
         modelAssistanceState: String? = nil,
         modelVersion: String? = nil,
         modelTrainingRunId: String? = nil,
-        modelProvenance: String? = nil
+        modelProvenance: String? = nil,
+        sentUtc: String? = nil,
+        stage: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -10271,6 +10275,8 @@ struct LegendFounderAiChatMessage:
         self.modelVersion = modelVersion
         self.modelTrainingRunId = modelTrainingRunId
         self.modelProvenance = modelProvenance
+        self.sentUtc = sentUtc
+        self.stage = stage
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -10290,6 +10296,7 @@ private struct LegendFounderAiChatRequest: Encodable {
     let sourceLanguageCode: String?
     let messages: [LegendFounderAiChatMessage]
     let conversationId: String
+    let expectedLastMessageId: String?
 }
 
 private struct LegendFounderAiChatResponse: Decodable {
@@ -10314,6 +10321,42 @@ private struct LegendFounderAiChatResponse: Decodable {
     let modelProvenance: String?
     let stage: String?
     let reason: String?
+    let conversationId: String?
+    let userMessageId: String?
+    let messageId: String?
+    let lastMessageUtc: String?
+    let bodyIsError: Bool?
+}
+
+struct LegendFounderAiHistoryThread: Decodable, Identifiable {
+    let id: String
+    let subject: String?
+    let lastMessageUtc: String?
+}
+private struct LegendFounderAiHistoryList: Decodable {
+    let succeeded: Bool
+    let errorMessage: String?
+    let conversations: [LegendFounderAiHistoryThread]
+}
+private struct LegendFounderAiHistoryPage: Decodable {
+    let succeeded: Bool
+    let errorMessage: String?
+    let conversation: LegendFounderAiHistoryConversation?
+}
+private struct LegendFounderAiHistoryConversation: Decodable {
+    let id: String
+    let subject: String?
+    let lastMessageUtc: String?
+    let messages: [LegendFounderAiHistoryMessage]
+    let hasOlderMessages: Bool
+}
+private struct LegendFounderAiHistoryMessage: Decodable {
+    let id: UUID
+    let body: String
+    let sentUtc: String
+    let authorKind: String
+    let replyToMessageId: String?
+    let responseProvenance: LegendFounderAiChatResponse?
 }
 
 private struct LegendFounderAiStreamEnvelope: Decodable {
@@ -10334,217 +10377,255 @@ private struct LegendFounderAiProgressUpdate: Decodable {
 @MainActor
 final class LegendFounderAiStore: ObservableObject {
     @Published private(set) var isAvailable = false
-    @Published private(set) var messages:
-        [LegendFounderAiChatMessage] = []
+    @Published private(set) var messages: [LegendFounderAiChatMessage] = []
+    @Published private(set) var conversations: [LegendFounderAiHistoryThread] = []
+    @Published private(set) var hasMoreConversations = false
+    @Published private(set) var hasOlderMessages = false
+    @Published private(set) var hasNewerMessages = false
+    @Published private(set) var canRetry = false
     @Published private(set) var isSending = false
     @Published private(set) var progressMessage: String?
     @Published private(set) var failureMessage: String?
-
     private let client: MobileHTTPClient?
     private let participantType: ParticipantType
     private let accessTokenProvider: () async throws -> String
     private var availabilityResolved = false
     private var conversationID = UUID()
+    private var lastMessageId: String?
+    private var persisted = false
+    private var generation = 0
+    private var visible = false
+    private var historySkip = 0
+    private var refreshTask: Task<Void, Never>?
+    private var refreshIdentity: UUID?
+    private var pollTask: Task<Void, Never>?
+    private struct Pending {
+        let id: UUID
+        let request: LegendFounderAiChatRequest
+        var userMessageId: String?
+    }
+    private var pending: Pending?
 
-    init(
-        client: MobileHTTPClient?,
-        participantType: ParticipantType,
-        accessTokenProvider:
-            @escaping () async throws -> String
-    ) {
+    init(client: MobileHTTPClient?, participantType: ParticipantType,
+         accessTokenProvider: @escaping () async throws -> String) {
         self.client = client
         self.participantType = participantType
         self.accessTokenProvider = accessTokenProvider
     }
 
     func resolveAvailability() async {
-        guard !availabilityResolved else {
-            return
-        }
-
-        guard let client else {
-            isAvailable = false
-            availabilityResolved = true
-            return
-        }
-
+        guard !availabilityResolved, let client else { return }
         do {
-            let token =
-                try await accessTokenProvider()
-
-            let response =
-                try await client.get(
-                    "/api/v1/mobile/founder/legend-ai/access",
-                    accessToken: token,
-                    headers: participantHeaders,
-                    response:
-                        LegendFounderAiAccessResponse.self)
-
+            let token = try await accessTokenProvider()
+            try Task.checkCancellation()
+            let response = try await client.get("/api/v1/mobile/founder/legend-ai/access",
+                accessToken: token, headers: participantHeaders, response: LegendFounderAiAccessResponse.self)
+            try Task.checkCancellation()
             isAvailable = response.available
             availabilityResolved = true
-        } catch {
-            isAvailable = false
+            refreshHistory()
+        } catch { if !Task.isCancelled { isAvailable = false } }
+    }
+
+    func setVisible(_ value: Bool) {
+        visible = value
+        pollTask?.cancel()
+        if !value { refreshTask?.cancel(); refreshTask = nil; return }
+        refreshHistory()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(20)) } catch { return }
+                self?.refreshHistory()
+            }
         }
     }
 
-    func send(
-        _ rawText: String,
-        mode: String = "legend",
-        nativeOnly: Bool = false,
-        externalAnsweringBlocked: Bool = false,
-        sourceLanguageCode: String? = nil
-    ) async {
-        guard isAvailable,
-              !isSending,
-              let client
-        else {
-            return
-        }
+    private func clearAuthenticatedHistory() {
+        generation += 1
+        setVisible(false)
+        pending = nil; canRetry = false
+        messages = []; conversations = []
+        conversationID = UUID(); lastMessageId = nil; persisted = false; historySkip = 0
+        hasOlderMessages = false; hasNewerMessages = false; hasMoreConversations = false
+        failureMessage = nil; refreshIdentity = nil; availabilityResolved = false
+        isAvailable = false; isSending = false; progressMessage = nil
+    }
 
-        let text =
-            rawText.trimmingCharacters(
-                in: .whitespacesAndNewlines)
-
-        guard !text.isEmpty else {
-            return
-        }
-
-        messages.append(
-            LegendFounderAiChatMessage(
-                role: "user",
-                content: text))
-
-        failureMessage = nil
-        progressMessage = nil
-        isSending = true
-
-        defer {
-            isSending = false
-            progressMessage = nil
-        }
-
-        do {
-            let token =
-                try await accessTokenProvider()
-
-            let operationID = UUID()
-            var chatHeaders = participantHeaders
-            chatHeaders["X-Legend-Ai-Operation-Id"] = operationID.uuidString
-
-            var completed: (status: Int, response: LegendFounderAiChatResponse)?
-            var latestProgress: String?
-            for try await line in try client.postStreamLines(
-                "/api/v1/mobile/founder/legend-ai/chat",
-                body: LegendFounderAiChatRequest(
-                    mode: mode == "teacher" ? "teacher" : "legend",
-                    nativeOnly: mode != "teacher" && nativeOnly,
-                    externalAnsweringBlocked: mode != "teacher" && externalAnsweringBlocked,
-                    // Only an explicit governed selection supplies a language.
-                    sourceLanguageCode: sourceLanguageCode,
-                    messages: messages,
-                    conversationId: conversationID.uuidString),
-                accessToken: token,
-                headers: chatHeaders)
-            {
+    func refreshHistory(more: Bool = false, older: Bool = false, newer: Bool = false) {
+        guard visible, isAvailable, !isSending, refreshTask == nil, let client else { return }
+        let epoch = generation
+        let thread = conversationID
+        let requestIdentity = UUID()
+        refreshIdentity = requestIdentity
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if refreshIdentity == requestIdentity { refreshTask = nil; refreshIdentity = nil } }
+            do {
+                let token = try await accessTokenProvider()
                 try Task.checkCancellation()
-                guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-                let envelope = try JSONDecoder.mobile.decode(
-                    LegendFounderAiStreamEnvelope.self, from: Data(line.utf8))
-                if envelope.type == "result" {
-                    guard let status = envelope.status, (100 ... 599).contains(status),
-                          let response = envelope.result else {
-                        throw MobileAPIError.invalidServerResponse
-                    }
-                    completed = (status, response)
-                    break
+                if !older {
+                    let result = try await client.get("/api/v1/mobile/founder/legend-ai/conversations",
+                        accessToken: token, queryItems: [URLQueryItem(name: "take", value: "50"),
+                            URLQueryItem(name: "skip", value: String(more ? historySkip : 0))],
+                        headers: participantHeaders, response: LegendFounderAiHistoryList.self)
+                    try Task.checkCancellation()
+                    guard generation == epoch, conversationID == thread else { return }
+                    guard result.succeeded else { failureMessage = result.errorMessage; return }
+                    historySkip = more ? historySkip + result.conversations.count : max(historySkip, result.conversations.count)
+                    conversations = more ? conversations + result.conversations.filter { row in !self.conversations.contains(where: { $0.id == row.id }) } : result.conversations + conversations.filter { row in !result.conversations.contains(where: { $0.id == row.id }) }
+                    hasMoreConversations = result.conversations.count == 50
+                    if result.conversations.contains(where: { UUID(uuidString: $0.id) == thread }) { persisted = true }
                 }
-                if envelope.type == "progress", let update = envelope.progress {
-                    let message = update.message.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !message.isEmpty {
-                        latestProgress = message
-                        progressMessage = message
-                    }
+                guard persisted else { return }
+                var query = [URLQueryItem(name: "take", value: "60")]
+                if older, let first = messages.first, let sentUtc = first.sentUtc {
+                    // Preserve the exact SQL timestamp string; Date formatting loses ticks.
+                    query += [URLQueryItem(name: "beforeUtc", value: sentUtc), URLQueryItem(name: "beforeMessageId", value: first.id.uuidString)]
+                }
+                let result = try await client.get("/api/v1/mobile/founder/legend-ai/conversations/\(thread.uuidString)",
+                    accessToken: token, queryItems: query, headers: participantHeaders, response: LegendFounderAiHistoryPage.self)
+                try Task.checkCancellation()
+                guard generation == epoch, conversationID == thread else { return }
+                guard result.succeeded, let detail = result.conversation else { failureMessage = result.errorMessage; return }
+                guard detail.messages.allSatisfy({ ["Human", "Assistant", "Service"].contains($0.authorKind) &&
+                    ($0.authorKind == "Human" || $0.responseProvenance != nil) }) else {
+                    failureMessage = "Conversation history could not be verified."; return
+                }
+                let page = detail.messages.map { row in self.transcript(author: row.authorKind, body: row.body,
+                    response: row.responseProvenance, id: row.id, sentUtc: row.sentUtc) }
+                let ids = Set(page.map(\.id))
+                if !older && !newer && !messages.isEmpty && !page.isEmpty && !messages.contains(where: { ids.contains($0.id) }) {
+                    hasNewerMessages = true; return
+                }
+                let retained = newer ? [] : messages.filter { !ids.contains($0.id) }
+                if !older { hasNewerMessages = false }
+                messages = older ? page + retained : retained + page
+                if older || retained.isEmpty { hasOlderMessages = detail.hasOlderMessages }
+                if !older { lastMessageId = detail.messages.last?.id.uuidString }
+                if let user = pending?.userMessageId,
+                   detail.messages.contains(where: { $0.replyToMessageId?.lowercased() == user.lowercased() }) { pending = nil }
+                canRetry = pending != nil
+            } catch {
+                if !Task.isCancelled && generation == epoch { handleHistoryError(error) }
+            }
+        }
+    }
+
+    func openConversation(_ id: String) {
+        guard !isSending, let uuid = UUID(uuidString: id) else { return }
+        generation += 1; refreshTask?.cancel(); refreshTask = nil
+        conversationID = uuid; lastMessageId = nil; persisted = true; pending = nil
+        messages = []; canRetry = false; hasOlderMessages = false; hasNewerMessages = false; failureMessage = nil
+        refreshHistory()
+    }
+
+    func send(_ rawText: String, mode: String = "legend", nativeOnly: Bool = false,
+              externalAnsweringBlocked: Bool = false, sourceLanguageCode: String? = nil) async {
+        guard isAvailable, !isSending else { return }
+        guard !hasNewerMessages else { failureMessage = "Load newer messages before sending a reply."; return }
+        guard pending == nil else { failureMessage = "Check the pending request before sending another message."; return }
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let submission = Pending(id: UUID(), request: LegendFounderAiChatRequest(mode: mode,
+            nativeOnly: mode == "legend" && nativeOnly, externalAnsweringBlocked: mode == "legend" && externalAnsweringBlocked,
+            sourceLanguageCode: sourceLanguageCode, messages: [LegendFounderAiChatMessage(role: "user", content: text)],
+            conversationId: conversationID.uuidString, expectedLastMessageId: lastMessageId))
+        pending = submission
+        await execute(submission)
+    }
+
+    func retry() async { if !isSending, let pending { await execute(pending) } }
+
+    private func execute(_ submission: Pending) async {
+        guard let client else { return }
+        refreshTask?.cancel(); refreshTask = nil; refreshIdentity = nil
+        let epoch = generation
+        isSending = true; canRetry = false; failureMessage = nil
+        defer {
+            if epoch == generation { isSending = false; progressMessage = nil; canRetry = pending != nil; refreshHistory() }
+        }
+        do {
+            let token = try await accessTokenProvider()
+            try Task.checkCancellation()
+            var headers = participantHeaders
+            headers["X-Legend-Ai-Operation-Id"] = submission.id.uuidString
+            var completed: LegendFounderAiChatResponse?
+            var latestProgress: String?
+            for try await line in try client.postStreamLines("/api/v1/mobile/founder/legend-ai/chat",
+                body: submission.request, accessToken: token, headers: headers) {
+                try Task.checkCancellation()
+                guard generation == epoch else { return }
+                if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+                let envelope = try JSONDecoder.mobile.decode(LegendFounderAiStreamEnvelope.self, from: Data(line.utf8))
+                if envelope.type == "result" {
+                    if let status = envelope.status, [401, 403].contains(status) { clearAuthenticatedHistory(); return }
+                    guard let status = envelope.status, (200...599).contains(status), let result = envelope.result,
+                        (200...299).contains(status) || !result.succeeded else { throw MobileAPIError.invalidServerResponse }
+                    completed = result; break
+                }
+                if envelope.type == "progress" {
+                    latestProgress = envelope.progress?.message
+                    progressMessage = latestProgress
                 } else if envelope.type == "heartbeat", let elapsed = envelope.elapsedSeconds {
                     progressMessage = "\(latestProgress ?? "Working") · \(elapsed)s"
                 }
             }
             try Task.checkCancellation()
-            // HTTP 200 acknowledges the stream, not completion of the request.
-            guard let completed else { throw MobileAPIError.invalidServerResponse }
-            let response = completed.response
-
-            if (200 ... 299).contains(completed.status), response.succeeded,
-               let answer =
-                    response.message?
-                        .trimmingCharacters(
-                            in: .whitespacesAndNewlines),
-               !answer.isEmpty
-            {
-                messages.append(
-                    LegendFounderAiChatMessage(
-                        role: "assistant",
-                        content: answer,
-                        responseAuthority:
-                            response.responseAuthority,
-                        reason: response.reason,
-                        foundationModel: response.foundationModel,
-                        foundationHosting: response.foundationHosting,
-                        externalAnsweringUsed: response.externalAnsweringUsed,
-                        escalationUsed: response.escalationUsed,
-                        escalationDisposition: response.escalationDisposition,
-                        researchState: response.researchState,
-                        learningState: response.learningState,
-                        modelAssistanceState: response.modelAssistanceState,
-                        modelVersion: response.modelVersion,
-                        modelTrainingRunId: response.modelTrainingRunId,
-                        modelProvenance: response.modelProvenance))
-
-                failureMessage = nil
-                return
-            }
-
-            failureMessage =
-                typedFailure(response)
+            guard generation == epoch, let completed else { throw MobileAPIError.invalidServerResponse }
+            apply(completed, submission: submission)
+        } catch let error as MobileHTTPStreamFailure {
+            guard generation == epoch, !Task.isCancelled else { return }
+            if [401, 403].contains(error.statusCode) { clearAuthenticatedHistory(); return }
+            if let result = try? JSONDecoder.mobile.decode(LegendFounderAiChatResponse.self, from: error.body), !result.succeeded {
+                apply(result, submission: submission)
+            } else { failureMessage = "Legend® Ai could not complete that request." }
         } catch {
-            if Task.isCancelled ||
-                (error as? URLError)?.code == .cancelled
-            {
-                failureMessage =
-                    "Response stopped. Your next message is ready to send."
-            } else {
-                failureMessage =
-                    "Legend® Ai could not complete that request."
-            }
+            guard generation == epoch else { return }
+            failureMessage = Task.isCancelled ? "Response stopped. Check the saved outcome before sending again."
+                : "The response could not be received. Check the saved outcome."
+        }
+    }
+
+    private func apply(_ response: LegendFounderAiChatResponse, submission: Pending) {
+        if response.failureKind == "authorization" { clearAuthenticatedHistory(); return }
+        if let id = response.conversationId, let uuid = UUID(uuidString: id) { conversationID = uuid; if response.userMessageId != nil || response.messageId != nil { persisted = true } }
+        if let user = response.userMessageId { pending = Pending(id: submission.id, request: submission.request, userMessageId: user) }
+        if let id = response.messageId, let uuid = UUID(uuidString: id) {
+            lastMessageId = id; pending = nil
+            messages.removeAll { $0.id == uuid }
+            messages.append(transcript(author: response.succeeded ? "Assistant" : "Service", body: response.message ?? response.error ?? "",
+                response: response, id: uuid, sentUtc: response.lastMessageUtc))
+        } else if ["FOUNDER_HISTORY_STALE", "FOUNDER_HISTORY_REPLAY_MISMATCH", "FOUNDER_HISTORY_FORBIDDEN", "FOUNDER_HISTORY_CLOSED"].contains(response.reason ?? "") { pending = nil }
+        failureMessage = response.succeeded
+            ? (response.messageId == nil ? "The response is missing its saved conversation receipt." : nil)
+            : response.error ?? "Legend® Ai could not complete that request."
+    }
+
+    private func handleHistoryError(_ error: Error) {
+        switch error as? MobileAPIError {
+        case .unauthorized, .forbidden, .apiUnauthorized, .apiForbidden: clearAuthenticatedHistory()
+        default: failureMessage = "Conversation history could not be loaded."
         }
     }
 
     func clearConversation() {
-        guard !isSending else {
-            return
-        }
-
-        messages.removeAll()
-        conversationID = UUID()
-        progressMessage = nil
-        failureMessage = nil
+        guard !isSending else { return }
+        generation += 1; refreshTask?.cancel(); refreshTask = nil
+        messages = []; conversationID = UUID(); lastMessageId = nil; persisted = false
+        pending = nil; canRetry = false; hasOlderMessages = false; hasNewerMessages = false; progressMessage = nil; failureMessage = nil
     }
 
-    private var participantHeaders:
-        [String: String]
-    {
-        [
-            "X-Legend-Participant-Type":
-                participantType.rawValue
-        ]
-    }
+    private var participantHeaders: [String: String] { ["X-Legend-Participant-Type": participantType.rawValue] }
 
-    private func typedFailure(
-        _ response: LegendFounderAiChatResponse
-    ) -> String {
-        let summary = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return summary?.isEmpty == false
-            ? summary!
-            : "Legend® Ai could not complete that request."
+    private func transcript(author: String, body: String, response: LegendFounderAiChatResponse?, id: UUID, sentUtc: String?) -> LegendFounderAiChatMessage {
+        LegendFounderAiChatMessage(id: id, role: author == "Human" ? "user" : author == "Assistant" ? "assistant" : "service",
+            content: body, responseAuthority: response?.responseAuthority, reason: response?.reason,
+            foundationModel: response?.foundationModel, foundationHosting: response?.foundationHosting,
+            externalAnsweringUsed: response?.externalAnsweringUsed, escalationUsed: response?.escalationUsed,
+            escalationDisposition: response?.escalationDisposition, researchState: response?.researchState,
+            learningState: response?.learningState, modelAssistanceState: response?.modelAssistanceState,
+            modelVersion: response?.modelVersion, modelTrainingRunId: response?.modelTrainingRunId,
+            modelProvenance: response?.modelProvenance, sentUtc: sentUtc, stage: response?.stage)
     }
 }
 
@@ -10617,6 +10698,7 @@ struct LegendFounderAiConversationView: View {
     @ObservedObject var store: LegendFounderAiStore
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var draft = ""
     @State private var mode = "legend"
@@ -10660,7 +10742,11 @@ struct LegendFounderAiConversationView: View {
         .background(
             LegendFounderAiPresentationTokens.paper
                 .ignoresSafeArea())
+        .onAppear { store.setVisible(scenePhase == .active) }
+        .onChange(of: scenePhase) { _, phase in store.setVisible(phase == .active) }
+        .onChange(of: store.isAvailable) { _, available in if !available { draft = ""; cancelCurrentRequest() } }
         .onDisappear {
+            store.setVisible(false)
             cancelCurrentRequest()
         }
     }
@@ -10948,6 +11034,12 @@ struct LegendFounderAiConversationView: View {
                                 .opacity(0.12))
                         .frame(height: 1)
 
+                    if store.hasNewerMessages {
+                        Button(LegendLocalized("Load newer messages")) { store.refreshHistory(newer: true) }
+                    }
+                    if store.hasOlderMessages {
+                        Button(LegendLocalized("Load earlier messages")) { store.refreshHistory(older: true) }
+                    }
                     ForEach(
                         store.messages
                     ) { message in
@@ -11011,7 +11103,12 @@ struct LegendFounderAiConversationView: View {
     private func messageBubble(
         _ message: LegendFounderAiChatMessage
     ) -> some View {
-        if message.role == "user" {
+        if message.role == "service" {
+            Text(LegendLocalized(message.content))
+                .font(.callout)
+                .foregroundStyle(LegendFounderAiPresentationTokens.status)
+                .textSelection(.enabled)
+        } else if message.role == "user" {
             HStack {
                 Spacer(minLength: 40)
 
@@ -11132,6 +11229,12 @@ struct LegendFounderAiConversationView: View {
 
     @ViewBuilder
     private var statusArea: some View {
+        if store.canRetry && !store.isSending {
+            Button(LegendLocalized("Check or retry the same request")) {
+                requestTask = Task { await store.retry(); requestTask = nil }
+            }
+        }
+
         if let failure =
             store.failureMessage
         {
@@ -11411,7 +11514,7 @@ struct LegendFounderAiConversationView: View {
 
                 Spacer(minLength: 0)
 
-                Toggle(LegendLocalized("Block all external providers"), isOn: $nativeOnly)
+                Toggle(LegendLocalized("Block all external providers"), isOn: Binding(get: { nativeOnly }, set: { nativeOnly = $0; store.clearConversation() }))
                     .labelsHidden()
                     .toggleStyle(
                         SwitchToggleStyle(
@@ -11439,7 +11542,7 @@ struct LegendFounderAiConversationView: View {
                         lineWidth: 1)
             }
 
-            Toggle(isOn: $externalAnsweringBlocked) {
+            Toggle(isOn: Binding(get: { externalAnsweringBlocked }, set: { externalAnsweringBlocked = $0; store.clearConversation() })) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(LegendLocalized("Block external answering"))
                     Text(LegendLocalized("Allow authorized research and translation."))
@@ -11447,7 +11550,6 @@ struct LegendFounderAiConversationView: View {
                 }
             }
             .disabled(store.isSending || mode != "legend" || nativeOnly)
-            .onChange(of: externalAnsweringBlocked) { _, _ in store.clearConversation() }
 
             Rectangle()
                 .fill(
@@ -11460,97 +11562,27 @@ struct LegendFounderAiConversationView: View {
                 .tracking(1.3)
                 .foregroundStyle(LegendFounderAiPresentationTokens.muted)
 
-            if store.messages.isEmpty {
-                HStack(spacing: 12) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.action)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            LegendFounderAiPresentationTokens.inset,
-                            in: Circle())
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(LegendLocalized("Your first conversation starts here"))
-                            .font(.system(size: 12, weight: .semibold))
-                        Text(LegendLocalized("New threads stay in this Founder workspace."))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(LegendFounderAiPresentationTokens.muted)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(store.conversations) { conversation in
+                        Button {
+                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = true
+                            store.openConversation(conversation.id)
+                            chatsOpen = false
+                        } label: {
+                            Text(conversation.subject ?? LegendLocalized("New conversation"))
+                                .font(.callout).lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(store.isSending)
+                    }
+                    if store.hasMoreConversations {
+                        Button(LegendLocalized("Load more conversations")) { store.refreshHistory(more: true) }
                     }
                 }
-                .padding(8)
-                .background(
-                    LegendFounderAiPresentationTokens.paper,
-                    in: RoundedRectangle(
-                        cornerRadius: 18,
-                        style: .continuous))
-            } else {
-                Button {
-                    chatsOpen = false
-                } label: {
-                    VStack(
-                        alignment: .leading,
-                        spacing: 4
-                    ) {
-                        Text(LegendLocalized("Active conversation"))
-                            .fontWeight(.heavy)
-
-                        Text(
-                            store.messages.last?
-                                .content
-                                ?? LegendLocalized("Legend® Ai"))
-                            .font(.caption)
-                            .lineLimit(2)
-                            .foregroundStyle(
-                                LegendFounderAiPresentationTokens.muted)
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading)
-                    .padding(9)
-                    .background(
-                        LegendFounderAiPresentationTokens.paper,
-                        in:
-                            RoundedRectangle(
-                                cornerRadius: 18,
-                                style: .continuous))
-                }
-                .buttonStyle(.plain)
             }
-
-            Spacer()
-
-            Button(role: .destructive) {
-                store.clearConversation()
-                chatsOpen = false
-            } label: {
-                Label(
-                    LegendLocalized("Clear conversations"),
-                    systemImage: "trash")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(LegendFounderAiPresentationTokens.muted)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 38)
-                    .background(
-                        LegendFounderAiPresentationTokens.inset,
-                        in:
-                            RoundedRectangle(
-                                cornerRadius: 14,
-                                style: .continuous))
-                    .overlay {
-                        RoundedRectangle(
-                            cornerRadius: 14,
-                            style: .continuous)
-                            .strokeBorder(
-                                LegendFounderAiPresentationTokens.header
-                                    .opacity(0.10),
-                                lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .disabled(store.isSending)
         }
         .foregroundStyle(
             LegendFounderAiPresentationTokens.text)
@@ -11596,7 +11628,7 @@ struct LegendFounderAiConversationView: View {
                 in:
                     .whitespacesAndNewlines)
 
-        guard !text.isEmpty else {
+        guard !text.isEmpty, !store.canRetry, !store.hasNewerMessages else {
             return
         }
 
@@ -11621,6 +11653,8 @@ struct LegendFounderAiConversationView: View {
         var labels: [String] = []
         if message.reason == "provider_output_incomplete" {
             labels.append(LegendLocalized("Partial answer: output limit reached"))
+        } else if message.stage == "response_partial" {
+            labels.append(LegendLocalized("Partial answer"))
         }
         switch message.escalationDisposition {
         case "Restricted": labels.append(LegendLocalized("Teacher material restricted from training"))

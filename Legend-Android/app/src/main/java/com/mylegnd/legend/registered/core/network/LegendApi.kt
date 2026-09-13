@@ -39,6 +39,8 @@ interface LegendApi {
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>
     @GET("api/v1/mobile/localization/catalog") suspend fun localizationCatalog(@Header("X-Legend-Participant-Type") participantType: String): Response<ApplicationLocalizationCatalog>
     @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
+    @GET("api/v1/mobile/founder/legend-ai/conversations") suspend fun founderAiConversations(@Header("X-Legend-Participant-Type") role: String, @Query("take") take: Int = 50, @Query("skip") skip: Int = 0): Response<FounderAiHistoryList>
+    @GET("api/v1/mobile/founder/legend-ai/conversations/{id}") suspend fun founderAiConversation(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String, @Query("beforeUtc") beforeUtc: String? = null, @Query("beforeMessageId") beforeMessageId: String? = null, @Query("take") take: Int = 60): Response<FounderAiHistoryPage>
     @GET("api/v1/mobile/home") suspend fun home(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileHomeResponse>
     @GET("api/v1/mobile/financial") suspend fun financial(
         @Header("X-Legend-Participant-Type") participantType: String,

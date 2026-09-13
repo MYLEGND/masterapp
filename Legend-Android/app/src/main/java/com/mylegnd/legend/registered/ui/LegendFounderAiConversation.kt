@@ -46,6 +46,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -114,7 +118,18 @@ fun FounderAiConversationDialog(
     var externalAnsweringBlocked by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) { viewModel.resolveAvailability() }
+    LaunchedEffect(viewModel) { viewModel.resolveAvailability() }
+    LaunchedEffect(state.availability) { if (state.availability is LoadState.Idle) draft = "" }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(viewModel, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) viewModel.visible(true)
+            if (event == Lifecycle.Event.ON_STOP) viewModel.visible(false)
+        }
+        lifecycle.addObserver(observer)
+        viewModel.visible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        onDispose { lifecycle.removeObserver(observer); viewModel.visible(false); viewModel.cancel() }
+    }
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
     Dialog(
@@ -154,7 +169,14 @@ fun FounderAiConversationDialog(
                         setNativeOnly = { nativeOnly = it },
                         setExternalAnsweringBlocked = { externalAnsweringBlocked = it; viewModel.startNewConversation() },
                         close = { scope.launch { drawerState.close() } },
-                        clear = viewModel::startNewConversation,
+                        conversations = state.conversations,
+                        hasMore = state.hasMoreConversations,
+                        loadMore = { viewModel.refresh(more = true) },
+                        openConversation = { id ->
+                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = true
+                            viewModel.openConversation(id)
+                            scope.launch { drawerState.close() }
+                        },
                     )
                 }
             },
@@ -170,12 +192,14 @@ fun FounderAiConversationDialog(
                     onDismiss()
                 },
                 updateDraft = { draft = it },
+                loadOlder = { viewModel.refresh(older = true) },
+                loadNewer = { viewModel.refresh(newer = true) },
+                retry = viewModel::retry,
                 submit = {
                     if (state.isSending) {
                         viewModel.cancel()
                     } else {
-                        viewModel.send(draft, mode, nativeOnly, externalAnsweringBlocked)
-                        draft = ""
+                        if (viewModel.send(draft, mode, nativeOnly, externalAnsweringBlocked)) draft = ""
                     }
                 },
             )
@@ -192,6 +216,9 @@ private fun FounderAiConversationContent(
     openDrawer: () -> Unit,
     close: () -> Unit,
     updateDraft: (String) -> Unit,
+    loadOlder: () -> Unit,
+    loadNewer: () -> Unit,
+    retry: () -> Unit,
     submit: () -> Unit,
 ) {
     val available = (state.availability as? LoadState.Data)?.value == true
@@ -244,6 +271,9 @@ private fun FounderAiConversationContent(
                     is LoadState.Error -> item { FounderAiStatusCard(access.message, isError = true) }
                     is LoadState.Data -> if (!access.value) item { FounderAiStatusCard("Founder AI is unavailable for this account.", isError = true) }
                 }
+                if (state.hasNewerMessages) item { TextButton(onClick = loadNewer) { Text(legendLocalized("Load newer messages")) } }
+                if (state.hasOlderMessages) item { TextButton(onClick = loadOlder) { Text(legendLocalized("Load earlier messages")) } }
+                if (state.canRetry && !state.isSending) item { TextButton(onClick = retry) { Text(legendLocalized("Check or retry the same request")) } }
                 if (state.messages.isEmpty()) {
                     item {
                         Column(
@@ -362,7 +392,10 @@ private fun FounderAiDrawer(
     setNativeOnly: (Boolean) -> Unit,
     setExternalAnsweringBlocked: (Boolean) -> Unit,
     close: () -> Unit,
-    clear: () -> Unit,
+    conversations: List<com.mylegnd.legend.registered.core.model.FounderAiHistoryThread>,
+    hasMore: Boolean,
+    loadMore: () -> Unit,
+    openConversation: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -442,14 +475,14 @@ private fun FounderAiDrawer(
         }
         HorizontalDivider(color = LegendColors.Divider, modifier = Modifier.padding(vertical = LegendSpacing.Xs))
         Text(legendLocalized("Recent"), style = LegendTypography.Label, color = LegendColors.TextTertiary)
-        Text(legendLocalized("The active conversation is retained in this session."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
-        Spacer(Modifier.weight(1f))
-        OutlinedButton(
-            onClick = clear,
-            enabled = canChangeMode,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
-            shape = LegendShapes.Compact,
-        ) { Text(legendLocalized("Clear conversation"), style = LegendTypography.Body) }
+        LazyColumn(Modifier.weight(1f)) {
+            items(conversations, key = { it.id }) { thread ->
+                TextButton(onClick = { openConversation(thread.id) }, enabled = canChangeMode) {
+                    Text(thread.subject ?: legendLocalized("New conversation"), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (hasMore) item { TextButton(onClick = loadMore) { Text(legendLocalized("Load more conversations")) } }
+        }
     }
 }
 
@@ -484,6 +517,7 @@ private fun FounderAiModeButton(
 
 @Composable
 private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
+    if (message.role == "service") { FounderAiStatusCard(message.content, isError = true); return }
     val isUser = message.role == "user"
     val authority = message.responseAuthority?.trim()
     if (isUser) {
@@ -526,7 +560,7 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
                 Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
                 val capabilityStatus = listOfNotNull(
                     if (message.reason == "provider_output_incomplete")
-                        legendLocalized("Partial answer: output limit reached") else null,
+                        legendLocalized("Partial answer: output limit reached") else if (message.stage == "response_partial") legendLocalized("Partial answer") else null,
                     when (message.escalationDisposition) {
                         "Restricted" -> legendLocalized("Teacher material restricted from training")
                         "InsufficientEvidence" -> legendLocalized("Teacher material lacks sufficient evidence")

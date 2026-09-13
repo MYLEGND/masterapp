@@ -46,6 +46,7 @@ import kotlinx.serialization.Serializable
     @SerialName("sourceLanguageCode") val sourceLanguageCode: String? = null,
     val messages: List<FounderAiChatMessage>,
     @SerialName("conversationId") val conversationId: String,
+    val expectedLastMessageId: String? = null,
 )
 @Serializable data class FounderAiChatResponse(
     val succeeded: Boolean,
@@ -69,6 +70,31 @@ import kotlinx.serialization.Serializable
     @SerialName("modelProvenance") val modelProvenance: String? = null,
     val stage: String? = null,
     val reason: String? = null,
+    val conversationId: String? = null,
+    val userMessageId: String? = null,
+    val messageId: String? = null,
+    val lastMessageUtc: String? = null,
+    val bodyIsError: Boolean = false,
+)
+// These existing messaging projections are returned directly by the shared
+// Founder transport, unlike the normalized ordinary mobile messaging DTOs.
+@Serializable data class FounderAiHistoryList(
+    val succeeded: Boolean, val errorMessage: String? = null,
+    val conversations: List<FounderAiHistoryThread> = emptyList(),
+)
+@Serializable data class FounderAiHistoryThread(
+    val id: String, val subject: String? = null, val lastMessageUtc: String? = null,
+)
+@Serializable data class FounderAiHistoryPage(
+    val succeeded: Boolean, val errorMessage: String? = null, val conversation: FounderAiHistoryConversation? = null,
+)
+@Serializable data class FounderAiHistoryConversation(
+    val id: String, val subject: String? = null, val lastMessageUtc: String? = null,
+    val messages: List<FounderAiHistoryMessage>, val hasOlderMessages: Boolean = false,
+)
+@Serializable data class FounderAiHistoryMessage(
+    val id: String, val body: String, val sentUtc: String, val authorKind: String,
+    val replyToMessageId: String? = null, val responseProvenance: FounderAiChatResponse? = null,
 )
 @Serializable data class FounderAiProgressEnvelope(
     val type: String,

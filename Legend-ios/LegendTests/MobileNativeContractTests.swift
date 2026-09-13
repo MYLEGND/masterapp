@@ -1369,7 +1369,7 @@ final class MobileNativeContractTests: XCTestCase {
         {"type":"accepted","operationId":"test-operation","responseAuthority":"LegendAi"}
         {"type":"progress","progress":{"stage":"tool","message":"Reading governed evidence"}}
         {"type":"heartbeat","elapsedSeconds":4}
-        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Computed résultat.","responseAuthority":"LegendAi"}}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Computed résultat.","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z","responseAuthority":"LegendAi"}}
 
         """
         let bytes = Array(wire.utf8)
@@ -1399,22 +1399,12 @@ final class MobileNativeContractTests: XCTestCase {
         let store = await availableFounderStore()
         defer { resetFounderStreamStub() }
         StubURLProtocol.responseBody = Data("""
-        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Controlled answer.","responseAuthority":"LocalFoundation"}}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Controlled answer.","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z","responseAuthority":"LocalFoundation"}}
 
         """.utf8)
         await store.send("Use authorized research without external answering.", nativeOnly: false, externalAnsweringBlocked: true)
         let request = try XCTUnwrap(StubURLProtocol.requests.last)
-        var body = request.httpBody ?? Data()
-        if body.isEmpty, let stream = request.httpBodyStream {
-            stream.open()
-            defer { stream.close() }
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            while stream.hasBytesAvailable {
-                let count = stream.read(&buffer, maxLength: buffer.count)
-                if count <= 0 { break }
-                body.append(contentsOf: buffer.prefix(count))
-            }
-        }
+        let body = try founderRequestBody(request)
         let value = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(value["externalAnsweringBlocked"] as? Bool, true)
         XCTAssertEqual(value["nativeOnly"] as? Bool, false)
@@ -1425,7 +1415,7 @@ final class MobileNativeContractTests: XCTestCase {
         let store = await availableFounderStore()
         defer { resetFounderStreamStub() }
         StubURLProtocol.responseBody = Data("""
-        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"LocalFoundation","foundationModel":"configured-model","foundationHosting":"LegendControlled","externalAnsweringUsed":false,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic","escalationDisposition":"Restricted","stage":"response_partial","reason":"provider_output_incomplete"}}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"A partial answer.","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z","responseAuthority":"LocalFoundation","foundationModel":"configured-model","foundationHosting":"LegendControlled","externalAnsweringUsed":false,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic","escalationDisposition":"Restricted","stage":"response_partial","reason":"provider_output_incomplete"}}
 
         """.utf8)
         await store.send("Verify the evidence and retain this correction.")
@@ -1451,7 +1441,8 @@ final class MobileNativeContractTests: XCTestCase {
 
         """.utf8)
         await store.send("Read the governed record.")
-        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.canRetry)
         // The exact backend summary remains a reusable catalog key. Typed
         // diagnostics must not be concatenated into user-facing copy.
         XCTAssertEqual(store.failureMessage, "Evidence is unavailable.")
@@ -1467,7 +1458,7 @@ final class MobileNativeContractTests: XCTestCase {
             let store = await availableFounderStore()
             StubURLProtocol.responseBody = Data(wire.utf8)
             await store.send("Read the governed record.")
-            XCTAssertEqual(store.messages.count, 1)
+            XCTAssertTrue(store.messages.isEmpty)
             XCTAssertNotNil(store.failureMessage)
             XCTAssertFalse(store.isSending)
             resetFounderStreamStub()
@@ -1489,9 +1480,157 @@ final class MobileNativeContractTests: XCTestCase {
         await sending.value
         await fulfillment(of: [stopped], timeout: 2)
         XCTAssertFalse(store.isSending)
-        XCTAssertEqual(store.messages.count, 1)
-        XCTAssertEqual(store.failureMessage, "Response stopped. Your next message is ready to send.")
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertEqual(store.failureMessage, "Response stopped. Check the saved outcome before sending again.")
         XCTAssertEqual(StubURLProtocol.requests.count, 1)
+    }
+
+    func testFounderHistoryResumesCanonicalTurnsAndPreservesExactPagingCursor() async throws {
+        let store = await availableFounderStore()
+        defer { store.setVisible(false); resetFounderStreamStub() }
+        let thread = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        let first = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        let terminal = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        let older = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+        let timestamp = "2026-09-13T10:00:00.1234567Z"
+        var disconnectedWindow = false
+        var foregroundVersion = false
+        StubURLProtocol.onRequest = {
+            let request = StubURLProtocol.requests.last!
+            if request.url!.path.hasSuffix("/conversations") {
+                StubURLProtocol.responseBody = Data("{\"succeeded\":true,\"conversations\":[{\"id\":\"\(thread)\",\"subject\":\"Saved on web\"}]}".utf8)
+            } else {
+                let isOlder = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.contains(where: { $0.name == "beforeUtc" }) == true
+                var rows: String
+                if disconnectedWindow {
+                    rows = "{\"id\":\"eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee\",\"body\":\"Newer canonical content\",\"sentUtc\":\"2026-09-13T11:00:00.1234567Z\",\"authorKind\":\"Human\"}"
+                } else if isOlder {
+                    rows = "{\"id\":\"\(older)\",\"body\":\"Earlier original content\",\"sentUtc\":\"2026-09-13T10:00:00.1234566Z\",\"authorKind\":\"Human\"}"
+                } else {
+                    rows = """
+                    {"id":"\(first)","body":"Original source content","sentUtc":"\(timestamp)","authorKind":"Human"},
+                    {"id":"\(terminal)","body":"Controlled reply","sentUtc":"2026-09-13T10:00:00.1234568Z","authorKind":"Assistant","replyToMessageId":"\(first)","responseProvenance":{"succeeded":true,"mode":"legend","responseAuthority":"LocalFoundation","externalAnsweringUsed":false,"learningState":"AwaitingCritic","stage":"response_partial","reason":"response_continuation_no_progress"}}
+                    """
+                }
+                if foregroundVersion && !isOlder && !disconnectedWindow {
+                    rows += "," + "{\"id\":\"ffffffff-ffff-ffff-ffff-ffffffffffff\",\"body\":\"Foreground new canonical content\",\"sentUtc\":\"2026-09-13T10:01:00.1234567Z\",\"authorKind\":\"Human\"}"
+                }
+                StubURLProtocol.responseBody = Data("{\"succeeded\":true,\"conversation\":{\"id\":\"\(thread)\",\"messages\":[\(rows)],\"hasOlderMessages\":\(!isOlder)}}".utf8)
+            }
+        }
+        store.openConversation(thread)
+        store.setVisible(true)
+        await waitForFounderHistory { store.messages.count == 2 }
+        XCTAssertEqual(store.messages.first?.sentUtc, timestamp)
+        XCTAssertEqual(store.messages.last?.responseAuthority, "LocalFoundation")
+        XCTAssertEqual(store.messages.last?.stage, "response_partial")
+        XCTAssertEqual(store.messages.last?.learningState, "AwaitingCritic")
+        XCTAssertNil(store.messages.last?.modelTrainingRunId)
+        store.refreshHistory(older: true)
+        await waitForFounderHistory { store.messages.count == 3 }
+        let request = try XCTUnwrap(StubURLProtocol.requests.last)
+        let query = try XCTUnwrap(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(query.first(where: { $0.name == "beforeUtc" })?.value, timestamp)
+        XCTAssertEqual(query.first(where: { $0.name == "beforeMessageId" })?.value?.lowercased(), first)
+        XCTAssertEqual(store.messages.map(\.content), ["Earlier original content", "Original source content", "Controlled reply"])
+        store.setVisible(false)
+        foregroundVersion = true
+        store.setVisible(true)
+        await waitForFounderHistory { store.messages.last?.content == "Foreground new canonical content" }
+        XCTAssertEqual(store.messages.count, 4, "A foreground refresh must preserve explicitly loaded older messages")
+        XCTAssertTrue(StubURLProtocol.requests.allSatisfy { $0.httpMethod == "GET" })
+        disconnectedWindow = true
+        store.refreshHistory()
+        await waitForFounderHistory { store.hasNewerMessages }
+        XCTAssertEqual(store.messages.count, 4, "A disconnected head must not silently hide the missing middle")
+        store.refreshHistory(newer: true)
+        await waitForFounderHistory { store.messages.last?.content == "Newer canonical content" }
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertTrue(store.hasOlderMessages, "Backward paging from the new head must reach every intervening message")
+        XCTAssertFalse(store.hasNewerMessages)
+        store.setVisible(false)
+        StubURLProtocol.onRequest = nil
+        StubURLProtocol.responseBody = Data("{\"type\":\"result\",\"status\":409,\"result\":{\"succeeded\":false,\"mode\":\"legend\",\"failureKind\":\"history_pending\",\"error\":\"Pending\"}}\n".utf8)
+        await store.send("A new explicit request.", externalAnsweringBlocked: true)
+        let submitted = try XCTUnwrap(StubURLProtocol.requests.last)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: founderRequestBody(submitted)) as? [String: Any])
+        XCTAssertEqual((body["expectedLastMessageId"] as? String)?.lowercased(), "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+        XCTAssertEqual((body["messages"] as? [[String: Any]])?.compactMap { $0["role"] as? String }, ["user"])
+    }
+
+    func testFounderHttpUnknownOutcomeRetriesExactOperationWithoutInventingAssistant() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseStatus = 409
+        StubURLProtocol.responseBody = Data("""
+        {"succeeded":false,"mode":"legend","error":"The operation outcome is unknown.","stage":"request_interrupted","reason":"outcome_unknown","failureKind":"outcome_unknown","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}
+        """.utf8)
+        await store.send("Do the authorized operation.", externalAnsweringBlocked: true)
+        XCTAssertTrue(store.canRetry)
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertEqual(store.failureMessage, "The operation outcome is unknown.")
+        let initial = try XCTUnwrap(StubURLProtocol.requests.first)
+        await store.retry()
+        XCTAssertEqual(StubURLProtocol.requests.count, 2)
+        let replay = try XCTUnwrap(StubURLProtocol.requests.last)
+        XCTAssertEqual(initial.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id"), replay.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id"))
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: founderRequestBody(initial)) as? NSDictionary,
+            try JSONSerialization.jsonObject(with: founderRequestBody(replay)) as? NSDictionary,
+            "Retry must retain the same effective body and provider policy")
+        XCTAssertTrue(store.messages.isEmpty)
+        StubURLProtocol.responseBody = Data("""
+        {"succeeded":false,"mode":"legend","error":"The operation outcome is unknown.","stage":"request_interrupted","reason":"outcome_unknown","failureKind":"outcome_unknown","responseAuthority":"SystemDiagnostic","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","lastMessageUtc":"2026-09-13T10:00:00.1234567Z"}
+        """.utf8)
+        await store.retry()
+        XCTAssertFalse(store.canRetry)
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertEqual(store.messages.first?.role, "service")
+        XCTAssertEqual(store.messages.first?.reason, "outcome_unknown")
+        XCTAssertTrue(StubURLProtocol.requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") == initial.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") })
+    }
+
+    func testFounderStreamAuthorizationClearsSavedMessagesAndPendingAccountState() async {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":503,"result":{"succeeded":false,"mode":"legend","error":"Private prior diagnostic","responseAuthority":"SystemDiagnostic","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z"}}
+
+        """.utf8)
+        await store.send("First persisted diagnostic.")
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertEqual(store.failureMessage, "Private prior diagnostic")
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":403,"result":{"succeeded":false,"mode":"legend","failureKind":"authorization","error":"Founder authorization is required."}}
+
+        """.utf8)
+        await store.send("A request after account authorization changed.")
+        XCTAssertFalse(store.isAvailable)
+        XCTAssertFalse(store.isSending)
+        XCTAssertFalse(store.canRetry)
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.conversations.isEmpty)
+        XCTAssertNil(store.failureMessage)
+    }
+
+    private func founderRequestBody(_ request: URLRequest) throws -> Data {
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                body.append(contentsOf: buffer.prefix(count))
+            }
+        }
+        return body
+    }
+
+    private func waitForFounderHistory(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !condition() && ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(condition(), "Expected the canonical history refresh to finish")
     }
 
     private func availableFounderStore() async -> LegendFounderAiStore {
@@ -1508,6 +1647,7 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     private func resetFounderStreamStub() {
+        StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = nil
         StubURLProtocol.responseChunks = nil
         StubURLProtocol.requests = []

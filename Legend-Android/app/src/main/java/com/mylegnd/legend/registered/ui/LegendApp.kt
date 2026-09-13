@@ -856,7 +856,7 @@ private fun AuthenticatedShell(
     var isMessageThreadOpen by remember { mutableStateOf(false) }
     var openingSharedPostId by remember(session.accountId, session.actor.identity) { mutableStateOf<String?>(null) }
     var sharingPost by remember { mutableStateOf<SocialPost?>(null) }
-    var founderAiOpen by remember { mutableStateOf(false) }
+    var founderAiOpen by remember(session.accountId, session.actor.identity) { mutableStateOf(false) }
     var memberProfile by remember { mutableStateOf<SocialAuthor?>(null) }
     val notificationDestination by container.notificationNavigation.destination.collectAsStateWithLifecycle()
     val participantType = session.actor.identity.participantType
@@ -906,9 +906,10 @@ private fun AuthenticatedShell(
         factory = LegendViewModelFactory { NotificationsViewModel(container.notificationRepository, participantType) },
     )
     val founderAi: FounderAiViewModel = viewModel(
-        key = "founder-ai-$participantType",
+        key = "founder-ai:" + MessagingViewModel.sessionKey(session.accountId, session.actor.identity),
         factory = LegendViewModelFactory { FounderAiViewModel(container.founderAiRepository, participantType) },
     )
+    DisposableEffect(founderAi) { founderAi.activateSession(); onDispose { founderAi.disposeSession() } }
     val messagingRealtime = calling.transport
     LegendCallOverlay(calling)
     val messagingLifecycle = LocalLifecycleOwner.current.lifecycle
@@ -945,7 +946,7 @@ private fun AuthenticatedShell(
         }
     }
     LaunchedEffect(participantType) { container.fcmPushRegistration.registerForAuthenticatedActor(participantType) }
-    LaunchedEffect(session.capabilities.isFounder, participantType) {
+    LaunchedEffect(founderAi, session.capabilities.isFounder) {
         if (session.capabilities.isFounder) founderAi.resolveAvailability()
     }
     LaunchedEffect(messages, notifications, home) {
@@ -1099,10 +1100,12 @@ private fun AuthenticatedShell(
     }
     }
     if (founderAiOpen) {
-        FounderAiConversationDialog(
-            viewModel = founderAi,
-            onDismiss = { founderAiOpen = false },
-        )
+        key(founderAi) {
+            FounderAiConversationDialog(
+                viewModel = founderAi,
+                onDismiss = { founderAiOpen = false },
+            )
+        }
     }
     openingSharedPostId?.let { id ->
         val opened by social.openedPost.collectAsStateWithLifecycle()

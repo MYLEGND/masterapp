@@ -3,7 +3,8 @@
      tabindex="-1"
      aria-labelledby="legendFounderAiTitle"
      aria-hidden="true"
-     data-chat-url="@Url.Action("Chat", "LegendFounderAi")">
+     data-chat-url="@Url.Action("Chat", "LegendFounderAi")"
+     data-history-url="@Url.Action("Conversations", "LegendFounderAi")">
 
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content legend-founder-ai-shell">
@@ -144,24 +145,15 @@
                                 <span class="legend-founder-ai-setting-icon" aria-hidden="true">⌁</span>
                                 <span class="legend-founder-ai-setting-summary">
                                     <strong>History</strong>
-                                    <small>Browser only</small>
+                                    <small>Synced to your account</small>
                                 </span>
                                 <span class="legend-founder-ai-setting-chevron" aria-hidden="true">⌄</span>
                             </summary>
-                            <p>Conversation history is stored only in this browser through the existing Legend® Ai local storage state. It is not a LEGEND chat database.</p>
+                            <p>Your saved conversations are available on web, iOS, and Android when you sign in to the same account.</p>
                         </details>
                     </section>
 
                     <div class="legend-founder-ai-sidebar-spacer"></div>
-
-                    <button type="button"
-                            id="legendFounderAiClearHistory"
-                            class="legend-founder-ai-clear-history">
-                        <span aria-hidden="true">⌫</span>
-                        <span class="legend-founder-ai-sidebar-label">
-                            Clear conversations
-                        </span>
-                    </button>
 
                     <div class="legend-founder-ai-sidebar-footer">
                         <span class="legend-founder-ai-sidebar-label">
@@ -260,6 +252,7 @@
                          id="legendFounderAiStatus"
                          aria-live="polite">
                     </div>
+                    <button type="button" id="legendFounderAiRetry" class="btn btn-sm btn-outline-secondary" hidden>Check or retry the same request</button>
 
                     <footer class="legend-founder-ai-composer">
                         <form id="legendFounderAiForm"

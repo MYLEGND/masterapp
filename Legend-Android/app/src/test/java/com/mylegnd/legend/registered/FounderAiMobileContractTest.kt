@@ -1,5 +1,6 @@
 package com.mylegnd.legend.registered
 
+import com.mylegnd.legend.registered.core.model.FounderAiHistoryPage
 import com.mylegnd.legend.registered.core.model.FounderAiChatMessage
 import com.mylegnd.legend.registered.core.model.FounderAiChatRequest
 import com.mylegnd.legend.registered.core.model.FounderAiChatResponse
@@ -97,6 +98,23 @@ class FounderAiMobileContractTest {
         val promoted = local.copy(modelAssistanceState = "Applied", modelVersion = "promoted-version",
             modelTrainingRunId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", modelProvenance = "GovernedPromotedModel")
         assertEquals(promoted, json.decodeFromString(FounderAiChatResponse.serializer(), json.encodeToString(promoted)))
+    }
+
+    @Test
+    fun `history retains exact SQL cursor and separates service outcomes from model replies`() {
+        val wire = """{"succeeded":true,"conversation":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","messages":[{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","body":"Original Haitian Creole content","sentUtc":"2026-09-13T10:00:00.1234567Z","authorKind":"Human"},{"id":"cccccccc-cccc-cccc-cccc-cccccccccccc","body":"Outcome unknown","sentUtc":"2026-09-13T10:00:00.1234568Z","authorKind":"Service","responseProvenance":{"succeeded":false,"mode":"legend","failureKind":"outcome_unknown","reason":"outcome_unknown","responseAuthority":"SystemDiagnostic"}}],"hasOlderMessages":true}}"""
+        val page = json.decodeFromString(FounderAiHistoryPage.serializer(), wire)
+        val rows = page.conversation!!.messages
+        assertEquals("2026-09-13T10:00:00.1234567Z", rows[0].sentUtc)
+        assertEquals("Service", rows[1].authorKind)
+        assertFalse(rows[1].responseProvenance!!.succeeded)
+        assertEquals("outcome_unknown", rows[1].responseProvenance!!.reason)
+        val request = FounderAiChatRequest("legend", false, true,
+            messages = listOf(FounderAiChatMessage("user", "New explicit request")),
+            conversationId = page.conversation.id, expectedLastMessageId = rows[1].id)
+        val replay = json.decodeFromString(FounderAiChatRequest.serializer(), json.encodeToString(request))
+        assertEquals(rows[1].id, replay.expectedLastMessageId)
+        assertEquals(listOf("user"), replay.messages.map { it.role })
     }
 
     @Test
