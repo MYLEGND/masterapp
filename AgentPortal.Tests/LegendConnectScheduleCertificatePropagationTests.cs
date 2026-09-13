@@ -108,7 +108,7 @@ public sealed class LegendConnectScheduleCertificatePropagationTests
                 new LegendFounderAiDiscourseStateService(db, profiles, operations.Object),
                 new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService(),
                 modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
-                    NullLogger<LegendConnectModelInferenceTransport>.Instance));
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance), languagePreferences: new ControlledResourceAccessService(db));
             var response = await service.ReplyAsync(ControllerTestHelpers.BuildUser(founderId),
                 new LegendFounderAiChatRequest
                 {

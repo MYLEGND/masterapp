@@ -740,6 +740,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 db,
                 new ConfigurationBuilder().Build()),
             translation ?? ControllerTestHelpers.BuildTranslationService(),
+            languagePreferences: new ControlledResourceAccessService(db),
             softwareRemediation: null);
 
     // Structural finding F, stated as executable evidence rather than as an

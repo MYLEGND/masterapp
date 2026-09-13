@@ -1621,7 +1621,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             new LegendLanguageRegistry(
                 db,
                 new ConfigurationBuilder().Build()),
-            ControllerTestHelpers.BuildTranslationService());
+            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
 
         var responseId =
             await service.VerifyProviderToolCatalogAcceptanceAsync();
@@ -1724,7 +1724,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             var service = new LegendFounderAiConversationService(factory, configuration, legend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations.Object),
-                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService());
+                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var responseId = await service.VerifyProviderToolCatalogAcceptanceAsync(deadline.Token);
             responsePresent = !string.IsNullOrWhiteSpace(responseId);
@@ -2448,6 +2448,52 @@ public sealed partial class LegendFounderAiModeIsolationTests
             "Unseen current request.", It.IsAny<CancellationToken>(), "en"), Times.Once());
     }
 
+    [Theory]
+    [InlineData("legend")]
+    [InlineData("teacher")]
+    public async Task Conversation_UsesCanonicalAccountPreferenceAcrossFreshRequests(string mode)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var profile = Assert.Single(db.AgentProfiles);
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = profile.Id, ParticipantType = MessagingParticipantTypes.Agent,
+            PreferredCommunicationLanguage = "ht"
+        });
+        // A different profile's preference must never influence this account.
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = Guid.NewGuid(), ParticipantType = MessagingParticipantTypes.Agent,
+            PreferredCommunicationLanguage = "es"
+        });
+        await db.SaveChangesAsync();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        SetupUnclassifiedContentPlan(operations);
+        const string prompt = "Explain this in French for this message only.";
+        foreach (var savedPreference in new[] { "ht", "fr" })
+        {
+            // A preference changed through the account store must be visible to a fresh
+            // conversation service without relying on a client cache.
+            db.MobileProfileSettings.Single(x => x.ProfileId == profile.Id).PreferredCommunicationLanguage = savedPreference;
+            await db.SaveChangesAsync();
+            var handler = new FounderAiScenarioHandler(ProviderText("Réponse de protocole."));
+            var response = await CreateService(db, operations.Object, handler).ReplyAsync(founder,
+                Request(mode, prompt, nativeOnly: mode == "legend"));
+            Assert.True(response.Succeeded, Describe(response));
+            using var body = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+            var instructions = body.RootElement.GetProperty("instructions").GetString();
+            Assert.Contains("saved communication language is " + savedPreference, instructions);
+            Assert.DoesNotContain("saved communication language is es", instructions);
+            Assert.Contains("unless the user explicitly requests another language", instructions);
+            Assert.Contains(prompt, body.RootElement.GetRawText());
+            Assert.Equal(mode == "legend" ? 0 : 1, handler.ExternalClientCount);
+        }
+        Assert.Equal("fr", db.MobileProfileSettings.Single(x => x.ProfileId == profile.Id).PreferredCommunicationLanguage);
+        Assert.False(db.ChangeTracker.HasChanges());
+    }
+
     // These assertions establish protocol attribution and isolation for the
     // explicitly scripted transport. They make no model-quality claim.
     private static void AssertControlledFixtureResponse(LegendFounderAiChatResponse response, FounderAiScenarioHandler handler)
@@ -2498,6 +2544,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             new LegendFounderAiDiscourseStateService(db, new AgentProfileAccessResolver(db), operations),
             new LegendLanguageRegistry(db, new ConfigurationBuilder().Build()),
             translation ?? ControllerTestHelpers.BuildTranslationService(),
+            languagePreferences: new ControlledResourceAccessService(db),
             modelInference: new LegendConnectModelInferenceTransport(clients, configuration,
                 NullLogger<LegendConnectModelInferenceTransport>.Instance));
     }

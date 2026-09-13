@@ -344,7 +344,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 registry,
                 ControllerTestHelpers.BuildTranslationService(),
                 modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
-                    NullLogger<LegendConnectModelInferenceTransport>.Instance));
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance), languagePreferences: new ControlledResourceAccessService(db));
 
         var fallbackFragments = new[]
         {
@@ -1587,7 +1587,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 diagnosticLoggerFactory.CreateLogger<LegendFounderAiConversationService>(),
                 discourse,
                 registry,
-                translation);
+                translation, languagePreferences: new ControlledResourceAccessService(discourseDb));
 
             isolatedPhase = "fixture_preflight";
             diagnosticCapture.ResetDiagnostics();
@@ -2800,7 +2800,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(shadow, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(shadow));
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -3033,7 +3033,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -3530,7 +3530,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             new LegendFounderAiDiscourseStateService(
                 db, new AgentProfileAccessResolver(db), operations),
             registry,
-            ControllerTestHelpers.BuildTranslationService());
+            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,

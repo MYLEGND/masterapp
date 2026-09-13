@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AgentPortal.Services;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -60,7 +61,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
                         NullLogger<LegendFounderAiConversationService>.Instance,
                         services.GetRequiredService<LegendFounderAiDiscourseStateService>(),
                         services.GetRequiredService<ILegendLanguageRegistry>(),
-                        services.GetRequiredService<ITranslationService>());
+                        services.GetRequiredService<ITranslationService>(),
+                        services.GetRequiredService<IControlledResourceAccessService>());
                     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                     reply = await service.ReplyAsync(founder, request, deadline.Token);
                     Assert.True(reply.Succeeded, Describe(reply));

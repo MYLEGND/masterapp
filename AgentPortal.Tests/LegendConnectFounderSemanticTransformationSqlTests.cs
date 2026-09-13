@@ -201,7 +201,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(proof, profiles, services.Operations),
                 new LegendLanguageRegistry(proof, configuration),
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(proof));
             var conversationId = Guid.NewGuid();
             var reply = await chat.ReplyAsync(
                 founder,
@@ -501,7 +501,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     conversationLogger,
                     discourse,
                     new LegendLanguageRegistry(proof, configuration),
-                    ControllerTestHelpers.BuildTranslationService());
+                    ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(proof));
 
                 var graphBeforeReply = await services.Operations.AnalyzeReusableMeaningGraphAsync(prompt.User);
                 Assert.True(graphBeforeReply.IsComposed, graphBeforeReply.ReasonCode);
@@ -868,7 +868,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     NullLogger<LegendFounderAiConversationService>.Instance,
                     new LegendFounderAiDiscourseStateService(proof, profiles, services.Operations),
                     new LegendLanguageRegistry(proof, configuration),
-                    ControllerTestHelpers.BuildTranslationService());
+                    ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(proof));
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -1387,7 +1387,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 discourse,
                 new LegendLanguageRegistry(proof, configuration),
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(proof));
             var conversationId = Guid.NewGuid().ToString();
             var establishingRequest = "Between " + leftSurface + " and " + rightSurface +
                 ", which one is cheaper?";

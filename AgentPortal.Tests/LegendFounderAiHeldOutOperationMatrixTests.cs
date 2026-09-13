@@ -1127,7 +1127,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 new ProductionService(db, loggerFactory.CreateLogger<ProductionService>()),
                 loggerFactory.CreateLogger<AgencyCommandService>()),
             modelInference: modelTransport,
-            activeModelInference: activeModel);
+            activeModelInference: activeModel, languagePreferences: new ControlledResourceAccessService(db));
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(

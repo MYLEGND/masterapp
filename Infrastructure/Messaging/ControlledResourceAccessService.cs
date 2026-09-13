@@ -194,7 +194,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
             .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
             .Select(setting => setting.PreferredCommunicationLanguage)
             .SingleOrDefaultAsync(cancellationToken);
-        return await _languages.NormalizeEnabledTranslationLanguageAsync(language, cancellationToken);
+        return await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(language, cancellationToken);
     }
 
     private async Task<bool> IsVerificationGrantedAsync(
