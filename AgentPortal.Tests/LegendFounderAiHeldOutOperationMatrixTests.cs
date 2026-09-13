@@ -972,14 +972,22 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         // Script only the explicit external transport fixture: this proves
         // database composition, never independent model capability.
         var row = await RunAsync("fixture:conversation_isolation", "Explain the supplied scenario.",
-            nativeOnly: false, mode: "teacher", providerText: "A transport fixture response.");
+            nativeOnly: false, mode: "teacher", providerText: "A transport fixture response.",
+            inspectOperations: db =>
+            {
+                var audit = Assert.Single(db.Set<LegendConnectOperationalEvent>().AsNoTracking());
+                Assert.Equal("ExternalEscalationLearning", audit.Category);
+                Assert.Equal("Restricted", audit.Status);
+                Assert.Equal("external_teacher_training_rights_unverified", audit.ErrorCode);
+                Assert.Equal("provider=OpenAI;content_retained=false;training_eligible=false;canonical=false;privacy=metadata_only", audit.Summary);
+            });
         Assert.True(row.Succeeded, row.Error);
         Assert.Equal("OpenAITeacher", row.ResponseAuthority);
         Assert.Equal(1, row.ProviderCalls);
         Assert.Equal(2, row.PersistedConversationMessages);
         Assert.True(row.PersistedDiscourseTurns > 0);
         Assert.Equal(0, row.OperationalWriteAttempts);
-        Assert.Empty(row.ObservedWriteEntities);
+        Assert.Equal(new[] { nameof(LegendConnectOperationalEvent) }, row.ObservedWriteEntities);
         Assert.Equal(0, row.PendingTrackedChanges);
     }
 
@@ -993,7 +1001,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         IReadOnlyList<LegendFounderAiChatMessage>? priorTurns = null,
         bool seedOperationalRecords = false,
         string? conversationId = null,
-        string? sourceLanguageCode = "en")
+        string? sourceLanguageCode = "en",
+        Action<MasterAppDbContext>? inspectOperations = null)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         using var writeSentinel = new WriteAttemptSentinel();
@@ -1043,6 +1052,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             },
             progress: (update, _) => { progress.Add(update); return ValueTask.CompletedTask; });
 
+        inspectOperations?.Invoke(db);
         return new MatrixRow(
             label,
             prompt,
