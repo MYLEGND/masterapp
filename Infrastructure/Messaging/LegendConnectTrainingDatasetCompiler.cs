@@ -1539,6 +1539,12 @@ internal static class LegendFoundationConversationControl
                 throw new InvalidOperationException("training_boolean_oracle_invalid");
             return identity;
         }
+        if (kind == "set_state")
+        {
+            if (!TryEvaluateSetStateOracle(oracle, out _, out _, out var identity))
+                throw new InvalidOperationException("training_set_state_oracle_invalid");
+            return identity;
+        }
         var a = oracle.GetProperty("a").GetInt32();
         var b = oracle.GetProperty("b").GetInt32();
         // Cosmetic case labels and declared scenario names cannot make one
@@ -1575,6 +1581,11 @@ internal static class LegendFoundationConversationControl
                     TryEvaluateBooleanOracle(oracle, out var instruction, out var result, out _) &&
                     supplied.GetArrayLength() == 1 && supplied[0].GetProperty("role").GetString() == "user" &&
                     supplied[0].GetProperty("content").GetString() == instruction && expected == result;
+            if (kind == "set_state")
+                return category == "reasoning" && language == "en" &&
+                    TryEvaluateSetStateOracle(oracle, out var setInstruction, out var setResult, out _) &&
+                    supplied.GetArrayLength() == 1 && supplied[0].GetProperty("role").GetString() == "user" &&
+                    supplied[0].GetProperty("content").GetString() == setInstruction && expected == setResult;
             var a = oracle.GetProperty("a").GetInt32();
             var b = oracle.GetProperty("b").GetInt32();
             var label = oracle.GetProperty("label").GetString();
@@ -1651,7 +1662,7 @@ internal static class LegendFoundationConversationControl
             var root = declaration.RootElement;
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("oracle", out var oracle) ||
                 oracle.ValueKind != JsonValueKind.Object || !oracle.TryGetProperty("kind", out var kind) ||
-                kind.ValueKind != JsonValueKind.String || kind.GetString() != "boolean_premises")
+                kind.ValueKind != JsonValueKind.String || kind.GetString() is not ("boolean_premises" or "set_state"))
                 return string.Equals(expected.Trim(), actual.Trim(), StringComparison.Ordinal);
             try
             {
@@ -1659,6 +1670,18 @@ internal static class LegendFoundationConversationControl
                 using var target = JsonDocument.Parse(expected);
                 using var response = JsonDocument.Parse(actual);
                 var value = response.RootElement;
+                if (kind.GetString() == "set_state")
+                {
+                    if (value.ValueKind != JsonValueKind.Object || value.EnumerateObject().Count() != 3 ||
+                        !value.TryGetProperty("active_count", out var active) ||
+                        !value.TryGetProperty("marked_active_count", out var marked) ||
+                        !value.TryGetProperty("marked_share", out var share) ||
+                        share.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) return false;
+                    var verified = target.RootElement;
+                    return active.GetInt32() == verified.GetProperty("active_count").GetInt32() &&
+                        marked.GetInt32() == verified.GetProperty("marked_active_count").GetInt32() &&
+                        share.GetString() == verified.GetProperty("marked_share").GetString();
+                }
                 if (value.ValueKind != JsonValueKind.Object || value.EnumerateObject().Count() != 2 ||
                     !value.TryGetProperty("consistent", out var consistent) || consistent.ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
                     !value.TryGetProperty("possible_false_premises", out var possible) || possible.ValueKind != JsonValueKind.Array) return false;
@@ -1728,6 +1751,102 @@ internal static class LegendFoundationConversationControl
                     if (canonical is null || StringComparer.Ordinal.Compare(encoded, canonical) < 0) canonical = encoded;
                 }
             problemIdentity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("boolean_premises|" + canonical))).ToLowerInvariant();
+            return true;
+        }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
+        { return false; }
+    }
+
+    // A finite set-state oracle for independently checked curriculum targets.
+    // Membership and labels are distinct relations; this is not a runtime
+    // classifier for words such as "flagged" or a source of organizational facts.
+    internal static bool TryEvaluateSetStateOracle(JsonElement oracle, out string instruction,
+        out string expected, out string problemIdentity)
+    {
+        instruction = expected = problemIdentity = string.Empty;
+        try
+        {
+            if (oracle.ValueKind != JsonValueKind.Object || oracle.EnumerateObject().Count() != 5 ||
+                oracle.GetProperty("kind").GetString() != "set_state") return false;
+            var entities = oracle.GetProperty("entities").GetInt32();
+            var initial = oracle.GetProperty("active");
+            var labels = oracle.GetProperty("marked");
+            var supplied = oracle.GetProperty("events");
+            if (entities is < 1 or > 4 || initial.ValueKind != JsonValueKind.Array ||
+                labels.ValueKind != JsonValueKind.Array || initial.GetArrayLength() > entities ||
+                labels.GetArrayLength() > entities || supplied.ValueKind != JsonValueKind.Array || supplied.GetArrayLength() > 6)
+                return false;
+            var initialActive = initial.EnumerateArray().Select(value => value.GetInt32()).ToArray();
+            var initialMarked = labels.EnumerateArray().Select(value => value.GetInt32()).ToArray();
+            if (initialActive.Distinct().Count() != initialActive.Length || initialMarked.Distinct().Count() != initialMarked.Length)
+                return false;
+            var events = new List<(string Operation, int Entity)>();
+            foreach (var item in supplied.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object || item.EnumerateObject().Count() != 2) return false;
+                var operation = item.GetProperty("operation").GetString();
+                if (operation is not ("add" or "remove" or "mark" or "unmark")) return false;
+                events.Add((operation, item.GetProperty("entity").GetInt32()));
+            }
+            var referenced = initialActive.Concat(initialMarked).Concat(events.Select(item => item.Entity)).ToArray();
+            if (referenced.Any(value => value < 1 || value > entities)) return false;
+            var active = initialActive.ToHashSet();
+            var marked = initialMarked.ToHashSet();
+            var changes = new List<(string Operation, int Entity)>();
+            foreach (var item in events)
+            {
+                var changed = item.Operation switch
+                {
+                    "add" => active.Add(item.Entity),
+                    "remove" => active.Remove(item.Entity),
+                    "mark" => marked.Add(item.Entity),
+                    "unmark" => marked.Remove(item.Entity),
+                    _ => false // All operations were validated above.
+                };
+                if (changed) changes.Add(item);
+            }
+            // Cosmetic no-ops cannot manufacture scenario independence, nor
+            // can unused entities mentioned only in such discarded operations.
+            if (initialActive.Concat(initialMarked).Concat(changes.Select(item => item.Entity)).Distinct().Count() != entities)
+                return false;
+            var markedActive = active.Intersect(marked).Count();
+            string? share = null;
+            if (active.Count > 0 && !LegendConnectGovernedReasoningExecutor.TryCalculate("divide",
+                    markedActive.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    active.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), out share)) return false;
+            expected = JsonSerializer.Serialize(new { active_count = active.Count, marked_active_count = markedActive, marked_share = share });
+            instruction = "Analyze a supplied set-state problem with entities e1 through e" + entities +
+                ". Active membership and a marked label are independent. Add makes an entity active; remove makes it inactive. " +
+                "Mark assigns a label; unmark removes that label. Changing a label never changes membership, and changing membership never changes a label. " +
+                "Repeating an operation has the same set effect as applying it once. Initially active: [" +
+                string.Join(',', initialActive.Select(value => "e" + value)) + "]; initially marked: [" +
+                string.Join(',', initialMarked.Select(value => "e" + value)) + "]. Apply these events in the given order: [" +
+                string.Join(';', events.Select(item => item.Operation + " e" + item.Entity)) +
+                "]. Return only JSON with active_count, marked_active_count, and marked_share. " +
+                "Count marked entities only among the final active members. Give marked_share as a reduced fraction or integer string, " +
+                "or null when no members are active because the denominator is zero.";
+            string? canonical = null;
+            foreach (var permutation in Permutations(Enumerable.Range(1, entities).ToArray(), 0))
+            {
+                var encoded = JsonSerializer.Serialize(new
+                {
+                    entities,
+                    active = initialActive.Select(value => permutation[value - 1]).OrderBy(value => value),
+                    marked = initialMarked.Select(value => permutation[value - 1]).OrderBy(value => value),
+                    // Changes to different entities or independent relations
+                    // commute. Preserve order only within each dependent trace.
+                    changes = Enumerable.Range(1, entities).Select(entity => new
+                    {
+                        entity = permutation[entity - 1],
+                        membership = changes.Where(item => item.Entity == entity && (item.Operation is "add" or "remove"))
+                            .Select(item => item.Operation).ToArray(),
+                        labels = changes.Where(item => item.Entity == entity && (item.Operation is "mark" or "unmark"))
+                            .Select(item => item.Operation).ToArray()
+                    }).OrderBy(item => item.entity)
+                });
+                if (canonical is null || StringComparer.Ordinal.Compare(encoded, canonical) < 0) canonical = encoded;
+            }
+            problemIdentity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("set_state|" + canonical))).ToLowerInvariant();
             return true;
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)

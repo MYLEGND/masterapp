@@ -16,6 +16,189 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectFoundationControlCompilerTests
 {
     [Theory]
+    [InlineData("mark", 3, 1, "1/3")]
+    [InlineData("remove", 2, 0, "0")]
+    public void StateLabelsAndMembershipHaveDistinctComputedEffects(string operation, int active, int marked, string share)
+    {
+        var oracle = StateOracle(3, [1, 2, 3], [], (operation, 2));
+        Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(oracle, out var instruction, out var target, out _));
+        Assert.Equal(JsonSerializer.Serialize(new { active_count = active, marked_active_count = marked, marked_share = share }), target);
+        var source = StateSource(oracle, "independent-state-case");
+        Assert.True(LegendFoundationConversationControl.TryValidateOracle(source, target, "en"));
+        Assert.False(LegendFoundationConversationControl.TryValidateOracle(source, target, "ht"));
+        Assert.False(LegendFoundationConversationControl.TryValidateOracle(source, target.Replace("active_count", "invented_count"), "en"));
+        Assert.Contains("never changes membership", instruction);
+    }
+
+    [Fact]
+    public void StateRemovalAndReactivationPreserveIndependentLabelsAndHandleEmptyDenominator()
+    {
+        string Target(JsonElement oracle)
+        {
+            Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(oracle, out _, out var target, out _));
+            return target;
+        }
+        Assert.Equal("{\"active_count\":0,\"marked_active_count\":0,\"marked_share\":null}",
+            Target(StateOracle(1, [1], [1], ("remove", 1))));
+        Assert.Equal("{\"active_count\":1,\"marked_active_count\":1,\"marked_share\":\"1\"}",
+            Target(StateOracle(1, [1], [1], ("remove", 1), ("add", 1), ("add", 1), ("mark", 1))));
+        Assert.Equal("{\"active_count\":1,\"marked_active_count\":0,\"marked_share\":\"0\"}",
+            Target(StateOracle(1, [], [1], ("unmark", 1), ("add", 1))));
+    }
+
+    [Fact]
+    public void StateScenarioIdentityIgnoresNamesAndSetOrderButPreservesCausalEventOrder()
+    {
+        var first = StateSource(StateOracle(3, [1, 2], [2, 3], ("remove", 2), ("add", 3), ("mark", 1)), "first");
+        // Rename 1->3, 2->1, 3->2 and reorder only the initial sets.
+        var renamed = StateSource(StateOracle(3, [1, 3], [2, 1], ("remove", 1), ("add", 2), ("mark", 3)), "cosmetic-name");
+        Assert.Equal(LegendFoundationConversationControl.ProblemIdentity(first), LegendFoundationConversationControl.ProblemIdentity(renamed));
+        var reactivated = StateSource(StateOracle(2, [1, 2], [1], ("remove", 1), ("add", 1)), "order-a");
+        var removed = StateSource(StateOracle(2, [1, 2], [1], ("add", 1), ("remove", 1)), "order-b");
+        Assert.NotEqual(LegendFoundationConversationControl.ProblemIdentity(reactivated), LegendFoundationConversationControl.ProblemIdentity(removed));
+        using var firstDocument = JsonDocument.Parse(reactivated);
+        using var secondDocument = JsonDocument.Parse(removed);
+        Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(firstDocument.RootElement.GetProperty("oracle"), out _, out var firstTarget, out _));
+        Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(secondDocument.RootElement.GetProperty("oracle"), out _, out var secondTarget, out _));
+        Assert.NotEqual(firstTarget, secondTarget);
+    }
+
+    [Fact]
+    public void StateNoOpsAndCommutingInterleavingsCannotManufactureHeldOutIndependence()
+    {
+        string Identity(JsonElement oracle) => LegendFoundationConversationControl.ProblemIdentity(StateSource(oracle, "cosmetic"));
+        Assert.Equal(Identity(StateOracle(1, [1], [], ("mark", 1))),
+            Identity(StateOracle(1, [1], [], ("mark", 1), ("mark", 1), ("add", 1))));
+        Assert.Equal(Identity(StateOracle(2, [1, 2], [], ("mark", 1), ("remove", 2))),
+            Identity(StateOracle(2, [1, 2], [], ("remove", 2), ("mark", 1))));
+        Assert.Equal(Identity(StateOracle(1, [1], [], ("mark", 1), ("remove", 1))),
+            Identity(StateOracle(1, [1], [], ("remove", 1), ("mark", 1))));
+        Assert.False(LegendFoundationConversationControl.TryEvaluateSetStateOracle(
+            StateOracle(2, [1], [], ("remove", 2)), out _, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":5,\"active\":[1],\"marked\":[],\"events\":[]}")]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":2,\"active\":[1],\"marked\":[],\"events\":[]}")]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":1,\"active\":[1,1],\"marked\":[],\"events\":[]}")]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":1,\"active\":[0],\"marked\":[],\"events\":[]}")]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":1,\"active\":[true],\"marked\":[],\"events\":[]}")]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":1,\"active\":[1],\"marked\":[],\"events\":[{\"operation\":\"delete-everything\",\"entity\":1}]}")]
+    [InlineData("{\"kind\":\"set_state\",\"entities\":1,\"active\":[1],\"marked\":[],\"events\":[],\"expected\":\"approve me\"}")]
+    public void StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(string json)
+    {
+        using var parsed = JsonDocument.Parse(json);
+        Assert.False(LegendFoundationConversationControl.TryEvaluateSetStateOracle(parsed.RootElement, out _, out _, out _));
+        Assert.False(LegendFoundationConversationControl.TryEvaluateSetStateOracle(
+            StateOracle(1, [1], [], Enumerable.Repeat(("mark", 1), 7).ToArray()), out _, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("{\"marked_share\":\"1/2\", \"active_count\":2, \"marked_active_count\":1}", true)]
+    [InlineData("{\"active_count\":1,\"marked_active_count\":1,\"marked_share\":\"1\"}", false)]
+    [InlineData("{\"active_count\":2,\"marked_active_count\":1,\"marked_share\":null}", false)]
+    [InlineData("{\"active_count\":2,\"marked_active_count\":1,\"marked_share\":0.5}", false)]
+    [InlineData("{\"active_count\":2,\"marked_active_count\":1,\"marked_share\":\"1/2\",\"actually_removed\":true}", false)]
+    [InlineData("{\"active_count\":2,\"active_count\":2,\"marked_active_count\":1,\"marked_share\":\"1/2\"}", false)]
+    public async Task StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(string actual, bool correct)
+    {
+        var oracle = StateOracle(2, [1, 2], [], ("mark", 1));
+        Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(oracle, out _, out var target, out _));
+        var source = StateSource(oracle, "state-judge");
+        var example = new LegendConnectTrainingDatasetExample("state-evidence", "en:en", "en", "en", source, target,
+            "SystemValidatedMachine", 3, "source-hash", "target-hash", "foundation.conversation", OutputContract: LegendFoundationConversationControl.OutputContract);
+        var judged = await new LocalLegendConnectModelEvaluationBackend().JudgeAsync(new(example, actual, target, BaselineModelText: target));
+        Assert.True(judged.Succeeded);
+        Assert.Equal(correct ? 1m : 0m, judged.ChallengerScore);
+        Assert.Equal(1m, judged.BaselineScore);
+    }
+
+    [Fact]
+    public async Task CompiledStateRenamingsCannotCrossTrainingAndHeldOutPartitions()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.Add(new LegendConnectRuntimePolicy { ScopeKey = "Global", LanguageIntelligenceReevaluationPhase = "Complete",
+            CompletedLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TargetLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current });
+        var targets = new Dictionary<string, LegendLanguageTextUnit>(StringComparer.Ordinal);
+        var declarations = new[]
+        {
+            StateOracle(2, [1, 2], [], ("mark", 1)),
+            StateOracle(2, [2, 1], [], ("mark", 2)),
+            StateOracle(2, [1, 2], [], ("mark", 1), ("mark", 1), ("add", 1)),
+            StateOracle(2, [1, 2], [], ("remove", 1))
+        };
+        for (var index = 0; index < declarations.Length; index++)
+        {
+            var declaration = declarations[index];
+            var sourceText = StateSource(declaration, "state-partition-" + index);
+            Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(declaration, out _, out var targetText, out _));
+            var family = new LegendCurriculumFamily { FamilyKey = "state-partition-" + index,
+                SemanticCategory = "foundation.conversation", Provenance = "FounderApproved" };
+            var source = new LegendLanguageTextUnit { Text = sourceText, NormalizedHash = LegendLanguageIdentity.TextHash(sourceText),
+                LanguageCode = "en", Provenance = "FounderApproved", IsTrainingEligible = true };
+            if (!targets.TryGetValue(targetText, out var target))
+            {
+                target = new LegendLanguageTextUnit { Text = targetText, NormalizedHash = LegendLanguageIdentity.TextHash(targetText),
+                    LanguageCode = "en", Provenance = "SystemValidatedMachine", IsTrainingEligible = true };
+                targets.Add(targetText, target);
+                db.Add(target);
+            }
+            var original = new LegendCurriculumExample { CurriculumFamilyId = family.Id, TextUnitId = source.Id,
+                LanguageCode = "en", Provenance = "FounderApproved" };
+            db.AddRange(family, source, original, new LegendCurriculumExample { CurriculumFamilyId = family.Id,
+                TextUnitId = target.Id, DerivedFromCurriculumExampleId = original.Id, LanguageCode = "en", Provenance = "SystemValidatedMachine" });
+        }
+        await db.SaveChangesAsync();
+        var manifest = await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted).CompileAsync();
+        var examples = manifest.Training.Concat(manifest.HeldOut).ToArray();
+        Assert.Equal(4, examples.Length);
+        var marked = examples.Where(example =>
+        {
+            using var source = JsonDocument.Parse(example.SourceText);
+            return source.RootElement.GetProperty("oracle").GetProperty("events")[0].GetProperty("operation").GetString() == "mark";
+        }).ToArray();
+        Assert.Equal(3, marked.Length);
+        var sharedGroup = Assert.Single(marked.Select(example => example.SplitGroupIdentity).Distinct());
+        Assert.NotEqual(sharedGroup, Assert.Single(examples.Except(marked)).SplitGroupIdentity);
+        Assert.False(manifest.Training.Any(example => example.SplitGroupIdentity == sharedGroup) &&
+            manifest.HeldOut.Any(example => example.SplitGroupIdentity == sharedGroup));
+        Assert.Empty(manifest.Training.Select(example => example.SplitGroupIdentity).Intersect(
+            manifest.HeldOut.Select(example => example.SplitGroupIdentity)));
+    }
+
+    [Fact]
+    public void StateHeldOutTargetDoesNotEnterTrainingMessagesOrRuntimeInput()
+    {
+        LegendConnectTrainingDatasetExample Example(JsonElement oracle, string identity)
+        {
+            Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(oracle, out _, out var target, out _));
+            return new(identity, "en:en", "en", "en", StateSource(oracle, identity), target, "SystemValidatedMachine", 1,
+                identity + "-source", identity + "-target", "foundation.conversation", OutputContract: LegendFoundationConversationControl.OutputContract,
+                SplitGroupIdentity: identity);
+        }
+        var training = Example(StateOracle(2, [1, 2], [], ("mark", 1)), "training");
+        var heldOut = Example(StateOracle(3, [1, 2, 3], [], ("mark", 2)), "locked");
+        var jsonl = Encoding.UTF8.GetString(LegendConnectModelTrainingService.BuildTrainingJsonl(new("dataset", 1, "Global", [training], [heldOut])));
+        using var row = JsonDocument.Parse(jsonl);
+        var messages = row.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.Equal(training.TargetText, messages[^1].GetProperty("content").GetString());
+        Assert.DoesNotContain(messages, message => message.GetProperty("content").GetString() == heldOut.TargetText);
+        Assert.DoesNotContain(heldOut.TargetText, heldOut.ToTaskRequest().ConversationInput!.Value.GetRawText(), StringComparison.Ordinal);
+    }
+
+    private static JsonElement StateOracle(int entities, int[] active, int[] marked, params (string Operation, int Entity)[] events) =>
+        JsonSerializer.SerializeToElement(new { kind = "set_state", entities, active, marked,
+            events = events.Select(item => new { operation = item.Operation, entity = item.Entity }) });
+
+    private static string StateSource(JsonElement oracle, string scenario)
+    {
+        Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(oracle, out var instruction, out _, out _));
+        return JsonSerializer.Serialize(new { schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = scenario,
+            messages = new[] { new { role = "user", content = instruction } }, oracle });
+    }
+
+    [Theory]
     [InlineData("{\"possible_false_premises\":[1,2,3], \"consistent\":false}", true)]
     [InlineData("{\"consistent\":true,\"possible_false_premises\":[1,2,3]}", false)]
     [InlineData("{\"consistent\":false,\"possible_false_premises\":[1,2]}", false)]
