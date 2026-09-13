@@ -61,6 +61,9 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         var duplicate = await capacity.TryReserveAsync("AzureTranslator", 2_000_000, TranslationCapacityPurpose.Live, "same");
         Assert.Equal("translation_capacity_reservation_pending", duplicate.FailureCode);
         Assert.InRange(duplicate.RetryAfterUtc!.Value, DateTime.UtcNow.AddSeconds(20), DateTime.UtcNow.AddSeconds(31));
+        var held = await capacity.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "different");
+        Assert.Equal("translation_capacity_reservation_pending", held.FailureCode);
+        await capacity.CompleteAsync(first.Reservation!, providerMayHaveConsumed: true);
         var exhausted = await capacity.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "different");
         Assert.Equal("translation_capacity_monthly_exhausted", exhausted.FailureCode);
         Assert.Equal(new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1), exhausted.RetryAfterUtc);
@@ -477,6 +480,8 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, new StaticTokenCredential(), timeProvider: clock);
         var failed = await source.GetCurrentAsync();
         Assert.False(failed.IsAvailable);
+        Assert.Equal(retrySeconds == 15 ? "translation_capacity_temporarily_unavailable" : "translation_capacity_configuration_unavailable", failed.FailureCode);
+        Assert.Equal(retrySeconds == 15, failed.RetryAfterUtc.HasValue);
         clock.UtcNow = clock.UtcNow.AddSeconds(retrySeconds - 1);
         Assert.Same(failed, await source.GetCurrentAsync());
         Assert.Equal(1, handler.SendAttempts);

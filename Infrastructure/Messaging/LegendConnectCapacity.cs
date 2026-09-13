@@ -529,12 +529,20 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         if (characters > settings.CapacityCharacters ||
             settings.MonthlyCapacityCharacters is { } maximum && characters > maximum)
             return new(null, "translation_capacity_request_exceeds_limit");
-        if (settings.MonthlyCapacityCharacters is { } monthlyCapacity &&
-            !CanReserveWindow(WithProviderObservation(monthlyUsage, settings), monthlyCapacity,
-                settings.MonthlyLiveReserveCharacters ?? 0, settings.MaximumSafeMonthlyCorpusCharacters ?? 0,
-                characters, purpose))
-            return new(null, "translation_capacity_monthly_exhausted",
-                new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
+        if (settings.MonthlyCapacityCharacters is { } monthlyCapacity)
+        {
+            var accounted = WithProviderObservation(monthlyUsage, settings);
+            if (!CanReserveWindow(accounted, monthlyCapacity, settings.MonthlyLiveReserveCharacters ?? 0,
+                    settings.MaximumSafeMonthlyCorpusCharacters ?? 0, characters, purpose))
+            {
+                var withoutPending = accounted with { ReservedCharacters = 0, ReservedCorpusCharacters = 0 };
+                if (CanReserveWindow(withoutPending, monthlyCapacity, settings.MonthlyLiveReserveCharacters ?? 0,
+                        settings.MaximumSafeMonthlyCorpusCharacters ?? 0, characters, purpose))
+                    return new(null, "translation_capacity_reservation_pending", now.AddSeconds(30));
+                return new(null, "translation_capacity_monthly_exhausted",
+                    new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
+            }
+        }
         if (!CanReserveWindow(hourlyUsage, settings.CapacityCharacters, settings.LiveReserveCharacters,
                 settings.MaximumSafeCorpusCharacters, characters, purpose))
             return new(null, "translation_capacity_hourly_exhausted", now.AddMinutes(AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes));
