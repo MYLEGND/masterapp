@@ -268,7 +268,8 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 request?.TargetUserId ?? string.Empty,
                 request?.TargetParticipantType ?? string.Empty,
-                InitialMessageBody: request?.InitialMessageBody, SharedPostId: request?.SharedPostId),
+                InitialMessageBody: request?.InitialMessageBody, SharedPostId: request?.SharedPostId,
+                IncludeMessages: request?.IncludeMessages ?? true),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -1384,7 +1385,8 @@ public sealed record MobileStartConversationRequest(
     string? TargetUserId,
     string? TargetParticipantType,
     string? InitialMessageBody,
-    Guid? SharedPostId = null);
+    Guid? SharedPostId = null,
+    bool IncludeMessages = true);
 
 public sealed record MobileCreateGroupRequest(
     string? Subject,

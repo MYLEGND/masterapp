@@ -6004,6 +6004,14 @@ header .legend-global-nav .container-fluid {
     white-space: nowrap;
 }
 
+/* Shared calling entry points select intent before the existing recipient list. */
+.messaging-call-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 10px; border: 1px solid var(--dash-gold); border-radius: 50%; background: var(--dash-royal-900); color: var(--dash-gold); cursor: pointer; }
+.messaging-call-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.messaging-call-button:focus-visible { outline: 2px solid var(--dash-gold); outline-offset: 3px; }
+.messaging-call-button:disabled { opacity: 0.5; cursor: default; }
+.messaging-call-selection { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 1rem; color: var(--dash-text); }
+.messaging-call-selection[hidden] { display: none; }
+
 .messaging-thread-actions {
     flex: 0 0 auto;
 }
@@ -6080,6 +6088,8 @@ header .legend-global-nav .container-fluid {
     max-width: min(78%, 680px);
     gap: var(--messaging-bubble-metadata-gap);
 }
+.messaging-message-row.has-reactions { min-width: min(calc(var(--messaging-reaction-width, 0px) + 2 * var(--messaging-bubble-padding-x)), 78%, 680px); }
+.messaging-message-row.has-reactions > .messaging-message { width: 100%; box-sizing: border-box; }
 .messaging-message-row.is-own { --messaging-actions-start: auto; --messaging-actions-end: 0; align-self: flex-end; align-items: flex-end; }
 
 .messaging-message {

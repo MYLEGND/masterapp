@@ -254,7 +254,8 @@ public sealed record StartMessagingConversationCommand(
     string? Subject = null,
     string? InitialMessageBody = null,
     string? ClientMessageId = null,
-    Guid? SharedPostId = null);
+    Guid? SharedPostId = null,
+    bool IncludeMessages = true);
 
 public sealed record CreateMessagingGroupCommand(
     MessagingActor Actor,

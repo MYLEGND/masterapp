@@ -88,6 +88,8 @@
                 }
             </div>
             <div class="messaging-command-center-header-actions">
+                <button type="button" class="messaging-call-button" id="messagingChooseVoiceCall" aria-label="Call" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h4l2 5-3 2a15 15 0 0 0 6 6l2-3 5 2v4c0 1-1 2-2 2C10 21 3 14 3 5c0-1 1-2 2-2Z"></path></svg></button>
+                <button type="button" class="messaging-call-button" id="messagingChooseVideoCall" aria-label="FaceTime" title="FaceTime"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="12" height="14" rx="3"></rect><path d="m15 9 6-4v14l-6-4Z"></path></svg></button>
                 @if (Model.SupportsJourneyCircles)
                 {
                     <button type="button"
@@ -115,6 +117,10 @@
         </header>
 
         <div class="messaging-error" id="messagingError" role="alert" hidden></div>
+        <div class="messaging-call-selection" id="messagingCallSelection" hidden>
+            <span id="messagingCallSelectionLabel"></span>
+            <button type="button" class="messaging-text-button" id="messagingCancelCallSelection">Cancel</button>
+        </div>
 
         <section class="messaging-journey-panel" id="messagingJourneyCircles" aria-labelledby="messagingJourneyCirclesTitle" hidden>
             <header class="messaging-journey-header">
@@ -504,8 +510,8 @@
                             </div>
                         </div>
                         <div class="messaging-thread-actions">
-                            <button type="button" class="messaging-text-button" id="messagingVoiceCall">Voice call</button>
-                            <button type="button" class="messaging-text-button" id="messagingVideoCall">Video call</button>
+                            <button type="button" class="messaging-call-button" id="messagingVoiceCall" aria-label="Call" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h4l2 5-3 2a15 15 0 0 0 6 6l2-3 5 2v4c0 1-1 2-2 2C10 21 3 14 3 5c0-1 1-2 2-2Z"></path></svg></button>
+                            <button type="button" class="messaging-call-button" id="messagingVideoCall" aria-label="FaceTime" title="FaceTime"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="12" height="14" rx="3"></rect><path d="m15 9 6-4v14l-6-4Z"></path></svg></button>
                             <button type="button" class="messaging-text-button" id="messagingMuteConversation">Mute</button>
                             <button type="button" class="messaging-text-button" id="messagingCloseConversation">Close</button>
                         </div>

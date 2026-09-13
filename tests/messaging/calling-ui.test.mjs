@@ -29,7 +29,7 @@ function fixture() {
     constructor(options) { Object.assign(this, options); client = this; }
     command(action, extra) { commands.push({ action, extra }); return Promise.resolve({ succeeded: true, preferences: { ringtoneId: 'soft', wallpaperMode: 'profile' }, ringtones: [{ id: 'soft', label: 'Soft', resource: 'legend_ringback' }], wallpapers: [{ id: 'profile', label: 'Photo' }] }); }
     retire() { this.retired = true; this.call = null; this.present(null); this.media(null, null); }
-    start() { this.starts = (this.starts || 0) + 1; return Promise.resolve(); }
+    start(...args) { this.starts = (this.starts || 0) + 1; this.lastStart=args; return Promise.resolve(); }
     end() { return Promise.resolve(); }
     fail(error) { throw error; }
   }
@@ -43,6 +43,7 @@ function fixture() {
     Option: function(text, value, _, selected) { return { text, value, selected }; },
     Audio: class { constructor(url) { this.url = url; tones.push(this); } play() { return Promise.resolve(); } pause() { this.paused = true; } },
     isCurrentParticipant: id => id === 'me', state: { active: { id: 'conversation' }, isOpen: true },
+    cancelCallSelection() {}, beginCallSelection() {},
     elements: { threadTitle: { textContent: 'Recipient' } }, showError() {}, openCommandCenter: () => Promise.resolve(),
     connection: { onreconnected(callback) { connectionEvents.reconnected = callback; }, onclose() {}, stop() { stopped++; return Promise.resolve(); } }
   };
@@ -116,4 +117,8 @@ test('back-forward cache restoration reauthenticates a retired document', () => 
   f.windowEvents.pagehide(); f.windowEvents.pageshow({ persisted: true });
   assert.equal(f.client.retired, true); assert.equal(reloads, 1);
   f.windowEvents.pageshow({ persisted: false }); assert.equal(reloads, 1);
+});
+
+test('chat voice and video buttons call the existing client directly with their selected mode',()=>{
+ const f=fixture();f.element('messagingVoiceCall').listeners.click();assert.deepEqual(f.client.lastStart,['conversation',false,'Recipient']);f.element('messagingVideoCall').listeners.click();assert.deepEqual(f.client.lastStart,['conversation',true,'Recipient']);assert.equal(f.client.starts,2);
 });

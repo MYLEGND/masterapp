@@ -454,7 +454,8 @@ internal sealed partial class MessagingService : IMessagingService
         MessagingConversationMessagePageQuery? messagePage,
         CancellationToken cancellationToken,
         bool applyTranslation = true,
-        Guid? acknowledgedMessageId = null)
+        Guid? acknowledgedMessageId = null,
+        bool includeMessages = true)
     {
         using var timing = new ProjectionTiming(_logger, "conversation");
         actor = NormalizeActor(actor);
@@ -523,7 +524,7 @@ internal sealed partial class MessagingService : IMessagingService
             ? messagesQuery.Where(message => message.Id == acknowledgmentId)
             : messagesQuery;
         timing.Next("messages_query");
-        var newestMessages = await projectionMessages
+        var newestMessages = !includeMessages ? new List<MessageDetailRow>() : await projectionMessages
             .OrderByDescending(message => message.SentUtc)
             .ThenByDescending(message => message.Id)
             .Take(acknowledgedMessageId.HasValue ? 1 : take + 1)
@@ -554,7 +555,9 @@ internal sealed partial class MessagingService : IMessagingService
             .ToListAsync(cancellationToken);
         // The one-row lookahead determines history without a second query;
         // discard it before attachments, social cards or translation work.
-        var hasOlderMessages = !acknowledgedMessageId.HasValue && newestMessages.Count > take;
+        var hasOlderMessages = !includeMessages
+            ? await messagesQuery.AnyAsync(cancellationToken)
+            : !acknowledgedMessageId.HasValue && newestMessages.Count > take;
         // Reverse the database order: SQL Server GUID ordering differs from
         // .NET's comparer, so sorting ties again here would break the cursor.
         var messages = newestMessages.Take(take).Reverse().ToList();
@@ -641,7 +644,7 @@ internal sealed partial class MessagingService : IMessagingService
             messages.Where(message => message.SharedSocialPostId.HasValue)
                 .ToDictionary(message => message.Id, message => message.SharedSocialPostId!.Value),
             cancellationToken);
-        if (applyTranslation)
+        if (applyTranslation && includeMessages)
         {
             var presented = await ApplyTranslationPresentationAsync(actor, messageSummaries, messages, cancellationToken);
             // Never return a successful partial page: its cursor could skip a
@@ -886,7 +889,7 @@ internal sealed partial class MessagingService : IMessagingService
                 conversationType,
                 requestedParticipantCount,
                 participants.Count);
-            return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId);
+            return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId, command.IncludeMessages);
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -1010,7 +1013,7 @@ internal sealed partial class MessagingService : IMessagingService
                         concurrent.Id,
                         conversationType,
                         directConversationKey);
-                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId);
+                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId, command.IncludeMessages);
                 }
             }
 
@@ -1023,7 +1026,8 @@ internal sealed partial class MessagingService : IMessagingService
             _notifications.NotifyCommittedMessages();
 
         return await GetConversationProjectionAsync(actor, conversation.Id, null, cancellationToken,
-            applyTranslation: false);
+            applyTranslation: false,
+            includeMessages: command.IncludeMessages || initialMessage is not null || command.SharedPostId.HasValue);
     }
 
     public async Task<MessagingConversationResult> CreateGroupAsync(
@@ -2870,7 +2874,8 @@ internal sealed partial class MessagingService : IMessagingService
         string? initialMessage,
         string? clientMessageId,
         CancellationToken cancellationToken,
-        Guid? sharedPostId = null)
+        Guid? sharedPostId = null,
+        bool includeMessages = true)
     {
         if (!string.IsNullOrWhiteSpace(initialMessage) || sharedPostId.HasValue)
         {
@@ -2886,7 +2891,10 @@ internal sealed partial class MessagingService : IMessagingService
                 applyTranslation: false, acknowledgedMessageId: sendResult.Message!.Id);
         }
 
-        return await GetConversationAsync(actor, conversationId, cancellationToken);
+        // Call setup needs authorized identity, not a translated history snapshot.
+        // Ordinary conversation opens retain the complete existing projection.
+        return await GetConversationProjectionAsync(actor, conversationId, null, cancellationToken,
+            includeMessages: includeMessages);
     }
 
     private async Task<bool> IsValidActorAsync(MessagingActor actor, CancellationToken cancellationToken)

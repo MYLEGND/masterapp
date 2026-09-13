@@ -82,6 +82,10 @@
     presenceDirty: false,
     presenceGeneration: 0,
     presence: null,
+    callSelection: null,
+    callSelectionFlight: null,
+    callSelectionController: null,
+    callSelectionVersion: 0,
     isOpen: false,
     isOpening: false,
     isJourneyOpen: false,
@@ -806,6 +810,87 @@
     });
   }
 
+  function isDirectCallChoice(conversation) {
+    return conversation.conversationType !== 'Group' && conversation.conversationType !== 'Assistant' &&
+      conversation.purpose !== 'FounderAI' && conversation.isClosed !== true && conversation.isArchivedMembership !== true;
+  }
+
+  function cancelCallSelection() {
+    state.callSelectionVersion += 1;
+    state.callSelectionController?.abort();
+    state.callSelectionController = null;
+    state.callSelection = null;
+    const prompt = document.getElementById('messagingCallSelection');
+    if (prompt) prompt.hidden = true;
+    renderConversations();
+    renderSearchResults();
+  }
+
+  function selectConversationForCurrentIntent(conversation) {
+    if (state.callSelectionFlight) return;
+    if (state.callSelection) startSelectedCall(conversation.id, conversation.counterparty);
+    else loadConversation(conversation.id, true).catch(error => showError(error.message));
+  }
+
+  async function startSelectedCall(conversationId, recipient) {
+    if (!state.callSelection || state.callSelectionFlight) return;
+    const intent = state.callSelection;
+    const version = state.callSelectionVersion;
+    let failureVersion = version;
+    const client = state.callClient;
+    if (!client || state.realtime?.state !== 'Connected') { showError(applicationCopy('Calling is unavailable.')); return; }
+    const controller = new AbortController();
+    state.callSelectionController = controller;
+    const deadline = window.setTimeout(() => controller.abort(), 10000);
+    const flight = (async () => {
+      let id = conversationId;
+      if (!id) {
+        if (!recipient?.contactKey) throw new Error(applicationCopy('This participant is unavailable for calling.'));
+        // Reuse the existing authorized, unique direct-conversation owner. No
+        // placeholder message or second calling endpoint is created.
+        const result = await request('/Messaging/Conversations', { method: 'POST', signal: controller.signal,
+          body: JSON.stringify({ contactKey: recipient.contactKey, body: null, subject: null, includeMessages: false }) });
+        id = result?.conversation?.id;
+        if (!id) throw new Error(applicationCopy('The conversation could not be opened.'));
+      }
+      if (controller.signal.aborted || version !== state.callSelectionVersion) return;
+      window.clearTimeout(deadline);
+      // The existing call UI owns cancellation once media preparation starts.
+      // Retire the recipient picker before that handoff, not after permission.
+      cancelCallSelection();
+      failureVersion = state.callSelectionVersion;
+      await client.start(id, intent.video, recipient?.displayName);
+    })();
+    state.callSelectionFlight = flight;
+    try { await flight; }
+    catch (error) {
+      if (failureVersion === state.callSelectionVersion && state.callClient === client && !client.retired) showError(error.name === 'AbortError'
+        ? applicationCopy('The call could not be started in time. Please try again.') : error.message);
+    } finally {
+      window.clearTimeout(deadline);
+      if (state.callSelectionFlight === flight) state.callSelectionFlight = null;
+      if (state.callSelectionController === controller) state.callSelectionController = null;
+    }
+  }
+
+  function beginCallSelection(video) {
+    if (state.callSelectionFlight) return;
+    cancelCallSelection();
+    state.callSelection = { video };
+    const prompt = document.getElementById('messagingCallSelection');
+    const label = document.getElementById('messagingCallSelectionLabel');
+    if (prompt) prompt.hidden = false;
+    if (label) label.textContent = video ? applicationCopy('Choose a person for FaceTime') : applicationCopy('Choose a person to call');
+    elements.search.value = '';
+    renderConversations();
+    renderSearchResults();
+    const version = state.callSelectionVersion;
+    loadRecipients().then(() => {
+      if (version === state.callSelectionVersion && state.callSelection) renderSearchResults();
+    }).catch(error => { if (version === state.callSelectionVersion && state.callSelection) showError(error.message); });
+    elements.search.focus({ preventScroll: true });
+  }
+
   function createPresencePill(conversationId, person) {
     const pill = createTextElement('span', 'messaging-presence', '');
     pill.hidden = true;
@@ -889,7 +974,8 @@
 
   function renderConversations() {
     elements.list.replaceChildren();
-    const scopedConversations = state.conversations.filter(isConversationInRecipientScope);
+    const scopedConversations = state.conversations.filter(isConversationInRecipientScope)
+      .filter(conversation => !state.callSelection || isDirectCallChoice(conversation));
     const scope = recipientScopeDescription();
     if (scopedConversations.length === 0) {
       elements.list.append(createTextElement('p', 'messaging-list-empty', scope.emptyConversations));
@@ -930,7 +1016,7 @@
         meta.append(createTextElement('span', 'messaging-unread-count', String(conversation.unreadCount)));
       }
       button.append(meta);
-      button.addEventListener('click', () => loadConversation(conversation.id, true).catch(error => showError(error.message)));
+      button.addEventListener('click', () => selectConversationForCurrentIntent(conversation));
       elements.list.append(button);
     }
 
@@ -1044,6 +1130,8 @@
   function reserveReactionOverlap(group) {
     if (!reactionBubbleSettings || !group.isConnected) return;
     const height = group.getBoundingClientRect().height;
+    const count = group.children.length;
+    group.closest('.messaging-message-row')?.style.setProperty('--messaging-reaction-width', `${count * reactionBubbleSettings.touchTarget + Math.max(0, count - 1) * reactionBubbleSettings.itemSpacing}px`);
     const gutter = (reactionBubbleSettings.touchTarget - reactionBubbleSettings.height) / 2;
     const outside = height > 0 ? gutter + reactionBubbleSettings.height * reactionBubbleSettings.outsideFraction : 0;
     group.parentElement.style.setProperty('--messaging-reaction-reserve', `${outside}px`);
@@ -1494,7 +1582,7 @@
         }
         appendMessageInteractions(card, conversation, message, meta);
         const row = document.createElement('div');
-        row.className = `messaging-message-row${isOwn ? ' is-own' : ''}`;
+        row.className = `messaging-message-row${isOwn ? ' is-own' : ''}${message.reactions?.length && !message.sharedContent ? ' has-reactions' : ''}`;
         row.append(card, meta);
         elements.messages.append(row);
       });
@@ -1590,7 +1678,7 @@
 
   function renderSearchResults() {
     const query = normalizeSearch(elements.search.value);
-    if (!query) {
+    if (!query && !state.callSelection) {
       state.searchResultNodes.forEach(item => item.remove());
       state.searchResultNodes.clear();
       setSearchStatus('');
@@ -1600,6 +1688,7 @@
 
     const matchingConversations = state.conversations
       .filter(conversation => conversation.isArchivedMembership !== true)
+      .filter(conversation => !state.callSelection || isDirectCallChoice(conversation))
       .filter(isConversationInRecipientScope)
       .filter(conversation => matchesSearch(searchText(conversation), query))
       .sort((left, right) =>
@@ -1609,7 +1698,7 @@
     const existingCounterparties = new Set(matchingConversations.map(conversation =>
       participantIdentityKey(conversation.counterparty?.userId, conversation.counterparty?.participantType)));
     const existingConversationIds = new Set(matchingConversations.map(conversation => conversation.id));
-    const recipientSource = state.recipientMatchesQuery === query
+    const recipientSource = query && state.recipientMatchesQuery === query
       ? state.recipientMatches
       : state.recipients;
     const matchingRecipients = recipientSource.filter(recipient =>
@@ -1631,7 +1720,7 @@
         select: () => {
           elements.search.value = '';
           renderSearchResults();
-          loadConversation(conversation.id, true).catch(error => showError(error.message));
+          selectConversationForCurrentIntent(conversation);
         }
       })),
       ...matchingRecipients.map(recipient => ({
@@ -1643,6 +1732,7 @@
           recipient.email
         ].filter(Boolean).join(' · '),
         select: () => {
+          if (state.callSelection) { startSelectedCall(recipient.existingConversationId, recipient); return; }
           if (recipient.existingConversationId) {
             elements.search.value = '';
             renderSearchResults();
@@ -2179,6 +2269,10 @@
       });
     });
     dialog.addEventListener('cancel', event => { event.preventDefault(); client.end().catch(error => showError(error.message)); });
+    for (const [id, video] of [['messagingChooseVoiceCall', false], ['messagingChooseVideoCall', true]]) {
+      document.getElementById(id)?.addEventListener('click', () => { if (!retired) beginCallSelection(video); });
+    }
+    document.getElementById('messagingCancelCallSelection')?.addEventListener('click', cancelCallSelection);
     for (const [id, video] of [['messagingVoiceCall', false], ['messagingVideoCall', true]]) {
       document.getElementById(id)?.addEventListener('click', () => {
         if (!retired && state.active?.id) client.start(state.active.id, video, elements.threadTitle.textContent).catch(error => showError(error.message));
@@ -2193,7 +2287,7 @@
     const authChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('legend-session-retirement') : null;
     const retire = () => {
       if (retired) return;
-      retired = true; client.retire();
+      retired = true; cancelCallSelection(); client.retire();
       document.getElementById('legendCallingPreferences')?.close();
       connection.stop().catch(() => {});
     };
@@ -2329,6 +2423,7 @@
   }
 
   function closeCommandCenter() {
+    cancelCallSelection();
     if (!state.isOpen) return;
     saveDraft();
     if (state.active?.id) {
