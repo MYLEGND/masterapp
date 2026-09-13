@@ -17,6 +17,45 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplicationLocalizationArchitectureTests
 {
+    [Theory]
+    [InlineData("translation_pending", "Pending", true)]
+    [InlineData("translation_provider_timeout", "RetryableFailure", true)]
+    [InlineData("translation_provider_transient_failure", "RetryableFailure", true)]
+    [InlineData("translation_provider_rate_limited", "RetryableFailure", true)]
+    [InlineData("translation_capacity_temporarily_unavailable", "RetryableFailure", true)]
+    [InlineData("translation_capacity_reservation_pending", "RetryableFailure", true)]
+    [InlineData("translation_provider_failed", "Blocked", false)]
+    [InlineData("translation_provider_authentication_failed", "Blocked", false)]
+    [InlineData("translation_provider_access_denied", "Blocked", false)]
+    [InlineData("translation_capacity_configuration_unavailable", "Blocked", false)]
+    [InlineData("translation_output_invalid", "Blocked", false)]
+    public void CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(string failure, string disposition, bool retry)
+    {
+        var entries = new[] { FailedCopy(failure), FailedCopy("translation_pending") };
+        var result = ApplicationLocalizationService.BuildContinuation(entries);
+        Assert.Equal(disposition, result.Disposition);
+        Assert.Equal(2, result.RemainingEntries);
+        Assert.Equal(retry, result.RetryAfterSeconds is > 0);
+        Assert.InRange(result.MaximumRequestsPerPass, 1, 64);
+        Assert.InRange(result.MaximumDurationSeconds, 1, 180);
+    }
+
+    [Fact]
+    public void CatalogContinuation_UsesCapacityResetAndStopsAtApprovalOnly()
+    {
+        var reset = DateTime.UtcNow.AddDays(3);
+        var result = ApplicationLocalizationService.BuildContinuation(new[] {
+            FailedCopy("translation_capacity_monthly_exhausted") with { RetryAfterUtc = reset } });
+        Assert.Equal("RetryableFailure", result.Disposition);
+        Assert.InRange(result.RetryAfterSeconds!.Value, 259_199, 259_201);
+        Assert.Null(ApplicationLocalizationService.BuildContinuation(new[] { FailedCopy("approved_translation_unavailable") }).RetryAfterSeconds);
+        Assert.Equal("Complete", ApplicationLocalizationService.BuildContinuation(Array.Empty<ApplicationLocalizedCopy>()).Disposition);
+    }
+
+    private static ApplicationLocalizedCopy FailedCopy(string code) => new(
+        Guid.NewGuid().ToString("N"), "Source", "Source", "visual interface copy", "revision",
+        Array.Empty<string>(), "SourceFallback", "Source", "Fallback", DateTime.UtcNow, false, code);
+
     [Fact]
     public async Task QuotaNotice_EveryBaselineLanguage_IsPresetAndNeverInvokesTranslation()
     {
@@ -512,17 +551,17 @@ public sealed class ApplicationLocalizationArchitectureTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<TranslationCapacityReservation?> TryReserveAsync(
+        public Task<TranslationCapacityReservationResult> TryReserveAsync(
             string provider,
             int characters,
             TranslationCapacityPurpose purpose,
             string? reservationReference = null,
-            CancellationToken cancellationToken = default) => Task.FromResult<TranslationCapacityReservation?>(new(
+            CancellationToken cancellationToken = default) => Task.FromResult(new TranslationCapacityReservationResult(new TranslationCapacityReservation(
                 provider,
                 DateOnly.FromDateTime(DateTime.UtcNow),
                 characters,
                 purpose,
-                Guid.NewGuid()));
+                Guid.NewGuid())));
 
         public Task CompleteAsync(
             TranslationCapacityReservation reservation,

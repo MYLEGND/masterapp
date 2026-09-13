@@ -12,7 +12,8 @@ public sealed record ApplicationLocalizedCopy(
     string ValidationState,
     DateTime CreatedUtc,
     bool Reused,
-    string? FailureCode = null);
+    string? FailureCode = null,
+    DateTime? RetryAfterUtc = null);
 
 public sealed record ApplicationLocalizationCatalog(
     string CatalogVersion,
@@ -21,7 +22,19 @@ public sealed record ApplicationLocalizationCatalog(
     string Locale,
     DateTime GeneratedUtc,
     bool IsComplete,
-    IReadOnlyList<ApplicationLocalizedCopy> Entries);
+    IReadOnlyList<ApplicationLocalizedCopy> Entries,
+    ApplicationLocalizationContinuation? Continuation = null);
+
+// Operational continuation is prescribed by the same catalog authority on every
+// platform. It never authorizes another provider or changes account preferences.
+public sealed record ApplicationLocalizationContinuation(
+    string Disposition,
+    int RemainingEntries,
+    int? RetryAfterSeconds,
+    int MaximumConsecutiveNoProgress = 3,
+    int MaximumDurationSeconds = 180,
+    int MaximumRequestsPerPass = 64,
+    int CooldownSeconds = 60);
 
 public interface IApplicationLocalizationService
 {

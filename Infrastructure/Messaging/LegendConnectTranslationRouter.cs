@@ -1541,12 +1541,13 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 await _demand.TryRecordBatchAsync(LegendLanguageIdentity.PairKey(source, target), chunk.Count,
                     characters, azureFallback: true, cancellationToken: cancellationToken);
             var chunkIdentity = Hash(string.Join('\n', chunk.Select(item => item.Identity).Order(StringComparer.Ordinal)));
-            var reservation = await _capacity.TryReserveAsync(
+            var capacityResult = await _capacity.TryReserveAsync(
                 _azure.ProviderName,
                 characters,
                 TranslationCapacityPurpose.Live,
                 $"retained-batch:{chunkIdentity}:{DateTime.UtcNow:yyyyMMddHHmm}",
                 cancellationToken);
+            var reservation = capacityResult.Reservation;
             if (reservation is null)
             {
                 await ResolveCrossInstanceBatchAsync(
@@ -1555,7 +1556,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     results,
                     source,
                     target,
-                    cancellationToken);
+                    cancellationToken, capacityResult.FailureCode ?? "translation_capacity_unavailable", capacityResult.RetryAfterUtc);
                 continue;
             }
 
@@ -1722,10 +1723,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         RetainedTranslationResult?[] results,
         string source,
         string target,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string failureCode, DateTime? retryAfterUtc)
     {
         var unresolved = chunk.ToDictionary(item => item.Identity, StringComparer.Ordinal);
-        for (var attempt = 0; attempt < 14 && unresolved.Count > 0; attempt++)
+        for (var attempt = 0; failureCode == "translation_capacity_reservation_pending" && attempt < 14 && unresolved.Count > 0; attempt++)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
             var retainedMatches = await _intelligence!.TryGetRetainedTranslationsAsync(
@@ -1754,7 +1755,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 requests[miss.RepresentativeIndex],
                 source,
                 target,
-                "translation_capacity_unavailable");
+                failureCode, retryAfterUtc);
             foreach (var index in miss.Indices)
                 results[index] = failure;
         }
@@ -2180,20 +2181,21 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             quotaReservation = quota.Reservation;
         }
 
-        var reservation = await TraceTranslationStageAsync("translation_capacity", _capacity.GetType().Name + ".TryReserveAsync",
+        var capacityResult = await TraceTranslationStageAsync("translation_capacity", _capacity.GetType().Name + ".TryReserveAsync",
                     () => _capacity.TryReserveAsync(
             _azure.ProviderName,
             string.IsNullOrEmpty(text) ? 0 : _azure.RequestCharacterCount(text),
             TranslationCapacityPurpose.Live,
             reservationReference: requestReference,
             cancellationToken: cancellationToken), externalProviderPolicy);
+        var reservation = capacityResult.Reservation;
         if (reservation is null)
         {
             await CompleteQuotaSafelyAsync(
                 quotaReservation,
                 providerExecuted: false,
                 providerSucceeded: false,
-                failureCode: "translation_capacity_unavailable",
+                failureCode: capacityResult.FailureCode ?? "translation_capacity_unavailable",
                 cancellationToken);
             if (_operations is not null)
             {
@@ -2203,11 +2205,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     "Unavailable",
                     source,
                     pairKey,
-                    "translation_capacity_unavailable",
+                    capacityResult.FailureCode ?? "translation_capacity_unavailable",
                     summary: "Live translation capacity could not be reserved.",
                     cancellationToken: cancellationToken);
             }
-            return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_capacity_unavailable"));
+            return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, capacityResult.FailureCode ?? "translation_capacity_unavailable"));
         }
 
         var providerSucceeded = false;
@@ -2334,7 +2336,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         RetainedTranslationRequest request,
         string? source,
         string? target,
-        string errorCode) => new(
+        string errorCode, DateTime? retryAfterUtc = null) => new(
             false,
             request.SourceText,
             source ?? request.SourceLanguageCode,
@@ -2344,7 +2346,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             "Fallback",
             DateTime.UtcNow,
             Reused: false,
-            errorCode);
+            errorCode, retryAfterUtc);
 
     private static RetainedTranslationResult ToRetainedResult(
         LegendRetainedTranslationMemoryMatch match,

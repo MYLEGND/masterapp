@@ -21,6 +21,11 @@ internal sealed record TranslationCapacityReservation(
     TranslationCapacityPurpose Purpose,
     Guid ReservationId);
 
+internal sealed record TranslationCapacityReservationResult(
+    TranslationCapacityReservation? Reservation,
+    string? FailureCode = null,
+    DateTime? RetryAfterUtc = null);
+
 internal interface ITranslationCapacityAuthority
 {
     Task<LegendConnectProviderCapacitySnapshot> GetSnapshotAsync(
@@ -36,7 +41,7 @@ internal interface ITranslationCapacityAuthority
                 "native_only_capacity_snapshot_policy_unavailable"))
             : GetSnapshotAsync(provider, cancellationToken);
 
-    Task<TranslationCapacityReservation?> TryReserveAsync(
+    Task<TranslationCapacityReservationResult> TryReserveAsync(
         string provider,
         int characters,
         TranslationCapacityPurpose purpose,
@@ -151,7 +156,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         };
     }
 
-    public async Task<TranslationCapacityReservation?> TryReserveAsync(
+    public async Task<TranslationCapacityReservationResult> TryReserveAsync(
         string provider,
         int characters,
         TranslationCapacityPurpose purpose,
@@ -160,13 +165,13 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
     {
         var period = CurrentPeriod();
         if (characters <= 0)
-            return new TranslationCapacityReservation(provider, period, 0, purpose, Guid.Empty);
+            return new(new TranslationCapacityReservation(provider, period, 0, purpose, Guid.Empty));
 
         var settings = await SettingsForAsync(provider, cancellationToken);
         if (!settings.IsAvailable)
         {
             _logger.LogWarning("Legend Connect provider capacity is unavailable; provider work is held. Provider={Provider} Detail={Detail}", provider, settings.Detail);
-            return null;
+            return new(null, settings.FailureCode ?? "translation_capacity_configuration_unavailable", settings.RetryAfterUtc);
         }
         await EnsureLedgerAsync(provider, period, settings, cancellationToken);
         var reference = NormalizeReference(reservationReference);
@@ -182,13 +187,13 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.Provider == provider && item.ReservationReference == reference, cancellationToken);
         if (existing is not null && existing.State != ReleasedState)
-            return null;
+            return new(null, "translation_capacity_reservation_pending", now.AddSeconds(30));
 
         var capacity = settings.CapacityCharacters;
         var reserve = settings.LiveReserveCharacters;
         if (purpose == TranslationCapacityPurpose.Bootstrap &&
             (capacity <= 0 || settings.MaximumSafeCorpusCharacters <= 0))
-            return null;
+            return new(null, "translation_capacity_configuration_unavailable");
 
         if (settings.EnforcesRollingWindow)
         {
@@ -204,7 +209,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
             if (locked != 1)
-                return null;
+                return new(null, "translation_capacity_temporarily_unavailable", now.AddSeconds(30));
 
             now = DateTime.UtcNow;
             var hourlyUsage = await GetWindowUsageAsync(
@@ -218,8 +223,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 now,
                 cancellationToken,
                 settings.AzureUsageQueryEndUtc);
-            if (!CanReserveAzureCapacity(hourlyUsage, monthlyUsage, characters, purpose, settings))
-                return null;
+            var capacityFailure = AzureCapacityFailure(hourlyUsage, monthlyUsage, characters, purpose, settings, now);
+            if (capacityFailure is not null) return capacityFailure;
 
             var reserved = await _db.Set<LegendTranslationProviderCapacity>()
                 .Where(item => item.Provider == provider && item.BillingPeriodStart == period)
@@ -227,7 +232,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                     .SetProperty(item => item.ReservedLiveCharacters, item => item.ReservedLiveCharacters + characters)
                     .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
             if (reserved != 1)
-                return null;
+                return new(null, "translation_capacity_temporarily_unavailable", now.AddSeconds(30));
 
             return await PersistReservationAsync(provider, period, characters, purpose, reference, now, existing, transaction, cancellationToken);
         }
@@ -243,7 +248,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 .SetProperty(item => item.ReservedLiveCharacters, item => item.ReservedLiveCharacters + characters)
                 .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
         if (permitted != 1)
-            return null;
+            return new(null, "translation_capacity_monthly_exhausted", period.AddMonths(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
 
         return await PersistReservationAsync(provider, period, characters, purpose, reference, now, existing, transaction, cancellationToken);
     }
@@ -308,7 +313,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private async Task<TranslationCapacityReservation?> TryReserveInMemoryAsync(
+    private async Task<TranslationCapacityReservationResult> TryReserveInMemoryAsync(
         string provider,
         DateOnly period,
         int characters,
@@ -322,7 +327,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         var existing = await _db.Set<LegendTranslationProviderReservation>()
             .SingleOrDefaultAsync(item => item.Provider == provider && item.ReservationReference == reference, cancellationToken);
         if (existing is not null && existing.State != ReleasedState)
-            return null;
+            return new(null, "translation_capacity_reservation_pending", now.AddSeconds(30));
 
         var ledger = await _db.Set<LegendTranslationProviderCapacity>()
             .SingleAsync(item => item.Provider == provider && item.BillingPeriodStart == period, cancellationToken);
@@ -340,11 +345,11 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 now,
                 cancellationToken,
                 settings.AzureUsageQueryEndUtc);
-            if (!CanReserveAzureCapacity(hourlyUsage, monthlyUsage, characters, purpose, settings))
-                return null;
+            var capacityFailure = AzureCapacityFailure(hourlyUsage, monthlyUsage, characters, purpose, settings, now);
+            if (capacityFailure is not null) return capacityFailure;
         }
         else if (!CanReserve(ledger, characters, purpose, settings))
-            return null;
+            return new(null, "translation_capacity_monthly_exhausted", period.AddMonths(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
 
         ledger.ReservedLiveCharacters += characters;
         ledger.UpdatedUtc = now;
@@ -367,7 +372,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         }
         await _db.SaveChangesAsync(cancellationToken);
         LegendConnectTelemetry.CapacityReservation(provider, purpose.ToString(), characters);
-        return new TranslationCapacityReservation(provider, period, characters, purpose, reservation.Id);
+        return new(new TranslationCapacityReservation(provider, period, characters, purpose, reservation.Id));
     }
 
     private async Task ReleaseExpiredReservationsAsync(
@@ -516,30 +521,24 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         return ledger.LiveCharactersConsumed + ledger.BootstrapCharactersConsumed + ledger.TrainingCharactersConsumed + ledger.ReservedLiveCharacters + characters <= limit;
     }
 
-    private static bool CanReserveAzureCapacity(
-        RollingUsage hourlyUsage,
-        RollingUsage monthlyUsage,
-        int characters,
-        TranslationCapacityPurpose purpose,
-        CapacitySettings settings)
+    private static TranslationCapacityReservationResult? AzureCapacityFailure(
+        RollingUsage hourlyUsage, RollingUsage monthlyUsage, int characters,
+        TranslationCapacityPurpose purpose, CapacitySettings settings, DateTime now)
     {
-        if (!CanReserveWindow(
-                hourlyUsage,
-                settings.CapacityCharacters,
-                settings.LiveReserveCharacters,
-                settings.MaximumSafeCorpusCharacters,
-                characters,
-                purpose))
-            return false;
-
-        return settings.MonthlyCapacityCharacters is not { } monthlyCapacity ||
-               CanReserveWindow(
-                   WithProviderObservation(monthlyUsage, settings),
-                   monthlyCapacity,
-                   settings.MonthlyLiveReserveCharacters ?? 0,
-                   settings.MaximumSafeMonthlyCorpusCharacters ?? 0,
-                   characters,
-                   purpose);
+        // A request larger than a complete service window cannot improve by retrying.
+        if (characters > settings.CapacityCharacters ||
+            settings.MonthlyCapacityCharacters is { } maximum && characters > maximum)
+            return new(null, "translation_capacity_request_exceeds_limit");
+        if (settings.MonthlyCapacityCharacters is { } monthlyCapacity &&
+            !CanReserveWindow(WithProviderObservation(monthlyUsage, settings), monthlyCapacity,
+                settings.MonthlyLiveReserveCharacters ?? 0, settings.MaximumSafeMonthlyCorpusCharacters ?? 0,
+                characters, purpose))
+            return new(null, "translation_capacity_monthly_exhausted",
+                new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
+        if (!CanReserveWindow(hourlyUsage, settings.CapacityCharacters, settings.LiveReserveCharacters,
+                settings.MaximumSafeCorpusCharacters, characters, purpose))
+            return new(null, "translation_capacity_hourly_exhausted", now.AddMinutes(AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes));
+        return null;
     }
 
     private static RollingUsage WithProviderObservation(RollingUsage usage, CapacitySettings settings) =>
@@ -610,7 +609,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                 }
                 : new CapacitySettings(
                     0, 0, 0, null, null, null, false, true, azure.Status, azure.ResourceId,
-                    azure.ResourceName, azure.Tier, azure.RefreshedUtc, azure.Detail);
+                    azure.ResourceName, azure.Tier, azure.RefreshedUtc, azure.Detail)
+                { FailureCode = azure.FailureCode, RetryAfterUtc = azure.RetryAfterUtc };
         }
         if (string.Equals(provider, "AzureTranslator", StringComparison.OrdinalIgnoreCase) && _runtimePolicy is not null)
         {
@@ -703,7 +703,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         ({ } firstValue, { } secondValue) => Math.Min(firstValue, secondValue)
     };
 
-    private async Task<TranslationCapacityReservation?> PersistReservationAsync(
+    private async Task<TranslationCapacityReservationResult> PersistReservationAsync(
         string provider,
         DateOnly period,
         int characters,
@@ -738,7 +738,7 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                         .SetProperty(item => item.CreatedUtc, now)
                         .SetProperty(item => item.CompletedUtc, (DateTime?)null), cancellationToken);
                 if (reactivated != 1)
-                    return null;
+                    return new(null, "translation_capacity_temporarily_unavailable", now.AddSeconds(30));
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -746,11 +746,11 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         catch (DbUpdateException exception)
         {
             _logger.LogDebug(exception, "Legend Connect provider capacity reservation was claimed concurrently. Provider={Provider}", provider);
-            return null;
+            return new(null, "translation_capacity_temporarily_unavailable", now.AddSeconds(30));
         }
 
         LegendConnectTelemetry.CapacityReservation(provider, purpose.ToString(), characters);
-        return new TranslationCapacityReservation(provider, period, characters, purpose, reservationId);
+        return new(new TranslationCapacityReservation(provider, period, characters, purpose, reservationId));
     }
 
     private DateTime ReservationExpiry(string provider, DateTime now) => now.AddSeconds(Math.Clamp(
@@ -798,6 +798,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         DateTime RefreshedUtc,
         string? Detail)
     {
+        public string? FailureCode { get; init; }
+        public DateTime? RetryAfterUtc { get; init; }
         public long? MonthlyAzureReportedCharacters { get; init; }
         public DateTime? AzureUsageRetrievedUtc { get; init; }
         public DateTime? AzureUsageQueryEndUtc { get; init; }

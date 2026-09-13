@@ -74,7 +74,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Azure Translator detection failed. StatusCode={StatusCode}", (int)response.StatusCode);
-                return new TranslationDetectionResult(false, null, "translation_provider_failed");
+                return new TranslationDetectionResult(false, null, HttpFailureCode(response.StatusCode));
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -96,7 +96,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(exception, "Azure Translator detection request failed.");
-            return new TranslationDetectionResult(false, null, "translation_provider_failed");
+            return new TranslationDetectionResult(false, null, "translation_provider_transient_failure");
         }
         catch (JsonException exception)
         {
@@ -188,7 +188,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Azure Translator translation failed. StatusCode={StatusCode} TargetLanguage={TargetLanguage}", (int)response.StatusCode, normalizedTarget);
-                return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
+                return new TranslationProviderResult(false, null, null, ProviderIdentifier, HttpFailureCode(response.StatusCode));
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -223,7 +223,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(exception, "Azure Translator translation request failed. TargetLanguage={TargetLanguage}", normalizedTarget);
-            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
+            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_transient_failure");
         }
         catch (JsonException exception)
         {
@@ -285,7 +285,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                     (int)response.StatusCode,
                     normalizedTarget,
                     texts.Count);
-                return BatchFailure(texts.Count, "translation_provider_failed");
+                return BatchFailure(texts.Count, HttpFailureCode(response.StatusCode));
             }
 
             using var document = JsonDocument.Parse(
@@ -347,7 +347,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 "Azure Translator batch request failed. TargetLanguage={TargetLanguage} ItemCount={ItemCount}",
                 normalizedTarget,
                 texts.Count);
-            return BatchFailure(texts.Count, "translation_provider_failed");
+            return BatchFailure(texts.Count, "translation_provider_transient_failure");
         }
         catch (JsonException exception)
         {
@@ -411,6 +411,18 @@ internal sealed class AzureTranslatorService : ITranslationProvider
 
         throw lastFailure ?? new HttpRequestException("Azure Translator request failed.");
     }
+
+    private static string HttpFailureCode(HttpStatusCode statusCode) => statusCode switch
+    {
+        HttpStatusCode.Unauthorized => "translation_provider_authentication_failed",
+        // Azure resource authorization/free-tier quota is distinct from a user's allowance.
+        HttpStatusCode.Forbidden => "translation_provider_access_denied",
+        HttpStatusCode.RequestTimeout => "translation_provider_timeout",
+        HttpStatusCode.TooManyRequests => "translation_provider_rate_limited",
+        _ when (int)statusCode >= 500 => "translation_provider_transient_failure",
+        _ when (int)statusCode >= 400 => "translation_provider_request_rejected",
+        _ => "translation_provider_failed"
+    };
 
     private static bool IsTransient(HttpStatusCode statusCode) =>
         statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests ||

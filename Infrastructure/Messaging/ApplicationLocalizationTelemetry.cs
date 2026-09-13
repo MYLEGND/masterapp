@@ -7,6 +7,10 @@ namespace Infrastructure.Messaging;
 internal static partial class ApplicationLocalizationTelemetry
 {
     private static readonly Meter Meter = new("Legend.ApplicationLocalization", "1.0.0");
+    private static readonly Histogram<double> CatalogDuration = Meter.CreateHistogram<double>("legend.localization.catalog.duration", "ms");
+    internal static void Catalog(string source, string target, string disposition, double elapsedMilliseconds) =>
+        CatalogDuration.Record(elapsedMilliseconds, Tags(source, target, disposition));
+
     private static readonly Counter<long> Requests = Meter.CreateCounter<long>("legend.localization.requests");
     private static readonly Counter<long> CacheHits = Meter.CreateCounter<long>("legend.localization.cache.hits");
     private static readonly Counter<long> CacheMisses = Meter.CreateCounter<long>("legend.localization.cache.misses");

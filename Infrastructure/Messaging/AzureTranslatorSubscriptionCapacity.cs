@@ -40,6 +40,8 @@ internal sealed record AzureTranslatorSubscriptionCapacity(
     DateTime RefreshedUtc,
     string? Detail)
 {
+    public string? FailureCode { get; init; }
+    public DateTime? RetryAfterUtc { get; init; }
     public long? MonthlyAzureReportedCharacters { get; init; }
     public DateTime? AzureUsageRetrievedUtc { get; init; }
     // Requested query end, used only as a ledger accounting anchor. Azure
@@ -102,6 +104,12 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
         var expires = transientFailure
             ? _timeProvider.GetUtcNow().UtcDateTime + TransientFailureRetryInterval
             : capacity.RefreshedUtc + MinimumRefreshInterval;
+        capacity = capacity with
+        {
+            FailureCode = capacity.IsAvailable ? null : transientFailure
+                ? "translation_capacity_temporarily_unavailable" : "translation_capacity_configuration_unavailable",
+            RetryAfterUtc = !capacity.IsAvailable && transientFailure ? expires : null
+        };
         _cached = new CachedCapacity(capacity, expires);
         return capacity;
     }

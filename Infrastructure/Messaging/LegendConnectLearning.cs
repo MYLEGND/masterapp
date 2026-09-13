@@ -3247,16 +3247,17 @@ internal sealed class LegendConnectAutonomousLearningService
             return;
         }
 
-        var reservation = await _capacity.TryReserveAsync(
+        var capacityResult = await _capacity.TryReserveAsync(
             _provider.ProviderName,
             candidate.SourceText.Length,
             TranslationCapacityPurpose.Bootstrap,
             reservationReference: candidate.IdempotencyKey,
             cancellationToken: cancellationToken);
+        var reservation = capacityResult.Reservation;
         if (reservation is null)
         {
-            await DeferCandidateAsync(candidate, "translation_capacity_unavailable", cancellationToken);
-            await RecordAsync("CapacityReservation", "Warning", "Unavailable", pair.SourceLanguageCode, pair.PairKey, "translation_capacity_unavailable", "Autonomous acquisition deferred because live-reserved provider capacity was unavailable.", cancellationToken);
+            await DeferCandidateAsync(candidate, capacityResult.FailureCode ?? "translation_capacity_unavailable", cancellationToken);
+            await RecordAsync("CapacityReservation", "Warning", "Unavailable", pair.SourceLanguageCode, pair.PairKey, capacityResult.FailureCode ?? "translation_capacity_unavailable", "Autonomous acquisition deferred because live-reserved provider capacity was unavailable.", cancellationToken);
             return;
         }
 

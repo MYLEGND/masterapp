@@ -155,7 +155,8 @@ public sealed record RetainedTranslationResult(
     string ValidationState,
     DateTime CreatedUtc,
     bool Reused,
-    string? ErrorCode = null);
+    string? ErrorCode = null,
+    DateTime? RetryAfterUtc = null);
 
 /// <summary>
 /// Retained application/content translation is another contract on the one

@@ -26,6 +26,47 @@ namespace AgentPortal.Tests;
 public sealed class AzureTranslatorSubscriptionCapacityTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CapacityDecision_PreservesLookupDispositionWithoutAdditionalProviderRead(bool transient)
+    {
+        var retry = DateTime.UtcNow.AddSeconds(15);
+        var sourceValue = new AzureTranslatorSubscriptionCapacity(false, "Unavailable", null, null, null,
+            null, null, DateTime.UtcNow, "Identical human detail is deliberately not the classification")
+        {
+            FailureCode = transient ? "translation_capacity_temporarily_unavailable" : "translation_capacity_configuration_unavailable",
+            RetryAfterUtc = transient ? retry : null
+        };
+        await using var db = ControllerTestHelpers.BuildDb();
+        var source = new Mock<IAzureTranslatorSubscriptionCapacitySource>(MockBehavior.Strict);
+        source.Setup(item => item.GetCurrentAsync(It.IsAny<CancellationToken>())).ReturnsAsync(sourceValue);
+        var authority = new TranslationCapacityAuthority(db, Configuration(), NullLogger<TranslationCapacityAuthority>.Instance,
+            azureSubscriptionCapacity: source.Object);
+        var result = await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "disposition");
+        Assert.Null(result.Reservation);
+        Assert.Equal(sourceValue.FailureCode, result.FailureCode);
+        Assert.Equal(sourceValue.RetryAfterUtc, result.RetryAfterUtc);
+        source.Verify(item => item.GetCurrentAsync(It.IsAny<CancellationToken>()), Times.Once);
+        source.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task CapacityDecision_DuplicateReservationAndMonthlyResetRemainDistinct()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var capacity = new TranslationCapacityAuthority(db, Configuration(), NullLogger<TranslationCapacityAuthority>.Instance,
+            azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
+        var first = await capacity.TryReserveAsync("AzureTranslator", 2_000_000, TranslationCapacityPurpose.Live, "same");
+        Assert.NotNull(first.Reservation);
+        var duplicate = await capacity.TryReserveAsync("AzureTranslator", 2_000_000, TranslationCapacityPurpose.Live, "same");
+        Assert.Equal("translation_capacity_reservation_pending", duplicate.FailureCode);
+        Assert.InRange(duplicate.RetryAfterUtc!.Value, DateTime.UtcNow.AddSeconds(20), DateTime.UtcNow.AddSeconds(31));
+        var exhausted = await capacity.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "different");
+        Assert.Equal("translation_capacity_monthly_exhausted", exhausted.FailureCode);
+        Assert.Equal(new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1), exhausted.RetryAfterUtc);
+    }
+
+    [Theory]
     [InlineData("F0", 1_932_766L, 67_234L)]
     [InlineData("S1", 4500L, null)]
     public async Task RecognizedTier_ObservesMonitorWithoutAddingProviderTotalsToLedger(string sku, long reported, long? remaining)
@@ -40,7 +81,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         await using var db = ControllerTestHelpers.BuildDb();
         var authority = new TranslationCapacityAuthority(db, Configuration(),
             NullLogger<TranslationCapacityAuthority>.Instance, azureSubscriptionCapacity: source);
-        var reservation = await authority.TryReserveAsync("AzureTranslator", 12, TranslationCapacityPurpose.Live, "monitor-ledger");
+        var reservation = (await authority.TryReserveAsync("AzureTranslator", 12, TranslationCapacityPurpose.Live, "monitor-ledger")).Reservation;
         Assert.NotNull(reservation);
         await authority.CompleteAsync(reservation!, providerMayHaveConsumed: true);
         var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
@@ -56,18 +97,18 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         {
             Assert.Equal(67_222L, snapshot.MonthlyRemainingCharacters);
             Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
-            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap, "protected-corpus"));
-            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 67_235, TranslationCapacityPurpose.Live, "observed-overage"));
-            var remainingReservation = await authority.TryReserveAsync("AzureTranslator", 67_222, TranslationCapacityPurpose.Live, "observed-live");
+            Assert.Null((await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap, "protected-corpus")).Reservation);
+            Assert.Null((await authority.TryReserveAsync("AzureTranslator", 67_235, TranslationCapacityPurpose.Live, "observed-overage")).Reservation);
+            var remainingReservation = (await authority.TryReserveAsync("AzureTranslator", 67_222, TranslationCapacityPurpose.Live, "observed-live")).Reservation;
             Assert.NotNull(remainingReservation);
-            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "observed-reserved-overage"));
+            Assert.Null((await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "observed-reserved-overage")).Reservation);
             Assert.Equal(0L, (await authority.GetSnapshotAsync("AzureTranslator")).MonthlyRemainingCharacters);
             await authority.CompleteAsync(remainingReservation!, providerMayHaveConsumed: true);
             var afterCompletion = await authority.GetSnapshotAsync("AzureTranslator");
             Assert.Equal(0L, afterCompletion.MonthlyRemainingCharacters);
             Assert.Equal(2_000_000L, afterCompletion.MonthlyCapacityAccountedCharacters);
             Assert.Equal(0L, afterCompletion.MonthlyReservedCharacters);
-            Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "completed-does-not-refill"));
+            Assert.Null((await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "completed-does-not-refill")).Reservation);
             Assert.Equal(2, handler.SendAttempts);
         }
     }
@@ -109,7 +150,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         var snapshot = await authority.GetSnapshotAsync("AzureTranslator");
         Assert.Equal(0L, snapshot.MonthlyRemainingCharacters);
         Assert.Equal(0L, snapshot.SafeAcquisitionCharacters);
-        Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "saturated-overage"));
+        Assert.Null((await authority.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Live, "saturated-overage")).Reservation);
     }
 
     [Fact]
@@ -141,7 +182,7 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.Equal(100, snapshot.HourlyCharactersConsumed);
         Assert.Equal(100, snapshot.MonthlyReservedCharacters);
         Assert.Equal(1_999_800L, snapshot.MonthlyRemainingCharacters);
-        Assert.Null(await authority.TryReserveAsync("AzureTranslator", 1_999_801, TranslationCapacityPurpose.Live, "future-debt-overage"));
+        Assert.Null((await authority.TryReserveAsync("AzureTranslator", 1_999_801, TranslationCapacityPurpose.Live, "future-debt-overage")).Reservation);
         Assert.True(snapshot.RemainingIsEstimate);
         Assert.False(snapshot.IsAzureUsageVerified);
         Assert.Null(snapshot.MonthlyAzureReportedCharacters);
@@ -551,12 +592,12 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             NullLogger<TranslationCapacityAuthority>.Instance,
             azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
 
-        var corpusOverReserve = await capacity.TryReserveAsync(
-            "AzureTranslator", 1_900_001, TranslationCapacityPurpose.Bootstrap, "corpus-over-reserve");
+        var corpusOverReserve = (await capacity.TryReserveAsync(
+            "AzureTranslator", 1_900_001, TranslationCapacityPurpose.Bootstrap, "corpus-over-reserve")).Reservation;
         Assert.Null(corpusOverReserve);
 
-        var live = await capacity.TryReserveAsync(
-            "AzureTranslator", 100, TranslationCapacityPurpose.Live, "rolling-live");
+        var live = (await capacity.TryReserveAsync(
+            "AzureTranslator", 100, TranslationCapacityPurpose.Live, "rolling-live")).Reservation;
         Assert.NotNull(live);
         await capacity.CompleteAsync(live!, providerMayHaveConsumed: true);
 
@@ -586,8 +627,8 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             azureSubscriptionCapacity: new StaticAzureCapacitySource(new AzureTranslatorSubscriptionCapacity(
                 false, "Unavailable", null, null, null, null, null, DateTime.UtcNow, "Reader role is missing.")));
 
-        Assert.Null(await capacity.TryReserveAsync(
-            "AzureTranslator", 1, TranslationCapacityPurpose.Live, "no-sync"));
+        Assert.Null((await capacity.TryReserveAsync(
+            "AzureTranslator", 1, TranslationCapacityPurpose.Live, "no-sync")).Reservation);
 
         var snapshot = await capacity.GetSnapshotAsync("AzureTranslator");
         Assert.False(snapshot.IsSynchronized);
@@ -679,8 +720,8 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             NullLogger<TranslationCapacityAuthority>.Instance,
             azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
 
-        Assert.Null(await capacity.TryReserveAsync(
-            "AzureTranslator", 1_900_000, TranslationCapacityPurpose.Bootstrap, "monthly-overage"));
+        Assert.Null((await capacity.TryReserveAsync(
+            "AzureTranslator", 1_900_000, TranslationCapacityPurpose.Bootstrap, "monthly-overage")).Reservation);
 
         var snapshot = await capacity.GetSnapshotAsync("AzureTranslator");
         Assert.Equal(100_000, snapshot.MonthlyCharactersConsumed);
@@ -716,8 +757,8 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             NullLogger<TranslationCapacityAuthority>.Instance,
             azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("F0", 2_000_000)));
 
-        Assert.Null(await capacity.TryReserveAsync(
-            "AzureTranslator", 1, TranslationCapacityPurpose.Live, "monthly-live-overage"));
+        Assert.Null((await capacity.TryReserveAsync(
+            "AzureTranslator", 1, TranslationCapacityPurpose.Live, "monthly-live-overage")).Reservation);
 
         var snapshot = await capacity.GetSnapshotAsync("AzureTranslator");
         Assert.Equal(0, snapshot.HourlyCharactersConsumed);
@@ -751,8 +792,8 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
             NullLogger<TranslationCapacityAuthority>.Instance,
             azureSubscriptionCapacity: new StaticAzureCapacitySource(Available("S1", 40_000_000)));
 
-        Assert.Null(await capacity.TryReserveAsync(
-            "AzureTranslator", 2, TranslationCapacityPurpose.Live, "hourly-overage"));
+        Assert.Null((await capacity.TryReserveAsync(
+            "AzureTranslator", 2, TranslationCapacityPurpose.Live, "hourly-overage")).Reservation);
 
         var snapshot = await capacity.GetSnapshotAsync("AzureTranslator");
         Assert.Null(snapshot.MonthlyIncludedCharacterAllowance);

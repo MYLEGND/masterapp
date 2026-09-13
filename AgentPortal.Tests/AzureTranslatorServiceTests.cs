@@ -18,6 +18,24 @@ namespace AgentPortal.Tests;
 
 public sealed class AzureTranslatorServiceTests
 {
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "translation_provider_authentication_failed", 1)]
+    [InlineData(HttpStatusCode.Forbidden, "translation_provider_access_denied", 1)]
+    [InlineData(HttpStatusCode.BadRequest, "translation_provider_request_rejected", 1)]
+    [InlineData(HttpStatusCode.TooManyRequests, "translation_provider_rate_limited", 3)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "translation_provider_transient_failure", 3)]
+    public async Task HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(
+        HttpStatusCode status, string expected, int attempts)
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(status));
+        var service = CreateService(handler);
+        Assert.Equal(expected, (await service.DetectLanguageAsync("Hello")).ErrorCode);
+        Assert.Equal(expected, (await service.TranslateAsync("Hello", "ht", "en")).ErrorCode);
+        var batch = await service.TranslateBatchAsync(new[] { "Hello", "Goodbye" }, "ht", "en");
+        Assert.All(batch, result => { Assert.False(result.Succeeded); Assert.Null(result.TranslatedText); Assert.Equal(expected, result.ErrorCode); });
+        Assert.Equal(3 * attempts, handler.CallCount);
+    }
+
     [Fact]
     public async Task IndependentAnswering_AllowsKnownAzureTranslationWhileNativeOnlyBlocksIt()
     {
@@ -214,7 +232,7 @@ public sealed class AzureTranslatorServiceTests
         var result = await service.TranslateAsync("Hello", "ht", "en");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("translation_provider_failed", result.ErrorCode);
+        Assert.Equal("translation_provider_request_rejected", result.ErrorCode);
         Assert.Equal(1, handler.CallCount);
     }
 

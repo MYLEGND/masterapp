@@ -378,8 +378,8 @@ public sealed class LegendConnectRuntimePolicyTests
             100, 80, 20, true, "Shadow", 0.98m));
         var capacity = new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance, policy);
 
-        Assert.Null(await capacity.TryReserveAsync("AzureTranslator", 21, TranslationCapacityPurpose.Bootstrap));
-        Assert.NotNull(await capacity.TryReserveAsync("AzureTranslator", 20, TranslationCapacityPurpose.Bootstrap));
+        Assert.Null((await capacity.TryReserveAsync("AzureTranslator", 21, TranslationCapacityPurpose.Bootstrap)).Reservation);
+        Assert.NotNull((await capacity.TryReserveAsync("AzureTranslator", 20, TranslationCapacityPurpose.Bootstrap)).Reservation);
     }
 
     [Fact]
