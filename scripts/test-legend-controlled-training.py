@@ -90,6 +90,21 @@ class ControlledTrainingHostBoundaryTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 trainer.validate_recipe(dict(settings, **{field: invalid}), args, "b" * 64)
 
+    def test_base_license_accepts_spdx_capitalization_at_training_admission(self):
+        for license_id in ("Apache-2.0", "apache-2.0", "APACHE-2.0"):
+            with self.subTest(license_id=license_id):
+                trainer.validate_base_license_and_revision({"license": license_id, "revision": "a" * 40})
+
+    def test_base_license_rejects_missing_nonstring_unknown_and_restricted_values(self):
+        for license_id in (None, True, 2, [], {}, "", "MIT", "unknown", "non-commercial", "Apache-2.0 OR MIT", " Apache-2.0 "):
+            with self.subTest(license_id=license_id), self.assertRaisesRegex(ValueError, "license or immutable revision"):
+                trainer.validate_base_license_and_revision({"license": license_id, "revision": "a" * 40})
+        with self.assertRaises(ValueError):
+            trainer.validate_base_license_and_revision({"revision": "a" * 40})
+        for revision in (None, 40, "", "a" * 39):
+            with self.subTest(revision=revision), self.assertRaises(ValueError):
+                trainer.validate_base_license_and_revision({"license": "Apache-2.0", "revision": revision})
+
     def test_child_log_bound_and_deadline_do_not_leave_running_compute(self):
         with tempfile.TemporaryDirectory() as directory:
             args = SimpleNamespace(engine="mlx", output=Path(directory),

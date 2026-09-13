@@ -26,6 +26,16 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def validate_base_license_and_revision(download):
+    # SPDX identifiers are case-insensitive. Keep the admitted license narrow
+    # without rejecting canonical "Apache-2.0" spelling from acquisition.
+    license_id = download.get("license") if isinstance(download, dict) else None
+    revision = download.get("revision") if isinstance(download, dict) else None
+    if (not isinstance(license_id, str) or license_id.lower() != "apache-2.0" or
+            not isinstance(revision, str) or len(revision) != 40):
+        raise ValueError("base model license or immutable revision is unverified")
+
+
 def atomic_json(path, value):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
@@ -385,8 +395,7 @@ def main():
                 time.sleep(0.25)
         download_path = args.base / "legend-download-manifest.json"
         download = json.loads(download_path.read_text(encoding="utf-8"))
-        if download.get("license") != "apache-2.0" or len(download.get("revision", "")) != 40:
-            raise ValueError("base model license or immutable revision is unverified")
+        validate_base_license_and_revision(download)
         for file in download["files"]:
             path = (args.base / file["file"]).resolve()
             if not path.is_relative_to(args.base.resolve()) or digest(path) != file["sha256"]:
