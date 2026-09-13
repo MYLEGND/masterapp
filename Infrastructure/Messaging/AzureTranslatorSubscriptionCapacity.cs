@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Azure.Core;
@@ -70,6 +71,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
 {
     private const string ResourceManagerScope = "https://management.azure.com/.default";
     private static readonly TimeSpan MinimumRefreshInterval = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan TransientFailureRetryInterval = TimeSpan.FromSeconds(15);
     // Capacity is an operational safety signal, not a page-load dependency.
     // Bound a cold Azure AD/ARM refresh so Founder operations fail closed
     // promptly when Azure cannot be reached.
@@ -81,7 +83,28 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
     private readonly TimeSpan _refreshTimeout;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
-    private AzureTranslatorSubscriptionCapacity? _cached;
+    private sealed record CachedCapacity(AzureTranslatorSubscriptionCapacity Value, DateTime ExpiresUtc);
+    private volatile CachedCapacity? _cached;
+
+    private AzureTranslatorSubscriptionCapacity? FreshCachedCapacity(DateTime now)
+    {
+        var cached = _cached;
+        return cached is not null && now < cached.ExpiresUtc &&
+               cached.Value.RefreshedUtc.Year == now.Year && cached.Value.RefreshedUtc.Month == now.Month
+            ? cached.Value : null;
+    }
+
+    private AzureTranslatorSubscriptionCapacity CacheCapacity(
+        AzureTranslatorSubscriptionCapacity capacity, bool transientFailure = false)
+    {
+        // A transient failure does not authorize stale capacity. It only permits
+        // the next on-demand caller to retry sooner, under the existing lock.
+        var expires = transientFailure
+            ? _timeProvider.GetUtcNow().UtcDateTime + TransientFailureRetryInterval
+            : capacity.RefreshedUtc + MinimumRefreshInterval;
+        _cached = new CachedCapacity(capacity, expires);
+        return capacity;
+    }
 
     public AzureTranslatorSubscriptionCapacitySource(
         IHttpClientFactory httpClientFactory,
@@ -114,7 +137,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
             // A local diagnostic may inspect an already synchronized, fresh
             // snapshot. It never waits for or starts an external refresh, and
             // its result cannot replace the provider-enabled shared cache.
-            return _cached is { } local && now - local.RefreshedUtc < MinimumRefreshInterval && local.RefreshedUtc.Year == now.Year && local.RefreshedUtc.Month == now.Month
+            return FreshCachedCapacity(now) is { } local
                 ? local with
                 {
                     Status = local.IsAvailable ? "Cached" : local.Status,
@@ -123,20 +146,22 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                 : Unavailable(now,
                     "native_only_capacity_refresh_forbidden: no fresh cached Azure capacity observation is available.");
         }
-        if (_cached is { } cached && now - cached.RefreshedUtc < MinimumRefreshInterval && cached.RefreshedUtc.Year == now.Year && cached.RefreshedUtc.Month == now.Month)
+        if (FreshCachedCapacity(now) is { } cached)
             return cached;
 
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
             now = _timeProvider.GetUtcNow().UtcDateTime;
-            if (_cached is { } refreshed && now - refreshed.RefreshedUtc < MinimumRefreshInterval && refreshed.RefreshedUtc.Year == now.Year && refreshed.RefreshedUtc.Month == now.Month)
+            if (FreshCachedCapacity(now) is { } refreshed)
                 return refreshed;
 
             var resourceId = NormalizeResourceId(_configuration["AzureTranslator:ResourceId"]);
             if (resourceId is null)
-                return _cached = Unavailable(now, "Azure Translator resource ID is not configured.");
+                return CacheCapacity(Unavailable(now, "Azure Translator resource ID is not configured."));
 
+            var refreshStarted = Stopwatch.GetTimestamp();
+            var refreshStage = "credential";
             try
             {
                 using var refreshCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -144,6 +169,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                 var refreshToken = refreshCancellation.Token;
                 var token = await _credential.GetTokenAsync(
                     new TokenRequestContext([ResourceManagerScope]), refreshToken);
+                refreshStage = "resource_request";
                 using var request = new HttpRequestMessage(
                     HttpMethod.Get,
                     resourceId + "?api-version=2024-10-01");
@@ -164,9 +190,12 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                         _ when (int)response.StatusCode >= 500 => "Azure Resource Manager is temporarily unavailable. Capacity could not be verified.",
                         _ => $"Azure rejected the Translator resource lookup (HTTP {(int)response.StatusCode}). Verify the resource configuration."
                     };
-                    return _cached = Unavailable(now, detail, resourceId);
+                    return CacheCapacity(Unavailable(now, detail, resourceId),
+                        transientFailure: response.StatusCode is System.Net.HttpStatusCode.RequestTimeout or
+                            System.Net.HttpStatusCode.TooManyRequests || (int)response.StatusCode >= 500);
                 }
 
+                refreshStage = "resource_response";
                 using var document = JsonDocument.Parse(
                     await response.Content.ReadAsStreamAsync(refreshToken));
                 var resourceName = document.RootElement.TryGetProperty("name", out var name)
@@ -192,39 +221,44 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                             ? $"Azure resource SKU is synchronized. The F0 tier includes {monthlyAllowance:N0} free characters per month and allows {limits.HourlyCharacterLimit:N0} characters per rolling hour. Provider character telemetry is queried from Azure Monitor; live reservations are measured separately in the canonical Legend ledger."
                             : $"Azure resource SKU is synchronized. This tier has an Azure hourly velocity limit of {limits.HourlyCharacterLimit:N0} characters and no fixed monthly included-character allowance in the resource SKU.");
                 if (capacity.IsAvailable)
+                {
+                    refreshStage = "usage_observation";
                     capacity = await ObserveUsageAsync(capacity, token.Token, now, refreshToken);
+                }
                 cancellationToken.ThrowIfCancellationRequested();
-                return _cached = capacity;
+                return CacheCapacity(capacity);
             }
             catch (CredentialUnavailableException exception)
             {
                 _logger.LogWarning(exception, "Azure Translator capacity synchronization credential is unavailable.");
-                return _cached = Unavailable(now, "The application identity cannot read the Azure Translator resource.", resourceId);
+                return CacheCapacity(Unavailable(now, "The application identity cannot read the Azure Translator resource.", resourceId));
             }
             catch (AuthenticationFailedException exception)
             {
                 _logger.LogWarning(exception, "Azure Translator capacity synchronization authentication failed.");
-                return _cached = Unavailable(now, "The application identity is not authorized to read the Azure Translator resource.", resourceId);
+                return CacheCapacity(Unavailable(now, "The application identity is not authorized to read the Azure Translator resource.", resourceId));
             }
             catch (HttpRequestException exception)
             {
                 _logger.LogWarning(exception, "Azure Translator capacity synchronization request failed.");
-                return _cached = Unavailable(now, "Azure capacity synchronization is temporarily unavailable.", resourceId);
+                return CacheCapacity(Unavailable(now, "Azure capacity synchronization is temporarily unavailable.", resourceId), transientFailure: true);
             }
             catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning(exception, "Azure Translator capacity synchronization timed out.");
-                return _cached = Unavailable(now, "Azure capacity synchronization timed out.", resourceId);
+                _logger.LogWarning(exception,
+                    "Azure Translator capacity synchronization timed out. Stage={Stage} ElapsedMilliseconds={ElapsedMilliseconds}",
+                    refreshStage, Stopwatch.GetElapsedTime(refreshStarted).TotalMilliseconds);
+                return CacheCapacity(Unavailable(now, "Azure capacity synchronization timed out.", resourceId), transientFailure: true);
             }
             catch (JsonException exception)
             {
                 _logger.LogWarning(exception, "Azure Translator capacity synchronization response was invalid.");
-                return _cached = Unavailable(now, "Azure returned an invalid Translator resource response.", resourceId);
+                return CacheCapacity(Unavailable(now, "Azure returned an invalid Translator resource response.", resourceId), transientFailure: true);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 _logger.LogWarning(exception, "Azure Translator capacity synchronization failed unexpectedly.");
-                return _cached = Unavailable(now, "Azure capacity synchronization is temporarily unavailable.", resourceId);
+                return CacheCapacity(Unavailable(now, "Azure capacity synchronization is temporarily unavailable.", resourceId));
             }
         }
         finally

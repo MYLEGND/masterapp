@@ -68,6 +68,31 @@ public sealed class LegendConnectDashboardCountersTests
     }
 
     [Fact]
+    public async Task BatchedRouteAccounting_UsesAtomicRelationalDeltasAndTheExistingDashboard()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        var recorder = new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance);
+        await recorder.TryRecordBatchAsync("en:ht", 100, 1000, azureFallback: true);
+        await recorder.TryRecordBatchAsync("en:ht", 100, 0, providerObservationReused: true);
+        await recorder.TryRecordAsync("en:ht", 0, translationMemoryHit: true);
+        db.ChangeTracker.Clear();
+        var row = await db.Set<LegendTranslationPairDemand>().SingleAsync();
+        Assert.Equal(201, row.TranslationRequestCount);
+        Assert.Equal(1000, row.ProviderCharacterCount);
+        Assert.Equal(100, row.AzureFallbackCount);
+        Assert.Equal(100, row.ProviderObservationReuseCount);
+        Assert.Equal(1, row.TranslationMemoryHitCount);
+        var counters = await Operations(db).GetDashboardCountersAsync();
+        Assert.Equal(201, counters.CrossLanguageTranslationRequestCount);
+        Assert.Equal(100, counters.ProviderObservationReuseCount);
+        Assert.Equal(0, counters.TranslationRoutingReconciliationGap);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => recorder.TryRecordBatchAsync("en:ht", 0, 0));
+    }
+
+    [Fact]
     public async Task EmptyProjectionKeepsUnknownProviderCapacityAndNativeOnlyRegistryBoundary()
     {
         await using var db = ControllerTestHelpers.BuildDb();

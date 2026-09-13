@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Messaging;
+using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
@@ -69,6 +70,98 @@ public sealed class ApplicationLocalizationArchitectureTests
         Assert.Equal(1, provider.TranslateOperations);
         Assert.Single(db.Set<Domain.Entities.LegendTranslationAlignment>()
             .Where(item => item.RetainedTranslationIdentity != null));
+    }
+
+    [Fact]
+    public async Task RetainedReuse_IsDurablyCountedAcrossRouterInstancesInBothDirections()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var forward = Request("ht");
+        var reverse = Request("en") with { SourceLanguageCode = "ht", SourceText = "Byenveni, {name}." };
+        foreach (var request in new[] { forward, reverse })
+            Assert.True((await router.TranslateRetainedAsync(request)).Succeeded);
+        db.ChangeTracker.Clear();
+        var anotherDeviceRequest = await BuildRouterAsync(db, provider);
+        foreach (var request in new[] { forward, reverse })
+            Assert.True((await anotherDeviceRequest.TranslateRetainedAsync(request)).Reused);
+        Assert.Equal(2, provider.TranslateOperations);
+        var pairs = db.Set<LegendTranslationPairDemand>().ToArray();
+        Assert.Equal(2, pairs.Length);
+        Assert.All(pairs, pair => {
+            Assert.Equal(2, pair.TranslationRequestCount);
+            Assert.Equal(1, pair.AzureFallbackCount);
+            Assert.Equal(1, pair.ProviderObservationReuseCount);
+            Assert.Equal(0, pair.TranslationMemoryHitCount);
+        });
+        var usage = Assert.Single(db.Set<LegendTranslationSystemUsage>());
+        Assert.Equal(2, usage.ProviderOperationCount);
+        Assert.Equal(forward.SourceText.Length + reverse.SourceText.Length, usage.ProviderObservationCharactersAvoided);
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var dashboard = await new LegendConnectOperations(db, registry,
+            new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance), Configuration())
+            .GetDashboardCountersAsync();
+        Assert.Equal(2, dashboard.ProviderObservationReuseCount);
+        Assert.Equal(2, dashboard.ProviderOperationCount);
+        Assert.Equal(0, dashboard.TranslationRoutingReconciliationGap);
+        Assert.Equal(usage.ProviderObservationCharactersAvoided, dashboard.ProviderObservationCharactersAvoided);
+    }
+
+    [Fact]
+    public async Task RetainedBatch_RecordsProviderAndReuseInTheSameDurableLedger()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var requests = new[] { Request("ht"), Request("ht") with { StableSourceContentId = "other", SourceText = "Hello, {name}." } };
+        Assert.All(await router.TranslateRetainedBatchAsync(requests), result => Assert.True(result.Succeeded));
+        var reuseWrites = 0;
+        db.SavingChanges += (_, _) => reuseWrites++;
+        Assert.All(await router.TranslateRetainedBatchAsync(requests), result => Assert.True(result.Reused));
+        Assert.Equal(2, reuseWrites); // One pair delta and one avoided-character delta, independent of batch size.
+        Assert.Equal(1, provider.BatchOperations);
+        Assert.Equal(0, provider.TranslateOperations);
+        var pair = Assert.Single(db.Set<LegendTranslationPairDemand>());
+        Assert.Equal(4, pair.TranslationRequestCount);
+        Assert.Equal(2, pair.AzureFallbackCount);
+        Assert.Equal(2, pair.ProviderObservationReuseCount);
+        var usage = Assert.Single(db.Set<LegendTranslationSystemUsage>());
+        Assert.Equal(1, usage.ProviderOperationCount);
+        Assert.Equal(requests.Sum(request => request.SourceText.Length), usage.ProviderObservationCharactersAvoided);
+    }
+
+    [Fact]
+    public async Task DuplicateBatchEntries_TranslateOnceAndRecordTheOtherDeliveryAsReuse()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var request = Request("ht");
+        var results = await router.TranslateRetainedBatchAsync(new[] { request, request });
+        Assert.False(results[0].Reused);
+        Assert.True(results[1].Reused);
+        Assert.Equal(1, provider.BatchOperations);
+        var demand = Assert.Single(db.Set<LegendTranslationPairDemand>());
+        Assert.Equal(2, demand.TranslationRequestCount);
+        Assert.Equal(1, demand.AzureFallbackCount);
+        Assert.Equal(1, demand.ProviderObservationReuseCount);
+        Assert.Single(db.Set<LegendTranslationAlignment>().Where(row => row.RetainedTranslationIdentity != null));
+    }
+
+    [Fact]
+    public async Task NewlyRegisteredLanguage_ReusesWithoutChangingTheRouter()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        db.Add(new LegendLanguageDefinition { LanguageCode = "sw", CanonicalName = "Swahili", NativeName = "Kiswahili",
+            StoragePartition = "/sw", IsEnabled = true, IsTranslationEnabled = true });
+        await db.SaveChangesAsync();
+        var request = Request("sw");
+        Assert.True((await router.TranslateRetainedAsync(request)).Succeeded);
+        Assert.True((await router.TranslateRetainedAsync(request)).Reused);
+        Assert.Equal(1, provider.TranslateOperations);
     }
 
     [Fact]
@@ -261,7 +354,9 @@ public sealed class ApplicationLocalizationArchitectureTests
             registry,
             new AlwaysAvailableCapacity(),
             NullLogger<LegendConnectTranslationRouter>.Instance,
-            intelligence: new LegendConnectTranslationIntelligence(db, configuration));
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration),
+            demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(db, NullLogger<TranslationSystemUsageRecorder>.Instance));
         var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
         preferences.Setup(item => item.GetCanonicalPreferredLanguageAsync(
                 It.IsAny<MessagingActor>(), It.IsAny<CancellationToken>()))
@@ -361,7 +456,9 @@ public sealed class ApplicationLocalizationArchitectureTests
             registry,
             new AlwaysAvailableCapacity(),
             NullLogger<LegendConnectTranslationRouter>.Instance,
-            intelligence: new LegendConnectTranslationIntelligence(db, configuration));
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration),
+            demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(db, NullLogger<TranslationSystemUsageRecorder>.Instance));
     }
 
     private static IConfiguration Configuration() => new ConfigurationBuilder()

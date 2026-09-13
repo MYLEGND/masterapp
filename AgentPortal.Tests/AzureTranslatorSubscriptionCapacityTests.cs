@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -15,6 +16,7 @@ using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -361,15 +363,148 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     }
 
     [Fact]
+    public async Task TransientCapacityTimeout_RetriesOnceAfterFifteenSecondsWithoutNativeRefreshOrWaiterStorm()
+    {
+        var clock = new CapacityTimeProvider();
+        var credential = new StaticTokenCredential();
+        var handler = new RecoveringCapacityHandler(holdRecovery: true);
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(factory.Object, Configuration(),
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, credential, timeProvider: clock);
+
+        var failed = await source.GetCurrentAsync();
+        Assert.False(failed.IsAvailable);
+        Assert.Equal("Azure capacity synchronization timed out.", failed.Detail);
+        clock.UtcNow = clock.UtcNow.AddSeconds(14);
+        foreach (var cached in await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => source.GetCurrentAsync())))
+            Assert.Same(failed, cached);
+        var nativeCached = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.False(nativeCached.IsAvailable);
+        Assert.Equal(failed.RefreshedUtc, nativeCached.RefreshedUtc);
+        Assert.Equal(1, handler.SendAttempts);
+
+        clock.UtcNow = clock.UtcNow.AddSeconds(1);
+        var nativeExpired = await source.GetCurrentAsync(CancellationToken.None, LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.Contains("native_only_capacity_refresh_forbidden", nativeExpired.Detail, StringComparison.Ordinal);
+        Assert.Equal(1, credential.TokenRequests);
+        Assert.Equal(1, handler.SendAttempts);
+
+        var recovery = source.GetCurrentAsync();
+        try
+        {
+            await handler.RecoveryEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using var canceledWaiter = new CancellationTokenSource();
+            var canceled = source.GetCurrentAsync(canceledWaiter.Token);
+            canceledWaiter.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+            var waiters = Enumerable.Range(0, 16).Select(_ => source.GetCurrentAsync()).ToArray();
+            Assert.Equal(2, handler.SendAttempts);
+            handler.ReleaseRecovery.TrySetResult();
+            var restored = await recovery;
+            Assert.True(restored.IsAvailable);
+            Assert.Equal("F0", restored.Tier);
+            foreach (var result in await Task.WhenAll(waiters)) Assert.Same(restored, result);
+            Assert.Equal(2, credential.TokenRequests);
+            Assert.Equal(3, handler.SendAttempts); // Two resource attempts, one Monitor observation.
+            clock.UtcNow = clock.UtcNow.AddSeconds(119);
+            Assert.Same(restored, await source.GetCurrentAsync());
+            Assert.Equal(3, handler.SendAttempts);
+        }
+        finally
+        {
+            handler.ReleaseRecovery.TrySetResult();
+        }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.RequestTimeout, 15)]
+    [InlineData(HttpStatusCode.TooManyRequests, 15)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, 15)]
+    [InlineData(HttpStatusCode.Unauthorized, 120)]
+    [InlineData(HttpStatusCode.Forbidden, 120)]
+    [InlineData(HttpStatusCode.NotFound, 120)]
+    public async Task CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(HttpStatusCode failure, int retrySeconds)
+    {
+        var clock = new CapacityTimeProvider();
+        var handler = new RecoveringCapacityHandler(failure);
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(factory.Object, Configuration(),
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, new StaticTokenCredential(), timeProvider: clock);
+        var failed = await source.GetCurrentAsync();
+        Assert.False(failed.IsAvailable);
+        clock.UtcNow = clock.UtcNow.AddSeconds(retrySeconds - 1);
+        Assert.Same(failed, await source.GetCurrentAsync());
+        Assert.Equal(1, handler.SendAttempts);
+        clock.UtcNow = clock.UtcNow.AddSeconds(1);
+        var recovered = await source.GetCurrentAsync();
+        Assert.True(recovered.IsAvailable);
+        Assert.Equal(3, handler.SendAttempts);
+    }
+
+    [Fact]
+    public async Task MissingResourceConfiguration_RetainsTwoMinuteFailureFreshness()
+    {
+        var clock = new CapacityTimeProvider();
+        var configuration = Configuration();
+        var resourceId = configuration["AzureTranslator:ResourceId"];
+        configuration["AzureTranslator:ResourceId"] = null;
+        var handler = new JsonHandler("""{"name":"translator","sku":{"name":"F0"}}""");
+        var credential = new StaticTokenCredential();
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(factory.Object, configuration,
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, credential, timeProvider: clock);
+        var unavailable = await source.GetCurrentAsync();
+        Assert.False(unavailable.IsAvailable);
+        configuration["AzureTranslator:ResourceId"] = resourceId;
+        clock.UtcNow = clock.UtcNow.AddSeconds(119);
+        Assert.Same(unavailable, await source.GetCurrentAsync());
+        Assert.Equal(0, credential.TokenRequests);
+        Assert.Equal(0, handler.SendAttempts);
+        clock.UtcNow = clock.UtcNow.AddSeconds(1);
+        Assert.True((await source.GetCurrentAsync()).IsAvailable);
+        Assert.Equal(1, credential.TokenRequests);
+        Assert.Equal(2, handler.SendAttempts);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_DoesNotCacheAnUnavailableObservation()
+    {
+        var handler = new RecoveringCapacityHandler(holdRecovery: true);
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(() => new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri("https://management.azure.com/") });
+        var clock = new CapacityTimeProvider();
+        var source = new AzureTranslatorSubscriptionCapacitySource(factory.Object, Configuration(),
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance, new StaticTokenCredential(), timeProvider: clock);
+        Assert.False((await source.GetCurrentAsync()).IsAvailable);
+        clock.UtcNow = clock.UtcNow.AddSeconds(15);
+        using var caller = new CancellationTokenSource();
+        var attempt = source.GetCurrentAsync(caller.Token);
+        await handler.RecoveryEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        caller.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => attempt);
+        var recovered = await source.GetCurrentAsync();
+        Assert.True(recovered.IsAvailable);
+        Assert.Equal(4, handler.SendAttempts);
+    }
+
+    [Fact]
     public async Task AzureLookupTimeout_FailsClosedWithoutBlockingTheCaller()
     {
+        var logger = new Mock<ILogger<AzureTranslatorSubscriptionCapacitySource>>();
         var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         factory.Setup(item => item.CreateClient("AzureResourceManager"))
             .Returns(new HttpClient(new TimeoutHandler()) { BaseAddress = new Uri("https://management.azure.com/") });
         var source = new AzureTranslatorSubscriptionCapacitySource(
             factory.Object,
             Configuration(),
-            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance,
+            logger.Object,
             new StaticTokenCredential());
 
         var capacity = await source.GetCurrentAsync();
@@ -377,6 +512,12 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
         Assert.False(capacity.IsAvailable);
         Assert.Equal("Unavailable", capacity.Status);
         Assert.Equal("Azure capacity synchronization timed out.", capacity.Detail);
+        logger.Verify(item => item.Log(
+            LogLevel.Warning, It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((state, type) =>
+                state.ToString()!.Contains("Stage=resource_request", StringComparison.Ordinal) &&
+                state.ToString()!.Contains("ElapsedMilliseconds=", StringComparison.Ordinal)),
+            It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
     }
 
     [Fact]
@@ -701,6 +842,35 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     {
         public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => UtcNow;
+    }
+
+    private sealed class RecoveringCapacityHandler(HttpStatusCode? firstFailure = null, bool holdRecovery = false) : HttpMessageHandler
+    {
+        private int _sendAttempts;
+        public int SendAttempts => Volatile.Read(ref _sendAttempts);
+        public TaskCompletionSource RecoveryEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseRecovery { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var attempt = Interlocked.Increment(ref _sendAttempts);
+            if (attempt == 1)
+            {
+                if (firstFailure is { } status) return new HttpResponseMessage(status);
+                throw new TaskCanceledException("Simulated resource lookup timeout.");
+            }
+            if (attempt == 2 && holdRecovery)
+            {
+                RecoveryEntered.TrySetResult();
+                await ReleaseRecovery.Task.WaitAsync(cancellationToken);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(request.RequestUri!.AbsolutePath.EndsWith("/metrics", StringComparison.Ordinal)
+                    ? """{"value":[{"name":{"value":"TextCharactersTranslated"},"timeseries":[{"data":[{"total":0}]}]}]}"""
+                    : """{"name":"translator","sku":{"name":"F0"}}""", Encoding.UTF8, "application/json")
+            };
+        }
     }
 
     private sealed class HeldCapacityHandler : HttpMessageHandler

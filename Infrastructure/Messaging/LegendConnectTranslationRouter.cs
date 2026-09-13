@@ -1132,6 +1132,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         if (string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
         {
             ApplicationLocalizationTelemetry.SameLanguage(source);
+            if (_systemUsage is not null)
+                await _systemUsage.TryRecordSameLanguageBypassAsync(request.SourceText.Length, cancellationToken);
             return new RetainedTranslationResult(
                 true,
                 request.SourceText,
@@ -1165,6 +1167,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 request.PlaceholderContract))
         {
             ApplicationLocalizationTelemetry.ApprovedMemoryHit(source, target);
+            await RecordRetainedReuseAsync(source, target, request.SourceText.Length, approved: true, cancellationToken);
             return new RetainedTranslationResult(
                 true,
                 trusted.Text,
@@ -1184,6 +1187,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 request.PlaceholderContract))
         {
             ApplicationLocalizationTelemetry.RetainedHit(source, target);
+            await RecordRetainedReuseAsync(source, target, request.SourceText.Length, approved: false, cancellationToken);
             return ToRetainedResult(retained, source, target, reused: true);
         }
         if (retained is not null)
@@ -1313,7 +1317,25 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
 
         if (coalesced.JoinedExistingRequest)
             ApplicationLocalizationTelemetry.Coalesced(source, target);
+        if (coalesced.Result.Succeeded && (coalesced.Result.Reused || coalesced.JoinedExistingRequest))
+            await RecordRetainedReuseAsync(source, target, request.SourceText.Length,
+                approved: coalesced.Result.Provider == "LegendConnectTranslationMemory", cancellationToken);
         return coalesced.Result;
+    }
+
+    // Retained application copy uses the same durable route and avoided-character
+    // ledger as messaging. Provider observations remain distinct from approved memory.
+    private async Task RecordRetainedReuseAsync(string source, string target, int characters,
+        bool approved, CancellationToken cancellationToken, int requestCount = 1)
+    {
+        if (_demand is not null)
+            await _demand.TryRecordBatchAsync(LegendLanguageIdentity.PairKey(source, target), requestCount, 0,
+                translationMemoryHit: approved, providerObservationReused: !approved,
+                cancellationToken: cancellationToken);
+        if (_systemUsage is not null)
+            await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                TranslationMemoryCharactersAvoided: approved ? characters : 0,
+                ProviderObservationCharactersAvoided: approved ? 0 : characters), cancellationToken);
     }
 
     public async Task<IReadOnlyList<RetainedTranslationResult>> TranslateRetainedBatchAsync(
@@ -1362,6 +1384,23 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             TranslateRetainedBatchCoreAsync(requests, identities, source, target, maximumProviderBatches, cancellationToken), cancellationToken);
         if (coalesced.JoinedExistingRequest)
             ApplicationLocalizationTelemetry.Coalesced(source, target);
+        var reused = coalesced.Result.Select((result, index) => (Result: result, Request: requests[index]))
+            .Where(item => item.Result.Succeeded && (item.Result.Reused || coalesced.JoinedExistingRequest)).ToArray();
+        if (source == target)
+        {
+            if (_systemUsage is not null && reused.Length > 0)
+                await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                    SameLanguageBypasses: reused.Length,
+                    SameLanguageCharactersAvoided: reused.Sum(item => item.Request.SourceText.Length)), cancellationToken);
+        }
+        else
+        {
+            foreach (var group in reused.GroupBy(item => item.Result.Provider == "LegendConnectTranslationMemory"))
+            {
+                await RecordRetainedReuseAsync(source, target,
+                    group.Sum(item => item.Request.SourceText.Length), group.Key, cancellationToken, group.Count());
+            }
+        }
         return coalesced.Result;
     }
 
@@ -1498,6 +1537,9 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     requests[item.RepresentativeIndex].SourceText,
                     requests[item.RepresentativeIndex].PlaceholderContract)).ToArray();
             var characters = protectedSources.Sum(item => _azure.RequestCharacterCount(item.Text));
+            if (_demand is not null)
+                await _demand.TryRecordBatchAsync(LegendLanguageIdentity.PairKey(source, target), chunk.Count,
+                    characters, azureFallback: true, cancellationToken: cancellationToken);
             var chunkIdentity = Hash(string.Join('\n', chunk.Select(item => item.Identity).Order(StringComparer.Ordinal)));
             var reservation = await _capacity.TryReserveAsync(
                 _azure.ProviderName,
@@ -1536,11 +1578,13 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             {
                 await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
                 if (providerExecuted)
-                    ApplicationLocalizationTelemetry.ProviderOperation(
-                        source,
-                        target,
-                        characters,
-                        providerSucceeded);
+                {
+                    ApplicationLocalizationTelemetry.ProviderOperation(source, target, characters, providerSucceeded);
+                    if (_systemUsage is not null)
+                        await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                            ProviderOperations: 1, ProviderBillableCharacters: characters,
+                            ProviderFailures: providerSucceeded ? 0 : 1), cancellationToken);
+                }
             }
 
             if (providerResults.Count != chunk.Count)
@@ -1633,7 +1677,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     var miss = chunk[validWrites[index].Offset];
                     var resolved = ToRetainedResult(stored[index], source, target, reused: false);
                     foreach (var resultIndex in miss.Indices)
-                        results[resultIndex] = resolved;
+                        results[resultIndex] = resultIndex == miss.RepresentativeIndex
+                            ? resolved : resolved with { Reused = true };
                     ApplicationLocalizationTelemetry.ProviderPersisted(source, target);
                 }
             }
