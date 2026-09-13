@@ -45,12 +45,21 @@ public sealed partial class LegendFounderAiModeIsolationTests
         configuration["LegendConnect:ModelTraining:BaseModel"] = configuration["LegendConnect:Foundation:Model"];
         configuration["LegendConnect:ModelTraining:Enabled"] = "true";
         configuration["LegendConnect:ModelEvaluation:Enabled"] = "true";
-        configuration["LegendConnect:ModelEvaluation:PromptSetVersion"] = "bounded-boolean-learning-v1";
+        configuration["LegendConnect:ModelEvaluation:PromptSetVersion"] = "bounded-set-state-learning-v1";
         configuration["LegendConnect:ModelEvaluation:CodeSha"] = codeSha;
         configuration["LegendConnect:ModelPromotion:Enabled"] = "true";
         Assert.False(string.IsNullOrWhiteSpace(configuration["LegendConnect:ModelTraining:TrainerCodeSha256"]), "A frozen trainer SHA is required.");
         Directory.CreateDirectory(root);
         Assert.False(new DirectoryInfo(root).LinkTarget is not null, "A symbolic-link artifact directory is forbidden.");
+        var frozenPath = Path.Combine(root, "frozen-manifest.json");
+        if (File.Exists(frozenPath))
+        {
+            var preserved = JsonSerializer.Deserialize<LegendConnectTrainingDatasetManifest>(await File.ReadAllTextAsync(frozenPath));
+            Assert.NotNull(preserved);
+            Assert.Contains(preserved.Training.Concat(preserved.HeldOut), example => LearningOracleKind(example) == "set_state");
+            // A prior Boolean-only attempt must be preserved separately before
+            // this profile can admit anything into the existing canary root.
+        }
         await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseSqlite("Data Source=" + Path.Combine(root, "isolated-canonical.db")).Options);
         await db.Database.EnsureCreatedAsync();
@@ -65,41 +74,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 TargetLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current });
             await db.SaveChangesAsync();
         }
-        var registry = new LegendLanguageRegistry(db, configuration);
-        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var declarations = LearningDeclarations();
-        foreach (var declaration in declarations)
-        {
-            var admitted = await curriculum.SubmitFounderBatchAsync(declaration.Batch, sourceLanguageCode: declaration.Language);
-            Assert.True(admitted.Succeeded, admitted.ErrorCode + ": " + admitted.Message);
-        }
-        var rows = await (from target in db.Set<LegendCurriculumExample>()
-            join source in db.Set<LegendCurriculumExample>() on target.DerivedFromCurriculumExampleId equals source.Id
-            join sourceUnit in db.Set<LegendLanguageTextUnit>() on source.TextUnitId equals sourceUnit.Id
-            join targetUnit in db.Set<LegendLanguageTextUnit>() on target.TextUnitId equals targetUnit.Id
-            select new { Source = source, Target = target, SourceUnit = sourceUnit, TargetUnit = targetUnit }).ToListAsync();
-        var rightsIndex = 0;
-        foreach (var row in rows)
-        {
-            Assert.Equal("FounderApproved", row.SourceUnit.Provenance);
-            Assert.Equal("SystemValidatedMachine", row.TargetUnit.Provenance);
-            Assert.True(LegendFoundationConversationControl.TryValidateOracle(row.SourceUnit.Text, row.TargetUnit.Text, row.TargetUnit.LanguageCode));
-            var evidence = LegendConnectTrainingDatasetCompiler.CurriculumEvidenceIdentity(row.Source.Id, row.Target.Id,
-                row.SourceUnit.LanguageCode + ":" + row.TargetUnit.LanguageCode,
-                row.SourceUnit.NormalizedHash, row.TargetUnit.NormalizedHash, "SystemValidatedMachine");
-            var prefix = "LegendConnect:ModelTraining:RightsAttestations:" + rightsIndex++ + ":";
-            configuration[prefix + "EvidenceIdentity"] = evidence;
-            configuration[prefix + "SourceTextHash"] = LearningHash(row.SourceUnit.Text);
-            configuration[prefix + "TargetTextHash"] = LearningHash(row.TargetUnit.Text);
-            configuration[prefix + "RightsBasis"] = "Owned";
-            configuration[prefix + "SourceReference"] = "first-party-executable-mathematical-oracle:v1; finite synthetic variables and independently computed targets; no hosted teacher or private corpus";
-            configuration[prefix + "PrivacyScope"] = "PublicNonPersonal";
-            configuration[prefix + "TrainingPurpose"] = "TransferableSkill";
-            configuration[prefix + "SharedTrainingPermitted"] = "true";
-        }
-        var compiler = new LegendConnectTrainingDatasetCompiler(db, configuration);
-        var manifest = await compiler.CompileAsync();
+        var manifest = await CompileLearningDeclarationsAsync(db, configuration);
         Assert.NotEmpty(manifest.Training);
         Assert.NotEmpty(manifest.HeldOut);
         foreach (var category in LegendFoundationConversationControl.RequiredCategories)
@@ -107,8 +82,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 LegendFoundationConversationControl.TryRead(example.SourceText, out var actual, out _, out _) && actual == category)
                 .Select(example => example.SplitGroupIdentity).Distinct().Count() >= 2, "Insufficient frozen controls: " + category);
         Assert.Contains(manifest.HeldOut, example => example.TargetLanguageCode == "ht");
+        AssertStateLearningPartitions(manifest);
         var frozen = JsonSerializer.Serialize(manifest);
-        var frozenPath = Path.Combine(root, "frozen-manifest.json");
         if (File.Exists(frozenPath)) Assert.Equal(await File.ReadAllTextAsync(frozenPath), frozen);
         else
         {
@@ -144,7 +119,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 var reply = await transport.GenerateAsync(configuration["LegendConnect:Foundation:Model"]!, task, deadline.Token);
                 Assert.True(reply.Succeeded, reply.ErrorCode);
                 baseline.Add(new { example.EvidenceIdentity, reply.Text, reply.ModelVersion, reply.InferenceSettings,
-                    booleanProblem = IsBooleanLearningProblem(example), inputIdentity = LearningInputIdentity(task),
+                    oracleKind = LearningOracleKind(example), booleanProblem = LearningOracleKind(example) == "boolean_premises", inputIdentity = LearningInputIdentity(task),
                     correct = LegendFoundationConversationControl.MatchesVerifiedTarget(example.SourceText, example.TargetText, reply.Text!),
                     elapsedMilliseconds = clock.Elapsed.TotalMilliseconds });
             }
@@ -160,7 +135,9 @@ public sealed partial class LegendFounderAiModeIsolationTests
             frozenBaseline = baseline.RootElement.GetProperty("cases").EnumerateArray().ToDictionary(
                 item => item.GetProperty("EvidenceIdentity").GetString()!, item => item.Clone(), StringComparer.Ordinal);
             Assert.Contains(frozenBaseline.Values, item => item.GetProperty("booleanProblem").GetBoolean() && !item.GetProperty("correct").GetBoolean());
+            Assert.Contains(frozenBaseline.Values, item => item.GetProperty("oracleKind").GetString() == "set_state" && !item.GetProperty("correct").GetBoolean());
         }
+        var compiler = new LegendConnectTrainingDatasetCompiler(db, configuration);
         var training = new LegendConnectModelTrainingService(db, compiler, backend, configuration);
         LegendConnectModelTrainingRun? run = null;
         for (var iteration = 0; phase == "train" && iteration < 900; iteration++)
@@ -181,7 +158,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         {
             var candidate = transport.Calls.FirstOrDefault(call => call.RequestedModel == run.ChallengerModelVersion && call.Task.Input == example.SourceText);
             var baseline = frozenBaseline[example.EvidenceIdentity];
-            return new { example.EvidenceIdentity, booleanProblem = IsBooleanLearningProblem(example),
+            return new { example.EvidenceIdentity, oracleKind = LearningOracleKind(example), booleanProblem = LearningOracleKind(example) == "boolean_premises",
                 baselineCorrect = baseline.GetProperty("correct").GetBoolean(),
                 candidateCorrect = candidate is not null && candidate.Result.Succeeded && candidate.Result.Text is not null &&
                     LegendFoundationConversationControl.MatchesVerifiedTarget(example.SourceText, example.TargetText, candidate.Result.Text),
@@ -197,7 +174,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
         // still requires its independent scores and complete runtime proof.
         var demonstrated = comparison.All(item => item.candidateExecuted && item.inputMatches && item.settingsMatch &&
                 (!item.baselineCorrect || item.candidateCorrect)) &&
-            comparison.Count(item => item.booleanProblem && item.candidateCorrect) > comparison.Count(item => item.booleanProblem && item.baselineCorrect);
+            comparison.Count(item => item.booleanProblem && item.candidateCorrect) > comparison.Count(item => item.booleanProblem && item.baselineCorrect) &&
+            comparison.Count(item => item.oracleKind == "set_state" && item.candidateCorrect) > comparison.Count(item => item.oracleKind == "set_state" && item.baselineCorrect);
         var promotion = new LegendConnectModelPromotionService(db, compiler, configuration, backend);
         if (run.EvaluationState == "Passed" && demonstrated) await promotion.PromoteAsync(run.Id, deadline.Token);
         var selected = await serving.ResolveConversationModelAsync(deadline.Token);
@@ -205,9 +183,15 @@ public sealed partial class LegendFounderAiModeIsolationTests
         {
             manifest.DatasetIdentity, codeSha, run.Id, run.RunKey, run.State, run.TrainingProvider, run.ChallengerModelVersion,
             run.EvaluationState, run.PromotionState, run.HeldOutScore, run.RegressionScore, run.FailureCode, run.FailureDetail,
-            selected, demonstratedBooleanImprovementWithoutRegression = demonstrated, clients.ControlledClientRequests, clients.BlockedExternalClientRequests, syntheticIsolatedDatabase = true, canonicalAdmission = "IndependentExecutableOracleValidation"
+            selected, demonstratedBooleanAndSetStateImprovementWithoutRegression = demonstrated,
+            formalStateReasoningOnly = true,
+            scoresByOracle = comparison.GroupBy(item => item.oracleKind).Select(group => new { oracleKind = group.Key,
+                total = group.Count(), baselineCorrect = group.Count(item => item.baselineCorrect),
+                candidateCorrect = group.Count(item => item.candidateCorrect),
+                regressed = group.Count(item => item.baselineCorrect && !item.candidateCorrect) }),
+            clients.ControlledClientRequests, clients.BlockedExternalClientRequests, syntheticIsolatedDatabase = true, canonicalAdmission = "IndependentExecutableOracleValidation"
         }));
-        Assert.True(demonstrated, "No verified held-out Boolean improvement with unchanged controls/settings was demonstrated; candidate is not accepted.");
+        Assert.True(demonstrated, "No verified held-out Boolean and set-state improvement with unchanged controls/settings was demonstrated; candidate is not accepted.");
         Assert.Equal("TrainingCompleted", run.State);
         Assert.Equal("Passed", run.EvaluationState);
         Assert.Equal("Promoted", run.PromotionState);
@@ -221,10 +205,148 @@ public sealed partial class LegendFounderAiModeIsolationTests
         { selected, consumed.ModelVersion, consumed.Text, consumed.InferenceSettings }));
     }
 
-    private static bool IsBooleanLearningProblem(LegendConnectTrainingDatasetExample example)
+    // The same admission/compiler authority is used by the model-free preflight
+    // and the actual opt-in canary. This helper neither writes model datasets nor
+    // calls a provider; its caller chooses the isolated database.
+    private static async Task<LegendConnectTrainingDatasetManifest> CompileLearningDeclarationsAsync(
+        MasterAppDbContext db, IConfiguration configuration)
+    {
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var declarations = LearningDeclarations();
+        foreach (var declaration in declarations)
+        {
+            var admitted = await curriculum.SubmitFounderBatchAsync(declaration.Batch, sourceLanguageCode: declaration.Language);
+            Assert.True(admitted.Succeeded, admitted.ErrorCode + ": " + admitted.Message);
+        }
+        var rows = await (from target in db.Set<LegendCurriculumExample>()
+            join source in db.Set<LegendCurriculumExample>() on target.DerivedFromCurriculumExampleId equals source.Id
+            join sourceUnit in db.Set<LegendLanguageTextUnit>() on source.TextUnitId equals sourceUnit.Id
+            join targetUnit in db.Set<LegendLanguageTextUnit>() on target.TextUnitId equals targetUnit.Id
+            select new { Source = source, Target = target, SourceUnit = sourceUnit, TargetUnit = targetUnit }).ToListAsync();
+        var rightsIndex = 0;
+        foreach (var row in rows)
+        {
+            Assert.Equal("FounderApproved", row.SourceUnit.Provenance);
+            Assert.Equal("SystemValidatedMachine", row.TargetUnit.Provenance);
+            Assert.True(LegendFoundationConversationControl.TryValidateOracle(row.SourceUnit.Text, row.TargetUnit.Text, row.TargetUnit.LanguageCode));
+            var evidence = LegendConnectTrainingDatasetCompiler.CurriculumEvidenceIdentity(row.Source.Id, row.Target.Id,
+                row.SourceUnit.LanguageCode + ":" + row.TargetUnit.LanguageCode,
+                row.SourceUnit.NormalizedHash, row.TargetUnit.NormalizedHash, "SystemValidatedMachine");
+            var prefix = "LegendConnect:ModelTraining:RightsAttestations:" + rightsIndex++ + ":";
+            configuration[prefix + "EvidenceIdentity"] = evidence;
+            configuration[prefix + "SourceTextHash"] = LearningHash(row.SourceUnit.Text);
+            configuration[prefix + "TargetTextHash"] = LearningHash(row.TargetUnit.Text);
+            configuration[prefix + "RightsBasis"] = "Owned";
+            configuration[prefix + "SourceReference"] = "first-party-executable-mathematical-oracle:v1; finite synthetic variables and independently computed targets; no hosted teacher or private corpus";
+            configuration[prefix + "PrivacyScope"] = "PublicNonPersonal";
+            configuration[prefix + "TrainingPurpose"] = "TransferableSkill";
+            configuration[prefix + "SharedTrainingPermitted"] = "true";
+        }
+        var compiler = new LegendConnectTrainingDatasetCompiler(db, configuration);
+        return await compiler.CompileAsync();
+    }
+
+    private static void AssertStateLearningPartitions(LegendConnectTrainingDatasetManifest manifest)
+    {
+        var training = manifest.Training.Where(example => LearningOracleKind(example) == "set_state").ToArray();
+        var heldOut = manifest.HeldOut.Where(example => LearningOracleKind(example) == "set_state").ToArray();
+        var stateGroups = training.Concat(heldOut).Select(example => example.SplitGroupIdentity).ToHashSet(StringComparer.Ordinal);
+        var detail = JsonSerializer.Serialize(new
+        {
+            manifest.DatasetIdentity,
+            trainingStateRows = training.Length, heldOutStateRows = heldOut.Length,
+            trainingStateGroups = training.Select(example => example.SplitGroupIdentity).Distinct().Count(),
+            heldOutStateGroups = heldOut.Select(example => example.SplitGroupIdentity).Distinct().Count(),
+            components = manifest.Training.Select(example => (Partition: "training", Example: example))
+                .Concat(manifest.HeldOut.Select(example => (Partition: "held_out", Example: example)))
+                .Where(item => stateGroups.Contains(item.Example.SplitGroupIdentity))
+                .GroupBy(item => item.Example.SplitGroupIdentity).Select(group => new
+                {
+                    group = group.Key, partitions = group.Select(item => item.Partition).Distinct(),
+                    kinds = group.GroupBy(item => LearningOracleKind(item.Example)).Select(kind => new { kind = kind.Key, rows = kind.Count() }),
+                    targets = group.Where(item => LearningOracleKind(item.Example) == "set_state")
+                        .Select(item => item.Example.TargetText).Distinct(),
+                    stateStructures = group.Where(item => LearningOracleKind(item.Example) == "set_state")
+                        .Select(item => LegendFoundationConversationControl.ProblemIdentity(item.Example.SourceText)).Distinct().Count()
+                })
+        });
+        Assert.True(training.Select(example => example.SplitGroupIdentity).Distinct().Count() >= 2,
+            "Set-state training requires independent canonical groups. " + detail);
+        Assert.True(heldOut.Select(example => example.SplitGroupIdentity).Distinct().Count() >= 2,
+            "Set-state held-out evaluation requires independent canonical groups. " + detail);
+        Assert.Empty(training.Select(example => example.SplitGroupIdentity).Intersect(heldOut.Select(example => example.SplitGroupIdentity)));
+        Assert.Empty(training.Select(example => LegendFoundationConversationControl.ProblemIdentity(example.SourceText))
+            .Intersect(heldOut.Select(example => LegendFoundationConversationControl.ProblemIdentity(example.SourceText))));
+        foreach (var partition in new[] { training, heldOut })
+        {
+            var effects = partition.Select(example =>
+            {
+                using var source = JsonDocument.Parse(example.SourceText);
+                using var target = JsonDocument.Parse(example.TargetText);
+                var oracle = source.RootElement.GetProperty("oracle");
+                var initiallyActive = oracle.GetProperty("active").EnumerateArray().Select(item => item.GetInt32()).ToHashSet();
+                var initiallyMarked = oracle.GetProperty("marked").EnumerateArray().Select(item => item.GetInt32()).ToHashSet();
+                return new { activeChange = target.RootElement.GetProperty("active_count").GetInt32() - initiallyActive.Count,
+                    markedActiveChange = target.RootElement.GetProperty("marked_active_count").GetInt32() - initiallyActive.Intersect(initiallyMarked).Count() };
+            }).ToArray();
+            Assert.True(effects.Any(item => item.activeChange > 0) && effects.Any(item => item.activeChange < 0) &&
+                effects.Any(item => item.markedActiveChange > 0) && effects.Any(item => item.markedActiveChange < 0),
+                "Both partitions must exercise actual membership and marked-intersection changes in both directions. " + detail);
+        }
+    }
+
+    [Fact]
+    public async Task ControlledLearningMaterial_UsesCanonicalAdmissionAndIndependentStatePartitionsWithoutModelCalls()
+    {
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        db.Add(new LegendConnectRuntimePolicy { ScopeKey = "Global", LearningEnabled = true,
+            LanguageIntelligenceReevaluationPhase = "Complete",
+            CompletedLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TargetLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current });
+        await db.SaveChangesAsync();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["LegendConnect:ModelTraining:Backend"] = "ControlledMlx" }).Build();
+        var declarations = LearningDeclarations();
+        Assert.Equal(JsonSerializer.Serialize(declarations.Select(item => new { item.Language, item.Batch })),
+            JsonSerializer.Serialize(LearningDeclarations().Select(item => new { item.Language, item.Batch })));
+        var states = declarations.SelectMany(item => item.Batch.Examples)
+            .Where(example =>
+            {
+                using var source = JsonDocument.Parse(example.Text);
+                return source.RootElement.GetProperty("oracle").GetProperty("kind").GetString() == "set_state";
+            }).ToArray();
+        Assert.NotEmpty(states);
+        Assert.Equal(states.Length, states.Select(example => LegendFoundationConversationControl.ProblemIdentity(example.Text)).Distinct().Count());
+        var originalControls = LearningDeclarations(includeSetState: false);
+        Assert.Equal(224, originalControls.Sum(item => item.Batch.Examples.Count));
+        Assert.Equal(JsonSerializer.Serialize(originalControls.Select(item => new { item.Language, item.Batch })),
+            JsonSerializer.Serialize(declarations.Take(originalControls.Count).Select(item => new { item.Language, item.Batch })));
+        var manifest = await CompileLearningDeclarationsAsync(db, configuration);
+        Assert.Equal(declarations.Sum(item => item.Batch.Examples.Count), manifest.Training.Count + manifest.HeldOut.Count);
+        AssertStateLearningPartitions(manifest);
+        foreach (var category in LegendFoundationConversationControl.RequiredCategories)
+            Assert.True(manifest.HeldOut.Where(example =>
+                LegendFoundationConversationControl.TryRead(example.SourceText, out var actual, out _, out _) && actual == category)
+                .Select(example => example.SplitGroupIdentity).Distinct().Count() >= 2, category);
+        var all = manifest.Training.Concat(manifest.HeldOut).ToArray();
+        Assert.Equal(states.Length, all.Count(example => LearningOracleKind(example) == "set_state"));
+        Assert.Equal(15, all.Where(example => LearningOracleKind(example) == "set_state").Select(example => example.TargetText).Distinct().Count());
+        Assert.Equal(48, all.Count(example => LearningOracleKind(example) == "boolean_premises"));
+        foreach (var kind in new[] { "exact_format", "updated_value", "latest_record", "ht_sum" })
+            Assert.Equal(32, all.Count(example => LearningOracleKind(example) == kind));
+        Assert.All(all, example => Assert.True(LegendFoundationConversationControl.TryValidateOracle(
+            example.SourceText, example.TargetText, example.TargetLanguageCode)));
+        Assert.Empty(await db.Set<LegendConnectModelTrainingRun>().ToListAsync());
+    }
+
+    private static string LearningOracleKind(LegendConnectTrainingDatasetExample example)
     {
         using var source = JsonDocument.Parse(example.SourceText);
-        return source.RootElement.GetProperty("oracle").GetProperty("kind").GetString() == "boolean_premises";
+        return source.RootElement.GetProperty("oracle").GetProperty("kind").GetString()!;
     }
 
     private static string LearningInputIdentity(LegendModelTaskRequest task) =>
@@ -270,7 +392,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
 
     private static string LearningHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private static IReadOnlyList<(string Language, LegendConnectCurriculumBatchSubmission Batch)> LearningDeclarations()
+    private static IReadOnlyList<(string Language, LegendConnectCurriculumBatchSubmission Batch)> LearningDeclarations(bool includeSetState = true)
     {
         var declarations = new List<(string, LegendConnectCurriculumBatchSubmission)>();
         var index = 0;
@@ -321,6 +443,93 @@ public sealed partial class LegendFounderAiModeIsolationTests
         }
         Assert.Equal(48, identities.Count);
         Assert.Equal(3, dispositions.Count);
+        if (!includeSetState) return declarations;
+
+        // Fresh formal state material; targets come only from the existing
+        // finite-set oracle. Original controls above remain unchanged replay.
+        // The complete outcome/transition matrix is fixed before baseline/model
+        // observations. No example is selected by its compiled partition.
+        var stateIdentities = new HashSet<string>(StringComparer.Ordinal);
+        var outcomeCoverage = new HashSet<(int Active, int Marked)>();
+        var transitionFamilies = new[] { "supplied_state", "membership_cycle", "label_cycle", "independent_cycles",
+            "add_members", "remove_marked_surplus", "acquire_labels", "clear_surplus_labels", "activate_labeled_member" };
+        var exercisedFamilies = new HashSet<string>(StringComparer.Ordinal);
+        for (var activeCount = 0; activeCount <= 4; activeCount++)
+        for (var markedCount = 0; markedCount <= activeCount; markedCount++)
+        foreach (var family in transitionFamilies)
+        {
+            var entities = Math.Max(1, activeCount);
+            var active = Enumerable.Range(1, activeCount).ToArray();
+            var marked = Enumerable.Range(1, markedCount).ToArray();
+            var events = new List<(string Operation, int Entity)>();
+            switch (family)
+            {
+                case "add_members":
+                    if (activeCount == 0) continue;
+                    active = [];
+                    events.AddRange(Enumerable.Range(1, activeCount).Select(entity => ("add", entity)));
+                    break;
+                case "remove_marked_surplus":
+                    if (activeCount == 4) continue;
+                    entities = activeCount + 1;
+                    active = Enumerable.Range(1, entities).ToArray();
+                    marked = marked.Append(entities).ToArray();
+                    events.Add(("remove", entities));
+                    break;
+                case "acquire_labels":
+                    if (markedCount == 0) continue;
+                    marked = [];
+                    events.AddRange(Enumerable.Range(1, markedCount).Select(entity => ("mark", entity)));
+                    break;
+                case "clear_surplus_labels":
+                    if (markedCount == activeCount) continue;
+                    marked = Enumerable.Range(1, activeCount).ToArray();
+                    events.AddRange(Enumerable.Range(markedCount + 1, activeCount - markedCount).Select(entity => ("unmark", entity)));
+                    break;
+                case "activate_labeled_member":
+                    if (markedCount == 0) continue;
+                    active = active.Where(entity => entity != 1).ToArray();
+                    events.Add(("add", 1));
+                    break;
+            }
+            exercisedFamilies.Add(family);
+            if (family == "supplied_state" && activeCount == 0)
+            {
+                // The empty outcome still needs a meaningful entity history;
+                // an otherwise unused declaration cannot manufacture a group.
+                active = [1];
+                events.Add(("remove", 1));
+            }
+            if (family is "membership_cycle" or "independent_cycles")
+            {
+                events.Add((activeCount == 0 ? "add" : "remove", 1));
+                events.Add((activeCount == 0 ? "remove" : "add", 1));
+            }
+            if (family is "label_cycle" or "independent_cycles")
+            {
+                events.Add((markedCount == 0 ? "mark" : "unmark", 1));
+                events.Add((markedCount == 0 ? "unmark" : "mark", 1));
+            }
+            var oracle = JsonSerializer.SerializeToElement(new { kind = "set_state", entities, active, marked,
+                events = events.Select(item => new { operation = item.Operation, entity = item.Entity }) });
+            Assert.True(LegendFoundationConversationControl.TryEvaluateSetStateOracle(oracle, out var instruction, out var target, out var identity));
+            using var outcome = JsonDocument.Parse(target);
+            Assert.Equal(activeCount, outcome.RootElement.GetProperty("active_count").GetInt32());
+            Assert.Equal(markedCount, outcome.RootElement.GetProperty("marked_active_count").GetInt32());
+            outcomeCoverage.Add((activeCount, markedCount));
+            // Identical structures remain one example regardless of matrix
+            // position. Neither partition identity nor model output is read.
+            if (!stateIdentities.Add(identity)) continue;
+            var example = new LegendConnectCurriculumExampleSubmission(JsonSerializer.Serialize(new
+            { schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = identity,
+                messages = new[] { new { role = "user", content = instruction } }, oracle }),
+                new Dictionary<string, string> { ["case"] = identity[..12] }, ExpectedResponse: target);
+            // Existing family admission requires distinct independently checked
+            // targets. Arithmetic replay uses a disjoint original-case range.
+            Pair("en", example, Control("sum", 2000 + stateIdentities.Count));
+        }
+        Assert.Equal(15, outcomeCoverage.Count);
+        Assert.Equal(transitionFamilies.Length, exercisedFamilies.Count);
         return declarations;
     }
 }
