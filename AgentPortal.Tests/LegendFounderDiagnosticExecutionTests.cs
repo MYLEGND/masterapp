@@ -59,10 +59,12 @@ public sealed class LegendFounderDiagnosticExecutionTests
         var request = new LegendFounderAiChatRequest
         {
             Mode = "teacher", SourceLanguageCode = "en", FounderCommandConfirmed = true,
+            ConversationId = Guid.NewGuid().ToString("D"),
             Messages = [new LegendFounderAiChatMessage("user", "Inspect the evidence, submit this teaching: A documented observation can become stale. Then inspect it again.")]
         };
         var response = await Service(db, operations.Object, handler).ReplyAsync(founder, request,
-            progress: (item, _) => { progress.Add(item); return ValueTask.CompletedTask; });
+            progress: (item, _) => { progress.Add(item); return ValueTask.CompletedTask; },
+            operationId: Guid.NewGuid());
         Assert.Equal(includeUnrelated, response.Succeeded);
         Assert.Contains(progress, item => item.Stage == "tool_unavailable" &&
             item.Message.StartsWith("Unavailable:", StringComparison.Ordinal) &&
