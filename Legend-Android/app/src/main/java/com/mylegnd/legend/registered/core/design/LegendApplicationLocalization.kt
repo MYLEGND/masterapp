@@ -15,6 +15,13 @@ import java.util.Locale
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import com.mylegnd.legend.registered.core.model.ApplicationLocalizationContinuation
 
 data class LegendLocalizationState(
     val actorKey: String? = null,
@@ -41,6 +48,14 @@ class LegendApplicationLocalization(
         .bufferedReader()
         .use { json.decodeFromString(BundledApplicationCopyManifest.serializer(), it.readText()) }
     private var requestGeneration = 0L
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var fetchJob: Job? = null
+    private var foreground = true
+    private var activeRole: String? = null
+    private var activeRequest: Pair<String, String>? = null
+    private val warmCatalogs = linkedMapOf<String, ApplicationLocalizationCatalog>()
+    private var notBeforeMillis = 0L
+    private var continuation: ApplicationLocalizationContinuation? = null
     private val _state = MutableStateFlow(LegendLocalizationState())
     val state: StateFlow<LegendLocalizationState> = _state.asStateFlow()
 
@@ -53,64 +68,111 @@ class LegendApplicationLocalization(
         )
     }
 
-    suspend fun activate(
-        actorKey: String,
-        participantType: String,
-        preferredLanguageCode: String?,
-    ) {
-        val generation = ++requestGeneration
-        val cached = cache.localizationCatalog(actorKey)
-        if (cached != null && cached.isPresentable() &&
-            (preferredLanguageCode.isNullOrBlank() ||
-                cached.languageCode.equals(preferredLanguageCode, ignoreCase = true))) {
-            apply(actorKey, cached)
-        }
-
-        // Never block the authenticated shell on network/provider latency.
-        // A complete source catalog is installed atomically until validated
-        // preferred-language entries are available for a single state swap.
-        if (_state.value.actorKey != actorKey) {
+    suspend fun activate(actorKey: String, participantType: String, preferredLanguageCode: String?) {
+        stopFetch()
+        val generation = requestGeneration
+        if (_state.value.actorKey != actorKey || activeRole != participantType) {
+            warmCatalogs.clear()
+            continuation = null
+            notBeforeMillis = 0
             installSource(actorKey)
         }
-
-        fetchCatalog(actorKey, participantType, generation)
+        activeRole = participantType
+        activeRequest = actorKey to participantType
+        val saved = cache.localizationCatalogs(actorKey, participantType)
+        if (generation != requestGeneration) return
+        saved.filter { it.isPresentable() }.forEach { remember(it) }
+        applyWarm(actorKey, preferredLanguageCode)
+        startFetch()
     }
 
-    suspend fun refresh(actorKey: String, participantType: String) {
-        fetchCatalog(actorKey, participantType, ++requestGeneration)
+    suspend fun refresh(actorKey: String, participantType: String, preferredLanguageCode: String? = null) {
+        // A delayed save callback cannot select an account. Only the authenticated activation owns that transition.
+        if (activeRequest != (actorKey to participantType)) return
+        stopFetch()
+        if (preferredLanguageCode != null) { continuation = null; notBeforeMillis = 0 }
+        applyWarm(actorKey, preferredLanguageCode)
+        startFetch()
+    }
+
+    fun setForeground(isForeground: Boolean) {
+        if (foreground == isForeground) return
+        foreground = isForeground
+        if (isForeground) startFetch() else stopFetch()
+    }
+
+    private fun stopFetch() { requestGeneration++; fetchJob?.cancel(); fetchJob = null }
+
+    private fun startFetch() {
+        val request = activeRequest ?: return
+        if (!foreground || fetchJob?.isActive == true) return
+        val generation = requestGeneration
+        fetchJob = scope.launch { fetchCatalog(request.first, request.second, generation) }
+    }
+
+    private fun applyWarm(actorKey: String, language: String?) {
+        val cached = warmCatalogs.values.lastOrNull { language.isNullOrBlank() || it.languageCode.equals(language, true) }
+        if (cached != null) apply(actorKey, cached)
+        else if (language != null && !_state.value.languageCode.equals(language, true)) installSource(actorKey)
+    }
+
+    private fun remember(value: ApplicationLocalizationCatalog): ApplicationLocalizationCatalog {
+        val key = value.catalogVersion + "\n" + value.languageCode.lowercase(Locale.ROOT)
+        warmCatalogs.remove(key)
+        warmCatalogs[key] = value
+        while (warmCatalogs.size > 8) warmCatalogs.remove(warmCatalogs.keys.first())
+        return value
     }
 
     private suspend fun fetchCatalog(actorKey: String, participantType: String, generation: Long) {
-        repeat(60) { attempt ->
+        var started = System.nanoTime()
+        var requests = 0
+        var unchanged = 0
+        var identity: String? = null
+        var remaining = Int.MAX_VALUE
+        var transportFailures = 0
+        while (foreground && generation == requestGeneration) {
+            val wait = notBeforeMillis - System.currentTimeMillis()
+            if (wait > 0) delay(wait)
+            if (!foreground || generation != requestGeneration) return
+            val result = try { repository.catalog(participantType) } catch (cancelled: CancellationException) { throw cancelled }
             if (generation != requestGeneration) return
-            when (val result = repository.catalog(participantType)) {
-                is LoadState.Data -> {
-                    if (generation != requestGeneration) return
-                    if (!result.value.isPresentable()) {
-                        _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
-                        return
-                    }
-                    apply(actorKey, result.value)
-                    cache.writeLocalizationCatalog(actorKey, result.value)
-                    val blocked = result.value.entries.any { it.failureCode != null && it.failureCode !in setOf("translation_pending", "approved_translation_unavailable", "translation_output_invalid", "translation_provider_failed") }
-                    if (!blocked && result.value.entries.any { it.failureCode == "translation_pending" }) {
-                        _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.updating"))
-                        delay(1_000)
-                    } else {
-                        _state.value = _state.value.copy(status = if (result.value.entries.any { it.failureCode != null && it.failureCode != "approved_translation_unavailable" }) LegendDesignAuthority.copy("localization.unavailable") else null)
-                        return
-                    }
+            if (result is LoadState.Error && result.status in setOf(401, 403)) { clearPresentation(); return }
+            if (result is LoadState.Data && !result.value.isPresentable()) {
+                continuation = null
+                _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
+                return
+            }
+            if (result is LoadState.Data) {
+                transportFailures = 0
+                val received = result.value
+                apply(actorKey, remember(received))
+                cache.writeLocalizationCatalog(actorKey, participantType, warmCatalogs.values.last())
+                if (generation != requestGeneration) return
+                val next = received.continuation
+                continuation = next
+                if (next?.isResumable() != true) {
+                    _state.value = _state.value.copy(status = if (received.isComplete || next?.disposition == "AwaitingApproval") null else LegendDesignAuthority.copy("localization.unavailable"))
+                    return
                 }
-                else -> {
-                    if (generation != requestGeneration) return
-                    if (attempt < 2) delay(2_000) else {
-                        _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
-                        return
-                    }
-                }
+                val key = received.catalogVersion + "\n" + received.languageCode
+                unchanged = if (identity == key && next.remainingEntries >= remaining) unchanged + 1 else 0
+                identity = key; remaining = next.remainingEntries; requests++
+                val exhausted = unchanged >= next.maximumConsecutiveNoProgress || requests >= next.maximumRequestsPerPass ||
+                    (System.nanoTime() - started) / 1_000_000_000 >= next.maximumDurationSeconds
+                val delaySeconds = maxOf(next.retryAfterSeconds!!, if (exhausted) next.cooldownSeconds else 0)
+                notBeforeMillis = System.currentTimeMillis() + delaySeconds.toLong() * 1_000
+                _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.updating"))
+                if (exhausted) { started = System.nanoTime(); requests = 0; unchanged = 0; remaining = Int.MAX_VALUE }
+            } else {
+                _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
+                if (result is LoadState.Error && result.status != null && result.status in 400..499 && result.status !in setOf(408, 429)) { continuation = null; return }
+                transportFailures++
+                val delaySeconds = minOf(60, 1 shl minOf(transportFailures, 6))
+                notBeforeMillis = System.currentTimeMillis() + maxOf(delaySeconds, continuation?.retryAfterSeconds ?: 0, continuation?.cooldownSeconds ?: 0).toLong() * 1_000
+                started = System.nanoTime(); requests = 0; unchanged = 0; remaining = Int.MAX_VALUE
             }
         }
-        if (generation == requestGeneration) _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
     }
 
     private fun ApplicationLocalizationCatalog.isPresentable(): Boolean =
@@ -118,7 +180,9 @@ class LegendApplicationLocalization(
             entries.isNotEmpty() && entries.map { it.id }.toSet().size == entries.size
 
     fun clearPresentation() {
-        requestGeneration++
+        stopFetch()
+        activeRequest = null; activeRole = null; continuation = null; notBeforeMillis = 0
+        warmCatalogs.clear()
         installSource(actorKey = null)
     }
 

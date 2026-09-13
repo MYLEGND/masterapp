@@ -143,7 +143,23 @@ import kotlinx.serialization.Serializable
     @SerialName("generatedUtc") val generatedUtc: String,
     @SerialName("isComplete") val isComplete: Boolean,
     val entries: List<ApplicationLocalizedCopy>,
+    val continuation: ApplicationLocalizationContinuation? = null,
 )
+
+@Serializable data class ApplicationLocalizationContinuation(
+    val disposition: String,
+    val remainingEntries: Int,
+    val retryAfterSeconds: Int? = null,
+    val maximumConsecutiveNoProgress: Int = 3,
+    val maximumDurationSeconds: Int = 180,
+    val maximumRequestsPerPass: Int = 64,
+    val cooldownSeconds: Int = 60,
+) {
+    fun isResumable(): Boolean = disposition in setOf("Pending", "RetryableFailure") &&
+        remainingEntries > 0 && retryAfterSeconds in 1..2_678_400 &&
+        maximumConsecutiveNoProgress in 1..10 && maximumDurationSeconds in 1..600 &&
+        maximumRequestsPerPass in 1..256 && cooldownSeconds in 15..900
+}
 
 @Serializable data class SelectRoleRequest(@SerialName("participantType") val participantType: String)
 @Serializable data class MobileReviewSignInRequest(val username: String, val password: String)

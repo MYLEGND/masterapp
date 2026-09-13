@@ -110,7 +110,7 @@ public sealed partial class ApplicationLocalizationNativeContractTests
         Assert.Contains("@Observable", iosLocalization, StringComparison.Ordinal);
 
         Assert.Contains("preferredLanguageCode", androidSession, StringComparison.Ordinal);
-        Assert.Contains("cache.localizationCatalog(actorKey)", androidLocalization, StringComparison.Ordinal);
+        Assert.Contains("cache.localizationCatalogs(actorKey, participantType)", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("repository.catalog(participantType)", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("installSource(actorKey)", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("localization.refresh", androidRoot, StringComparison.Ordinal);

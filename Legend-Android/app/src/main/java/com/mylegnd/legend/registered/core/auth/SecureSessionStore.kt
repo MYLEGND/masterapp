@@ -33,8 +33,23 @@ private val cachedSessionKey = stringPreferencesKey("encrypted_session")
     val interactiveSignInUtc: String? = null,
     val preferredLanguageCode: String? = null,
     val localizationCatalog: ApplicationLocalizationCatalog? = null,
+    val localizationCatalogs: Map<String, ApplicationLocalizationCatalog> = emptyMap(),
     val avatar: com.mylegnd.legend.registered.core.model.MobileAvatar? = null,
 ) {
+    fun localizationCatalogsFor(participantType: String): List<ApplicationLocalizationCatalog> {
+        val prefix = participantType.lowercase(java.util.Locale.ROOT) + "\n"
+        val saved = localizationCatalogs.filterKeys { it.startsWith(prefix) }.values.toList()
+        return if (saved.isNotEmpty()) saved else listOfNotNull(localizationCatalog.takeIf {
+            this.participantType.equals(participantType, ignoreCase = true)
+        })
+    }
+
+    fun retainingLocalization(participantType: String, value: ApplicationLocalizationCatalog): CachedLegendSession {
+        val key = participantType.lowercase(java.util.Locale.ROOT) + "\n" + value.catalogVersion + "\n" + value.languageCode.lowercase(java.util.Locale.ROOT)
+        val retained = (localizationCatalogs.filterKeys { it != key } + (key to value)).entries.toList().takeLast(8).associate { it.toPair() }
+        return copy(preferredLanguageCode = value.languageCode, localizationCatalog = null, localizationCatalogs = retained)
+    }
+
     fun requiresInteractiveSignIn(retentionDays: Int, now: Instant = Instant.now()): Boolean {
         val authenticatedAt = interactiveSignInUtc?.let { value -> runCatching { Instant.parse(value) }.getOrNull() }
             ?: return true
@@ -77,21 +92,21 @@ class SecureSessionStore(private val context: Context) : LegendSessionStoring {
             accountId = accountId,
             preferredLanguageCode = value.preferredLanguageCode ?: previous?.preferredLanguageCode,
             localizationCatalog = value.localizationCatalog ?: previous?.localizationCatalog,
+            localizationCatalogs = value.localizationCatalogs.ifEmpty { previous?.localizationCatalogs.orEmpty() },
         )
         val accounts = catalog.accounts.filterNot { it.accountId == accountId } + normalized
         writeCatalog(CachedLegendSessionCatalog(selectedAccountId = accountId, accounts = accounts))
     }
 
-    suspend fun localizationCatalog(accountId: String): ApplicationLocalizationCatalog? =
-        readCatalog().accounts.firstOrNull { it.accountId == accountId }?.localizationCatalog
+    suspend fun localizationCatalogs(accountId: String, participantType: String): List<ApplicationLocalizationCatalog> {
+        val account = readCatalog().accounts.firstOrNull { it.accountId == accountId } ?: return emptyList()
+        return account.localizationCatalogsFor(participantType)
+    }
 
-    suspend fun writeLocalizationCatalog(accountId: String, value: ApplicationLocalizationCatalog) = mutationMutex.withLock {
+    suspend fun writeLocalizationCatalog(accountId: String, participantType: String, value: ApplicationLocalizationCatalog) = mutationMutex.withLock {
         val catalog = readCatalog()
         val existing = catalog.accounts.firstOrNull { it.accountId == accountId } ?: return@withLock
-        val accounts = catalog.accounts.filterNot { it.accountId == accountId } + existing.copy(
-            preferredLanguageCode = value.languageCode,
-            localizationCatalog = value,
-        )
+        val accounts = catalog.accounts.filterNot { it.accountId == accountId } + existing.retainingLocalization(participantType, value)
         writeCatalog(catalog.copy(accounts = accounts))
     }
 

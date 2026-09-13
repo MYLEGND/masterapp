@@ -11,8 +11,37 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
+import com.mylegnd.legend.registered.core.model.ApplicationLocalizationCatalog
+import com.mylegnd.legend.registered.core.model.ApplicationLocalizationContinuation
+import com.mylegnd.legend.registered.core.auth.CachedLegendSession
 
 class ApplicationLocalizationRuntimeTest {
+    @Test
+    fun `cached languages retain exact account role catalog identity and authoritative withdrawal`() {
+        val copy = ApplicationLocalizedCopy("entry", "Settings", "Anviwònman", "visual interface copy", "r1", emptyList(), "AzureTranslator", "ProviderDerived", "Observation", "now", true)
+        fun catalog(language: String) = ApplicationLocalizationCatalog("v1", "en", language, language, "now", true, listOf(copy))
+        val original = CachedLegendSession("actor-a", "Agent", "A", "now", accountId = "a")
+        val saved = original.retainingLocalization("Agent", catalog("ht")).retainingLocalization("Agent", catalog("es"))
+        assertEquals(listOf("ht", "es"), saved.localizationCatalogsFor("Agent").map { it.languageCode })
+        assertTrue(saved.localizationCatalogsFor("Client").isEmpty())
+        assertTrue(original.localizationCatalogsFor("Agent").isEmpty())
+        val revoked = saved.retainingLocalization("Agent", catalog("ht").copy(entries = listOf(copy.copy(text="Settings", failureCode="approved_translation_unavailable"))))
+        assertNull(revoked.localizationCatalogsFor("Agent").last().entries.single().validatedText("Settings", "visual interface copy", "r1", emptyList()))
+        var bounded = saved
+        repeat(12) { bounded = bounded.retainingLocalization("Agent", catalog("language-$it")) }
+        assertEquals(8, bounded.localizationCatalogs.size)
+    }
+
+    @Test
+    fun `continuation follows bounded server instructions including monthly delay not provider error names`() {
+        val next = ApplicationLocalizationContinuation("RetryableFailure", 1, 2_678_400)
+        assertTrue(next.isResumable())
+        assertFalse(next.copy(disposition="Blocked").isResumable())
+        assertFalse(next.copy(disposition="AwaitingApproval").isResumable())
+        assertFalse(next.copy(retryAfterSeconds=0).isResumable())
+        assertFalse(next.copy(maximumRequestsPerPass=999).isResumable())
+    }
+
     @Test
     fun `catalog entries require matching source contract and isolate individual failures`() {
         val valid = ApplicationLocalizedCopy("entry", "Settings", "Anviwònman", "visual interface copy", "revision1", emptyList(), "AzureTranslator", "ProviderDerived", "Observation", "2026-09-10T00:00:00Z", true)

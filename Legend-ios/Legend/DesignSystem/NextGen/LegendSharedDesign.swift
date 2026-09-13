@@ -107,7 +107,7 @@ enum LegendSharedDesign {
     struct MessageBubbleToken: Decodable {
         let horizontalPadding, verticalPadding, cornerRadius, metadataGap, bodySize, timestampSize: CGFloat
         let timestampWeight, timestampColor: String
-        var timestampFont: Font { .system(size: timestampSize, weight: LegendSharedDesign.fontWeight(timestampWeight)) }
+        func timestampFont(size: CGFloat? = nil) -> Font { .system(size: size ?? timestampSize, weight: LegendSharedDesign.fontWeight(timestampWeight)) }
     }
     struct ContactCardToken: Decodable {
         let cornerRadius, minimumHeight, horizontalPadding, verticalPadding, borderWidth, shadowRadius, shadowOffsetY: CGFloat
@@ -282,7 +282,41 @@ struct LegendApplicationLocalizationCatalog: Codable, Equatable, Sendable {
     let locale: String
     let generatedUtc: String
     let isComplete: Bool
-    let entries: [LegendApplicationLocalizedCopy]
+    var entries: [LegendApplicationLocalizedCopy]
+    var continuation: LegendApplicationLocalizationContinuation? = nil
+}
+
+struct LegendApplicationLocalizationContinuation: Codable, Equatable, Sendable {
+    let disposition: String
+    let remainingEntries: Int
+    let retryAfterSeconds: Int?
+    let maximumConsecutiveNoProgress: Int
+    let maximumDurationSeconds: Int
+    let maximumRequestsPerPass: Int
+    let cooldownSeconds: Int
+
+    var isResumable: Bool {
+        ["Pending", "RetryableFailure"].contains(disposition) && remainingEntries > 0 &&
+        (1...2_678_400).contains(retryAfterSeconds ?? 0) &&
+        (1...10).contains(maximumConsecutiveNoProgress) && (1...600).contains(maximumDurationSeconds) &&
+        (1...256).contains(maximumRequestsPerPass) && (15...900).contains(cooldownSeconds)
+    }
+}
+
+// Stored inside the existing actor-scoped localization payload, never a separate translation store.
+struct LegendApplicationLocalizationCache: Codable {
+    var catalogs: [LegendApplicationLocalizationCatalog] = []
+
+    mutating func remember(_ value: LegendApplicationLocalizationCatalog) -> LegendApplicationLocalizationCatalog {
+        catalogs.removeAll { $0.catalogVersion == value.catalogVersion && $0.languageCode == value.languageCode }
+        catalogs.append(value)
+        catalogs = Array(catalogs.suffix(8))
+        return value
+    }
+
+    func matching(_ language: String?) -> LegendApplicationLocalizationCatalog? {
+        catalogs.last { language == nil || $0.languageCode.caseInsensitiveCompare(language!) == .orderedSame }
+    }
 }
 
 private struct LegendBundledApplicationCopyManifest: Decodable {
@@ -384,6 +418,12 @@ final class LegendApplicationLocalization: ObservableObject {
     @Published private(set) var status: String?
 
     private var requestGeneration = 0
+    private var fetchTask: Task<Void, Never>?
+    private var foreground = true
+    private var resumeRequest: (() -> Void)?
+    private var warmCache = LegendApplicationLocalizationCache()
+    private var continuation: LegendApplicationLocalizationContinuation?
+    private var notBefore = Date.distantPast
     private let sourceManifest: LegendBundledApplicationCopyManifest
 
     init() {
@@ -405,82 +445,134 @@ final class LegendApplicationLocalization: ObservableObject {
         activeActorKey == Self.actorKey(session)
     }
 
-    func activate(
-        session: MobileSession,
-        coordinator: MobileSessionCoordinator,
-        launchCache: any LegendLaunchCaching
-    ) async {
-        requestGeneration += 1
-        let generation = requestGeneration
+    func activate(session: MobileSession, coordinator: MobileSessionCoordinator,
+                  launchCache: any LegendLaunchCaching) async {
+        guard !Task.isCancelled, case .authenticated(let current) = coordinator.state,
+              current.actor.identity == session.actor.identity else { return }
+        stopFetch()
         let actorKey = Self.actorKey(session)
-        if let cachedData = launchCache.readPayload(.localization, actorKey: actorKey),
-           let cached = try? JSONDecoder.mobile.decode(
-            LegendApplicationLocalizationCatalog.self,
-            from: cachedData
-           ), isPresentable(cached), session.preferredLanguageCode == nil ||
-            cached.languageCode.caseInsensitiveCompare(session.preferredLanguageCode!) == .orderedSame {
-            apply(cached, actorKey: actorKey)
-        }
-
-        // First use must never hold the authenticated shell behind network or
-        // provider latency. Present one internally consistent source catalog
-        // until validated preferred-language entries are ready to swap in.
         if activeActorKey != actorKey {
+            warmCache = LegendApplicationLocalizationCache()
+            continuation = nil; notBefore = .distantPast
             installSource(actorKey: actorKey)
         }
-
-        await fetchCatalog(session: session, coordinator: coordinator, launchCache: launchCache, generation: generation)
+        if let data = launchCache.readPayload(.localization, actorKey: actorKey) {
+            if let saved = try? JSONDecoder.mobile.decode(LegendApplicationLocalizationCache.self, from: data) {
+                warmCache.catalogs = saved.catalogs.filter(isPresentable)
+            } else if let legacy = try? JSONDecoder.mobile.decode(LegendApplicationLocalizationCatalog.self, from: data), isPresentable(legacy) {
+                _ = warmCache.remember(legacy)
+            }
+        }
+        applyWarm(session.preferredLanguageCode, actorKey: actorKey)
+        configureRequest(session: session, coordinator: coordinator, launchCache: launchCache)
     }
 
     func clearPresentation() {
-        requestGeneration += 1
-        status = nil
+        stopFetch()
+        resumeRequest = nil; warmCache = LegendApplicationLocalizationCache()
+        continuation = nil; notBefore = .distantPast; status = nil
         installSource(actorKey: nil)
     }
 
-    func refresh(
-        session: MobileSession,
-        coordinator: MobileSessionCoordinator,
-        launchCache: any LegendLaunchCaching
-    ) async {
-        requestGeneration += 1
-        let generation = requestGeneration
-        let actorKey = Self.actorKey(session)
-        await fetchCatalog(session: session, coordinator: coordinator, launchCache: launchCache, generation: generation)
+    func refresh(session: MobileSession, coordinator: MobileSessionCoordinator,
+                 launchCache: any LegendLaunchCaching, preferredLanguageCode: String? = nil) async {
+        guard !Task.isCancelled, case .authenticated(let current) = coordinator.state,
+              current.actor.identity == session.actor.identity else { return }
+        guard activeActorKey == Self.actorKey(session) else {
+            await activate(session: session, coordinator: coordinator, launchCache: launchCache)
+            return
+        }
+        stopFetch()
+        if preferredLanguageCode != nil { continuation = nil; notBefore = .distantPast }
+        applyWarm(preferredLanguageCode, actorKey: Self.actorKey(session))
+        configureRequest(session: session, coordinator: coordinator, launchCache: launchCache)
+    }
+
+    func setForeground(_ value: Bool) {
+        guard foreground != value else { return }
+        foreground = value
+        if value { resumeRequest?() } else { stopFetch() }
+    }
+
+    private func stopFetch() { requestGeneration += 1; fetchTask?.cancel(); fetchTask = nil }
+
+    private func applyWarm(_ language: String?, actorKey: String) {
+        if let cached = warmCache.matching(language) { apply(cached, actorKey: actorKey) }
+        else if let language, languageCode.caseInsensitiveCompare(language) != .orderedSame { installSource(actorKey: actorKey) }
+    }
+
+    private func configureRequest(session: MobileSession, coordinator: MobileSessionCoordinator, launchCache: any LegendLaunchCaching) {
+        resumeRequest = { [weak self, weak coordinator] in
+            guard let self, let coordinator, self.foreground, self.fetchTask == nil,
+                  case .authenticated(let current) = coordinator.state,
+                  current.actor.identity == session.actor.identity else { return }
+            let generation = self.requestGeneration
+            self.fetchTask = Task { [weak self] in
+                guard let self else { return }
+                await self.fetchCatalog(session: session, coordinator: coordinator, launchCache: launchCache, generation: generation)
+                if self.requestGeneration == generation { self.fetchTask = nil }
+            }
+        }
+        resumeRequest?()
     }
 
     private func fetchCatalog(session: MobileSession, coordinator: MobileSessionCoordinator,
                               launchCache: any LegendLaunchCaching, generation: Int) async {
         let actorKey = Self.actorKey(session)
-        for attempt in 0..<60 {
-            guard generation == requestGeneration, !Task.isCancelled else { return }
+        var started = ContinuousClock.now
+        var requests = 0
+        var unchanged = 0
+        var identity: String?
+        var remaining = Int.max
+        var transportFailures = 0
+        while foreground && generation == requestGeneration && !Task.isCancelled {
             do {
+                let delay = notBefore.timeIntervalSinceNow
+                if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
+                guard generation == requestGeneration, !Task.isCancelled,
+                      case .authenticated(let current) = coordinator.state,
+                      current.actor.identity == session.actor.identity else { return }
                 let catalog = try await coordinator.applicationLocalizationCatalog(participantType: session.actor.identity.participantType)
-                guard generation == requestGeneration, !Task.isCancelled else { return }
-                guard isPresentable(catalog) else { break }
-                apply(catalog, actorKey: actorKey)
-                if let data = try? JSONEncoder.mobile.encode(catalog) {
-                    launchCache.writePayload(data, kind: .localization, actorKey: actorKey)
+                guard generation == requestGeneration, !Task.isCancelled,
+                      case .authenticated(let current) = coordinator.state,
+                      current.actor.identity == session.actor.identity else { return }
+                guard isPresentable(catalog) else { status = LegendSharedDesign.copy("localization.unavailable"); return }
+                apply(warmCache.remember(catalog), actorKey: actorKey)
+                if let data = try? JSONEncoder.mobile.encode(warmCache) { launchCache.writePayload(data, kind: .localization, actorKey: actorKey) }
+                transportFailures = 0
+                continuation = catalog.continuation
+                guard let next = catalog.continuation, next.isResumable else {
+                    status = catalog.isComplete || catalog.continuation?.disposition == "AwaitingApproval" ? nil : LegendSharedDesign.copy("localization.unavailable")
+                    return
                 }
-                let blocked = catalog.entries.contains { entry in
-                    guard let failure = entry.failureCode else { return false }
-                    return !["translation_pending", "approved_translation_unavailable", "translation_output_invalid", "translation_provider_failed"].contains(failure)
-                }
-                if !blocked && catalog.entries.contains(where: { $0.failureCode == "translation_pending" }) {
-                    status = LegendSharedDesign.copy("localization.updating")
-                    try await Task.sleep(nanoseconds: 1_000_000_000)
-                    continue
-                }
-                status = catalog.entries.contains(where: { $0.failureCode != nil && $0.failureCode != "approved_translation_unavailable" })
-                    ? LegendSharedDesign.copy("localization.unavailable") : nil
-                return
+                let key = catalog.catalogVersion + "\n" + catalog.languageCode
+                unchanged = identity == key && next.remainingEntries >= remaining ? unchanged + 1 : 0
+                identity = key; remaining = next.remainingEntries; requests += 1
+                let exhausted = unchanged >= next.maximumConsecutiveNoProgress || requests >= next.maximumRequestsPerPass ||
+                    started.duration(to: .now) >= .seconds(next.maximumDurationSeconds)
+                notBefore = Date().addingTimeInterval(Double(max(next.retryAfterSeconds!, exhausted ? next.cooldownSeconds : 0)))
+                status = LegendSharedDesign.copy("localization.updating")
+                if exhausted { started = .now; requests = 0; unchanged = 0; remaining = .max }
             } catch {
                 guard generation == requestGeneration, !Task.isCancelled else { return }
-                if attempt < 2 { try? await Task.sleep(nanoseconds: 2_000_000_000); continue }
-                break
+                if let failure = error as? MobileAPIError {
+                    switch failure {
+                    case .unauthorized, .forbidden, .apiUnauthorized, .apiForbidden:
+                        clearPresentation(); return
+                    case .apiServer(let code, _, _, _), .server(let code, _):
+                        if (400..<500).contains(code) && code != 408 && code != 429 { continuation = nil; status = LegendSharedDesign.copy("localization.unavailable"); return }
+                    case .invalidBaseURL, .invalidPath, .invalidServerResponse, .decodingFailed:
+                        continuation = nil; status = LegendSharedDesign.copy("localization.unavailable"); return
+                    default: break
+                    }
+                }
+                status = LegendSharedDesign.copy("localization.unavailable")
+                transportFailures += 1
+                let delay = min(60, pow(2.0, Double(min(transportFailures, 6))))
+                notBefore = Date().addingTimeInterval(max(delay, Double(max(continuation?.retryAfterSeconds ?? 0, continuation?.cooldownSeconds ?? 0))))
+                started = .now; requests = 0; unchanged = 0; remaining = .max
             }
         }
-        if generation == requestGeneration { status = LegendSharedDesign.copy("localization.unavailable") }
     }
 
     private func apply(
