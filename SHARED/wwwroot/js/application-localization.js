@@ -137,7 +137,12 @@
                 throw new Error('catalog_unavailable');
             }
             if (!response.headers.get('content-type')?.includes('application/json')) { continuation = null; return; }
-            const value = await response.json();
+            let value;
+            try { value = await response.json(); }
+            catch {
+                if (expected !== generation || controller.signal.aborted) return;
+                continuation = null; showStatus('Some text could not be translated. Your language preference is saved.'); return;
+            }
             if (expected !== generation || controller.signal.aborted) return;
             if (!Array.isArray(value.entries) || !value.entries.length || !value.languageCode || !value.catalogVersion ||
                 new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) { continuation = null; return; }

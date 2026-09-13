@@ -1786,6 +1786,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 outcome = quota.Succeeded ? "allowed" : "blocked";
                 reason = LegendConnectTelemetry.NormalizeDiagnosticReason(quota.ErrorCode);
             }
+            if (result is TranslationCapacityReservationResult capacity)
+            {
+                outcome = capacity.Reservation is not null ? "allowed" : "blocked";
+                reason = LegendConnectTelemetry.NormalizeDiagnosticReason(capacity.FailureCode);
+            }
             if (result is LegendConnectActiveModelInferenceResult model)
             {
                 outcome = model.Succeeded ? "resolved" : "unresolved";

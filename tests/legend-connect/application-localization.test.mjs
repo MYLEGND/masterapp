@@ -53,3 +53,6 @@ test('authorization clear restores source text and abort fences late response',a
 test('authoritative approval withdrawal replaces old cached text without guessing stale eligibility',async()=>{
  let calls=0;const h=harness(async()=>response(++calls===1?catalog():catalog('ht',{disposition:'AwaitingApproval',remainingEntries:1,retryAfterSeconds:null},[entry('Hello','approved_translation_unavailable')])));await flush();assert.equal(h.publicNode.nodeValue,'Bonjou');await h.event('focus');assert.equal(h.publicNode.nodeValue,'Hello');await h.tick(300000);assert.equal(calls,2);
 });
+test('invalid successful JSON response stops instead of becoming a recurring transport retry',async()=>{
+ let calls=0;const h=harness(async()=>{calls++;return {ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>{throw new SyntaxError('malformed');}};});await flush();await h.tick(300000);assert.equal(calls,1);
+});

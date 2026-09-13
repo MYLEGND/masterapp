@@ -10,6 +10,7 @@ using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -17,6 +18,50 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplicationLocalizationArchitectureTests
 {
+    [Theory]
+    [InlineData("translation_capacity_configuration_unavailable")]
+    [InlineData("translation_capacity_temporarily_unavailable")]
+    public async Task CapacityHold_ExistingTranslationTraceReportsBlockedAndNeverCallsProvider(string reason)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        await registry.ListEnabledTranslationLanguagesAsync();
+        var capacity = new Mock<ITranslationCapacityAuthority>(MockBehavior.Strict);
+        capacity.Setup(item => item.TryReserveAsync(It.IsAny<string>(), It.IsAny<int>(), TranslationCapacityPurpose.Live,
+            It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(new TranslationCapacityReservationResult(null, reason));
+        var logger = new Mock<ILogger<LegendConnectTranslationRouter>>();
+        var provider = new RecordingTranslationProvider();
+        var router = new LegendConnectTranslationRouter(provider, registry, capacity.Object, logger.Object);
+        var result = await router.TranslateAsync("A private original", "ht", "en");
+        Assert.False(result.Succeeded);
+        Assert.Equal(reason, result.ErrorCode);
+        Assert.Equal(0, provider.TranslateOperations);
+        logger.Verify(item => item.Log(LogLevel.Information, It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((state, type) => state.ToString()!.Contains("Stage=translation_capacity", StringComparison.Ordinal) &&
+                state.ToString()!.Contains("Outcome=blocked", StringComparison.Ordinal) &&
+                state.ToString()!.Contains("ReasonCode=" + reason, StringComparison.Ordinal) &&
+                !state.ToString()!.Contains("A private original", StringComparison.Ordinal)),
+            It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("translation_capacity_configuration_unavailable")]
+    [InlineData("translation_capacity_temporarily_unavailable")]
+    [InlineData("translation_capacity_reservation_pending")]
+    [InlineData("translation_capacity_hourly_exhausted")]
+    [InlineData("translation_capacity_monthly_exhausted")]
+    [InlineData("translation_capacity_request_exceeds_limit")]
+    [InlineData("translation_provider_authentication_failed")]
+    [InlineData("translation_provider_access_denied")]
+    [InlineData("translation_provider_rate_limited")]
+    [InlineData("translation_provider_transient_failure")]
+    [InlineData("translation_provider_request_rejected")]
+    public void TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(string reason)
+    {
+        Assert.Equal(reason, LegendConnectTelemetry.NormalizeDiagnosticReason(reason));
+        Assert.Equal("unclassified_reason", LegendConnectTelemetry.NormalizeDiagnosticReason(reason + ": private user text"));
+    }
+
     [Theory]
     [InlineData("translation_pending", "Pending", true)]
     [InlineData("translation_provider_timeout", "RetryableFailure", true)]
