@@ -11,6 +11,7 @@ struct LegendCallCommand: Encodable {
     var epoch: Int = 0
     var pushToken: String? = nil
     var pushEnvironment: String? = nil
+    var preferences: LegendCallPreferences? = nil
 }
 struct LegendCallPolicy: Decodable {
     let stunUrls: [String]
@@ -35,6 +36,32 @@ struct LegendCallSnapshot: Decodable, Identifiable {
     var receivedUtc: Date? = nil
     var failureMessage: String? = nil
     var callerImagePath: String? = nil
+    var calleeImagePath: String? = nil
+    var callerWallpaperMode: String? = nil
+    var calleeWallpaperMode: String? = nil
+    var incomingRingtoneResource: String? = nil
+    func isCaller(_ identity: LogicalParticipantIdentity) -> Bool {
+        callerType == identity.participantType.rawValue &&
+            (callerUserIds ?? [callerUserId]).contains { $0.caseInsensitiveCompare(identity.userID) == .orderedSame }
+    }
+    func isCallee(_ identity: LogicalParticipantIdentity) -> Bool {
+        calleeType == identity.participantType.rawValue &&
+            (calleeUserIds ?? [calleeUserId]).contains { $0.caseInsensitiveCompare(identity.userID) == .orderedSame }
+    }
+    func participantImageURL(outgoing: Bool, apiBaseURL: URL?) -> URL? {
+        guard let path = outgoing ? calleeImagePath : callerImagePath,
+              path.hasPrefix("/api/v1/mobile/notifications/"), !path.contains("\\"),
+              let origin = apiBaseURL, origin.scheme == "https", origin.host != nil,
+              let url = URL(string: path, relativeTo: origin)?.absoluteURL,
+              url.host == origin.host, url.scheme == origin.scheme, url.port == origin.port,
+              url.user == nil, url.password == nil, url.fragment == nil,
+              url.path.lowercased() == "/api/v1/mobile/notifications/\(id.uuidString.lowercased())/sender-image" else { return nil }
+        return url
+    }
+    func wallpaperImageURL(outgoing: Bool, apiBaseURL: URL?) -> URL? {
+        let peerMode = outgoing ? calleeWallpaperMode : callerWallpaperMode
+        return peerMode == "profile" ? participantImageURL(outgoing: outgoing, apiBaseURL: apiBaseURL) : nil
+    }
     var terminal: Bool { ["ended", "declined", "missed"].contains(status) }
 }
 struct LegendCallEvent: Decodable {
@@ -48,7 +75,16 @@ struct LegendCallResult: Decodable {
     let call: LegendCallSnapshot?
     let activeCalls: [LegendCallSnapshot]?
     let policy: LegendCallPolicy?
+    var preferences: LegendCallPreferences? = nil
+    var ringtones: [LegendCallRingtoneChoice]? = nil
+    var wallpapers: [LegendCallWallpaperChoice]? = nil
 }
+struct LegendCallPreferences: Codable, Equatable {
+    var ringtoneId: String
+    var wallpaperMode: String
+}
+struct LegendCallRingtoneChoice: Decodable, Identifiable { let id, label, resource: String }
+struct LegendCallWallpaperChoice: Decodable, Identifiable { let id, label: String }
 enum LegendCallingError: LocalizedError {
     case unavailable(String)
     var errorDescription: String? {

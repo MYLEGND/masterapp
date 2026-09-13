@@ -296,7 +296,8 @@ struct LegendApplicationShell: View {
                 pendingConversationID: $pendingMessageConversationID,
                 messages: messages,
                 currentSession: currentSession,
-                social: social
+                social: social,
+                openCallingProfilePhoto: { selectedTab = .account }
             )
             .task { messages.load() }
 
@@ -1391,6 +1392,7 @@ private struct LegendMessagesTab: View {
     @ObservedObject var messages: MessagingStore
     let currentSession: MobileSession
     @ObservedObject var social: MobileSocialStore
+    var openCallingProfilePhoto: (() -> Void)? = nil
     @State private var navigationPath: [UUID] = []
 
     var body: some View {
@@ -1414,7 +1416,7 @@ private struct LegendMessagesTab: View {
                     messages.openConversation(conversationID)
                     navigationPath = [conversationID]
                     isThreadActive = true
-                })
+                }, openCallingProfilePhoto: openCallingProfilePhoto)
                 .navigationDestination(for: UUID.self) { conversationID in
                     ConversationThreadView(
                         store: messages,

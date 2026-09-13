@@ -18,7 +18,8 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     private var videoSource: RTCVideoSource?
     private var screenTrack: RTCVideoTrack?
     private var sharingScreen = false
-    private var screenGeneration = 0
+    private var broadcastReceiver: LegendCallBroadcastReceiver?
+    var onScreenSharingStarted: (() -> Void)?
     private var cameraWasEnabled = true
     var onScreenSharingEnded: (() -> Void)?
     private var audio: RTCAudioTrack?
@@ -130,7 +131,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         }
         monitor.start(queue: DispatchQueue(label: "legend.call.network"))
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.stopScreenSharing(); self?.capturer?.stopCapture() }
+            Task { @MainActor in self?.capturer?.stopCapture() }
         })
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.configureCamera() }
@@ -221,68 +222,47 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
 
     func startScreenSharing() async throws {
         guard !closed, !sharingScreen, videoSource != nil else { return }
-        let screenPolicy = policy.screenShare
+        let receiver = LegendCallBroadcastReceiver()
+        broadcastReceiver?.stop(notify: false)
+        broadcastReceiver = receiver
         let source = factory.videoSource(forScreenCast: true)
-        let track = factory.videoTrack(with: source, trackId: "legend-screen")
-        screenTrack = track
-        peer?.senders.first(where: { $0.track?.kind == "video" })?.track = track
-        sharingScreen = true
-        applyBitrates()
-        screenGeneration += 1
-        let generation = screenGeneration
-        cameraWasEnabled = localVideo?.isEnabled ?? true
-        localVideo?.isEnabled = true
-        await capturer?.stopCapture()
         let capture = RTCVideoCapturer(delegate: source)
-        do {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                RPScreenRecorder.shared().startCapture(handler: { [weak self] buffer, type, error in
-                    if error != nil {
-                        Task { @MainActor in
-                            guard let self, self.screenGeneration == generation else { return }
-                            self.stopScreenSharing()
-                        }
-                        return
-                    }
-                    guard type == .video, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
-                    Task { @MainActor [weak self] in
-                    guard let self, !self.closed, self.sharingScreen, self.screenGeneration == generation else { return }
-                    let legacy = self.captureLimits
-                    let width = CVPixelBufferGetWidth(pixels), height = CVPixelBufferGetHeight(pixels)
-                    let size = screenPolicy?.dimensions(width: width, height: height, quality: self.quality)
-                        ?? LegendCallScreenSharePolicy.fit(width: width, height: height, targetWidth: legacy.width, targetHeight: legacy.height)
-                    source.adaptOutputFormat(toWidth: Int32(size.width), height: Int32(size.height), fps: Int32(screenPolicy?.profile(quality: self.quality).fps ?? legacy.fps))
-                    let time = Int64(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(buffer)) * 1_000_000_000)
-                    let orientation = (CMGetAttachment(buffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber)?.uint32Value ?? 1
-                    let rotation: RTCVideoRotation = switch CGImagePropertyOrientation(rawValue: orientation) {
-                    case .right: ._90
-                    case .down: ._180
-                    case .left: ._270
-                    default: ._0
-                    }
-                    source.capturer(capture, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixels), rotation: rotation, timeStampNs: time))
-                    }
-                }, completionHandler: { error in
-                    if let error { continuation.resume(throwing: error) } else { continuation.resume() }
-                })
+        let track = factory.videoTrack(with: source, trackId: "legend-screen")
+        receiver.onFrame = { [weak self, weak receiver] pixels, timestamp in
+            guard let self, let receiver, !self.closed, self.broadcastReceiver === receiver else { return }
+            if !self.sharingScreen {
+                self.screenTrack = track
+                self.cameraWasEnabled = self.localVideo?.isEnabled ?? true
+                self.peer?.senders.first(where: { $0.track?.kind == "video" })?.track = track
+                self.sharingScreen = true
+                self.capturer?.stopCapture()
+                self.applyBitrates()
+                self.onScreenSharingStarted?()
+                Task { [weak self] in await self?.sendMediaState(request: false) }
             }
-            if closed || !sharingScreen { RPScreenRecorder.shared().stopCapture { _ in } }
-            else { await sendMediaState(request: false) }
-        } catch {
-            stopScreenSharing()
-            throw error
+            let limits = self.captureLimits
+            let profile = self.policy.screenShare?.profile(quality: self.quality)
+            let size = self.policy.screenShare?.dimensions(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels), quality: self.quality)
+                ?? LegendCallScreenSharePolicy.fit(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels), targetWidth: limits.width, targetHeight: limits.height)
+            source.adaptOutputFormat(toWidth: Int32(size.width), height: Int32(size.height), fps: Int32(profile?.fps ?? limits.fps))
+            source.capturer(capture, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixels), rotation: ._0, timeStampNs: timestamp))
         }
+        receiver.onStopped = { [weak self] in self?.stopScreenSharing() }
+        let profile = policy.screenShare?.profile(quality: quality)
+        let limits = captureLimits
+        try await receiver.prepare(width: profile?.width ?? limits.width, height: profile?.height ?? limits.height, fps: profile?.fps ?? limits.fps)
     }
     func stopScreenSharing() {
-        guard sharingScreen else { return }
+        let wasSharing = sharingScreen
+        broadcastReceiver?.stop(notify: false); broadcastReceiver = nil
         sharingScreen = false
-        restoreCameraTrack()
-        screenGeneration += 1
-        localVideo?.isEnabled = cameraWasEnabled
-        RPScreenRecorder.shared().stopCapture { _ in }
-        configureCamera()
+        if wasSharing {
+            restoreCameraTrack()
+            localVideo?.isEnabled = cameraWasEnabled
+            configureCamera()
+            if !closed { Task { [weak self] in await self?.sendMediaState(request: false) } }
+        }
         onScreenSharingEnded?()
-        if !closed { Task { [weak self] in await self?.sendMediaState(request: false) } }
     }
     private struct MediaState: Codable { let screenSharing: Bool; let request: Bool? }
     private func sendMediaState(request: Bool) async {

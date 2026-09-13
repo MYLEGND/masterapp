@@ -126,11 +126,13 @@ private struct LegendVerificationProfileRoute: Identifiable {
 struct MessagingHomeView: View {
     @ObservedObject var store: MessagingStore
     let openConversation: (UUID) -> Void
+    var openCallingProfilePhoto: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var inboxSearch = ""
     @State private var isPresentingNewConversation = false
     @State private var isPresentingCallDirectory = false
+    @State private var isPresentingCallingProfile = false
     @State private var conversationPendingRemoval: ConversationSummary?
 
     var body: some View {
@@ -153,6 +155,9 @@ struct MessagingHomeView: View {
                 }
             )
             .legendNextSheetChrome(detents: [.large])
+        }
+        .sheet(isPresented: $isPresentingCallingProfile) {
+            if let calling = store.calling { LegendCallPreferencesView(store: calling, openProfilePhoto: openCallingProfilePhoto) }
         }
         .sheet(isPresented: $isPresentingCallDirectory) {
             LegendRecipientPicker(
@@ -304,6 +309,12 @@ struct MessagingHomeView: View {
                     .buttonStyle(LegendMessagingPressButtonStyle())
                     .accessibilityLabel(LegendLocalized("Start a new conversation", context: "accessibility copy"))
 
+                    if store.calling != nil {
+                        Button { isPresentingCallingProfile = true } label: {
+                            Image(systemName: "person.crop.circle.badge.checkmark")
+                                .foregroundStyle(.white).frame(width: 44, height: 44)
+                        }.accessibilityLabel(LegendLocalized("Calling profile"))
+                    }
                     Button {
                         isPresentingCallDirectory = true
                     } label: {

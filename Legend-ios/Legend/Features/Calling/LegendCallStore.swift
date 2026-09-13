@@ -55,6 +55,44 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     var isCaller: Bool { current.map { isCallerAccount($0) && $0.callerDeviceId == deviceId } ?? false }
     var incoming: Bool { current?.status == "ringing" && !isCaller }
     var name: String { if isStarting { return outgoingName }; return isCaller ? current?.calleeName ?? "" : current?.callerName ?? "" }
+    var participantImageURL: URL? {
+        current?.participantImageURL(outgoing: isCaller, apiBaseURL:
+            (Bundle.main.object(forInfoDictionaryKey: "LegendAPIBaseURL") as? String).flatMap(URL.init(string:)))
+    }
+
+    var wallpaperImageURL: URL? {
+        current?.wallpaperImageURL(outgoing: isCaller, apiBaseURL:
+            (Bundle.main.object(forInfoDictionaryKey: "LegendAPIBaseURL") as? String).flatMap(URL.init(string:)))
+    }
+    @Published private(set) var preferences: LegendCallPreferences?
+    @Published private(set) var ringtones: [LegendCallRingtoneChoice] = []
+    @Published private(set) var wallpapers: [LegendCallWallpaperChoice] = []
+    @Published private(set) var preferencesBusy = false
+    @Published private(set) var preferencesError: String?
+    private var preferencesTask: Task<Void, Never>?
+    func loadPreferences() { requestPreferences(nil) }
+    func savePreferences(_ value: LegendCallPreferences) { requestPreferences(value) }
+    private func requestPreferences(_ value: LegendCallPreferences?) {
+        guard !stopped, !preferencesBusy else { return }
+        preferencesBusy = true; preferencesError = nil
+        preferencesTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.preferencesBusy = false }
+            do {
+                let result = try await transport.call(LegendCallCommand(action: "preferences", deviceId: deviceId, preferences: value))
+                try Task.checkCancellation()
+                guard !stopped else { return }
+                guard result.succeeded, let preferences = result.preferences,
+                      let ringtones = result.ringtones, let wallpapers = result.wallpapers else {
+                    throw LegendCallingError.unavailable(result.error ?? "Calling preferences could not be loaded.")
+                }
+                self.preferences = preferences; self.ringtones = ringtones; self.wallpapers = wallpapers
+            } catch is CancellationError {} catch {
+                guard !stopped else { return }
+                preferencesError = "Calling preferences could not be saved or loaded. Please try again."
+            }
+        }
+    }
 
     init(transport: MobileMessagingRealtimeClient, identity: LogicalParticipantIdentity) {
         self.transport = transport
@@ -144,17 +182,25 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         Task { try? await controller.request(CXTransaction(action: CXSetMutedCallAction(call: current.id, muted: !muted))) }
     }
     func toggleCamera() { cameraEnabled.toggle(); peer?.setCameraEnabled(cameraEnabled) }
+    @Published var broadcastPickerPresented = false
     func toggleScreenSharing() {
-        guard let peer, current?.video == true, !requestingScreenShare else { return }
+        guard let peer, let call = current, call.video, !requestingScreenShare else { return }
         if sharingScreen { peer.stopScreenSharing(); sharingScreen = false; minimized = false; return }
+        let generation = callGeneration
         requestingScreenShare = true
-        Task {
-            defer { requestingScreenShare = false }
+        Task { [weak self] in
+            guard let self else { return }
+            defer { if callGeneration == generation { requestingScreenShare = false } }
             do {
                 try await peer.startScreenSharing()
-                guard current != nil else { peer.stopScreenSharing(); return }
-                sharingScreen = true; minimized = true
-            } catch { controlError = LegendLocalized("Screen sharing could not start. Please try again.") }
+                guard !stopped, current?.id == call.id, callGeneration == generation, self.peer === peer else {
+                    peer.stopScreenSharing(); return
+                }
+                broadcastPickerPresented = true
+            } catch {
+                guard callGeneration == generation, current?.id == call.id else { return }
+                controlError = LegendLocalized("Screen sharing could not start. Please try again.")
+            }
         }
     }
     func switchCamera() { peer?.switchCamera() }
@@ -191,10 +237,10 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         return result
     }
     private func isCallerAccount(_ call: LegendCallSnapshot) -> Bool {
-        call.callerType == identity.participantType.rawValue && (call.callerUserIds ?? [call.callerUserId]).contains { $0.caseInsensitiveCompare(identity.userID) == .orderedSame }
+        call.isCaller(identity)
     }
     private func isCalleeAccount(_ call: LegendCallSnapshot) -> Bool {
-        call.calleeType == identity.participantType.rawValue && (call.calleeUserIds ?? [call.calleeUserId]).contains { $0.caseInsensitiveCompare(identity.userID) == .orderedSame }
+        call.isCallee(identity)
     }
     func belongs(to identity: LogicalParticipantIdentity) -> Bool { self.identity == identity }
     func owns(_ call: LegendCallSnapshot) -> Bool { isCallerAccount(call) || isCalleeAccount(call) }
@@ -291,8 +337,12 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
             guard let self, self.current?.id == call.id else { throw CancellationError() }
             _ = try await self.send(LegendCallCommand(action: "signal", deviceId: self.deviceId, callId: call.id, signalKind: kind, signalData: data, epoch: epoch))
         }
-        engine.onRemoteScreenSharing = { [weak self] sharing in self?.remoteScreenSharing = sharing }
-        engine.onRemoteVideo = { [weak self] track in self?.remoteVideo = track }
+        engine.onRemoteScreenSharing = { [weak self] sharing in
+            guard let self, self.isCurrentCall(call.id, generation: generation) else { return }; self.remoteScreenSharing = sharing
+        }
+        engine.onRemoteVideo = { [weak self] track in
+            guard let self, self.isCurrentCall(call.id, generation: generation) else { return }; self.remoteVideo = track
+        }
         engine.onState = { [weak self] state in
             guard let self, self.current?.id == call.id else { return }
             self.status = state
@@ -305,7 +355,14 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
                 self.fail("This network could not establish a direct call. Try another Wi-Fi or mobile connection.")
             }
         }
-        engine.onScreenSharingEnded = { [weak self] in self?.sharingScreen = false; self?.minimized = false }
+        engine.onScreenSharingStarted = { [weak self] in
+            guard let self, self.isCurrentCall(call.id, generation: generation) else { return }
+            self.sharingScreen = true; self.minimized = true; self.broadcastPickerPresented = false
+        }
+        engine.onScreenSharingEnded = { [weak self] in
+            guard let self, self.isCurrentCall(call.id, generation: generation) else { return }
+            self.sharingScreen = false; self.minimized = false; self.broadcastPickerPresented = false
+        }
         peer = engine; localVideo = engine.localVideo
         LegendCallSystem.shared.setMediaRequested(true, for: self)
         updateProximity()
@@ -399,6 +456,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         localVideo = nil; remoteVideo = nil; current = nil; pendingOutgoing = nil
         muted = false; cameraEnabled = true; speaker = false
         remoteScreenSharing = false
+        requestingScreenShare = false; broadcastPickerPresented = false
         sharingScreen = false; minimized = false; controlError = nil
         UIDevice.current.isProximityMonitoringEnabled = false
         LegendCallSystem.shared.setMediaRequested(false, for: self)
@@ -408,6 +466,8 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         Task { _ = try? await transport.call(LegendCallCommand(action: "unregister-voip", deviceId: deviceId, pushToken: token, pushEnvironment: environment.rawValue), existingConnectionOnly: true) }
     }
     func shutdown() {
+        preferencesTask?.cancel(); preferencesTask = nil
+        preferences = nil; ringtones = []; wallpapers = []; preferencesError = nil
         guard !stopped else { return }
         stopped = true
         transport.retireAccountConnection()
