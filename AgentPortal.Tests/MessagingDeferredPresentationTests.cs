@@ -134,6 +134,7 @@ public sealed partial class MessagingServiceTests
     public async Task DeferredNotification_DetectionFailureCannotUseMatchingProfilePreferencesAsBodyEvidence()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
         var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
         var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");

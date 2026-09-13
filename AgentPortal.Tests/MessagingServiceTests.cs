@@ -1343,6 +1343,7 @@ public sealed partial class MessagingServiceTests
     public async Task MessageTranslation_CanonicalSenderPreferenceRoutesEnToEs_WhenRecipientReads()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db, "en", "es", "fr");
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
         var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
         var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
@@ -1652,6 +1653,7 @@ public sealed partial class MessagingServiceTests
     public async Task SendMessage_PersistsOriginalAndStagesRecipientLocalizedNotification()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
         var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
         var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
@@ -2046,6 +2048,7 @@ public sealed partial class MessagingServiceTests
     public async Task MessageTranslation_UsesSenderCanonicalPreferenceAndPreservesDetectedLanguageMetadata()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         await SeedAgentAndClientAsync(
             db,
             linkClientToAgent: true,
@@ -2103,9 +2106,28 @@ public sealed partial class MessagingServiceTests
             "client-1",
             MessagingParticipantTypes.Client);
 
-        // The sender's canonical route preference is ht while detection still
-        // records English body metadata. Routing must not silently treat that
-        // detection as the user's language identity.
+        // Match the migrated production registry before snapshotting preference.
+        // Reading that preference must neither bootstrap nor mutate the registry.
+        var languageIds = await db.LegendLanguageDefinitions.OrderBy(item => item.LanguageCode)
+            .Select(item => item.Id).ToArrayAsync();
+        EventHandler<SavingChangesEventArgs> rejectPreferenceWrite = (_, _) =>
+            Assert.Fail("A canonical language preference read must not save changes.");
+        db.SavingChanges += rejectPreferenceWrite;
+        try
+        {
+            Assert.Equal("ht", await new ControlledResourceAccessService(db)
+                .GetCanonicalPreferredLanguageAsync(agent));
+        }
+        finally
+        {
+            db.SavingChanges -= rejectPreferenceWrite;
+        }
+        Assert.False(db.ChangeTracker.HasChanges());
+        Assert.Equal(languageIds, await db.LegendLanguageDefinitions.OrderBy(item => item.LanguageCode)
+            .Select(item => item.Id).ToArrayAsync());
+
+        // Preference remains ht while detection records the English body;
+        // neither metadata value may stand in for the other.
         var opened = await service.StartConversationAsync(
             new StartMessagingConversationCommand(
                 agent,
