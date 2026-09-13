@@ -243,6 +243,20 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         Mode = "legend", NativeOnly = false, SourceLanguageCode = "en",
                         Messages = [new("user", "Observed.")]
                     });
+                var responseExternalCounts = externalCounts();
+                Record([
+                    new
+                    {
+                        Label = "admitted_conflicting_transitions",
+                        Prompt = "Observed.",
+                        Response = response,
+                        ProviderCalls = responseExternalCounts.Sends,
+                        ProviderClientConstructions = responseExternalCounts.Clients,
+                        OperationalWriteAttempts = (int?)null,
+                        ObservedWriteEntities = (string[]?)null,
+                        WriteObservation = "not_instrumented"
+                    }
+                ]);
                 Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
 
                 var unknown = await operations.TryInferConversationWithDiscourseAsync(
@@ -331,6 +345,21 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         Mode = "legend", NativeOnly = nativeOnly, SourceLanguageCode = "en",
                         Messages = [new("user", prompt)]
                     });
+                var responseExternalCounts = externalCounts();
+                Record([
+                    new
+                    {
+                        Label = "admitted_owned_record:" +
+                            (nativeOnly ? "native_only" : "provider_enabled"),
+                        Prompt = prompt,
+                        Response = response,
+                        ProviderCalls = responseExternalCounts.Sends,
+                        ProviderClientConstructions = responseExternalCounts.Clients,
+                        writes.OperationalWriteAttempts,
+                        ObservedWriteEntities = writes.ObservedWriteEntities.ToArray(),
+                        WriteObservation = "active_save_changes_sentinel"
+                    }
+                ]);
                 Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
                 Assert.DoesNotContain("999", response.Message ?? string.Empty, StringComparison.Ordinal);
                 Assert.Equal((0, 0), externalCounts());
@@ -1108,7 +1137,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         return match.Success && int.TryParse(match.Groups["count"].Value, out var count) ? count : 0;
     }
 
-    private static void Record(IReadOnlyList<MatrixRow> rows)
+    private static void Record(IReadOnlyList<object> rows)
     {
         var path = Environment.GetEnvironmentVariable(
             "LEGEND_HELDOUT_MATRIX_PATH");
