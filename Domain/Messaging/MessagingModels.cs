@@ -4,6 +4,9 @@ namespace Domain.Messaging;
 
 public static class MessagingConversationTypes
 {
+    // A model conversation is not a human group. Older binaries which know
+    // only human conversation types must not admit it through group access.
+    public const string Assistant = "Assistant";
     public const string ClientAgent = "ClientAgent";
     public const string AgentDirect = "AgentDirect";
     public const string ClientJourney = "ClientJourney";
@@ -12,6 +15,7 @@ public static class MessagingConversationTypes
 
 public static class MessagingConversationPurposes
 {
+    public const string FounderAI = "FounderAI";
     /// <summary>
     /// The original persisted name of the one private Founder + Legend staff
     /// queue. It now serves every controlled-resource review and is retained so
@@ -110,6 +114,13 @@ public static class MessagingParticipantTypes
     public const string Client = "Client";
 }
 
+public static class MessagingAuthorKinds
+{
+    public const string Human = "Human";
+    public const string Assistant = "Assistant";
+    public const string Service = "Service";
+}
+
 /// <summary>
 /// Server-enforced recipient collections available to an agent in the messaging command center.
 /// </summary>
@@ -143,6 +154,80 @@ public static class MessagingParticipantIdentityKey
 }
 
 public sealed record MessagingActor(string UserId, string ParticipantType);
+
+/// <summary>Server-only turn receipt. Persisting a reply is not knowledge promotion.</summary>
+public sealed record MessagingFounderAiResponseProvenance(
+    [property: System.Text.Json.Serialization.JsonRequired] bool Succeeded,
+    [property: System.Text.Json.Serialization.JsonRequired] string Mode,
+    string? Stage = null,
+    string? Reason = null,
+    string? ResponseAuthority = null,
+    string? FoundationModel = null,
+    string? FoundationHosting = null,
+    bool? ExternalAnsweringUsed = null,
+    bool? EscalationUsed = null,
+    string? EscalationDisposition = null,
+    string? ResearchState = null,
+    string? LearningState = null,
+    string? ModelAssistanceState = null,
+    string? ModelVersion = null,
+    Guid? ModelTrainingRunId = null,
+    string? ModelProvenance = null,
+    [property: System.Text.Json.Serialization.JsonRequired] int Version = 1,
+    string? FailureKind = null,
+    int? ProviderStatusCode = null,
+    string? Reference = null,
+    IReadOnlyList<string>? CompletedWork = null,
+    IReadOnlyList<string>? RemainingWork = null,
+    bool Resumable = false,
+    string? ModelAssistanceReason = null,
+    LegendConnectResearchEvidenceOrigin EvidenceOrigin = LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+    LegendConnectResearchOutcome? ResearchOutcome = null,
+    IReadOnlyList<LegendConnectGovernedScheduleCertificateSnapshot>? ScheduleCertificates = null,
+    IReadOnlyList<string>? ReasoningTransitionPath = null,
+    bool BodyIsError = false,
+    string? Error = null)
+{
+    public static MessagingFounderAiResponseProvenance OutcomeUnknown(string mode) =>
+        new(false, mode, Stage: "request_interrupted", Reason: "outcome_unknown",
+            ResponseAuthority: "SystemDiagnostic", FailureKind: "outcome_unknown", BodyIsError: true);
+}
+
+/// <summary>Actor, fingerprint and deadline are resolved by application code, never model output.</summary>
+public sealed record MessagingFounderAiBeginTurnCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    Guid OperationId,
+    Guid? ExpectedLastMessageId,
+    string Body,
+    string Mode,
+    string RequestFingerprint,
+    DateTime ExecutionDeadlineUtc);
+
+public sealed record MessagingFounderAiCompleteTurnCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    Guid OperationId,
+    Guid UserMessageId,
+    string Body,
+    string AuthorKind,
+    MessagingFounderAiResponseProvenance Provenance);
+
+public sealed record MessagingFounderAiTurnResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    string State,
+    MessagingMessageSummary? UserMessage = null,
+    MessagingMessageSummary? TerminalMessage = null,
+    Guid? OperationId = null)
+{
+    public Guid? ConversationId => UserMessage?.ConversationId;
+    public Guid? LastMessageId => TerminalMessage?.Id ?? UserMessage?.Id;
+    public DateTime? LastMessageUtc => TerminalMessage?.SentUtc ?? UserMessage?.SentUtc;
+    public static MessagingFounderAiTurnResult Failure(string code, string message) =>
+        new(false, code, message, "Rejected");
+}
 
 public sealed record MessagingConversationListQuery(
     string? Search = null,
@@ -615,6 +700,8 @@ public sealed record MessagingMessageSummary(
     MessagingTranslationPresentation? Translation = null,
     string? OriginalBody = null)
 {
+    public string AuthorKind { get; init; } = MessagingAuthorKinds.Human;
+    public MessagingFounderAiResponseProvenance? ResponseProvenance { get; init; }
     public MessagingSharedContent? SharedContent { get; init; }
     public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
 }

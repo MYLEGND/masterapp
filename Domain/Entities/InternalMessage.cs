@@ -10,6 +10,18 @@ public class InternalMessage
 
     public string SenderType { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Server-owned authorship. Assistant and service messages are not user
+    /// identities and never acquire participant or authentication authority.
+    /// </summary>
+    public string AuthorKind { get; set; } = "Human";
+
+    /// <summary>
+    /// Immutable, bounded server provenance for a governed conversation turn.
+    /// It contains no duplicate body and is never accepted from a chat client.
+    /// </summary>
+    public string? AiTurnMetadataJson { get; set; }
+
     public string Body { get; set; } = string.Empty;
 
     public Guid? SharedSocialPostId { get; set; }

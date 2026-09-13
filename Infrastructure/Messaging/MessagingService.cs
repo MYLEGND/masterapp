@@ -2653,7 +2653,10 @@ internal sealed partial class MessagingService : IMessagingService
                 .Distinct(StringComparer.Ordinal)
                 .ToArray()
             : await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        // Founder AI transcripts have a separate, stricter owner check within
+        // this same service. Generic messaging membership grants no access.
         var participantConversations = _db.MessageConversations.Where(conversation =>
+            conversation.Purpose != MessagingConversationPurposes.FounderAI &&
             conversation.Participants.Any(participant =>
                 participant.IsActive &&
                 actorUserIds.Contains(participant.UserId.ToLower()) &&
