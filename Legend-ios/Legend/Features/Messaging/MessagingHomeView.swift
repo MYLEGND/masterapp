@@ -1122,6 +1122,7 @@ private struct LegendRecipientPicker: View {
         selectedIntent = intent
         store.startConversation(
             with: recipient,
+            includeMessages: !forCalling,
             completion: { id in
                 guard pickerVisible, selectedIntent == intent else { return }
                 if forCalling {

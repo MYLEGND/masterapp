@@ -553,12 +553,12 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
-    fun startConversation(recipient: MessagingRecipient, opened: (String) -> Unit) = viewModelScope.launch {
+    fun startConversation(recipient: MessagingRecipient, includeMessages: Boolean = true, opened: (String) -> Unit) = viewModelScope.launch {
         if (_isSending.value) return@launch
         _isSending.value = true
         val openedConversationId: String?
         try {
-            openedConversationId = beginConversation(recipient)
+            openedConversationId = beginConversation(recipient, includeMessages)
         } finally {
             _isSending.value = false
         }
@@ -602,13 +602,16 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         openedConversationId?.let(opened)
     }
 
-    private suspend fun beginConversation(recipient: MessagingRecipient): String? =
-        when (val result = repository.startConversation(role, recipient)) {
+    private suspend fun beginConversation(recipient: MessagingRecipient, includeMessages: Boolean = true): String? =
+        when (val result = repository.startConversation(role, recipient, includeMessages)) {
             is LoadState.Data -> {
-                selectedConversationId = result.value.id
-                ++presentationRevision
-                _detail.value = result
-                viewModelScope.launch { refreshInboxSilently() }
+                if (includeMessages) {
+                    selectedConversationId = result.value.id
+                    ++presentationRevision
+                    _detail.value = result
+                    viewModelScope.launch { refreshInboxSilently() }
+                }
+                // Metadata-only call setup must never replace canonical chat history.
                 result.value.id
             }
             is LoadState.Error -> {

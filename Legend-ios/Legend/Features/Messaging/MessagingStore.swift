@@ -833,8 +833,8 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    func startConversation(with recipient: MessagingRecipient, completion: @escaping (UUID) -> Void) {
-        beginConversation(resolveRecipient: { recipient }, completion: completion)
+    func startConversation(with recipient: MessagingRecipient, includeMessages: Bool = true, completion: @escaping (UUID) -> Void) {
+        beginConversation(resolveRecipient: { recipient }, includeMessages: includeMessages, completion: completion)
     }
 
     func createGroup(
@@ -1287,6 +1287,7 @@ final class MessagingStore: ObservableObject {
 
     private func beginConversation(
         resolveRecipient: @escaping () async throws -> MessagingRecipient,
+        includeMessages: Bool = true,
         completion: @escaping (UUID) -> Void
     ) {
         guard !isStartingConversation else { return }
@@ -1298,13 +1299,15 @@ final class MessagingStore: ObservableObject {
                 let recipient = try await resolveRecipient()
                 let conversation = try await api.start(
                     recipient: recipient,
+                    includeMessages: includeMessages,
                     accessToken: try await accessTokenProvider())
-                presentConversation(conversation)
-                selectedConversationID = conversation.id
-                completion(conversation.id)
-                Task { [weak self] in
-                    _ = await self?.refresh()
+                if includeMessages {
+                    presentConversation(conversation)
+                    selectedConversationID = conversation.id
+                    Task { [weak self] in _ = await self?.refresh() }
                 }
+                // A call's authorized metadata is not a loaded chat-history snapshot.
+                completion(conversation.id)
             } catch {
                 sendFailure = failure(for: error, title: LegendLocalized("Conversation not started"))
             }

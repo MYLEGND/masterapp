@@ -2954,7 +2954,7 @@ private fun MessagesScreen(
                 if (callDirectoryOpen && existingId != null) {
                     callDirectoryOpen = false
                     callTarget = Triple(existingId, recipient.displayName, selectedVideo)
-                } else viewModel.startConversation(recipient) { id ->
+                } else viewModel.startConversation(recipient, includeMessages = !wasCalling) { id ->
                     if (wasCalling) {
                         if (callDirectoryOpen && callDirectoryIntent == intent && LegendCallPlatform.store === selectedOwner) {
                             callDirectoryOpen = false

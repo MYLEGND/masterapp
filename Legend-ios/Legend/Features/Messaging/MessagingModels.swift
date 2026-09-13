@@ -589,11 +589,12 @@ struct StartConversationRequest: Encodable, Sendable {
     let targetUserID: String
     let targetParticipantType: ParticipantType
     let initialMessageBody: String?
+    let includeMessages: Bool
 
     private enum CodingKeys: String, CodingKey {
         case targetUserID = "targetUserId"
         case targetParticipantType = "targetParticipantType"
-        case initialMessageBody
+        case initialMessageBody, includeMessages
     }
 }
 
@@ -781,7 +782,7 @@ protocol MessagingAPI: Sendable {
         scope: MessagingRecipientScope?,
         accessToken: String
     ) async throws -> [MessagingRecipient]
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
@@ -906,6 +907,10 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+        try await start(recipient: recipient, includeMessages: true, accessToken: accessToken)
+    }
+
     func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences {
         throw MobileMessagingContractError.unavailable
     }
@@ -1158,7 +1163,7 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -1292,13 +1297,14 @@ struct URLSessionMessagingAPI: MessagingAPI {
             response: [MessagingRecipient].self)
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         try await client.post(
             "/api/v1/mobile/messaging/conversations",
             body: StartConversationRequest(
                 targetUserID: recipient.identity.userID,
                 targetParticipantType: recipient.identity.participantType,
-                initialMessageBody: nil),
+                initialMessageBody: nil,
+                includeMessages: includeMessages),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,

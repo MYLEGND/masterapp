@@ -142,10 +142,10 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun uploadAttachment(context: Context, role: String, conversationId: String, messageId: String, uri: Uri) = request {
         attachmentUploader.upload(context, role, conversationId, messageId, uri)
     }
-    suspend fun startConversation(role: String, recipient: MessagingRecipient) = request {
+    suspend fun startConversation(role: String, recipient: MessagingRecipient, includeMessages: Boolean = true) = request {
         client.api.startConversation(
             role,
-            StartConversationRequest(recipient.identity.userId, recipient.identity.participantType),
+            StartConversationRequest(recipient.identity.userId, recipient.identity.participantType, includeMessages = includeMessages),
         ).legendBody()
     }
     suspend fun createGroup(role: String, request: CreateMessagingGroupRequest) = request { client.api.createMessagingGroup(role, request).legendBody() }

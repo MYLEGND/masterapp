@@ -1,5 +1,8 @@
 package com.mylegnd.legend.registered
 
+import com.mylegnd.legend.registered.core.model.MessagingRecipient
+import com.mylegnd.legend.registered.core.model.MobileIdentity
+import kotlinx.serialization.json.*
 import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.data.LoadState
@@ -13,6 +16,46 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MessageReactionTransportTest {
+    @Test fun callMetadataStartAndOrdinaryNavigationUseSameAuthenticatedEndpoint() = runBlocking<Unit> {
+        ServerSocket(0).use { server ->
+            server.soTimeout = 5_000
+            val peer = CompletableFuture.runAsync {
+                listOf(false, true, false).forEachIndexed { index, includeMessages ->
+                    server.accept().use { socket ->
+                        socket.soTimeout = 5_000
+                        val input = DataInputStream(socket.getInputStream())
+                        val headers = StringBuilder()
+                        while (!headers.endsWith("\r\n\r\n")) { check(headers.length < 16_384); headers.append(input.readUnsignedByte().toChar()) }
+                        assertTrue(headers.startsWith("POST /api/v1/mobile/messaging/conversations HTTP/1.1"))
+                        assertTrue(headers.contains("Authorization: Bearer test-token", true))
+                        assertTrue(headers.contains("X-Legend-Participant-Type: Client", true))
+                        val length = headers.lines().first { it.startsWith("Content-Length:", true) }.substringAfter(':').trim().toInt()
+                        val body = Json.parseToJsonElement(ByteArray(length).also(input::readFully).toString(Charsets.UTF_8)).jsonObject
+                        assertEquals(includeMessages, body["includeMessages"]?.jsonPrimitive?.boolean ?: true)
+                        assertEquals("recipient", body["targetUserId"]!!.jsonPrimitive.content)
+                        assertEquals("Agent", body["targetParticipantType"]!!.jsonPrimitive.content)
+                        val payload = if (index == 2) "{\"message\":\"Forbidden\"}" else
+                            "{\"id\":\"conversation\",\"conversationType\":\"ClientAgent\",\"title\":\"Recipient\",\"participants\":[],\"messages\":[],\"isMuted\":false,\"isClosed\":false,\"canManageMembers\":false}"
+                        val bytes = payload.toByteArray()
+                        val output = socket.getOutputStream()
+                        output.write("HTTP/1.1 ${if (index == 2) "403 Forbidden" else "200 OK"}\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                        output.write(bytes); output.flush()
+                    }
+                }
+            }
+            val client = LegendApiClient.create("http://127.0.0.1:${server.localPort}", object : AccessTokenProvider { override suspend fun accessToken() = "test-token" })
+            try {
+                val repository = MessagingRepository(client)
+                val recipient = MessagingRecipient(MobileIdentity("recipient", "Agent"), "profile", "Recipient")
+                val metadata = repository.startConversation("Client", recipient, includeMessages = false)
+                assertTrue(metadata is LoadState.Data && metadata.value.id == "conversation" && metadata.value.messages.isEmpty())
+                assertTrue(repository.startConversation("Client", recipient) is LoadState.Data)
+                assertTrue(repository.startConversation("Client", recipient, includeMessages = false) is LoadState.Error)
+                peer.get(8, TimeUnit.SECONDS)
+            } finally { client.httpClient.dispatcher.cancelAll(); client.httpClient.connectionPool.evictAll(); peer.cancel(true) }
+        }
+    }
+
     @Test fun typedAuthenticatedSetRemoveAndForbiddenUseCanonicalContract() = runBlocking<Unit> {
         ServerSocket(0).use { server ->
             server.soTimeout = 5_000
