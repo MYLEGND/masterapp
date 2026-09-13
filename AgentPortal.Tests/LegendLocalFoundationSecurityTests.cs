@@ -20,6 +20,200 @@ public sealed class LegendLocalFoundationSecurityTests
     private const string Model = "controlled-fixture-model";
     private const string Resource = "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/fixture/providers/Microsoft.Compute/virtualMachines/controlled-serving";
     private static readonly string Revision = new('a', 40);
+    private const string FounderId = "74620db7-16f5-48bc-9570-5a572d9d53ce";
+    private static readonly string MacHostId = new('d', 64);
+
+    [Fact]
+    public async Task FounderMac_AuthenticatedFounderUsesPinnedTlsConnectorAndExactMacReceipt()
+    {
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(Completed(MacResponse()))));
+        var result = await Create(factory.Object, "https://founder-connector.example/v1/responses", MacConfiguration())
+            .GenerateAsync(Model, Request(LegendConnectExternalProviderPolicy.IndependentAnswering) with
+            { RequestingActorId = FounderId });
+        Assert.True(result.Succeeded);
+        Assert.Equal("Controlled answer.", result.Text);
+        Assert.Equal("LegendControlled", result.Hosting);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FounderMac_BufferedAndStreamingShareIdentityAndPolicyValidation(bool stream)
+    {
+        var configuration = MacConfiguration();
+        configuration["LegendConnect:Foundation:StreamResponses"] = stream.ToString();
+        var receipt = MacResponse();
+        receipt["stream"] = stream;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(stream ? Completed(receipt) : JsonSerializer.Serialize(receipt),
+                mediaType: stream ? "text/event-stream" : "application/json")));
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.IndependentAnswering) with { RequestingActorId = FounderId });
+        Assert.True(result.Succeeded, result.ErrorCode);
+        Assert.Equal("Controlled answer.", result.Text);
+        Assert.Contains("stream=" + stream.ToString().ToLowerInvariant(), result.InferenceSettings);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(true)]
+    public async Task FounderMac_BufferedCannotAcceptAbsentOrMismatchedFramingReceipt(bool? stream)
+    {
+        var configuration = MacConfiguration();
+        configuration["LegendConnect:Foundation:StreamResponses"] = "false";
+        var receipt = MacResponse();
+        if (stream.HasValue) receipt["stream"] = stream.Value;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(JsonSerializer.Serialize(receipt), mediaType: "application/json")));
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.False(result.Succeeded);
+        Assert.Equal("local_foundation_identity_or_response_invalid", result.ErrorCode);
+        Assert.Null(result.Text);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task FounderMac_BufferedRejectsOversizedResponseWithoutFallback()
+    {
+        var configuration = MacConfiguration();
+        configuration["LegendConnect:Foundation:StreamResponses"] = "false";
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(new string(' ', 2_000_001), mediaType: "application/json")));
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.False(result.Succeeded);
+        Assert.Equal("local_foundation_response_size_limit", result.ErrorCode);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task FounderMac_BufferedByteLimitRejectsMultibytePayloadBelowCharacterLimit()
+    {
+        var configuration = MacConfiguration();
+        configuration["LegendConnect:Foundation:StreamResponses"] = "false";
+        var receipt = MacResponse();
+        receipt["stream"] = false;
+        receipt["padding"] = new string('é', 1_000_001);
+        var body = JsonSerializer.Serialize(receipt, new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
+        Assert.True(body.Length < 2_000_000);
+        Assert.True(Encoding.UTF8.GetByteCount(body) > 2_000_000);
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(body, mediaType: "application/json")));
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.False(result.Succeeded);
+        Assert.Equal("local_foundation_response_size_limit", result.ErrorCode);
+        Assert.Null(result.Text);
+        Assert.Null(result.Output);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("founder@example.com")]
+    [InlineData("1fc326e9-178d-414d-8780-fbbdf74392a8")]
+    public async Task FounderMac_AbsentInvalidOrOtherActorCannotCreateAnyClient(string? actor)
+    {
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var result = await Create(factory.Object, overrides: MacConfiguration()).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = actor });
+        Assert.False(result.Succeeded);
+        Assert.Equal("local_foundation_founder_required", result.ErrorCode);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("founder@example.com")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public async Task FounderMac_InvalidConfiguredFounderCannotAuthorizeMatchingText(string configuredFounder)
+    {
+        var configuration = MacConfiguration();
+        configuration["FOUNDER_OID"] = configuredFounder;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = configuredFounder });
+        Assert.False(result.Succeeded);
+        Assert.Equal("local_foundation_founder_required", result.ErrorCode);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("HostKind", "FounderMacTypo")]
+    [InlineData("MacHostId", "unverified")]
+    [InlineData("ApiKey", "")]
+    [InlineData("Engine", "Vllm")]
+    [InlineData("EngineVersion", "unknown")]
+    [InlineData("EnableThinking", "true")]
+    [InlineData("MaxContextTokens", "32768")]
+    public async Task FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(string setting, string value)
+    {
+        var configuration = MacConfiguration();
+        configuration["LegendConnect:Foundation:" + setting] = value;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.False(result.Succeeded);
+        Assert.StartsWith("local_foundation_", result.ErrorCode);
+        Assert.Null(result.Text);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("http://founder-connector.example/v1/responses")]
+    [InlineData("https://founder-connector.example:8443/v1/responses")]
+    [InlineData("https://founder-connector.example/v1/responses?target=other")]
+    [InlineData("https://secret@founder-connector.example/v1/responses")]
+    [InlineData("https://founder-connector.example/v1/responses#other")]
+    [InlineData("https://founder-connector.example/other")]
+    public async Task FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(string endpoint)
+    {
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var result = await Create(factory.Object, endpoint, MacConfiguration()).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.False(result.Succeeded);
+        Assert.Equal("local_foundation_not_configured", result.ErrorCode);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("host_kind", null)]
+    [InlineData("host_kind", "AzureVm")]
+    [InlineData("mac_host_id", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")]
+    [InlineData("host_verification", "azure-imds-resource-and-tag-v1")]
+    public async Task FounderMac_WrongHostReceiptCannotClaimControlledAnswer(string field, string? value)
+    {
+        var receipt = MacResponse();
+        if (value is null) receipt.Remove(field);
+        else receipt[field] = value;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(Completed(receipt))));
+        var result = await Create(factory.Object, overrides: MacConfiguration()).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Text);
+        Assert.Equal("local_foundation_identity_or_response_invalid", result.ErrorCode);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
 
     [Fact]
     public async Task NativeOnly_UsesOnlyControlledClientAndRequiresExactReceipt()
@@ -245,7 +439,7 @@ public sealed class LegendLocalFoundationSecurityTests
             "response", ProviderPolicy: policy);
 
     private static LegendConnectModelInferenceTransport Create(IHttpClientFactory factory,
-        string endpoint = "http://127.0.0.1:8091/v1/responses") => new(factory,
+        string endpoint = "http://127.0.0.1:8091/v1/responses", Dictionary<string, string?>? overrides = null) => new(factory,
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["LegendConnect:Foundation:Enabled"] = "true",
@@ -263,7 +457,36 @@ public sealed class LegendLocalFoundationSecurityTests
             // than missing configuration, must prevent an external client.
             ["LegendConnect:ModelEvaluation:ApiKey"] = "external-fixture-key",
             ["LegendConnect:ModelEvaluation:Endpoint"] = "https://example.com/v1/responses"
-        }).Build(), NullLogger<LegendConnectModelInferenceTransport>.Instance);
+        }).AddInMemoryCollection(overrides ?? new Dictionary<string, string?>()).Build(), NullLogger<LegendConnectModelInferenceTransport>.Instance);
+
+    private static Dictionary<string, string?> MacConfiguration() => new()
+    {
+        ["FOUNDER_OID"] = FounderId,
+        ["LegendConnect:Foundation:HostKind"] = "FounderMac",
+        ["LegendConnect:Foundation:MacHostId"] = MacHostId,
+        ["LegendConnect:Foundation:Engine"] = "Mlx",
+        ["LegendConnect:Foundation:EngineVersion"] = "0.31.3",
+        ["LegendConnect:Foundation:MaxContextTokens"] = "8192",
+        ["LegendConnect:Foundation:MaxOutputTokens"] = "768"
+    };
+
+    private static Dictionary<string, object?> MacResponse()
+    {
+        var receipt = Response();
+        receipt.Remove("azure_resource_id");
+        receipt["host_kind"] = "FounderMac";
+        receipt["mac_host_id"] = MacHostId;
+        receipt["host_verification"] = "macos-arm64-user-bound-v1";
+        receipt["execution_limits"] = new { max_context_tokens = 8192, max_output_tokens = 768,
+            timeout_seconds = 60, maximum_concurrent_requests = 1 };
+        var generation = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+            JsonSerializer.Serialize(receipt["generation_settings"]))!;
+        generation["max_output_tokens"] = 768;
+        generation["engine"] = "Mlx";
+        generation["engine_version"] = "0.31.3";
+        receipt["generation_settings"] = generation;
+        return receipt;
+    }
 
     private static Dictionary<string, object?> Response() => new()
     {
@@ -287,7 +510,7 @@ public sealed class LegendLocalFoundationSecurityTests
     private static string Completed(Dictionary<string, object?>? response = null) => "data: " +
         JsonSerializer.Serialize(new { type = "response.completed", response = response ?? Response() }) + "\n\n";
 
-    private sealed class ReceiptHandler(string events, string? returnedUri = null) : HttpMessageHandler
+    private sealed class ReceiptHandler(string events, string? returnedUri = null, string mediaType = "text/event-stream") : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -297,10 +520,12 @@ public sealed class LegendLocalFoundationSecurityTests
             Assert.InRange(bytes.Length, 1, 2_000_000);
             Assert.Equal((long)bytes.Length, request.Content.Headers.ContentLength);
             Assert.Equal("application/json", request.Content.Headers.ContentType?.MediaType);
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Equal("controlled-fixture-key", request.Headers.Authorization?.Parameter);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 RequestMessage = returnedUri is null ? request : new HttpRequestMessage(HttpMethod.Post, returnedUri),
-                Content = new StringContent(events, Encoding.UTF8, "text/event-stream")
+                Content = new StringContent(events, Encoding.UTF8, mediaType)
             };
         }
     }

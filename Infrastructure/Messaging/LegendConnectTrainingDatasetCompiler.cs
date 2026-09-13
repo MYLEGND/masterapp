@@ -31,6 +31,11 @@ internal sealed class LegendConnectTrainingDatasetCompiler
         _configuration = configuration;
     }
 
+    internal static string CurriculumEvidenceIdentity(Guid sourceExampleId, Guid targetExampleId,
+        string pairKey, string sourceHash, string targetHash, string provenance) =>
+        StableHash(string.Join('|', "curriculum", sourceExampleId.ToString("D"), targetExampleId.ToString("D"),
+            pairKey, sourceHash, targetHash, provenance));
+
     internal async Task<LegendConnectTrainingDatasetManifest> CompileAsync(
         string scopeKey = "Global",
         CancellationToken cancellationToken = default)
@@ -402,15 +407,8 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                 !LegendFoundationConversationControl.TryValidateOracle(item.SourceUnit.Text, item.TargetUnit.Text, item.TargetUnit.LanguageCode)))
                 throw new InvalidOperationException("training_foundation_control_invalid");
 
-            var evidenceIdentity = StableHash(
-                string.Join('|',
-                    "curriculum",
-                    item.SourceExample.Id.ToString("D"),
-                    item.TargetExample.Id.ToString("D"),
-                    pairKey,
-                    item.SourceUnit.NormalizedHash,
-                    item.TargetUnit.NormalizedHash,
-                    provenance));
+            var evidenceIdentity = CurriculumEvidenceIdentity(item.SourceExample.Id, item.TargetExample.Id,
+                pairKey, item.SourceUnit.NormalizedHash, item.TargetUnit.NormalizedHash, provenance);
 
             AddOrStrengthen(
                 rows,
@@ -1535,6 +1533,12 @@ internal static class LegendFoundationConversationControl
         using var document = JsonDocument.Parse(source);
         var oracle = document.RootElement.GetProperty("oracle");
         var kind = oracle.GetProperty("kind").GetString()!;
+        if (kind == "boolean_premises")
+        {
+            if (!TryEvaluateBooleanOracle(oracle, out _, out _, out var identity))
+                throw new InvalidOperationException("training_boolean_oracle_invalid");
+            return identity;
+        }
         var a = oracle.GetProperty("a").GetInt32();
         var b = oracle.GetProperty("b").GetInt32();
         // Cosmetic case labels and declared scenario names cannot make one
@@ -1542,6 +1546,15 @@ internal static class LegendFoundationConversationControl
         // across operand order and the English/Haitian-Creole surface.
         if (kind is "sum" or "ht_sum")
         { kind = "sum"; if (a > b) (a, b) = (b, a); }
+        // The legacy three-premise control and its Boolean representation
+        // are the same logical structure, including across surface formats.
+        if (kind == "conflicting_premises")
+        {
+            using var equivalent = JsonDocument.Parse("{\"kind\":\"boolean_premises\",\"variables\":2,\"premises\":[[-1,2],[1],[-2]]}");
+            if (!TryEvaluateBooleanOracle(equivalent.RootElement, out _, out _, out var identity))
+                throw new InvalidOperationException("training_boolean_oracle_invalid");
+            return identity;
+        }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { kind, a, b })))).ToLowerInvariant();
     }
 
@@ -1557,6 +1570,11 @@ internal static class LegendFoundationConversationControl
             if (!document.RootElement.TryGetProperty("oracle", out var oracle) ||
                 oracle.ValueKind != JsonValueKind.Object) return false;
             var kind = oracle.GetProperty("kind").GetString();
+            if (kind == "boolean_premises")
+                return category == "reasoning" && language == "en" &&
+                    TryEvaluateBooleanOracle(oracle, out var instruction, out var result, out _) &&
+                    supplied.GetArrayLength() == 1 && supplied[0].GetProperty("role").GetString() == "user" &&
+                    supplied[0].GetProperty("content").GetString() == instruction && expected == result;
             var a = oracle.GetProperty("a").GetInt32();
             var b = oracle.GetProperty("b").GetInt32();
             var label = oracle.GetProperty("label").GetString();
@@ -1621,6 +1639,110 @@ internal static class LegendFoundationConversationControl
         }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         { return false; }
+    }
+
+    internal static bool MatchesVerifiedTarget(string source, string expected, string actual)
+    {
+        JsonDocument declaration;
+        try { declaration = JsonDocument.Parse(source); }
+        catch (JsonException) { return string.Equals(expected.Trim(), actual.Trim(), StringComparison.Ordinal); }
+        using (declaration)
+        {
+            var root = declaration.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("oracle", out var oracle) ||
+                oracle.ValueKind != JsonValueKind.Object || !oracle.TryGetProperty("kind", out var kind) ||
+                kind.ValueKind != JsonValueKind.String || kind.GetString() != "boolean_premises")
+                return string.Equals(expected.Trim(), actual.Trim(), StringComparison.Ordinal);
+            try
+            {
+                if (!TryValidateOracle(source, expected, "en")) return false;
+                using var target = JsonDocument.Parse(expected);
+                using var response = JsonDocument.Parse(actual);
+                var value = response.RootElement;
+                if (value.ValueKind != JsonValueKind.Object || value.EnumerateObject().Count() != 2 ||
+                    !value.TryGetProperty("consistent", out var consistent) || consistent.ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
+                    !value.TryGetProperty("possible_false_premises", out var possible) || possible.ValueKind != JsonValueKind.Array) return false;
+                var indices = possible.EnumerateArray().Select(item => item.GetInt32()).ToArray();
+                var premiseCount = oracle.GetProperty("premises").GetArrayLength();
+                if (indices.Any(index => index < 1 || index > premiseCount) ||
+                    !indices.SequenceEqual(indices.Distinct().OrderBy(index => index))) return false;
+                return consistent.GetBoolean() == target.RootElement.GetProperty("consistent").GetBoolean() &&
+                    indices.SequenceEqual(target.RootElement.GetProperty("possible_false_premises").EnumerateArray().Select(item => item.GetInt32()));
+            }
+            catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
+            { return false; }
+        }
+    }
+
+    // Finite mathematical labels: no model-generated answer can authorize
+    // its own correctness. At most 16 worlds and 384 canonical renamings.
+    internal static bool TryEvaluateBooleanOracle(JsonElement oracle, out string instruction,
+        out string expected, out string problemIdentity)
+    {
+        instruction = expected = problemIdentity = string.Empty;
+        try
+        {
+            if (oracle.ValueKind != JsonValueKind.Object || oracle.EnumerateObject().Count() != 3 ||
+                oracle.GetProperty("kind").GetString() != "boolean_premises") return false;
+            var variables = oracle.GetProperty("variables").GetInt32();
+            var supplied = oracle.GetProperty("premises");
+            if (variables is < 1 or > 4 || supplied.ValueKind != JsonValueKind.Array || supplied.GetArrayLength() is < 1 or > 6) return false;
+            var premises = new List<int[]>();
+            foreach (var clause in supplied.EnumerateArray())
+            {
+                if (clause.ValueKind != JsonValueKind.Array || clause.GetArrayLength() is < 1 or > 4) return false;
+                var literals = clause.EnumerateArray().Select(value => value.GetInt32()).ToArray();
+                if (literals.Any(value => value == 0 || value < -variables || value > variables) ||
+                    literals.Select(Math.Abs).Distinct().Count() != literals.Length) return false;
+                premises.Add(literals);
+            }
+            if (premises.SelectMany(value => value).Select(Math.Abs).Distinct().Count() != variables) return false;
+            var consistent = false;
+            var possible = new SortedSet<int>();
+            for (var world = 0; world < (1 << variables); world++)
+            {
+                var falsePremises = Enumerable.Range(0, premises.Count).Where(index =>
+                    !premises[index].Any(literal => ((world & (1 << (Math.Abs(literal) - 1))) != 0) == (literal > 0))).ToArray();
+                consistent |= falsePremises.Length == 0;
+                if (falsePremises.Length == 1) possible.Add(falsePremises[0] + 1);
+            }
+            expected = JsonSerializer.Serialize(new { consistent, possible_false_premises = possible.ToArray() });
+            instruction = "Boolean premise analysis. Variables x1 through x" + variables +
+                " may independently be true or false. Each numbered premise is a disjunction (OR) of its literals. " +
+                string.Join("; ", premises.Select((clause, index) => "P" + (index + 1) + "=(" +
+                    string.Join(" OR ", clause.Select(literal => (literal < 0 ? "NOT " : "") + "x" + Math.Abs(literal))) + ")")) +
+                ". Return only JSON with properties consistent then possible_false_premises. " +
+                "consistent is true if any assignment makes every premise true. possible_false_premises is the sorted array of 1-based premise indices " +
+                "for which some assignment makes that premise false and every other premise true; compute this even when consistent is true. Do not assume any premise is authoritative.";
+            string? canonical = null;
+            foreach (var permutation in Permutations(Enumerable.Range(1, variables).ToArray(), 0))
+                for (var polarity = 0; polarity < (1 << variables); polarity++)
+                {
+                    var renamed = premises.Select(clause => string.Join(',', clause.Select(literal =>
+                    {
+                        var original = Math.Abs(literal) - 1;
+                        var sign = (literal > 0 ? 1 : -1) * ((polarity & (1 << original)) == 0 ? 1 : -1);
+                        return sign * permutation[original];
+                    }).OrderBy(value => value))).OrderBy(value => value, StringComparer.Ordinal);
+                    var encoded = variables + ":" + string.Join(';', renamed);
+                    if (canonical is null || StringComparer.Ordinal.Compare(encoded, canonical) < 0) canonical = encoded;
+                }
+            problemIdentity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("boolean_premises|" + canonical))).ToLowerInvariant();
+            return true;
+        }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException or FormatException or OverflowException)
+        { return false; }
+    }
+
+    private static IEnumerable<int[]> Permutations(int[] values, int start)
+    {
+        if (start == values.Length) { yield return (int[])values.Clone(); yield break; }
+        for (var index = start; index < values.Length; index++)
+        {
+            (values[start], values[index]) = (values[index], values[start]);
+            foreach (var permutation in Permutations(values, start + 1)) yield return permutation;
+            (values[start], values[index]) = (values[index], values[start]);
+        }
     }
 
     internal static bool TryRead(string source, out string? category, out string? scenario, out JsonElement messages)

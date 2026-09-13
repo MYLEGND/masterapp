@@ -15,6 +15,102 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectFoundationControlCompilerTests
 {
+    [Theory]
+    [InlineData("{\"possible_false_premises\":[1,2,3], \"consistent\":false}", true)]
+    [InlineData("{\"consistent\":true,\"possible_false_premises\":[1,2,3]}", false)]
+    [InlineData("{\"consistent\":false,\"possible_false_premises\":[1,2]}", false)]
+    [InlineData("{\"consistent\":false,\"possible_false_premises\":[1,1,2,3]}", false)]
+    [InlineData("{\"consistent\":false,\"possible_false_premises\":[3,2,1]}", false)]
+    [InlineData("{\"consistent\":false,\"possible_false_premises\":[0,1,2,3]}", false)]
+    [InlineData("{\"consistent\":false,\"consistent\":false,\"possible_false_premises\":[1,2,3]}", false)]
+    [InlineData("{\"consistent\":false,\"possible_false_premises\":[1,2,3],\"extra\":true}", false)]
+    [InlineData("{\"consistent\":\"false\",\"possible_false_premises\":[1,2,3]}", false)]
+    [InlineData("Answer: {\"consistent\":false,\"possible_false_premises\":[1,2,3]}", false)]
+    public async Task BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(string answer, bool correct)
+    {
+        using var oracle = JsonDocument.Parse("{\"kind\":\"boolean_premises\",\"variables\":2,\"premises\":[[-1,2],[1],[-2]]}");
+        Assert.True(LegendFoundationConversationControl.TryEvaluateBooleanOracle(oracle.RootElement, out var instruction, out var expected, out _));
+        var source = JsonSerializer.Serialize(new { schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = "triangle",
+            messages = new[] { new { role = "user", content = instruction } }, oracle = oracle.RootElement });
+        var example = new LegendConnectTrainingDatasetExample("e", "en:en", "en", "en", source, expected,
+            "SystemValidatedMachine", 3, "source-hash", "target-hash", "foundation.conversation", OutputContract: "foundation_control_exact_v1");
+        var judged = await new LocalLegendConnectModelEvaluationBackend().JudgeAsync(new(example, answer, expected,
+            BaselineModelText: "{\"consistent\":false,\"possible_false_premises\":[3]}"));
+        Assert.True(judged.Succeeded);
+        Assert.Equal(correct ? 1m : 0m, judged.ChallengerScore);
+        Assert.Equal(0m, judged.BaselineScore);
+        Assert.False(LegendFoundationConversationControl.MatchesVerifiedTarget("ordinary existing source", "Exact sentence.", "exact sentence."));
+    }
+
+    [Theory]
+    [InlineData("[[1]]", 1, "{\"consistent\":true,\"possible_false_premises\":[1]}")]
+    [InlineData("[[1],[-1]]", 1, "{\"consistent\":false,\"possible_false_premises\":[1,2]}")]
+    [InlineData("[[1],[1],[-1]]", 1, "{\"consistent\":false,\"possible_false_premises\":[3]}")]
+    [InlineData("[[1],[1],[-1],[-1]]", 1, "{\"consistent\":false,\"possible_false_premises\":[]}")]
+    [InlineData("[[-1,2],[1],[-2]]", 2, "{\"consistent\":false,\"possible_false_premises\":[1,2,3]}")]
+    [InlineData("[[-1,2],[-2,3],[1],[-3]]", 3, "{\"consistent\":false,\"possible_false_premises\":[1,2,3,4]}")]
+    public void BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(string premises, int variables, string expected)
+    {
+        using var oracle = JsonDocument.Parse("{\"kind\":\"boolean_premises\",\"variables\":" + variables + ",\"premises\":" + premises + "}");
+        Assert.True(LegendFoundationConversationControl.TryEvaluateBooleanOracle(oracle.RootElement, out var instruction, out var result, out _));
+        Assert.Equal(expected, result);
+        var source = JsonSerializer.Serialize(new { schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = "held-example",
+            messages = new[] { new { role = "user", content = instruction } }, oracle = oracle.RootElement });
+        Assert.True(LegendFoundationConversationControl.TryValidateOracle(source, result, "en"));
+        using var actual = JsonDocument.Parse(result);
+        var falseLabel = JsonSerializer.Serialize(new { consistent = !actual.RootElement.GetProperty("consistent").GetBoolean(),
+            possible_false_premises = actual.RootElement.GetProperty("possible_false_premises") });
+        Assert.False(LegendFoundationConversationControl.TryValidateOracle(source, falseLabel, "en"));
+        Assert.False(LegendFoundationConversationControl.TryValidateOracle(source, result, "ht"));
+    }
+
+    [Fact]
+    public void BooleanOracleCanonicalizesRenamingPolarityAndOrderButPreservesDifferentStructures()
+    {
+        string Identity(string premises, int variables)
+        {
+            using var oracle = JsonDocument.Parse("{\"kind\":\"boolean_premises\",\"variables\":" + variables + ",\"premises\":" + premises + "}");
+            Assert.True(LegendFoundationConversationControl.TryEvaluateBooleanOracle(oracle.RootElement, out _, out _, out var identity));
+            return identity;
+        }
+        Assert.Equal(Identity("[[-1,2],[1],[-2]]", 2), Identity("[[-1],[2,1],[-2]]", 2));
+        Assert.NotEqual(Identity("[[-1,2],[1],[-2]]", 2), Identity("[[-1,2],[-2,3],[1],[-3]]", 3));
+        Assert.NotEqual(Identity("[[1],[-1]]", 1), Identity("[[1],[1],[-1]]", 1));
+    }
+
+    [Theory]
+    [InlineData("{\"kind\":\"boolean_premises\",\"variables\":5,\"premises\":[[1]]}")]
+    [InlineData("{\"kind\":\"boolean_premises\",\"variables\":1,\"premises\":[[0]]}")]
+    [InlineData("{\"kind\":\"boolean_premises\",\"variables\":2,\"premises\":[[1]]}")]
+    [InlineData("{\"kind\":\"boolean_premises\",\"variables\":1,\"premises\":[[1,-1]]}")]
+    [InlineData("{\"kind\":\"boolean_premises\",\"variables\":1,\"premises\":[[1]],\"expected\":true}")]
+    public void BooleanOracleRejectsUnboundedAmbiguousOrSelfAuthorizingDeclarations(string json)
+    {
+        using var oracle = JsonDocument.Parse(json);
+        Assert.False(LegendFoundationConversationControl.TryEvaluateBooleanOracle(oracle.RootElement, out _, out _, out _));
+    }
+
+    [Fact]
+    public void RenamedContradictionGroupsCannotBecomeIndependentHeldOutProblems()
+    {
+        string Source(string label, int group, int property) => JsonSerializer.Serialize(new
+        {
+            schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = "claimed-" + label,
+            messages = new[] { new { role = "user", content = $"Case {label}: all members of group {group} have property {property}; item {label} belongs to group {group}; item {label} does not have property {property}. Which premise is false? State what follows without choosing an unsupported culprit." } },
+            oracle = new { kind = "conflicting_premises", a = group, b = property, label }
+        });
+        var first = Source("A", 12, 23);
+        var second = Source("B", 98, 76);
+        Assert.True(LegendFoundationConversationControl.TryValidateOracle(first,
+            "For case A, the premises are inconsistent; which premise is false cannot be determined.", "en"));
+        Assert.True(LegendFoundationConversationControl.TryValidateOracle(second,
+            "For case B, the premises are inconsistent; which premise is false cannot be determined.", "en"));
+        Assert.Equal(LegendFoundationConversationControl.ProblemIdentity(first), LegendFoundationConversationControl.ProblemIdentity(second));
+        using var equivalent = JsonDocument.Parse("{\"kind\":\"boolean_premises\",\"variables\":2,\"premises\":[[-1,2],[1],[-2]]}");
+        Assert.True(LegendFoundationConversationControl.TryEvaluateBooleanOracle(equivalent.RootElement, out _, out _, out var booleanIdentity));
+        Assert.Equal(booleanIdentity, LegendFoundationConversationControl.ProblemIdentity(first));
+    }
+
     [Fact]
     public async Task RenamingCaseAndScenarioCannotSplitTheSameExecutableProblem()
     {
@@ -115,6 +211,42 @@ public sealed class LegendConnectFoundationControlCompilerTests
         Assert.NotEqual(LegendConnectServingEvaluationContracts.ComparableSettings(before), LegendConnectServingEvaluationContracts.ComparableSettings(other));
         Assert.True(LegendConnectServingEvaluationContracts.IsValidSummarySettings(LegendConnectServingEvaluationContracts.SummarySettings(after)));
         Assert.True(after.Length <= 500);
+    }
+
+    [Fact]
+    public void ControlledMlxProofRequiresFullActualSettingsAndCannotUseHistoricalOrOtherEngineProof()
+    {
+        string Receipt(string engine, string adapter, bool thinking = false, bool stream = true) => JsonSerializer.Serialize(new
+        {
+            stream,
+            execution_limits = new { max_context_tokens = 8192, max_output_tokens = 1024, timeout_seconds = 120, maximum_concurrent_requests = 1 },
+            generation_settings = new { engine, engine_version = "0.31.3", tool_call_parser = "hermes", reasoning_parser = "qwen3",
+                max_output_tokens = 1024, temperature = 0m, top_p = 1m, top_k = 0, seed = 73, enable_thinking = thinking,
+                reasoning_effort = (string?)null, preserve_thinking = false, chat_template_sha256 = new string('c', 64) },
+            model_revision = new string('b', 40), adapter_version = adapter
+        });
+        using var baseline = JsonDocument.Parse(Receipt("Mlx", ""));
+        using var candidate = JsonDocument.Parse(Receipt("Mlx", new string('a', 64)));
+        using var wrongEngine = JsonDocument.Parse(Receipt("Vllm", new string('a', 64)));
+        using var unsupportedThinking = JsonDocument.Parse(Receipt("Mlx", "", true));
+        using var buffered = JsonDocument.Parse(Receipt("Mlx", "", stream: false));
+        var before = LegendConnectServingEvaluationContracts.FromLocalReceipt(baseline.RootElement);
+        var after = LegendConnectServingEvaluationContracts.FromLocalReceipt(candidate.RootElement);
+        Assert.True(LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(after, "ControlledMlx"));
+        Assert.False(LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(after, "LocalMlx"));
+        Assert.False(LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(after, "ControlledTransformers"));
+        Assert.False(LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(
+            LegendConnectServingEvaluationContracts.FromLocalReceipt(wrongEngine.RootElement), "ControlledMlx"));
+        Assert.Equal(LegendConnectServingEvaluationContracts.ComparableSettings(before), LegendConnectServingEvaluationContracts.ComparableSettings(after));
+        Assert.NotEqual(LegendConnectServingEvaluationContracts.SummarySettings(before), LegendConnectServingEvaluationContracts.SummarySettings(after));
+        var bufferedSettings = LegendConnectServingEvaluationContracts.FromLocalReceipt(buffered.RootElement);
+        Assert.True(LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(bufferedSettings, "ControlledMlx"));
+        Assert.NotEqual(LegendConnectServingEvaluationContracts.ComparableSettings(before), LegendConnectServingEvaluationContracts.ComparableSettings(bufferedSettings));
+        Assert.Throws<InvalidOperationException>(() => LegendConnectServingEvaluationContracts.FromLocalReceipt(unsupportedThinking.RootElement));
+        var historical = string.Join(',', before.Split(',').Take(13)).Replace("controlled-responses-v1", "local-responses-v1", StringComparison.Ordinal);
+        Assert.True(LegendConnectServingEvaluationContracts.IsValidInferenceSettings(historical));
+        Assert.False(LegendConnectServingEvaluationContracts.IsValidInferenceSettings(historical.Replace("stream=true", "stream=false", StringComparison.Ordinal)));
+        Assert.False(LegendConnectServingEvaluationContracts.IsCompatibleWithBackend(historical, "ControlledMlx"));
     }
 
     [Fact]

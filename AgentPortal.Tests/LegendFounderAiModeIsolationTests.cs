@@ -1646,6 +1646,12 @@ public sealed partial class LegendFounderAiModeIsolationTests
     [Fact]
     public async Task ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog()
     {
+        if (string.Equals(Environment.GetEnvironmentVariable("LEGEND_CONTROLLED_LEARNING_CANARY"),
+                "true", StringComparison.OrdinalIgnoreCase))
+        {
+            await VerifyControlledLearningLifecycleAsync();
+            return;
+        }
         // The existing opt-in resource canary also owns the deeper real
         // foundation executor probe. Its artifact explicitly distinguishes
         // synthetic data, configured execution and actual provider calls.

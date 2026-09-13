@@ -14,12 +14,12 @@ namespace Infrastructure.Messaging;
 
 internal static class LegendConnectModelTrainingConfiguration
 {
-    internal static readonly string[] ControlledProviders = ["LocalMlx", "ControlledTransformers"];
-    internal static bool IsControlled(string? backend) => backend is "LocalMlx" or "ControlledTransformers";
+    internal static readonly string[] ControlledProviders = ["LocalMlx", "ControlledTransformers", "ControlledMlx"];
+    internal static bool IsControlled(string? backend) => backend is "LocalMlx" or "ControlledTransformers" or "ControlledMlx";
     internal static string ResolveBackend(IConfiguration? configuration)
     {
         var backend = configuration?["LegendConnect:ModelTraining:Backend"] ?? "ControlledTransformers";
-        return backend is "LocalMlx" or "ControlledTransformers" or "OpenAI" ? backend :
+        return backend is "LocalMlx" or "ControlledTransformers" or "ControlledMlx" or "OpenAI" ? backend :
             throw new InvalidOperationException("model_training_backend_invalid");
     }
 }

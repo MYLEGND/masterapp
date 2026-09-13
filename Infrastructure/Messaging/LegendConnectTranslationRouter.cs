@@ -42,8 +42,8 @@ internal static class LegendConnectServingEvaluationContracts
     {
         var limits = receipt.GetProperty("execution_limits");
         var generation = receipt.GetProperty("generation_settings");
-        var remote = generation.TryGetProperty("engine", out var engine) && engine.GetString() == "Vllm";
-        var fields = new List<string> { remote ? "controlled-responses-v1" : "local-responses-v1", "store=false", "stream=true",
+        var remote = generation.TryGetProperty("engine", out var engine) && engine.GetString() is "Vllm" or "Mlx";
+        var fields = new List<string> { remote ? "controlled-responses-v1" : "local-responses-v1", "store=false", "stream=" + (receipt.TryGetProperty("stream", out var stream) && !stream.GetBoolean() ? "false" : "true"),
             "ctx=" + limits.GetProperty("max_context_tokens").GetInt32(),
             "limit=" + limits.GetProperty("max_output_tokens").GetInt32(),
             "out=" + generation.GetProperty("max_output_tokens").GetInt32(),
@@ -56,7 +56,7 @@ internal static class LegendConnectServingEvaluationContracts
             "adapter=" + (receipt.GetProperty("adapter_version").GetString() ?? string.Empty) };
         if (remote)
         {
-            fields.Add("engine=Vllm");
+            fields.Add("engine=" + engine.GetString());
             fields.Add("engine_version=" + generation.GetProperty("engine_version").GetString());
             fields.Add("tool_parser=" + generation.GetProperty("tool_call_parser").GetString());
             fields.Add("reasoning_parser=" + generation.GetProperty("reasoning_parser").GetString());
@@ -85,7 +85,7 @@ internal static class LegendConnectServingEvaluationContracts
             var separator = piece.IndexOf('=');
             if (separator <= 0 || !fields.TryAdd(piece[..separator], piece[(separator + 1)..])) return false;
         }
-        var common = fields.GetValueOrDefault("store") == "false" && fields.GetValueOrDefault("stream") == "true" &&
+        var common = fields.GetValueOrDefault("store") == "false" && (fields.GetValueOrDefault("stream") == "true" || remote && fields.GetValueOrDefault("stream") == "false") &&
             int.TryParse(fields.GetValueOrDefault("ctx"), out var context) && context > 0 &&
             int.TryParse(fields.GetValueOrDefault("limit"), out var limit) && limit > 0 && limit <= context &&
             int.TryParse(fields.GetValueOrDefault("out"), out var output) && output > 0 && output <= limit &&
@@ -95,7 +95,9 @@ internal static class LegendConnectServingEvaluationContracts
             (fields.GetValueOrDefault("adapter") == "" || IsHex(fields.GetValueOrDefault("adapter"), 64));
         if (!common) return false;
         if (!remote) return fields.GetValueOrDefault("temperature") == "0" && fields.GetValueOrDefault("thinking") == "false";
-        return fields.GetValueOrDefault("engine") == "Vllm" &&
+        if (fields.GetValueOrDefault("engine") == "Mlx" &&
+            (fields.GetValueOrDefault("thinking") != "false" || fields.GetValueOrDefault("reasoning") != "none")) return false;
+        return fields.GetValueOrDefault("engine") is "Vllm" or "Mlx" &&
             fields.GetValueOrDefault("engine_version") is { Length: > 0 and <= 32 } version &&
             version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+') &&
             ParserIdentity(fields.GetValueOrDefault("tool_parser")) && ParserIdentity(fields.GetValueOrDefault("reasoning_parser")) &&
@@ -110,7 +112,8 @@ internal static class LegendConnectServingEvaluationContracts
     internal static bool IsCompatibleWithBackend(string settings, string provider) =>
         IsValidInferenceSettings(settings) && (provider switch
         {
-            "ControlledTransformers" => settings.StartsWith("controlled-responses-v1,", StringComparison.Ordinal),
+            "ControlledTransformers" => settings.StartsWith("controlled-responses-v1,", StringComparison.Ordinal) && settings.Contains(",engine=Vllm,", StringComparison.Ordinal),
+            "ControlledMlx" => settings.StartsWith("controlled-responses-v1,", StringComparison.Ordinal) && settings.Contains(",engine=Mlx,", StringComparison.Ordinal),
             "LocalMlx" => settings.StartsWith("local-responses-v1,", StringComparison.Ordinal),
             "OpenAI" => settings == InferenceSettings,
             _ => false
@@ -628,7 +631,11 @@ internal sealed class LegendConnectActiveModelInference
             if (checkpoint is null || checkpoint.ModelVersion != request.ExpectedModelVersion ||
                 checkpoint.AdapterVersion != request.ExpectedAdapterVersion)
                 return Failure(request, configurationIdentity, proofLineageIdentity, "model_evaluation_checkpoint_unavailable");
-            task = task with { ProviderPolicy = LegendConnectExternalProviderPolicy.NativeOnly, AdapterVersion = checkpoint.AdapterVersion };
+            task = task with { ProviderPolicy = LegendConnectExternalProviderPolicy.NativeOnly, AdapterVersion = checkpoint.AdapterVersion,
+                RequestingActorId = run.TrainingProvider == "ControlledMlx" && _configuration is not null &&
+                    _configuration["LegendConnect:Foundation:HostKind"] == "FounderMac" &&
+                    LegendConnectModelInferenceTransport.IsControlledFoundationHost(_configuration)
+                    ? LegendConnectModelInferenceTransport.ResolveConfiguredFounderObjectId(_configuration) : null };
             configurationIdentity = StableHash(configurationIdentity, checkpoint.AdapterVersion);
             proofLineageIdentity = StableHash(proofLineageIdentity, checkpoint.AdapterVersion);
         }

@@ -17,7 +17,7 @@ internal static class LegendConnectTrainingCheckpointAuthority
         {
             using var response = JsonDocument.Parse(json);
             var root = response.RootElement;
-            if (!LegendConnectModelInferenceTransport.IsControlledAzureResourceId(configuration["LegendConnect:Foundation:AzureResourceId"])) return null;
+            if (!LegendConnectModelInferenceTransport.IsControlledFoundationHost(configuration)) return null;
             if (!IsIdentity(runKey) || root.GetProperty("status").GetString() != "succeeded" ||
                 root.GetProperty("run_key").GetString() != runKey ||
                 root.GetProperty("model_version").GetString() != "controlled:" + runKey ||
@@ -35,16 +35,25 @@ internal static class LegendConnectTrainingCheckpointAuthority
                 value.GetProperty("training_configuration_identity").GetString()) return null;
             using var originalConfiguration = JsonDocument.Parse(configurationJson);
             var original = originalConfiguration.RootElement;
-            if (original.GetProperty("schema").GetString() != "controlled-transformers-training-v1" ||
-                !LegendConnectModelInferenceTransport.IsControlledAzureResourceId(original.GetProperty("azure_resource_id").GetString())) return null;
-            var servingHost = root.GetProperty("host_receipt");
-            if (servingHost.GetProperty("host_verification").GetString() != "azure-imds-resource-and-tag-v1" ||
-                servingHost.GetProperty("azure_resource_id").GetString() != configuration["LegendConnect:Foundation:AzureResourceId"] ||
-                !Guid.TryParse(servingHost.GetProperty("azure_vm_id").GetString(), out _)) return null;
+            var isMac = original.GetProperty("schema").GetString() == "controlled-mlx-training-v1";
+            if (isMac != (configuration["LegendConnect:Foundation:HostKind"] == "FounderMac")) return null;
+            if (isMac)
+            {
+                if (original.GetProperty("host_kind").GetString() != "FounderMac" ||
+                    !LegendConnectModelInferenceTransport.IsControlledMacHostId(original.GetProperty("mac_host_id").GetString()) ||
+                    original.GetProperty("founder_id").GetString() != LegendConnectModelInferenceTransport.ResolveConfiguredFounderObjectId(configuration) ||
+                    configuration["LegendConnect:Foundation:HostKind"] != "FounderMac" ||
+                    value.GetProperty("host_kind").GetString() != "FounderMac" ||
+                    value.GetProperty("mac_host_id").GetString() != original.GetProperty("mac_host_id").GetString() ||
+                    value.GetProperty("founder_id").GetString() != original.GetProperty("founder_id").GetString()) return null;
+            }
+            else if (original.GetProperty("schema").GetString() != "controlled-transformers-training-v1" ||
+                !LegendConnectModelInferenceTransport.IsControlledAzureResourceId(original.GetProperty("azure_resource_id").GetString()) ||
+                value.GetProperty("azure_resource_id").GetString() != original.GetProperty("azure_resource_id").GetString()) return null;
+            if (!LegendConnectModelInferenceTransport.HasControlledFoundationHostReceipt(root.GetProperty("host_receipt"), configuration)) return null;
 
             if (value.GetProperty("model_version").GetString() != "controlled:" + runKey ||
-                value.GetProperty("adapter_format").GetString() != "peft" ||
-                value.GetProperty("azure_resource_id").GetString() != original.GetProperty("azure_resource_id").GetString() ||
+                value.GetProperty("adapter_format").GetString() != (isMac ? "mlx" : "peft") ||
                 value.GetProperty("trainer_sha256").GetString() != original.GetProperty("trainer_sha256").GetString() ||
                 repository != original.GetProperty("base_model").GetString() || revision != original.GetProperty("base_revision").GetString() ||
                 repository != configuration["LegendConnect:Foundation:Model"] ||

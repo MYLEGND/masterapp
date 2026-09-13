@@ -69,7 +69,7 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<ILegendConnectModelTrainingBackend>(provider =>
             LegendConnectModelTrainingConfiguration.ResolveBackend(configuration) switch
             {
-                "ControlledTransformers" => ActivatorUtilities.CreateInstance<ControlledTransformersLegendConnectModelTrainingBackend>(provider),
+                "ControlledTransformers" or "ControlledMlx" => ActivatorUtilities.CreateInstance<ControlledLegendConnectModelTrainingBackend>(provider),
                 "LocalMlx" => throw new InvalidOperationException("Local MLX training is retired. Configure the authenticated LEGEND-controlled remote training backend."),
                 "OpenAI" => ActivatorUtilities.CreateInstance<OpenAiLegendConnectModelTrainingBackend>(provider),
                 _ => throw new InvalidOperationException("The configured training backend is unsupported.")

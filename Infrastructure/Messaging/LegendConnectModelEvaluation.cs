@@ -287,7 +287,8 @@ public sealed record LegendModelTaskRequest(
     bool RequireToolCall = false,
     int? MaxOutputTokens = null,
     LegendConnectExternalProviderPolicy? ProviderPolicy = null,
-    string? AdapterVersion = null)
+    string? AdapterVersion = null,
+    string? RequestingActorId = null)
 {
     internal static LegendModelTaskRequest Translation(
         string sourceLanguageCode,
@@ -468,17 +469,23 @@ internal sealed class LegendConnectModelInferenceTransport
         var adapterVersion = task.AdapterVersion?.Trim() ?? string.Empty;
         var apiKey = _configuration[localPrefix + "ApiKey"]?.Trim();
         var azureResourceId = _configuration[localPrefix + "AzureResourceId"]?.Trim();
+        var hostKind = _configuration[localPrefix + "HostKind"] ?? "AzureVm";
+        var macHostId = _configuration[localPrefix + "MacHostId"]?.Trim();
+        var engine = _configuration[localPrefix + "Engine"];
+        var streamResponses = _configuration.GetValue<bool?>(localPrefix + "StreamResponses") ?? true;
+        if (hostKind == "FounderMac" && !Shared.Auth.FounderAuthority.IsConfiguredFounderIdentity(
+                task.RequestingActorId, ResolveConfiguredFounderObjectId(_configuration)))
+            return new(false, null, "local_foundation_founder_required");
         var engineVersion = _configuration[localPrefix + "EngineVersion"]?.Trim();
         var toolCallParser = _configuration[localPrefix + "ToolCallParser"]?.Trim();
         var reasoningParser = _configuration[localPrefix + "ReasoningParser"]?.Trim();
         if (!_configuration.GetValue<bool>(localPrefix + "Enabled") ||
-            string.IsNullOrWhiteSpace(apiKey) || !IsControlledAzureResourceId(azureResourceId) ||
-            _configuration[localPrefix + "Engine"] != "Vllm" ||
+            string.IsNullOrWhiteSpace(apiKey) || !IsControlledFoundationHost(_configuration) ||
             toolCallParser is not ("hermes" or "qwen3_coder") || reasoningParser != "qwen3" ||
             string.IsNullOrWhiteSpace(engineVersion) || engineVersion.Length > 32 ||
             engineVersion.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('.' or '-' or '+')) ||
             !Uri.TryCreate(_configuration[localPrefix + "Endpoint"], UriKind.Absolute, out var endpoint) ||
-            !IsControlledFoundationEndpoint(endpoint, !string.IsNullOrWhiteSpace(apiKey)) ||
+            !IsControlledFoundationEndpoint(endpoint, !string.IsNullOrWhiteSpace(apiKey), hostKind) ||
             string.IsNullOrWhiteSpace(revision) ||
             revision.Length != 40 || revision.Any(character => !Uri.IsHexDigit(character)))
             return new(false, null, "local_foundation_not_configured");
@@ -495,7 +502,9 @@ internal sealed class LegendConnectModelInferenceTransport
         var seed = _configuration.GetValue<int?>(localPrefix + "Seed") ?? 73;
         var reasoningEffort = _configuration[localPrefix + "ReasoningEffort"]?.Trim();
         if (string.IsNullOrEmpty(reasoningEffort)) reasoningEffort = null;
-        if (timeoutSeconds is < 5 or > 300 || maximumOutputTokens is < 128 or > 8192 ||
+        if (hostKind == "FounderMac" && (enableThinking || toolCallParser != "hermes" || engineVersion != "0.31.3" ||
+                maximumContextTokens > 8192 || maximumOutputTokens > 768) ||
+            timeoutSeconds is < 5 or > 300 || maximumOutputTokens is < 128 or > 8192 ||
             maximumContextTokens is < 512 or > 131072 || maximumOutputTokens > maximumContextTokens ||
             temperature is < 0m or > 2m || topP is <= 0m or > 1m || topK is < -1 or > 100000 || seed < 0 ||
             reasoningEffort is not (null or "low" or "medium" or "xhigh") ||
@@ -522,9 +531,11 @@ internal sealed class LegendConnectModelInferenceTransport
                 model_revision = revision,
                 adapter_version = adapterVersion,
                 azure_resource_id = azureResourceId,
+                host_kind = hostKind,
+                mac_host_id = macHostId,
                 generation_settings = new
                 {
-                    engine = "Vllm", engine_version = engineVersion,
+                    engine, engine_version = engineVersion,
                     tool_call_parser = toolCallParser, reasoning_parser = reasoningParser,
                     enable_thinking = enableThinking, temperature, top_p = topP, top_k = topK, seed,
                     reasoning_effort = reasoningEffort, preserve_thinking = false
@@ -542,7 +553,7 @@ internal sealed class LegendConnectModelInferenceTransport
                     timeout_seconds = timeoutSeconds,
                     maximum_concurrent_requests = 1
                 },
-                stream = true,
+                stream = streamResponses,
                 store = false
             };
             // The controlled worker accepts one bounded JSON document with a
@@ -558,7 +569,7 @@ internal sealed class LegendConnectModelInferenceTransport
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json") { CharSet = "utf-8" };
             if (!string.IsNullOrEmpty(apiKey))
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(streamResponses ? "text/event-stream" : "application/json"));
             using var response = await _clients.CreateClient("LegendLocalFoundation").SendAsync(
                 request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (!response.IsSuccessStatusCode)
@@ -584,12 +595,25 @@ internal sealed class LegendConnectModelInferenceTransport
             // the actual target so a changed client registration fails closed.
             if (response.RequestMessage?.RequestUri != endpoint)
                 return new(false, null, "local_foundation_endpoint_mismatch");
-            if (response.Content.Headers.ContentType?.MediaType != "text/event-stream")
+            if (response.Content.Headers.ContentType?.MediaType != (streamResponses ? "text/event-stream" : "application/json"))
                 return new(false, null, "local_foundation_content_type_invalid");
             await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
             using var reader = new StreamReader(stream);
             JsonElement? completed = null;
-            await foreach (var line in ReadBoundedSseLinesAsync(reader, deadline.Token))
+            if (!streamResponses)
+            {
+                // Bound the UTF-8 bytes before decoding; a character bound would
+                // admit several times the limit for multibyte content. Both modes
+                // converge on the same identity, policy and checkpoint validator.
+                var documentBuffer = new byte[2_000_001];
+                var length = await stream.ReadAtLeastAsync(documentBuffer.AsMemory(), documentBuffer.Length,
+                    throwOnEndOfStream: false, cancellationToken: deadline.Token);
+                if (length > 2_000_000)
+                    return new(false, null, "local_foundation_response_size_limit");
+                using var document = JsonDocument.Parse(documentBuffer.AsMemory(0, length));
+                completed = document.RootElement.Clone();
+            }
+            else await foreach (var line in ReadBoundedSseLinesAsync(reader, deadline.Token))
             {
                 if (!line.StartsWith("data: ", StringComparison.Ordinal))
                     continue;
@@ -613,8 +637,10 @@ internal sealed class LegendConnectModelInferenceTransport
                 !HasExactString(root, "model_revision", revision) ||
                 !HasExactString(root, "adapter_version", adapterVersion) ||
                 !HasExactString(root, "hosting", "LegendControlled") ||
-                !HasExactString(root, "azure_resource_id", azureResourceId!) ||
-                !HasExactString(root, "host_verification", "azure-imds-resource-and-tag-v1") ||
+                (root.TryGetProperty("stream", out var receiptStream)
+                    ? receiptStream.ValueKind is not (JsonValueKind.True or JsonValueKind.False) || receiptStream.GetBoolean() != streamResponses
+                    : !streamResponses) ||
+                !HasControlledFoundationHostReceipt(root, _configuration) ||
                 !root.TryGetProperty("status", out var state) || state.ValueKind != JsonValueKind.String ||
                 state.GetString() is not ("completed" or "incomplete") ||
                 !root.TryGetProperty("output", out var output) || output.ValueKind != JsonValueKind.Array)
@@ -630,7 +656,7 @@ internal sealed class LegendConnectModelInferenceTransport
                     actualLimits.GetProperty("timeout_seconds").GetInt32() != timeoutSeconds ||
                     actualLimits.GetProperty("maximum_concurrent_requests").GetInt32() != 1 ||
                     actualGeneration.GetProperty("max_output_tokens").GetInt32() != payload.max_output_tokens ||
-                    !HasExactString(actualGeneration, "engine", "Vllm") ||
+                    !HasExactString(actualGeneration, "engine", engine!) ||
                     !HasExactString(actualGeneration, "engine_version", engineVersion) ||
                     !HasExactString(actualGeneration, "tool_call_parser", toolCallParser) ||
                     !HasExactString(actualGeneration, "reasoning_parser", reasoningParser) ||
@@ -706,16 +732,23 @@ internal sealed class LegendConnectModelInferenceTransport
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
         string.Equals(value.GetString(), expected, StringComparison.Ordinal);
 
-    internal static bool IsControlledFoundationEndpoint(Uri endpoint, bool authenticated)
+    internal static bool IsControlledFoundationEndpoint(Uri endpoint, bool authenticated, string? hostKind = null)
     {
-        if (!string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) ||
+        if (hostKind is not (null or "AzureVm" or "FounderMac") ||
+            !string.IsNullOrEmpty(endpoint.UserInfo) || !string.IsNullOrEmpty(endpoint.Query) ||
             !string.IsNullOrEmpty(endpoint.Fragment) || endpoint.AbsolutePath != "/v1/responses")
             return false;
         var loopback = endpoint.Host == "localhost" ||
             System.Net.IPAddress.TryParse(endpoint.Host, out var address) &&
             System.Net.IPAddress.IsLoopback(address);
         if (loopback)
-            return endpoint.Scheme is "http" or "https";
+            return (hostKind != "FounderMac" || authenticated) && endpoint.Scheme is ("http" or "https");
+        // Only an explicitly configured Founder Mac may use a TLS connector DNS
+        // endpoint. The caller pins the complete URL, bearer secret and host receipt;
+        // redirects and user-selected endpoints remain forbidden.
+        if (hostKind == "FounderMac" && authenticated && endpoint.Scheme == "https" &&
+            endpoint.HostNameType == UriHostNameType.Dns && endpoint.Port == 443)
+            return true;
         // A controlled private serving address is an explicit deployment
         // boundary. Public/DNS answering endpoints cannot become local by label.
         if (!authenticated || endpoint.Scheme != "https" ||
@@ -727,6 +760,34 @@ internal sealed class LegendConnectModelInferenceTransport
             bytes[0] == 192 && bytes[1] == 168) ||
             bytes.Length == 16 && (bytes[0] & 0xfe) == 0xfc;
     }
+
+    internal static string? ResolveConfiguredFounderObjectId(IConfiguration configuration) =>
+        Shared.Auth.FounderAuthority.GetConfiguredObjectId(configuration["FOUNDER_OID"] ??
+            configuration["FounderOid"] ?? configuration["Founder:Oid"] ??
+            Environment.GetEnvironmentVariable("FOUNDER_OID"));
+
+    internal static bool IsControlledMacHostId(string? identity) =>
+        identity is { Length: 64 } && identity.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    internal static bool IsControlledFoundationHost(IConfiguration configuration) =>
+        (configuration["LegendConnect:Foundation:HostKind"] ?? "AzureVm") switch
+        {
+            "AzureVm" => configuration["LegendConnect:Foundation:Engine"] == "Vllm" &&
+                IsControlledAzureResourceId(configuration["LegendConnect:Foundation:AzureResourceId"]),
+            "FounderMac" => configuration["LegendConnect:Foundation:Engine"] == "Mlx" &&
+                IsControlledMacHostId(configuration["LegendConnect:Foundation:MacHostId"]) &&
+                ResolveConfiguredFounderObjectId(configuration) is not null,
+            _ => false
+        };
+
+    internal static bool HasControlledFoundationHostReceipt(JsonElement receipt, IConfiguration configuration) =>
+        IsControlledFoundationHost(configuration) &&
+        ((configuration["LegendConnect:Foundation:HostKind"] ?? "AzureVm") == "FounderMac"
+            ? HasExactString(receipt, "host_kind", "FounderMac") &&
+              HasExactString(receipt, "mac_host_id", configuration["LegendConnect:Foundation:MacHostId"]!) &&
+              HasExactString(receipt, "host_verification", "macos-arm64-user-bound-v1")
+            : HasExactString(receipt, "azure_resource_id", configuration["LegendConnect:Foundation:AzureResourceId"]!) &&
+              HasExactString(receipt, "host_verification", "azure-imds-resource-and-tag-v1"));
 
     internal static bool IsControlledAzureResourceId(string? resourceId) =>
         resourceId is { Length: <= 300 } && System.Text.RegularExpressions.Regex.IsMatch(resourceId,
@@ -2051,7 +2112,11 @@ internal sealed class LegendConnectModelEvaluationService
                 }
                 var baseline = await _baselineTransport.GenerateAsync(baseModel,
                     example.ToTaskRequest() with { ProviderPolicy = LegendConnectExternalProviderPolicy.NativeOnly,
-                        AdapterVersion = localBaseline?.AdapterVersion }, cancellationToken);
+                        AdapterVersion = localBaseline?.AdapterVersion,
+                        RequestingActorId = run.TrainingProvider == "ControlledMlx" &&
+                            _configuration["LegendConnect:Foundation:HostKind"] == "FounderMac" &&
+                            LegendConnectModelInferenceTransport.IsControlledFoundationHost(_configuration)
+                            ? LegendConnectModelInferenceTransport.ResolveConfiguredFounderObjectId(_configuration) : null }, cancellationToken);
                 if (!baseline.Succeeded || string.IsNullOrWhiteSpace(baseline.Text) || baseline.ModelVersion != baseModel)
                 {
                     await RecordInfrastructureFailureAsync(run, baseline.ErrorCode ?? "local_evaluation_baseline_failed", baseline.Retryable, cancellationToken);

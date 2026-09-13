@@ -21,6 +21,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Shared.Auth;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -32,6 +33,37 @@ namespace AgentPortal.Tests;
 /// </summary>
 public class IdentityHardeningTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FounderAuthority_EmptyObjectIdCannotGrantAccessThroughAnyBoundary(bool production)
+    {
+        var empty = Guid.Empty.ToString();
+        var user = BuildUserWithEmail(empty, "founder@example.com");
+        var fallbackCalls = 0;
+        Assert.False(FounderAuthority.Evaluate(user, empty, production, _ =>
+        {
+            fallbackCalls++;
+            return true;
+        }));
+        Assert.False(FounderAuthority.IsConfiguredAndValid(empty));
+        Assert.Null(FounderAuthority.GetConfiguredObjectId(" " + empty + " "));
+        Assert.False(FounderAuthority.IsConfiguredFounderIdentity(empty, empty));
+        Assert.Equal(0, fallbackCalls);
+    }
+
+    [Fact]
+    public void FounderAuthority_ValidObjectIdRemainsUsableAcrossIdentityBoundaries()
+    {
+        const string founder = "dacbaef1-2879-4c4b-bd2e-c7d327f99013";
+        var configured = " " + founder.ToUpperInvariant() + " ";
+        Assert.True(FounderAuthority.IsConfiguredAndValid(configured));
+        Assert.Equal(founder, FounderAuthority.GetConfiguredObjectId(configured));
+        Assert.True(FounderAuthority.IsConfiguredFounderIdentity(founder, configured));
+        Assert.True(FounderAuthority.Evaluate(BuildUserWithEmail(founder, "founder@example.com"),
+            configured, true, _ => throw new InvalidOperationException("Email cannot grant configured Founder access")));
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------

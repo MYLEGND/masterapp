@@ -20,8 +20,8 @@ internal sealed class LocalLegendConnectModelEvaluationBackend : ILegendConnectM
                 false, false, true, ["local_evaluation_independent_reference_required"],
                 "local_evaluation_independent_reference_required"));
         }
-        var candidate = string.Equals(request.ChallengerText.Trim(), request.Example.TargetText.Trim(), StringComparison.Ordinal) ? 1m : 0m;
-        var baseline = string.Equals(request.BaselineModelText.Trim(), request.Example.TargetText.Trim(), StringComparison.Ordinal) ? 1m : 0m;
+        var candidate = LegendFoundationConversationControl.MatchesVerifiedTarget(request.Example.SourceText, request.Example.TargetText, request.ChallengerText) ? 1m : 0m;
+        var baseline = LegendFoundationConversationControl.MatchesVerifiedTarget(request.Example.SourceText, request.Example.TargetText, request.BaselineModelText) ? 1m : 0m;
         return Task.FromResult(new LegendModelEvaluationJudgement(true, candidate, baseline,
             candidate, candidate, candidate, candidate, candidate, candidate,
             false, string.IsNullOrWhiteSpace(request.ChallengerText), candidate < baseline,

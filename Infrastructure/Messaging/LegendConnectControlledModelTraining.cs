@@ -10,11 +10,19 @@ namespace Infrastructure.Messaging;
 /// <summary>Authenticated remote compute adapter for the existing DB-owned
 /// lifecycle. Corpus bytes are streamed to the controlled worker; this client
 /// writes no dataset, model, job or checkpoint store on the app host.</summary>
-internal sealed class ControlledTransformersLegendConnectModelTrainingBackend(
+internal sealed class ControlledLegendConnectModelTrainingBackend(
     IConfiguration configuration, IHttpClientFactory clients) : ILegendConnectModelTrainingBackend
 {
     private const string Prefix = "LegendConnect:ModelTraining:";
-    public string TrainingProvider => "ControlledTransformers";
+    public string TrainingProvider => LegendConnectModelTrainingConfiguration.ResolveBackend(configuration) switch
+    {
+        "ControlledTransformers" => "ControlledTransformers",
+        "ControlledMlx" => "ControlledMlx",
+        _ => throw new InvalidOperationException("controlled_training_backend_invalid")
+    };
+    private bool IsMac => configuration["LegendConnect:Foundation:HostKind"] == "FounderMac";
+    private bool HostMatchesBackend() => LegendConnectModelInferenceTransport.IsControlledFoundationHost(configuration) &&
+        TrainingProvider == (IsMac ? "ControlledMlx" : "ControlledTransformers");
 
     private string ConfigurationJson()
     {
@@ -23,7 +31,18 @@ internal sealed class ControlledTransformersLegendConnectModelTrainingBackend(
         var trainer = configuration[Prefix + "TrainerCodeSha256"];
         var resourceId = configuration["LegendConnect:Foundation:AzureResourceId"];
         if (string.IsNullOrWhiteSpace(model) || model != configuration["LegendConnect:Foundation:Model"] ||
-            !Hex(revision, 40) || !Hex(trainer, 64) || !LegendConnectModelInferenceTransport.IsControlledAzureResourceId(resourceId)) throw new InvalidOperationException("controlled_training_configuration_invalid");
+            !Hex(revision, 40) || !Hex(trainer, 64) || !HostMatchesBackend()) throw new InvalidOperationException("controlled_training_configuration_invalid");
+        if (IsMac)
+            return JsonSerializer.Serialize(new
+            {
+                schema = "controlled-mlx-training-v1", base_model = model, base_revision = revision,
+                host_kind = "FounderMac", mac_host_id = configuration["LegendConnect:Foundation:MacHostId"],
+                founder_id = LegendConnectModelInferenceTransport.ResolveConfiguredFounderObjectId(configuration),
+                trainer_sha256 = trainer, iterations = Integer("Iterations", 100, 1, 2000),
+                learning_rate = Rate(), lora_rank = Integer("LoraRank", 8, 1, 64),
+                max_sequence_tokens = Integer("MaxSequenceTokens", 512, 64, 2048),
+                deadline_seconds = Integer("DeadlineSeconds", 600, 30, 3600), seed = Integer("Seed", 73, 0, 1000000)
+            });
         return JsonSerializer.Serialize(new
         {
             schema = "controlled-transformers-training-v1", base_model = model, base_revision = revision,
@@ -131,11 +150,9 @@ internal sealed class ControlledTransformersLegendConnectModelTrainingBackend(
     private async Task<RemoteResponse> SendAsync(HttpMethod method, string route, HttpContent? content, CancellationToken cancellationToken)
     {
         var key = configuration["LegendConnect:Foundation:ApiKey"];
-        var resourceId = configuration["LegendConnect:Foundation:AzureResourceId"];
-        if (!LegendConnectModelInferenceTransport.IsControlledAzureResourceId(resourceId) ||
-            LegendConnectModelTrainingConfiguration.ResolveBackend(configuration) != "ControlledTransformers" ||
+        if (!HostMatchesBackend() ||
             string.IsNullOrWhiteSpace(key) || !Uri.TryCreate(configuration["LegendConnect:Foundation:Endpoint"], UriKind.Absolute, out var endpoint) ||
-            !LegendConnectModelInferenceTransport.IsControlledFoundationEndpoint(endpoint, authenticated: true))
+            !LegendConnectModelInferenceTransport.IsControlledFoundationEndpoint(endpoint, authenticated: true, configuration["LegendConnect:Foundation:HostKind"]))
             return new(false, null, null, "controlled_training_endpoint_unconfigured", false);
         var address = new UriBuilder(endpoint) { Path = "/v1/training/" + route }.Uri;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

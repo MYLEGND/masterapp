@@ -2045,7 +2045,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_client_lead_portfolio",
                 description =
-                    "Read the current Founder-visible counts of client and lead records held by this deployment, including the canonical CRM status breakdown of workstation leads. Use this for any question about how many clients or leads exist; never answer such a question from recollection or the public internet. This is read-only, zero-write, and returns counts only.",
+                    "Read the current Founder-visible counts of client and lead records held by this deployment, including the canonical CRM status breakdown of workstation leads. Use this for questions about actual client or lead records in LEGEND, not counts supplied in a hypothetical scenario. Never infer current record counts from model recall or the public internet. This is read-only, zero-write, and returns counts only.",
                 parameters = new
                 {
                     type = "object",
@@ -2151,7 +2151,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_search_retained_knowledge",
                 description =
-                    "Search LEGEND's existing retained language evidence before relying on general OpenAI recall. Results preserve provenance, authority, contradiction and proposal state. Use focused semantic phrases rather than copying an entire long conversation.",
+                    "Retrieve approved LEGEND organizational knowledge or curriculum teachings when the request depends on those stored sources. This does not solve hypothetical scenarios or reasoning tasks whose premises are supplied in the conversation. Results preserve provenance, authority, contradictions and proposal state. Use a focused query for the needed stored evidence.",
                 parameters = new
                 {
                     type = "object",

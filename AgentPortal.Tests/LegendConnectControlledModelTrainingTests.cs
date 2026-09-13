@@ -21,7 +21,7 @@ public sealed class LegendConnectControlledModelTrainingTests
     {
         var settings = Configuration();
         var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict);
-        var backend = new ControlledTransformersLegendConnectModelTrainingBackend(settings, clients.Object);
+        var backend = new ControlledLegendConnectModelTrainingBackend(settings, clients.Object);
         var original = await backend.GetTrainingConfigurationIdentityAsync();
         Assert.Equal(original, await backend.GetTrainingConfigurationIdentityAsync());
         settings["LegendConnect:ModelTraining:LearningRate"] = "0.00006";
@@ -49,7 +49,7 @@ public sealed class LegendConnectControlledModelTrainingTests
             calls++;
             return Task.FromResult(Json(new { file_id = new string('0', 64), bytes = 3 }));
         })));
-        var result = await new ControlledTransformersLegendConnectModelTrainingBackend(Configuration(), clients.Object)
+        var result = await new ControlledLegendConnectModelTrainingBackend(Configuration(), clients.Object)
             .UploadTrainingFileAsync("fixture", [1, 2, 3]);
         Assert.False(result.Succeeded);
         Assert.Equal("controlled_training_upload_receipt_mismatch", result.ErrorCode);
@@ -77,14 +77,17 @@ public sealed class LegendConnectControlledModelTrainingTests
             training_configuration_identity = configurationIdentity, base_manifest_sha256 = new string('e', 64),
             adapter_sha256 = new string('f', 64), adapter_config_sha256 = new string('a', 64)
         });
-        string Receipt(string recipeText) => JsonSerializer.Serialize(new
+        string Receipt(string recipeText, bool macHost = false) => JsonSerializer.Serialize(new
         {
             status = "succeeded", run_key = run, model_version = "controlled:" + run, weights_updated = true, usable_checkpoint = true,
             dataset_sha256 = new string('d', 64), configuration_identity = configurationIdentity,
             configuration_json = recipeText, checkpoint_manifest_base64 = Convert.ToBase64String(manifestBytes),
             checkpoint_manifest_sha256 = Hash(manifestBytes),
-            host_receipt = new { azure_resource_id = serving, azure_vm_id = "22222222-2222-2222-2222-222222222222", host_verification = "azure-imds-resource-and-tag-v1" }
+            host_receipt = macHost
+                ? (object)new { host_kind = "FounderMac", mac_host_id = new string('2', 64), host_verification = "macos-arm64-user-bound-v1" }
+                : new { azure_resource_id = serving, azure_vm_id = "22222222-2222-2222-2222-222222222222", host_verification = "azure-imds-resource-and-tag-v1" }
         });
+        Assert.Null(LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(MacConfiguration(), run, Receipt(recipe, macHost: true)));
         var valid = LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(settings, run, Receipt(recipe));
         Assert.NotNull(valid);
         Assert.Equal(Hash(manifestBytes), valid.AdapterVersion);
@@ -99,7 +102,7 @@ public sealed class LegendConnectControlledModelTrainingTests
         var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict);
         var settings = Configuration();
         settings["LegendConnect:ModelTraining:Enabled"] = "false";
-        var backend = new ControlledTransformersLegendConnectModelTrainingBackend(settings, clients.Object);
+        var backend = new ControlledLegendConnectModelTrainingBackend(settings, clients.Object);
         var disabled = await backend.UploadTrainingFileAsync("fixture", [123]);
         Assert.Equal("controlled_training_disabled", disabled.ErrorCode);
         settings["LegendConnect:ModelTraining:Enabled"] = "true";
@@ -143,7 +146,7 @@ public sealed class LegendConnectControlledModelTrainingTests
                 Assert.Equal(100, configuration.RootElement.GetProperty("iterations").GetInt32());
                 return Json(new { run_key = run, status = "running", configuration_identity = identity });
             })));
-        var backend = new ControlledTransformersLegendConnectModelTrainingBackend(settings, clients.Object);
+        var backend = new ControlledLegendConnectModelTrainingBackend(settings, clients.Object);
         var upload = await backend.UploadTrainingFileAsync("ignored-display-name", bytes);
         Assert.True(upload.Succeeded);
         Assert.Equal(dataset, upload.FileId);
@@ -159,7 +162,7 @@ public sealed class LegendConnectControlledModelTrainingTests
     {
         var settings = Configuration();
         var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict);
-        var backend = new ControlledTransformersLegendConnectModelTrainingBackend(settings, clients.Object);
+        var backend = new ControlledLegendConnectModelTrainingBackend(settings, clients.Object);
         var identity = await backend.GetTrainingConfigurationIdentityAsync();
         var run = new string('c', 64);
         var calls = 0;
@@ -187,17 +190,81 @@ public sealed class LegendConnectControlledModelTrainingTests
         clients.Setup(factory => factory.CreateClient("LegendLocalFoundation"))
             .Returns(new HttpClient(new CancellableHandler(() => calls++)));
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
-        var backend = new ControlledTransformersLegendConnectModelTrainingBackend(Configuration(), clients.Object);
+        var backend = new ControlledLegendConnectModelTrainingBackend(Configuration(), clients.Object);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => backend.GetTrainingJobAsync(new string('c', 64), cancellation.Token));
         Assert.Equal(1, calls);
         clients.Verify(factory => factory.CreateClient("LegendLocalFoundation"), Times.Once);
         clients.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public async Task FounderMacRequiresExplicitMatchingBackendAndBoundsAndBindsCanonicalOwner()
+    {
+        var settings = MacConfiguration();
+        var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var backend = new ControlledLegendConnectModelTrainingBackend(settings, clients.Object);
+        Assert.Equal("ControlledMlx", backend.TrainingProvider);
+        var identity = await backend.GetTrainingConfigurationIdentityAsync();
+        settings["Founder:Oid"] = "33333333-3333-3333-3333-333333333333";
+        Assert.Equal(identity, await backend.GetTrainingConfigurationIdentityAsync()); // FOUNDER_OID is the authority.
+        settings["FOUNDER_OID"] = "44444444-4444-4444-4444-444444444444";
+        Assert.NotEqual(identity, await backend.GetTrainingConfigurationIdentityAsync());
+        settings["LegendConnect:ModelTraining:MaxSequenceTokens"] = "2049";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => backend.GetTrainingConfigurationIdentityAsync());
+        settings["LegendConnect:ModelTraining:MaxSequenceTokens"] = "512";
+        settings["LegendConnect:ModelTraining:Backend"] = "ControlledTransformers";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => backend.GetTrainingConfigurationIdentityAsync());
+        Assert.False((await backend.UploadTrainingFileAsync("unusable", [1])).Succeeded);
+        clients.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public void FounderMacCheckpointRequiresNewSchemaOwnerAndCurrentHostReceipt()
+    {
+        var settings = MacConfiguration();
+        var originalHost = new string('1', 64);
+        var currentHost = settings["LegendConnect:Foundation:MacHostId"]!;
+        var run = new string('c', 64);
+        var founder = settings["FOUNDER_OID"]!;
+        string Receipt(string schema = "controlled-mlx-training-v1", string? owner = null, string format = "mlx")
+        {
+            var recipe = JsonSerializer.Serialize(new { schema, base_model = "controlled-base", base_revision = new string('a', 40),
+                host_kind = "FounderMac", mac_host_id = originalHost, founder_id = owner ?? founder, trainer_sha256 = new string('b', 64) });
+            var identity = Hash(Encoding.UTF8.GetBytes(recipe));
+            var manifest = JsonSerializer.SerializeToUtf8Bytes(new { model_version = "controlled:" + run, adapter_format = format,
+                host_kind = "FounderMac", mac_host_id = originalHost, founder_id = owner ?? founder,
+                base_repository = "controlled-base", base_model_revision = new string('a', 40),
+                dataset_sha256 = new string('d', 64), trainer_sha256 = new string('b', 64), training_configuration_identity = identity,
+                base_manifest_sha256 = new string('e', 64), adapter_sha256 = new string('f', 64), adapter_config_sha256 = new string('a', 64) });
+            return JsonSerializer.Serialize(new { status = "succeeded", run_key = run, model_version = "controlled:" + run,
+                weights_updated = true, usable_checkpoint = true, dataset_sha256 = new string('d', 64), configuration_identity = identity,
+                configuration_json = recipe, checkpoint_manifest_base64 = Convert.ToBase64String(manifest), checkpoint_manifest_sha256 = Hash(manifest),
+                host_receipt = new { host_kind = "FounderMac", mac_host_id = currentHost, host_verification = "macos-arm64-user-bound-v1" } });
+        }
+        Assert.NotNull(LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(settings, run, Receipt()));
+        Assert.Null(LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(settings, run, Receipt(schema: "local-mlx-v1")));
+        Assert.Null(LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(settings, run, Receipt(owner: "33333333-3333-3333-3333-333333333333")));
+        Assert.Null(LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(settings, run, Receipt(format: "peft")));
+        settings["LegendConnect:Foundation:MacHostId"] = originalHost;
+        Assert.Null(LegendConnectTrainingCheckpointAuthority.ReadControlledReceipt(settings, run, Receipt()));
+    }
+
+    private static IConfigurationRoot MacConfiguration()
+    {
+        var configuration = Configuration();
+        configuration["LegendConnect:ModelTraining:Backend"] = "ControlledMlx";
+        configuration["LegendConnect:Foundation:HostKind"] = "FounderMac";
+        configuration["LegendConnect:Foundation:Engine"] = "Mlx";
+        configuration["LegendConnect:Foundation:MacHostId"] = new string('2', 64);
+        configuration["FOUNDER_OID"] = "22222222-2222-2222-2222-222222222222";
+        return configuration;
+    }
+
     private static IConfigurationRoot Configuration() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["LegendConnect:ModelTraining:Backend"] = "ControlledTransformers", ["LegendConnect:ModelTraining:Enabled"] = "true",
         ["LegendConnect:ModelTraining:BaseModel"] = "controlled-base", ["LegendConnect:ModelTraining:TrainerCodeSha256"] = new string('b', 64),
+        ["LegendConnect:Foundation:Engine"] = "Vllm",
         ["LegendConnect:Foundation:Endpoint"] = "http://127.0.0.1:8111/v1/responses", ["LegendConnect:Foundation:ApiKey"] = "nonsecret-fixture-key",
         ["LegendConnect:Foundation:AzureResourceId"] = "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/fixture/providers/Microsoft.Compute/virtualMachines/controlled-fixture",
         ["LegendConnect:Foundation:Model"] = "controlled-base", ["LegendConnect:Foundation:ModelRevision"] = new string('a', 40)
