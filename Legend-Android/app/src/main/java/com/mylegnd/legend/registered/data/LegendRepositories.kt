@@ -9,14 +9,19 @@ import com.mylegnd.legend.registered.core.media.MessagingAttachmentUploader
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.TimeZone
 
-sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String, val status: Int? = null) : LoadState<Nothing> }
-private suspend fun <T> request(block: suspend () -> T): LoadState<T> = try { LoadState.Data(block()) }
+sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String, val status: Int? = null, val transportRetryable: Boolean = false) : LoadState<Nothing> }
+internal suspend fun <T> request(block: suspend () -> T): LoadState<T> = try { LoadState.Data(block()) }
 catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
 catch (error: Exception) { LoadState.Error(when (error) {
     is LegendApiException -> error.problem?.message
     is com.mylegnd.legend.registered.core.media.SocialMediaPreparationException -> error.message
     else -> null
-} ?: "Legend is unavailable right now.", status = (error as? LegendApiException)?.status) }
+} ?: "Legend is unavailable right now.", status = (error as? LegendApiException)?.status,
+    transportRetryable = when (error) {
+        is LegendApiException -> error.status == 408 || error.status == 429 || error.status in 500..599
+        is java.io.IOException -> true
+        else -> false
+    }) }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
 class FounderAiRepository(private val client: LegendApiClient) {
     suspend fun access(role: String): LoadState<FounderAiAccessResponse> = request {

@@ -11,11 +11,31 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
+import com.mylegnd.legend.registered.data.request
+import com.mylegnd.legend.registered.data.LoadState
+import com.mylegnd.legend.registered.core.network.LegendApiException
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
 import com.mylegnd.legend.registered.core.model.ApplicationLocalizationCatalog
 import com.mylegnd.legend.registered.core.model.ApplicationLocalizationContinuation
 import com.mylegnd.legend.registered.core.auth.CachedLegendSession
 
 class ApplicationLocalizationRuntimeTest {
+    @Test
+    fun `existing request transport distinguishes offline from malformed data and permanent HTTP status`() = runBlocking {
+        for (status in listOf(400, 401, 403, 404, 408, 429, 503)) {
+            val result = request<String> { throw LegendApiException(status, null) } as LoadState.Error
+            assertEquals(status == 408 || status == 429 || status == 503, result.transportRetryable)
+            assertEquals(status, result.status)
+        }
+        assertTrue((request<String> { throw java.io.IOException("offline") } as LoadState.Error).transportRetryable)
+        assertFalse((request<String> { throw SerializationException("malformed") } as LoadState.Error).transportRetryable)
+        var cancelled = false
+        try { request<String> { throw CancellationException("closed") } } catch (_: CancellationException) { cancelled = true }
+        assertTrue(cancelled)
+    }
+
     @Test
     fun `cached languages retain exact account role catalog identity and authoritative withdrawal`() {
         val copy = ApplicationLocalizedCopy("entry", "Settings", "Anviwònman", "visual interface copy", "r1", emptyList(), "AzureTranslator", "ProviderDerived", "Observation", "now", true)

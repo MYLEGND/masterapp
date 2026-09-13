@@ -166,7 +166,7 @@ class LegendApplicationLocalization(
                 if (exhausted) { started = System.nanoTime(); requests = 0; unchanged = 0; remaining = Int.MAX_VALUE }
             } else {
                 _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
-                if (result is LoadState.Error && result.status != null && result.status in 400..499 && result.status !in setOf(408, 429)) { continuation = null; return }
+                if (result !is LoadState.Error || !result.transportRetryable) { continuation = null; return }
                 transportFailures++
                 val delaySeconds = minOf(60, 1 shl minOf(transportFailures, 6))
                 notBeforeMillis = System.currentTimeMillis() + maxOf(delaySeconds, continuation?.retryAfterSeconds ?: 0, continuation?.cooldownSeconds ?: 0).toLong() * 1_000
