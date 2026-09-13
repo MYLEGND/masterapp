@@ -426,10 +426,31 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
     [Fact]
     public void Teacher_IsToldExistingGovernedAccessIsReal_NotToRequestManualExports()
     {
-        var source = ReadService();
-        Assert.Contains("Those tools are real capabilities", source, StringComparison.Ordinal);
-        Assert.Contains("never tell the Founder", source, StringComparison.Ordinal);
-        Assert.Contains("Capability discovery alone is not evidence", source, StringComparison.Ordinal);
+        var instructionMethod = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(instructionMethod);
+        var instructions = Assert.IsType<string>(instructionMethod!.Invoke(
+            null, new object?[] { "teacher", null, null }));
+        Assert.Contains("Use existing governed tools for relevant inspection", instructions, StringComparison.Ordinal);
+        Assert.Contains("The tool catalog defines its arguments, purpose and prerequisites", instructions, StringComparison.Ordinal);
+        Assert.Contains("Execute authorized actions through their exposed tools and claim completion only from successful receipts", instructions, StringComparison.Ordinal);
+        Assert.Contains("Organization-specific claims require applicable approved evidence or a successful authorized inspection", instructions, StringComparison.Ordinal);
+        Assert.Contains("do not invent tools, records, dashboards, citations or results", instructions, StringComparison.Ordinal);
+
+        var catalogMethod = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(catalogMethod);
+        using var catalog = JsonDocument.Parse(JsonSerializer.Serialize(catalogMethod!.Invoke(null, null)));
+        var capabilities = Assert.Single(catalog.RootElement.EnumerateArray(),
+            tool => tool.GetProperty("name").GetString() == "legend_capabilities");
+        Assert.Contains("same tool registry the model can execute", capabilities.GetProperty("description").GetString());
+
+        // Discovery is real access to the catalog, not proof of system records.
+        var evidenceMethod = typeof(LegendFounderToolAuthority)
+            .GetMethod("IsGovernedEvidenceTool", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(evidenceMethod);
+        Assert.False(Assert.IsType<bool>(evidenceMethod!.Invoke(null, new object[] { "legend_capabilities" })));
+        Assert.True(Assert.IsType<bool>(evidenceMethod.Invoke(null, new object[] { "legend_search_retained_knowledge" })));
     }
 
     [Fact]
