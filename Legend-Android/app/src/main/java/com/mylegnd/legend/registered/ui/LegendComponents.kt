@@ -47,7 +47,7 @@ import com.mylegnd.legend.registered.core.design.*
 ) { Text(name.take(1).uppercase(), color = LegendColors.GoldBright, style = LegendTypography.CardTitle) }
 
 /**
- * Android implementation of iOS's LegendContactCard.  Every compact person or
+ * Native Compose rendering of the shared contact-card tokens. Every compact person or
  * conversation presentation shares this surface, typography, and gold border
  * rather than creating an inbox-specific visual language.
  */
@@ -58,6 +58,7 @@ fun LegendContactCard(
     nameStatus: String? = null,
     subtitle: String? = null,
     detail: String? = null,
+    statusContent: (@Composable () -> Unit)? = null,
     isVerified: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
@@ -120,6 +121,7 @@ fun LegendContactCard(
                         )
                     }
                 }
+                statusContent?.invoke()
                 subtitle?.trim()?.takeIf(String::isNotEmpty)?.let {
                     Text(
                         it,

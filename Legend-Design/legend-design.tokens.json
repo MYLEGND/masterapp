@@ -33,6 +33,10 @@
     "contactNavy": { "light": "#142E5B" },
     "contactConnected": { "light": "#4AE28B" },
     "verified": { "light": "#1F7AEB" },
+    "presenceOnlineText": { "light": "#006B35", "dark": "#7BE8A3" },
+    "presenceOnlineFill": { "light": "#E8F5ED", "dark": "#123922" },
+    "presenceOfflineText": { "light": "#B42318", "dark": "#FFABA3" },
+    "presenceOfflineFill": { "light": "#FDECE9", "dark": "#4A2127" },
     "chatTimestamp": { "light": "#64748B", "dark": "#94A3B8" }
   },
   "messaging": {

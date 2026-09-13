@@ -8,6 +8,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
     let nameStatus: String?
     let subtitle: String?
     let detail: String?
+    let statusContent: AnyView?
     let isVerified: Bool
     let avatar: Avatar
     let action: Action
@@ -18,6 +19,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         nameStatus: String? = nil,
         subtitle: String? = nil,
         detail: String? = nil,
+        statusContent: AnyView? = nil,
         isVerified: Bool = false,
         onOpen: (() -> Void)? = nil,
         @ViewBuilder avatar: () -> Avatar,
@@ -28,6 +30,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         self.nameStatus = nameStatus
         self.subtitle = subtitle
         self.detail = detail
+        self.statusContent = statusContent
         self.isVerified = isVerified
         self.avatar = avatar()
         self.action = action()
@@ -92,6 +95,8 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
                             .lineLimit(1)
                     }
                 }
+
+                if let statusContent { statusContent }
 
                 if let subtitle = normalized(subtitle) {
                     Text(subtitle)

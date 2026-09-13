@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+import UIKit
 
 enum MessagingLoadState: Equatable {
     case idle
@@ -96,30 +98,109 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     var onEvent: ((MobileMessagingRealtimeEvent) -> Void)?
     var onCall: ((LegendCallEvent) -> Void)?
     var onCallReconnect: (() -> Void)?
-    private var callRequests: [String: CheckedContinuation<LegendCallResult, Error>] = [:]
+    private var callRequests: [String: CheckedContinuation<Data, Error>] = [:]
     private var retiring = false
     private var callReady = false
 
     func call(_ command: LegendCallCommand, existingConnectionOnly: Bool = false) async throws -> LegendCallResult {
+        try JSONDecoder.mobile.decode(LegendCallResult.self, from: await invoke("Call", argument: JSONEncoder().encode(command), existingConnectionOnly: existingConnectionOnly))
+    }
+
+    private func invoke(_ target: String, argument: Data, existingConnectionOnly: Bool = false) async throws -> Data {
         if existingConnectionOnly {
             guard callReady else { throw CancellationError() }
         } else { start() }
-        for _ in 0..<100 where !callReady {
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        guard callReady, let socket else { throw LegendCallingError.unavailable("Calling could not connect. Please try again.") }
+        for _ in 0..<100 where !callReady { try await Task.sleep(for: .milliseconds(100)) }
+        guard callReady, let socket else { throw LegendCallingError.unavailable("Messaging could not connect. Please try again.") }
         try Task.checkCancellation()
+        let requestGeneration = generation
         let id = UUID().uuidString
-        let argument = try JSONSerialization.jsonObject(with: JSONEncoder().encode(command))
-        let frame = try JSONSerialization.data(withJSONObject: ["type": 1, "invocationId": id, "target": "Call", "arguments": [argument]])
-        return try await withCheckedThrowingContinuation { continuation in
-            callRequests[id] = continuation
-            Task { [weak self] in
-                do { try await socket.send(.string(String(decoding: frame, as: UTF8.self) + Self.recordSeparator)) }
-                catch { self?.callRequests.removeValue(forKey: id)?.resume(throwing: error) }
-                try? await Task.sleep(for: .seconds(12))
-                self?.callRequests.removeValue(forKey: id)?.resume(throwing: LegendCallingError.unavailable("The call request timed out."))
+        let argument = try JSONSerialization.jsonObject(with: argument)
+        let frame = try JSONSerialization.data(withJSONObject: ["type": 1, "invocationId": id, "target": target, "arguments": [argument]])
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                callRequests[id] = continuation
+                Task { [weak self] in
+                    do {
+                        guard let self, self.callRequests[id] != nil, requestGeneration == self.generation, self.callReady,
+                              target != "Presence" || !self.retiring else { throw CancellationError() }
+                        try await socket.send(.string(String(decoding: frame, as: UTF8.self) + Self.recordSeparator))
+                    } catch { self?.callRequests.removeValue(forKey: id)?.resume(throwing: error) }
+                }
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(12))
+                    guard let self, let pending = self.callRequests.removeValue(forKey: id) else { return }
+                    pending.resume(throwing: LegendCallingError.unavailable("The messaging request timed out."))
+                    if target == "Presence", requestGeneration == self.generation { socket.cancel(with: .goingAway, reason: nil) }
+                }
             }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.callRequests.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
+        }
+    }
+
+    var onPresence: ((MessagingPresenceResult?) -> Void)?
+    private(set) var presence: MessagingPresenceResult? { didSet { onPresence?(presence) } }
+    private var presenceTargets: [UUID: MessagingPresenceRequest] = [:]
+    private var presenceTask: Task<Void, Never>?
+    private var presenceRevision = 0
+    private var presenceForeground = true
+    private var presenceDelay: Task<Void, Error>?
+    private var presenceLifecycle: [AnyCancellable] = []
+
+    func setPresenceForeground(_ foreground: Bool) {
+        guard foreground != presenceForeground else { return }
+        presenceForeground = foreground; presenceRevision += 1; restartPresence()
+    }
+
+    func observePresence(owner: UUID, participant: MessagingPresenceParticipant? = nil, conversationID: UUID? = nil) {
+        presenceTargets[owner] = .init(participants: participant.map { [$0] } ?? [], conversationIds: conversationID.map { [$0] } ?? [])
+        presenceRevision += 1
+        restartPresence()
+    }
+    func removePresenceObserver(_ owner: UUID) {
+        if presenceTargets.removeValue(forKey: owner) != nil { presenceRevision += 1; restartPresence() }
+    }
+    private func clearPresence() { presenceDelay?.cancel(); presenceDelay = nil; presenceTask?.cancel(); presenceTask = nil; presence = nil }
+    private func restartPresence() {
+        presence = nil; presenceDelay?.cancel()
+        guard callReady, !retiring, presenceTask == nil else { return }
+        let connectionGeneration = generation
+        presenceTask = Task { [weak self] in
+            do {
+                guard let self else { return }
+                while !Task.isCancelled, callReady, !retiring, connectionGeneration == generation {
+                    try await Task.sleep(for: .milliseconds(150))
+                    let revision = presenceRevision
+                    let request = !presenceForeground ? MessagingPresenceRequest(participants: [], conversationIds: []) : MessagingPresenceRequest(
+                        participants: Array(Set(presenceTargets.values.flatMap(\.participants)).prefix(50)),
+                        conversationIds: Array(Set(presenceTargets.values.flatMap(\.conversationIds)).prefix(50)))
+                    var interval = 30
+                    do {
+                        var result = try JSONDecoder.mobile.decode(MessagingPresenceResult.self,
+                            from: await invoke("Presence", argument: JSONEncoder().encode(request), existingConnectionOnly: true))
+                        guard (5...90).contains(result.refreshSeconds), result.participants.count <= 50, result.conversations.count <= 50 else {
+                            throw LegendCallingError.unavailable("Presence response is invalid.")
+                        }
+                        try Task.checkCancellation()
+                        guard connectionGeneration == generation, callReady else { return }
+                        if revision == presenceRevision {
+                        result.participants = result.participants.filter { request.participants.contains(.init(userId: $0.userId, participantType: $0.participantType)) }
+                        result.conversations = result.conversations.filter { request.conversationIds.contains($0.conversationId) }
+                        presence = result; interval = result.refreshSeconds
+                        }
+                    } catch is CancellationError { return }
+                    catch { if revision == presenceRevision, connectionGeneration == generation { presence = nil } }
+                    if revision == presenceRevision {
+                        let delay = Task { try await Task.sleep(for: .seconds(interval)) }
+                        presenceDelay = delay
+                        _ = try? await delay.value
+                        presenceDelay = nil
+                    }
+                    if revision == presenceRevision, connectionGeneration == generation { presence = nil }
+                }
+            } catch { /* Cancellation retires this scoped poll. */ }
         }
     }
 
@@ -147,6 +228,14 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         self.hubURL = hubURL
         self.participantType = participantType
         self.accessTokenProvider = accessTokenProvider
+        presenceLifecycle = [
+            NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification).sink { [weak self] _ in
+                Task { @MainActor in self?.setPresenceForeground(false) }
+            },
+            NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification).sink { [weak self] _ in
+                Task { @MainActor in self?.setPresenceForeground(true) }
+            }
+        ]
     }
 
     deinit {
@@ -157,6 +246,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
 
     func retireAccountConnection() {
         retiring = true
+        presenceTargets.removeAll(); clearPresence()
         onCall = nil; onCallReconnect = nil
         reconnectTask?.cancel(); reconnectTask = nil
         if !callReady { stop() }
@@ -171,6 +261,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
 
     func stop() {
         callReady = false
+        clearPresence()
         let pending = callRequests.values
         callRequests.removeAll()
         pending.forEach { $0.resume(throwing: CancellationError()) }
@@ -224,8 +315,10 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
                 throw MobileMessagingRealtimeError.invalidHandshake
             }
 
+            guard !retiring, shouldRemainConnected, connectionGeneration == generation, !Task.isCancelled else { newSocket.cancel(with: .goingAway, reason: nil); return }
             reconnectAttempt = 0
             callReady = true
+            restartPresence()
             onCallReconnect?()
             let heartbeat = Task {
                 do {
@@ -253,6 +346,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
 
         guard connectionGeneration == generation else { return }
         callReady = false
+        clearPresence()
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         if shouldRemainConnected {
@@ -311,9 +405,8 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
                 if let object = try? JSONSerialization.jsonObject(with: Data(frame.utf8)) as? [String: Any] {
                     if object["type"] as? Int == 3, let id = object["invocationId"] as? String,
                        let pending = callRequests.removeValue(forKey: id) {
-                        if let result = object["result"], let data = try? JSONSerialization.data(withJSONObject: result),
-                           let decoded = try? JSONDecoder.mobile.decode(LegendCallResult.self, from: data) {
-                            pending.resume(returning: decoded)
+                        if let result = object["result"], let data = try? JSONSerialization.data(withJSONObject: result) {
+                            pending.resume(returning: data)
                         } else { pending.resume(throwing: LegendCallingError.unavailable("The call request could not be completed.")) }
                         return nil
                     }
@@ -394,6 +487,7 @@ private enum MobileMessagingRealtimeError: Error {
 @MainActor
 final class MessagingStore: ObservableObject {
     let calling: LegendCallStore?
+    @Published private(set) var presence: MessagingPresenceResult?
     @Published private(set) var state: MessagingLoadState = .idle
     @Published private(set) var detailState: ConversationDetailLoadState = .idle
     @Published private(set) var selectedConversationID: UUID?
@@ -514,6 +608,7 @@ final class MessagingStore: ObservableObject {
         realtime?.onEvent = { [weak self] event in
             self?.reconcileRealtimeEvent(event)
         }
+        (realtime as? MobileMessagingRealtimeClient)?.onPresence = { [weak self] in self?.presence = $0 }
     }
 
     deinit {
@@ -526,6 +621,13 @@ final class MessagingStore: ObservableObject {
             if let calling { calling.shutdown(); await calling.awaitShutdown() }
             realtime?.stop()
         }
+    }
+
+    func observePresence(owner: UUID, participant: MessagingPresenceParticipant? = nil, conversationID: UUID? = nil) {
+        (realtime as? MobileMessagingRealtimeClient)?.observePresence(owner: owner, participant: participant, conversationID: conversationID)
+    }
+    func removePresenceObserver(_ owner: UUID) {
+        (realtime as? MobileMessagingRealtimeClient)?.removePresenceObserver(owner)
     }
 
     func recipientScopeTitle(_ scope: MessagingRecipientScope) -> String {

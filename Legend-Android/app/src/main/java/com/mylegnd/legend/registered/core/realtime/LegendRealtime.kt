@@ -9,6 +9,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import com.mylegnd.legend.registered.core.model.*
+import kotlinx.serialization.json.JsonElement
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -27,6 +34,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.concurrent.TimeUnit
 import com.mylegnd.legend.registered.feature.calling.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.buildJsonObject
@@ -85,29 +94,95 @@ class MobileMessagingRealtimeClient(
     private var heartbeat: Job? = null
     @Volatile private var retiring = false
     @Volatile private var callReady = false
-    private val callRequests = ConcurrentHashMap<String, CompletableDeferred<LegendCallResult>>()
+    private val callRequests = ConcurrentHashMap<String, CompletableDeferred<JsonElement>>()
     var onCall: ((LegendCallEvent) -> Unit)? = null
     var onCallReconnect: (() -> Unit)? = null
 
-    suspend fun call(command: LegendCallCommand, existingConnectionOnly: Boolean = false): LegendCallResult = withTimeout(12_000) {
-        if (existingConnectionOnly) check(callReady) { "Calling is disconnected." } else start()
+    suspend fun call(command: LegendCallCommand, existingConnectionOnly: Boolean = false): LegendCallResult =
+        json.decodeFromJsonElement(LegendCallResult.serializer(), invoke("Call", json.parseToJsonElement(json.encodeToString(command)), existingConnectionOnly))
+
+    private suspend fun invoke(target: String, argument: JsonElement, existingConnectionOnly: Boolean = false): JsonElement = withTimeout(12_000) {
+        if (existingConnectionOnly) check(callReady) { "Messaging is disconnected." } else start()
         while (!callReady) delay(100)
         ensureActive()
+        check(target != "Presence" || !retiring) { "Messaging account is retiring." }
+        val invocationSocket = socket
+        val invocationGeneration = generation
         val id = java.util.UUID.randomUUID().toString()
-        val pending = CompletableDeferred<LegendCallResult>()
+        val pending = CompletableDeferred<JsonElement>()
         callRequests[id] = pending
         try {
             val frame = buildJsonObject {
-                put("type", 1); put("invocationId", id); put("target", "Call")
-                put("arguments", JsonArray(listOf(json.parseToJsonElement(json.encodeToString(command)))))
+                put("type", 1); put("invocationId", id); put("target", target)
+                put("arguments", JsonArray(listOf(argument)))
             }
-            check(socket?.send(frame.toString() + RECORD_SEPARATOR) == true) { "Calling is disconnected." }
+            check(invocationSocket?.send(frame.toString() + RECORD_SEPARATOR) == true) { "Messaging is disconnected." }
             pending.await()
+        } catch (timeout: TimeoutCancellationException) {
+            if (target == "Presence" && generation == invocationGeneration && socket === invocationSocket) invocationSocket?.cancel()
+            throw timeout
         } finally { callRequests.remove(id) }
+    }
+
+    private val observedPresence = MutableStateFlow<MessagingPresenceResult?>(null)
+    val presence = observedPresence.asStateFlow()
+    private val presenceTargets = java.util.concurrent.ConcurrentHashMap<String, MessagingPresenceRequest>()
+    private var presenceLoop: Job? = null
+    @Volatile private var presenceRevision = 0L
+    @Volatile private var presenceForeground = true
+    private val presenceChanges = MutableStateFlow(0L)
+
+    @Synchronized fun setPresenceForeground(foreground: Boolean) {
+        if (presenceForeground == foreground) return
+        presenceForeground = foreground; presenceRevision++; presenceChanges.value = presenceRevision
+        restartPresence()
+    }
+
+    @Synchronized fun observePresence(owner: String, participant: MessagingPresenceParticipant? = null, conversationId: String? = null) {
+        presenceTargets[owner] = MessagingPresenceRequest(listOfNotNull(participant), listOfNotNull(conversationId))
+        presenceRevision++; presenceChanges.value = presenceRevision
+        restartPresence()
+    }
+    @Synchronized fun removePresenceObserver(owner: String) {
+        if (presenceTargets.remove(owner) != null) { presenceRevision++; presenceChanges.value = presenceRevision; restartPresence() }
+    }
+    @Synchronized private fun restartPresence() {
+        observedPresence.value = null
+        if (!callReady || retiring || presenceLoop?.isActive == true) return
+        val connectionGeneration = generation
+        presenceLoop = scope.launch {
+            while (isActive && callReady && !retiring && connectionGeneration == generation) {
+                delay(150) // One trailing snapshot; never cancel an already-sent invocation on row changes.
+                val revision = presenceRevision
+                val requested = if (!presenceForeground) MessagingPresenceRequest() else MessagingPresenceRequest(
+                    presenceTargets.values.flatMap { it.participants }.distinct().take(50),
+                    presenceTargets.values.flatMap { it.conversationIds }.distinct().take(50))
+                var refreshSeconds = 30
+                try {
+                    val result = json.decodeFromJsonElement(MessagingPresenceResult.serializer(),
+                        invoke("Presence", json.parseToJsonElement(json.encodeToString(requested)), true))
+                    check(result.refreshSeconds in 5..90 && result.participants.size <= 50 && result.conversations.size <= 50)
+                    java.time.Instant.parse(result.observedUtc)
+                    if (isActive && revision == presenceRevision && connectionGeneration == generation && callReady) {
+                        observedPresence.value = result.copy(
+                            participants = result.participants.filter { MessagingPresenceParticipant(it.userId, it.participantType) in requested.participants },
+                            conversations = result.conversations.filter { it.conversationId in requested.conversationIds })
+                        refreshSeconds = result.refreshSeconds
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { if (revision == presenceRevision && connectionGeneration == generation) observedPresence.value = null }
+                withTimeoutOrNull(refreshSeconds * 1000L) { presenceChanges.first { it != revision } }
+                if (revision == presenceRevision && connectionGeneration == generation) observedPresence.value = null
+            }
+        }
+    }
+    @Synchronized private fun clearPresence() {
+        presenceLoop?.cancel(); presenceLoop = null; observedPresence.value = null
     }
 
     fun retireAccountConnection() {
         retiring = true
+        presenceTargets.clear(); clearPresence()
         onCall = null; onCallReconnect = null
         if (!callReady) stop()
     }
@@ -121,6 +196,7 @@ class MobileMessagingRealtimeClient(
 
     fun stop() {
         callReady = false
+        clearPresence()
         callRequests.values.forEach { it.cancel() }
         callRequests.clear()
         shouldRemainConnected = false
@@ -168,8 +244,9 @@ class MobileMessagingRealtimeClient(
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (socket !== webSocket || connectionGeneration != generation) return
-            if (text.split(RECORD_SEPARATOR).any { it.trim() == "{}" }) {
+            if (!retiring && shouldRemainConnected && text.split(RECORD_SEPARATOR).any { it.trim() == "{}" }) {
                 callReady = true
+                restartPresence()
                 onCallReconnect?.invoke()
                 reconnectAttempt = 0
                 heartbeat?.cancel()
@@ -190,6 +267,7 @@ class MobileMessagingRealtimeClient(
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (socket !== webSocket) return
             callReady = false
+            clearPresence()
             heartbeat?.cancel()
             socket = null
             scheduleReconnect(connectionGeneration)
@@ -202,6 +280,7 @@ class MobileMessagingRealtimeClient(
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (socket !== webSocket) return
             callReady = false
+            clearPresence()
             heartbeat?.cancel()
             socket = null
             scheduleReconnect(connectionGeneration)
@@ -214,7 +293,7 @@ class MobileMessagingRealtimeClient(
         if (envelope["type"]?.jsonPrimitive?.content == "3") {
             val id = envelope.string("invocationId") ?: return
             val pending = callRequests.remove(id) ?: return
-            val result = envelope["result"]?.let { runCatching { json.decodeFromString<LegendCallResult>(it.toString()) }.getOrNull() }
+            val result = envelope["result"]
             if (result != null) pending.complete(result) else pending.completeExceptionally(IllegalStateException("The call request could not be completed."))
             return
         }

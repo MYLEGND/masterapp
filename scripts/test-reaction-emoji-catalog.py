@@ -57,6 +57,20 @@ class ReactionEmojiCatalogTests(unittest.TestCase):
         self.assertEqual(self.by_emoji["🧑🏻‍❤️‍💋‍🧑🏿"]["baseEmoji"], "💏")
         self.assertEqual(self.by_emoji["💏"]["skinToneVariants"]["light"], "💏🏻")
 
+    def test_messaging_presence_text_contrast_uses_its_own_shared_palette(self):
+        import json
+        colors = json.loads((CATALOG.ROOT / "Legend-Design/legend-design.tokens.json").read_text())["colors"]
+        def luminance(hex_color):
+            channels = [int(hex_color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [channel / 12.92 if channel <= .04045 else ((channel + .055) / 1.055) ** 2.4 for channel in channels]
+            return sum(value * weight for value, weight in zip(linear, (.2126, .7152, .0722)))
+        for state in ("Online", "Offline"):
+            for appearance in ("light", "dark"):
+                text = luminance(colors[f"presence{state}Text"][appearance])
+                fill = luminance(colors[f"presence{state}Fill"][appearance])
+                contrast = (max(text, fill) + .05) / (min(text, fill) + .05)
+                self.assertGreaterEqual(contrast, 4.5, (state, appearance, contrast))
+
     def test_reaction_geometry_keeps_three_quarters_inside(self):
         import json
         contract = json.loads((CATALOG.ROOT / "Legend-Design/legend-design.tokens.json").read_text())

@@ -60,7 +60,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     private var reconciliation: Job? = null
     private var startupDeadline: Job? = null
     private var outgoingRequest: Job? = null
-    private val permissionOwnerId = UUID.randomUUID().toString()
+    internal val permissionOwnerId = UUID.randomUUID().toString()
     internal fun permissionScope(): LegendCallPermissionScope? = state.value.call?.takeIf {
         !stopped && LegendCallPlatform.store === this && it.id !in finished
     }?.let { LegendCallPermissionScope(permissionOwnerId, deviceId, it.id) }

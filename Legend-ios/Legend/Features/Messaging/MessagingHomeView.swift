@@ -132,6 +132,8 @@ struct MessagingHomeView: View {
     @State private var inboxSearch = ""
     @State private var isPresentingNewConversation = false
     @State private var isPresentingCallDirectory = false
+    @State private var directoryVideo = false
+    @State private var callingPickerIntent = UUID()
     @State private var isPresentingCallingProfile = false
     @State private var conversationPendingRemoval: ConversationSummary?
 
@@ -160,10 +162,13 @@ struct MessagingHomeView: View {
             if let calling = store.calling { LegendCallPreferencesView(store: calling, openProfilePhoto: openCallingProfilePhoto) }
         }
         .sheet(isPresented: $isPresentingCallDirectory) {
+            let intent = callingPickerIntent
             LegendRecipientPicker(
                 store: store,
                 initialSearch: inboxSearch,
                 forCalling: true,
+                videoCall: directoryVideo,
+                callingPickerIsCurrent: { isPresentingCallDirectory && callingPickerIntent == intent },
                 selectConversation: openConversation,
                 dismiss: { isPresentingCallDirectory = false })
                 .legendNextSheetChrome(detents: [.large])
@@ -277,14 +282,19 @@ struct MessagingHomeView: View {
             cornerRadius: LegendNextRadius.card,
             padding: LegendNextSpacing.md
         ) {
-            HStack(alignment: .center, spacing: LegendNextSpacing.md) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                HStack(spacing: LegendNextSpacing.sm) {
                     Text(LegendLocalized("Messages"))
                         .font(LegendNextTypography.section)
                         .foregroundStyle(.white)
+                    Spacer(minLength: LegendNextSpacing.sm)
+                    if store.calling != nil {
+                        Button { isPresentingCallingProfile = true } label: {
+                            Image(systemName: "person.crop.circle.badge.checkmark")
+                                .foregroundStyle(.white).frame(width: 44, height: 44)
+                        }.accessibilityLabel(LegendLocalized("Calling profile"))
+                    }
                 }
-
-                Spacer(minLength: LegendNextSpacing.sm)
 
                 HStack(spacing: LegendNextSpacing.sm) {
                     Button {
@@ -309,13 +319,10 @@ struct MessagingHomeView: View {
                     .buttonStyle(LegendMessagingPressButtonStyle())
                     .accessibilityLabel(LegendLocalized("Start a new conversation", context: "accessibility copy"))
 
-                    if store.calling != nil {
-                        Button { isPresentingCallingProfile = true } label: {
-                            Image(systemName: "person.crop.circle.badge.checkmark")
-                                .foregroundStyle(.white).frame(width: 44, height: 44)
-                        }.accessibilityLabel(LegendLocalized("Calling profile"))
-                    }
+                    Spacer(minLength: LegendNextSpacing.sm)
                     Button {
+                        directoryVideo = false
+                        callingPickerIntent = UUID()
                         isPresentingCallDirectory = true
                     } label: {
                         Image(systemName: "phone.fill")
@@ -330,6 +337,13 @@ struct MessagingHomeView: View {
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
                     .accessibilityLabel(LegendLocalized("Call a connection", context: "accessibility copy"))
+                    Button { directoryVideo = true; callingPickerIntent = UUID(); isPresentingCallDirectory = true } label: {
+                        Image(systemName: "video.fill").font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white).frame(width: 48, height: 48)
+                            .background(.white.opacity(0.12), in: Circle())
+                            .overlay { Circle().stroke(LegendNextColor.gold.opacity(0.66), lineWidth: 1) }
+                    }.buttonStyle(LegendMessagingPressButtonStyle())
+                    .accessibilityLabel(LegendLocalized("FaceTime"))
                 }
             }
         }
@@ -710,89 +724,20 @@ struct MessagingHomeView: View {
     }
 }
 
-private struct LegendCallRecipient: Identifiable {
-    let id: UUID
-    let name: String
-}
-
-private struct LegendConversationCallSheet: View {
-    @ObservedObject var store: MessagingStore
-    let conversationID: UUID
-    let fallbackName: String
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            LegendNextCanvas()
-            VStack(spacing: LegendNextSpacing.md) {
-                Text(fallbackName).font(.title3.bold())
-                LegendCallActionButton(title: LegendLocalized("Legend voice call"), subtitle: LegendLocalized("Private in-app audio"), symbol: "phone.fill") {
-                    dismiss()
-                    store.calling?.start(conversationId: conversationID, video: false, recipientName: fallbackName)
-                }
-                LegendCallActionButton(title: LegendLocalized("Legend video call"), subtitle: LegendLocalized("Connect face to face"), symbol: "video.fill") {
-                    dismiss()
-                    store.calling?.start(conversationId: conversationID, video: true, recipientName: fallbackName)
-                }
-                Button(LegendLocalized("Cancel")) { dismiss() }
-            }.padding(LegendNextSpacing.pageHorizontal)
-        }
-    }
-}
-
-private struct LegendCallActionButton: View {
-    let title: String
-    let subtitle: String
-    let symbol: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: LegendNextSpacing.sm) {
-                Image(systemName: symbol)
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(LegendNextColor.midnight)
-                    .frame(width: 42, height: 42)
-                    .background(LegendNextGradient.gold, in: Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.gold)
-            }
-            .padding(LegendNextSpacing.sm)
-            .background(LegendNextColor.surfaceElevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(LegendNextColor.separator, lineWidth: 1)
-            }
-        }
-        .buttonStyle(LegendMessagingPressButtonStyle())
-    }
-}
-
-// MARK: - Recipient Picker
-
 private struct LegendRecipientPicker: View {
     @ObservedObject var store: MessagingStore
     var initialSearch = ""
     var forCalling = false
+    var videoCall = false
+    var callingPickerIsCurrent: () -> Bool = { true }
+    @State private var pickerVisible = false
+    @State private var selectedIntent: UUID?
     let selectConversation: (UUID) -> Void
     let dismiss: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchIsFocused: Bool
     @State private var search = ""
-    @State private var selectedCall: LegendCallRecipient?
     @State private var isCreatingGroup = false
     @State private var groupSubject = ""
     @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
@@ -819,23 +764,22 @@ private struct LegendRecipientPicker: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
+                pickerVisible = true
                 search = initialSearch
                 store.loadRecipients(search: initialSearch)
             }
+            .onDisappear { pickerVisible = false; selectedIntent = nil }
             .onChange(of: search) { _, value in
                 store.searchRecipients(value)
             }
-            .sheet(item: $selectedCall) { target in
-                LegendConversationCallSheet(store: store, conversationID: target.id, fallbackName: target.name)
-                    .legendNextSheetChrome(detents: [.height(340)])
-            }
+
         }
     }
 
     private var recipientHeader: some View {
         VStack(spacing: LegendNextSpacing.md) {
             HStack(spacing: LegendNextSpacing.md) {
-                Button(LegendLocalized("Cancel"), action: dismiss)
+                Button(LegendLocalized("Cancel"), action: retireAndDismiss)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(minWidth: 68, minHeight: 44)
@@ -1100,6 +1044,7 @@ private struct LegendRecipientPicker: View {
                                 displayName: recipient.displayName,
                                 subtitle: relationshipLabel(for: recipient),
                                 detail: recipient.email,
+                                statusContent: AnyView(LegendMessagingPresence(participant: recipient.identity)),
                                 isVerified: recipient.isVerified == true,
                                 avatar: {
                                     LegendMessagingAvatar(
@@ -1168,16 +1113,27 @@ private struct LegendRecipientPicker: View {
         }
 
         if forCalling, let existingID = recipient.existingConversationID {
-            selectedCall = LegendCallRecipient(id: existingID, name: recipient.displayName)
+            guard pickerVisible, callingPickerIsCurrent() else { return }
+            retireAndDismiss()
+            store.calling?.start(conversationId: existingID, video: videoCall, recipientName: recipient.displayName)
             return
         }
+        let intent = UUID(), selectedVideo = videoCall, owner = store.calling
+        selectedIntent = intent
         store.startConversation(
             with: recipient,
             completion: { id in
-                if forCalling { selectedCall = LegendCallRecipient(id: id, name: recipient.displayName) }
-                else { selectConversation(id) }
+                guard pickerVisible, selectedIntent == intent else { return }
+                if forCalling {
+                    guard callingPickerIsCurrent(), owner === store.calling else { return }
+                    retireAndDismiss()
+                    owner?.start(conversationId: id, video: selectedVideo, recipientName: recipient.displayName)
+                } else { selectConversation(id) }
             }
         )
+    }
+    private func retireAndDismiss() {
+        pickerVisible = false; selectedIntent = nil; dismiss()
     }
 
     private func toggleGroupRecipient(_ recipient: MessagingRecipient) {
@@ -1195,7 +1151,7 @@ private struct LegendRecipientPicker: View {
         recipient.identity.participantType == .agent
             ? publicAgentRoleLabel(
                 roleLabel: recipient.roleLabel)
-            : publicRelationshipLabel(recipient.relationshipLabel) ?? LegendLocalized("Connection")
+            : LegendLocalized("Client")
     }
 
     private var recipientLoading: some View {
@@ -1326,8 +1282,9 @@ private struct LegendGroupMemberPicker: View {
                                 subtitle: recipient.identity.participantType == .agent
                                     ? publicAgentRoleLabel(
                                         roleLabel: recipient.roleLabel)
-                                    : publicRelationshipLabel(recipient.relationshipLabel) ?? LegendLocalized("Connection"),
+                                    : LegendLocalized("Client"),
                                 detail: recipient.email,
+                                statusContent: AnyView(LegendMessagingPresence(participant: recipient.identity)),
                                 isVerified: recipient.isVerified == true,
                                 avatar: {
                                     LegendMessagingAvatar(
@@ -1487,6 +1444,7 @@ private struct LegendGroupCollaboratorSheet: View {
                 detail: isManager
                     ? "Collaborator · Can co-manage this group"
                     : "Member",
+                statusContent: AnyView(LegendMessagingPresence(participant: participant.identity)),
                 isVerified: participant.isVerified == true,
                 avatar: {
                     LegendMessagingAvatar(
@@ -2058,7 +2016,6 @@ struct ConversationThreadView: View {
     @State private var isPresentingGroupProfile = false
     @State private var isPresentingGroupCollaborators = false
     @State private var isConfirmingDeleteGroup = false
-    @State private var isPresentingCallSheet = false
     @State private var isPresentingReceiptPrivacy = false
     @State private var verificationProfile: LegendVerificationProfileRoute?
 
@@ -2154,15 +2111,6 @@ struct ConversationThreadView: View {
         } message: {
             Text(LegendLocalized("Your unread counts stay accurate. Turning receipts off for all chats takes precedence over individual chat settings."))
         }
-        .sheet(isPresented: $isPresentingCallSheet) {
-            if case .loaded(let conversation) = store.detailState {
-                LegendConversationCallSheet(
-                    store: store,
-                    conversationID: conversation.id,
-                    fallbackName: conversation.title)
-                    .legendNextSheetChrome(detents: [.height(340)])
-            }
-        }
         .sheet(item: $verificationProfile) { route in
             LegendPublicProfileView(
                 profile: route.profile,
@@ -2238,7 +2186,7 @@ struct ConversationThreadView: View {
                         isPromoted: isPromoted)
                 },
                 isFounder: store.isFounder,
-                startCall: { isPresentingCallSheet = true },
+                startCall: { video in store.calling?.start(conversationId: conversation.id, video: video, recipientName: conversation.title) },
                 receiptPrivacy: { isPresentingReceiptPrivacy = true }
             )
 
@@ -2779,6 +2727,7 @@ private struct LegendConversationRow: View {
             displayName: conversation.title,
             subtitle: conversation.lastMessagePreview ?? LegendLocalized("Start your conversation"),
             detail: relationshipTitle,
+            statusContent: AnyView(LegendMessagingPresence(conversationID: conversation.id)),
             isVerified: !isGroup && conversation.counterparty.isVerified == true,
             avatar: {
                 if isGroup {
@@ -2841,7 +2790,7 @@ private struct LegendConversationRow: View {
             return publicAgentRoleLabel(roleLabel: conversation.counterparty.roleLabel)
 
         case .client:
-            return LegendLocalized("Connection")
+            return nil
         }
     }
 
@@ -2865,6 +2814,7 @@ private struct LegendRecipientRow: View {
             displayName: recipient.displayName,
             subtitle: relationshipLabel,
             detail: normalized(recipient.email),
+            statusContent: AnyView(LegendMessagingPresence(participant: recipient.identity)),
             isVerified: recipient.isVerified == true,
             avatar: {
                 LegendMessagingAvatar(
@@ -2912,8 +2862,7 @@ private struct LegendRecipientRow: View {
             return publicAgentRoleLabel(roleLabel: recipient.roleLabel)
 
         case .client:
-            return publicRelationshipLabel(recipient.relationshipLabel)
-                ?? LegendLocalized("Connection")
+            return LegendLocalized("Client")
         }
     }
 
@@ -2962,7 +2911,7 @@ private struct LegendConversationHeader: View {
     let deleteGroup: () -> Void
     let setGroupPromotion: (Bool) -> Void
     let isFounder: Bool
-    let startCall: () -> Void
+    let startCall: (Bool) -> Void
     var receiptPrivacy: (() -> Void)? = nil
 
     @State private var showingMembers = false
@@ -3008,6 +2957,7 @@ private struct LegendConversationHeader: View {
                 } else if let counterparty {
                     LegendMemberProfileLink(profile: counterparty.legendProfile) { titleLabel }.buttonStyle(.plain)
                 } else { titleLabel }
+                LegendMessagingPresence(conversationID: conversation.id)
 
                 if isGroup {
                     HStack(spacing: 5) {
@@ -3050,9 +3000,8 @@ private struct LegendConversationHeader: View {
                         Label(LegendLocalized("View group members"), systemImage: "person.3.fill")
                     }
                 } else {
-                    Button(action: startCall) {
-                        Label(LegendLocalized("Voice or video call"), systemImage: "phone.fill")
-                    }
+                    Button { startCall(false) } label: { Label(LegendLocalized("Call"), systemImage: "phone.fill") }
+                    Button { startCall(true) } label: { Label(LegendLocalized("FaceTime"), systemImage: "video.fill") }
                 }
                 if let receiptPrivacy {
                     Button(action: receiptPrivacy) {
@@ -3170,7 +3119,7 @@ private struct LegendConversationHeader: View {
                 ?? LegendLocalized("Private Legend® conversation")
 
         case .client:
-            return LegendLocalized("Private connection")
+            return LegendLocalized("Private Legend® conversation")
         }
     }
 
@@ -3661,7 +3610,7 @@ private struct LegendMessageContextPreview: View {
     }
 }
 
-private struct LegendMessageBubble: View {
+struct LegendMessageBubble: View {
     @Environment(\.legendMessagingStore) private var messaging
     @State private var sharingAttachments = false
 
@@ -3680,10 +3629,17 @@ private struct LegendMessageBubble: View {
     @State private var emojiPicker = false
     @State private var actionMenu = false
     @State private var preferredTone = 0
+    @ScaledMetric(relativeTo: .caption) private var timestampSize = LegendSharedDesign.messageBubble.timestampSize
     @ScaledMetric(relativeTo: .body) private var messageBodySize = LegendSharedDesign.messageBubble.bodySize
     @ScaledMetric(relativeTo: .caption) private var reactionEmojiSize = LegendSharedDesign.reactionBubble.emojiSize
+    @ScaledMetric(relativeTo: .caption) private var reactionVisualHeight = LegendSharedDesign.reactionBubble.height
     @State private var reactionHeight = LegendSharedDesign.reactionBubble.touchTarget
-    private var reactionOverflow: CGFloat { LegendSharedDesign.reactionBubble.overflow(for: reactionHeight) }
+    private var reactionTouchHeight: CGFloat { max(LegendSharedDesign.reactionBubble.touchTarget, reactionVisualHeight) }
+    private var reactionOverflow: CGFloat {
+        let padding = reactionTouchHeight - reactionVisualHeight
+        return max(0, reactionHeight - padding) * LegendSharedDesign.reactionBubble.outsideFraction + padding / 2
+    }
+    private var reactionInsideReserve: CGFloat { max(0, reactionHeight - reactionOverflow) }
     @Environment(\.layoutDirection) private var layoutDirection
     private var physicalBottomRight: Alignment { layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing }
 
@@ -3911,7 +3867,9 @@ private struct LegendMessageBubble: View {
                 }
             }
             .padding(.horizontal, LegendSharedDesign.messageBubble.horizontalPadding)
-            .padding(.vertical, LegendSharedDesign.messageBubble.verticalPadding)
+            .padding(.top, LegendSharedDesign.messageBubble.verticalPadding)
+            .padding(.bottom, LegendSharedDesign.messageBubble.verticalPadding + (message.reactions.isEmpty || isMediaMessage ? 0 : reactionInsideReserve))
+            .frame(minWidth: message.reactions.isEmpty ? nil : LegendSharedDesign.reactionBubble.touchTarget * CGFloat(min(2, message.reactions.count)) + (message.reactions.count > 1 ? LegendSharedDesign.reactionBubble.itemSpacing : 0))
             .background(
                 isMediaMessage ? Color.clear : bubbleColor,
                 in: RoundedRectangle(
@@ -3931,7 +3889,7 @@ private struct LegendMessageBubble: View {
                 message.sentUTC,
                 format: .dateTime.hour().minute()
             )
-            .font(LegendSharedDesign.messageBubble.timestampFont)
+            .font(LegendSharedDesign.messageBubble.timestampFont(size: timestampSize))
             .foregroundStyle(LegendSharedDesign.color(LegendSharedDesign.messageBubble.timestampColor))
             .padding(
                 message.isMine ? .trailing : .leading,
@@ -3948,10 +3906,10 @@ private struct LegendMessageBubble: View {
                     Text(reaction.emoji)
                         .font(.system(size: reactionEmojiSize))
                         .padding(.horizontal, LegendSharedDesign.reactionBubble.horizontalPadding)
-                        .frame(minHeight: LegendSharedDesign.reactionBubble.height)
+                        .frame(height: reactionVisualHeight)
                         .background(reaction.reactedByCurrentActor ? LegendSharedDesign.color(LegendSharedDesign.reactionBubble.ownFillColor).opacity(LegendSharedDesign.reactionBubble.ownFillOpacity) : LegendSharedDesign.color(LegendSharedDesign.reactionBubble.otherFillColor), in: Capsule())
                         .overlay(Capsule().strokeBorder(LegendSharedDesign.color(LegendSharedDesign.reactionBubble.borderColor).opacity(LegendSharedDesign.reactionBubble.borderOpacity), lineWidth: LegendSharedDesign.reactionBubble.borderWidth))
-                        .frame(minWidth: LegendSharedDesign.reactionBubble.touchTarget, minHeight: LegendSharedDesign.reactionBubble.touchTarget)
+                        .frame(minWidth: LegendSharedDesign.reactionBubble.touchTarget, minHeight: reactionTouchHeight)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -4719,5 +4677,44 @@ private struct LegendReactionFlow: Layout {
             row.map { $0.offsetBy(dx: usedWidth - (row.last?.maxX ?? 0), dy: 0) }
         }
         return (CGSize(width: usedWidth, height: subviews.isEmpty ? 0 : y + rowHeight), frames)
+    }
+}
+
+// Instantiated only by visible Messaging rows/headers, never CRM/account cards.
+private struct LegendMessagingPresence: View {
+    @Environment(\.legendMessagingStore) private var store
+    var participant: LogicalParticipantIdentity? = nil
+    var conversationID: UUID? = nil
+    var body: some View {
+        if let store { LegendObservedPresence(store: store, participant: participant, conversationID: conversationID) }
+    }
+}
+private struct LegendObservedPresence: View {
+    @ObservedObject var store: MessagingStore
+    let participant: LogicalParticipantIdentity?
+    let conversationID: UUID?
+    @State private var owner = UUID()
+    private var online: Bool? {
+        if let conversationID { return store.presence?.conversations.first { $0.conversationId == conversationID }?.isOnline }
+        guard let participant else { return nil }
+        return store.presence?.participants.first { $0.userId == participant.userID && $0.participantType == participant.participantType.rawValue }?.isOnline
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let online {
+                Text(LegendLocalized(online ? "Online" : "Offline"))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(LegendSharedDesign.color(online ? "presenceOnlineText" : "presenceOfflineText"))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(LegendSharedDesign.color(online ? "presenceOnlineFill" : "presenceOfflineFill"), in: Capsule())
+            }
+        }
+        .onAppear { observe() }
+        .onChange(of: participant) { _, _ in observe() }
+        .onChange(of: conversationID) { _, _ in observe() }
+        .onDisappear { store.removePresenceObserver(owner) }
+    }
+    private func observe() {
+        store.observePresence(owner: owner, participant: participant.map { .init(userId: $0.userID, participantType: $0.participantType.rawValue) }, conversationID: conversationID)
     }
 }

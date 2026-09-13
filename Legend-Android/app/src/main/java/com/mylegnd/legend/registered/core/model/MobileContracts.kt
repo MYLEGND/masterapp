@@ -569,3 +569,11 @@ internal fun messageReceiptLabels(messages: List<ConversationMessage>, readers: 
     val contentType: String? = null, val body: String? = null,
     val authorDisplayName: String? = null, val media: List<SocialMedia> = emptyList(), val url: String,
 )
+
+// Optional server observations: missing rows never mean Offline.
+@Serializable data class MessagingPresenceParticipant(val userId: String, val participantType: String)
+@Serializable data class MessagingPresenceRequest(val participants: List<MessagingPresenceParticipant> = emptyList(), val conversationIds: List<String> = emptyList())
+@Serializable data class MessagingParticipantPresence(val userId: String, val participantType: String, val isOnline: Boolean)
+@Serializable data class MessagingConversationPresence(val conversationId: String, val isOnline: Boolean)
+@Serializable data class MessagingPresenceResult(val observedUtc: String, val refreshSeconds: Int,
+    val participants: List<MessagingParticipantPresence>, val conversations: List<MessagingConversationPresence>)

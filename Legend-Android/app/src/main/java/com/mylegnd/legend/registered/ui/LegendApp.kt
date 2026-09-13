@@ -211,15 +211,20 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             DisposableEffect(messagingRealtime, messagingLifecycle) {
                 val observer = LifecycleEventObserver { _, event ->
                     when (event) {
-                        Lifecycle.Event.ON_START -> { calling.background(false); messagingRealtime.start() }
-                        Lifecycle.Event.ON_STOP -> { calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
+                        Lifecycle.Event.ON_START -> { container.localization.setForeground(true); messagingRealtime.setPresenceForeground(true); calling.background(false); messagingRealtime.start() }
+                        Lifecycle.Event.ON_STOP -> { container.localization.setForeground(false); messagingRealtime.setPresenceForeground(false); calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
                         else -> Unit
                     }
                 }
+                val foreground = messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                container.localization.setForeground(foreground)
+                messagingRealtime.setPresenceForeground(foreground)
                 messagingLifecycle.addObserver(observer)
-                if (messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) messagingRealtime.start()
+                if (foreground) messagingRealtime.start()
                 onDispose {
                     messagingLifecycle.removeObserver(observer)
+                    container.localization.setForeground(false)
+                    messagingRealtime.setPresenceForeground(false)
                 }
             }
             LaunchedEffect(
@@ -1089,8 +1094,8 @@ private fun AuthenticatedShell(
                     currentAccountId = session.accountId,
                     switchSignedInAccount = switchSignedInAccount,
                     addAccount = addAccount,
-                    refreshLocalization = {
-                        container.localization.refresh(session.accountId, participantType)
+                    refreshLocalization = { savedLanguage ->
+                        container.localization.refresh(session.accountId, participantType, savedLanguage)
                         messages.refreshPresentation()
                     },
                     signOut = signOut,
@@ -2792,11 +2797,13 @@ private fun MessagesScreen(
     var creatingConversation by remember { mutableStateOf(false) }
     var conversationMenu by remember { mutableStateOf<ConversationSummary?>(null) }
     var callDirectoryOpen by remember { mutableStateOf(false) }
+    var directoryVideo by remember { mutableStateOf(false) }
+    var callDirectoryIntent by remember { mutableStateOf(java.util.UUID.randomUUID().toString()) }
     var callingProfileOpen by remember { mutableStateOf(false) }
     val callingProfile = LocalLegendCalling.current
     if (callingProfileOpen && callingProfile != null) LegendCallingProfileSheet(callingProfile,
         dismiss = { callingProfileOpen = false }, editProfilePhoto = editCallingProfilePhoto)
-    var callTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var callTarget by remember { mutableStateOf<Triple<String, String, Boolean>?>(null) }
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
@@ -2836,7 +2843,7 @@ private fun MessagesScreen(
                                     creatingConversation = true
                                     viewModel.loadRecipients()
                                 },
-                                onCallDirectory = { callDirectoryOpen = true },
+                                onCallDirectory = { video -> directoryVideo = video; callDirectoryIntent = java.util.UUID.randomUUID().toString(); callDirectoryOpen = true },
                                 onCallingProfile = { callingProfileOpen = true },
                             )
                         }
@@ -2940,13 +2947,19 @@ private fun MessagesScreen(
             load = viewModel::loadRecipients,
             choose = { recipient ->
                 val existingId = recipient.existingConversationId
+                val intent = callDirectoryIntent
+                val selectedVideo = directoryVideo
+                val selectedOwner = callingProfile
+                val wasCalling = callDirectoryOpen
                 if (callDirectoryOpen && existingId != null) {
                     callDirectoryOpen = false
-                    callTarget = existingId to recipient.displayName
+                    callTarget = Triple(existingId, recipient.displayName, selectedVideo)
                 } else viewModel.startConversation(recipient) { id ->
-                    if (callDirectoryOpen) {
-                        callDirectoryOpen = false
-                        callTarget = id to recipient.displayName
+                    if (wasCalling) {
+                        if (callDirectoryOpen && callDirectoryIntent == intent && LegendCallPlatform.store === selectedOwner) {
+                            callDirectoryOpen = false
+                            callTarget = Triple(id, recipient.displayName, selectedVideo)
+                        }
                     } else {
                         creatingConversation = false
                         selectedConversationId = id
@@ -2960,13 +2973,14 @@ private fun MessagesScreen(
                 }
             },
             isSending = viewModel.isSending.collectAsStateWithLifecycle().value,
-            dismiss = { creatingConversation = false; callDirectoryOpen = false },
+            dismiss = { creatingConversation = false; callDirectoryOpen = false; callDirectoryIntent = java.util.UUID.randomUUID().toString() },
         )
     }
     callTarget?.let { target ->
         LegendConversationCallSheet(
             conversationId = target.first,
             fallbackName = target.second,
+            video = target.third,
             dismiss = { callTarget = null },
         )
     }
@@ -3023,7 +3037,7 @@ private fun LegendChatLoadingContent() {
 @Composable
 private fun LegendMessagesInboxHeader(
     onNewMessage: () -> Unit,
-    onCallDirectory: () -> Unit,
+    onCallDirectory: (Boolean) -> Unit,
     onCallingProfile: () -> Unit,
 ) {
     Surface(
@@ -3031,14 +3045,14 @@ private fun LegendMessagesInboxHeader(
         shape = LegendShapes.Card,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.padding(LegendSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
             Text(legendLocalized("Messages"), style = LegendTypography.Section, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
             IconButton(onClick = onCallingProfile) {
                 Icon(Icons.Default.AccountCircle, legendLocalized("Calling profile"), tint = LegendColors.OnNavy)
             }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onNewMessage,
                 modifier = Modifier
@@ -3046,14 +3060,20 @@ private fun LegendMessagesInboxHeader(
                     .background(LegendGradients.Gold, CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.OnNavy.copy(alpha = 0.30f), CircleShape),
             ) { Icon(Icons.Default.Edit, legendLocalized("Start a new conversation", "accessibility copy"), tint = LegendColors.Midnight) }
-            Spacer(Modifier.width(LegendSpacing.Sm))
+            Spacer(Modifier.weight(1f))
             IconButton(
-                onClick = onCallDirectory,
+                onClick = { onCallDirectory(false) },
                 modifier = Modifier
                     .size(48.dp)
                     .background(LegendColors.OnNavy.copy(alpha = 0.12f), CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape),
             ) { Icon(Icons.Default.Phone, legendLocalized("Call a connection", "accessibility copy"), tint = LegendColors.OnNavy) }
+            IconButton(onClick = { onCallDirectory(true) }, modifier = Modifier.size(48.dp)
+                .background(LegendColors.OnNavy.copy(alpha = 0.12f), CircleShape)
+                .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape)) {
+                Icon(Icons.Default.Videocam, legendLocalized("FaceTime"), tint = LegendColors.OnNavy)
+            }
+            }
         }
     }
 }
@@ -3078,12 +3098,13 @@ private fun LegendConversationRow(
         isGroup -> legendLocalized("Group chat")
         conversation.counterparty.identity.participantType.equals("Agent", ignoreCase = true) ->
             conversation.counterparty.roleLabel?.takeIf(String::isNotBlank) ?: legendLocalized("LEGEND guide")
-        else -> legendLocalized("Connection")
+        else -> null
     }
     LegendContactCard(
         displayName = conversation.title,
         subtitle = conversation.lastMessagePreview ?: legendLocalized("Start your conversation"),
         detail = relationship,
+        statusContent = { LegendMessagingPresence(conversationId = conversation.id) },
         isVerified = !isGroup && conversation.counterparty.isVerified,
         onClick = open,
         onLongClick = more,
@@ -3131,23 +3152,31 @@ private fun LegendConversationRow(
 private fun LegendConversationCallSheet(
     conversationId: String,
     fallbackName: String,
+    video: Boolean,
     dismiss: () -> Unit,
 ) {
     val calling = LocalLegendCalling.current
-    var video by remember { mutableStateOf(false) }
+    // The selected mode goes straight to platform consent. A saved receipt cannot
+    // be overwritten by a replacement target while the OS result is outstanding.
+    var launched by rememberSaveable { mutableStateOf(false) }
+    var requestedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var requestedVideo by rememberSaveable { mutableStateOf(false) }
+    var requestedOwner by rememberSaveable { mutableStateOf<String?>(null) }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants.values.all { it }) { dismiss(); calling?.start(conversationId, video, fallbackName) }
+        val sameRequest = requestedId == conversationId && requestedVideo == video &&
+            requestedOwner == calling?.permissionOwnerId
+        requestedId = null
+        if (sameRequest) {
+            if (grants.isNotEmpty() && grants.values.all { it }) calling?.start(conversationId, video, fallbackName)
+            dismiss()
+        }
     }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
-        Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(fallbackName, style = LegendTypography.Section)
-            LegendCallActionCard("Legend voice call", "Private in-app audio", Icons.Default.Phone) {
-                video = false; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO))
-            }
-            LegendCallActionCard("Legend video call", "Connect face to face", Icons.Default.Videocam) {
-                video = true; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA))
-            }
-            TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) }
+    LaunchedEffect(Unit) {
+        if (!launched) {
+            launched = true
+            requestedId = conversationId; requestedVideo = video; requestedOwner = calling?.permissionOwnerId
+            permissions.launch(if (video) arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA)
+                else arrayOf(android.Manifest.permission.RECORD_AUDIO))
         }
     }
 }
@@ -3245,8 +3274,10 @@ private fun LegendRecipientPicker(
                             items(state.value, key = { "${it.identity.userId}:${it.identity.participantType}" }) { recipient ->
                                 LegendContactCard(
                                     displayName = recipient.displayName,
-                                    subtitle = if (participantType == "Agent") recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("Connection") else legendLocalized("Connection"),
+                                    subtitle = if (recipient.identity.participantType.equals("Agent", ignoreCase = true)) recipient.roleLabel?.takeIf(String::isNotBlank) ?: legendLocalized("Agent") else legendLocalized("Client"),
+                                    detail = recipient.email,
                                     isVerified = recipient.isVerified == true,
+                                    statusContent = { LegendMessagingPresence(participant = recipient.identity) },
                                     onClick = {
                                         if (!isSending) {
                                             if (isCreatingGroup) {
@@ -3627,8 +3658,8 @@ private fun MessageThread(
     val counterparty = conversation.participants.firstOrNull { it.identity != currentIdentity }
     val context = LocalContext.current
     var optionsOpen by remember { mutableStateOf(false) }
-    var callOpen by remember { mutableStateOf(false) }
-    if (callOpen) LegendConversationCallSheet(conversation.id, conversation.title) { callOpen = false }
+    var callMode by remember(conversation.id) { mutableStateOf<Boolean?>(null) }
+    callMode?.let { mode -> LegendConversationCallSheet(conversation.id, conversation.title, mode) { callMode = null } }
     var privacyOpen by remember { mutableStateOf(false) }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
     LaunchedEffect(conversation.id, conversation.messages.lastOrNull()?.id, lifecycleState) {
@@ -3671,6 +3702,7 @@ private fun MessageThread(
                     else counterparty?.let { openProfile(SocialAuthor(it.identity, it.profileId, it.displayName, it.avatar)) }
                 }) {
                     Text(conversation.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    LegendMessagingPresence(conversationId = conversation.id)
                     conversation.purpose?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 1) }
                 }
                 Box {
@@ -3681,7 +3713,8 @@ private fun MessageThread(
                         if (conversation.conversationType.equals("Group", ignoreCase = true)) {
                             DropdownMenuItem(text = { Text(legendLocalized("Group members and settings")) }, onClick = { optionsOpen = false; manageGroup(conversation) })
                         } else {
-                            DropdownMenuItem(text = { Text(legendLocalized("Voice or video call")) }, onClick = { optionsOpen = false; callOpen = true })
+                            DropdownMenuItem(text = { Text(legendLocalized("Call")) }, leadingIcon = { Icon(Icons.Default.Phone, null) }, onClick = { optionsOpen = false; callMode = false })
+                            DropdownMenuItem(text = { Text(legendLocalized("FaceTime")) }, leadingIcon = { Icon(Icons.Default.Videocam, null) }, onClick = { optionsOpen = false; callMode = true })
                         }
                         DropdownMenuItem(text = { Text(legendLocalized("Read receipt privacy")) }, onClick = { optionsOpen = false; privacyOpen = true })
                     }
@@ -3882,7 +3915,11 @@ private fun LegendMessageBubble(
     val density = LocalDensity.current
     var reactionContentWidth by remember(message.id) { mutableStateOf(300.dp) }
     var reactionHeight by remember(message.id) { mutableStateOf(reactionBubble.touchTarget.dp) }
-    val reactionInset = reactionBubble.overflow(reactionHeight.value).dp
+    val reactionVisualHeight = reactionBubble.height * density.fontScale
+    val reactionTouchHeight = maxOf(reactionBubble.touchTarget, reactionVisualHeight)
+    val reactionTouchPadding = reactionTouchHeight - reactionVisualHeight
+    val reactionInset = (maxOf(0f, reactionHeight.value - reactionTouchPadding) * reactionBubble.outsideFraction + reactionTouchPadding / 2).dp
+    val reactionInsideReserve = maxOf(0f, reactionHeight.value - reactionInset.value).dp
     val reactionMeasured: (Int) -> Unit = { height -> reactionHeight = with(density) { height.toDp() } }
     val isMediaMessage = !message.isDeleted && (message.sharedContent != null || message.attachments.isNotEmpty())
     val messageTextColor = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.OnNavy
@@ -3894,14 +3931,16 @@ private fun LegendMessageBubble(
         }
         Column(horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(bubble.metadataGap.dp)) {
         Box(Modifier.padding(bottom = if (message.reactions.isEmpty() || message.attachments.isNotEmpty()) 0.dp else reactionInset)) {
-        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(bubble.cornerRadius.dp), modifier = Modifier.widthIn(min = if (message.reactions.isEmpty()) 0.dp else reactionBubble.touchTarget.dp, max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true }).semantics {
+        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(bubble.cornerRadius.dp), modifier = Modifier.widthIn(min = if (message.reactions.isEmpty()) 0.dp else (reactionBubble.touchTarget * minOf(2, message.reactions.size) + if (message.reactions.size > 1) reactionBubble.itemSpacing else 0f).dp, max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true }).semantics {
             if (!message.isDeleted) customActions = buildList {
                 add(CustomAccessibilityAction(replyLabel) { reply(); true })
                 add(CustomAccessibilityAction(actionsLabel) { actionsOpen = true; true })
                 if (message.isMine) add(CustomAccessibilityAction(unsendLabel) { delete(); true })
             }
         }) {
-            Column(Modifier.padding(horizontal = if (isMediaMessage) 0.dp else bubble.horizontalPadding.dp, vertical = if (isMediaMessage) 0.dp else bubble.verticalPadding.dp), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+            Column(Modifier.padding(start = if (isMediaMessage) 0.dp else bubble.horizontalPadding.dp, end = if (isMediaMessage) 0.dp else bubble.horizontalPadding.dp,
+                top = if (isMediaMessage) 0.dp else bubble.verticalPadding.dp,
+                bottom = if (isMediaMessage) 0.dp else bubble.verticalPadding.dp + if (message.reactions.isEmpty()) 0.dp else reactionInsideReserve), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine && showsSenderName) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
                 message.reply?.let { replyPreview ->
                     Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -3965,15 +4004,18 @@ private fun LegendMessageBubble(
 @Composable
 private fun LegendMessageReactions(message: ConversationMessage, react: (String?) -> Unit, modifier: Modifier = Modifier, measured: (Int) -> Unit = {}) {
     val bubble = LegendDesignAuthority.reactionBubble()
-    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = bubble.overflow(size.height / density) * density; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
+    val visualHeight = bubble.height * LocalDensity.current.fontScale
+    val touchHeight = maxOf(bubble.touchTarget, visualHeight)
+    val touchPadding = touchHeight - visualHeight
+    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = (maxOf(0f, size.height / density - touchPadding) * bubble.outsideFraction + touchPadding / 2) * density; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
         message.reactions.forEach { reaction ->
-            Box(Modifier.sizeIn(minWidth = bubble.touchTarget.dp, minHeight = bubble.touchTarget.dp)
+            Box(Modifier.sizeIn(minWidth = bubble.touchTarget.dp, minHeight = touchHeight.dp)
                 .clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }
                 .semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" }, contentAlignment = Alignment.Center) {
             Surface(shape = CircleShape,
                 color = if (reaction.reactedByCurrentActor) LegendDesignAuthority.color(bubble.ownFillColor).copy(alpha = bubble.ownFillOpacity) else LegendDesignAuthority.color(bubble.otherFillColor),
                 border = BorderStroke(bubble.borderWidth.dp, LegendDesignAuthority.color(bubble.borderColor).copy(alpha = bubble.borderOpacity))) {
-                Box(Modifier.heightIn(min = bubble.height.dp).padding(horizontal = bubble.horizontalPadding.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.height(visualHeight.dp).padding(horizontal = bubble.horizontalPadding.dp), contentAlignment = Alignment.Center) {
                     Text(reaction.emoji, fontSize = bubble.emojiSize.sp, lineHeight = bubble.emojiSize.sp)
                 }
             }
@@ -5428,7 +5470,7 @@ private fun AccountScreen(
     currentAccountId: String,
     switchSignedInAccount: (String) -> Unit,
     addAccount: () -> Unit,
-    refreshLocalization: suspend () -> Unit,
+    refreshLocalization: suspend (String?) -> Unit,
     signOut: () -> Unit,
 ) {
     val profile by viewModel.profile.collectAsStateWithLifecycle()
@@ -5573,7 +5615,8 @@ private fun AccountScreen(
             submit = { language ->
                 viewModel.updateLanguage(account, language) {
                     languageAccount = null
-                    profilePagerScope.launch { refreshLocalization() }
+                    val savedLanguage = (viewModel.profile.value as? LoadState.Data)?.value?.translationAccess?.preferredCommunicationLanguage
+                    profilePagerScope.launch { refreshLocalization(savedLanguage) }
                 }
             },
         )
@@ -8686,4 +8729,24 @@ private fun LegendMessageAttachmentOpen(
         if (inlineFile == null) reactionOverlay()
     }
     if (failed) Text(legendLocalized("Attachment unavailable"), color = LegendColors.Error)
+}
+
+/** Visible Messaging targets only; absent/server-filtered observations render nothing. */
+@Composable
+private fun LegendMessagingPresence(participant: MobileIdentity? = null, conversationId: String? = null) {
+    val transport = LocalLegendCalling.current?.transport ?: return
+    val observation by transport.presence.collectAsStateWithLifecycle()
+    val owner = remember(transport, participant, conversationId) { java.util.UUID.randomUUID().toString() }
+    DisposableEffect(transport, owner) {
+        transport.observePresence(owner, participant?.let { MessagingPresenceParticipant(it.userId, it.participantType) }, conversationId)
+        onDispose { transport.removePresenceObserver(owner) }
+    }
+    val online = if (conversationId != null) observation?.conversations?.firstOrNull { it.conversationId == conversationId }?.isOnline
+        else participant?.let { identity -> observation?.participants?.firstOrNull { it.userId == identity.userId && it.participantType == identity.participantType }?.isOnline }
+    if (online != null) {
+        val color = LegendDesignAuthority.color(if (online) "presenceOnlineText" else "presenceOfflineText")
+        val fill = LegendDesignAuthority.color(if (online) "presenceOnlineFill" else "presenceOfflineFill")
+        Text(legendLocalized(if (online) "Online" else "Offline"), style = LegendTypography.Caption, color = color,
+            modifier = Modifier.background(fill, CircleShape).padding(horizontal = 6.dp, vertical = 2.dp))
+    }
 }

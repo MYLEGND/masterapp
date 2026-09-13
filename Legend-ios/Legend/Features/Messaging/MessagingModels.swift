@@ -1867,3 +1867,28 @@ struct LegendReactionEmojiCatalog: Decodable {
         }
     }
 }
+
+// Reachability observations come only from the authenticated shared messaging hub.
+struct MessagingPresenceParticipant: Codable, Hashable, Sendable {
+    let userId: String
+    let participantType: String
+}
+struct MessagingPresenceRequest: Encodable, Equatable, Sendable {
+    var participants: [MessagingPresenceParticipant] = []
+    var conversationIds: [UUID] = []
+}
+struct MessagingParticipantPresence: Decodable, Sendable {
+    let userId: String
+    let participantType: String
+    let isOnline: Bool
+}
+struct MessagingConversationPresence: Decodable, Sendable {
+    let conversationId: UUID
+    let isOnline: Bool
+}
+struct MessagingPresenceResult: Decodable, Sendable {
+    let observedUtc: Date
+    let refreshSeconds: Int
+    var participants: [MessagingParticipantPresence]
+    var conversations: [MessagingConversationPresence]
+}

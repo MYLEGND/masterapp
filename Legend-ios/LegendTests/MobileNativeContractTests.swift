@@ -2,10 +2,60 @@ import Foundation
 import Combine
 import XCTest
 import UIKit
+import SwiftUI
 @testable import Legend
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testMessageBubbleActualRendererAtNormalAndAccessibilitySizes() async throws {
+        let sender = MessagingParticipant(identity: try LogicalParticipantIdentity(userID: "visual-fixture", participantType: .client),
+            profileID: "visual-fixture", displayName: "Alex Morgan", roleLabel: nil, avatar: nil, isVerified: false)
+        let cases: [(String, String, [String])] = [
+            ("short", "K", ["❤️", "👍"]),
+            ("wrapped", "A short message with enough reactions to wrap onto multiple rows.", ["❤️", "👍", "😂", "🙏", "🎉", "👀", "💯", "😊"]),
+            ("translated", "Thank you. The translated message and its final line must remain readable.", ["❤️", "👍"])
+        ]
+        for (sizeName, size) in [("normal", DynamicTypeSize.large), ("accessibility", .accessibility3)] {
+            for (name, text, emoji) in cases {
+                let message = ConversationMessage(id: UUID(), conversationID: UUID(), sender: sender, body: text,
+                    sentUTC: Date(timeIntervalSince1970: 1_700_000_000), attachments: [], isMine: name != "translated",
+                    reply: name == "translated" ? .init(id: UUID(), sender: sender, body: "The earlier question", isDeleted: false) : nil,
+                    translation: name == "translated" ? .init(originalLanguage: "ht", targetLanguage: "en", provider: "AzureTranslator") : nil,
+                    originalBody: name == "translated" ? "Mèsi. Mesaj orijinal la rete disponib." : nil,
+                    reactions: emoji.map { .init(emoji: $0, count: 2, reactedByCurrentActor: $0 == "❤️") })
+                let view = LegendMessageBubble(message: message, senderAvatar: nil, showsSender: false,
+                    onReply: {}, onDelete: {}, onReact: { _ in }, reactionOptions: emoji, openSharedPost: { _ in }, onOpenVerificationProfile: nil)
+                    .padding(12).frame(width: 390).environment(\.dynamicTypeSize, size).environment(\.colorScheme, .light)
+                let host = UIHostingController(rootView: view)
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 1800))
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                host.view.frame = window.bounds
+                host.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(150))
+                let measured = host.sizeThatFits(in: CGSize(width: 390, height: 1800))
+                XCTAssertLessThanOrEqual(measured.width, 390.5)
+                XCTAssertGreaterThan(measured.height, 44)
+                XCTAssertLessThan(measured.height, 1800)
+                host.view.frame = CGRect(origin: .zero, size: CGSize(width: 390, height: ceil(measured.height)))
+                host.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(150))
+                let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                    host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+                }
+                let data = try XCTUnwrap(image.pngData())
+                let file = FileManager.default.temporaryDirectory.appendingPathComponent("legend-message-\(sizeName)-\(name).png")
+                try data.write(to: file, options: .atomic)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "legend-message-\(sizeName)-\(name)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                print("LEGEND_RENDER_FIXTURE \(file.path)")
+                window.isHidden = true
+            }
+        }
+    }
+
     func testBundledEmojiPickerSearchIncludesKeywordsAndCompleteSequences() throws {
         let catalog = try XCTUnwrap(LegendReactionEmojiCatalog.bundled)
         XCTAssertGreaterThan(catalog.entries.count, 3000)
