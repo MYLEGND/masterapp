@@ -463,7 +463,10 @@ public sealed class LegendFounderAiDiscourseStateService
                         string.Equals(
                             item.Node.SemanticValue,
                             activeBinding.Candidate.Node.SemanticValue,
-                            StringComparison.Ordinal))
+                            StringComparison.Ordinal) &&
+                        SelectorAnchorsCurrentTurnReplacementOccurrence(
+                            selector,
+                            item.Node))
                     .ToArray()
                 : Array.Empty<MeaningGraphEntityCandidate>();
             if (currentTurnSupersededCandidates.Length > 1)
@@ -1034,6 +1037,20 @@ public sealed class LegendFounderAiDiscourseStateService
             string.Equals(node.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) &&
             node.StartTokenIndex == binding.SupersededCurrentTurnNodeStartTokenIndex &&
             node.TokenLength == binding.SupersededCurrentTurnNodeTokenLength;
+    }
+
+    private static bool SelectorAnchorsCurrentTurnReplacementOccurrence(
+        LegendConnectUtteranceMeaningNode selector,
+        LegendConnectUtteranceMeaningNode candidate)
+    {
+        if (selector.TokenLength <= 0 || candidate.TokenLength <= 0)
+            return false;
+        var selectorStart = selector.StartTokenIndex;
+        var selectorEndExclusive = selector.StartTokenIndex + selector.TokenLength;
+        var candidateStart = candidate.StartTokenIndex;
+        var candidateEndExclusive = candidate.StartTokenIndex + candidate.TokenLength;
+        return candidateStart <= selectorStart &&
+            selectorEndExclusive <= candidateEndExclusive;
     }
 
     private static bool IsMalformedBindingState(
