@@ -373,8 +373,14 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         audioActive = active
         updateRingback()
     }
+    var outgoingToneEligible: Bool {
+        // The local dialing cue does not claim remote delivery. CallKit must have
+        // activated audio and admitted this start before a pending invite can sound.
+        audioActive && !stopped && ((isCaller && current?.status == "ringing") ||
+            (isStarting && outgoingRequest != nil))
+    }
     private func updateRingback() {
-        guard audioActive, isCaller, current?.status == "ringing", current?.receivedUtc != nil else {
+        guard outgoingToneEligible else {
             ringback?.stop(); ringback = nil; return
         }
         guard ringback == nil else { return }
@@ -386,7 +392,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
             player.numberOfLoops = -1
             guard player.play() else { throw LegendCallingError.unavailable("The calling sound could not play.") }
             ringback = player
-        } catch { controlError = "The recipient received the call, but the ringing sound could not play." }
+        } catch { controlError = "The outgoing call sound could not play." }
     }
     private func startReconciliation(_ id: UUID) {
         guard reconciliation == nil else { return }
@@ -501,6 +507,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         outgoingRequest = Task { @MainActor in
             // CallKit's start action confirms local readiness, not a remote network round trip.
             action.fulfill()
+            self.updateRingback()
             provider.reportOutgoingCall(with: pending.0, startedConnectingAt: Date())
             do {
                 let result = try await self.send(LegendCallCommand(action: "invite", deviceId: self.deviceId, callId: pending.0, conversationId: pending.1, video: pending.2))

@@ -407,13 +407,43 @@ final class LegendDirectCallingTests: XCTestCase {
         let unconfirmed = LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil)
         await store.receive(unconfirmed)
         XCTAssertEqual(store.status, "Calling")
+        store.audioActivated(false)
+        XCTAssertFalse(store.outgoingToneEligible, "CallKit still owns audio activation")
+        store.audioActivated(true)
+        XCTAssertTrue(store.outgoingToneEligible, "Local dialing must sound before a remote receipt arrives")
+        XCTAssertNil(store.controlError, "The bundled outgoing cue must be accepted by the existing audio player")
+        XCTAssertNil(store.current?.receivedUtc)
+        XCTAssertEqual(store.status, "Calling", "A dialing cue must not manufacture delivery confirmation")
         call.receivedUtc = Date()
         await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
         XCTAssertEqual(store.status, "Ringing")
         await store.receive(unconfirmed)
         XCTAssertEqual(store.status, "Ringing")
         XCTAssertNotNil(store.current?.receivedUtc)
+        XCTAssertTrue(store.outgoingToneEligible)
+        store.audioActivated(false)
+        XCTAssertFalse(store.outgoingToneEligible)
+        store.shutdown()
+        store.audioActivated(true)
+        XCTAssertFalse(store.outgoingToneEligible, "A retired call must not resume the cue")
     }
+
+    func testOutgoingCueWaitsForCallKitStartEvenWhenOldAudioActivationIsRetained() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        store.audioActivated(true)
+        XCTAssertFalse(store.outgoingToneEligible)
+        store.start(conversationId: UUID(), video: false, recipientName: "Recipient")
+        XCTAssertTrue(store.isStarting)
+        XCTAssertFalse(store.outgoingToneEligible, "A tap awaiting permissions/CallKit is not an admitted outgoing call")
+        store.end()
+        XCTAssertFalse(store.outgoingToneEligible)
+    }
+
 
     func testCancelledAnswerAfterRetirementCannotRestoreCall() async throws {
         try await verifyDelayedAnswer(throwsCancellation: true)
