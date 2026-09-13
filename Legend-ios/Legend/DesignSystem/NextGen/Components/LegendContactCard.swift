@@ -33,6 +33,8 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         self.action = action()
     }
 
+    private var metrics: LegendSharedDesign.ContactCardToken { LegendSharedDesign.contactCard }
+
     var body: some View {
         HStack(spacing: LegendNextSpacing.sm) {
             if let onOpen {
@@ -48,24 +50,24 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
             action
                 .foregroundStyle(LegendNextColor.contactAction)
         }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, LegendNextSpacing.xs)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .padding(.horizontal, metrics.horizontalPadding)
+        .padding(.vertical, metrics.verticalPadding)
+        .frame(maxWidth: .infinity, minHeight: metrics.minimumHeight, alignment: .leading)
         .background(
             LegendNextColor.contactNavy,
             in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
+                cornerRadius: metrics.cornerRadius,
                 style: .continuous
             )
         )
         .overlay {
             RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
+                cornerRadius: metrics.cornerRadius,
                 style: .continuous
             )
-            .strokeBorder(LegendNextColor.contactBorder.opacity(0.82), lineWidth: 1)
+            .strokeBorder(LegendNextColor.contactBorder.opacity(metrics.borderOpacity), lineWidth: metrics.borderWidth)
         }
-        .shadow(color: LegendNextColor.midnight.opacity(0.24), radius: 7, y: 3)
+        .shadow(color: LegendNextColor.midnight.opacity(metrics.shadowOpacity), radius: metrics.shadowRadius, y: metrics.shadowOffsetY)
         .contentShape(Rectangle())
     }
 

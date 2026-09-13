@@ -62,9 +62,14 @@ class ReactionEmojiCatalogTests(unittest.TestCase):
         contract = json.loads((CATALOG.ROOT / "Legend-Design/legend-design.tokens.json").read_text())
         bubble = contract["messaging"]["reactionBubble"]
         self.assertEqual(bubble["outsideFraction"], 0.25)
-        self.assertEqual(bubble["height"] * bubble["outsideFraction"], 8)
+        self.assertEqual(bubble["height"] * bubble["outsideFraction"], 5.5)
         self.assertEqual(bubble["trailingInset"], 0)
-        self.assertEqual(bubble["emojiSize"], 20)
+        self.assertEqual(bubble["touchTarget"], 44)
+        self.assertGreaterEqual(bubble["touchTarget"], bubble["height"])
+        self.assertEqual(contract["sourceOfTruth"], "Legend-Design/legend-design.tokens.json")
+        self.assertEqual(contract["messaging"]["messageBubble"]["timestampWeight"], "regular")
+        self.assertIn(contract["messaging"]["messageBubble"]["timestampColor"], contract["colors"])
+        self.assertEqual(bubble["emojiSize"], 14)
         self.assertEqual(bubble["ownFillOpacity"], 0.16)
         self.assertEqual(bubble["borderOpacity"], 0.35)
         for key in ("ownFillColor", "otherFillColor", "borderColor"):

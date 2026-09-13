@@ -59,6 +59,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -2057,7 +2059,7 @@ private fun AgentClientsScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text(client.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
                                     Text(client.email, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (client.archived) legendLocalized("Archived / Deleted") else client.crmStatus, style = LegendTypography.Caption, color = LegendColors.GoldBright)
+                                    if (client.archived || !client.crmStatus.equals("Active", ignoreCase = true)) Text(if (client.archived) legendLocalized("Archived / Deleted") else client.crmStatus, style = LegendTypography.Caption, color = LegendColors.GoldBright)
                                 }
                                 Button(
                                     onClick = {
@@ -3700,6 +3702,7 @@ private fun MessageThread(
             items(conversation.messages.filterNot { it.isDeleted }.asReversed(), key = { it.id }) { message ->
                 LegendMessageBubble(
                     message = message,
+                    showsSenderName = conversation.conversationType.equals("Group", ignoreCase = true),
                     mediaRepository = mediaRepository,
                     participantType = participantType,
                     reply = { replyTo = message },
@@ -3780,6 +3783,7 @@ private fun MessageThread(
 @Composable
 private fun LegendMessageBubble(
     message: ConversationMessage,
+    showsSenderName: Boolean,
     mediaRepository: AuthenticatedMediaRepository,
     participantType: String,
     reply: () -> Unit,
@@ -3788,6 +3792,7 @@ private fun LegendMessageBubble(
     reactionOptions: List<String>,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
+    var showingOriginal by remember(message.id, message.body, message.originalBody) { mutableStateOf(false) }
     var actionsOpen by remember(message.id) { mutableStateOf(false) }
     var emojiPicker by remember(message.id) { mutableStateOf(false) }
     var pendingEmojiPicker by remember(message.id) { mutableStateOf(false) }
@@ -3870,10 +3875,14 @@ private fun LegendMessageBubble(
     val openProfile = LocalLegendOpenProfile.current
     val openSharedPost = LocalLegendOpenSharedPost.current
     val reactionBubble = LegendDesignAuthority.reactionBubble()
+    val bubble = LegendDesignAuthority.messageBubble()
+    val replyLabel = legendLocalized("Reply")
+    val actionsLabel = legendLocalized("Message actions")
+    val unsendLabel = legendLocalized("Unsend message")
     val density = LocalDensity.current
     var reactionContentWidth by remember(message.id) { mutableStateOf(300.dp) }
-    var reactionHeight by remember(message.id) { mutableStateOf(reactionBubble.height.dp) }
-    val reactionInset = reactionHeight * reactionBubble.outsideFraction
+    var reactionHeight by remember(message.id) { mutableStateOf(reactionBubble.touchTarget.dp) }
+    val reactionInset = reactionBubble.overflow(reactionHeight.value).dp
     val reactionMeasured: (Int) -> Unit = { height -> reactionHeight = with(density) { height.toDp() } }
     val isMediaMessage = !message.isDeleted && (message.sharedContent != null || message.attachments.isNotEmpty())
     val messageTextColor = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.OnNavy
@@ -3883,23 +3892,31 @@ private fun LegendMessageBubble(
             Box(Modifier.clickable { openProfile(senderProfile) }) { LegendProtectedAvatar(message.sender.avatar, message.sender.displayName, participantType, mediaRepository, size = 28.dp) }
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
-        Column(horizontalAlignment = Alignment.End) {
+        Column(horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(bubble.metadataGap.dp)) {
         Box(Modifier.padding(bottom = if (message.reactions.isEmpty() || message.attachments.isNotEmpty()) 0.dp else reactionInset)) {
-        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
-            Column(Modifier.padding(if (isMediaMessage) 0.dp else LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
+        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(bubble.cornerRadius.dp), modifier = Modifier.widthIn(min = if (message.reactions.isEmpty()) 0.dp else reactionBubble.touchTarget.dp, max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true }).semantics {
+            if (!message.isDeleted) customActions = buildList {
+                add(CustomAccessibilityAction(replyLabel) { reply(); true })
+                add(CustomAccessibilityAction(actionsLabel) { actionsOpen = true; true })
+                if (message.isMine) add(CustomAccessibilityAction(unsendLabel) { delete(); true })
+            }
+        }) {
+            Column(Modifier.padding(horizontal = if (isMediaMessage) 0.dp else bubble.horizontalPadding.dp, vertical = if (isMediaMessage) 0.dp else bubble.verticalPadding.dp), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                if (!message.isMine && showsSenderName) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
                 message.reply?.let { replyPreview ->
                     Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                if (message.isDeleted || message.body.isNotBlank()) Text(if (message.isDeleted) legendLocalized("Message unsent") else message.body, color = messageTextColor)
-                message.originalBody?.takeIf { it != message.body }?.let { original ->
-                    Text("${LegendCopy.value("message.original")}: $original", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
-                }
+                if (message.isDeleted || message.body.isNotBlank()) Text(if (message.isDeleted) legendLocalized("Message unsent") else if (showingOriginal) message.originalBody ?: message.body else message.body, color = messageTextColor, fontSize = bubble.bodySize.sp)
                 message.translationNotice?.let { notice ->
                     Text(notice, style = LegendTypography.Label, color = messageTextColor)
                 }
+                message.originalBody?.takeIf { it != message.body }?.let {
+                    Text(legendLocalized(if (showingOriginal) "View translation" else "View original"),
+                        modifier = Modifier.clickable { showingOriginal = !showingOriginal }, style = LegendTypography.Label,
+                        color = if (isMediaMessage) LegendColors.TextSecondary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
+                }
                 message.translation?.let { translation ->
-                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
+                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Caption, color = if (isMediaMessage) LegendColors.TextSecondary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }
                 message.verificationReview?.let { review ->
                     Text("${review.resourceType}: ${review.status}", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
@@ -3939,15 +3956,8 @@ private fun LegendMessageBubble(
         }
         if (message.attachments.isEmpty()) LegendMessageReactions(message, react, Modifier.align(androidx.compose.ui.AbsoluteAlignment.BottomRight).widthIn(max = reactionContentWidth), reactionMeasured)
         }
-        Row(Modifier.widthIn(max = 300.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = LegendColors.ChatTimestamp)
-            IconButton(onClick = reply, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(16.dp), tint = LegendColors.TextSecondary)
-            }
-            if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(16.dp), tint = LegendColors.TextSecondary)
-            }
-        }
+        Text(legendCompactTime(message.sentUtc), style = bubble.timestampStyle,
+            color = LegendDesignAuthority.color(bubble.timestampColor), modifier = Modifier.padding(horizontal = bubble.metadataGap.dp))
         }
     }
 }
@@ -3955,15 +3965,18 @@ private fun LegendMessageBubble(
 @Composable
 private fun LegendMessageReactions(message: ConversationMessage, react: (String?) -> Unit, modifier: Modifier = Modifier, measured: (Int) -> Unit = {}) {
     val bubble = LegendDesignAuthority.reactionBubble()
-    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = size.height * bubble.outsideFraction; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
+    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = bubble.overflow(size.height / density) * density; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
         message.reactions.forEach { reaction ->
-            Surface(modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }, shape = CircleShape,
+            Box(Modifier.sizeIn(minWidth = bubble.touchTarget.dp, minHeight = bubble.touchTarget.dp)
+                .clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }
+                .semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" }, contentAlignment = Alignment.Center) {
+            Surface(shape = CircleShape,
                 color = if (reaction.reactedByCurrentActor) LegendDesignAuthority.color(bubble.ownFillColor).copy(alpha = bubble.ownFillOpacity) else LegendDesignAuthority.color(bubble.otherFillColor),
                 border = BorderStroke(bubble.borderWidth.dp, LegendDesignAuthority.color(bubble.borderColor).copy(alpha = bubble.borderOpacity))) {
                 Box(Modifier.heightIn(min = bubble.height.dp).padding(horizontal = bubble.horizontalPadding.dp), contentAlignment = Alignment.Center) {
-                    Text(reaction.emoji, fontSize = bubble.emojiSize.sp,
-                        modifier = Modifier.semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" })
+                    Text(reaction.emoji, fontSize = bubble.emojiSize.sp, lineHeight = bubble.emojiSize.sp)
                 }
+            }
             }
         }
     }
@@ -8614,7 +8627,7 @@ private fun LegendCallActionCard(title: String, subtitle: String, icon: androidx
 private fun LegendMessageAttachmentOpen(
     attachment: MessageAttachment, repository: AuthenticatedMediaRepository, participantType: String,
     hasReactions: Boolean = false,
-    reactionReserve: androidx.compose.ui.unit.Dp = (LegendDesignAuthority.reactionBubble().height * LegendDesignAuthority.reactionBubble().outsideFraction).dp,
+    reactionReserve: androidx.compose.ui.unit.Dp = LegendDesignAuthority.reactionBubble().overflow().dp,
     doubleTap: (() -> Unit)? = null,
     longPress: (() -> Unit)? = null,
     reactionOverlay: @Composable BoxScope.() -> Unit = {},

@@ -2348,7 +2348,7 @@ private struct LegendAgentClientsView: View {
                         LegendContactCard(
                             displayName: client.displayName,
                             subtitle: client.email,
-                            detail: client.archived == true ? LegendLocalized("Archived / Deleted") : client.crmStatus,
+                            detail: client.archived == true ? LegendLocalized("Archived / Deleted") : (client.crmStatus.caseInsensitiveCompare("Active") == .orderedSame ? nil : client.crmStatus),
                             onOpen: { selectedRecord = LegendCrmDestination(kind: "clients", recordId: client.profileID.uuidString) },
                             avatar: {
                                 LegendProfileAvatar(

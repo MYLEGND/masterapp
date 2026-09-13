@@ -31,7 +31,13 @@ final class MobileNativeContractTests: XCTestCase {
         }
         XCTAssertEqual(Set(catalog.palette("").map(\.baseEmoji)).count, catalog.palette("").count)
         XCTAssertEqual(LegendSharedDesign.reactionBubble.outsideFraction, 0.25)
-        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow, 8)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.height, 22)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.touchTarget, 44)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow, 16.5)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow(for: 92), 28.5)
+        XCTAssertEqual(LegendSharedDesign.messageBubble.timestampSize, 11)
+        XCTAssertEqual(LegendSharedDesign.messageBubble.timestampWeight, "regular")
+        XCTAssertLessThan(LegendSharedDesign.contactCard.borderOpacity, 0.5)
     }
 
     func testReactionPreferenceTransportUsesActiveProfileForReadAndWrite() async throws {

@@ -3680,8 +3680,10 @@ private struct LegendMessageBubble: View {
     @State private var emojiPicker = false
     @State private var actionMenu = false
     @State private var preferredTone = 0
-    @State private var reactionHeight = LegendSharedDesign.reactionBubble.height
-    private var reactionOverflow: CGFloat { reactionHeight * LegendSharedDesign.reactionBubble.outsideFraction }
+    @ScaledMetric(relativeTo: .body) private var messageBodySize = LegendSharedDesign.messageBubble.bodySize
+    @ScaledMetric(relativeTo: .caption) private var reactionEmojiSize = LegendSharedDesign.reactionBubble.emojiSize
+    @State private var reactionHeight = LegendSharedDesign.reactionBubble.touchTarget
+    private var reactionOverflow: CGFloat { LegendSharedDesign.reactionBubble.overflow(for: reactionHeight) }
     @Environment(\.layoutDirection) private var layoutDirection
     private var physicalBottomRight: Alignment { layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing }
 
@@ -3836,7 +3838,7 @@ private struct LegendMessageBubble: View {
     private var bubbleContent: some View {
         VStack(
             alignment: message.isMine ? .trailing : .leading,
-            spacing: 1
+            spacing: LegendSharedDesign.messageBubble.metadataGap
         ) {
             VStack(
                 alignment: message.isMine ? .trailing : .leading,
@@ -3844,7 +3846,7 @@ private struct LegendMessageBubble: View {
             ) {
                 if !displayedMessageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(displayedMessageBody)
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.system(size: messageBodySize, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)
                     .foregroundStyle(
@@ -3908,12 +3910,12 @@ private struct LegendMessageBubble: View {
                     .accessibilityHint(LegendLocalized("Open this member’s profile for {value1} review", context: "accessibility copy", arguments: ["value1": String(describing: (review.resourceType.displayName))]))
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, LegendSharedDesign.messageBubble.horizontalPadding)
+            .padding(.vertical, LegendSharedDesign.messageBubble.verticalPadding)
             .background(
                 isMediaMessage ? Color.clear : bubbleColor,
                 in: RoundedRectangle(
-                    cornerRadius: 16,
+                    cornerRadius: LegendSharedDesign.messageBubble.cornerRadius,
                     style: .continuous
                 )
             )
@@ -3929,8 +3931,8 @@ private struct LegendMessageBubble: View {
                 message.sentUTC,
                 format: .dateTime.hour().minute()
             )
-            .font(.system(size: 10, weight: .regular))
-            .foregroundStyle(LegendNextColor.chatTimestamp)
+            .font(LegendSharedDesign.messageBubble.timestampFont)
+            .foregroundStyle(LegendSharedDesign.color(LegendSharedDesign.messageBubble.timestampColor))
             .padding(
                 message.isMine ? .trailing : .leading,
                 3
@@ -3944,11 +3946,13 @@ private struct LegendMessageBubble: View {
             ForEach(message.reactions, id: \.emoji) { reaction in
                 Button { onReact(reaction.reactedByCurrentActor ? nil : reaction.emoji) } label: {
                     Text(reaction.emoji)
-                        .font(.system(size: LegendSharedDesign.reactionBubble.emojiSize))
+                        .font(.system(size: reactionEmojiSize))
                         .padding(.horizontal, LegendSharedDesign.reactionBubble.horizontalPadding)
-                        .frame(height: LegendSharedDesign.reactionBubble.height)
+                        .frame(minHeight: LegendSharedDesign.reactionBubble.height)
                         .background(reaction.reactedByCurrentActor ? LegendSharedDesign.color(LegendSharedDesign.reactionBubble.ownFillColor).opacity(LegendSharedDesign.reactionBubble.ownFillOpacity) : LegendSharedDesign.color(LegendSharedDesign.reactionBubble.otherFillColor), in: Capsule())
                         .overlay(Capsule().strokeBorder(LegendSharedDesign.color(LegendSharedDesign.reactionBubble.borderColor).opacity(LegendSharedDesign.reactionBubble.borderOpacity), lineWidth: LegendSharedDesign.reactionBubble.borderWidth))
+                        .frame(minWidth: LegendSharedDesign.reactionBubble.touchTarget, minHeight: LegendSharedDesign.reactionBubble.touchTarget)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(reaction.emoji), \(reaction.count)")

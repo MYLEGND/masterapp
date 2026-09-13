@@ -1,11 +1,23 @@
 package com.mylegnd.legend.registered
 
 import com.mylegnd.legend.registered.core.model.*
+import com.mylegnd.legend.registered.core.design.LegendReactionBubbleToken
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
 class MessagePresentationTest {
+    @Test fun bundledReactionVisualAndTouchGeometryReserveSeparateSpace() {
+        val asset = java.io.File("build/generated/legend-design/assets/legend-design.tokens.json")
+        val root = Json.parseToJsonElement(asset.readText()).jsonObject
+        val token = Json.decodeFromJsonElement(LegendReactionBubbleToken.serializer(), root.getValue("messaging").jsonObject.getValue("reactionBubble"))
+        assertEquals(22f, token.height)
+        assertEquals(44f, token.touchTarget)
+        assertEquals(16.5f, token.overflow())
+        assertEquals(28.5f, token.overflow(92f))
+    }
+
     private val sender = MobileParticipant(MobileIdentity("same-id", "Client"), "profile", "Sender")
     private fun message(id: String, second: Int, mine: Boolean = true, deleted: Boolean = false) =
         ConversationMessage(id, "thread", sender, "Body", "2026-09-11T00:00:${second.toString().padStart(2, '0')}Z", isMine = mine, isDeleted = deleted)
