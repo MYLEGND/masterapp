@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Conservative pull-only update before an existing local app launcher starts."""
+"""Conservative launcher sync and read-only native checkout verification."""
 import argparse
 import fcntl
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -12,13 +13,15 @@ class SyncSkipped(Exception):
     pass
 
 
-def git(repo, *args):
+def git(repo, *args, missing_ok=False):
     try:
         result = subprocess.run(
             ['git', '-C', str(repo), *args], text=True, capture_output=True,
-            timeout=60, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'})
+            timeout=60, env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_OPTIONAL_LOCKS': '0'})
     except (OSError, subprocess.TimeoutExpired) as error:
         raise SyncSkipped('Git could not complete; using the current local checkout.') from error
+    if missing_ok and result.returncode == 1:
+        return None
     if result.returncode:
         # Git errors can contain credential-bearing remote URLs. Keep them off launcher output.
         raise SyncSkipped('Git ' + args[0] + ' failed; using the current local checkout. Check Git connectivity and repository state.')
@@ -84,10 +87,63 @@ def sync_checkout(repo, process_probe=active_build_or_app):
         return 'Updated to published production ' + published[:12] + '.'
 
 
+def check_native_checkout(repo):
+    """Verify the build source against the existing locally known testing ref.
+
+    This never fetches, updates the index, modifies source, or rejects current
+    uncommitted work. The explicit shared Git setting selects the intended test
+    branch; without it, locally known published production remains the target.
+    """
+    repo = Path(git(repo, 'rev-parse', '--show-toplevel')).resolve()
+    configured = git(repo, 'config', '--get', 'legend.nativeTestingRef', missing_ok=True)
+    workflow_candidate = configured is None and os.environ.get('GITHUB_ACTIONS') == 'true'
+    target = configured if configured is not None else 'refs/remotes/origin/production'
+    try:
+        head = git(repo, 'rev-parse', '--verify', 'HEAD^{commit}')
+        branch = git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+        if workflow_candidate:
+            published = os.environ.get('GITHUB_SHA', '')
+            workspace = os.environ.get('GITHUB_WORKSPACE', '')
+            if not re.fullmatch(r'[0-9a-f]{40}', published) or not workspace or Path(workspace).resolve() != repo:
+                raise SyncSkipped('GitHub workflow candidate identity is invalid.')
+            if head != published:
+                raise SyncSkipped('GitHub workflow HEAD does not match its exact candidate SHA.')
+        else:
+            git(repo, 'check-ref-format', target)
+            published = git(repo, 'rev-parse', '--verify', target + '^{commit}')
+    except SyncSkipped as error:
+        if workflow_candidate:
+            raise SyncSkipped('Cannot verify native checkout against the existing GitHub workflow: require exact GITHUB_SHA/HEAD and matching GITHUB_WORKSPACE; no source was changed.') from error
+        raise SyncSkipped('Cannot verify native checkout: the configured local testing ref is missing or invalid. '
+                          'Fetch/update the intended ref outside the build, then retry. No source was changed.') from error
+    authority = 'workflow=GITHUB_SHA' if workflow_candidate else f'testingRef={target}'
+    context = f'checkout={repo}; branch={branch}; HEAD={head}; {authority}; target={published}'
+    try:
+        git(repo, 'merge-base', '--is-ancestor', published, head)
+    except SyncSkipped as error:
+        raise SyncSkipped('Stale or divergent native checkout: ' + context +
+                          '. Open the current test checkout or reconcile it outside the build; no automatic overwrite/fetch was attempted.') from error
+    dirty = git(repo, 'status', '--porcelain=v1', '--untracked-files=all')
+    if git(repo, 'rev-parse', 'HEAD') != head or (not workflow_candidate and git(repo, 'rev-parse', '--verify', target + '^{commit}') != published):
+        raise SyncSkipped('Checkout or testing ref changed during verification; retry after the source update completes.')
+    verified = 'existing workflow candidate' if workflow_candidate else 'locally known ref'
+    return (context + f'; localChanges={len(dirty.splitlines())}. '
+            f'Verified against the {verified}; no remote refresh or source mutation occurs during builds.')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check-native', action='store_true', help='Fail if this checkout lacks the configured locally known native testing revision; never fetch or mutate source.')
     parser.add_argument('--strict', action='store_true', help='Return a failing exit status if synchronization is skipped.')
     args = parser.parse_args(argv)
+    if args.check_native:
+        try:
+            print('[LEGEND native checkout] ' + check_native_checkout(Path(__file__).resolve().parent.parent))
+            return 0
+        except (SyncSkipped, OSError, subprocess.TimeoutExpired) as error:
+            message = str(error) if isinstance(error, SyncSkipped) else 'Native checkout could not be verified.'
+            print('error: [LEGEND native checkout] ' + message, file=sys.stderr)
+            return 1
     try:
         print('[LEGEND sync] ' + sync_checkout(Path(__file__).resolve().parent.parent))
         return 0

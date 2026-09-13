@@ -328,7 +328,18 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     dependsOn(generateLegendReleaseRuntimeConfiguration)
 }
 
+// One shared read-only checkout authority. No fetch, reset, or source generation
+// runs here; a stale/missing intended local ref fails the actual Android build.
+val verifyLegendNativeCheckout = tasks.register<Exec>("verifyLegendNativeCheckout") {
+    group = "verification"
+    description = "Verify this native source includes the configured locally known testing revision"
+    workingDir(rootProject.projectDir.parentFile)
+    environment("PYTHONDONTWRITEBYTECODE", "1")
+    commandLine("python3", rootProject.file("../scripts/sync-published-checkout.py").absolutePath, "--check-native")
+}
+
 tasks.named("preBuild").configure {
+    dependsOn(verifyLegendNativeCheckout)
     dependsOn(bundleLegendDesignSpecification)
     dependsOn(bundleLegendBrandArtwork)
     dependsOn(bundleLegendLauncherArtwork)

@@ -14,6 +14,9 @@ spec.loader.exec_module(sync)
 
 class PublishedCheckoutSyncTests(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(sync.os.environ, {'GITHUB_ACTIONS': 'false'})
+        environment.start()
+        self.addCleanup(environment.stop)
         self.temp = tempfile.TemporaryDirectory(prefix='legend-sync-test-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -130,6 +133,75 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
             self.run_sync()
         self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), old_head)
         self.assertEqual((self.local / 'app.txt').read_text(), 'original')
+
+    def test_native_check_reports_current_source_and_never_fetches_or_mutates(self):
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        remote = self.git(self.local, 'rev-parse', 'origin/production')
+        index = (self.local / '.git/index').read_bytes()
+        (self.local / 'app.txt').write_text('current uncommitted native changes')
+        self.publish()  # The checker deliberately cannot claim remote freshness.
+        report = sync.check_native_checkout(self.local)
+        self.assertIn('locally known ref', report)
+        self.assertIn('localChanges=1', report)
+        self.assertIn(str(self.local), report)
+        self.assertIn(before, report)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/production'), remote)
+        self.assertEqual((self.local / '.git/index').read_bytes(), index)
+        self.assertEqual((self.local / 'app.txt').read_text(), 'current uncommitted native changes')
+
+    def test_native_check_fails_stale_production_without_changing_local_work(self):
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        self.git(self.local, 'fetch', 'origin')  # Explicit external refresh, never the build hook.
+        (self.local / 'native-build.txt').write_text('user build 33')
+        with self.assertRaisesRegex(sync.SyncSkipped, 'Stale or divergent native checkout'):
+            sync.check_native_checkout(self.local)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+        self.assertEqual((self.local / 'native-build.txt').read_text(), 'user build 33')
+
+    def test_native_check_uses_shared_testing_ref_and_allows_newer_working_commit(self):
+        self.git(self.publisher, 'switch', '-c', 'implement/native-current')
+        self.commit(self.publisher, 'native.txt', 'candidate')
+        self.git(self.publisher, 'push', 'origin', 'implement/native-current')
+        self.git(self.local, 'fetch', 'origin')
+        target = 'refs/remotes/origin/implement/native-current'
+        self.git(self.local, 'config', 'legend.nativeTestingRef', target)
+        with self.assertRaisesRegex(sync.SyncSkipped, 'Stale or divergent'):
+            sync.check_native_checkout(self.local)
+        self.git(self.local, 'switch', '-c', 'native-test', target)
+        self.commit(self.local, 'new-native.txt', 'newer current edits')
+        self.assertIn('testingRef=' + target, sync.check_native_checkout(self.local))
+        self.git(self.local, 'checkout', '--detach', 'HEAD')
+        self.assertIn('branch=HEAD', sync.check_native_checkout(self.local))
+
+    def test_native_check_missing_or_invalid_ref_fails_visible(self):
+        for ref in ['', 'refs/remotes/origin/not-fetched', '--unsafe-option', 'HEAD~1']:
+            with self.subTest(ref=ref):
+                self.git(self.local, 'config', 'legend.nativeTestingRef', ref)
+                with self.assertRaisesRegex(sync.SyncSkipped, 'missing or invalid'):
+                    sync.check_native_checkout(self.local)
+
+
+    def test_native_detached_shallow_ci_uses_existing_exact_workflow_candidate(self):
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        self.git(self.local, 'checkout', '--detach', head)
+        self.git(self.local, 'update-ref', '-d', 'refs/remotes/origin/production')
+        # No ancestry beyond HEAD is required by this exact-candidate CI authority.
+        (self.local / '.git/shallow').write_text(head + '\n')
+        with patch.dict(sync.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_SHA': head, 'GITHUB_WORKSPACE': str(self.local)}):
+            self.assertIn('workflow=GITHUB_SHA', sync.check_native_checkout(self.local))
+            for overrides in [{'GITHUB_SHA': '0' * 40}, {'GITHUB_SHA': 'invalid'}, {'GITHUB_WORKSPACE': str(self.publisher)}]:
+                with patch.dict(sync.os.environ, overrides), self.assertRaisesRegex(sync.SyncSkipped, 'existing GitHub workflow'):
+                    sync.check_native_checkout(self.local)
+
+    def test_explicit_testing_ref_cannot_be_bypassed_by_ci_environment(self):
+        self.publish()
+        self.git(self.local, 'fetch', 'origin')
+        self.git(self.local, 'config', 'legend.nativeTestingRef', 'refs/remotes/origin/production')
+        with patch.dict(sync.os.environ, {'GITHUB_ACTIONS': 'true', 'GITHUB_SHA': self.git(self.local, 'rev-parse', 'HEAD'), 'GITHUB_WORKSPACE': str(self.local)}):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'Stale or divergent'):
+                sync.check_native_checkout(self.local)
+
 
 
 class RunningProcessDetectionTests(unittest.TestCase):

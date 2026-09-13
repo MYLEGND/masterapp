@@ -256,6 +256,13 @@ targets:
 schemes:
   Legend:
     build:
+      preActions:
+        - name: Verify current native testing checkout
+          settingsTarget: Legend
+          script: |
+            # Read-only source verification. Xcode pre-action failures are visible
+            # diagnostics, not a guaranteed target-build veto; preserve sandboxing.
+            PYTHONDONTWRITEBYTECODE=1 /usr/bin/env python3 "$SRCROOT/../scripts/sync-published-checkout.py" --check-native
       targets:
         Legend: all
         LegendTests:
