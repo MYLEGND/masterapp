@@ -2,7 +2,7 @@
 
 Baseline: `11b2bd3cf59b0e903e4b22be0e98945cb82a1be8` on `implement/legend-pretrained-20260912`. Existing draft PR123 targets production. Production was observed at `144567d7a39ea76d50f3d5efd3aae08f3595f85e`; verify the remote again before release. The commit containing this ledger and its companion source-hash receipt identify the staged candidate. Earlier translation/AI repairs and unrelated worktrees are preserved.
 
-No production merge, deployment, configuration activation, paid resources, signing-account changes, or database migration was performed. A draft PR keeps the existing production workflow's release jobs gated off; do not mark it ready or synchronize a ready PR until the Founder releases the deployment hold and required gates pass.
+No production merge, deployment, configuration activation, paid resources, signing-account changes, or database migration was performed. The Founder explicitly holds even the deployment-flow trigger. Pushing the existing PR123 head would emit the production workflow synchronize event despite draft jobs being skipped. Publish this same integrated candidate only to the non-PR ref `staging/legend-calling-20260913`; do not open, retarget, mark ready or synchronize a production PR until the Founder releases the hold and required gates pass. This is a publication ref for the same implementation, not another runtime or repair team.
 
 ## Four-person ownership and integration
 

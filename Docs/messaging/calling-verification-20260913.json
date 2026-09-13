@@ -157,5 +157,7 @@
   ],
   "paid_actions": [],
   "database_mutations": [],
-  "deployment_executed": false
+  "deployment_executed": false,
+  "publication_ref": "staging/legend-calling-20260913",
+  "publication_policy": "No PR created or synchronized; existing PR123 and production unchanged. No workflow matches this non-PR push."
 }
