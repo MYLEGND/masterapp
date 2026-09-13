@@ -59,6 +59,16 @@
         }
         status.textContent = message;
     }
+    function validCatalog(value) {
+        if (!value || typeof value !== 'object' || typeof value.languageCode !== 'string' || !value.languageCode ||
+            typeof value.catalogVersion !== 'string' || !value.catalogVersion || typeof value.isComplete !== 'boolean' ||
+            !Array.isArray(value.entries) || !value.entries.length ||
+            !value.entries.every(entry => entry && typeof entry.id === 'string' && entry.id &&
+                typeof entry.source === 'string' && typeof entry.text === 'string' && typeof entry.context === 'string') ||
+            new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) return false;
+        try { new Intl.Locale(value.locale || value.languageCode); } catch { return false; }
+        return true;
+    }
     function validContinuation(value) {
         const next = value?.continuation;
         if (!next || !['Pending', 'RetryableFailure'].includes(next.disposition) ||
@@ -144,8 +154,7 @@
                 continuation = null; showStatus('Some text could not be translated. Your language preference is saved.'); return;
             }
             if (expected !== generation || controller.signal.aborted) return;
-            if (!Array.isArray(value.entries) || !value.entries.length || !value.languageCode || !value.catalogVersion ||
-                new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) { continuation = null; showStatus('Some text could not be translated. Your language preference is saved.'); return; }
+            if (!validCatalog(value)) { continuation = null; showStatus('Some text could not be translated. Your language preference is saved.'); return; }
             // The server's canonical preference wins even if a stale picker supplied another language.
             desiredLanguage = value.languageCode.toLowerCase();
             transportFailures = 0; notBefore = 0;

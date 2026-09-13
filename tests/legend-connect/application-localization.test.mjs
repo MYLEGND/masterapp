@@ -56,3 +56,9 @@ test('authoritative approval withdrawal replaces old cached text without guessin
 test('invalid successful JSON response stops instead of becoming a recurring transport retry',async()=>{
  let calls=0;const h=harness(async()=>{calls++;return {ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>{throw new SyntaxError('malformed');}};});await flush();await h.tick(300000);assert.equal(calls,1);
 });
+
+test('null or structurally malformed successful catalog is terminal, not an offline retry',async()=>{
+ for (const value of [null,{...catalog(),entries:[null]},catalog('not a locale'),{...catalog(),entries:[entry(),entry()]}]) {
+  let calls=0;const h=harness(async()=>{calls++;return response(value);});await flush();await h.tick(300000);assert.equal(calls,1);
+ }
+});
