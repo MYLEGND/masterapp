@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Net.Http;
 using System.Threading;
@@ -23,6 +24,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
@@ -43,10 +45,94 @@ internal static class ControllerTestHelpers
         return new ClaimsPrincipal(identity);
     }
 
-    public static MasterAppDbContext BuildDb()
+    internal static IServiceScopeFactory BuildIsolatedFounderHistoryScopes(MasterAppDbContext identityDb)
+    {
+        // Protected-data/model fixtures keep operational data read-only while
+        // transcript writes use this explicitly separate representative store.
+        using var history = BuildDb();
+        foreach (var profile in identityDb.AgentProfiles.AsNoTracking().ToArray())
+            history.AgentProfiles.Add(new AgentProfile
+            {
+                Id = profile.Id, AgentUserId = profile.AgentUserId, AgentUpn = profile.AgentUpn,
+                NormalizedEmail = profile.NormalizedEmail, IsActive = profile.IsActive
+            });
+        history.SaveChanges();
+        return BuildFounderHistoryScopes(history);
+    }
+
+    internal static async Task<Guid?> SeedFounderHistoryAsync(IServiceScopeFactory scopes, string founderUserId,
+        Guid conversationId, IReadOnlyList<LegendFounderAiChatMessage> turns)
+    {
+        Guid? cursor = null;
+        var actor = new MessagingActor(founderUserId, MessagingParticipantTypes.Agent);
+        if (turns.Count % 2 != 0) throw new ArgumentException("Fixture history must contain complete user/assistant turns.", nameof(turns));
+        for (var index = 0; index < turns.Count; index += 2)
+        {
+            if (turns[index].Role != "user" || turns[index + 1].Role != "assistant")
+                throw new ArgumentException("Fixture history roles are invalid.", nameof(turns));
+            var operation = Guid.NewGuid();
+            MessagingFounderAiTurnResult started;
+            using (var scope = scopes.CreateScope())
+                started = await scope.ServiceProvider.GetRequiredService<IMessagingService>().BeginFounderAiTurnAsync(new(
+                    actor, conversationId, operation, cursor, turns[index].Content!, "legend", new string('a', 64), DateTime.UtcNow.AddMinutes(1)));
+            if (!started.Succeeded || started.State != "Started") throw new InvalidOperationException(started.ErrorCode);
+            using (var scope = scopes.CreateScope())
+            {
+                var completed = await scope.ServiceProvider.GetRequiredService<IMessagingService>().CompleteFounderAiTurnAsync(new(
+                    actor, conversationId, operation, started.UserMessage!.Id, turns[index + 1].Content!, MessagingAuthorKinds.Assistant,
+                    new(true, "legend", ResponseAuthority: "RecordedFixtureHistory")));
+                if (!completed.Succeeded || completed.Message is null) throw new InvalidOperationException(completed.ErrorCode);
+                cursor = completed.Message.Id;
+            }
+        }
+        return cursor;
+    }
+
+    internal static Microsoft.Extensions.DependencyInjection.IServiceScopeFactory BuildFounderHistoryScopes(MasterAppDbContext historyDb) =>
+        new FounderHistoryScopeFactory((DbContextOptions<MasterAppDbContext>)
+            Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions>(historyDb));
+
+    // Each transcript operation receives a real context over the fixture's
+    // canonical store. It never saves the operations context's tracked state.
+    private sealed class FounderHistoryScopeFactory(DbContextOptions<MasterAppDbContext> options)
+        : Microsoft.Extensions.DependencyInjection.IServiceScopeFactory
+    {
+        public Microsoft.Extensions.DependencyInjection.IServiceScope CreateScope()
+        {
+            var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+            services.AddScoped(_ => new MasterAppDbContext(options));
+            AddFounderHistoryServices(services);
+            return new OwnedHistoryScope(services.BuildServiceProvider());
+        }
+    }
+
+    internal static void AddFounderHistoryServices(IServiceCollection services)
+    {
+        services.AddScoped<IMessagingService>(provider =>
+        {
+            var context = provider.GetRequiredService<MasterAppDbContext>();
+            return new Infrastructure.Messaging.MessagingService(context,
+                NullLogger<Infrastructure.Messaging.MessagingService>.Instance,
+                new Infrastructure.Moderation.CommunityTextModerationService(new ConfigurationBuilder().Build()),
+                new Infrastructure.Messaging.MessagingProfileImageResolver(context,
+                    NullLogger<Infrastructure.Messaging.MessagingProfileImageResolver>.Instance),
+                new Infrastructure.Messaging.ControlledResourceAccessService(context),
+                BuildTranslationService(), Mock.Of<Infrastructure.Notifications.INotificationEngine>());
+        });
+    }
+
+    private sealed class OwnedHistoryScope(Microsoft.Extensions.DependencyInjection.ServiceProvider provider)
+        : Microsoft.Extensions.DependencyInjection.IServiceScope
+    {
+        public IServiceProvider ServiceProvider => provider;
+        public void Dispose() => provider.Dispose();
+    }
+
+    public static MasterAppDbContext BuildDb(params Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(interceptors)
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new MasterAppDbContext(options);

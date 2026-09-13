@@ -688,6 +688,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
         var service = CreateService(db, handler, loggerFactory);
         var conversationId = Guid.NewGuid().ToString("D");
+        Guid? cursor = null;
 
         writeSentinel.Arm();
 
@@ -704,11 +705,13 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                     Mode = "legend",
                     NativeOnly = true,
                     ConversationId = conversationId,
+                    ExpectedLastMessageId = cursor,
                     SourceLanguageCode = "en",
                     Messages = [new LegendFounderAiChatMessage("user", prompt)]
                 },
                 progress: (update, _) => { progress.Add(update); return ValueTask.CompletedTask; });
 
+            cursor = response.MessageId ?? response.UserMessageId ?? cursor;
             return new MatrixRow(
                 label,
                 prompt,
@@ -994,7 +997,11 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
             .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
-        var service = CreateService(db, handler, loggerFactory);
+        var historyScopes = ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db);
+        conversationId ??= Guid.NewGuid().ToString("D");
+        var expectedLastMessageId = await ControllerTestHelpers.SeedFounderHistoryAsync(historyScopes,
+            FounderEnvironmentScope.FounderId, Guid.Parse(conversationId), priorTurns ?? []);
+        var service = CreateService(db, handler, loggerFactory, historyScopes);
 
         var messages = new List<LegendFounderAiChatMessage>(
             priorTurns ?? []) { new("user", prompt) };
@@ -1008,6 +1015,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Mode = mode,
                 NativeOnly = nativeOnly,
                 ConversationId = conversationId,
+                ExpectedLastMessageId = expectedLastMessageId,
                 SourceLanguageCode = sourceLanguageCode,
                 Messages = messages
             },
@@ -1156,7 +1164,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     private static LegendFounderAiConversationService CreateService(
         MasterAppDbContext db,
         RecordingProviderHandler handler,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IServiceScopeFactory? historyScopes = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -1212,7 +1221,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 new ProductionService(db, loggerFactory.CreateLogger<ProductionService>()),
                 loggerFactory.CreateLogger<AgencyCommandService>()),
             modelInference: modelTransport,
-            activeModelInference: activeModel, languagePreferences: new ControlledResourceAccessService(db));
+            activeModelInference: activeModel, languagePreferences: new ControlledResourceAccessService(db), historyScopes: historyScopes ?? ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db));
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(

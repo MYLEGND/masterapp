@@ -1683,7 +1683,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             new LegendLanguageRegistry(
                 db,
                 new ConfigurationBuilder().Build()),
-            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
+            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
 
         var responseId =
             await service.VerifyProviderToolCatalogAcceptanceAsync();
@@ -1786,7 +1786,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             var service = new LegendFounderAiConversationService(factory, configuration, legend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations.Object),
-                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
+                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var responseId = await service.VerifyProviderToolCatalogAcceptanceAsync(deadline.Token);
             responsePresent = !string.IsNullOrWhiteSpace(responseId);
@@ -2011,7 +2011,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
-    public async Task TeacherMode_ClassificationCancellationPropagatesWithoutProviderFallback()
+    public async Task TeacherMode_ClassificationCancellationRetainsUnknownWithoutProviderFallback()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -2026,10 +2026,20 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var handler = new FounderAiScenarioHandler();
         var service = CreateService(db, operations.Object, handler);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.ReplyAsync(
-            founder, Request("teacher", "Classify this request."), cancellation.Token));
-
+        var request = Request("teacher", "Classify this request.");
+        var operation = Guid.NewGuid();
+        var response = await service.ReplyAsync(founder, request, cancellation.Token, operationId: operation);
+        Assert.False(response.Succeeded);
+        Assert.Equal("outcome_unknown", response.FailureKind);
+        Assert.NotNull(response.MessageId);
+        var replay = await service.ReplyAsync(founder, request, operationId: operation);
+        Assert.Equal(response.MessageId, replay.MessageId);
+        Assert.Equal("outcome_unknown", replay.FailureKind);
+        operations.Verify(operation => operation.TryBindConversationContentAsync(
+            It.IsAny<string>(), It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+            It.IsAny<CancellationToken>(), "en"), Times.Once);
         Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(0, handler.ExternalClientCount);
     }
 
     [Theory]
@@ -2342,8 +2352,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
         }
         else
         {
-            Assert.Same(certificates, response.ScheduleCertificates);
-            Assert.Same(path, response.ReasoningTransitionPath);
+            Assert.Equal(JsonSerializer.Serialize(certificates), JsonSerializer.Serialize(response.ScheduleCertificates));
+            Assert.Equal(path, response.ReasoningTransitionPath);
             Assert.Null(response.LearningState);
         }
 
@@ -2360,7 +2370,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("not-a-conversation")]
-    public async Task NativeWithoutConversationIdentity_SkipsUnusedDiscourseAnalysis(string? conversationId)
+    public async Task NativeConversationIdentity_CreatesCanonicalThreadOrRejectsMalformedIdentity(string? conversationId)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -2374,11 +2384,30 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var handler = new FounderAiScenarioHandler(ProviderText("Scripted controlled response without conversation identity."));
 
         var response = await CreateService(db, operations.Object, handler).ReplyAsync(founder,
-            Request("legend", "An unseen request.", nativeOnly: true, conversationId: conversationId));
+            new LegendFounderAiChatRequest
+            {
+                Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
+                ConversationId = conversationId, Messages = [new("user", "An unseen request.")]
+            });
 
-        AssertControlledFixtureResponse(response, handler);
-        operations.Verify(operation => operation.AnalyzeReusableMeaningGraphAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Never());
+        if (conversationId == "not-a-conversation")
+        {
+            Assert.False(response.Succeeded);
+            Assert.Equal("invalid_conversation_identity", response.Reason);
+            Assert.Empty(operations.Invocations);
+            Assert.Equal(0, handler.RequestCount);
+            Assert.Empty(db.InternalMessages);
+        }
+        else
+        {
+            AssertControlledFixtureResponse(response, handler);
+            Assert.NotNull(response.ConversationId);
+            Assert.NotNull(response.MessageId);
+            operations.Verify(operation => operation.AnalyzeReusableMeaningGraphAsync(
+                It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once());
+            Assert.Equal(2, db.InternalMessages.Count());
+        }
+        Assert.Equal(0, handler.ExternalClientCount);
         Assert.Empty(db.LegendFounderAiDiscourseTurns);
     }
 
@@ -2606,7 +2635,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             new LegendFounderAiDiscourseStateService(db, new AgentProfileAccessResolver(db), operations),
             new LegendLanguageRegistry(db, new ConfigurationBuilder().Build()),
             translation ?? ControllerTestHelpers.BuildTranslationService(),
-            languagePreferences: new ControlledResourceAccessService(db),
+            languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db),
             modelInference: new LegendConnectModelInferenceTransport(clients, configuration,
                 NullLogger<LegendConnectModelInferenceTransport>.Instance));
     }
@@ -2703,7 +2732,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             NativeOnly = nativeOnly,
             SourceLanguageCode = sourceLanguageCode,
             FounderCommandConfirmed = founderCommandConfirmed,
-            ConversationId = conversationId,
+            ConversationId = conversationId ?? Guid.NewGuid().ToString("D"),
             Messages = [new LegendFounderAiChatMessage("user", prompt)]
         };
 
@@ -2926,6 +2955,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         public int ExternalClientCount => ClientNames.Count(name => name == "OpenAI");
         public TaskCompletionSource RequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool CancellationObserved { get; private set; }
+        public Task? ResponseRelease { get; init; }
 
         public List<string> RequestBodies { get; } = [];
 
@@ -2944,6 +2974,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 throw new InvalidOperationException("No OpenAI response was queued for this test.");
 
             RequestStarted.TrySetResult();
+            if (ResponseRelease is not null) await ResponseRelease.WaitAsync(cancellationToken);
             if (_responseDelay > TimeSpan.Zero)
             {
                 try { await Task.Delay(_responseDelay, cancellationToken); }

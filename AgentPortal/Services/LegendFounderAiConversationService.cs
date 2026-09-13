@@ -13,6 +13,7 @@ using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace AgentPortal.Services;
@@ -68,6 +69,7 @@ public sealed class LegendFounderAiConversationService
     private readonly ILegendLanguageRegistry _languages;
     private readonly ITranslationService _translation;
     private readonly IControlledResourceAccessService _languagePreferences;
+    private readonly IServiceScopeFactory _historyScopes;
     private readonly ILegendConnectModelInferenceTransport? _modelInference;
     private readonly ILegendConnectActiveModelInference? _activeModelInference;
     private readonly LegendFounderToolAuthority _toolAuthority;
@@ -93,6 +95,7 @@ public sealed class LegendFounderAiConversationService
         ILegendLanguageRegistry languages,
         ITranslationService translation,
         IControlledResourceAccessService languagePreferences,
+        IServiceScopeFactory historyScopes,
         IFounderSoftwareRemediationService? softwareRemediation = null,
         AgencyCommandService? agencyCommand = null,
         ILegendConnectModelInferenceTransport? modelInference = null,
@@ -107,6 +110,7 @@ public sealed class LegendFounderAiConversationService
         _languages = languages ?? throw new ArgumentNullException(nameof(languages));
         _translation = translation ?? throw new ArgumentNullException(nameof(translation));
         _languagePreferences = languagePreferences ?? throw new ArgumentNullException(nameof(languagePreferences));
+        _historyScopes = historyScopes ?? throw new ArgumentNullException(nameof(historyScopes));
         _toolAuthority =
             new LegendFounderToolAuthority(
                 legend,
@@ -196,10 +200,260 @@ public sealed class LegendFounderAiConversationService
         return responseId.GetString()!;
     }
 
+    public async Task<MessagingConversationListResult> ListConversationsAsync(
+        ClaimsPrincipal founder, MessagingConversationListQuery query, CancellationToken cancellationToken)
+    {
+        var actor = new MessagingActor(await _legend.ResolveFounderActorAsync(founder, cancellationToken), MessagingParticipantTypes.Agent);
+        return await InHistoryScopeAsync((history, token) => history.ListFounderAiConversationsAsync(actor, query, token), cancellationToken);
+    }
+
+    public async Task<MessagingConversationResult> GetConversationPageAsync(
+        ClaimsPrincipal founder, Guid conversationId, MessagingConversationMessagePageQuery query, CancellationToken cancellationToken)
+    {
+        var actor = new MessagingActor(await _legend.ResolveFounderActorAsync(founder, cancellationToken), MessagingParticipantTypes.Agent);
+        return await InHistoryScopeAsync((history, token) => history.GetFounderAiConversationPageAsync(actor, conversationId, query, token), cancellationToken);
+    }
+
+    // History has a separate existing DI scope so its SaveChanges cannot commit
+    // tracked state left by an unsuccessful tool in the request's operations scope.
+    private async Task<T> InHistoryScopeAsync<T>(Func<IMessagingService, CancellationToken, Task<T>> action, CancellationToken cancellationToken)
+    {
+        await using var scope = _historyScopes.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<IMessagingService>(), cancellationToken);
+    }
+
+    internal static LegendFounderAiChatResponse? ValidateConfirmedRequestIdentity(LegendFounderAiChatRequest request, Guid? callerOperationId) =>
+        request.FounderCommandConfirmed && callerOperationId is null && string.IsNullOrEmpty(request.ConversationId)
+            ? LegendFounderAiChatResponse.ModeFailure(request.Mode ?? "invalid",
+                "A stable request or conversation identity is required before confirming an action.",
+                "validation", "request_identity", "confirmed_request_identity_required")
+            : null;
+
     public async Task<LegendFounderAiChatResponse> ReplyAsync(
+        ClaimsPrincipal founder, LegendFounderAiChatRequest request,
+        CancellationToken cancellationToken = default,
+        Func<LegendFounderAiProgressEvent, CancellationToken, ValueTask>? progress = null,
+        Guid? operationId = null)
+    {
+        ArgumentNullException.ThrowIfNull(founder);
+        ArgumentNullException.ThrowIfNull(request);
+        var executionClock = Stopwatch.StartNew();
+        var deadline = DateTime.UtcNow.AddSeconds(_timeoutSeconds);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(TimeSpan.FromSeconds(_timeoutSeconds));
+        if (!TryNormalizeMode(request.Mode, out var mode, out var modeError))
+            return LegendFounderAiChatResponse.InvalidMode(modeError);
+        if (_configuration["LegendConnect:Foundation:HostKind"] == "FounderMac" &&
+            !FounderAuthority.Evaluate(founder,
+                AgentPortal.Security.FounderGuard.FounderOid,
+                isProduction: true, developmentEmailFallback: _ => false))
+            return LegendFounderAiChatResponse.ModeFailure(mode,
+                ApplicationCopyText.Source("This Mac model session is available only to the authenticated Founder."),
+                "authorization", "founder_required", "local_foundation_founder_required");
+
+        if (!TryNormalizeMessages(request.Messages, out var submitted, out var messageError))
+            return LegendFounderAiChatResponse.ModeFailure(mode, messageError, "validation", "message_validation", "invalid_messages");
+        var id = operationId ?? Guid.NewGuid();
+        if (ValidateConfirmedRequestIdentity(request, operationId) is { } identityFailure) return identityFailure;
+        var conversationId = id;
+        if ((!string.IsNullOrEmpty(request.ConversationId) && !Guid.TryParse(request.ConversationId, out conversationId)) ||
+            conversationId == Guid.Empty || id == Guid.Empty)
+            return LegendFounderAiChatResponse.ModeFailure(mode, "A valid conversation and operation identity is required.", "validation", "history_validation", "invalid_conversation_identity");
+        var providerPolicy = request.NativeOnly
+            ? LegendConnectExternalProviderPolicy.NativeOnly
+            : request.ExternalAnsweringBlocked
+                ? LegendConnectExternalProviderPolicy.IndependentAnswering
+                : LegendConnectExternalProviderPolicy.ProviderEnabled;
+        if (providerPolicy.ForbidsExternalAnswering && IsTeacherMode(mode))
+            return LegendFounderAiChatResponse.ModeFailure(mode, "External answering is blocked for this request. Use Legend® Ai mode. OpenAI Teacher was not contacted.",
+                "validation", "native_only_validation", request.NativeOnly ? "native_only_requires_legend_mode" : "external_answering_blocked_requires_legend_mode");
+        var latest = submitted.LastOrDefault();
+        if (latest is null || latest.Role != "user")
+            return LegendFounderAiChatResponse.ModeFailure(mode, "The current message must be authored by the user.", "validation", "message_validation", "current_user_message_required");
+        var actor = new MessagingActor(await _legend.ResolveFounderActorAsync(founder, budget.Token), MessagingParticipantTypes.Agent);
+        // Prior client messages are not accepted as history or evidence. The
+        // fingerprint covers the effective request, including one-use consent.
+        var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            actor.UserId, actor.ParticipantType, conversationId, mode, latest.Content,
+            request.NativeOnly, request.ExternalAnsweringBlocked, request.SourceLanguageCode,
+            request.FounderCommandConfirmed, request.ExpectedLastMessageId
+        }))).ToLowerInvariant();
+        var command = new MessagingFounderAiBeginTurnCommand(actor, conversationId, id,
+            request.ExpectedLastMessageId, latest.Content!, mode, fingerprint, deadline);
+        var begin = await InHistoryScopeAsync((history, token) => history.BeginFounderAiTurnAsync(command, token), budget.Token);
+        if (!begin.Succeeded) return HistoryFailure(mode, begin.ErrorCode, begin.ErrorMessage, conversationId, id);
+        if (begin.State != "Started") return ReplayHistory(mode, begin, conversationId, id);
+        var observations = new Dictionary<string, LegendFounderAiProgressEvent>(StringComparer.Ordinal);
+        async ValueTask ObserveProgressAsync(LegendFounderAiProgressEvent update, CancellationToken token)
+        {
+            RecordWorkObservation(observations, update);
+            if (progress is not null) await progress(update, token);
+        }
+        LegendFounderAiChatResponse WithWorkEvidence(LegendFounderAiChatResponse result) => result with
+        {
+            CompletedWork = (result.CompletedWork ?? []).Concat(observations.Where(item => item.Value.Stage != "tool_unavailable").Select(item => item.Key)).Distinct(StringComparer.Ordinal).ToArray(),
+            RemainingWork = (result.RemainingWork ?? []).Concat(observations.Where(item => item.Value.Stage == "tool_unavailable").Select(item => item.Key))
+                .Concat(result.Succeeded ? [] : new[] { result.Stage ?? "unknown" }).Distinct(StringComparer.Ordinal).ToArray()
+        };
+        try
+        {
+            var page = await InHistoryScopeAsync((history, token) => history.GetFounderAiConversationPageAsync(
+                actor, conversationId, new(Take: MaximumConversationMessages, IncludeGroupImage: false), token), budget.Token);
+            if (!page.Succeeded || page.Conversation is null)
+                throw new InvalidOperationException("founder_history_context_unavailable");
+            var canonical = page.Conversation.Messages
+                .Where(message => message.AuthorKind is MessagingAuthorKinds.Human or MessagingAuthorKinds.Assistant)
+                .Select(message => new LegendFounderAiChatMessage(message.AuthorKind == MessagingAuthorKinds.Human ? "user" : "assistant", message.Body))
+                .ToList();
+            var characters = canonical.Sum(message => message.Content?.Length ?? 0);
+            while (canonical.Count > 1 && characters > MaximumConversationCharacters)
+            {
+                characters -= canonical[0].Content?.Length ?? 0;
+                canonical.RemoveAt(0);
+            }
+            if (canonical.Count == 0 || canonical[^1].Role != "user" || canonical[^1].Content != latest.Content ||
+                page.Conversation.Messages.LastOrDefault()?.Id != begin.UserMessage?.Id)
+                throw new InvalidOperationException("founder_history_context_changed");
+            var effectiveRequest = new LegendFounderAiChatRequest
+            {
+                Mode = mode, ConversationId = conversationId.ToString("D"), ExpectedLastMessageId = request.ExpectedLastMessageId,
+                Messages = canonical, SourceLanguageCode = request.SourceLanguageCode,
+                NativeOnly = request.NativeOnly, ExternalAnsweringBlocked = request.ExternalAnsweringBlocked,
+                FounderCommandConfirmed = request.FounderCommandConfirmed
+            };
+            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, executionClock, providerPolicy, budget.Token, ObserveProgressAsync));
+            var terminal = await InHistoryScopeAsync((history, token) => history.CompleteFounderAiTurnAsync(new(
+                actor, conversationId, id, begin.UserMessage!.Id, response.Message ?? response.Error ?? "The response outcome could not be verified.",
+                response.Succeeded ? MessagingAuthorKinds.Assistant : MessagingAuthorKinds.Service, ToHistoryProvenance(response)), token), budget.Token);
+            if (terminal.Message is not null)
+                return ReplayHistory(mode, begin with { TerminalMessage = terminal.Message }, conversationId, id);
+            // A conflict or interrupted commit may already have a canonical
+            // terminal. Read the same operation receipt; never rerun the core.
+            var recovered = await InHistoryScopeAsync((history, token) => history.BeginFounderAiTurnAsync(command, token), budget.Token);
+            if (recovered.TerminalMessage is not null) return ReplayHistory(mode, recovered, conversationId, id);
+            throw new InvalidOperationException("founder_history_completion_unverified");
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning("Founder conversation interrupted after durable claim. OperationId={OperationId} ExceptionType={ExceptionType}", id, exception.GetType().Name);
+            // This bounded, awaited cleanup never reexecutes a tool or restores
+            // confirmation. A lost response cannot prove an action was rolled back.
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var unknown = WithWorkEvidence(FromHistoryProvenance(MessagingFounderAiResponseProvenance.OutcomeUnknown(mode),
+                "This request was interrupted. Its outcome is unknown; check completed actions before starting another request."));
+            try
+            {
+                var terminal = await InHistoryScopeAsync((history, token) => history.CompleteFounderAiTurnAsync(new(
+                    actor, conversationId, id, begin.UserMessage!.Id, unknown.Error!, MessagingAuthorKinds.Service,
+                    ToHistoryProvenance(unknown)), token), cleanup.Token);
+                if (terminal.Message is not null)
+                    return ReplayHistory(mode, begin with { TerminalMessage = terminal.Message }, conversationId, id);
+                var recovered = await InHistoryScopeAsync((history, token) => history.BeginFounderAiTurnAsync(command, token), cleanup.Token);
+                if (recovered.TerminalMessage is not null) return ReplayHistory(mode, recovered, conversationId, id);
+            }
+            catch (Exception cleanupException)
+            {
+                _logger.LogWarning("Founder history cleanup unavailable. OperationId={OperationId} ExceptionType={ExceptionType}", id, cleanupException.GetType().Name);
+            }
+            return unknown with { ConversationId = conversationId, UserMessageId = begin.UserMessage!.Id, OperationId = id.ToString("D") };
+        }
+    }
+
+    private static LegendFounderAiChatResponse HistoryFailure(string mode, string? code, string? message, Guid conversationId, Guid operationId) =>
+        LegendFounderAiChatResponse.ModeFailure(mode, message ?? "Conversation history is unavailable.",
+            code is "FOUNDER_HISTORY_STALE" or "FOUNDER_HISTORY_REPLAY_MISMATCH" or "FOUNDER_HISTORY_CONFLICT" or "FOUNDER_HISTORY_PENDING" or "FOUNDER_HISTORY_CLOSED" ? "history_conflict" : "history_unavailable",
+            "conversation_history", code ?? "history_unavailable") with { ConversationId = conversationId, OperationId = operationId.ToString("D") };
+
+    private static LegendFounderAiChatResponse ReplayHistory(string mode, MessagingFounderAiTurnResult receipt, Guid conversationId, Guid operationId)
+    {
+        var terminal = receipt.TerminalMessage;
+        if (terminal?.ResponseProvenance is not { } provenance)
+            return LegendFounderAiChatResponse.ModeFailure(mode,
+                "This request is still pending. Refresh its conversation to retrieve the result; do not submit it as a new request.",
+                "history_pending", "conversation_history", "operation_pending") with
+            { ConversationId = conversationId, UserMessageId = receipt.UserMessage?.Id, OperationId = operationId.ToString("D"), LastMessageUtc = receipt.LastMessageUtc };
+        return FromHistoryProvenance(provenance, terminal.Body) with
+        { ConversationId = conversationId, UserMessageId = receipt.UserMessage?.Id, MessageId = terminal.Id, LastMessageUtc = receipt.LastMessageUtc, OperationId = operationId.ToString("D") };
+    }
+
+    internal static void RecordWorkObservation(
+        IDictionary<string, LegendFounderAiProgressEvent> observations,
+        LegendFounderAiProgressEvent update)
+    {
+        if (update.Stage is not ("native_response" or "foundation_response" or "tool_complete" or "tool_unavailable" or "response"))
+            return;
+        var identity = update.Tool is null
+            ? update.Stage
+            : update.ScopeIdentity ?? update.Tool;
+        // Latest evidence owns its effective scope. An unrelated successful
+        // read cannot remove this scope's failed observation.
+        observations[identity] = update;
+    }
+
+    private static MessagingFounderAiResponseProvenance ToHistoryProvenance(LegendFounderAiChatResponse response) =>
+        new(response.Succeeded, response.Mode,
+            Stage: response.Stage,
+            Reason: response.Reason,
+            ResponseAuthority: response.ResponseAuthority,
+            FoundationModel: response.FoundationModel,
+            FoundationHosting: response.FoundationHosting,
+            ExternalAnsweringUsed: response.ExternalAnsweringUsed,
+            EscalationUsed: response.EscalationUsed,
+            EscalationDisposition: response.EscalationDisposition,
+            ResearchState: response.ResearchState,
+            LearningState: response.LearningState,
+            ModelAssistanceState: response.ModelAssistanceState,
+            ModelVersion: response.ModelVersion,
+            ModelTrainingRunId: response.ModelTrainingRunId,
+            ModelProvenance: response.ModelProvenance,
+            FailureKind: response.FailureKind,
+            ProviderStatusCode: response.ProviderStatusCode,
+            Reference: response.Reference,
+            CompletedWork: response.CompletedWork,
+            RemainingWork: response.RemainingWork,
+            Resumable: response.Resumable,
+            ModelAssistanceReason: response.ModelAssistanceReason,
+            EvidenceOrigin: response.EvidenceOrigin,
+            ResearchOutcome: response.ResearchOutcome,
+            ScheduleCertificates: response.ScheduleCertificates,
+            ReasoningTransitionPath: response.ReasoningTransitionPath,
+            BodyIsError: response.Message is null, Error: response.Message is null ? null : response.Error);
+
+    private static LegendFounderAiChatResponse FromHistoryProvenance(MessagingFounderAiResponseProvenance provenance, string body) =>
+        new(provenance.Succeeded, provenance.Mode, provenance.BodyIsError ? null : body, provenance.BodyIsError ? body : provenance.Error,
+            Stage: provenance.Stage,
+            Reason: provenance.Reason,
+            ResponseAuthority: provenance.ResponseAuthority ?? "SystemDiagnostic",
+            FoundationModel: provenance.FoundationModel,
+            FoundationHosting: provenance.FoundationHosting,
+            ExternalAnsweringUsed: provenance.ExternalAnsweringUsed,
+            EscalationUsed: provenance.EscalationUsed,
+            EscalationDisposition: provenance.EscalationDisposition,
+            ResearchState: provenance.ResearchState,
+            LearningState: provenance.LearningState,
+            ModelAssistanceState: provenance.ModelAssistanceState,
+            ModelVersion: provenance.ModelVersion,
+            ModelTrainingRunId: provenance.ModelTrainingRunId,
+            ModelProvenance: provenance.ModelProvenance,
+            FailureKind: provenance.FailureKind,
+            ProviderStatusCode: provenance.ProviderStatusCode,
+            Reference: provenance.Reference,
+            CompletedWork: provenance.CompletedWork,
+            RemainingWork: provenance.RemainingWork,
+            Resumable: provenance.Resumable,
+            ModelAssistanceReason: provenance.ModelAssistanceReason,
+            EvidenceOrigin: provenance.EvidenceOrigin,
+            ResearchOutcome: provenance.ResearchOutcome,
+            ScheduleCertificates: provenance.ScheduleCertificates,
+            ReasoningTransitionPath: provenance.ReasoningTransitionPath);
+
+    private async Task<LegendFounderAiChatResponse> ExecuteReplyAsync(
         ClaimsPrincipal founder,
         LegendFounderAiChatRequest request,
-        CancellationToken cancellationToken = default,
+        Stopwatch executionClock,
+        LegendConnectExternalProviderPolicy providerPolicy,
+        CancellationToken cancellationToken,
         Func<
             LegendFounderAiProgressEvent,
             CancellationToken,
@@ -211,55 +465,8 @@ public sealed class LegendFounderAiConversationService
             ? new Activity("LegendFounderAi.Reply").SetIdFormat(ActivityIdFormat.W3C).Start()
             : null;
 
-        if (!TryNormalizeMode(
-                request.Mode,
-                out var mode,
-                out var modeValidationError))
-        {
-            return LegendFounderAiChatResponse.InvalidMode(
-                modeValidationError);
-        }
-
-        if (_configuration["LegendConnect:Foundation:HostKind"] == "FounderMac" &&
-            !FounderAuthority.Evaluate(founder,
-                AgentPortal.Security.FounderGuard.FounderOid,
-                isProduction: true, developmentEmailFallback: _ => false))
-            return LegendFounderAiChatResponse.ModeFailure(mode,
-                ApplicationCopyText.Source("This Mac model session is available only to the authenticated Founder."),
-                "authorization", "founder_required", "local_foundation_founder_required");
-
-        if (!TryNormalizeMessages(
-                request.Messages,
-                out var conversation,
-                out var validationError))
-        {
-            return LegendFounderAiChatResponse.ModeFailure(
-                mode,
-                validationError,
-                "validation",
-                "message_validation",
-                "invalid_messages");
-        }
-
-        // One immutable external-provider decision for this request. It is
-        // established once, before any authority runs, and is then carried
-        // explicitly into every boundary that could reach an external
-        // provider. Nothing downstream may widen it.
-        var providerPolicy = request.NativeOnly
-            ? LegendConnectExternalProviderPolicy.NativeOnly
-            : request.ExternalAnsweringBlocked
-                ? LegendConnectExternalProviderPolicy.IndependentAnswering
-                : LegendConnectExternalProviderPolicy.ProviderEnabled;
-
-        if (providerPolicy.ForbidsExternalAnswering && IsTeacherMode(mode))
-        {
-            return LegendFounderAiChatResponse.ModeFailure(
-                mode,
-                ApplicationCopyText.Source("External answering is blocked for this request. Use Legend® Ai mode. OpenAI Teacher was not contacted."),
-                "validation",
-                "native_only_validation",
-                request.NativeOnly ? "native_only_requires_legend_mode" : "external_answering_blocked_requires_legend_mode");
-        }
+        var mode = request.Mode!;
+        var conversation = request.Messages!.ToList();
 
         await ReportProgressAsync(
             progress,
@@ -268,19 +475,8 @@ public sealed class LegendFounderAiConversationService
                 "Request accepted. Preparing the current conversation context."),
             cancellationToken);
 
-        using var requestBudget =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
+        var effectiveToken = cancellationToken;
 
-        requestBudget.CancelAfter(
-            TimeSpan.FromSeconds(
-                _timeoutSeconds));
-
-        var effectiveToken =
-            requestBudget.Token;
-
-        var executionClock =
-            Stopwatch.StartNew();
         using var stageScope = _logger.BeginScope(new Dictionary<string, object>
         {
             ["LegendRequestTraceId"] = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N"),
@@ -792,13 +988,9 @@ public sealed class LegendFounderAiConversationService
                 effectiveToken);
         }
 
-        // A missing curriculum match is diagnostic metadata, not evidence
-        // needed to solve an ordinary request. Injecting its teaching/retrieval
-        // guidance made supplied scenarios look like internal system gaps.
-        // Applicable approved results remain available for every request.
-        var nativeDiagnosticContext = requiresGovernedInspection || nativeInference is { Supported: true }
-            ? BuildNativeDiagnosticTeachingContext(nativeInference, nativeFailureDetail)
-            : string.Empty;
+        // Preserve observed status without prescribing teaching or retrieval.
+        // Missing curriculum evidence is never a prerequisite for conversation.
+        var nativeDiagnosticContext = BuildNativeDiagnosticTeachingContext(nativeInference, nativeFailureDetail);
 
         // Every request receives the same governance contract. Evidence is
         // carried as untrusted input below, never interpolated into system
@@ -3426,19 +3618,14 @@ Software-remediation preparation remains gated by the existing canonical compete
             : NormalizeFailureDetail(nativeFailureDetail);
         var evidenceCount = nativeInference?.EvidenceCount ?? 0;
 
-        return $"""
-
-LEGEND_NATIVE_GAP_CONTEXT:
-NativeReasonCode={reasonCode}
-NativeAuthorityDetail={authorityDetail}
-NativeEvidenceCount={evidenceCount}
-NativeExecutionDetail={failureDetail}
-
-OPTIONAL GOVERNED EVIDENCE STATUS:
-Native LEGEND did not supply an admissible answer. This is not a curriculum prerequisite for the pretrained foundation and does not authorize an organization-specific claim. Missing native meaning establishes no current record scope.
-For a request that actually needs retained organizational or curriculum facts, legend_search_retained_knowledge can locate applicable approved evidence. Contradictions remain unresolved; general model knowledge cannot promote or override them.
-Teaching requires the Founder's explicit instruction and request-level confirmation. If a valid proposal cannot be supported, preserve the missing evidence instead of inventing it. MachineProposed retention is not canonical approval; independent criticism, validation, admission, evaluation, training and promotion remain separate lifecycle requirements.
-""";
+        return "LEGEND_NATIVE_GAP_CONTEXT:\n" + JsonSerializer.Serialize(new
+        {
+            reasonCode,
+            authorityDetail,
+            evidenceCount,
+            failureDetail,
+            instructionAuthority = false
+        }, JsonOptions);
     }
 
     private async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
@@ -4235,12 +4422,14 @@ public sealed class LegendFounderAiChatRequest
     public bool FounderCommandConfirmed { get; init; }
 
     /// <summary>
-    /// Client-generated UUID that scopes durable governed discourse state to
-    /// one Founder conversation. It is never used as a knowledge key or as a
-    /// response cache; malformed or absent values retain the existing
-    /// request-scoped behavior.
+    /// UUID for the canonical account-owned transcript and discourse
+    /// context. The server authorizes ownership and rejects stale history;
+    /// client-supplied prior messages never establish transcript authority.
+    /// On a first turn without this value, the operation ID creates the thread.
     /// </summary>
     public string? ConversationId { get; init; }
+
+    public Guid? ExpectedLastMessageId { get; init; }
 
     public IReadOnlyList<LegendFounderAiChatMessage>? Messages
     {
@@ -4280,7 +4469,11 @@ public sealed record LegendFounderAiChatResponse(
     bool? EscalationUsed = null,
     string? LearningState = null,
     string? ResearchState = null,
-    string? EscalationDisposition = null)
+    string? EscalationDisposition = null,
+    Guid? ConversationId = null,
+    Guid? UserMessageId = null,
+    Guid? MessageId = null,
+    DateTime? LastMessageUtc = null)
 {
     public static LegendFounderAiChatResponse Failure(
         string error,

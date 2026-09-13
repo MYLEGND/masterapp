@@ -251,7 +251,7 @@ public sealed class LegendFounderDiagnosticExecutionTests
         NullLogger<LegendFounderAiConversationService>.Instance,
         new LegendFounderAiDiscourseStateService(db, new AgentProfileAccessResolver(db), operations),
         new LegendLanguageRegistry(db, new ConfigurationBuilder().Build()), ControllerTestHelpers.BuildTranslationService(),
-        languagePreferences: new ControlledResourceAccessService(db),
+        languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db),
         modelInference: inference,
         activeModelInference: inference is null ? null : new LegendConnectActiveModelInference(db, inference, configuration));
     }

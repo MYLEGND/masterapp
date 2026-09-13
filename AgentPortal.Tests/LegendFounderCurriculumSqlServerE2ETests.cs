@@ -344,7 +344,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 registry,
                 ControllerTestHelpers.BuildTranslationService(),
                 modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
-                    NullLogger<LegendConnectModelInferenceTransport>.Instance), languagePreferences: new ControlledResourceAccessService(db));
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
 
         var fallbackFragments = new[]
         {
@@ -1587,7 +1587,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 diagnosticLoggerFactory.CreateLogger<LegendFounderAiConversationService>(),
                 discourse,
                 registry,
-                translation, languagePreferences: new ControlledResourceAccessService(discourseDb));
+                translation, languagePreferences: new ControlledResourceAccessService(discourseDb), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(discourseDb));
 
             isolatedPhase = "fixture_preflight";
             diagnosticCapture.ResetDiagnostics();
@@ -2225,6 +2225,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     ["NativeEvidenceCount"] = native.EvidenceCount,
                     ["NativeSupported"] = native.Supported ? 1 : 0
                 };
+                // Transcript writes remain entirely in the isolated history store;
+                // the production connection is still protected SELECT-only.
+                replyConversationId ??= Guid.NewGuid().ToString("D");
+                var historyCursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+                    ControllerTestHelpers.BuildFounderHistoryScopes(discourseDb), founderId!,
+                    Guid.Parse(replyConversationId), proofCase.Messages.Take(proofCase.Messages.Count - 1).ToArray());
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -2232,8 +2238,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         Mode = "legend",
                         NativeOnly = true,
                         ConversationId = replyConversationId,
+                        ExpectedLastMessageId = historyCursor,
                         SourceLanguageCode = proofCase.DeclaredSourceLanguageCode,
-                        Messages = proofCase.Messages
+                        Messages = [proofCase.Messages[^1]]
                     }, matrixToken);
 
                 Assert.Equal(providerCallsBefore, factory.CreateClientCalls);
@@ -2800,7 +2807,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(shadow, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(shadow));
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(shadow), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(shadow));
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -3033,7 +3040,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -3530,7 +3537,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             new LegendFounderAiDiscourseStateService(
                 db, new AgentProfileAccessResolver(db), operations),
             registry,
-            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db));
+            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
+        var historyConversationId = Guid.NewGuid();
+        var historyCursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+            ControllerTestHelpers.BuildFounderHistoryScopes(db), founderId, historyConversationId, history);
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,
@@ -3538,7 +3548,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             {
                 Mode = "legend",
                 NativeOnly = true,
-                Messages = [.. history, new("user", request)]
+                ConversationId = historyConversationId.ToString("D"),
+                ExpectedLastMessageId = historyCursor,
+                Messages = [new("user", request)]
             });
         replyClock.Stop();
 
@@ -3906,6 +3918,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
                 Assert.NotNull(token);
 
+                var historyConversationId = Guid.NewGuid();
+                var historyCursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+                    host.Services.GetRequiredService<IServiceScopeFactory>(), founderId,
+                    historyConversationId, request.History ?? []);
                 var chatRequest = new HttpRequestMessage(
                     HttpMethod.Post,
                     "/founder/legend-ai/chat")
@@ -3914,7 +3930,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     {
                         Mode = "legend",
                         NativeOnly = true,
-                        Messages = [.. (request.History ?? []), new("user", request.Text)]
+                        ConversationId = historyConversationId.ToString("D"),
+                        ExpectedLastMessageId = historyCursor,
+                        Messages = [new("user", request.Text)]
                     })
                 };
                 chatRequest.Headers.Add("X-Legend-Connect-Founder", founderId);
@@ -4314,6 +4332,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             curriculum: serviceProvider.GetRequiredService<LegendConnectCurriculumService>()));
                     services.AddScoped<AgentProfileAccessResolver>();
                     services.AddScoped<FounderLegendConnectService>();
+                    services.AddScoped<LegendFounderAiDiscourseStateService>();
+                    services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
+                    ControllerTestHelpers.AddFounderHistoryServices(services);
                     services.AddScoped<LegendFounderAiConversationService>();
                     services.AddSingleton<LegendFounderAiProgressBroker>();
                 })

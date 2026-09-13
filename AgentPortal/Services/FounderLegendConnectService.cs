@@ -1943,7 +1943,7 @@ public sealed class FounderLegendConnectService
     /// server-side object-ID-first resolution and historical directory-email
     /// reconciliation for an already-provisioned profile.
     /// </summary>
-    private async Task<string> ResolveFounderActorAsync(
+    internal async Task<string> ResolveFounderActorAsync(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {

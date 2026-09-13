@@ -272,7 +272,7 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
                 Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
                 Messages = formatInstruction is null
                     ? [new("user", request)]
-                    : [new("user", formatInstruction), new("user", request)]
+                    : [new("user", formatInstruction + "\n" + request)]
             });
     private sealed class FounderScope : IDisposable
     {

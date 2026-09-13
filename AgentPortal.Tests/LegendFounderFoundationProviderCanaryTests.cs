@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading;
@@ -36,6 +37,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var request = new LegendFounderAiChatRequest
         {
             Mode = "legend",
+            ConversationId = Guid.NewGuid().ToString("D"),
             SourceLanguageCode = "ht",
             Messages =
             [
@@ -54,6 +56,14 @@ public sealed partial class LegendFounderAiModeIsolationTests
                 {
                     var founder = await AddFounderProfileAsync(db);
                     Assert.Empty(db.LegendLanguageTextUnits);
+                    var historyScopes = ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db);
+                    var cursor = await ControllerTestHelpers.SeedFounderHistoryAsync(historyScopes,
+                        founder.FindFirst("oid")!.Value, Guid.Parse(request.ConversationId!), request.Messages!.Take(2).ToArray());
+                    request = new LegendFounderAiChatRequest
+                    {
+                        Mode = request.Mode, ConversationId = request.ConversationId, ExpectedLastMessageId = cursor,
+                        SourceLanguageCode = request.SourceLanguageCode, Messages = [request.Messages![^1]]
+                    };
                     writes.Armed = true;
                     var service = new LegendFounderAiConversationService(
                         factory, configuration,
@@ -62,7 +72,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
                         services.GetRequiredService<LegendFounderAiDiscourseStateService>(),
                         services.GetRequiredService<ILegendLanguageRegistry>(),
                         services.GetRequiredService<ITranslationService>(),
-                        services.GetRequiredService<IControlledResourceAccessService>());
+                        services.GetRequiredService<IControlledResourceAccessService>(),
+                        historyScopes);
                     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                     reply = await service.ReplyAsync(founder, request, deadline.Token);
                     Assert.True(reply.Succeeded, Describe(reply));

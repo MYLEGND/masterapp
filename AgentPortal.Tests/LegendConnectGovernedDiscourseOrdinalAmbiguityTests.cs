@@ -272,7 +272,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 discourse,
                 new LegendLanguageRegistry(db, replyConfiguration),
                 ControllerTestHelpers.BuildTranslationService(),
-                languagePreferences: new ControlledResourceAccessService(db),
+                languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db),
                 modelInference: new LegendConnectModelInferenceTransport(countingFactory, replyConfiguration,
                     NullLogger<LegendConnectModelInferenceTransport>.Instance));
             var reply = await chat.ReplyAsync(
