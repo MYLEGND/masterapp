@@ -50,7 +50,6 @@ private fun rememberCallPermissionGate(): LegendCallPermissionGate = rememberSav
     ),
 ) { LegendCallPermissionGate() }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LegendCallOverlay(store: LegendCallViewModel) {
     val state by store.state.collectAsStateWithLifecycle()
@@ -176,9 +175,7 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                     if (presentingIdentity && state.status == "Calling") Text(legendLocalized("Waiting for the recipient’s device to confirm receipt"), color = Color.White)
                     if (presentingIdentity && state.status == "Ringing") Text(legendLocalized("The recipient’s device received your call"), color = Color.White)
                     if (!presentingIdentity && state.failure == null) {
-                        FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = 3,
-                            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.align(Alignment.End), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             LegendCallControl(if (state.muted) "Unmute" else "Mute", if (state.muted) Icons.Default.MicOff else Icons.Default.Mic, selected = state.muted, action = store::toggleMute)
                             LegendCallControl("Speaker", Icons.Default.VolumeUp, selected = state.speaker, action = store::toggleSpeaker)
                             if (state.call?.video == true && !state.sharingScreen) {

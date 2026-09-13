@@ -76,7 +76,7 @@ struct LegendCallScreen: View {
                     .padding(.vertical, LegendNextSpacing.micro)
                     .padding(.bottom, LegendNextSpacing.xs)
                 if store.failure == nil { Text(statusLabel).font(.subheadline.weight(.semibold)).padding(.horizontal, 14).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule()) }
-                if !presentingIdentity { Spacer(minLength: 0) }
+                if store.failure != nil { Spacer(minLength: 0) }
                 if let failure = store.failure {
                     Image(systemName: "phone.down.fill").font(.largeTitle).foregroundStyle(LegendNextColor.gold)
                     Text(LegendLocalized(failure)).multilineTextAlignment(.center)
@@ -110,7 +110,10 @@ struct LegendCallScreen: View {
                         // Its system banner cannot be repositioned by the application.
                         EmptyView()
                     } else {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: geometry.size.width > geometry.size.height ? 6 : 3), spacing: 16) {
+                        HStack {
+                            Spacer(minLength: 0)
+                            ScrollView(.vertical) {
+                                VStack(spacing: 16) {
                             control(store.muted ? LegendLocalized("Unmute") : LegendLocalized("Mute"), icon: store.muted ? "mic.slash.fill" : "mic.fill", color: store.muted ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.setMuted() }
                             control(LegendLocalized("Calling profile"), icon: "person.crop.circle") { showingCallingProfile = true }
                             control(LegendLocalized("Speaker"), icon: store.speaker ? "speaker.wave.3.fill" : "ear.fill", color: store.speaker ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.toggleSpeaker() }
@@ -136,7 +139,11 @@ struct LegendCallScreen: View {
                                 Image(systemName: store.sharingScreen ? "rectangle.slash" : "rectangle.on.rectangle").font(.title2).frame(width: LegendSharedDesign.scalar(.sizes, "callControl"), height: LegendSharedDesign.scalar(.sizes, "callControl"))
                             }.background(.ultraThinMaterial, in: Circle()).accessibilityLabel(store.sharingScreen ? LegendLocalized("Stop sharing") : LegendLocalized("Share device screen"))
                         }
+                                }
+                            }
+                            .frame(width: LegendSharedDesign.scalar(.sizes, "callControl") + 16)
                         }
+                        .frame(maxHeight: .infinity)
                         control(LegendLocalized("End call"), icon: "phone.down.fill", color: .red) { store.end() }
                     }
                 }
