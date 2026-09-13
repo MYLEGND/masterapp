@@ -516,6 +516,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         AssertNativeCapability(row, requiredAnswerElements);
         AssertCapabilitySemantics(category, row.Message!);
+        if (category == "internal_data_uncertainty")
+            Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
     }
 
     [Fact]
@@ -532,7 +534,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
     private static void AssertCapabilitySemantics(string category, string answer)
     {
-        var normalized = answer.ToLowerInvariant();
+        // These bounded checks inspect the original free-form answers. They
+        // reject known semantic failures; they are not a complete language
+        // judge, so the captured answers still require independent review.
+        var normalized = answer.ToLowerInvariant().Replace('’', '\'').Replace("*", "");
         switch (category)
         {
             case "rewriting":
@@ -542,8 +547,20 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             case "deduction":
                 Assert.Matches(@"cannot both|can't both|inconsisten|contradict", normalized);
                 // The records establish inconsistency, not which individual
-                // premise is false. Choosing one without further evidence fails.
-                Assert.Matches(@"cannot (?:determine|identify)|can't (?:determine|identify)|at least one|one or more|not enough|insufficient", normalized);
+                // premise is false. An early "at least one" cannot excuse a
+                // later unsupported choice of a particular false premise.
+                Assert.DoesNotMatch(@"\b(?:no|not an?|without a)\s+(?:contradiction|inconsistency)\b|\b(?:are|is)\s+(?:logically\s+)?consistent\b", normalized);
+                Assert.Matches(@"(?:cannot|can't|unable to)\s+(?:determine|identify|tell|establish|decide)[^.!?\n]{0,160}\b(?:which|individual|particular|specific)\b[^.!?\n]{0,80}\b(?:premise|record|statement|claim)\b|\bwhich\s+(?:premise|record|statement|claim)[^.!?\n]{0,100}(?:cannot|can't)\s+be\s+(?:determined|identified|established)|\b(?:no individual|no particular|no single|neither)\s+(?:premise|record|statement|claim)[^.!?\n]{0,100}\b(?:uniquely|necessarily)\b", normalized);
+                foreach (var sentence in Regex.Split(normalized, @"[.!?\n]+"))
+                {
+                    // Explicit conditional deductions are valid. Merely
+                    // saying both records describe the same file is not an
+                    // assumption that either record is true.
+                    var conditional = Regex.IsMatch(sentence,
+                        @"\bif\b[^.!?\n]{0,120}\b(?:is true|are true|holds|is correct|is verified)\b");
+                    if (!conditional)
+                        Assert.DoesNotMatch(@"\b(?:premise\s*[abc123]|universal(?:\s+\w+){0,3}|(?:first|second|third)\s+(?:premise|claim|record))\b[^.!?\n]{0,200}\b(?:must be|is(?: necessarily)?|has to be)\s+false\b", sentence);
+                }
                 break;
             case "causal_diagnosis":
                 // Both changes coincide with the outcome. Correct diagnosis
@@ -552,16 +569,84 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Matches(@"compar|check|test|unchanged|old template|previous template", normalized);
                 break;
             case "constrained_planning":
-                Assert.Contains("7", normalized);
-                Assert.Contains("3", normalized);
-                Assert.Matches(@"once|duplicate|repeat|unique", normalized);
+                AssertInspectionSchedule(normalized);
                 break;
             case "internal_data_uncertainty":
-                Assert.Matches(@"cannot|can't|unavailable|missing|insufficient|not available", normalized);
-                Assert.DoesNotMatch(@"\b\d+(?:\.\d+)?\s*%", normalized);
+                // Missing-data language must describe this requested rate,
+                // not an unrelated unavailable resource beside an invention.
+                Assert.Matches(@"\brenewal\s+(?:percentage|rate|statistics)\b", normalized);
+                Assert.Matches(@"(?:cannot|can't|unable to)\s+(?:determine|provide|calculate|establish)[^.!?\n]{0,180}\b(?:renewal|percentage|rate)\b|\b(?:renewal percentage|renewal rate|exact percentage|exact rate)[^.!?\n]{0,160}(?:cannot|can't)\s+be\s+(?:determined|calculated|established|provided)|\b(?:data|information|records?)[^.!?\n]{0,80}(?:does not contain|do not contain|doesn't contain|do not include|does not include|lacks?)[^.!?\n]{0,100}\brenewal\b", normalized);
+                Assert.DoesNotMatch(@"\b(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\s*(?:%|per\s*cent\b|percent\b)", normalized);
                 break;
         }
     }
+
+    private static void AssertInspectionSchedule(string answer)
+    {
+        var normalized = Regex.Replace(answer, @"\b(one|two|three|four|five|six|seven|eight|nine)\b",
+            match => (Array.IndexOf(new[] { "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" }, match.Value) + 1).ToString());
+        var dailyCounts = new Dictionary<int, int>();
+        void AddDay(int day, int count)
+        {
+            if (dailyCounts.TryGetValue(day, out var prior)) Assert.Equal(prior, count);
+            dailyCounts[day] = count;
+        }
+
+        foreach (Match match in Regex.Matches(normalized,
+                     @"\bday\s*(?<day>[1-9])\s*[:|=\-–—]\s*(?:(?:inspect|complete|clear|contact|visit|handle|the|remaining)\s+)*(?<count>\d+)\b"))
+            AddDay(int.Parse(match.Groups["day"].Value), int.Parse(match.Groups["count"].Value));
+        foreach (Match match in Regex.Matches(normalized,
+                     @"\bdays\s*(?<first>[1-9])\s*(?:[-–—]|through|to)\s*(?<last>[1-9])\s*[:|=\-–—]\s*(?<count>\d+)\b"))
+        {
+            var first = int.Parse(match.Groups["first"].Value);
+            var last = int.Parse(match.Groups["last"].Value);
+            Assert.True(first <= last);
+            for (var day = first; day <= last; day++) AddDay(day, int.Parse(match.Groups["count"].Value));
+        }
+        foreach (Match match in Regex.Matches(normalized,
+                     @"\b(?:daily|per-day)\s+(?:(?:inspection|inspection count)\s+)?(?:counts|sequence|schedule)\s*:\s*(?<counts>\d+\s*(?:[,;+]\s*\d+\s*){4})(?!\s*[,;+]\s*\d)"))
+        {
+            var counts = Regex.Matches(match.Groups["counts"].Value, @"\d+");
+            for (var day = 1; day <= counts.Count; day++) AddDay(day, int.Parse(counts[day - 1].Value));
+        }
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, dailyCounts.Keys.OrderBy(day => day).ToArray());
+        Assert.Equal(new[] { 7, 7, 7, 7, 3 }, dailyCounts.OrderBy(day => day.Key).Select(day => day.Value).ToArray());
+        Assert.Equal(31, dailyCounts.Values.Sum());
+        Assert.Matches(@"\bhazardous\s+(?:sites\s+)?first\b|\b(?:prioritize|prioritise|start with)\s+(?:the\s+)?hazardous\b", normalized);
+        Assert.DoesNotMatch(@"\bnon[- ]?hazardous\s+(?:sites\s+)?first\b", normalized);
+        Assert.Matches(@"\beach site\b[^.!?\n]{0,80}\bonce\b|\bno\s+(?:duplicate|repeated)\s+(?:contacts?|visits?|sites?)\b|\bno site\b[^.!?\n]{0,60}\btwice\b|\b(?:never|do not|don't)\s+(?:repeat|duplicate)\s+(?:a\s+)?(?:site|contact|visit)\b", normalized);
+        foreach (Match completion in Regex.Matches(normalized,
+                     @"\b(?:completion|complete|completed|finish|finishes|finished|done)\b[^.!?\n]{0,40}\bday\s*(?<day>\d+)\b"))
+            Assert.Equal(5, int.Parse(completion.Groups["day"].Value));
+    }
+
+    [Theory]
+    [InlineData("deduction", "The premises contradict each other. At least one is false, but we cannot determine which premise is false.")]
+    [InlineData("deduction", "The records are inconsistent. Which premise is false cannot be determined. If the observation is true, the universal premise must be false.")]
+    [InlineData("constrained_planning", "Day 1: 7 inspections. Day 2: 7 inspections. Day 3: 7 inspections. Day 4: 7 inspections. Day 5: 3 inspections. Hazardous sites first; each site is contacted once. Completion: day 5.")]
+    [InlineData("constrained_planning", "Days one-four: seven inspections each. Day five: three inspections. Prioritize hazardous sites. No duplicate contacts. Finished on day five.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; no site may be contacted twice. Completion day: 5.")]
+    [InlineData("internal_data_uncertainty", "The provided data does not contain information about client renewal percentages for the third quarter of last year. The exact client renewal percentage for that quarter cannot be determined.")]
+    [InlineData("internal_data_uncertainty", "I cannot calculate the exact renewal rate from the current records; the historical counts are missing.")]
+    public void CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(string category, string answer)
+        => AssertCapabilitySemantics(category, answer);
+
+    [Theory]
+    // The real e57bca4c deduction passed the old 'at least one' expression
+    // before its final answer selected the universal claim without evidence.
+    [InlineData("deduction", "This creates a contradiction. Therefore, at least one of the premises must be false. Premise A must be false. Premise B is assumed true in the scenario.")]
+    [InlineData("deduction", "The premises contradict each other. We cannot determine which premise is false. Final answer: the universal claim must be false.")]
+    [InlineData("deduction", "There is no contradiction. We cannot determine which premise is false.")]
+    [InlineData("constrained_planning", "31 inspections at 7 per day. Hazardous sites first, no duplicate contacts. Completion day five.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 4. Hazardous sites first; each site is contacted once. Completion day 5.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; each site is contacted once. Completion day 6.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Non-hazardous sites first; each site is contacted once. Completion day 5.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; repeat a site on the final day. Completion day 5.")]
+    [InlineData("internal_data_uncertainty", "The exact renewal rate cannot be determined. My estimate is 90%.")]
+    [InlineData("internal_data_uncertainty", "The exact renewal rate cannot be determined. It was ninety percent.")]
+    [InlineData("internal_data_uncertainty", "The template is unavailable. Our renewal rate was 85 percent.")]
+    public void CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(string category, string answer)
+        => Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertCapabilitySemantics(category, answer));
 
     public static TheoryData<string, string[]> NativeCapabilityCases()
     {
@@ -575,9 +660,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         // Coincident changes do not distinguish clerk reassignment from a template defect.
         cases.Add("causal_diagnosis", ["template", "clerk"]);
         // 31 inspections at 7 per day completes on day five.
-        cases.Add("constrained_planning", ["five", "hazardous"]);
+        cases.Add("constrained_planning", []);
         // Internal data must be answered from an authenticated governed read.
-        cases.Add("internal_data_uncertainty", ["governed"]);
+        cases.Add("internal_data_uncertainty", []);
         // The conflicting counts must both be named and reconciled.
         cases.Add("haitian_creole_conflict", ["25", "27"]);
         return cases;
