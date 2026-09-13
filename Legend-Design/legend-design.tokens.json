@@ -145,6 +145,7 @@
     "minimumTapTarget": 44,
     "callControl": 54,
     "callPortrait": 256,
+    "unreadBadge": 22,
     "compactControlHeight": 36,
     "controlHeight": 46,
     "prominentControlHeight": 50,

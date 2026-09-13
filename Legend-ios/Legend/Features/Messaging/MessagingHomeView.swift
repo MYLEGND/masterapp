@@ -282,70 +282,66 @@ struct MessagingHomeView: View {
             cornerRadius: LegendNextRadius.card,
             padding: LegendNextSpacing.md
         ) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Text(LegendLocalized("Messages"))
-                        .font(LegendNextTypography.section)
-                        .foregroundStyle(.white)
-                    Spacer(minLength: LegendNextSpacing.sm)
-                    if store.calling != nil {
-                        Button { isPresentingCallingProfile = true } label: {
-                            Image(systemName: "person.crop.circle.badge.checkmark")
-                                .foregroundStyle(.white).frame(width: 44, height: 44)
-                        }.accessibilityLabel(LegendLocalized("Calling profile"))
-                    }
+            HStack(spacing: 0) {
+                Button {
+                    isPresentingNewConversation = true
+                    store.loadRecipients()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 48, height: 48)
+                        .background(LegendNextGradient.gold, in: Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(.white.opacity(0.30), lineWidth: 1)
+                        }
+                        .shadow(
+                            color: LegendNextColor.gold.opacity(0.25),
+                            radius: 12,
+                            y: 6
+                        )
                 }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel(LegendLocalized("Start a new conversation", context: "accessibility copy"))
 
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Button {
-                        isPresentingNewConversation = true
-                        store.loadRecipients()
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(LegendNextColor.midnight)
-                            .frame(width: 48, height: 48)
-                            .background(LegendNextGradient.gold, in: Circle())
-                            .overlay {
-                                Circle()
-                                    .stroke(.white.opacity(0.30), lineWidth: 1)
-                            }
-                            .shadow(
-                                color: LegendNextColor.gold.opacity(0.25),
-                                radius: 12,
-                                y: 6
-                            )
-                    }
-                    .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel(LegendLocalized("Start a new conversation", context: "accessibility copy"))
-
-                    Spacer(minLength: LegendNextSpacing.sm)
-                    Button {
-                        directoryVideo = false
-                        callingPickerIntent = UUID()
-                        isPresentingCallDirectory = true
-                    } label: {
-                        Image(systemName: "phone.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 48, height: 48)
-                            .background(.white.opacity(0.12), in: Circle())
-                            .overlay {
-                                Circle()
-                                    .stroke(LegendNextColor.gold.opacity(0.66), lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel(LegendLocalized("Call a connection", context: "accessibility copy"))
-                    Button { directoryVideo = true; callingPickerIntent = UUID(); isPresentingCallDirectory = true } label: {
-                        Image(systemName: "video.fill").font(.system(size: 17, weight: .semibold))
+                Spacer(minLength: 0)
+                Button {
+                    directoryVideo = false
+                    callingPickerIntent = UUID()
+                    isPresentingCallDirectory = true
+                } label: {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(.white.opacity(0.12), in: Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(LegendNextColor.gold.opacity(0.66), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel(LegendLocalized("Call a connection", context: "accessibility copy"))
+                Spacer(minLength: 0)
+                Button { directoryVideo = true; callingPickerIntent = UUID(); isPresentingCallDirectory = true } label: {
+                    Image(systemName: "video.fill").font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white).frame(width: 48, height: 48)
+                        .background(.white.opacity(0.12), in: Circle())
+                        .overlay { Circle().stroke(LegendNextColor.gold.opacity(0.66), lineWidth: 1) }
+                }.buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel(LegendLocalized("FaceTime"))
+                if store.calling != nil {
+                    Spacer(minLength: 0)
+                    Button { isPresentingCallingProfile = true } label: {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
                             .foregroundStyle(.white).frame(width: 48, height: 48)
-                            .background(.white.opacity(0.12), in: Circle())
-                            .overlay { Circle().stroke(LegendNextColor.gold.opacity(0.66), lineWidth: 1) }
-                    }.buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel(LegendLocalized("FaceTime"))
+                    }.accessibilityLabel(LegendLocalized("Calling profile"))
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(LegendLocalized("Messages"))
+            .accessibilityAddTraits(.isHeader)
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.top, LegendNextSpacing.md)
@@ -492,7 +488,6 @@ struct MessagingHomeView: View {
             VStack(
                 spacing: LegendNextSpacing.xs
             ) {
-                ZStack(alignment: .topTrailing) {
                     Group {
                         if conversation.conversationType == "Group" {
                             LegendMessagingGroupAvatar(
@@ -513,42 +508,9 @@ struct MessagingHomeView: View {
                         width: 72,
                         height: 72
                     )
-
-                    if conversation.unreadCount > 0 {
-                        Text(
-                            conversation.unreadCount > 99
-                                ? "99+"
-                                : "\(conversation.unreadCount)"
-                        )
-                        .font(
-                            .caption2.weight(.bold)
-                        )
-                        .foregroundStyle(.white)
-                        .frame(
-                            minWidth: 22,
-                            minHeight: 22
-                        )
-                        .padding(
-                            .horizontal,
-                            conversation.unreadCount > 9
-                                ? 4
-                                : 0
-                        )
-                        .background(
-                            Color(
-                                uiColor: .systemRed
-                            ),
-                            in: Capsule()
-                        )
-                        .offset(
-                            x: 7,
-                            y: -6
-                        )
-                        .accessibilityLabel(
-                            LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))])
-                        )
+                    .overlay(alignment: .topLeading) {
+                        LegendMessagingUnreadBadge(count: conversation.unreadCount, avatarSize: 72)
                     }
-                }
                 .frame(
                     width: 88,
                     height: 78
@@ -2731,6 +2693,7 @@ private struct LegendConversationRow: View {
             statusContent: AnyView(LegendMessagingPresence(conversationID: conversation.id)),
             isVerified: !isGroup && conversation.counterparty.isVerified == true,
             avatar: {
+                Group {
                 if isGroup {
                     LegendMessagingGroupAvatar(
                         avatar: conversation.groupAvatar,
@@ -2740,6 +2703,10 @@ private struct LegendConversationRow: View {
                         participant: conversation.counterparty,
                         size: 46,
                         showsGoldRing: conversation.unreadCount > 0)
+                }
+                }
+                .overlay(alignment: .topLeading) {
+                    LegendMessagingUnreadBadge(count: conversation.unreadCount, avatarSize: 46)
                 }
             },
             action: {
@@ -2758,15 +2725,7 @@ private struct LegendConversationRow: View {
                             .accessibilityLabel(LegendLocalized("Pinned conversation", context: "accessibility copy"))
                     }
 
-                    if conversation.unreadCount > 0 {
-                        Text(unreadText)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 21, minHeight: 21)
-                            .padding(.horizontal, conversation.unreadCount > 9 ? 4 : 0)
-                            .background(unreadColor, in: Capsule())
-                            .accessibilityLabel(LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))]))
-                    } else if conversation.isMuted {
+                    if conversation.isMuted {
                         Image(systemName: "bell.slash.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(LegendNextColor.textTertiary)
@@ -2799,11 +2758,7 @@ private struct LegendConversationRow: View {
         conversation.conversationType == "Group"
     }
 
-    private var unreadText: String {
-        conversation.unreadCount > 99
-            ? "99+"
-            : "\(conversation.unreadCount)"
-    }
+
 }
 
 private struct LegendRecipientRow: View {
@@ -4717,5 +4672,26 @@ private struct LegendObservedPresence: View {
     }
     private func observe() {
         store.observePresence(owner: owner, participant: participant.map { .init(userId: $0.userID, participantType: $0.participantType.rawValue) }, conversationID: conversationID)
+    }
+}
+
+/// Centers the count on the avatar's circular upper-right edge, not its bounding-box corner.
+struct LegendMessagingUnreadBadge: View {
+    let count: Int
+    let avatarSize: CGFloat
+    static func center(avatarSize: CGFloat) -> CGPoint {
+        CGPoint(x: avatarSize * (1 + sqrt(0.5)) / 2, y: avatarSize * (1 - sqrt(0.5)) / 2)
+    }
+    var body: some View {
+        if count > 0 {
+            Text(count > 99 ? "99+" : String(count))
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1).minimumScaleFactor(0.1)
+                .frame(width: LegendSharedDesign.scalar(.sizes, "unreadBadge"), height: LegendSharedDesign.scalar(.sizes, "unreadBadge"))
+                .background(Color(uiColor: .systemRed), in: Circle())
+                .position(Self.center(avatarSize: avatarSize))
+                .accessibilityLabel(LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(count)]))
+        }
     }
 }

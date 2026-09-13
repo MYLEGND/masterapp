@@ -994,7 +994,16 @@
 
       const identity = document.createElement('span');
       identity.className = 'messaging-conversation-identity';
-      identity.append(createAvatar(conversation.counterparty));
+      const avatar = document.createElement('span');
+      avatar.className = 'messaging-conversation-avatar';
+      avatar.append(createAvatar(conversation.counterparty));
+      if (conversation.unreadCount > 0) {
+        const badge = createTextElement('span', 'messaging-unread-count', conversation.unreadCount > 99 ? '99+' : String(conversation.unreadCount));
+        badge.setAttribute('aria-label', String(conversation.unreadCount));
+        badge.setAttribute('aria-describedby', 'messagingUnreadDescription');
+        avatar.append(badge);
+      }
+      identity.append(avatar);
       const copy = document.createElement('span');
       copy.className = 'messaging-conversation-copy';
       const title = createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member');
@@ -1012,9 +1021,6 @@
       const meta = document.createElement('span');
       meta.className = 'messaging-conversation-meta';
       meta.append(createTextElement('time', 'messaging-conversation-time', formatConversationTime(conversation.lastMessageUtc)));
-      if (conversation.unreadCount > 0) {
-        meta.append(createTextElement('span', 'messaging-unread-count', String(conversation.unreadCount)));
-      }
       button.append(meta);
       button.addEventListener('click', () => selectConversationForCurrentIntent(conversation));
       elements.list.append(button);
@@ -2611,6 +2617,8 @@
           if (Number.isFinite(value)) root.style.setProperty(`--messaging-${prefix}-${css}`, `${value}px`);
         }
       }
+      const unreadBadge = design.sizes?.unreadBadge;
+      if (Number.isFinite(unreadBadge) && unreadBadge > 0) root.style.setProperty('--messaging-unread-badge', `${unreadBadge}px`);
       const callPortrait = design.sizes?.callPortrait;
       if (Number.isFinite(callPortrait) && callPortrait > 0) document.getElementById('legendBrowserCall')?.style.setProperty('--legend-call-portrait', `${callPortrait}px`);
       const bubble = design.messaging?.reactionBubble;

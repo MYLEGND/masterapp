@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-ce193868f84effc5",
+  "catalogVersion": "application-copy-v1-5d8a94d887c1c3d1",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -58244,6 +58244,17 @@
       "source": "Unread conversations",
       "context": "visual interface copy",
       "sourceRevision": "043836eb0666fa8a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.bbc296bb16eb7930c939832f",
+      "source": "Unread messages",
+      "context": "visual interface copy",
+      "sourceRevision": "5b1aa0642d6f1299",
       "placeholders": [
 
       ],

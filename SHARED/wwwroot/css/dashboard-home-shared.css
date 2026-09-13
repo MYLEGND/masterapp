@@ -4633,22 +4633,14 @@ header .legend-global-nav .container-fluid {
 
 .messaging-command-center-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: stretch;
+    flex-direction: column;
     gap: 1rem;
     padding: 1.1rem 1.35rem;
     border-bottom: 1px solid rgba(212, 170, 71, 0.28);
     background: rgba(5, 15, 36, 0.44);
 }
 
-.messaging-command-center-kicker {
-    margin: 0 0 0.16rem;
-    color: #f0d991;
-    font-size: 0.7rem;
-    font-weight: 900;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-}
 
 .messaging-command-center-header h2,
 .messaging-thread-header h3,
@@ -4660,12 +4652,6 @@ header .legend-global-nav .container-fluid {
     letter-spacing: -0.04em;
 }
 
-.messaging-command-center-title-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.62rem;
-}
 
 .messaging-recipient-scope {
     display: inline-flex;
@@ -4793,7 +4779,6 @@ header .legend-global-nav .container-fluid {
     text-decoration: underline;
 }
 
-.messaging-command-center-header-actions,
 .messaging-thread-actions,
 .messaging-send-actions,
 .messaging-thread-identity,
@@ -4805,12 +4790,22 @@ header .legend-global-nav .container-fluid {
     align-items: center;
 }
 
-.messaging-command-center-header-actions,
 .messaging-thread-actions,
 .messaging-send-actions,
 .messaging-attachments {
     gap: 0.55rem;
 }
+
+.messaging-command-center-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.messaging-command-center-header-actions > * { flex-shrink: 0; }
 
 .messaging-command-center-unread,
 .messaging-unread-count,
@@ -5849,7 +5844,6 @@ header .legend-global-nav .container-fluid {
 .messaging-conversation-identity {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
     gap: 0.65rem;
 }
 
@@ -5902,6 +5896,24 @@ header .legend-global-nav .container-fluid {
     color: var(--dash-text-soft);
     font-size: 0.67rem;
     white-space: nowrap;
+}
+
+.messaging-conversation-avatar {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.messaging-conversation-avatar > .messaging-unread-count {
+    position: absolute;
+    left: 85.35533906%;
+    top: 14.64466094%;
+    transform: translate(-50%, -50%);
+    width: var(--messaging-unread-badge, 22px);
+    min-width: 0;
+    height: var(--messaging-unread-badge, 22px);
+    padding: 0;
+    border-radius: 50%;
 }
 
 .messaging-avatar {
@@ -6425,9 +6437,6 @@ header .legend-global-nav .container-fluid {
         font-size: 1.3rem;
     }
 
-    .messaging-command-center-title-row {
-        gap: 0.42rem;
-    }
 
     .messaging-recipient-scope-button {
         padding-inline: 0.48rem;

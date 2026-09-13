@@ -17,77 +17,54 @@
         <form id="messagingAntiForgery" class="visually-hidden">@Html.AntiForgeryToken()</form>
 
         <header class="messaging-command-center-header">
-            <div>
-                <p class="messaging-command-center-kicker">Secure communication</p>
-                <div class="messaging-command-center-title-row">
-                    <h2 id="messagingCommandCenterTitle">Messages</h2>
-                    <button type="button" class="messaging-text-button" id="messagingCallingProfile">Calling profile</button>
-                    @if (Model.CurrentParticipantType == "Agent")
-                    {
-                        <div class="messaging-recipient-scope"
-                             aria-label="Recipient type"
-                             role="group">
-                            <button type="button"
-                                    class="messaging-recipient-scope-button is-active"
-                                    data-messaging-recipient-scope="Clients"
-                                    aria-pressed="true"
-                                    aria-label="Client conversations">
-                                <span class="messaging-recipient-scope-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24">
-                                        <circle cx="12" cy="7.5" r="3.5"></circle>
-                                        <path d="M4.5 21v-1.75a7.5 7.5 0 0 1 15 0V21"></path>
-                                    </svg>
-                                </span>
-                                <span class="messaging-recipient-scope-label">Clients</span>
-                                <span class="messaging-recipient-scope-unread"
-                                      data-messaging-recipient-scope-unread="Clients"
-                                      aria-label="0 unread client messages"
-                                      hidden>0</span>
-                            </button>
-                            <button type="button"
-                                    class="messaging-recipient-scope-button"
-                                    data-messaging-recipient-scope="Agents"
-                                    aria-pressed="false"
-                                    aria-label="Agent conversations">
-                                <span class="messaging-recipient-scope-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24">
-                                        <circle cx="9" cy="8" r="3"></circle>
-                                        <circle cx="17" cy="9" r="2.5"></circle>
-                                        <path d="M3 21v-1.5a6 6 0 0 1 12 0V21"></path>
-                                        <path d="M15 15.5a5 5 0 0 1 6 4.5V21"></path>
-                                    </svg>
-                                </span>
-                                <span class="messaging-recipient-scope-label">Agents</span>
-                                <span class="messaging-recipient-scope-unread"
-                                      data-messaging-recipient-scope-unread="Agents"
-                                      aria-label="0 unread agent messages"
-                                      hidden>0</span>
-                            </button>
-                        </div>
-                    }
-                </div>
-                @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName) ||
-                     !string.IsNullOrWhiteSpace(Model.ServiceContactPhone) ||
-                     !string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+            <h2 id="messagingCommandCenterTitle" class="visually-hidden">Messages</h2>
+            <span id="messagingUnreadDescription" class="visually-hidden">Unread messages</span>
+            <div class="messaging-command-center-header-actions">
+                <button type="button" class="messaging-text-button" id="messagingCallingProfile">Calling profile</button>
+                @if (Model.CurrentParticipantType == "Agent")
                 {
-                    <div class="messaging-service-contact" aria-label="Your servicing agent contact details">
-                        <span>Your servicing agent</span>
-                        @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName))
-                        {
-                            <strong>@Model.ServiceContactName</strong>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(Model.ServiceContactPhone))
-                        {
-                            <a href="tel:@Model.ServiceContactPhone">@Model.ServiceContactPhone</a>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
-                        {
-                            <a href="mailto:@Model.ServiceContactEmail">@Model.ServiceContactEmail</a>
-                        }
+                    <div class="messaging-recipient-scope"
+                         aria-label="Recipient type"
+                         role="group">
+                        <button type="button"
+                                class="messaging-recipient-scope-button is-active"
+                                data-messaging-recipient-scope="Clients"
+                                aria-pressed="true"
+                                aria-label="Client conversations">
+                            <span class="messaging-recipient-scope-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="12" cy="7.5" r="3.5"></circle>
+                                    <path d="M4.5 21v-1.75a7.5 7.5 0 0 1 15 0V21"></path>
+                                </svg>
+                            </span>
+                            <span class="messaging-recipient-scope-label">Clients</span>
+                            <span class="messaging-recipient-scope-unread"
+                                  data-messaging-recipient-scope-unread="Clients"
+                                  aria-label="0 unread client messages"
+                                  hidden>0</span>
+                        </button>
+                        <button type="button"
+                                class="messaging-recipient-scope-button"
+                                data-messaging-recipient-scope="Agents"
+                                aria-pressed="false"
+                                aria-label="Agent conversations">
+                            <span class="messaging-recipient-scope-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24">
+                                    <circle cx="9" cy="8" r="3"></circle>
+                                    <circle cx="17" cy="9" r="2.5"></circle>
+                                    <path d="M3 21v-1.5a6 6 0 0 1 12 0V21"></path>
+                                    <path d="M15 15.5a5 5 0 0 1 6 4.5V21"></path>
+                                </svg>
+                            </span>
+                            <span class="messaging-recipient-scope-label">Agents</span>
+                            <span class="messaging-recipient-scope-unread"
+                                  data-messaging-recipient-scope-unread="Agents"
+                                  aria-label="0 unread agent messages"
+                                  hidden>0</span>
+                        </button>
                     </div>
                 }
-            </div>
-            <div class="messaging-command-center-header-actions">
+
                 <button type="button" class="messaging-call-button" id="messagingChooseVoiceCall" aria-label="Call" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h4l2 5-3 2a15 15 0 0 0 6 6l2-3 5 2v4c0 1-1 2-2 2C10 21 3 14 3 5c0-1 1-2 2-2Z"></path></svg></button>
                 <button type="button" class="messaging-call-button" id="messagingChooseVideoCall" aria-label="FaceTime" title="FaceTime"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="12" height="14" rx="3"></rect><path d="m15 9 6-4v14l-6-4Z"></path></svg></button>
                 @if (Model.SupportsJourneyCircles)
@@ -114,6 +91,26 @@
                 <span class="messaging-command-center-unread" id="messagingCommandCenterUnread" hidden></span>
                 <button type="button" class="messaging-command-center-close" id="messagingCommandCenterClose" aria-label="Close Messages">×</button>
             </div>
+            @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName) ||
+                 !string.IsNullOrWhiteSpace(Model.ServiceContactPhone) ||
+                 !string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+            {
+                <div class="messaging-service-contact" aria-label="Your servicing agent contact details">
+                    <span>Your servicing agent</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName))
+                    {
+                        <strong>@Model.ServiceContactName</strong>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactPhone))
+                    {
+                        <a href="tel:@Model.ServiceContactPhone">@Model.ServiceContactPhone</a>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+                    {
+                        <a href="mailto:@Model.ServiceContactEmail">@Model.ServiceContactEmail</a>
+                    }
+                </div>
+            }
         </header>
 
         <div class="messaging-error" id="messagingError" role="alert" hidden></div>

@@ -7,6 +7,27 @@ import SwiftUI
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testUnreadBadgeUsesCircularEdgeAtInboxAndPinnedSizes() throws {
+        for size: CGFloat in [46, 72] {
+            let center = LegendMessagingUnreadBadge.center(avatarSize: size)
+            XCTAssertEqual(hypot(center.x - size / 2, center.y - size / 2), size / 2, accuracy: 0.00001)
+            XCTAssertGreaterThan(center.x, size / 2)
+            XCTAssertLessThan(center.y, size / 2)
+            let view = Circle().fill(Color.gray).frame(width: size, height: size)
+                .overlay(alignment: .topLeading) { LegendMessagingUnreadBadge(count: 125, avatarSize: size) }
+                .padding(16).background(Color.white).environment(\.dynamicTypeSize, .accessibility3)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size.width, size + 32)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "unread-avatar-\(Int(size))-accessibility"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            try XCTUnwrap(image.pngData()).write(to: FileManager.default.temporaryDirectory.appendingPathComponent("unread-avatar-\(Int(size)).png"))
+        }
+    }
+
     func testMessageBubbleActualRendererAtNormalAndAccessibilitySizes() async throws {
         let sender = MessagingParticipant(identity: try LogicalParticipantIdentity(userID: "visual-fixture", participantType: .client),
             profileID: "visual-fixture", displayName: "Alex Morgan", roleLabel: nil, avatar: nil, isVerified: false)

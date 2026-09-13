@@ -57,6 +57,7 @@ import androidx.compose.material3.ModalBottomSheet as MaterialModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -2871,7 +2872,7 @@ private fun MessagesScreen(
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
                                     pinnedRow.forEach { row ->
                                         Column(Modifier.weight(1f).combinedClickable(onClick = { selectedConversationId = row.id; viewModel.open(row.id) }, onLongClick = { conversationMenu = row }).padding(LegendSpacing.Sm), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            BadgeBoxForPinnedConversation(row, mediaRepository, participantType)
+                                            LegendConversationAvatar(row, mediaRepository, participantType, 64.dp)
                                             Text(row.title, style = LegendTypography.Label, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
@@ -3040,19 +3041,14 @@ private fun LegendMessagesInboxHeader(
     onCallDirectory: (Boolean) -> Unit,
     onCallingProfile: () -> Unit,
 ) {
+    val sectionName = legendLocalized("Messages")
     Surface(
         color = LegendColors.Navy,
         shape = LegendShapes.Card,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(legendLocalized("Messages"), style = LegendTypography.Section, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
-            IconButton(onClick = onCallingProfile) {
-                Icon(Icons.Default.AccountCircle, legendLocalized("Calling profile"), tint = LegendColors.OnNavy)
-            }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(LegendSpacing.Md).fillMaxWidth().semantics { contentDescription = sectionName; heading() },
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onNewMessage,
                 modifier = Modifier
@@ -3060,7 +3056,6 @@ private fun LegendMessagesInboxHeader(
                     .background(LegendGradients.Gold, CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.OnNavy.copy(alpha = 0.30f), CircleShape),
             ) { Icon(Icons.Default.Edit, legendLocalized("Start a new conversation", "accessibility copy"), tint = LegendColors.Midnight) }
-            Spacer(Modifier.weight(1f))
             IconButton(
                 onClick = { onCallDirectory(false) },
                 modifier = Modifier
@@ -3073,15 +3068,32 @@ private fun LegendMessagesInboxHeader(
                 .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape)) {
                 Icon(Icons.Default.Videocam, legendLocalized("FaceTime"), tint = LegendColors.OnNavy)
             }
+            IconButton(onClick = onCallingProfile, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.AccountCircle, legendLocalized("Calling profile"), tint = LegendColors.OnNavy)
             }
         }
     }
 }
 
+
 @Composable
-private fun BadgeBoxForPinnedConversation(conversation: ConversationSummary, mediaRepository: AuthenticatedMediaRepository, participantType: String) {
-    BadgedBox(badge = { if (conversation.unreadCount > 0) Badge { Text(conversation.unreadCount.toString()) } }) {
-        LegendProtectedAvatar(conversation.groupAvatar ?: conversation.counterparty.avatar, conversation.title, participantType, mediaRepository, size = 64.dp)
+private fun LegendConversationAvatar(conversation: ConversationSummary, mediaRepository: AuthenticatedMediaRepository,
+    participantType: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size)) {
+        LegendProtectedAvatar(conversation.groupAvatar ?: conversation.counterparty.avatar, conversation.title,
+            participantType, mediaRepository, size = size)
+        if (conversation.unreadCount > 0) {
+            val diameter = LegendDesignAuthority.size("unreadBadge")
+            val inset = size * ((1 - kotlin.math.sqrt(0.5)) / 2).toFloat()
+            val unreadLabel = legendLocalized("{value1} unread messages", "accessibility copy", mapOf("value1" to conversation.unreadCount.toString()))
+            Box(Modifier.absoluteOffset(x = size - inset - diameter / 2, y = inset - diameter / 2)
+                .size(diameter).background(LegendColors.Error, CircleShape)
+                .semantics { contentDescription = unreadLabel }, contentAlignment = Alignment.Center) {
+                Text(if (conversation.unreadCount > 99) "99+" else conversation.unreadCount.toString(),
+                    style = LegendTypography.Caption, fontSize = LegendTypography.Caption.fontSize / LocalDensity.current.fontScale,
+                    color = LegendColors.OnNavy, maxLines = 1)
+            }
+        }
     }
 }
 
@@ -3109,13 +3121,7 @@ private fun LegendConversationRow(
         onClick = open,
         onLongClick = more,
         avatar = {
-            LegendProtectedAvatar(
-                avatar = conversation.groupAvatar ?: conversation.counterparty.avatar,
-                displayName = conversation.title,
-                participantType = participantType,
-                repository = mediaRepository,
-                size = 46.dp,
-            )
+            LegendConversationAvatar(conversation, mediaRepository, participantType, 46.dp)
         },
         action = {
             Column(
@@ -3132,14 +3138,6 @@ private fun LegendConversationRow(
                 }
                 when {
                     conversation.isPinned -> Icon(Icons.Default.PushPin, legendLocalized("Pinned conversation", "accessibility copy"), modifier = Modifier.size(15.dp), tint = LegendColors.GoldBright)
-                    conversation.unreadCount > 0 -> Text(
-                        conversation.unreadCount.coerceAtMost(99).toString(),
-                        style = LegendTypography.Label,
-                        color = LegendColors.OnNavy,
-                        modifier = Modifier
-                            .background(LegendColors.Error, CircleShape)
-                            .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
-                    )
                     conversation.isMuted -> Icon(Icons.Default.NotificationsOff, legendLocalized("Muted conversation", "accessibility copy"), modifier = Modifier.size(15.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
                     else -> Icon(Icons.Default.ChevronRight, legendLocalized("Open conversation", "accessibility copy"), modifier = Modifier.size(20.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
                 }
