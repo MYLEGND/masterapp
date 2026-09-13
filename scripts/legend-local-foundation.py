@@ -723,8 +723,9 @@ class MlxEngine(ControlledArtifacts):
                 raise RuntimeError("The installed MLX serving version differs from the pinned deployment")
             import mlx.core as mx
             from mlx_lm import load, stream_generate
-            from mlx_lm.sample_utils import make_sampler
+            from mlx_lm.sample_utils import make_sampler, make_logits_processors
             self.mx, self.load, self.stream_generate, self.make_sampler = mx, load, stream_generate, make_sampler
+            self.make_logits_processors = make_logits_processors
             self.memory_limit = args.memory_limit_mib * 1024 * 1024
             # MLX documents this allocator limit as advisory. Check observed
             # allocations at prefill/token boundaries too; no OS hard-cap claim.
@@ -816,7 +817,8 @@ class MlxEngine(ControlledArtifacts):
         model_started, first_token = time.monotonic(), None
         iterator = self.stream_generate(self.model, self.tokenizer, prompt,
             max_tokens=payload["max_tokens"], prefill_step_size=128, prompt_progress_callback=check,
-            sampler=self.make_sampler(temp=self.args.temperature, top_p=self.args.top_p, top_k=self.args.top_k))
+            sampler=self.make_sampler(temp=self.args.temperature, top_p=self.args.top_p, top_k=self.args.top_k),
+            logits_processors=self.make_logits_processors(presence_penalty=self.args.presence_penalty, presence_context_size=20))
         try:
             for item in iterator:
                 if first_token is None:
@@ -926,7 +928,7 @@ def controlled_handler(args, engine: ControlledArtifacts, api_key: str):
                   "tool_call_parser": args.tool_call_parser, "reasoning_parser": args.reasoning_parser,
                   "enable_thinking": args.enable_thinking, "reasoning_effort": args.reasoning_effort,
                   "temperature": args.temperature, "top_p": args.top_p, "top_k": args.top_k,
-                  "seed": args.seed, "preserve_thinking": False}
+                  "presence_penalty": args.presence_penalty, "seed": args.seed, "preserve_thinking": False}
 
     def atomic_json(path: Path, value: dict[str, Any]):
         temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
@@ -1140,7 +1142,7 @@ def controlled_handler(args, engine: ControlledArtifacts, api_key: str):
                 payload = {"model": body["model"], "messages": messages, "tools": tools or None,
                            "tool_choice": body["tool_choice"], "max_tokens": maximum,
                            "temperature": args.temperature, "top_p": args.top_p, "top_k": args.top_k, "seed": args.seed,
-                           "presence_penalty": 0, "frequency_penalty": 0, "repetition_penalty": 1,
+                           "presence_penalty": args.presence_penalty, "frequency_penalty": 0, "repetition_penalty": 1,
                            "stream": True, "stream_options": {"include_usage": True},
                            "chat_template_kwargs": {"enable_thinking": args.enable_thinking, "preserve_thinking": False}}
                 if args.reasoning_effort:
@@ -1380,6 +1382,7 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0)
     parser.add_argument("--top-p", type=float, default=1)
     parser.add_argument("--top-k", type=int, default=0)
+    parser.add_argument("--presence-penalty", type=float, default=0)
     parser.add_argument("--seed", type=int, default=73)
     parser.add_argument("--training-enabled", action="store_true")
     parser.add_argument("--max-training-iterations", type=int, default=100)
@@ -1403,6 +1406,7 @@ def main() -> None:
         parser.error("Timeout or port is outside the supported bounded range")
     if (not 1024 <= args.engine_port <= 65535 or args.engine_port == args.port or
         not 0 <= args.temperature <= 2 or not 0 < args.top_p <= 1 or not -1 <= args.top_k <= 100000 or
+        not 0 <= args.presence_penalty <= 2 or
         not 0 <= args.seed <= 2147483647 or args.reasoning_effort and not args.enable_thinking):
         parser.error("The pinned serving configuration is invalid")
     if not 1 <= args.max_training_iterations <= 2000 or not 30 <= args.max_training_seconds <= 3600:

@@ -354,14 +354,16 @@ class MlxProtocolTests(unittest.TestCase):
 
     def test_model_metrics_measure_generation_and_clear_stale_values_on_failure(self):
         engine = object.__new__(worker.MlxEngine)
-        engine.args = SimpleNamespace(max_context_tokens=8192, seed=73, temperature=0, top_p=1, top_k=0)
-        engine.mx, engine.tokenizer, engine.make_sampler = Mock(), Mock(), Mock()
+        engine.args = SimpleNamespace(max_context_tokens=8192, seed=73, temperature=0, top_p=1, top_k=0, presence_penalty=1)
+        engine.mx, engine.tokenizer, engine.make_sampler, engine.make_logits_processors = Mock(), Mock(), Mock(), Mock()
         engine.mx.get_active_memory.return_value = 100
         engine.mx.get_peak_memory.return_value = 987654
         engine.memory_limit, engine.cancelled, engine.model = 1000, threading.Event(), object()
         engine.tokenizer.apply_chat_template.return_value = [1, 2]
         clock = [10.0]
         def generate(*_args, **_kwargs):
+            engine.make_logits_processors.assert_called_with(presence_penalty=1, presence_context_size=20)
+            self.assertIs(_kwargs["logits_processors"], engine.make_logits_processors.return_value)
             clock[0] = 10.125
             yield SimpleNamespace(text="Synthetic ", generation_tokens=1, finish_reason=None)
             clock[0] = 10.5
@@ -429,7 +431,7 @@ class WorkerHttpBoundaryTests(unittest.TestCase):
         self.args = SimpleNamespace(model_id="controlled-base", model_revision="a" * 40,
             host_kind="AzureVm", engine="Vllm", expected_mac_host_id=None,
             expected_azure_resource_id=RESOURCE, engine_version="0.26.1", tool_call_parser="hermes", reasoning_parser="qwen3",
-            enable_thinking=False, reasoning_effort=None, temperature=0, top_p=1, top_k=0, seed=73,
+            enable_thinking=False, reasoning_effort=None, temperature=0, top_p=1, top_k=0, presence_penalty=0, seed=73,
             max_context_tokens=32768, max_output_tokens=1024, timeout_seconds=30, training_enabled=False)
         self.engine = Mock()
         self.engine.host = {"azure_resource_id": RESOURCE, "host_verification": "azure-imds-resource-and-tag-v1"}
@@ -505,7 +507,7 @@ class WorkerHttpBoundaryTests(unittest.TestCase):
                 "tools": None, "tool_choice": "none", "max_output_tokens": 1024, "timeout_seconds": 30, "store": False, "stream": streaming,
                 "execution_limits": {"max_context_tokens": 32768, "max_output_tokens": 1024, "timeout_seconds": 30, "maximum_concurrent_requests": 1},
                 "generation_settings": {"engine": "Vllm", "engine_version": "0.26.1", "tool_call_parser": "hermes", "reasoning_parser": "qwen3",
-                    "enable_thinking": False, "reasoning_effort": None, "temperature": 0, "top_p": 1, "top_k": 0, "seed": 73, "preserve_thinking": False}}
+                    "enable_thinking": False, "reasoning_effort": None, "temperature": 0, "top_p": 1, "top_k": 0, "presence_penalty": 0, "seed": 73, "preserve_thinking": False}}
 
     def test_http_inference_receipt_preserves_configuration_and_discards_private_reasoning(self):
         self.engine.client.request.return_value = stream(

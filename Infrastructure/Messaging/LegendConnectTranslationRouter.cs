@@ -62,6 +62,7 @@ internal static class LegendConnectServingEvaluationContracts
             fields.Add("reasoning_parser=" + generation.GetProperty("reasoning_parser").GetString());
             fields.Add("top_p=" + generation.GetProperty("top_p").GetDecimal().ToString(System.Globalization.CultureInfo.InvariantCulture));
             fields.Add("top_k=" + generation.GetProperty("top_k").GetInt32());
+            fields.Add("presence_penalty=" + generation.GetProperty("presence_penalty").GetDecimal().ToString(System.Globalization.CultureInfo.InvariantCulture));
             fields.Add("seed=" + generation.GetProperty("seed").GetInt32());
             fields.Add("reasoning=" + (generation.GetProperty("reasoning_effort").GetString() ?? "none"));
             fields.Add("preserve=" + (generation.GetProperty("preserve_thinking").GetBoolean() ? "true" : "false"));
@@ -78,7 +79,7 @@ internal static class LegendConnectServingEvaluationContracts
         var pieces = value.Split(',');
         var remote = pieces[0] == "controlled-responses-v1";
         if ((!remote && (pieces.Length != 13 || pieces[0] != "local-responses-v1")) ||
-            (remote && pieces.Length != 22)) return false;
+            (remote && pieces.Length is not (22 or 23))) return false;
         var fields = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var piece in pieces.Skip(1))
         {
@@ -104,6 +105,10 @@ internal static class LegendConnectServingEvaluationContracts
             Decimal(fields.GetValueOrDefault("temperature"), out var temperature) && temperature is >= 0m and <= 2m &&
             Decimal(fields.GetValueOrDefault("top_p"), out var topP) && topP is > 0m and <= 1m &&
             int.TryParse(fields.GetValueOrDefault("top_k"), out var topK) && topK is >= -1 and <= 100000 &&
+            // Older stored receipts had a fixed zero penalty. Retain them for historical
+            // evaluation/rollback; all newly captured controlled receipts include the setting.
+            (pieces.Length == 22 && !fields.ContainsKey("presence_penalty") ||
+                Decimal(fields.GetValueOrDefault("presence_penalty"), out var presencePenalty) && presencePenalty is >= 0m and <= 2m) &&
             int.TryParse(fields.GetValueOrDefault("seed"), out var seed) && seed >= 0 &&
             fields.GetValueOrDefault("thinking") is "true" or "false" && fields.GetValueOrDefault("preserve") == "false" &&
             fields.GetValueOrDefault("reasoning") is "none" or "low" or "medium" or "xhigh";

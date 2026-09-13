@@ -499,6 +499,7 @@ internal sealed class LegendConnectModelInferenceTransport
         var temperature = _configuration.GetValue<decimal?>(localPrefix + "Temperature") ?? 0m;
         var topP = _configuration.GetValue<decimal?>(localPrefix + "TopP") ?? 1m;
         var topK = _configuration.GetValue<int?>(localPrefix + "TopK") ?? 0;
+        var presencePenalty = _configuration.GetValue<decimal?>(localPrefix + "PresencePenalty") ?? 0m;
         var seed = _configuration.GetValue<int?>(localPrefix + "Seed") ?? 73;
         var reasoningEffort = _configuration[localPrefix + "ReasoningEffort"]?.Trim();
         if (string.IsNullOrEmpty(reasoningEffort)) reasoningEffort = null;
@@ -506,7 +507,7 @@ internal sealed class LegendConnectModelInferenceTransport
                 maximumContextTokens > 8192 || maximumOutputTokens > 768) ||
             timeoutSeconds is < 5 or > 300 || maximumOutputTokens is < 128 or > 8192 ||
             maximumContextTokens is < 512 or > 131072 || maximumOutputTokens > maximumContextTokens ||
-            temperature is < 0m or > 2m || topP is <= 0m or > 1m || topK is < -1 or > 100000 || seed < 0 ||
+            temperature is < 0m or > 2m || topP is <= 0m or > 1m || topK is < -1 or > 100000 || presencePenalty is < 0m or > 2m || seed < 0 ||
             reasoningEffort is not (null or "low" or "medium" or "xhigh") ||
             !enableThinking && reasoningEffort is not null ||
             (_configuration.GetValue<int?>(localPrefix + "MaximumConcurrentRequests") ?? 1) != 1 ||
@@ -537,7 +538,7 @@ internal sealed class LegendConnectModelInferenceTransport
                 {
                     engine, engine_version = engineVersion,
                     tool_call_parser = toolCallParser, reasoning_parser = reasoningParser,
-                    enable_thinking = enableThinking, temperature, top_p = topP, top_k = topK, seed,
+                    enable_thinking = enableThinking, temperature, top_p = topP, top_k = topK, presence_penalty = presencePenalty, seed,
                     reasoning_effort = reasoningEffort, preserve_thinking = false
                 },
                 instructions = task.Instructions,
@@ -664,6 +665,7 @@ internal sealed class LegendConnectModelInferenceTransport
                     actualGeneration.GetProperty("temperature").GetDecimal() != temperature ||
                     actualGeneration.GetProperty("top_p").GetDecimal() != topP ||
                     actualGeneration.GetProperty("top_k").GetInt32() != topK ||
+                    actualGeneration.GetProperty("presence_penalty").GetDecimal() != presencePenalty ||
                     actualGeneration.GetProperty("seed").GetInt32() != seed ||
                     actualGeneration.GetProperty("reasoning_effort").GetString() != reasoningEffort ||
                     actualGeneration.GetProperty("preserve_thinking").GetBoolean())

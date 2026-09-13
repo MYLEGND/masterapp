@@ -191,17 +191,18 @@ public sealed class LegendConnectFoundationControlCompilerTests
     [Fact]
     public void RemoteProofBindsActualEngineReasoningAndSamplingSettings()
     {
-        string Receipt(string effort, string adapter) => JsonSerializer.Serialize(new
+        string Receipt(string effort, string adapter, decimal presencePenalty = 0m) => JsonSerializer.Serialize(new
         {
             execution_limits = new { max_context_tokens = 32768, max_output_tokens = 4096, timeout_seconds = 120, maximum_concurrent_requests = 1 },
             generation_settings = new { engine = "Vllm", engine_version = "0.22.0", tool_call_parser = "hermes", reasoning_parser = "qwen3", max_output_tokens = 4096,
-                temperature = 0.6m, top_p = 0.95m, top_k = 20, seed = 73, enable_thinking = true,
+                temperature = 0.6m, top_p = 0.95m, top_k = 20, presence_penalty = presencePenalty, seed = 73, enable_thinking = true,
                 reasoning_effort = effort, preserve_thinking = false, chat_template_sha256 = new string('c', 64) },
             model_revision = new string('b', 40), adapter_version = adapter
         });
         using var baseline = JsonDocument.Parse(Receipt("xhigh", ""));
         using var candidate = JsonDocument.Parse(Receipt("xhigh", new string('a', 64)));
         using var changed = JsonDocument.Parse(Receipt("low", new string('a', 64)));
+        using var penalty = JsonDocument.Parse(Receipt("xhigh", "", 1m));
         var before = LegendConnectServingEvaluationContracts.FromLocalReceipt(baseline.RootElement);
         var after = LegendConnectServingEvaluationContracts.FromLocalReceipt(candidate.RootElement);
         var other = LegendConnectServingEvaluationContracts.FromLocalReceipt(changed.RootElement);
@@ -211,6 +212,8 @@ public sealed class LegendConnectFoundationControlCompilerTests
         Assert.NotEqual(LegendConnectServingEvaluationContracts.ComparableSettings(before), LegendConnectServingEvaluationContracts.ComparableSettings(other));
         Assert.True(LegendConnectServingEvaluationContracts.IsValidSummarySettings(LegendConnectServingEvaluationContracts.SummarySettings(after)));
         Assert.True(after.Length <= 500);
+        Assert.NotEqual(LegendConnectServingEvaluationContracts.ComparableSettings(before),
+            LegendConnectServingEvaluationContracts.ComparableSettings(LegendConnectServingEvaluationContracts.FromLocalReceipt(penalty.RootElement)));
     }
 
     [Fact]
@@ -221,7 +224,7 @@ public sealed class LegendConnectFoundationControlCompilerTests
             stream,
             execution_limits = new { max_context_tokens = 8192, max_output_tokens = 1024, timeout_seconds = 120, maximum_concurrent_requests = 1 },
             generation_settings = new { engine, engine_version = "0.31.3", tool_call_parser = "hermes", reasoning_parser = "qwen3",
-                max_output_tokens = 1024, temperature = 0m, top_p = 1m, top_k = 0, seed = 73, enable_thinking = thinking,
+                max_output_tokens = 1024, temperature = 0m, top_p = 1m, top_k = 0, presence_penalty = 0m, seed = 73, enable_thinking = thinking,
                 reasoning_effort = (string?)null, preserve_thinking = false, chat_template_sha256 = new string('c', 64) },
             model_revision = new string('b', 40), adapter_version = adapter
         });

@@ -40,6 +40,31 @@ public sealed class LegendLocalFoundationSecurityTests
     }
 
     [Theory]
+    [InlineData(null, false)]
+    [InlineData(0.0, false)]
+    [InlineData(1.0, true)]
+    public async Task FounderMac_PresencePenaltyMustMatchActualExecutionReceipt(double? actual, bool accepted)
+    {
+        var configuration = MacConfiguration();
+        configuration["LegendConnect:Foundation:PresencePenalty"] = "1";
+        var receipt = MacResponse();
+        var generation = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+            JsonSerializer.Serialize(receipt["generation_settings"]))!;
+        if (actual.HasValue) generation["presence_penalty"] = actual.Value;
+        else generation.Remove("presence_penalty");
+        receipt["generation_settings"] = generation;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("LegendLocalFoundation"))
+            .Returns(new HttpClient(new ReceiptHandler(Completed(receipt))));
+        var result = await Create(factory.Object, overrides: configuration).GenerateAsync(Model,
+            Request(LegendConnectExternalProviderPolicy.NativeOnly) with { RequestingActorId = FounderId });
+        Assert.Equal(accepted, result.Succeeded);
+        if (!accepted) Assert.Null(result.Text);
+        factory.Verify(item => item.CreateClient("LegendLocalFoundation"), Times.Once);
+        factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task FounderMac_BufferedAndStreamingShareIdentityAndPolicyValidation(bool stream)
@@ -163,6 +188,8 @@ public sealed class LegendLocalFoundationSecurityTests
     [InlineData("EngineVersion", "unknown")]
     [InlineData("EnableThinking", "true")]
     [InlineData("MaxContextTokens", "32768")]
+    [InlineData("PresencePenalty", "-0.1")]
+    [InlineData("PresencePenalty", "2.1")]
     public async Task FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(string setting, string value)
     {
         var configuration = MacConfiguration();
@@ -501,7 +528,7 @@ public sealed class LegendLocalFoundationSecurityTests
             timeout_seconds = 60, maximum_concurrent_requests = 1 },
         ["generation_settings"] = new { max_output_tokens = 1024, temperature = 0,
             enable_thinking = false, chat_template_sha256 = new string('c', 64),
-            engine = "Vllm", engine_version = "0.0-fixture", tool_call_parser = "hermes", reasoning_parser = "qwen3", top_p = 1, top_k = 0, seed = 73,
+            engine = "Vllm", engine_version = "0.0-fixture", tool_call_parser = "hermes", reasoning_parser = "qwen3", top_p = 1, top_k = 0, presence_penalty = 0m, seed = 73,
             reasoning_effort = (string?)null, preserve_thinking = false },
         ["output"] = new[] { new { type = "message", role = "assistant",
             content = new[] { new { type = "output_text", text = "Controlled answer." } } } }

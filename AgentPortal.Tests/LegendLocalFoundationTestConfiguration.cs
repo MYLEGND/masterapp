@@ -45,6 +45,7 @@ internal static class LegendLocalFoundationTestConfiguration
             ["LegendConnect:Foundation:Temperature"] = Setting("TEMPERATURE") ?? "0",
             ["LegendConnect:Foundation:TopP"] = Setting("TOP_P") ?? "1",
             ["LegendConnect:Foundation:TopK"] = Setting("TOP_K") ?? "0",
+            ["LegendConnect:Foundation:PresencePenalty"] = Setting("PRESENCE_PENALTY") ?? "0",
             ["LegendConnect:Foundation:Seed"] = Setting("SEED") ?? "73",
             ["LegendConnect:Foundation:MaxContextTokens"] = Setting("CONTEXT_TOKENS") ?? (hostKind == "FounderMac" ? "8192" : "32768"),
             ["LegendConnect:Foundation:MaxOutputTokens"] = Setting("OUTPUT_TOKENS") ?? "1024",
