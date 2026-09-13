@@ -77,6 +77,11 @@
     pollTimer: null,
     realtime: null,
     realtimeStarted: false,
+    presenceTimer: null,
+    presenceFlight: null,
+    presenceDirty: false,
+    presenceGeneration: 0,
+    presence: null,
     isOpen: false,
     isOpening: false,
     isJourneyOpen: false,
@@ -297,6 +302,7 @@
     const displayName = person?.displayName || 'Participant';
     const avatar = document.createElement('span');
     avatar.className = 'messaging-avatar';
+    avatar.dataset.userContent = '';
     avatar.setAttribute('role', 'img');
     avatar.setAttribute('aria-label', `${displayName} profile image`);
 
@@ -800,6 +806,87 @@
     });
   }
 
+  function createPresencePill(conversationId, person) {
+    const pill = createTextElement('span', 'messaging-presence', '');
+    pill.hidden = true;
+    if (conversationId) pill.dataset.presenceConversation = conversationId;
+    else if (person?.userId && person?.participantType) {
+      pill.dataset.presenceUser = person.userId;
+      pill.dataset.presenceType = person.participantType;
+    }
+    return pill;
+  }
+
+  function renderPresence() {
+    const result = state.isOpen && !document.hidden ? state.presence : null;
+    root.querySelectorAll('.messaging-presence').forEach(pill => {
+      const entry = pill.dataset.presenceConversation
+        ? result?.conversations?.find(item => item.conversationId === pill.dataset.presenceConversation)
+        : result?.participants?.find(item => participantIdentityKey(item.userId, item.participantType) === participantIdentityKey(pill.dataset.presenceUser, pill.dataset.presenceType));
+      const known = typeof entry?.isOnline === 'boolean';
+      pill.hidden = !known;
+      pill.classList.toggle('is-online', entry?.isOnline === true);
+      pill.classList.toggle('is-offline', entry?.isOnline === false);
+      pill.textContent = known ? (entry.isOnline ? applicationCopy('Online') : applicationCopy('Offline')) : '';
+    });
+  }
+
+  function clearPresence() {
+    state.presenceGeneration += 1;
+    state.presence = null;
+    renderPresence();
+  }
+
+  async function refreshPresence() {
+    if (state.realtime?.state !== 'Connected') return;
+    if (state.presenceFlight) { state.presenceDirty = true; return; }
+    state.presenceDirty = false;
+    const generation = state.presenceGeneration;
+    const participants = new Map(), conversations = new Set();
+    if (state.isOpen && !document.hidden) {
+      // Query only messaging presentation targets, never profile/CRM surfaces.
+      if (state.active?.id) conversations.add(state.active.id);
+      root.querySelectorAll('.messaging-presence').forEach(pill => {
+        const bounds = pill.parentElement?.getBoundingClientRect();
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0 || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
+        if (pill.dataset.presenceConversation) conversations.add(pill.dataset.presenceConversation);
+        else if (pill.dataset.presenceUser) participants.set(participantIdentityKey(pill.dataset.presenceUser, pill.dataset.presenceType),
+          { userId: pill.dataset.presenceUser, participantType: pill.dataset.presenceType });
+      });
+    }
+    const request = { participants: [...participants.values()].slice(0, 50), conversationIds: [...conversations].slice(0, 50) };
+    // No overlapping invokes: a slow transport expires the display, not the call.
+    const deadline = window.setTimeout(clearPresence, 10000);
+    const flight = state.realtime.invoke('Presence', request);
+    state.presenceFlight = flight;
+    try {
+      const result = await flight;
+      if (generation !== state.presenceGeneration) return;
+      state.presence = result;
+      renderPresence();
+    } catch (error) {
+      clearPresence();
+      console.warn('[messaging] Presence refresh failed; status cleared.');
+    } finally {
+      window.clearTimeout(deadline);
+      if (state.presenceFlight === flight) state.presenceFlight = null;
+      if (state.presenceDirty) refreshPresence();
+    }
+  }
+
+  function startPresence() {
+    window.clearInterval(state.presenceTimer);
+    clearPresence();
+    refreshPresence();
+    state.presenceTimer = window.setInterval(refreshPresence, 30000);
+  }
+
+  function stopPresence() {
+    window.clearInterval(state.presenceTimer);
+    state.presenceTimer = null;
+    clearPresence();
+  }
+
   function renderConversations() {
     elements.list.replaceChildren();
     const scopedConversations = state.conversations.filter(isConversationInRecipientScope);
@@ -824,8 +911,12 @@
       identity.append(createAvatar(conversation.counterparty));
       const copy = document.createElement('span');
       copy.className = 'messaging-conversation-copy';
-      copy.append(createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member'));
-      copy.append(createTextElement('span', 'messaging-conversation-preview', conversation.lastMessagePreview || conversation.subject || 'No messages yet.'));
+      const title = createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member');
+      title.dataset.userContent = '';
+      copy.append(title);
+      const preview = createTextElement('span', 'messaging-conversation-preview', conversation.lastMessagePreview || conversation.subject || 'No messages yet.');
+      if (conversation.lastMessagePreview || conversation.subject) preview.dataset.userContent = '';
+      copy.append(preview, createPresencePill(conversation.id));
       if (state.drafts[`conversation:${conversation.id}`]) {
         copy.append(createTextElement('span', 'messaging-conversation-draft', 'Draft'));
       }
@@ -851,6 +942,8 @@
       );
       archivedConversations.forEach(appendConversation);
     }
+    renderPresence();
+    refreshPresence();
   }
 
   function participantName(conversation, userId, participantType) {
@@ -950,7 +1043,12 @@
   let reactionBubbleSettings = null;
   function reserveReactionOverlap(group) {
     if (!reactionBubbleSettings || !group.isConnected) return;
-    group.parentElement.style.setProperty('--messaging-reaction-reserve', `${group.getBoundingClientRect().height * reactionBubbleSettings.outsideFraction}px`);
+    const height = group.getBoundingClientRect().height;
+    const gutter = (reactionBubbleSettings.touchTarget - reactionBubbleSettings.height) / 2;
+    const outside = height > 0 ? gutter + reactionBubbleSettings.height * reactionBubbleSettings.outsideFraction : 0;
+    group.parentElement.style.setProperty('--messaging-reaction-reserve', `${outside}px`);
+    group.parentElement.style.setProperty('--messaging-reaction-offset', `${outside}px`);
+    group.parentElement.style.setProperty('--messaging-reaction-inside', `${Math.max(0, height - outside - gutter)}px`);
   }
   const reactionBubbleObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
     entries.forEach(({ target }) => { if (target.isConnected) reserveReactionOverlap(target); else reactionBubbleObserver.unobserve(target); });
@@ -1078,7 +1176,7 @@
     return picker;
   }
 
-  function appendMessageInteractions(card, conversation, message) {
+  function appendMessageInteractions(card, conversation, message, actions = card) {
     const reactions = document.createElement('div');
     reactions.className = 'messaging-reactions';
     (message.reactions || []).forEach(reaction => {
@@ -1092,7 +1190,9 @@
     });
     const menu = document.createElement('details');
     menu.className = 'messaging-message-actions';
-    const trigger = createTextElement('summary', '', 'React');
+    const trigger = createTextElement('summary', '', '⋯');
+    trigger.setAttribute('aria-label', applicationCopy('Message actions'));
+    trigger.setAttribute('title', applicationCopy('Message actions'));
     menu.append(trigger);
     const palette = document.createElement('div');
     palette.className = 'messaging-reaction-palette';
@@ -1144,8 +1244,8 @@
       anchor.className = 'messaging-reacted-content';
       content.replaceWith(anchor);
       anchor.append(content, reactions);
-      card.append(menu);
-    } else { card.append(menu, reactions); }
+      actions.append(menu);
+    } else { actions.append(menu); card.append(reactions); }
     reactionBubbleObserver?.observe(reactions);
     card.addEventListener('dblclick', event => {
       if (event.target.closest('a, button, input, summary, video, audio')) return;
@@ -1166,6 +1266,8 @@
   }
 
   function appendLinkedText(container, text) {
+    container.dataset.userContent = '';
+    container.setAttribute('translate', 'no');
     const value = String(text || '');
     const pattern = /https?:\/\/[^\s<>]+/gi;
     let offset = 0;
@@ -1252,6 +1354,11 @@
     const target = conversation ? currentCounterparty(conversation) : state.draftTarget;
     const isClosed = conversation?.isClosed === true;
     const isDraft = !conversation && Boolean(target);
+    state.originalMessageViews ??= new Set();
+    if (state.originalViewConversationId !== conversation?.id) {
+      state.originalMessageViews.clear();
+      state.originalViewConversationId = conversation?.id;
+    }
 
     elements.threadEmpty.hidden = Boolean(conversation || isDraft);
     elements.threadContent.hidden = !(conversation || isDraft);
@@ -1268,11 +1375,15 @@
 
     elements.threadAvatar.replaceChildren(createAvatar(target, 'eager'));
     elements.threadTitle.textContent = conversation?.displayTitle || target?.displayName || 'Member';
-    elements.threadSubject.textContent = [
-      roleLabel(target?.participantType),
-      'Secure conversation',
-      conversation?.subject || (isDraft ? 'New secure conversation' : '')
-    ].filter(Boolean).join(' · ');
+    elements.threadTitle.dataset.userContent = '';
+    elements.threadSubject.replaceChildren(createPresencePill(conversation?.id, target));
+    if (conversation?.subject) {
+      const subject = createTextElement('span', '', conversation.subject);
+      subject.dataset.userContent = '';
+      elements.threadSubject.append(subject);
+    }
+    renderPresence();
+    refreshPresence();
     if (conversation) {
       elements.mute.textContent = conversation.isMuted ? 'Unmute' : 'Mute';
       elements.closeConversation.textContent = isClosed ? 'Reopen' : 'Close';
@@ -1308,18 +1419,50 @@
         if (isOwn) card.classList.add('is-own');
         const meta = document.createElement('div');
         meta.className = 'messaging-message-meta';
-        meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId, message.senderType)));
+        if (!isOwn && conversation.conversationType === 'Group') {
+          const sender = createTextElement('span', 'messaging-message-sender', participantName(conversation, message.senderUserId, message.senderType));
+          sender.dataset.userContent = '';
+          card.append(sender);
+        }
         meta.append(createTextElement('time', '', formatMessageTime(message.sentUtc)));
         if (isOwn && messageIndex >= latestReadIndex) {
           const read = messageIndex === latestReadIndex;
           meta.append(createTextElement('span', `messaging-receipt is-${read ? 'read' : 'sent'}`, read ? 'Read' : 'Sent'));
         }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
-        card.append(meta);
+        if (message.reply) {
+          const reply = document.createElement('blockquote');
+          reply.className = 'messaging-message-reply';
+          if (message.reply.isDeleted) reply.textContent = applicationCopy('Message deleted');
+          else {
+            const author = createTextElement('strong', '', participantName(conversation, message.reply.senderUserId, message.reply.senderType));
+            author.dataset.userContent = '';
+            const excerpt = createTextElement('span', '', message.reply.body);
+            excerpt.dataset.userContent = '';
+            reply.append(author, excerpt);
+          }
+          card.append(reply);
+        }
         if (message.body) {
           const body = createTextElement('p', 'messaging-message-body', '');
-          appendLinkedText(body, message.body);
+          const retainedOriginal = state.originalMessageViews.has(message.id) && message.translation && message.originalBody;
+          appendLinkedText(body, retainedOriginal ? message.originalBody : message.body);
           card.append(body);
+          if (message.translation && message.originalBody && message.originalBody !== message.body) {
+            const toggle = createTextElement('button', 'messaging-translation-toggle', retainedOriginal ? applicationCopy('View translation') : applicationCopy('View original'));
+            toggle.type = 'button';
+            toggle.setAttribute('aria-pressed', String(Boolean(retainedOriginal)));
+            toggle.addEventListener('click', () => {
+              const showOriginal = toggle.getAttribute('aria-pressed') !== 'true';
+              if (showOriginal) state.originalMessageViews.add(message.id);
+              else state.originalMessageViews.delete(message.id);
+              body.replaceChildren();
+              appendLinkedText(body, showOriginal ? message.originalBody : message.body);
+              toggle.setAttribute('aria-pressed', String(showOriginal));
+              toggle.textContent = showOriginal ? applicationCopy('View translation') : applicationCopy('View original');
+            });
+            card.append(toggle);
+          }
         }
         if (message.translationNotice) {
           card.append(createTextElement('p', 'messaging-message-body', message.translationNotice));
@@ -1336,19 +1479,24 @@
               link.className = 'messaging-attachment';
               link.href = `/Messaging/Attachments/${encodeURIComponent(attachment.id)}`;
               link.textContent = attachment.originalFileName;
+              link.dataset.userContent = '';
               link.setAttribute('download', attachment.originalFileName || 'attachment');
               attachments.append(link);
             } else {
-              attachments.append(createTextElement(
-                'span',
-                `messaging-attachment is-${normalize(status) || 'pending'}`,
-                `${attachment.originalFileName} — ${status}`));
+              const item = createTextElement('span', `messaging-attachment is-${normalize(status) || 'pending'}`, '');
+              const fileName = createTextElement('span', '', attachment.originalFileName);
+              fileName.dataset.userContent = '';
+              item.append(fileName, document.createTextNode(' — '), createTextElement('span', '', status));
+              attachments.append(item);
             }
           });
           card.append(attachments);
         }
-        appendMessageInteractions(card, conversation, message);
-        elements.messages.append(card);
+        appendMessageInteractions(card, conversation, message, meta);
+        const row = document.createElement('div');
+        row.className = `messaging-message-row${isOwn ? ' is-own' : ''}`;
+        row.append(card, meta);
+        elements.messages.append(row);
       });
       restoreMessageScroll(conversation.id, shouldScrollToBottom);
     } else {
@@ -1412,8 +1560,16 @@
       item.insertBefore(createAvatar(result.person), item._messagingCopy);
     }
     item._messagingTitle.textContent = result.title;
-    item._messagingSubtitle.textContent = result.subtitle || '';
-    item._messagingSubtitle.hidden = !result.subtitle;
+    item._messagingTitle.dataset.userContent = '';
+    item._messagingSubtitle.replaceChildren(createPresencePill(result.conversationId, result.person));
+    if (result.person?.email) {
+      const identity = createTextElement('span', '', `${roleLabel(result.person.participantType)} · ${result.person.email}`);
+      identity.dataset.userContent = '';
+      item._messagingSubtitle.append(identity);
+    }
+    if (result.unreadCount > 0) item._messagingSubtitle.append(createTextElement('span', 'messaging-unread-count', String(result.unreadCount)));
+    item._messagingSubtitle.hidden = false;
+    renderPresence();
     item._messagingSelect = result.select;
   }
 
@@ -1468,6 +1624,8 @@
       ...matchingConversations.map(conversation => ({
         key: searchResultKey('conversation', conversation.id, 'conversation'),
         person: conversation.counterparty,
+        conversationId: conversation.id,
+        unreadCount: conversation.unreadCount,
         title: conversation.displayTitle || conversation.counterparty?.displayName || 'Member',
         subtitle: `Existing conversation${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ''}`,
         select: () => {
@@ -2117,12 +2275,13 @@
     attachCalling(connection);
     connection.on('messageReceived', event => refreshForEvent(event, true));
     connection.on('conversationUpdated', event => refreshForEvent(event));
-    connection.onreconnecting(startPolling);
-    connection.onreconnected(stopPolling);
-    connection.onclose(startPolling);
+    connection.onreconnecting(() => { stopPresence(); startPolling(); });
+    connection.onreconnected(() => { stopPolling(); startPresence(); });
+    connection.onclose(() => { stopPresence(); startPolling(); });
     try {
       await connection.start();
       stopPolling();
+      startPresence();
       state.callClient?.sync().catch(error => showError(error.message));
     } catch (error) {
       console.error('[messaging] SignalR connection start failed.', error);
@@ -2141,6 +2300,8 @@
       document.body.classList.add('messaging-command-center-open');
       unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'true'));
       state.isOpen = true;
+      clearPresence();
+      refreshPresence();
       markCommandCenterOpen();
       showError('');
       elements.window.focus({ preventScroll: true });
@@ -2187,6 +2348,7 @@
     document.body.classList.remove('messaging-command-center-open');
     unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'false'));
     state.isOpen = false;
+    clearPresence();
     cancelDetailRequests();
     state.navigationVersion += 1;
     state.requestedConversationId = null;
@@ -2338,14 +2500,22 @@
     .then(response => { if (!response.ok) throw new Error('Design unavailable'); return response.json(); })
     .then(design => {
       for (const [role, key] of [['incoming-background', 'navy'], ['incoming-text', 'onNavy'],
-        ['outgoing-background', 'gold'], ['outgoing-text', 'onGold'], ['timestamp', 'chatTimestamp'], ['surface', 'surface']]) {
+        ['outgoing-background', 'gold'], ['outgoing-text', 'onGold'], ['timestamp', 'chatTimestamp'], ['surface', 'surface'],
+        ['presence-online-text', 'presenceOnlineText'], ['presence-online-fill', 'presenceOnlineFill'],
+        ['presence-offline-text', 'presenceOfflineText'], ['presence-offline-fill', 'presenceOfflineFill']]) {
         const color = design.colors?.[key]?.light;
         if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-${role}`, color);
+      }
+      for (const [group, prefix] of [['messageBubble', 'bubble'], ['contactCard', 'card']]) {
+        for (const [key, css] of [['horizontalPadding','padding-x'], ['verticalPadding','padding-y'], ['cornerRadius','radius'], ['minimumHeight','min-height'], ['metadataGap','metadata-gap'], ['bodySize','body-size'], ['timestampSize','timestamp-size']]) {
+          const value = design.messaging?.[group]?.[key];
+          if (Number.isFinite(value)) root.style.setProperty(`--messaging-${prefix}-${css}`, `${value}px`);
+        }
       }
       const bubble = design.messaging?.reactionBubble;
       if (bubble) {
         reactionBubbleSettings = bubble;
-        for (const [key, css] of [['height','height'], ['horizontalPadding','padding'], ['itemSpacing','gap'], ['borderWidth','border'], ['trailingInset','trailing'], ['emojiSize','emoji-size']]) {
+        for (const [key, css] of [['height','height'], ['touchTarget','touch-target'], ['horizontalPadding','padding'], ['itemSpacing','gap'], ['borderWidth','border'], ['trailingInset','trailing'], ['emojiSize','emoji-size']]) {
           if (Number.isFinite(bubble[key])) root.style.setProperty(`--messaging-reaction-${css}`, `${bubble[key]}px`);
         }
         for (const [key, css] of [['ownFillColor','own-fill'], ['otherFillColor','other-fill'], ['borderColor','border-color']]) {
@@ -2354,10 +2524,9 @@
         }
         if (Number.isFinite(bubble.ownFillOpacity)) root.style.setProperty('--messaging-reaction-own-opacity', `${bubble.ownFillOpacity * 100}%`);
         if (Number.isFinite(bubble.borderOpacity)) root.style.setProperty('--messaging-reaction-border-opacity', `${bubble.borderOpacity * 100}%`);
-        if (Number.isFinite(bubble.outsideFraction)) {
-          root.style.setProperty('--messaging-reaction-outside', `${bubble.outsideFraction * 100}%`);
-          root.style.setProperty('--messaging-reaction-reserve', `${bubble.height * bubble.outsideFraction}px`);
-        }
+        root.style.setProperty('--messaging-reaction-reserve', '0px');
+        root.style.setProperty('--messaging-reaction-inside', '0px');
+        root.style.setProperty('--messaging-reaction-offset', '0px');
       }
       root.querySelectorAll('.messaging-reactions').forEach(reserveReactionOverlap);
       const semantic = design.platformSemanticColors;
@@ -2366,6 +2535,8 @@
         if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-receipt-${status}`, color);
       }
     }).catch(() => {});
+  document.addEventListener('visibilitychange', () => { clearPresence(); refreshPresence(); });
+  window.addEventListener('pagehide', stopPresence);
   window.addEventListener('legend-signalr-ready', startRealtime);
   startRealtime();
 })();

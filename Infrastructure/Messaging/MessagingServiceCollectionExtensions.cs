@@ -25,6 +25,7 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<IMessagingService>(provider => provider.GetRequiredService<MessagingService>());
         services.AddScoped<Shared.Calling.ILegendCallingAuthority>(provider =>
             provider.GetRequiredService<MessagingService>());
+        services.AddScoped<Shared.Messaging.IMessagingPresenceAuthority>(provider => provider.GetRequiredService<MessagingService>());
         services.AddHostedService<LegendCallPushDeliveryHostedService>();
         services.AddHostedService<LegendCallSignalDeliveryHostedService>();
         services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();

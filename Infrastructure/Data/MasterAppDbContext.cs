@@ -47,6 +47,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<OnboardingInvite> OnboardingInvites => Set<OnboardingInvite>();
     public DbSet<OnboardingSubmission> OnboardingSubmissions => Set<OnboardingSubmission>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
+    public DbSet<MessagingConnectionLease> MessagingConnectionLeases => Set<MessagingConnectionLease>();
     public DbSet<MobileProfileSettings> MobileProfileSettings => Set<MobileProfileSettings>();
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
@@ -1143,6 +1144,16 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => x.AgentUserId).IsUnique().HasFilter("[AgentUserId] IS NOT NULL");
             else
                 e.HasIndex(x => x.AgentUserId).IsUnique();
+        });
+
+        modelBuilder.Entity<MessagingConnectionLease>(e =>
+        {
+            e.ToTable("MessagingConnectionLeases");
+            e.HasKey(row => row.ConnectionId);
+            e.Property(row => row.ConnectionId).HasMaxLength(128);
+            e.Property(row => row.ParticipantType).HasMaxLength(16).IsRequired();
+            e.HasIndex(row => new { row.ProfileId, row.ParticipantType, row.ExpiresUtc });
+            e.HasIndex(row => row.ExpiresUtc);
         });
 
         modelBuilder.Entity<MobileProfileSettings>(e =>

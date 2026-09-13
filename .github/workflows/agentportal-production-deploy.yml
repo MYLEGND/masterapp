@@ -152,12 +152,17 @@ jobs:
             --production-base-sha "$LEGEND_BASELINE_PRODUCTION_BASE" \
             --output "$results_dir/release-decision.json"
 
-      - name: Preserve explicit full-regression release decision
+      # This public-repository artifact is limited to the security job's
+      # credential-free synthetic suite. Never include protected SQL/provider proofs.
+      - name: Preserve full-regression decision and failure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: legend-regression-release-decision-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/release-decision.json
+          path: |
+            ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/release-decision.json
+            ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/full-regression.trx
+            ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/full-regression.log
           if-no-files-found: ignore
           retention-days: 14
 

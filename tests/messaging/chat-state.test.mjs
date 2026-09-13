@@ -18,7 +18,7 @@ function environment(request) {
     document:{hidden:false},
     elements:{newMessages:{hidden:false},messages:{scrollTop:0}}, request,
     isConversationInRecipientScope:()=>true,
-    saveDraft(){},writeSession(){},removeSession(){},renderConversation(){},renderConversations(){},renderSearchResults(){},setUnreadCount(){},showError(){},
+    saveDraft(){},writeSession(){},removeSession(){},renderConversation(){},renderConversations(){},renderSearchResults(){},setUnreadCount(){},showError(){},clearPresence(){},refreshPresence(){},
     isCurrentParticipant:(id,type)=>id==='self'&&type==='Client',parseUtcTimestamp:value=>value?new Date(value):null
   };
   vm.createContext(context);
