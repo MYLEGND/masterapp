@@ -30,7 +30,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
     {
         const string root = "/Users/zacowen/LEGEND-models/artifacts/learning-canary";
         var phase = Environment.GetEnvironmentVariable("LEGEND_CONTROLLED_LEARNING_PHASE");
-        Assert.True(phase is "baseline" or "train", "Explicit baseline or train phase is required.");
+        Assert.True(phase is "baseline" or "train" or "evaluate", "Explicit baseline, train or evaluate phase is required.");
         var configuration = new ConfigurationBuilder().AddEnvironmentVariables().AddControlledFoundation().Build();
         Assert.Equal("FounderMac", configuration["LegendConnect:Foundation:HostKind"]);
         Assert.True(LegendConnectModelInferenceTransport.IsControlledFoundationHost(configuration));
@@ -122,10 +122,19 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var backend = new ControlledLegendConnectModelTrainingBackend(configuration, clients);
         var serving = new LegendConnectActiveModelInference(db, transport, configuration, backend);
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(30));
-        var baselinePath = Path.Combine(root, "baseline.json");
-        if (phase == "baseline")
+        var baselinePath = Path.Combine(root, phase == "evaluate" ? "baseline-" + codeSha + ".json" : "baseline.json");
+        if (phase is "baseline" or "evaluate")
         {
-            Assert.Empty(await db.Set<LegendConnectModelTrainingRun>().ToListAsync());
+            if (phase == "baseline")
+                Assert.Empty(await db.Set<LegendConnectModelTrainingRun>().ToListAsync());
+            else
+            {
+                var preserved = await db.Set<LegendConnectModelTrainingRun>().SingleAsync();
+                Assert.Equal("TrainingCompleted", preserved.State);
+                Assert.Equal("Rejected", preserved.EvaluationState);
+                Assert.Equal("model_evaluation_incomplete_case", preserved.FailureCode);
+                Assert.False(preserved.PromotionState == "Promoted");
+            }
             Assert.False(File.Exists(baselinePath), "The frozen baseline is immutable; use its recorded result.");
             var baseline = new List<object>();
             foreach (var example in manifest.HeldOut)
@@ -140,7 +149,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                     elapsedMilliseconds = clock.Elapsed.TotalMilliseconds });
             }
             await File.WriteAllTextAsync(baselinePath, JsonSerializer.Serialize(new { phase, executedTraining = false, syntheticIsolatedDatabase = true, manifest.DatasetIdentity, codeSha, cases = baseline }));
-            return; // This explicitly requested phase performed no training.
+            if (phase == "baseline") return; // Evaluation-only recaptures a current base without retraining.
         }
         Assert.True(File.Exists(baselinePath), "Actual frozen baseline inference is required before training.");
         Dictionary<string, JsonElement> frozenBaseline;
@@ -154,17 +163,20 @@ public sealed partial class LegendFounderAiModeIsolationTests
         }
         var training = new LegendConnectModelTrainingService(db, compiler, backend, configuration);
         LegendConnectModelTrainingRun? run = null;
-        for (var iteration = 0; iteration < 900; iteration++)
+        for (var iteration = 0; phase == "train" && iteration < 900; iteration++)
         {
             await training.ProcessOneAsync(deadline.Token);
             run = await db.Set<LegendConnectModelTrainingRun>().SingleAsync(deadline.Token);
             if (run.State is "TrainingCompleted" or "Failed") break;
             await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token);
         }
+        if (phase == "evaluate") run = await db.Set<LegendConnectModelTrainingRun>().SingleAsync(deadline.Token);
         Assert.NotNull(run);
         var evaluation = new LegendConnectModelEvaluationService(db, compiler, new LocalLegendConnectModelEvaluationBackend(), serving,
             configuration, transport, backend);
-        if (run.State == "TrainingCompleted") await evaluation.ProcessOneAsync(deadline.Token);
+        if (phase == "evaluate")
+            await evaluation.EvaluateManifestAsync(run, manifest, deadline.Token);
+        else if (run.State == "TrainingCompleted") await evaluation.ProcessOneAsync(deadline.Token);
         var comparison = manifest.HeldOut.Select(example =>
         {
             var candidate = transport.Calls.FirstOrDefault(call => call.RequestedModel == run.ChallengerModelVersion && call.Task.Input == example.SourceText);
@@ -180,7 +192,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
                     LegendConnectServingEvaluationContracts.ComparableSettings(baseline.GetProperty("InferenceSettings").GetString()!),
                 candidateText = candidate?.Result.Text, baselineText = baseline.GetProperty("Text").GetString() };
         }).ToArray();
-        await File.WriteAllTextAsync(Path.Combine(root, "heldout-comparison.json"), JsonSerializer.Serialize(comparison));
+        await File.WriteAllTextAsync(Path.Combine(root, phase == "evaluate" ? "heldout-comparison-" + codeSha + ".json" : "heldout-comparison.json"), JsonSerializer.Serialize(comparison));
         // These acceptance checks cannot grant promotion; the existing service
         // still requires its independent scores and complete runtime proof.
         var demonstrated = comparison.All(item => item.candidateExecuted && item.inputMatches && item.settingsMatch &&
@@ -189,7 +201,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
         var promotion = new LegendConnectModelPromotionService(db, compiler, configuration, backend);
         if (run.EvaluationState == "Passed" && demonstrated) await promotion.PromoteAsync(run.Id, deadline.Token);
         var selected = await serving.ResolveConversationModelAsync(deadline.Token);
-        await File.WriteAllTextAsync(Path.Combine(root, "lifecycle-result.json"), JsonSerializer.Serialize(new
+        await File.WriteAllTextAsync(Path.Combine(root, phase == "evaluate" ? "lifecycle-result-" + codeSha + ".json" : "lifecycle-result.json"), JsonSerializer.Serialize(new
         {
             manifest.DatasetIdentity, codeSha, run.Id, run.RunKey, run.State, run.TrainingProvider, run.ChallengerModelVersion,
             run.EvaluationState, run.PromotionState, run.HeldOutScore, run.RegressionScore, run.FailureCode, run.FailureDetail,

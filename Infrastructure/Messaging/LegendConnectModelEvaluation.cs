@@ -2477,8 +2477,9 @@ internal sealed class LegendConnectModelEvaluationService
     }
 
     private static bool IsIncompleteCase(
-        LegendConnectTrainingDatasetExample example) =>
-        string.IsNullOrWhiteSpace(
+        LegendConnectTrainingDatasetExample example)
+    {
+        var incomplete = string.IsNullOrWhiteSpace(
             example.EvidenceIdentity) ||
         example.EvidenceIdentity.Length > 256 ||
         string.IsNullOrWhiteSpace(
@@ -2502,11 +2503,23 @@ internal sealed class LegendConnectModelEvaluationService
             example.CapabilityKey) ||
         string.IsNullOrWhiteSpace(
             example.OutputContract) ||
-        (example.CapabilityKey !=
-             LegendModelCapabilityKeys.Translation &&
-         string.IsNullOrWhiteSpace(
-             example.Instructions)) ||
         example.Weight <= 0;
+
+        if (incomplete)
+            return true;
+
+        try
+        {
+            // The task factory supplies canonical translation/foundation
+            // instructions and validates structured conversation input. Raw
+            // optional Instructions is not a second task authority.
+            return string.IsNullOrWhiteSpace(example.ToTaskRequest().Instructions);
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
 
     private static bool HasPartitionContamination(
         LegendConnectTrainingDatasetManifest manifest)

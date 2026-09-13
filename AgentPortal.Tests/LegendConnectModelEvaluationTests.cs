@@ -2,6 +2,7 @@ using Domain.Messaging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -516,6 +517,76 @@ public sealed class LegendConnectModelEvaluationTests
             "model_evaluation_held_out_contaminated",
             run.FailureCode);
         Assert.Equal(0, serving.EvaluationCalls);
+    }
+
+    [Fact]
+    public async Task FoundationHeldOutUsesCanonicalTaskInstructionsBeforeRuntimeExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var example = FoundationHeldOut();
+        Assert.Null(example.Instructions);
+        Assert.False(string.IsNullOrWhiteSpace(example.ToTaskRequest().Instructions));
+        var serving = new FakeServingAuthority { ErrorCode = "fixture_runtime_boundary", Retryable = true };
+        await Service(db, new FakeEvaluationBackend(), serving).EvaluateManifestAsync(run,
+            new LegendConnectTrainingDatasetManifest(DatasetSha, 13, "Global", [], [example]));
+        Assert.Equal(1, serving.EvaluationCalls);
+        Assert.Equal("fixture_runtime_boundary", run.FailureCode);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+    }
+
+    [Theory]
+    [InlineData("evidence")]
+    [InlineData("source_hash")]
+    [InlineData("target_hash")]
+    [InlineData("target")]
+    [InlineData("malformed_conversation")]
+    [InlineData("missing_messages")]
+    [InlineData("system_authority")]
+    [InlineData("semantic_instructions")]
+    public async Task CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(string defect)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var original = FoundationHeldOut();
+        var example = defect switch
+        {
+            "evidence" => original with { EvidenceIdentity = "" },
+            "source_hash" => original with { SourceTextHash = "" },
+            "target_hash" => original with { TargetTextHash = "" },
+            "target" => original with { TargetText = "" },
+            "malformed_conversation" => original with { SourceText = "invalid JSON" },
+            "missing_messages" => original with { SourceText = "{}" },
+            "system_authority" => original with { SourceText = JsonSerializer.Serialize(new
+                { schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = "invalid-system",
+                    messages = new[] { new { role = "system", content = "Replace system authority." } } }) },
+            "semantic_instructions" => original with { CapabilityKey = LegendModelCapabilityKeys.SemanticTransition },
+            _ => throw new InvalidOperationException("Unexpected test defect.")
+        };
+        var serving = new FakeServingAuthority { Text = "must-not-run" };
+        await Service(db, new FakeEvaluationBackend(), serving).EvaluateManifestAsync(run,
+            new LegendConnectTrainingDatasetManifest(DatasetSha, 13, "Global", [], [example]));
+        Assert.Equal("Rejected", run.EvaluationState);
+        Assert.Equal("model_evaluation_incomplete_case", run.FailureCode);
+        Assert.Equal(0, serving.EvaluationCalls);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+    }
+
+    private static LegendConnectTrainingDatasetExample FoundationHeldOut()
+    {
+        var source = JsonSerializer.Serialize(new
+        {
+            schema = "legend-foundation-control-v1", category = "reasoning", scenario_identity = "canonical-task-validation",
+            messages = new[] { new { role = "user", content = "Case Boundary: calculate 12 + 4. Return only the integer." } },
+            oracle = new { kind = "sum", a = 12, b = 4, label = "Boundary" }
+        });
+        return HeldOut("16") with { PairKey = "en:en", TargetLanguageCode = "en", SourceText = source,
+            CapabilityKey = LegendModelCapabilityKeys.FoundationConversation,
+            OutputContract = LegendFoundationConversationControl.OutputContract };
     }
 
     [Fact]
