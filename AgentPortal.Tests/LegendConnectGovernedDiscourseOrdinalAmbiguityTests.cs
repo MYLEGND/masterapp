@@ -307,7 +307,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
     }
 
     [Fact]
-    public async Task ReplacementBinding_DoesNotPersistCurrentTurnSupersessionWithoutSelectorAnchoredIdentity()
+    public async Task ReplacementBinding_PreservesBroadContainingCurrentTurnCandidateWithoutPersistingSupersessionIdentity()
     {
         var databaseName = Guid.NewGuid().ToString("D");
         var root = new InMemoryDatabaseRoot();
@@ -347,7 +347,6 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         await ObserveAnalyzedAsync("The beta choice seems reliable to me.");
 
         LegendConnectUtteranceMeaningGraphSnapshot correctionGraph;
-        string betaSignature;
         await using (var db = CreateDb(databaseName, root))
         {
             var operations = CreateOperations(db);
@@ -357,39 +356,22 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var betaEntity = Assert.Single(betaGraph.Nodes.Where(item =>
                 item.SemanticDimension == "choice" &&
                 item.SemanticValue == "beta"));
-            betaSignature = betaEntity.SemanticSignature;
 
             var baseCorrectionGraph = await operations.AnalyzeReusableMeaningGraphAsync(
                 "No, please use the first option instead.");
             Assert.True(baseCorrectionGraph.IsComposed, baseCorrectionGraph.ReasonCode);
             var selector = Assert.Single(baseCorrectionGraph.Nodes.Where(item =>
                 item.SemanticDimension == "reference_selector"));
-            var independentBetaIndex = baseCorrectionGraph.Nodes.Count;
-            var noteIndex = independentBetaIndex + 1;
             correctionGraph = baseCorrectionGraph with
             {
                 Nodes = baseCorrectionGraph.Nodes
                     .Concat(
                     [
-                        betaEntity with { StartTokenIndex = selector.StartTokenIndex + selector.TokenLength + 3 },
-                        new LegendConnectUtteranceMeaningNode(
-                            "note",
-                            "choice_note",
-                            "reliable",
-                            selector.StartTokenIndex + selector.TokenLength + 4,
-                            1,
-                            3)
-                    ])
-                    .ToArray(),
-                Relations = baseCorrectionGraph.Relations
-                    .Concat(
-                    [
-                        new LegendConnectUtteranceMeaningRelation(
-                            "independent-beta-note",
-                            "described-as",
-                            independentBetaIndex,
-                            noteIndex,
-                            3)
+                        betaEntity with
+                        {
+                            StartTokenIndex = selector.StartTokenIndex,
+                            TokenLength = selector.TokenLength + 2
+                        }
                     ])
                     .ToArray()
             };
@@ -447,7 +429,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
     }
 
     [Fact]
-    public async Task ReplacementBinding_PersistsOnlyTheSelectorAnchoredCurrentTurnOccurrence()
+    public async Task ReplacementBinding_PersistsDirectIndexedCurrentTurnIdentityWithoutIncidentRelations()
     {
         var databaseName = Guid.NewGuid().ToString("D");
         var root = new InMemoryDatabaseRoot();
@@ -490,6 +472,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         string betaSignature;
         int expectedSupersededStart;
         int expectedSupersededLength;
+        int anchoredBetaIndex;
         await using (var db = CreateDb(databaseName, root))
         {
             var operations = CreateOperations(db);
@@ -508,10 +491,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 item.SemanticDimension == "reference_selector"));
             expectedSupersededStart = selector.StartTokenIndex;
             expectedSupersededLength = selector.TokenLength;
-            var anchoredBetaIndex = baseCorrectionGraph.Nodes.Count;
-            var independentBetaIndex = anchoredBetaIndex + 1;
-            var anchoredNoteIndex = independentBetaIndex + 1;
-            var independentNoteIndex = anchoredNoteIndex + 1;
+            anchoredBetaIndex = baseCorrectionGraph.Nodes.Count;
             correctionGraph = baseCorrectionGraph with
             {
                 Nodes = baseCorrectionGraph.Nodes
@@ -521,42 +501,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                         {
                             StartTokenIndex = selector.StartTokenIndex,
                             TokenLength = selector.TokenLength
-                        },
-                        betaEntity with
-                        {
-                            StartTokenIndex = selector.StartTokenIndex + selector.TokenLength + 3
-                        },
-                        new LegendConnectUtteranceMeaningNode(
-                            "anchor-note",
-                            "choice_note",
-                            "superseded",
-                            selector.StartTokenIndex + selector.TokenLength,
-                            1,
-                            3),
-                        new LegendConnectUtteranceMeaningNode(
-                            "note",
-                            "choice_note",
-                            "reliable",
-                            selector.StartTokenIndex + selector.TokenLength + 4,
-                            1,
-                            3)
-                    ])
-                    .ToArray(),
-                Relations = baseCorrectionGraph.Relations
-                    .Concat(
-                    [
-                        new LegendConnectUtteranceMeaningRelation(
-                            "anchored-beta-note",
-                            "described-as",
-                            anchoredBetaIndex,
-                            anchoredNoteIndex,
-                            3),
-                        new LegendConnectUtteranceMeaningRelation(
-                            "independent-beta-note",
-                            "described-as",
-                            independentBetaIndex,
-                            independentNoteIndex,
-                            3)
+                        }
                     ])
                     .ToArray()
             };
@@ -588,7 +533,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             Assert.Equal("alpha", binding.EntitySemanticValue);
             Assert.True(binding.ReplacesActiveBinding);
             Assert.True(binding.HasSupersededCurrentTurnEntity);
-            Assert.Equal(2, binding.SupersededCurrentTurnNodeIndex);
+            Assert.Equal(anchoredBetaIndex, binding.SupersededCurrentTurnNodeIndex);
             Assert.Equal(betaSignature, binding.SupersededCurrentTurnSemanticSignature);
             Assert.Equal("choice", binding.SupersededCurrentTurnSemanticDimension);
             Assert.Equal("beta", binding.SupersededCurrentTurnSemanticValue);
@@ -602,7 +547,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var projectedTurn = Assert.Single(state.Turns.Where(item => item.SequenceNumber == 3));
             var projectedBinding = Assert.Single(projectedTurn.Bindings);
             Assert.True(projectedBinding.HasSupersededCurrentTurnEntity);
-            Assert.Equal(2, projectedBinding.SupersededCurrentTurnNodeIndex);
+            Assert.Equal(anchoredBetaIndex, projectedBinding.SupersededCurrentTurnNodeIndex);
             Assert.Equal(betaSignature, projectedBinding.SupersededCurrentTurnSemanticSignature);
             Assert.Equal("choice", projectedBinding.SupersededCurrentTurnSemanticDimension);
             Assert.Equal("beta", projectedBinding.SupersededCurrentTurnSemanticValue);
@@ -616,21 +561,117 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 projectedTurn.Relations,
                 projectedTurn.Bindings);
             Assert.True(pruning.Succeeded);
+            Assert.Equal(projectedTurn.Relations, pruning.Relations);
+            Assert.Equal(projectedTurn.Nodes.Count - 1, pruning.Nodes.Count);
             Assert.DoesNotContain(
                 pruning.Nodes,
                 item => item.SemanticDimension == "choice" &&
                     item.SemanticValue == "beta" &&
                     item.StartTokenIndex == supersededStart &&
                     item.TokenLength == supersededLength);
-            Assert.Contains(
-                pruning.Nodes,
-                item => item.SemanticDimension == "choice" &&
-                    item.SemanticValue == "beta" &&
-                    item.StartTokenIndex > supersededStart &&
-                    item.TokenLength == 1);
-            var preservedRelation = Assert.Single(pruning.Relations.Where(item => item.RelationKind == "described-as"));
-            Assert.Equal("beta", pruning.Nodes[preservedRelation.SourceNodeIndex].SemanticValue);
-            Assert.Equal("note", pruning.Nodes[preservedRelation.TargetNodeIndex].SemanticSignature);
+        }
+    }
+
+    [Fact]
+    public async Task ReplacementBinding_FailsClosedForDuplicateDirectCurrentTurnIdentityCandidates()
+    {
+        var databaseName = Guid.NewGuid().ToString("D");
+        var root = new InMemoryDatabaseRoot();
+        var actor = Guid.NewGuid().ToString("D");
+        await using (var setup = CreateDb(databaseName, root))
+        {
+            setup.AgentProfiles.Add(Profile(actor, "replacement-duplicate"));
+            await setup.SaveChangesAsync();
+            var curriculum = CreateCurriculum(setup);
+            for (var family = 1; family <= 3; family++)
+            {
+                var submitted = await curriculum.SubmitFounderBatchAsync(
+                    ProductionStyleChoiceFamily(family));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        var conversationId = Guid.NewGuid();
+        async Task ObserveAnalyzedAsync(string surface)
+        {
+            await using var db = CreateDb(databaseName, root);
+            var operations = CreateOperations(db);
+            var graph = await operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    graph);
+        }
+
+        await ObserveAnalyzedAsync("The alpha choice feels affordable to me.");
+        await ObserveAnalyzedAsync("The beta choice seems reliable to me.");
+
+        LegendConnectUtteranceMeaningGraphSnapshot correctionGraph;
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var betaGraph = await operations.AnalyzeReusableMeaningGraphAsync(
+                "The beta choice seems reliable to me.");
+            Assert.True(betaGraph.IsComposed, betaGraph.ReasonCode);
+            var betaEntity = Assert.Single(betaGraph.Nodes.Where(item =>
+                item.SemanticDimension == "choice" &&
+                item.SemanticValue == "beta"));
+
+            var baseCorrectionGraph = await operations.AnalyzeReusableMeaningGraphAsync(
+                "No, please use the first option instead.");
+            Assert.True(baseCorrectionGraph.IsComposed, baseCorrectionGraph.ReasonCode);
+            var selector = Assert.Single(baseCorrectionGraph.Nodes.Where(item =>
+                item.SemanticDimension == "reference_selector"));
+            correctionGraph = baseCorrectionGraph with
+            {
+                Nodes = baseCorrectionGraph.Nodes
+                    .Concat(
+                    [
+                        betaEntity with
+                        {
+                            StartTokenIndex = selector.StartTokenIndex,
+                            TokenLength = selector.TokenLength
+                        },
+                        betaEntity with
+                        {
+                            StartTokenIndex = selector.StartTokenIndex,
+                            TokenLength = selector.TokenLength
+                        }
+                    ])
+                    .ToArray()
+            };
+        }
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            await new LegendFounderAiDiscourseStateService(
+                    db,
+                    new AgentProfileAccessResolver(db),
+                    operations)
+                .RecordObservationAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString(),
+                    "user",
+                    correctionGraph);
+        }
+
+        await using (var db = CreateDb(databaseName, root))
+        {
+            var operations = CreateOperations(db);
+            var discourse = new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations);
+            var binding = Assert.Single(await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.Equal("unresolved", binding.ResolutionState);
+            Assert.Equal("reference_current_turn_replacement_ambiguous", binding.ReasonCode);
         }
     }
 
