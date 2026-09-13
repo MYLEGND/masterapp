@@ -43,6 +43,8 @@ object LegendDesignAuthority {
     internal fun socialFormat(name: String) = required().socialFormats.required(name)
     internal fun accountSession() = required().accountSession
     internal fun navigation() = required().navigation
+    internal fun messageBubble() = required().messaging.messageBubble
+    internal fun contactCard() = required().messaging.contactCard
     internal fun reactionBubble() = required().messaging.reactionBubble
     internal fun gradient(name: String): Brush = Brush.linearGradient(
         required().gradients.required(name).map(::color),
@@ -168,8 +170,20 @@ internal object LegendTypography {
     val Eyebrow get() = LegendDesignAuthority.typography("eyebrow")
 }
 
-@Serializable internal data class LegendReactionBubbleToken(val height: Float, val horizontalPadding: Float, val itemSpacing: Float, val borderWidth: Float, val outsideFraction: Float, val trailingInset: Float, val emojiSize: Float, val ownFillColor: String, val ownFillOpacity: Float, val otherFillColor: String, val borderColor: String, val borderOpacity: Float)
-@Serializable private data class LegendMessagingDesignToken(val reactionBubble: LegendReactionBubbleToken)
+@Serializable internal data class LegendReactionBubbleToken(val height: Float, val touchTarget: Float, val horizontalPadding: Float, val itemSpacing: Float, val borderWidth: Float, val outsideFraction: Float, val trailingInset: Float, val emojiSize: Float, val ownFillColor: String, val ownFillOpacity: Float, val otherFillColor: String, val borderColor: String, val borderOpacity: Float) {
+    fun overflow(measuredHeight: Float = touchTarget): Float =
+        maxOf(0f, measuredHeight - (touchTarget - height)) * outsideFraction + (touchTarget - height) / 2
+}
+@Serializable internal data class LegendMessageBubbleToken(val horizontalPadding: Float, val verticalPadding: Float,
+    val cornerRadius: Float, val metadataGap: Float, val bodySize: Float, val timestampSize: Float,
+    val timestampWeight: String, val timestampColor: String) {
+    val timestampStyle get() = TextStyle(fontSize = timestampSize.sp, fontWeight = timestampWeight.asFontWeight())
+}
+@Serializable internal data class LegendContactCardToken(val cornerRadius: Float, val minimumHeight: Float,
+    val horizontalPadding: Float, val verticalPadding: Float, val borderWidth: Float,
+    val borderOpacity: Float, val shadowOpacity: Float, val shadowRadius: Float, val shadowOffsetY: Float)
+@Serializable private data class LegendMessagingDesignToken(val reactionBubble: LegendReactionBubbleToken,
+    val messageBubble: LegendMessageBubbleToken, val contactCard: LegendContactCardToken)
 
 @Serializable
 private data class LegendDesignSpecification(

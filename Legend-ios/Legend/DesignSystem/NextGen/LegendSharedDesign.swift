@@ -102,9 +102,21 @@ enum LegendSharedDesign {
         specification.accountSession
     }
 
+    static var messageBubble: MessageBubbleToken { specification.messaging.messageBubble }
+    static var contactCard: ContactCardToken { specification.messaging.contactCard }
+    struct MessageBubbleToken: Decodable {
+        let horizontalPadding, verticalPadding, cornerRadius, metadataGap, bodySize, timestampSize: CGFloat
+        let timestampWeight, timestampColor: String
+        var timestampFont: Font { .system(size: timestampSize, weight: LegendSharedDesign.fontWeight(timestampWeight)) }
+    }
+    struct ContactCardToken: Decodable {
+        let cornerRadius, minimumHeight, horizontalPadding, verticalPadding, borderWidth, shadowRadius, shadowOffsetY: CGFloat
+        let borderOpacity, shadowOpacity: Double
+    }
     static var reactionBubble: ReactionBubbleToken { specification.messaging.reactionBubble }
     struct ReactionBubbleToken: Decodable {
         let height: CGFloat
+        let touchTarget: CGFloat
         let emojiSize: CGFloat
         let ownFillColor: String
         let ownFillOpacity: Double
@@ -116,10 +128,15 @@ enum LegendSharedDesign {
         let borderWidth: CGFloat
         let outsideFraction: CGFloat
         let trailingInset: CGFloat
-        var overflow: CGFloat { height * outsideFraction }
+        var overflow: CGFloat { overflow(for: touchTarget) }
+        func overflow(for measuredHeight: CGFloat) -> CGFloat {
+            max(0, measuredHeight - (touchTarget - height)) * outsideFraction + (touchTarget - height) / 2
+        }
     }
     fileprivate struct MessagingToken: Decodable {
         let reactionBubble: ReactionBubbleToken
+        let messageBubble: MessageBubbleToken
+        let contactCard: ContactCardToken
     }
 
     private static func fontWeight(_ value: String) -> Font.Weight {
