@@ -2,10 +2,77 @@ package com.mylegnd.legend.registered
 
 import com.mylegnd.legend.registered.feature.calling.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Test
 
 class LegendCallAudioLifecycleTest {
+    @Test fun permissionResultsCannotAnswerEndOrShareIntoReplacementCallOrAccount() {
+        val original = LegendCallPermissionScope("owner-a", "device-a", "call-a")
+        for (replacement in listOf(original.copy(callId = "call-b"), original.copy(ownerId = "owner-b"),
+            original.copy(deviceId = "device-b"), null)) {
+            for (granted in listOf(true, false)) {
+                val answer = LegendCallPermissionGate()
+                val projection = LegendCallPermissionGate()
+                assertTrue(answer.begin(original)); assertTrue(projection.begin(original))
+                assertFalse(answer.begin(original)) // A second launch cannot overwrite the pending request.
+                var answered = 0; var ended = 0; var captured = 0
+                if (answer.consume(replacement) != null) { if (granted) answered++ else ended++ }
+                if (projection.consume(replacement) != null && granted) captured++
+                assertEquals(0, answered); assertEquals(0, ended); assertEquals(0, captured)
+                assertNull(answer.consume(original)); assertNull(projection.consume(original))
+            }
+        }
+        val current = LegendCallPermissionGate()
+        assertTrue(current.begin(original)); assertEquals(original, current.consume(original))
+        assertNull(current.consume(original)) // One OS consent result cannot be replayed.
+        assertTrue(current.begin(original))
+        val recreated = LegendCallPermissionGate(current.pendingScope())
+        assertFalse(recreated.begin(original.copy(ownerId = "new-account")))
+        assertNull(recreated.consume(original.copy(ownerId = "new-account")))
+        assertTrue(recreated.begin(original.copy(callId = "next")))
+        assertEquals(original.copy(callId = "next"), recreated.consume(original.copy(callId = "next")))
+    }
+
+    @Test fun sharedCallingPreferencesUseExistingCommandAndPreserveServerChoices() {
+        val json = Json { ignoreUnknownKeys = true }
+        val read = json.parseToJsonElement(json.encodeToString(LegendCallCommand("preferences", "device"))).jsonObject
+        assertFalse(read.containsKey("preferences"))
+        val value = LegendCallPreferences("soft", "profile")
+        val write = json.decodeFromString<LegendCallCommand>(json.encodeToString(LegendCallCommand("preferences", "device", preferences = value)))
+        assertEquals(value, write.preferences)
+        assertEquals("preferences", write.action)
+        val result = json.decodeFromString<LegendCallResult>("""{"succeeded":true,"preferences":{"ringtoneId":"soft","wallpaperMode":"profile"},"ringtones":[{"id":"soft","label":"Soft","resource":"legend_ringback"}],"wallpapers":[{"id":"profile","label":"Profile photo"}]}""")
+        assertEquals(value, result.preferences)
+        assertEquals("legend_ringback", result.ringtones!!.single().resource)
+        assertEquals("profile", result.wallpapers!!.single().id)
+        val legacy = json.decodeFromString<LegendCallResult>("""{"succeeded":true}""")
+        assertNull(legacy.preferences)
+        assertNull(legacy.ringtones)
+        assertNull(legacy.wallpapers)
+        val call = snapshot("incoming").copy(calleeImagePath = "/api/v1/mobile/notifications/id/sender-image?token=opaque",
+            callerWallpaperMode = "profile", calleeWallpaperMode = "legend", incomingRingtoneResource = "legend_ringback")
+        assertEquals(call, json.decodeFromString<LegendCallSnapshot>(json.encodeToString(call)))
+    }
+
+    @Test fun systemAnswerRequiresCurrentRecipientDeviceAndUnexpiredRingingCall() {
+        val now = java.time.Instant.parse("2026-09-13T12:00:00Z")
+        val call = snapshot("incoming").copy(calleeUserId = "recipient", calleeType = "Client",
+            status = "ringing", calleeDeviceId = null, expiresUtc = now.plusSeconds(30).toString())
+        assertTrue(call.canAnswerOnDevice("recipient", "Client", "device-a", now))
+        assertFalse(call.canAnswerOnDevice("other-user", "Client", "device-a", now))
+        assertFalse(call.canAnswerOnDevice("recipient", "Agent", "device-a", now))
+        assertFalse(call.canAnswerOnDevice("", "Client", "device-a", now))
+        assertFalse(call.copy(calleeDeviceId = "device-b").canAnswerOnDevice("recipient", "Client", "device-a", now))
+        assertFalse(call.copy(status = "ended").canAnswerOnDevice("recipient", "Client", "device-a", now))
+        assertFalse(call.copy(expiresUtc = now.toString()).canAnswerOnDevice("recipient", "Client", "device-a", now))
+        assertFalse(call.copy(expiresUtc = "invalid").canAnswerOnDevice("recipient", "Client", "device-a", now))
+        assertTrue(call.copy(calleeUserIds = listOf("recipient", "canonical-alias"))
+            .canAnswerOnDevice("canonical-alias", "Client", "device-a", now))
+    }
+
     @Test fun mediaWaitsForBothForegroundServiceAndActualTelecomFocus() = runBlocking {
         val service = Any()
         val gate = LegendCallAudioGate().apply { bindService(service) }

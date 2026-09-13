@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-9deb649cdee83c9f",
+  "catalogVersion": "application-copy-v1-21b0bbe299f15d78",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -6348,6 +6348,17 @@
       "source": "A LITTLE ABOUT YOUR SEASON",
       "context": "visual interface copy",
       "sourceRevision": "c5a5eb464bc4a9f4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.01f13e61c04787cfe7fd64c5",
+      "source": "A call is already in progress.",
+      "context": "visual interface copy",
+      "sourceRevision": "06e989a44a14144a",
       "placeholders": [
 
       ],
@@ -13219,6 +13230,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.2faecaf9f0f382badb3783de",
+      "source": "Call background",
+      "context": "visual interface copy",
+      "sourceRevision": "07842a0a61273daf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9baa95a55f74317c9e13e169",
       "source": "Call controls",
       "context": "visual interface copy",
@@ -13230,10 +13252,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e6db99505ae7213c515e7bae",
+      "source": "Call identity unavailable.",
+      "context": "visual interface copy",
+      "sourceRevision": "0690f5c56ea6c98d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.c68d6fc1848798769a8b45e5",
       "source": "Call or text 988",
       "context": "visual interface copy",
       "sourceRevision": "ea799acd5bcf90a0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.459b8a44e01afb75dfb8675e",
+      "source": "Call settings are unavailable.",
+      "context": "visual interface copy",
+      "sourceRevision": "6ab6a82fc2661181",
       "placeholders": [
 
       ],
@@ -13274,10 +13318,54 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.04ac4211606b5df6a760b960",
+      "source": "Calling preferences saved for this account on all devices.",
+      "context": "visual interface copy",
+      "sourceRevision": "9124a487752041ee",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.1aa5459b9600cb1ab3b9cc10",
+      "source": "Calling profile",
+      "context": "visual interface copy",
+      "sourceRevision": "535c37e5bd9c1dbf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9b94a74a625efaec33807c68",
+      "source": "Calling requires a supported secure browser.",
+      "context": "visual interface copy",
+      "sourceRevision": "2e151b8771952f11",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.d5e973b342243a4da7e784e8",
       "source": "Calling unavailable.",
       "context": "visual interface copy",
       "sourceRevision": "69c71b5d00ad692d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5c403d2632a163c37df4d694",
+      "source": "Calling wallpaper",
+      "context": "visual interface copy",
+      "sourceRevision": "7ef5c4129ed2b2e5",
       "placeholders": [
 
       ],
@@ -14055,6 +14143,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7278e2a32170234078a67c9e",
+      "source": "Change profile photo",
+      "context": "visual interface copy",
+      "sourceRevision": "ec55182579cdfbec",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.74e01c772817046faa80fd49",
       "source": "Changes apply across web, iOS and Android. Existing usage is retained. Founder access stays unlimited.",
       "context": "visual interface copy",
@@ -14455,6 +14554,17 @@
       "source": "Choose an authorized role before continuing.",
       "context": "visual interface copy",
       "sourceRevision": "04846c734368dfe3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b6de4f503f05ca4ed41cc009",
+      "source": "Choose an available ringtone and calling wallpaper.",
+      "context": "visual interface copy",
+      "sourceRevision": "961f3bb109977309",
       "placeholders": [
 
       ],
@@ -21558,6 +21668,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.3c5550442b4b10154d4f5cf2",
+      "source": "Edit account profile photo",
+      "context": "visual interface copy",
+      "sourceRevision": "d6c73f83a0912bbc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.377056b610656239805d5bd8",
       "source": "Edit contact",
       "context": "visual interface copy",
@@ -21639,6 +21760,17 @@
       "source": "Edit profile",
       "context": "visual interface copy",
       "sourceRevision": "15c4aa13037eaf52",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.041b8b511f815350e7d47124",
+      "source": "Edit profile picture",
+      "context": "visual interface copy",
+      "sourceRevision": "caf2f9deff69f783",
       "placeholders": [
 
       ],
@@ -22277,6 +22409,17 @@
       "source": "Enable Reminders",
       "context": "visual interface copy",
       "sourceRevision": "83453bbc024462dd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2d43cb99007a15524e408584",
+      "source": "Enable call audio",
+      "context": "visual interface copy",
+      "sourceRevision": "bbcf38165b874473",
       "placeholders": [
 
       ],
@@ -28502,6 +28645,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7bbc1aa0dbb2709ca946818e",
+      "source": "Incoming ringtone",
+      "context": "visual interface copy",
+      "sourceRevision": "402c41289bb48be6",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8a9783d24dab6aed85fe5b43",
       "source": "Incomplete",
       "context": "visual interface copy",
@@ -29756,6 +29910,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.191976dc7ce1e7f89fe4091a",
+      "source": "LEGEND default",
+      "context": "visual interface copy",
+      "sourceRevision": "54c601c4abc673ee",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6906d5d2297e75e1a4cf10cf",
       "source": "LEGEND governed research",
       "context": "visual interface copy",
@@ -29815,6 +29980,28 @@
       "source": "LEGEND sends block and report decisions to the community-safety service for server enforcement.",
       "context": "visual interface copy",
       "sourceRevision": "1d5bbdf8a6dac214",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.018c5a5d2e603ec8388c1583",
+      "source": "LEGEND signature",
+      "context": "visual interface copy",
+      "sourceRevision": "accb87d59559a237",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.1d806fe3a0cb94bb5813e296",
+      "source": "LEGEND soft chime",
+      "context": "visual interface copy",
+      "sourceRevision": "a261770473e22de5",
       "placeholders": [
 
       ],
@@ -35368,6 +35555,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.030d7ccfc4860310104664f7",
+      "source": "Mute microphone",
+      "context": "visual interface copy",
+      "sourceRevision": "2d1be6900bbed8f9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.518eea07ff48ddc467410e74",
       "source": "Mute original audio",
       "context": "visual interface copy",
@@ -35460,6 +35658,17 @@
       "source": "My Profile",
       "context": "visual interface copy",
       "sourceRevision": "991bfa015514f9d5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e843a2c1798409d294f5a18b",
+      "source": "My profile picture",
+      "context": "visual interface copy",
+      "sourceRevision": "3ac552449a69b24f",
       "placeholders": [
 
       ],
@@ -40637,6 +40846,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.3faa42f8069fd300ebe2e755",
+      "source": "Pause camera",
+      "context": "visual interface copy",
+      "sourceRevision": "77b650a64867b2af",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9829544aaaba4d9920ac1cca",
       "source": "Pause or delete account",
       "context": "visual interface copy",
@@ -45620,6 +45840,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e2325725b1b9b70ab87fc79b",
+      "source": "Reopen the call and allow microphone access.",
+      "context": "visual interface copy",
+      "sourceRevision": "a51d0df63ebca5b1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9f5c8df23544348afd6e672c",
       "source": "Repair preparation",
       "context": "visual interface copy",
@@ -47138,6 +47369,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.50444924a4fd890248d096ef",
+      "source": "Ringtone",
+      "context": "visual interface copy",
+      "sourceRevision": "26bf69ed1c95be22",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8a352635454072d333f4cca5",
       "source": "Risk Level",
       "context": "visual interface copy",
@@ -48462,6 +48704,17 @@
       "source": "Screen sharing could not start. Please try again.",
       "context": "visual interface copy",
       "sourceRevision": "58e59eea94371de7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0eec9ec60395839aae923f1d",
+      "source": "Screen sharing is not supported by this browser.",
+      "context": "visual interface copy",
+      "sourceRevision": "2c074b1ee17d12cb",
       "placeholders": [
 
       ],
@@ -50332,6 +50585,17 @@
       "source": "Share content",
       "context": "visual interface copy",
       "sourceRevision": "3728a29d2d4cbabb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c305b84b13aac9cdd4b4cdc7",
+      "source": "Share device screen",
+      "context": "visual interface copy",
+      "sourceRevision": "9ceb83c62670b6d6",
       "placeholders": [
 
       ],
@@ -53475,6 +53739,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.adff91a5df55711a6eb13ab9",
+      "source": "Tap Enable call audio to hear the call.",
+      "context": "visual interface copy",
+      "sourceRevision": "008f6165782df443",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8dc69744b0acecb79f6d8453",
       "source": "Tap Retry to try this secure upload again.",
       "context": "visual interface copy",
@@ -53490,6 +53765,17 @@
       "source": "Tap Sign in securely to continue with your Legend account.",
       "context": "visual interface copy",
       "sourceRevision": "6ae3423e7ffc3a81",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.bd11597a537bc8302cb738fa",
+      "source": "Tap the call to enable sound",
+      "context": "visual interface copy",
+      "sourceRevision": "f271a79a77aee175",
       "placeholders": [
 
       ],
@@ -54146,6 +54432,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.5da23f85a402dbf285ba44c5",
+      "source": "The ICE candidate limit was exceeded.",
+      "context": "visual interface copy",
+      "sourceRevision": "77c3759f538a93f7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.77e080fba614ed2d8c96a6f8",
       "source": "The Journey Circles store is no longer available.",
       "context": "visual interface copy",
@@ -54267,10 +54564,65 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.1e8e771a72ff264e800ebc22",
+      "source": "The browser blocked call audio. Check its audio permissions.",
+      "context": "visual interface copy",
+      "sourceRevision": "98c9d9dec3eed2a0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7533fae31ec823b0c32acf4b",
+      "source": "The browser could not apply the call quality settings.",
+      "context": "visual interface copy",
+      "sourceRevision": "e1bd5c2738da9d2c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.32231ac9214fd6229c2891c2",
+      "source": "The call connection was lost.",
+      "context": "visual interface copy",
+      "sourceRevision": "bcc3c9306ef3d06d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.dd53786cff1633ca035062f0",
       "source": "The call could not be answered.",
       "context": "visual interface copy",
       "sourceRevision": "df2bbc8ab0b183b5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6c0809811ac75ad0f367c705",
+      "source": "The call could not be completed.",
+      "context": "visual interface copy",
+      "sourceRevision": "c4e1d9fc27edc147",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.269124f5c82ee898815a1390",
+      "source": "The call could not continue.",
+      "context": "visual interface copy",
+      "sourceRevision": "139cf02dce1b455c",
       "placeholders": [
 
       ],
@@ -54293,6 +54645,28 @@
       "source": "The call could not start. Please try again.",
       "context": "visual interface copy",
       "sourceRevision": "8da23f32ca7d59b2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.09f3afc044f51829489999fe",
+      "source": "The call expired.",
+      "context": "visual interface copy",
+      "sourceRevision": "f65aa2057963d28e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e6ef32a7b3c7d694292a38b4",
+      "source": "The call received conflicting session descriptions for one epoch.",
+      "context": "visual interface copy",
+      "sourceRevision": "525857af1a96d993",
       "placeholders": [
 
       ],
@@ -54344,6 +54718,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c3547c6a0d4790d75a5e01dd",
+      "source": "The calling service did not respond.",
+      "context": "visual interface copy",
+      "sourceRevision": "c4b1d994005fad05",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.02bf4177fd16ff8bc572de0f",
       "source": "The camera could not resume after screen sharing.",
       "context": "visual interface copy",
@@ -54359,6 +54744,17 @@
       "source": "The client CRM store is no longer available.",
       "context": "visual interface copy",
       "sourceRevision": "efca9891228a2938",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4b5df5a973c07e4dacfc0013",
+      "source": "The connection deadline is invalid.",
+      "context": "visual interface copy",
+      "sourceRevision": "6cbda494825a1aec",
       "placeholders": [
 
       ],
@@ -54674,6 +55070,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c69afbc0f68cb3ee30ec1806",
+      "source": "The network could not reconnect this call.",
+      "context": "visual interface copy",
+      "sourceRevision": "7a65d91d2b23e414",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.190f1b45015da788e936317e",
       "source": "The next recurring financial item is shown from saved financial data.",
       "context": "visual interface copy",
@@ -54700,6 +55107,17 @@
       "source": "The only downside here is they are a lot more strict on these whole life policies than they are term, so we don’t want to go canceling anything until we know we can get you approved for this. And if you do, then I will help you get that one switched over.",
       "context": "visual interface copy",
       "sourceRevision": "5c6e6f79385e32d0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e3f143463ccad8d54065f57e",
+      "source": "The outgoing call sound could not play.",
+      "context": "visual interface copy",
+      "sourceRevision": "7b622412364a6b0d",
       "placeholders": [
 
       ],
@@ -55096,6 +55514,17 @@
       "source": "This Mac model session is available only to the authenticated Founder.",
       "context": "visual interface copy",
       "sourceRevision": "e425ad8f60f71885",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.57615de6998b84fc71f4a094",
+      "source": "This account session has ended.",
+      "context": "visual interface copy",
+      "sourceRevision": "35a3fc647ac2e969",
       "placeholders": [
 
       ],
@@ -58372,6 +58801,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f41938d970e06972a83b0eec",
+      "source": "Use the system broadcast control to share your screen with this call. Notifications and other apps may be visible.",
+      "context": "visual interface copy",
+      "sourceRevision": "772c739c46501d58",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.176f59dd18e2b3c769026ad9",
       "source": "Use this page to detail your site's privacy policy.",
       "context": "visual interface copy",
@@ -58790,6 +59230,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.b3ed3e99655155bf78a869be",
+      "source": "Video call",
+      "context": "visual interface copy",
+      "sourceRevision": "7b79b4f672939c14",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.c9f61b33a1f8db96b9805c80",
       "source": "Video capture",
       "context": "visual interface copy",
@@ -58816,6 +59267,17 @@
       "source": "Video processing needs attention",
       "context": "visual interface copy",
       "sourceRevision": "c9e708f87a11e737",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.32e96665b8750513d7e58aaf",
+      "source": "Video sharing could not start.",
+      "context": "visual interface copy",
+      "sourceRevision": "624d02e51b95429b",
       "placeholders": [
 
       ],
@@ -59197,6 +59659,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9733c68965452681f174c3c8",
+      "source": "Voice call",
+      "context": "visual interface copy",
+      "sourceRevision": "8b968cce31a08433",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.3a0d35f41f74a6f1c4631ad9",
       "source": "Voice or video call",
       "context": "visual interface copy",
@@ -59443,6 +59916,17 @@
       "source": "Waiting on decision",
       "context": "visual interface copy",
       "sourceRevision": "6197a83e7bedd013",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c56088cf49fb9a880bea0841",
+      "source": "Wallpaper others see when you call",
+      "context": "visual interface copy",
+      "sourceRevision": "88728a4254cdffad",
       "placeholders": [
 
       ],
@@ -61435,6 +61919,17 @@
       "source": "Your messages will appear here.",
       "context": "visual interface copy",
       "sourceRevision": "a85133d6dc963281",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ec410224fdadd29666418560",
+      "source": "Your name and picture use your existing account profile. Your calling preferences follow this account across devices.",
+      "context": "visual interface copy",
+      "sourceRevision": "b335dd0707060914",
       "placeholders": [
 
       ],

@@ -1768,11 +1768,38 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(original, Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
 
         var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
-        var presented = Assert.Single(recipient.Conversation!.Messages);
-        Assert.Equal(original, presented.Body);
-        Assert.Null(presented.OriginalBody);
-        Assert.Null(presented.Translation);
+        Assert.False(recipient.Succeeded);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableCode, recipient.ErrorCode);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, recipient.ErrorMessage);
+        Assert.Null(recipient.Conversation);
+        Assert.Equal(original, (await db.InternalMessages.SingleAsync()).Body);
+        Assert.Null(source.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
+        var participant = await db.MessageConversationParticipants.SingleAsync(row =>
+            row.ConversationId == started.Conversation.Id && row.UserId == client.UserId);
+        Assert.Null(participant.LastReadMessageId);
+
+        // A transient provider failure withholds the entire page. Once the provider
+        // recovers, the same durable original is presented and only that success is cached.
+        var recoveredTranslator = new DeferredTranslationProbe();
+        var recoveredService = CreateService(db, recoveredTranslator);
+        var recovered = await recoveredService.GetConversationAsync(client, started.Conversation.Id);
+        Assert.True(recovered.Succeeded);
+        var presented = Assert.Single(recovered.Conversation!.Messages);
+        Assert.Equal(source.Id, presented.Id);
+        Assert.Equal("Bonjou.", presented.Body);
+        Assert.Equal(original, presented.OriginalBody);
+        Assert.Equal("ht", presented.Translation!.TargetLanguage);
+        Assert.Equal(1, recoveredTranslator.Calls);
+        var cached = Assert.Single(await db.MessageTranslations.ToListAsync());
+        Assert.Equal(source.Id, cached.InternalMessageId);
+        Assert.Equal("Bonjou.", cached.TranslatedText);
+        Assert.Equal(original, (await db.InternalMessages.SingleAsync()).Body);
+        Assert.Null(participant.LastReadMessageId);
+        var cachedPage = await recoveredService.GetConversationAsync(client, started.Conversation.Id);
+        Assert.True(cachedPage.Succeeded);
+        Assert.Equal(source.Id, Assert.Single(cachedPage.Conversation!.Messages).Id);
+        Assert.Equal(1, recoveredTranslator.Calls);
     }
 
     [Fact]

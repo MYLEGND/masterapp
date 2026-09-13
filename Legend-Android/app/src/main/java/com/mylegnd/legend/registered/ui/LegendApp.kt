@@ -201,6 +201,25 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             DisposableEffect(calling) {
                 onDispose { if (activity?.isChangingConfigurations != true) callingOwner.deactivate(calling) }
             }
+            // Calling uses the authenticated session immediately. Loading the
+            // app-wide translation catalog must not postpone incoming answers.
+            val messagingRealtime = calling.transport
+            LegendCallOverlay(calling)
+            val messagingLifecycle = LocalLifecycleOwner.current.lifecycle
+            DisposableEffect(messagingRealtime, messagingLifecycle) {
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_START -> { calling.background(false); messagingRealtime.start() }
+                        Lifecycle.Event.ON_STOP -> { calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
+                        else -> Unit
+                    }
+                }
+                messagingLifecycle.addObserver(observer)
+                if (messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) messagingRealtime.start()
+                onDispose {
+                    messagingLifecycle.removeObserver(observer)
+                }
+            }
             LaunchedEffect(
                 session.accountId,
                 session.actor.identity.participantType,
@@ -910,23 +929,6 @@ private fun AuthenticatedShell(
         factory = LegendViewModelFactory { FounderAiViewModel(container.founderAiRepository, participantType) },
     )
     DisposableEffect(founderAi) { founderAi.activateSession(); onDispose { founderAi.disposeSession() } }
-    val messagingRealtime = calling.transport
-    LegendCallOverlay(calling)
-    val messagingLifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(messagingRealtime, messagingLifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> { calling.background(false); messagingRealtime.start() }
-                Lifecycle.Event.ON_STOP -> { calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
-                else -> Unit
-            }
-        }
-        messagingLifecycle.addObserver(observer)
-        if (messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) messagingRealtime.start()
-        onDispose {
-            messagingLifecycle.removeObserver(observer)
-        }
-    }
     val homeState by home.state.collectAsStateWithLifecycle()
     val founderAiState by founderAi.state.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
@@ -1063,6 +1065,7 @@ private fun AuthenticatedShell(
                     requestedConversationId = requestedConversationId,
                     onRequestedConversationOpened = { requestedConversationId = null },
                     onThreadOpenChanged = { isMessageThreadOpen = it },
+                    editCallingProfilePhoto = { tab = LegendTab.ACCOUNT },
                 )
                 LegendTab.ACCOUNT -> AccountScreen(
                     viewModel = account,
@@ -2776,6 +2779,7 @@ private fun MessagesScreen(
     requestedConversationId: String?,
     onRequestedConversationOpened: () -> Unit,
     onThreadOpenChanged: (Boolean) -> Unit,
+    editCallingProfilePhoto: () -> Unit,
 ) {
     val context = LocalContext.current
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
@@ -2786,6 +2790,10 @@ private fun MessagesScreen(
     var creatingConversation by remember { mutableStateOf(false) }
     var conversationMenu by remember { mutableStateOf<ConversationSummary?>(null) }
     var callDirectoryOpen by remember { mutableStateOf(false) }
+    var callingProfileOpen by remember { mutableStateOf(false) }
+    val callingProfile = LocalLegendCalling.current
+    if (callingProfileOpen && callingProfile != null) LegendCallingProfileSheet(callingProfile,
+        dismiss = { callingProfileOpen = false }, editProfilePhoto = editCallingProfilePhoto)
     var callTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
@@ -2827,6 +2835,7 @@ private fun MessagesScreen(
                                     viewModel.loadRecipients()
                                 },
                                 onCallDirectory = { callDirectoryOpen = true },
+                                onCallingProfile = { callingProfileOpen = true },
                             )
                         }
                         item {
@@ -3013,6 +3022,7 @@ private fun LegendChatLoadingContent() {
 private fun LegendMessagesInboxHeader(
     onNewMessage: () -> Unit,
     onCallDirectory: () -> Unit,
+    onCallingProfile: () -> Unit,
 ) {
     Surface(
         color = LegendColors.Navy,
@@ -3024,6 +3034,9 @@ private fun LegendMessagesInboxHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(legendLocalized("Messages"), style = LegendTypography.Section, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
+            IconButton(onClick = onCallingProfile) {
+                Icon(Icons.Default.AccountCircle, legendLocalized("Calling profile"), tint = LegendColors.OnNavy)
+            }
             IconButton(
                 onClick = onNewMessage,
                 modifier = Modifier

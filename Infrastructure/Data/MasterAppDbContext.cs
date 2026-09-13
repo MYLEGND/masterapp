@@ -1149,6 +1149,8 @@ public class MasterAppDbContext : DbContext
         {
             e.Property(x => x.SendReadReceipts).HasDefaultValue(true);
             e.Property(x => x.PreferredReactionSkinTone).HasDefaultValue(0);
+            e.Property(x => x.CallRingtoneId).HasMaxLength(32).HasDefaultValue("signature");
+            e.Property(x => x.CallWallpaperMode).HasMaxLength(32).HasDefaultValue("legend");
             e.ToTable("MobileProfileSettings");
             e.HasKey(x => x.Id);
             e.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);

@@ -426,6 +426,8 @@ test('older history sends timestamp and message identity to preserve equal-time 
 test('messaging transitions from polling to one realtime connection after delayed library arrival', async () => {
   const c=environment(()=>{});c.window={};let polling=0,stopped=0,started=0;
   c.startPolling=()=>polling++;c.stopPolling=()=>stopped++;
+  c.document.getElementById=()=>null;
+  vm.runInContext(implementation('attachCalling'),c);
   vm.runInContext(implementation('startRealtime'),c);
   await c.startRealtime();assert.equal(polling,1);
   const connection={on(){},onreconnecting(){},onreconnected(){},onclose(){},start:async()=>started++};

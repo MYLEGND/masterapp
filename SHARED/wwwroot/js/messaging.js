@@ -288,6 +288,11 @@
     return 'Participant';
   }
 
+  function participantAvatarUrl(person) {
+    return person?.avatarUrl || (person?.userId && person?.participantType
+      ? `/Messaging/Participants/${encodeURIComponent(person.userId)}/Avatar?participantType=${encodeURIComponent(person.participantType)}` : '');
+  }
+
   function createAvatar(person, loading = 'lazy') {
     const displayName = person?.displayName || 'Participant';
     const avatar = document.createElement('span');
@@ -299,10 +304,7 @@
     fallback.setAttribute('aria-hidden', 'true');
     avatar.append(fallback);
 
-    const avatarUrl = person?.avatarUrl ||
-      (person?.userId && person?.participantType
-        ? `/Messaging/Participants/${encodeURIComponent(person.userId)}/Avatar?participantType=${encodeURIComponent(person.participantType)}`
-        : '');
+    const avatarUrl = participantAvatarUrl(person);
     if (!avatarUrl) return avatar;
 
     const image = document.createElement('img');
@@ -1931,6 +1933,162 @@
     state.pollTimer = null;
   }
 
+  function attachCalling(connection) {
+    const dialog = document.getElementById('legendBrowserCall');
+    if (!dialog || !window.LegendBrowserCalling) return;
+    const remote = document.getElementById('legendBrowserCallRemote');
+    const local = document.getElementById('legendBrowserCallLocal');
+    const name = document.getElementById('legendBrowserCallName');
+    const status = document.getElementById('legendBrowserCallStatus');
+    // A copied/duplicated tab must never inherit another media owner's device ID.
+    const deviceId = crypto.randomUUID();
+    let tone = null;
+    let sound = '';
+    let retired = false;
+    const portrait = document.getElementById('legendBrowserCallPortrait');
+    portrait.addEventListener('error', () => { portrait.hidden = true; });
+    const stopTone = () => { tone?.pause(); tone = null; sound = ''; };
+    const client = new window.LegendBrowserCalling({ connection, deviceId,
+      isActor: (id, type, aliases) => isCurrentParticipant(id, type) || (aliases || []).some(alias => isCurrentParticipant(alias, type)),
+      present: (call, caller) => {
+        if (retired) call = null;
+        if (!call) {
+          stopTone(); portrait.removeAttribute('src'); portrait.hidden = true;
+          dialog.querySelector('[data-legend-call-action="audio"]').hidden = true;
+          for (const action of ['mute', 'camera', 'share']) dialog.querySelector(`[data-legend-call-action="${action}"]`).setAttribute('aria-pressed', 'false');
+          if (dialog.open) dialog.close(); return;
+        }
+        name.textContent = caller ? call.calleeName : call.callerName;
+        document.getElementById('legendBrowserCallInitials').textContent = initials(name.textContent || 'LEGEND');
+        const peer = caller ? { userId: call.calleeUserId, participantType: call.calleeType } : { userId: call.callerUserId, participantType: call.callerType };
+        const photo = participantAvatarUrl(peer);
+        const wallpaper = (caller ? call.calleeWallpaperMode : call.callerWallpaperMode) === 'profile';
+        portrait.classList.toggle('is-wallpaper', wallpaper);
+        if (photo && portrait.getAttribute('src') !== photo) { portrait.hidden = false; portrait.src = photo; }
+        if (!photo) { portrait.hidden = true; portrait.removeAttribute('src'); }
+        status.textContent = ['preparing', 'ringing'].includes(call.status)
+          ? (caller ? (call.receivedUtc ? applicationCopy('Ringing') : applicationCopy('Calling')) : applicationCopy('Incoming call'))
+          : (call.status === 'active' ? applicationCopy('Connected') : applicationCopy('Connecting'));
+        dialog.querySelector('[data-legend-call-action="accept"]').hidden = caller || call.status !== 'ringing';
+        for (const action of ['mute', 'camera', 'share']) dialog.querySelector(`[data-legend-call-action="${action}"]`).hidden = ['preparing', 'ringing'].includes(call.status);
+        if (!dialog.open) dialog.showModal();
+        const next = ['preparing', 'ringing'].includes(call.status) ? (caller ? 'legend_ringback' : call.incomingRingtoneResource) : '';
+        if (next !== sound) {
+          stopTone(); sound = next;
+          if (next && /^[a-z0-9_]+$/.test(next)) {
+            tone = new Audio(`/_content/Shared/calling/${next}.wav`); tone.loop = true;
+            const playing = tone; const callId = call.id;
+            playing.play().catch(() => { if (tone === playing && client.call?.id === callId) status.textContent += ' · ' + applicationCopy('Tap the call to enable sound'); });
+          }
+        }
+      },
+      media: (incoming, outgoing, remoteScreenSharing) => {
+        if (retired) { remote.srcObject = null; local.srcObject = null; return; }
+        remote.classList.toggle('is-screen-sharing', Boolean(remoteScreenSharing));
+        if (incoming) { remote.srcObject = incoming; remote.play().catch(() => {
+          if (remote.srcObject !== incoming || !client.call) return;
+          status.textContent = applicationCopy('Tap Enable call audio to hear the call.');
+          dialog.querySelector('[data-legend-call-action="audio"]').hidden = false;
+        }); }
+        else if (!outgoing) remote.srcObject = null;
+        local.srcObject = outgoing;
+      },
+      warning: message => { if (!retired && client.call) status.textContent = applicationCopy(message); },
+      failure: message => { if (retired) return; showError(message); if (!state.isOpen) openCommandCenter().then(() => showError(message)); }
+    });
+    state.callClient = client;
+    dialog.addEventListener('click', event => {
+      if (retired) return;
+      if (tone?.paused) tone.play().catch(() => {});
+      const button = event.target.closest('[data-legend-call-action]');
+      if (!button) return;
+      const action = button.dataset.legendCallAction;
+      if (action === 'audio') {
+        const stream = remote.srcObject; const callId = client.call?.id;
+        remote.play().then(() => { if (remote.srcObject === stream && client.call?.id === callId) button.hidden = true; }).catch(() => { if (remote.srcObject === stream && client.call?.id === callId) status.textContent = applicationCopy('The browser blocked call audio. Check its audio permissions.'); });
+        return;
+      }
+      const callId = client.call?.id;
+      Promise.resolve().then(() => { if (!retired && client.call?.id === callId) return client[action](); }).then(() => {
+        if (retired || client.call?.id !== callId) return;
+        if (action === 'mute') button.setAttribute('aria-pressed', String(client.stream?.getAudioTracks().every(track => !track.enabled) || false));
+        if (action === 'camera') button.setAttribute('aria-pressed', String(client.stream?.getVideoTracks().every(track => !track.enabled) || false));
+        if (action === 'share') button.setAttribute('aria-pressed', String(Boolean(client.display)));
+      }).catch(error => {
+        if (retired || client.call?.id !== callId) return;
+        if (action === 'share' || action === 'camera') status.textContent = error.message;
+        else client.fail(error);
+      });
+    });
+    dialog.addEventListener('cancel', event => { event.preventDefault(); client.end().catch(error => showError(error.message)); });
+    for (const [id, video] of [['messagingVoiceCall', false], ['messagingVideoCall', true]]) {
+      document.getElementById(id)?.addEventListener('click', () => {
+        if (!retired && state.active?.id) client.start(state.active.id, video, elements.threadTitle.textContent).catch(error => showError(error.message));
+      });
+    }
+    connection.onreconnected(() => {
+      if (retired) return;
+      const scope = client.scope();
+      client.sync().catch(error => { if (!retired) client.fail(error, scope); });
+    });
+    connection.onclose(() => { if (client.call) client.fail(new Error(applicationCopy('The call connection was lost.'))); });
+    const authChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('legend-session-retirement') : null;
+    const retire = () => {
+      if (retired) return;
+      retired = true; client.retire();
+      document.getElementById('legendCallingPreferences')?.close();
+      connection.stop().catch(() => {});
+    };
+    window.addEventListener('storage', event => { if (event.key === 'legend-session-retirement' && event.newValue) retire(); });
+    if (authChannel) authChannel.onmessage = event => { if (event.data === 'signed-out') retire(); };
+    document.addEventListener('submit', event => {
+      const form = event.target;
+      if (form instanceof HTMLFormElement && new URL(form.action, location.href).origin === location.origin && new URL(form.action, location.href).pathname.toLowerCase() === '/account/logout') {
+        authChannel?.postMessage('signed-out');
+        try { localStorage.setItem('legend-session-retirement', crypto.randomUUID()); } catch { /* BroadcastChannel remains available when storage is blocked. */ }
+        retire();
+      }
+    }, true);
+    window.addEventListener('pagehide', retire);
+    window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
+
+    const preferences = document.getElementById('legendCallingPreferences');
+    const preferenceForm = document.getElementById('legendCallingPreferencesForm');
+    const notice = document.getElementById('legendCallingPreferencesStatus');
+    const ringtone = document.getElementById('legendCallingRingtone');
+    const wallpaper = document.getElementById('legendCallingWallpaper');
+    const fill = (select, choices, selected) => {
+      select.replaceChildren(...choices.map(choice => new Option(applicationCopy(choice.label), choice.id, false, choice.id === selected)));
+    };
+    document.getElementById('messagingCallingProfile')?.addEventListener('click', async () => {
+      if (retired) return;
+      try {
+        const result = await client.command('preferences');
+        if (retired) return;
+        fill(ringtone, result.ringtones || [], result.preferences.ringtoneId);
+        fill(wallpaper, result.wallpapers || [], result.preferences.wallpaperMode);
+        notice.textContent = ''; preferences.showModal();
+      } catch (error) { if (!retired) showError(error.message); }
+    });
+    preferenceForm.addEventListener('submit', async event => {
+      event.preventDefault(); if (retired) return;
+      const submit = preferenceForm.querySelector('[type=submit]'); submit.disabled = true;
+      try {
+        await client.command('preferences', { preferences: { ringtoneId: ringtone.value, wallpaperMode: wallpaper.value } });
+        if (!retired) notice.textContent = applicationCopy('Calling preferences saved for this account on all devices.');
+      } catch (error) { if (!retired) notice.textContent = error.message; }
+      finally { submit.disabled = false; }
+    });
+    document.getElementById('legendCallingPreferencesClose').addEventListener('click', () => preferences.close());
+    const photoLink = [...document.querySelectorAll('a[href]')].find(link => {
+      const url = new URL(link.href, location.href);
+      return url.origin === location.origin && ['/profile', '/account/manageprofile'].includes(url.pathname.toLowerCase());
+    });
+    const editPhoto = document.getElementById('legendCallingEditPhoto');
+    editPhoto.hidden = !photoLink;
+    editPhoto.addEventListener('click', () => { if (!retired) photoLink?.click(); });
+  }
+
   async function startRealtime() {
     if (state.realtimeStarted) return;
     if (!window.signalR?.HubConnectionBuilder) {
@@ -1956,6 +2114,7 @@
         await refreshList();
       } catch (_) { }
     };
+    attachCalling(connection);
     connection.on('messageReceived', event => refreshForEvent(event, true));
     connection.on('conversationUpdated', event => refreshForEvent(event));
     connection.onreconnecting(startPolling);
@@ -1964,6 +2123,7 @@
     try {
       await connection.start();
       stopPolling();
+      state.callClient?.sync().catch(error => showError(error.message));
     } catch (error) {
       console.error('[messaging] SignalR connection start failed.', error);
       startPolling();

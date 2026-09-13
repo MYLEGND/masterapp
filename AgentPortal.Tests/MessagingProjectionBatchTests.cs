@@ -144,12 +144,46 @@ public sealed partial class MessagingServiceTests
                 conversationId, "Reply " + i, ReplyToMessageId: original.Message!.Id))).Succeeded);
         Assert.Equal(0, translator.Calls);
         var page = await service.GetConversationPageAsync(recipient, conversationId, new MessagingConversationMessagePageQuery());
+        Assert.Equal(1, translator.Calls);
+        if (providerFails)
+        {
+            Assert.False(page.Succeeded);
+            Assert.Equal(MessagingTranslationPresentation.UnavailableCode, page.ErrorCode);
+            Assert.Null(page.Conversation);
+            Assert.Empty(await db.MessageTranslations.ToListAsync());
+            Assert.Equal("Hello.", (await db.InternalMessages.SingleAsync(row => row.Id == original.Message!.Id)).Body);
+            var participant = await db.MessageConversationParticipants.SingleAsync(row =>
+                row.ConversationId == conversationId && row.UserId == recipient.UserId);
+            Assert.Null(participant.LastReadMessageId);
+
+            // Repeated quotations share one attempt even on a failed page. Neither
+            // failure is cached or advances the reader past the withheld original.
+            var failedRetry = await service.GetConversationPageAsync(recipient, conversationId, new MessagingConversationMessagePageQuery());
+            Assert.False(failedRetry.Succeeded);
+            Assert.Equal(MessagingTranslationPresentation.UnavailableCode, failedRetry.ErrorCode);
+            Assert.Null(failedRetry.Conversation);
+            Assert.Equal(2, translator.Calls);
+            Assert.Empty(await db.MessageTranslations.ToListAsync());
+            translator.Fail = false;
+            page = await service.GetConversationPageAsync(recipient, conversationId, new MessagingConversationMessagePageQuery());
+            Assert.Equal(3, translator.Calls);
+            Assert.Null(participant.LastReadMessageId);
+        }
         Assert.True(page.Succeeded);
         Assert.Equal(6, page.Conversation!.Messages.Count);
-        Assert.Equal(1, translator.Calls);
-        Assert.All(page.Conversation.Messages.Where(message => message.Reply is not null),
-            message => Assert.Equal(providerFails ? "Hello." : "Bonjou.", message.Reply!.Body));
-        await service.GetConversationPageAsync(recipient, conversationId, new MessagingConversationMessagePageQuery());
-        Assert.Equal(providerFails ? 2 : 1, translator.Calls);
+        Assert.Equal(6, await db.InternalMessages.CountAsync());
+        var quotes = page.Conversation.Messages.Where(message => message.Reply is not null).ToList();
+        Assert.Equal(5, quotes.Count);
+        Assert.All(quotes, message => Assert.Equal("Bonjou.", message.Reply!.Body));
+        var presentedOriginal = Assert.Single(page.Conversation.Messages.Where(message => message.Id == original.Message!.Id));
+        Assert.Equal("Bonjou.", presentedOriginal.Body);
+        Assert.Equal("Hello.", presentedOriginal.OriginalBody);
+        var cache = Assert.Single(await db.MessageTranslations.ToListAsync());
+        Assert.Equal(original.Message!.Id, cache.InternalMessageId);
+        Assert.Equal("Hello.", (await db.InternalMessages.SingleAsync(row => row.Id == original.Message.Id)).Body);
+        var cachedPage = await service.GetConversationPageAsync(recipient, conversationId, new MessagingConversationMessagePageQuery());
+        Assert.True(cachedPage.Succeeded);
+        Assert.Equal(page.Conversation.Messages.Select(message => message.Id), cachedPage.Conversation!.Messages.Select(message => message.Id));
+        Assert.Equal(providerFails ? 3 : 1, translator.Calls);
     }
 }

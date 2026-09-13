@@ -1,12 +1,18 @@
 package com.mylegnd.legend.registered.feature.calling
 
 import android.Manifest
+import android.os.Build
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
+import androidx.activity.compose.LocalActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +20,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +40,14 @@ import org.webrtc.VideoTrack
 val LocalLegendCalling = staticCompositionLocalOf<LegendCallViewModel?> { null }
 
 @Composable
+private fun rememberCallPermissionGate(): LegendCallPermissionGate = rememberSaveable(
+    saver = listSaver<LegendCallPermissionGate, String>(
+        save = { it.pendingScope()?.let { scope -> listOf(scope.ownerId, scope.deviceId, scope.callId) }.orEmpty() },
+        restore = { LegendCallPermissionGate(if (it.size == 3) LegendCallPermissionScope(it[0], it[1], it[2]) else null) },
+    ),
+) { LegendCallPermissionGate() }
+
+@Composable
 fun LegendCallOverlay(store: LegendCallViewModel) {
     val state by store.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -40,14 +56,57 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     var minimized by remember { mutableStateOf(false) }
     LaunchedEffect(state.sharingScreen) { minimized = state.sharingScreen }
     var snapshotError by remember { mutableStateOf<String?>(null) }
+    val peerAvatar by produceState<android.graphics.Bitmap?>(null, state.call?.id, state.imagePath) {
+        value = null
+        val path = state.imagePath
+        if (path != null) value = withContext(Dispatchers.IO) {
+            com.mylegnd.legend.registered.core.push.loadLegendSenderAvatar(context, path)
+        }
+    }
+    // Keep the original pending scope across recreation and owner changes.
+    // A newer account must never inherit an earlier account's OS consent.
+    val screenPermissionGate = rememberCallPermissionGate()
+    val answerPermissionGate = rememberCallPermissionGate()
     val screenPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) result.data?.let(store::startScreenSharing)
+        val requested = screenPermissionGate.consume(store.permissionScope())
+        if (requested != null && result.resultCode == android.app.Activity.RESULT_OK)
+            result.data?.let { store.startScreenSharing(it, requested) }
     }
     val answerPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants.values.all { it }) store.answer() else store.end()
+        if (answerPermissionGate.consume(store.permissionScope()) != null) {
+            val required = if (store.state.value.call?.video == true) listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+                else listOf(Manifest.permission.RECORD_AUDIO)
+            if (required.all { grants[it] == true }) store.answer() else store.end()
+        }
     }
-    fun answer() { answerPermissions.launch(if (state.call?.video == true) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA) else arrayOf(Manifest.permission.RECORD_AUDIO)) }
+    fun answer() {
+        val requested = store.permissionScope() ?: return
+        if (!answerPermissionGate.begin(requested)) return
+        try { answerPermissions.launch(if (state.call?.video == true) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA) else arrayOf(Manifest.permission.RECORD_AUDIO)) }
+        catch (failure: RuntimeException) { answerPermissionGate.consume(null); throw failure }
+    }
     LaunchedEffect(state.systemAnswerRequested) { if (state.systemAnswerRequested) answer() }
+    val activity = LocalActivity.current
+    val showOnLockScreen = state.call != null && !(state.sharingScreen && minimized)
+    DisposableEffect(activity, showOnLockScreen, state.incoming) {
+        // Only the authenticated call overlay may appear above the keyguard.
+        // Never dismiss the keyguard or expose the rest of the account.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity?.setShowWhenLocked(showOnLockScreen)
+            activity?.setTurnScreenOn(showOnLockScreen && state.incoming)
+        } else if (showOnLockScreen) {
+            @Suppress("DEPRECATION")
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+        }
+        onDispose {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                activity?.setShowWhenLocked(false); activity?.setTurnScreenOn(false)
+            } else {
+                @Suppress("DEPRECATION")
+                activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+            }
+        }
+    }
     if (state.call == null && !state.starting && state.failure == null) return
     if (state.sharingScreen && minimized) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp).background(LegendColors.Navy, RoundedCornerShape(28.dp)).padding(8.dp),
@@ -60,6 +119,11 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     }
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
+            if (state.wallpaperMode == "profile" && peerAvatar != null && state.remoteVideo == null) {
+                Image(peerAvatar!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f)))
+            }
             state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize(), snapshotRequest, fitContent = state.remoteScreenSharing) { bitmap ->
                 scope.launch {
                     runCatching {
@@ -85,6 +149,19 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                 if (state.failure == null) Text(callStatusLabel(state.status), color = Color.White,
                     modifier = Modifier.background(Color.Black.copy(alpha = .3f), RoundedCornerShape(24.dp)).padding(horizontal = 14.dp, vertical = 6.dp))
                 Spacer(Modifier.weight(1f))
+                if (state.name.isNotBlank() && state.remoteVideo == null) {
+                    Box(Modifier.size(LegendSize.ProfileAvatar).clip(CircleShape)
+                        .background(LegendColors.Gold.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
+                        val avatar = peerAvatar
+                        if (avatar != null) Image(avatar.asImageBitmap(), contentDescription = null,
+                            modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        else Icon(Icons.Default.Person, contentDescription = null, tint = LegendColors.Gold)
+                    }
+                }
+                if (state.name.isNotBlank()) {
+                    Text(state.name, style = LegendTypography.Title, color = Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
                 if (state.failure != null) {
                     Text(legendLocalized(state.failure!!), color = Color.White)
                     Button(onClick = { store.end(); store.dismissFailure() }) { Text(legendLocalized("Close")) }
@@ -114,7 +191,17 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                         if (state.call?.video == true && state.status == "Connected") {
                             LegendCallControl(if (state.sharingScreen) "Stop sharing" else "Share screen", Icons.Default.ScreenShare, selected = state.sharingScreen) {
                                 if (state.sharingScreen) store.stopScreenSharing()
-                                else screenPermission.launch(context.getSystemService(android.media.projection.MediaProjectionManager::class.java).createScreenCaptureIntent())
+                                else {
+                                    val projection = context.getSystemService(MediaProjectionManager::class.java)
+                                    val capture = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                                        projection.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+                                    else projection.createScreenCaptureIntent()
+                                    val requested = store.permissionScope()
+                                    if (requested != null && screenPermissionGate.begin(requested)) {
+                                        try { screenPermission.launch(capture) }
+                                        catch (failure: RuntimeException) { screenPermissionGate.consume(null); throw failure }
+                                    }
+                                }
                             }
                         }
                         }
@@ -175,6 +262,63 @@ private fun LegendCallControl(title: String, icon: androidx.compose.ui.graphics.
         Box(Modifier.size(LegendDesignAuthority.size("callControl")).background(if (selected) LegendColors.Gold else color, CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, legendLocalized(title), tint = Color.White)
         }
+        Text(legendLocalized(title), style = LegendTypography.Caption, color = Color.White)
+    }
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LegendCallingProfileSheet(store: LegendCallViewModel, dismiss: () -> Unit, editProfilePhoto: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var choices by remember(store) { mutableStateOf<LegendCallResult?>(null) }
+    var selection by remember(store) { mutableStateOf<LegendCallPreferences?>(null) }
+    var busy by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(store) {
+        try {
+            val result = store.preferences()
+            check(result.preferences != null && result.ringtones != null && result.wallpapers != null) { "Calling preferences are unavailable." }
+            choices = result; selection = result.preferences
+        } catch (failure: Exception) { error = failure.message ?: "Calling preferences are unavailable." }
+        finally { busy = false }
+    }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
+        Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md)) {
+            Text(legendLocalized("Calling profile"), style = LegendTypography.Section)
+            TextButton(onClick = { dismiss(); editProfilePhoto() }) {
+                Icon(Icons.Default.AccountCircle, null); Spacer(Modifier.width(LegendSpacing.Xs))
+                Text(legendLocalized("Change profile photo"))
+            }
+            if (busy) CircularProgressIndicator(color = LegendColors.Gold)
+            error?.let { Text(legendLocalized(it), color = LegendColors.Error) }
+            val current = selection
+            if (current != null) {
+                Text(legendLocalized("Ringtone"), style = LegendTypography.Label)
+                choices?.ringtones.orEmpty().forEach { option ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = current.ringtoneId == option.id, enabled = !busy,
+                            onClick = { selection = current.copy(ringtoneId = option.id) })
+                        Text(legendLocalized(option.label))
+                    }
+                }
+                Text(legendLocalized("Calling wallpaper"), style = LegendTypography.Label)
+                choices?.wallpapers.orEmpty().forEach { option ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = current.wallpaperMode == option.id, enabled = !busy,
+                            onClick = { selection = current.copy(wallpaperMode = option.id) })
+                        Text(legendLocalized(option.label))
+                    }
+                }
+                Button(enabled = !busy, onClick = {
+                    busy = true; error = null
+                    scope.launch {
+                        try { store.preferences(current); dismiss() }
+                        catch (failure: Exception) { error = failure.message ?: "Calling preferences could not be saved." }
+                        finally { busy = false }
+                    }
+                }) { Text(legendLocalized("Save")) }
+            }
+            Spacer(Modifier.height(LegendSpacing.Lg))
+        }
     }
 }

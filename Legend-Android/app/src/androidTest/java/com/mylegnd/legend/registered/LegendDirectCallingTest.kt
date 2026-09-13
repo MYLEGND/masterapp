@@ -7,6 +7,43 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LegendDirectCallingTest {
+    @Test fun notificationAnswerIsBoundToOriginalCallAndRejectsGuessedReplayedOrExpiredTokens() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences("legend_calls", android.content.Context.MODE_PRIVATE)
+        check(LegendCallPlatform.store == null) { "This isolated test cannot run during an account call." }
+        val expiry = java.time.Instant.now().plusSeconds(30).toString()
+        fun call(id: String) = LegendCallSnapshot(id, "conversation", "caller", "Client", "callee", "Client",
+            "caller-device", callerName = "Caller", calleeName = "Callee", video = false,
+            status = "ringing", createdUtc = java.time.Instant.now().toString(), expiresUtc = expiry, epoch = 0)
+        fun captured(id: String, nonce: String?) = android.content.Intent()
+            .putExtra(LegendCallPlatform.ANSWER_CALL_ID, id).putExtra("legend_answer_nonce", nonce)
+        val first = LegendCallPlatform.createAnswerPendingIntent(context, call("old"))
+        val oldNonce = preferences.getString("legend_answer_nonce", null)
+        val second = LegendCallPlatform.createAnswerPendingIntent(context, call("current"))
+        val currentNonce = preferences.getString("legend_answer_nonce", null)
+        try {
+            assertNotEquals(first, second) // Extras alone do not separate Android PendingIntents.
+            LegendCallPlatform.captureAnswerIntent(context, captured("current", "guessed"))
+            assertFalse(LegendCallPlatform.consumeAnswerRequest("current"))
+            LegendCallPlatform.captureAnswerIntent(context, captured("old", oldNonce))
+            assertFalse(LegendCallPlatform.consumeAnswerRequest("current"))
+            assertFalse(LegendCallPlatform.consumeAnswerRequest("old"))
+            LegendCallPlatform.captureAnswerIntent(context, captured("current", currentNonce))
+            assertTrue(LegendCallPlatform.consumeAnswerRequest("current"))
+            LegendCallPlatform.captureAnswerIntent(context, captured("current", currentNonce))
+            assertFalse(LegendCallPlatform.consumeAnswerRequest("current"))
+            val expired = LegendCallPlatform.createAnswerPendingIntent(context,
+                call("expired").copy(expiresUtc = java.time.Instant.now().minusSeconds(1).toString()))
+            try {
+                LegendCallPlatform.captureAnswerIntent(context, captured("expired", preferences.getString("legend_answer_nonce", null)))
+                assertFalse(LegendCallPlatform.consumeAnswerRequest("expired"))
+            } finally { expired.cancel() }
+        } finally {
+            first.cancel(); second.cancel()
+            preferences.edit().remove("legend_answer_nonce").remove("legend_answer_call_id").remove("legend_answer_expires").commit()
+        }
+    }
+
     @Test fun sharedRingingSoundsArePackagedAndDecodable() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         for (resource in listOf(R.raw.legend_incoming, R.raw.legend_ringback)) {

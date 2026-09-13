@@ -15,7 +15,17 @@ VISUAL = "visual interface copy"
 ACCESSIBILITY = "accessibility copy"
 LITERAL = /"(?:\\.|[^"\\])*"/
 
+JS_LITERAL = Regexp.union(LITERAL, /'(?:\\.|[^'\\])*'/)
+
 def literal_value(token)
+  # JavaScript source markers may use either quote style. Normalize only
+  # quoted literal syntax; never evaluate script or interpolate user data.
+  if token.start_with?("'")
+    inner = token[1...-1].gsub(/\\.|"/) do |part|
+      part == "\\'" ? "'" : part == '"' ? '\\"' : part
+    end
+    token = '"' + inner + '"'
+  end
   JSON.parse(token)
 rescue JSON::ParserError
   nil
@@ -370,9 +380,16 @@ end
 # existing DOM presenter resolve it; user content is never extracted here.
 Dir.glob([ROOT.join("AgentPortal/wwwroot/js/**/*.js").to_s,
           ROOT.join("SHARED/wwwroot/js/**/*.js").to_s]).sort.each do |path|
-  File.read(path).scan(/\bapplicationCopy\(\s*(#{LITERAL})/) do |token|
+  File.read(path).scan(/\bapplicationCopy\(\s*(#{JS_LITERAL})/) do |token|
     add.call(literal_value(token[0]), VISUAL)
   end
+end
+
+# Browser calling reports source-form transport errors to the shared presenter.
+# Extract only its static error/warning literals, never SDP, ICE or participant data.
+calling_browser = File.read(ROOT.join("SHARED/wwwroot/js/legend-calling.js"))
+calling_browser.scan(/(?:(?:new Error|this\.warning\?\.)\(\s*(?:result\?\.error\s*\|\|\s*)?|error\?\.message\s*\|\|\s*)(#{JS_LITERAL})/).each do |token|
+  add.call(literal_value(token[0]), VISUAL)
 end
 
 JSON.parse(File.read(DESIGN)).fetch("copy", {}).each_value do |source|

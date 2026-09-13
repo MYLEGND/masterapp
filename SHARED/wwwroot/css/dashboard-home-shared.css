@@ -6956,3 +6956,21 @@ header .legend-global-nav .container-fluid {
         grid-column: 2;
     }
 }
+
+/* Browser calling shares the messaging shell's tokens and the native call authority. */
+.legend-browser-call { width: min(54rem, calc(100vw - 2rem)); height: min(46rem, calc(100dvh - 2rem)); padding: 0; border: 1px solid var(--dash-line-strong); border-radius: 1.5rem; color: var(--dash-text); background: var(--dash-royal-950); }
+.legend-browser-call::backdrop { background: rgb(4 10 28 / 78%); }
+.legend-browser-call-stage { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 100%; overflow: hidden; background: radial-gradient(ellipse at 80% 20%, var(--dash-gold-soft), transparent 65%), linear-gradient(145deg, var(--dash-royal-860), var(--dash-royal-950)); }
+.legend-browser-call-identity { position: relative; z-index: 1; text-align: center; padding: 2rem; text-shadow: 0 2px 8px var(--dash-royal-950); }
+.legend-browser-call-identity > p:first-child { color: var(--dash-gold); letter-spacing: .25em; font-weight: 700; }
+.legend-browser-call-stage > video { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+.legend-browser-call-stage > video[muted] { right: 1rem; top: 1rem; width: 22%; height: 22%; border-radius: .75rem; z-index: 2; }
+.legend-browser-call-controls { position: relative; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; padding: 1.5rem; background: var(--dash-royal-950); }
+
+.legend-browser-call-controls button { min-height: 44px; min-width: 44px; font-size: max(14px, .9rem); }
+.legend-browser-call-initials { position: absolute; top: 40%; left: calc(50% - 4rem); width: 8rem; height: 8rem; display: grid; place-items: center; border: 1px solid var(--dash-gold); border-radius: 50%; background: var(--dash-royal-860); color: var(--dash-gold); font-size: 2.5rem; font-weight: 600; box-shadow: 0 0 0 1.2rem var(--dash-gold-soft); }
+.legend-browser-call-portrait { position: absolute; width: 8rem; height: 8rem; border-radius: 50%; object-fit: cover; top: 40%; left: calc(50% - 4rem); }
+.legend-browser-call-portrait.is-wallpaper { inset: 0; width: 100%; height: 100%; border-radius: 0; opacity: .55; }
+.legend-calling-preferences { max-width: min(32rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid var(--dash-line-strong); border-radius: 1rem; color: var(--dash-text); background: var(--dash-royal-950); }
+.legend-calling-preferences form { display: grid; gap: .75rem; }
+.legend-calling-preferences select { padding: .75rem; border-radius: .5rem; color: var(--dash-text); background: var(--dash-royal-860); }

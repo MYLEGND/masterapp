@@ -47,7 +47,7 @@ class LegendCallingCoordinator : ViewModel() {
 }
 
 // This survives Activity recreation and shares the existing messaging socket.
-data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val remoteScreenSharing: Boolean = false, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null, val starting: Boolean = false)
+data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val imagePath: String? = null, val wallpaperMode: String = "legend", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val remoteScreenSharing: Boolean = false, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null, val starting: Boolean = false)
 class LegendCallViewModel(private val app: Application, val transport: MobileMessagingRealtimeClient, private val identity: MobileIdentity) : ViewModel() {
     private val mutableState = MutableStateFlow(LegendCallUiState())
     val state = mutableState.asStateFlow()
@@ -56,9 +56,14 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     private val peerInitialization = Mutex()
     var peer: LegendRTCPeer? = null; private set
     private var ringback: MediaPlayer? = null
+    private var answering: Job? = null
     private var reconciliation: Job? = null
     private var startupDeadline: Job? = null
     private var outgoingRequest: Job? = null
+    private val permissionOwnerId = UUID.randomUUID().toString()
+    internal fun permissionScope(): LegendCallPermissionScope? = state.value.call?.takeIf {
+        !stopped && LegendCallPlatform.store === this && it.id !in finished
+    }?.let { LegendCallPermissionScope(permissionOwnerId, deviceId, it.id) }
     private var stopped = false
     private var pending: Triple<String, String, Boolean>? = null
     private var deadline: Job? = null
@@ -106,6 +111,9 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         result.policy?.let { policy = it }
         return result
     }
+    suspend fun preferences(value: LegendCallPreferences? = null): LegendCallResult =
+        command(LegendCallCommand("preferences", deviceId, preferences = value))
+
     fun start(conversationId: String, video: Boolean, recipientName: String = "") {
         if (inCall || stopped) return
         val request = Triple(UUID.randomUUID().toString(), conversationId, video)
@@ -126,6 +134,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         }
     }
     fun placePendingCall() {
+        updateRingback()
         outgoingRequest = viewModelScope.launch {
             val request = pending ?: return@launch
             try {
@@ -141,8 +150,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             } catch (error: Exception) { if (pending?.first == request.first) fail(error.message ?: "Calling unavailable.") }
         }
     }
-    fun answer() = viewModelScope.launch {
+    fun answer() {
+        if (answering?.isActive == true || !state.value.incoming || stopped) return
+        answering = viewModelScope.launch {
         val call = state.value.call ?: return@launch
+        if (!call.canAnswerOnDevice(identity.userId, identity.participantType, deviceId)) return@launch
         update { it.copy(systemAnswerRequested = false) }
         try {
             checkPermissions(call.video)
@@ -154,6 +166,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
                 endOriginal = { transport.call(LegendCallCommand("end", deviceId, call.id), existingConnectionOnly = true); Unit })
         } catch (error: Exception) {
             if (isCurrentCall(call.id)) fail(error.message ?: "The call could not be answered.")
+        }
         }
     }
     private fun isCurrentCall(id: String) = !stopped && state.value.call?.id == id && id !in finished
@@ -175,9 +188,19 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             }
         }
     }
-    fun requestSystemAnswer() {
-        update { it.copy(systemAnswerRequested = true) }
-        app.startActivity(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    fun requestSystemAnswer(callId: String? = state.value.call?.id) {
+        val call = state.value.call ?: return
+        if (stopped || call.id != callId || !state.value.incoming ||
+            !call.canAnswerOnDevice(identity.userId, identity.participantType, deviceId)) return
+        if (LegendCallPlatform.connection == null) return
+        LegendCallPlatform.consumeAnswerRequest(call.id)
+        // Telecom's authenticated current call can answer without presenting
+        // the account UI again. Missing runtime permissions still require UI.
+        if (runCatching { checkPermissions(call.video) }.isSuccess) answer()
+        else {
+            update { it.copy(systemAnswerRequested = true) }
+            app.startActivity(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        }
     }
     fun end() = endWithReason(LegendCallCleanupReason.USER_END)
     fun systemEnd() = endWithReason(LegendCallCleanupReason.SYSTEM_END)
@@ -192,14 +215,16 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     fun dismissFailure() { update { it.copy(failure = null) } }
     fun toggleMute() { update { it.copy(muted = !it.muted) }; peer?.muted(state.value.muted) }
     fun toggleCamera() { update { it.copy(camera = !it.camera) }; peer?.camera(state.value.camera) }
-    fun startScreenSharing(permission: android.content.Intent) {
+    internal fun startScreenSharing(permission: android.content.Intent, scope: LegendCallPermissionScope) {
+        if (permissionScope() != scope) return
         if (state.value.status != "Connected" || state.value.call?.video != true) return
-        runCatching { LegendCallPlatform.startScreenSharing(app, permission) }
+        runCatching { LegendCallPlatform.startScreenSharing(app, permission, this, scope) }
             .onFailure { update { it.copy(controlError = "Screen sharing could not start. Please try again.") } }
     }
-    fun captureScreen(permission: android.content.Intent) {
+    internal fun captureScreen(permission: android.content.Intent, scope: LegendCallPermissionScope) {
+        if (permissionScope() != scope || state.value.status != "Connected" || state.value.call?.video != true) return
         val engine = peer ?: return
-        engine.onScreenSharingEnded = { update { it.copy(sharingScreen = false) } }
+        engine.onScreenSharingEnded = { if (permissionScope() == scope && peer === engine) update { it.copy(sharingScreen = false) } }
         runCatching { engine.startScreenSharing(permission) }
             .onSuccess { update { it.copy(sharingScreen = true) } }
             .onFailure { update { it.copy(controlError = "Screen sharing could not start. Please try again.") } }
@@ -230,7 +255,9 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     }
     private fun show(call: LegendCallSnapshot) {
         LegendCallPlatform.connection?.setCallerDisplayName(if (isCallerAccount(call)) call.calleeName else call.callerName, android.telecom.TelecomManager.PRESENTATION_ALLOWED)
-        update { it.copy(call = call, starting = false, name = if (call.callerDeviceId == deviceId) call.calleeName else call.callerName,
+        update { it.copy(call = call, starting = false, name = if (isCallerAccount(call)) call.calleeName else call.callerName,
+            imagePath = if (isCallerAccount(call)) call.calleeImagePath else call.callerImagePath,
+            wallpaperMode = if (isCallerAccount(call)) call.calleeWallpaperMode else call.callerWallpaperMode,
             incoming = call.status == "ringing" && call.callerDeviceId != deviceId,
             status = if (call.status == "ringing") { if (call.callerDeviceId == deviceId) { if (call.receivedUtc == null) "Calling" else "Ringing" } else "Incoming call" } else it.status) }
         updateRingback()
@@ -288,9 +315,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
                 }
             }
     }
+    private val outgoingToneRequested get() = pending != null || (caller && state.value.call?.status == "ringing")
     private fun updateRingback() {
-        val call = state.value.call
-        if (!caller || call?.status != "ringing" || call.receivedUtc == null) {
+        // Audible local dialing progress does not claim recipient receipt.
+        // Calling/Ringing presentation still follows the server's receivedUtc.
+        if (!outgoingToneRequested) {
             ringback?.release(); ringback = null; return
         }
         if (ringback != null) return
@@ -306,10 +335,23 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             app.resources.openRawResourceFd(R.raw.legend_ringback).use { descriptor ->
                 player.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
             }
-            player.isLooping = true; player.prepare(); player.start()
+            player.isLooping = true
+            player.setOnPreparedListener { ready ->
+                if (ringback === ready && outgoingToneRequested &&
+                    (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || LegendCallPlatform.hasTelecomAudioFocus)) ready.start()
+                else if (ringback === ready) { ready.release(); ringback = null }
+            }
+            player.setOnErrorListener { failed, _, _ ->
+                if (ringback === failed) {
+                    failed.release(); ringback = null
+                    update { it.copy(controlError = "The outgoing call sound could not play.") }
+                }
+                true
+            }
+            player.prepareAsync()
         }.onFailure {
             ringback?.release(); ringback = null
-            update { it.copy(controlError = "The recipient received the call, but the ringing sound could not play.") }
+            update { it.copy(controlError = "The outgoing call sound could not play.") }
         }
     }
     private fun startReconciliation(id: String) {
@@ -418,6 +460,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         reconciliation?.cancel(); reconciliation = null
         startupDeadline?.cancel(); startupDeadline = null
         outgoingRequest?.cancel(); outgoingRequest = null
+        answering?.cancel(); answering = null
         state.value.call?.id?.let { finished.add(it) }
         deadline?.cancel(); deadline = null; heartbeat?.cancel(); heartbeat = null; pending = null
         val oldPeer = peer; peer = null; update { LegendCallUiState(failure = it.failure) }; oldPeer?.close()

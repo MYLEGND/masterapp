@@ -4,7 +4,7 @@ namespace Shared.Calling;
 public sealed record LegendCallCommand(
     string Action, Guid DeviceId, Guid? CallId = null, Guid? ConversationId = null,
     bool Video = false, string? SignalKind = null, string? SignalData = null, int Epoch = 0,
-    string? PushToken = null, string? PushEnvironment = null);
+    string? PushToken = null, string? PushEnvironment = null, LegendCallPreferences? Preferences = null);
 
 public sealed record LegendCallPolicy(
     string[] StunUrls, int WifiWidth = 1280, int WifiHeight = 720, int WifiFps = 30,
@@ -46,7 +46,8 @@ public sealed record LegendCallSnapshot(
     string CallerName, string CalleeName, bool Video, string Status,
     DateTime CreatedUtc, DateTime ExpiresUtc, int Epoch,
     string[]? CallerUserIds = null, string[]? CalleeUserIds = null,
-    DateTime? ReceivedUtc = null, string? CallerImagePath = null)
+    DateTime? ReceivedUtc = null, string? CallerImagePath = null, string? CalleeImagePath = null,
+    string CallerWallpaperMode = "legend", string CalleeWallpaperMode = "legend", string IncomingRingtoneResource = "legend_incoming")
 {
     // Every client uses the same authoritative delivery and terminal messages.
     public string? FailureMessage => Status switch
@@ -63,10 +64,16 @@ public sealed record LegendCallEvent(
     Guid? FromDeviceId = null, Guid? ToDeviceId = null);
 
 public sealed record LegendCallResult(bool Succeeded, string? Error,
-    LegendCallSnapshot? Call = null, LegendCallSnapshot[]? ActiveCalls = null, LegendCallPolicy? Policy = null);
+    LegendCallSnapshot? Call = null, LegendCallSnapshot[]? ActiveCalls = null, LegendCallPolicy? Policy = null,
+    LegendCallPreferences? Preferences = null, LegendCallPreferenceChoice[]? Ringtones = null, LegendCallPreferenceChoice[]? Wallpapers = null);
 
 public interface ILegendCallingAuthority
 {
     Task<LegendCallResult> ExecuteAsync(string userId, string participantType,
         LegendCallCommand command, CancellationToken cancellationToken);
 }
+
+// Account-scoped preferences; the existing profile image is the contact picture.
+// Media is never copied into a second calling profile or client-only store.
+public sealed record LegendCallPreferences(string RingtoneId = "signature", string WallpaperMode = "legend");
+public sealed record LegendCallPreferenceChoice(string Id, string Label, string? Resource = null);
