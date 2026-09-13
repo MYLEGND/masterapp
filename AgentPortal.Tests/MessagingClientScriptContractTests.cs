@@ -29,9 +29,9 @@ public sealed class MessagingClientScriptContractTests
         Assert.Equal(1, CountOccurrences(source, "new window.signalR.HubConnectionBuilder()"));
         Assert.Equal(1, CountOccurrences(source, ".withAutomaticReconnect()"));
         Assert.Equal(1, CountOccurrences(source, ".build()"));
-        Assert.Contains("connection.onreconnecting(startPolling);", source, StringComparison.Ordinal);
-        Assert.Contains("connection.onreconnected(stopPolling);", source, StringComparison.Ordinal);
-        Assert.Contains("connection.onclose(startPolling);", source, StringComparison.Ordinal);
+        Assert.Contains("connection.onreconnecting(() => { stopPresence(); startPolling(); });", source, StringComparison.Ordinal);
+        Assert.Contains("connection.onreconnected(() => { stopPolling(); startPresence(); });", source, StringComparison.Ordinal);
+        Assert.Contains("connection.onclose(() => { stopPresence(); startPolling(); });", source, StringComparison.Ordinal);
     }
 
     [Fact]

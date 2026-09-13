@@ -51,6 +51,50 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
     def run_sync(self, probe=lambda: False):
         return sync.sync_checkout(self.local, process_probe=probe)
 
+    def configure_native(self):
+        self.git(self.local, 'config', 'legend.nativeTestingRef', 'refs/remotes/origin/production')
+        self.git(self.local, 'switch', '-c', 'founder/testing', '--track', 'origin/production')
+
+    def test_native_sync_preserves_unrelated_user_edits(self):
+        self.configure_native()
+        (self.local / 'local-settings.txt').write_text('keep me')
+        self.publish()
+        sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.assertEqual((self.local / 'app.txt').read_text(), 'published')
+        self.assertEqual((self.local / 'local-settings.txt').read_text(), 'keep me')
+
+    def test_native_sync_preserves_tracked_build_setting_edits(self):
+        self.configure_native()
+        self.commit(self.publisher, 'native.txt', 'version=33')
+        self.git(self.publisher, 'push', 'origin', 'production')
+        sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        (self.local / 'native.txt').write_text('version=34')
+        self.publish()
+        sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.assertEqual((self.local / 'native.txt').read_text(), 'version=34')
+        self.assertEqual((self.local / 'app.txt').read_text(), 'published')
+        self.assertIn('native.txt', self.git(self.local, 'status', '--porcelain'))
+
+    def test_native_sync_conflicting_edits_block_without_overwrite(self):
+        self.configure_native()
+        (self.local / 'app.txt').write_text('unsaved user work on disk')
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        with self.assertRaises(sync.SyncSkipped):
+            sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.assertEqual((self.local / 'app.txt').read_text(), 'unsaved user work on disk')
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+
+    def test_native_sync_requires_configured_tracking_ref_and_idle_editors(self):
+        with self.assertRaises(sync.SyncSkipped):
+            sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.configure_native()
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        with self.assertRaisesRegex(sync.SyncSkipped, 'running'):
+            sync.sync_checkout(self.local, process_probe=lambda: True, native=True)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+
     def test_clean_published_checkout_fast_forwards_then_is_current(self):
         self.publish()
         self.assertIn('Updated', self.run_sync())

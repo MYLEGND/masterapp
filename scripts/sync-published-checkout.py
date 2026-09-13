@@ -46,12 +46,38 @@ def active_build_or_app():
     return False
 
 
-def assert_ready(repo, expected_head=None, process_probe=active_build_or_app):
-    if git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD') != 'production':
+def native_target(repo):
+    target = git(repo, 'config', '--get', 'legend.nativeTestingRef', missing_ok=True)
+    if not target or not target.startswith('refs/remotes/origin/'):
+        raise SyncSkipped('Native synchronization requires an explicit origin testing ref; no source changed.')
+    git(repo, 'check-ref-format', target)
+    return target
+
+
+def native_editor_or_build_active():
+    result = subprocess.run(['ps', '-axo', 'comm='], text=True, capture_output=True, timeout=10)
+    if result.returncode:
+        raise SyncSkipped('Cannot verify native editor activity; no source changed.')
+    names = {Path(line.strip()).name.lower() for line in result.stdout.splitlines()}
+    # Unsaved IDE buffers cannot be safely merged by Git. Wait until editors
+    # close instead of overwriting them or guessing from CPU utilization.
+    if names & {'xcode', 'studio', 'xcodebuild', 'swift-frontend', 'swiftc', 'ibtool', 'actool', 'clang', 'gradle', 'gradlew'}:
+        return True
+    if 'java' in names:
+        result = subprocess.run(['ps', '-axo', 'args='], text=True, capture_output=True, timeout=10)
+        if result.returncode:
+            raise SyncSkipped('Cannot verify Gradle activity; no source changed.')
+        return any(marker in result.stdout for marker in ('org.gradle.wrapper.GradleWrapperMain', 'org.gradle.launcher.GradleMain'))
+    return False
+
+
+def assert_ready(repo, expected_head=None, process_probe=active_build_or_app, native=False):
+    target = native_target(repo) if native else 'refs/remotes/origin/production'
+    if not native and git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD') != 'production':
         raise SyncSkipped('This is a working branch; automatic sync applies only to production.')
-    if git(repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}') != 'origin/production':
-        raise SyncSkipped('Production must track origin/production; no source update attempted.')
-    if git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
+    if git(repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}') != target.removeprefix('refs/remotes/'):
+        raise SyncSkipped('The checkout must track its intended origin ref; no source update attempted.')
+    if not native and git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
         raise SyncSkipped('Local changes are present (including native build numbers); preserve/review them before syncing.')
     git_dir = Path(git(repo, 'rev-parse', '--absolute-git-dir'))
     if any((git_dir / name).exists() for name in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-apply', 'rebase-merge', 'index.lock')):
@@ -64,27 +90,28 @@ def assert_ready(repo, expected_head=None, process_probe=active_build_or_app):
     return head, git_dir
 
 
-def sync_checkout(repo, process_probe=active_build_or_app):
+def sync_checkout(repo, process_probe=active_build_or_app, native=False):
     repo = Path(git(repo, 'rev-parse', '--show-toplevel'))
-    head, git_dir = assert_ready(repo, process_probe=process_probe)
+    target = native_target(repo) if native else 'refs/remotes/origin/production'
+    head, git_dir = assert_ready(repo, process_probe=process_probe, native=native)
     with (git_dir / 'legend-published-sync.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise SyncSkipped('Another local sync is running; no source update attempted.') from error
         git(repo, 'fetch', '--no-tags', '--no-recurse-submodules', 'origin',
-            'refs/heads/production:refs/remotes/origin/production')
-        assert_ready(repo, expected_head=head, process_probe=process_probe)
-        published = git(repo, 'rev-parse', 'refs/remotes/origin/production')
+            'refs/heads/' + target.removeprefix('refs/remotes/origin/') + ':' + target)
+        assert_ready(repo, expected_head=head, process_probe=process_probe, native=native)
+        published = git(repo, 'rev-parse', target)
         if head == published:
-            return 'Published production checkout is current (' + head[:12] + ').'
+            return ('Native testing' if native else 'Published production') + ' checkout is current (' + head[:12] + ').'
         try:
             git(repo, 'merge-base', '--is-ancestor', head, published)
         except SyncSkipped as error:
             raise SyncSkipped('Local production is ahead or divergent; no merge/reset/rebase was attempted.') from error
         # Explicitly protect ignored local configuration if a published path collides with it.
         git(repo, 'merge', '--ff-only', '--no-overwrite-ignore', published)
-        return 'Updated to published production ' + published[:12] + '.'
+        return 'Updated to ' + ('native testing ' if native else 'published production ') + published[:12] + '.'
 
 
 def check_native_checkout(repo):
@@ -133,6 +160,7 @@ def check_native_checkout(repo):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--sync-native', action='store_true', help='Synchronize the configured native tracking checkout when editors/builds are closed; preserve conflicting work.')
     parser.add_argument('--check-native', action='store_true', help='Fail if this checkout lacks the configured locally known native testing revision; never fetch or mutate source.')
     parser.add_argument('--strict', action='store_true', help='Return a failing exit status if synchronization is skipped.')
     args = parser.parse_args(argv)
@@ -145,7 +173,8 @@ def main(argv=None):
             print('error: [LEGEND native checkout] ' + message, file=sys.stderr)
             return 1
     try:
-        print('[LEGEND sync] ' + sync_checkout(Path(__file__).resolve().parent.parent))
+        print('[LEGEND sync] ' + sync_checkout(Path(__file__).resolve().parent.parent,
+            process_probe=native_editor_or_build_active if args.sync_native else active_build_or_app, native=args.sync_native))
         return 0
     except (SyncSkipped, OSError, subprocess.TimeoutExpired) as error:
         message = str(error) if isinstance(error, SyncSkipped) else 'Local sync could not safely complete.'
