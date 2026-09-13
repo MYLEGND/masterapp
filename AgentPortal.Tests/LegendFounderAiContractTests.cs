@@ -143,23 +143,36 @@ public sealed class LegendFounderAiContractTests
 
         Assert.NotNull(reply);
 
-        // No public mutation surface belongs on this interface.
+        // Reply remains the only execution surface. Canonical history reads
+        // must retain the authenticated principal rather than accept an actor ID.
         var publicMethods =
             type.GetMethods(
                     BindingFlags.Instance |
                     BindingFlags.Public |
                     BindingFlags.DeclaredOnly)
                 .Select(method => method.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
 
         Assert.Equal(
             new[]
             {
+                nameof(LegendFounderAiConversationService.GetConversationPageAsync),
+                nameof(LegendFounderAiConversationService.ListConversationsAsync),
                 nameof(
                     LegendFounderAiConversationService
                         .ReplyAsync)
             },
             publicMethods);
+        foreach (var name in publicMethods)
+        {
+            Assert.Equal(typeof(System.Security.Claims.ClaimsPrincipal),
+                type.GetMethod(name)!.GetParameters()[0].ParameterType);
+        }
+        Assert.Equal(typeof(Task<MessagingConversationListResult>),
+            type.GetMethod(nameof(LegendFounderAiConversationService.ListConversationsAsync))!.ReturnType);
+        Assert.Equal(typeof(Task<MessagingConversationResult>),
+            type.GetMethod(nameof(LegendFounderAiConversationService.GetConversationPageAsync))!.ReturnType);
     }
 
     [Fact]
@@ -195,12 +208,18 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("'Accept': 'application/x-ndjson'", script, StringComparison.Ordinal);
         Assert.Contains("consumeChatResultStream", script, StringComparison.Ordinal);
         Assert.Contains("structuredFailureMessage", script, StringComparison.Ordinal);
-        Assert.Contains("result.responseAuthority", script, StringComparison.Ordinal);
-        Assert.Contains("result.stage", script, StringComparison.Ordinal);
+        // Both terminal POST results and reloaded canonical rows retain server
+        // provenance before the same renderer consumes authority and stage.
+        Assert.Contains("conversation.messages.push({ ...result, id: result.messageId", script, StringComparison.Ordinal);
+        Assert.Contains("return { ...item.responseProvenance, id: item.id", script, StringComparison.Ordinal);
+        Assert.Contains("message.responseAuthority,", script, StringComparison.Ordinal);
+        Assert.Contains("message.stage,", script, StringComparison.Ordinal);
+        Assert.Contains("metadata.stage === 'response_partial'", script, StringComparison.Ordinal);
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
         Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
         Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
-        Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("result.responseAuthority ||", script, StringComparison.Ordinal);
+        Assert.Contains("item.authorKind !== 'Human' && !item.responseProvenance", script, StringComparison.Ordinal);
         Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
         Assert.Contains("responseAuthority === 'GovernedResearch'", script, StringComparison.Ordinal);
         Assert.Contains("'LEGEND governed research'", script, StringComparison.Ordinal);
@@ -256,7 +275,10 @@ public sealed class LegendFounderAiContractTests
             StringComparison.Ordinal);
         Assert.Contains("val reason: String? = null", androidContracts, StringComparison.Ordinal);
         Assert.Contains("sourceLanguageCode: String? = null", androidViewModel, StringComparison.Ordinal);
-        Assert.Contains("sourceLanguageCode = sourceLanguageCode", androidViewModel, StringComparison.Ordinal);
+        // The immutable pending request now passes the nullable language as a
+        // positional argument, alongside only the current Human turn and cursor.
+        Assert.Contains("mode == \"legend\" && externalAnsweringBlocked, sourceLanguageCode,", androidViewModel, StringComparison.Ordinal);
+        Assert.Contains("listOf(FounderAiChatMessage(\"user\", text)), conversationId, lastMessageId)", androidViewModel, StringComparison.Ordinal);
 
         Assert.DoesNotContain("sourceLanguageCode: 'en'", web, StringComparison.Ordinal);
         Assert.DoesNotContain("sourceLanguageCode: \"en\"", ios, StringComparison.Ordinal);
@@ -355,10 +377,12 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("stop.fill", mobile, StringComparison.Ordinal);
         Assert.Contains("Disable external answering, research, and Azure translation.", mobile, StringComparison.Ordinal);
         Assert.Contains(
-            "Toggle(LegendLocalized(\"Block all external providers\"), isOn: $nativeOnly)",
+            "Toggle(LegendLocalized(\"Block all external providers\"), isOn: Binding(get: { nativeOnly }, set: { nativeOnly = $0; store.clearConversation() }))",
             mobile,
             StringComparison.Ordinal);
-        Assert.Contains("Toggle(isOn: $externalAnsweringBlocked)", mobile, StringComparison.Ordinal);
+        Assert.Contains("Toggle(isOn: Binding(get: { externalAnsweringBlocked }, set: { externalAnsweringBlocked = $0; store.clearConversation() }))", mobile, StringComparison.Ordinal);
+        Assert.Contains(".disabled(store.isSending || mode != \"legend\")", mobile, StringComparison.Ordinal);
+        Assert.Contains(".disabled(store.isSending || mode != \"legend\" || nativeOnly)", mobile, StringComparison.Ordinal);
         Assert.Contains("responseAuthority", mobile, StringComparison.Ordinal);
         Assert.Contains("case \"LegendAi\":", mobile, StringComparison.Ordinal);
         Assert.Contains("case \"GovernedResearch\":", mobile, StringComparison.Ordinal);
