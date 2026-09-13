@@ -136,7 +136,7 @@
                 }
                 throw new Error('catalog_unavailable');
             }
-            if (!response.headers.get('content-type')?.includes('application/json')) { continuation = null; return; }
+            if (!response.headers.get('content-type')?.includes('application/json')) { continuation = null; showStatus('Some text could not be translated. Your language preference is saved.'); return; }
             let value;
             try { value = await response.json(); }
             catch {
@@ -145,7 +145,7 @@
             }
             if (expected !== generation || controller.signal.aborted) return;
             if (!Array.isArray(value.entries) || !value.entries.length || !value.languageCode || !value.catalogVersion ||
-                new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) { continuation = null; return; }
+                new Set(value.entries.map(entry => entry.id)).size !== value.entries.length) { continuation = null; showStatus('Some text could not be translated. Your language preference is saved.'); return; }
             // The server's canonical preference wins even if a stale picker supplied another language.
             desiredLanguage = value.languageCode.toLowerCase();
             transportFailures = 0; notBefore = 0;
