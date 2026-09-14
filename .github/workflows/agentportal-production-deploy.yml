@@ -167,13 +167,21 @@ jobs:
           set -e
           # Preserve only test identifiers/counts, never model text or credentials.
           python3 - "$results_dir" <<'PYSUMMARY'
-          import collections, json, sys, xml.etree.ElementTree as ET
+          import collections, importlib.util, json, sys, xml.etree.ElementTree as ET
           from pathlib import Path
           directory = Path(sys.argv[1])
           namespace = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
           rows = ET.parse(directory / 'full-regression.trx').findall('.//t:UnitTestResult', namespace)
+          spec = importlib.util.spec_from_file_location('baseline', 'scripts/legend-baseline-regression.py')
+          baseline = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(baseline)
           summary = {'counts': dict(collections.Counter(row.get('outcome') for row in rows)),
-                     'failedTests': sorted({row.get('testName', '').split('(')[0] for row in rows if row.get('outcome') == 'Failed'})}
+                     'failedTests': sorted({row.get('testName', '').split('(')[0] for row in rows if row.get('outcome') == 'Failed'}),
+                     'rosterSha256': baseline.roster_digest(row.get('testName') for row in rows),
+                     'failedCases': [{'name': row.get('testName'),
+                                      'assertionSite': baseline.assertion_site(row),
+                                      'failureMessageSha256': baseline.digest(baseline.message(row).encode())}
+                                     for row in rows if row.get('outcome') == 'Failed']}
           (directory / 'failure-summary.json').write_text(json.dumps(summary, indent=2))
           PYSUMMARY
           python3 scripts/legend-baseline-regression.py \
