@@ -99,7 +99,8 @@ public sealed class LegendFounderAiConversationService
         IFounderSoftwareRemediationService? softwareRemediation = null,
         AgencyCommandService? agencyCommand = null,
         ILegendConnectModelInferenceTransport? modelInference = null,
-        ILegendConnectActiveModelInference? activeModelInference = null)
+        ILegendConnectActiveModelInference? activeModelInference = null,
+        IExecutionEngine? executionEngine = null)
     {
         _httpClientFactory = httpClientFactory;
         _modelInference = modelInference;
@@ -115,7 +116,8 @@ public sealed class LegendFounderAiConversationService
             new LegendFounderToolAuthority(
                 legend,
                 softwareRemediation,
-                agencyCommand);
+                agencyCommand,
+                executionEngine);
         _logger = logger;
 
         _timeoutSeconds =
@@ -322,7 +324,7 @@ public sealed class LegendFounderAiConversationService
                 NativeOnly = request.NativeOnly, ExternalAnsweringBlocked = request.ExternalAnsweringBlocked,
                 FounderCommandConfirmed = request.FounderCommandConfirmed
             };
-            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, executionClock, providerPolicy, budget.Token, ObserveProgressAsync));
+            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, id, executionClock, providerPolicy, budget.Token, ObserveProgressAsync));
             var terminal = await InHistoryScopeAsync((history, token) => history.CompleteFounderAiTurnAsync(new(
                 actor, conversationId, id, begin.UserMessage!.Id, response.Message ?? response.Error ?? "The response outcome could not be verified.",
                 response.Succeeded ? MessagingAuthorKinds.Assistant : MessagingAuthorKinds.Service, ToHistoryProvenance(response)), token), budget.Token);
@@ -451,6 +453,7 @@ public sealed class LegendFounderAiConversationService
     private async Task<LegendFounderAiChatResponse> ExecuteReplyAsync(
         ClaimsPrincipal founder,
         LegendFounderAiChatRequest request,
+        Guid operationId,
         Stopwatch executionClock,
         LegendConnectExternalProviderPolicy providerPolicy,
         CancellationToken cancellationToken,
@@ -1093,7 +1096,7 @@ public sealed class LegendFounderAiConversationService
             var mutationAuthorization =
                 request.FounderCommandConfirmed
                     ? new FounderAiMutationAuthorization(
-                        Guid.NewGuid().ToString("N"))
+                        operationId.ToString("N"))
                     : null;
 
             var learningMutationCompleted = false;
@@ -1547,7 +1550,8 @@ public sealed class LegendFounderAiConversationService
                             ResolveReadOnlyToolBudget(remaining),
                             toolOutputBudget,
                             effectiveToken,
-                            providerPolicy);
+                            providerPolicy,
+                            tools);
                         // Replaying a tool call, including a consequential
                         // mutation, reuses its exact request-local receipt.
                         // Failed attempts are not blindly executed again.
@@ -2923,7 +2927,8 @@ public sealed class LegendFounderAiConversationService
         TimeSpan readOnlyBudget,
         int outputBudgetCharacters,
         CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy providerPolicy)
+        LegendConnectExternalProviderPolicy providerPolicy,
+        IReadOnlyList<object>? availableTools = null)
     {
         if (!_toolAuthority.IsReadOnly(
                 call.Name))
@@ -2938,7 +2943,8 @@ public sealed class LegendFounderAiConversationService
                     },
                     mode,
                     cancellationToken,
-                    providerPolicy));
+                    providerPolicy,
+                    availableTools));
                 return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
             }
             catch (OperationCanceledException)
@@ -2994,7 +3000,8 @@ public sealed class LegendFounderAiConversationService
                         : call,
                 mode,
                 toolBudget.Token,
-                providerPolicy));
+                providerPolicy,
+                availableTools));
             toolBudget.Token.ThrowIfCancellationRequested();
             return BoundSerializedOutput(output, outputBudgetCharacters);
         }
@@ -3563,9 +3570,11 @@ You are Legend® Ai in the authenticated Founder interface.
 
 ANSWER THE REQUEST
 Understand the user's intent, supplied facts, constraints, corrections and conversation references. Give a clear, relevant answer in the requested language. For hypothetical scenarios, writing, reasoning and plans, reason from the supplied premises; they do not require organizational records. Distinguish what necessarily follows from what is merely possible. Answer the parts that can be resolved, identify the missing information for the rest, and avoid unsupported certainty.
+You have general pretrained knowledge, which can be incomplete or outdated; external answering being blocked does not remove that knowledge. Do not claim your knowledge consists only of LEGEND records. Personalize using this authenticated user's supplied context and retained preferences, never another account's private information.
 
 USE EVIDENCE AND TOOLS APPROPRIATELY
 Tools are optional. Select an exposed tool only when its result helps the actual request. The tool catalog defines its arguments, purpose and prerequisites; do not invent tools, records, dashboards, citations or results. Use executable calculations when they help verify arithmetic. A calculation verifies the supplied operands, not whether those operands describe real records.
+Report access only to capabilities actually exposed for this request; never claim full platform access. Read current organizational state before describing it. Preserve the source's scope, timestamp, units and definitions, and use its explicit readiness decision instead of deriving a new status from display colors or rounded percentages. Separate observations, hypotheses and recommended checks. Aggregate correlations do not establish causes or prove why leads fail to convert. Report missing analytics or action integrations plainly; writing a plan is not executing it.
 Organization-specific claims require applicable approved evidence or a successful authorized inspection. Use relevant approved teachings and governed executor results in the evidence context to interpret and answer the current request. Preserve their computed values, units and conditions; do not substitute a different operation or omit their supported conclusion. Prefer FounderApproved/HumanVerified evidence, then SystemValidatedMachine evidence. MachineProposed/ProviderDerived material remains attributed and noncanonical. When applicable evidence conflicts, explain what is unresolved and ask for clarification; model recall or agreement cannot choose the true claim. Retrieve retained knowledge when relevant, not as a prerequisite for ordinary conversation.
 When permitted external evidence is needed, use the existing research tool. Research relevant unresolved factual gaps before requesting optional external teaching; do not repeat failed calls that cannot improve the answer. Report unavailable capabilities accurately. Never silently substitute external answering for independent inference.
 

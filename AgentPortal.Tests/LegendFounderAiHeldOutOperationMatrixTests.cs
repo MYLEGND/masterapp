@@ -636,6 +636,34 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     }
 
     [Fact]
+    public async Task IndependentFoundation_DistinguishesPretrainedKnowledgeFromExternalAnswering()
+    {
+        var row = await RunAsync("foundation_scope:general_knowledge",
+            "With external answering blocked, can you still explain general concepts from pretrained knowledge, or can you only repeat approved LEGEND records? Explain the distinction briefly without inspecting platform records.",
+            nativeOnly: true, sourceLanguageCode: "en");
+        Record([row]);
+        AssertNativeCapability(row, []);
+        Assert.Empty(row.ToolCalls);
+        Assert.Matches("(?i)pretrain|general knowledge", row.Message!);
+        Assert.DoesNotMatch("(?i)(?:do not|don't|cannot|can't) (?:possess|have|use|access) (?:any )?general knowledge|strictly derived from authorized sources", row.Message!);
+    }
+
+    [Fact]
+    public async Task TranslationReadiness_UsesTheActualOverviewAuthorityRatherThanInventingGlobalHealth()
+    {
+        var row = await RunAsync("foundation_scope:translation_readiness",
+            "Use the current LEGEND overview to report translation acquisition readiness. Preserve its explicit readiness decision and explain any unavailable readiness authority. Do not infer a whole-application health grade from translation percentages.",
+            nativeOnly: true, sourceLanguageCode: "en");
+        Record([row]);
+        AssertNativeCapability(row, []);
+        Assert.Contains("legend_system_overview", row.ToolCalls);
+        // This isolated fixture deliberately has no runtime-policy service.
+        // The source snapshot therefore explicitly reports BLOCKED/unavailable.
+        Assert.Matches("(?i)blocked|unavailable", row.Message!);
+        Assert.DoesNotMatch("(?i)fully operational|fully ready|readiness is healthy", row.Message!);
+    }
+
+    [Fact]
     public async Task NativeCalculator_UsesExactExecutorWithoutOrganizationalReads()
     {
         var row = await RunAsync("native_calculator:fraction_comparison",

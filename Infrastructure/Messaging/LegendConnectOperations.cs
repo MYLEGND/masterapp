@@ -39,6 +39,7 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
     private readonly ILegendConnectActiveModelInference? _activeModelInference;
     private readonly ILegendConnectResearchSearchTransport? _researchSearch;
     private readonly ILegendConnectResearchPageRetriever? _researchPages;
+    private readonly ITranslationEntitlementAuthority? _entitlementAuthority;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
@@ -54,7 +55,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         LegendConnectAutonomousLearningService? autonomousLearning = null,
         ILegendConnectActiveModelInference? activeModelInference = null,
         ILegendConnectResearchSearchTransport? researchSearch = null,
-        ILegendConnectResearchPageRetriever? researchPages = null)
+        ILegendConnectResearchPageRetriever? researchPages = null,
+        ITranslationEntitlementAuthority? entitlementAuthority = null)
     {
         _db = db;
         _registry = registry;
@@ -74,6 +76,7 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         _activeModelInference = activeModelInference;
         _researchSearch = researchSearch;
         _researchPages = researchPages;
+        _entitlementAuthority = entitlementAuthority;
     }
 
     private LegendConnectCurriculumService Curriculum => _curriculum ??
@@ -3650,24 +3653,29 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             var period = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
             var entitlements = await _db.Set<LegendTranslationEntitlement>().AsNoTracking().ToListAsync(cancellationToken);
             var entitlementByAccount = entitlements.ToDictionary(item => (item.UserId.Trim().ToLowerInvariant(), item.ParticipantType), item => item);
-            var defaultAllowance = Math.Max(0, _configuration.GetValue<long?>("LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance") ?? 0);
+            var entitlementAuthority = _entitlementAuthority ??
+                throw new InvalidOperationException("Legend Connect translation entitlement authority is not available from the DI service graph.");
+            var globalAllowance = (await entitlementAuthority.GetGlobalLimitAsync(cancellationToken)).CharacterAllowance;
             return Detail(key, TitleFor(key), "Translation entitlement and usage authority",
                 "This uses the same current-period 80% finite-allowance threshold as the Founder scale projection. Unlimited accounts are excluded.",
-                Section("Accounts at or above 80%", "Current period consumption plus active reservations against the canonical finite allowance.",
-                    new[] { "Account reference", "Type", "Allowance", "Consumed", "Reserved", "Utilization", "Last activity" },
+                Section("Accounts at or above 80%", "Current period consumption plus active reservations against the canonical finite allowance, aggregated by account type without account identities.",
+                    new[] { "Type", "Accounts", "Allowance", "Consumed", "Reserved", "Utilization" },
                     periods.Where(item => item.PeriodStart == period).Select(item => new
                         {
                             Usage = item,
                             Entitlement = entitlementByAccount.GetValueOrDefault((item.UserId.Trim().ToLowerInvariant(), item.ParticipantType)),
-                            Allowance = Math.Max(0, entitlementByAccount.GetValueOrDefault((item.UserId.Trim().ToLowerInvariant(), item.ParticipantType))?.MonthlyCharacterAllowance ?? defaultAllowance)
+                            Allowance = Math.Max(0, TranslationEntitlementAuthority.EffectiveAllowance(
+                                entitlementByAccount.GetValueOrDefault((item.UserId.Trim().ToLowerInvariant(), item.ParticipantType)), globalAllowance))
                         })
                         .Where(item => item.Entitlement is not { IsUnlimited: true } && item.Allowance > 0 &&
                             ((decimal)(Math.Max(0, item.Usage.ConsumedCharacters) + Math.Max(0, item.Usage.ReservedCharacters)) / item.Allowance) >= 0.8m)
-                        .OrderByDescending(item => item.Usage.ConsumedCharacters + item.Usage.ReservedCharacters).Select(item => new[]
+                        .GroupBy(item => item.Usage.ParticipantType)
+                        .OrderBy(group => group.Key).Select(group => new[]
                         {
-                            item.Usage.UserId, item.Usage.ParticipantType, Display(item.Allowance), Display(item.Usage.ConsumedCharacters),
-                            Display(item.Usage.ReservedCharacters), ((decimal)(Math.Max(0, item.Usage.ConsumedCharacters) + Math.Max(0, item.Usage.ReservedCharacters)) / item.Allowance).ToString("P1", CultureInfo.InvariantCulture),
-                            Display(item.Usage.LastTranslationActivityUtc)
+                            group.Key, Display(group.Count()), Display(group.Sum(item => item.Allowance)),
+                            Display(group.Sum(item => item.Usage.ConsumedCharacters)), Display(group.Sum(item => item.Usage.ReservedCharacters)),
+                            (group.Sum(item => (decimal)Math.Max(0, item.Usage.ConsumedCharacters) + Math.Max(0, item.Usage.ReservedCharacters)) /
+                                group.Sum(item => (decimal)item.Allowance)).ToString("P1", CultureInfo.InvariantCulture)
                         })));
         }
 
@@ -3684,18 +3692,29 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         var sections = new List<LegendConnectMetricDetailSectionSnapshot>();
         if (ledgerRows.Any())
         {
-            sections.Add(Section("Translation usage ledger", "Individual privacy-safe ledger rows behind this operational metric. Request references are one-way identifiers; conversation bodies are not retained here.",
-                new[] { "Request reference", "Account reference", "Type", "Source", "Target", "Provider", "Characters", "State", "Failure", "Completed" },
-                ledgerRows.Select(item => new[]
+            sections.Add(Section("Translation usage ledger", "Persisted ledger totals grouped by day, account type and route. Account and request identities are excluded.",
+                new[] { "Date", "Type", "Source", "Target", "Provider", "Operations", "Characters", "State", "Failure" },
+                ledgerRows.GroupBy(item => new
                 {
-                    item.RequestReference, item.UserId, item.ParticipantType, item.SourceLanguageCode, item.TargetLanguageCode, item.Provider,
-                    Display(item.BillableCharacters), item.State, item.FailureCode ?? string.Empty, Display(item.CompletedUtc ?? item.CreatedUtc)
+                    Date = DateOnly.FromDateTime(item.CompletedUtc ?? item.CreatedUtc), item.ParticipantType,
+                    item.SourceLanguageCode, item.TargetLanguageCode, item.Provider, item.State, item.FailureCode
+                }).OrderByDescending(group => group.Key.Date).ThenBy(group => group.Key.ParticipantType)
+                .ThenBy(group => group.Key.SourceLanguageCode).ThenBy(group => group.Key.TargetLanguageCode)
+                .ThenBy(group => group.Key.Provider).ThenBy(group => group.Key.State).ThenBy(group => group.Key.FailureCode)
+                .Select(group => new[]
+                {
+                    group.Key.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), group.Key.ParticipantType,
+                    group.Key.SourceLanguageCode, group.Key.TargetLanguageCode, group.Key.Provider,
+                    Display(group.Count()), Display(group.Sum(item => item.BillableCharacters)), group.Key.State, group.Key.FailureCode ?? string.Empty
                 })));
         }
         sections.Add(Section("Daily system aggregate", "The deployed aggregate record that supplies the dashboard total without exposing conversation content.",
             new[] { "Date", "Metric value", "Updated" }, usage.Select(item => new[] { item.UsageDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Display(UsageValue(item, aggregateColumn)), Display(item.UpdatedUtc) })));
-        sections.Add(Section("Account-period aggregate", "The account usage authority for the same metric, shown without message content.",
-            new[] { "Period", "Account reference", "Type", "Metric value", "Updated" }, periods.Select(item => new[] { item.PeriodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), item.UserId, item.ParticipantType, Display(UsagePeriodValue(item, accountColumn)), Display(item.UpdatedUtc) })));
+        sections.Add(Section("Account-period aggregate", "The account usage authority for the same metric, aggregated by period and account type without account identities.",
+            new[] { "Period", "Type", "Accounts", "Metric value" }, periods.GroupBy(item => new { item.PeriodStart, item.ParticipantType })
+                .OrderByDescending(group => group.Key.PeriodStart).ThenBy(group => group.Key.ParticipantType)
+                .Select(group => new[] { group.Key.PeriodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), group.Key.ParticipantType,
+                    Display(group.Count()), Display(group.Sum(item => UsagePeriodValue(item, accountColumn))) })));
         return new LegendConnectMetricDetailSnapshot(key, TitleFor(key), "Translation usage authority", UsageDescriptionFor(key), sections);
     }
 
@@ -3991,8 +4010,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
 
     private static string UsageDescriptionFor(string key) => key switch
     {
-        "quota-denied" => "Individual quota denials are shown from the one-way usage ledger, alongside the privacy-safe daily and account-period authorities that produce the current total.",
-        "provider-billable-characters" => "The ledger rows show each provider-billable request reference, route, provider, character count, state, and completion time without conversation text.",
+        "quota-denied" => "Quota denial totals are grouped from the existing usage ledger, alongside daily and account-period aggregates without account or request identities.",
+        "provider-billable-characters" => "The ledger aggregates provider-billable character totals by day, account type, route, provider and outcome without account or request identities.",
         "provider-operations" => "The ledger rows show actual provider execution attempts; provider fallback-required remains a separate routing measure.",
         "provider-failures" => "Only persisted failed provider execution rows are included, with their existing failure code.",
         _ => "The table shows the deployed daily and account-period records that calculate this privacy-safe operational total."

@@ -888,7 +888,7 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         usage?.PromotedTranslationModelCharactersAvoided ?? 0,
         usage?.ProviderObservationCharactersAvoided ?? 0);
 
-    private static long EffectiveAllowance(LegendTranslationEntitlement? entitlement, long globalAllowance) =>
+    internal static long EffectiveAllowance(LegendTranslationEntitlement? entitlement, long globalAllowance) =>
         entitlement is null || entitlement.EntitlementSource == "GlobalPolicy"
             ? globalAllowance : entitlement.MonthlyCharacterAllowance;
 
