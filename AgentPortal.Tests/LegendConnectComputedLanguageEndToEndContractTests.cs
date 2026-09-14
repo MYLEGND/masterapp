@@ -235,21 +235,53 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
             Assert.True(native.EvidenceCount >= 3);
             Assert.DoesNotContain(native.Answer!, corpus);
 
-            var response = await services.GetRequiredService<LegendFounderAiConversationService>().ReplyAsync(
-                ControllerTestHelpers.BuildUser(FounderScope.FounderId),
+            var service = services.GetRequiredService<LegendFounderAiConversationService>();
+            var founder = ControllerTestHelpers.BuildUser(FounderScope.FounderId);
+            var formatting = await StartFormattedCalculationAsync(service, founder, sourceLanguageCode);
+            var response = await service.ReplyAsync(founder,
                 new LegendFounderAiChatRequest
                 {
-                    Mode = "legend", NativeOnly = true, SourceLanguageCode = sourceLanguageCode, Messages = [new("user", request)]
+                    Mode = "legend", NativeOnly = true, SourceLanguageCode = sourceLanguageCode,
+                    ConversationId = formatting.ConversationId.ToString("D"), ExpectedLastMessageId = formatting.MessageId,
+                    Messages = [new("user", request)]
                 });
             Assert.True(response.Succeeded, response.Error);
-            Assert.Equal("LegendAi", response.ResponseAuthority);
-            Assert.Equal("native_response", response.Stage);
+            Assert.Equal(formatting.ConversationId, response.ConversationId);
+            Assert.NotEqual(formatting.MessageId, Assert.IsType<Guid>(response.MessageId));
+            Assert.Equal("LocalFoundation", response.ResponseAuthority);
+            Assert.Equal("foundation_response", response.Stage);
+            Assert.Equal("LegendControlled", response.FoundationHosting);
+            Assert.False(string.IsNullOrWhiteSpace(response.FoundationModel));
+            Assert.False(response.ExternalAnsweringUsed);
             Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
             Assert.Equal(native.Answer, response.Message);
             Assert.NotEmpty(response.ReasoningTransitionPath ?? []);
             Assert.Equal(plan.ReasoningTransitionPath, response.ReasoningTransitionPath);
             Assert.Equal((0, 0), externalCounts());
         });
+    }
+
+    internal static async Task<(Guid ConversationId, Guid MessageId)> StartFormattedCalculationAsync(
+        LegendFounderAiConversationService service, System.Security.Claims.ClaimsPrincipal founder,
+        string? sourceLanguageCode, string responseFormat = "The result is <value>.")
+    {
+        // Establish presentation through a real canonical turn, without supplying
+        // any operands, expected result, or operation to the model.
+        var formatting = await service.ReplyAsync(founder, new LegendFounderAiChatRequest
+        {
+            Mode = "legend", NativeOnly = true, SourceLanguageCode = sourceLanguageCode,
+            Messages = [new("user", "For subsequent calculations in this conversation, return exactly one sentence using this format: " +
+                responseFormat + " Replace <value> with the exact rational result; do not round to a decimal. Acknowledge this formatting instruction now.")]
+        });
+        Assert.True(formatting.Succeeded,
+            $"authority={formatting.ResponseAuthority}; stage={formatting.Stage}; reason={formatting.Reason}; error={formatting.Error}");
+        Assert.Equal("LocalFoundation", formatting.ResponseAuthority);
+        Assert.Equal("foundation_response", formatting.Stage);
+        Assert.Equal("LegendControlled", formatting.FoundationHosting);
+        Assert.False(string.IsNullOrWhiteSpace(formatting.FoundationModel));
+        Assert.False(formatting.ExternalAnsweringUsed);
+        Assert.False(formatting.EscalationUsed);
+        return (Assert.IsType<Guid>(formatting.ConversationId), Assert.IsType<Guid>(formatting.MessageId));
     }
 
     internal static async Task SeedTeachingAsync(LegendConnectCurriculumService curriculum, string teachingKind = "integer", string identityNamespace = "")

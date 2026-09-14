@@ -92,6 +92,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Contains("Wren", native.Answer!, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains("mortal", native.Answer!, StringComparison.OrdinalIgnoreCase);
                 Assert.DoesNotContain(corpusTexts, text => SameText(text, native.Answer!));
+                Assert.Equal(0, writes.OperationalWriteAttempts);
+                Assert.Empty(writes.ObservedWriteEntities);
+                Assert.False(db.ChangeTracker.HasChanges());
 
                 var response = await services.GetRequiredService<LegendFounderAiConversationService>()
                     .ReplyAsync(founder, new LegendFounderAiChatRequest
@@ -109,7 +112,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Contains("mortal", response.Message!, StringComparison.OrdinalIgnoreCase);
                 Assert.Equal((0, 0), externalCounts());
                 Assert.Equal(0, writes.OperationalWriteAttempts);
-                Assert.Empty(writes.ObservedWriteEntities);
+                await AssertExactFounderHistoryAsync(db, writes, prompt, response, MessagingAuthorKinds.Assistant);
                 Assert.All(db.ChangeTracker.Entries(), entry => Assert.Equal(EntityState.Unchanged, entry.State));
             }, writes);
     }
@@ -257,7 +260,23 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         WriteObservation = "not_instrumented"
                     }
                 ]);
-                Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
+                // A controlled acknowledgment is permitted without a matching
+                // transition. It cannot choose or certify either conflicting
+                // gate conclusion or turn this conflict into external escalation.
+                // This checks non-resolution/isolation, not clarification quality.
+                Assert.True(response.Succeeded, response.Error);
+                Assert.Equal("LocalFoundation", response.ResponseAuthority);
+                Assert.Equal("foundation_response", response.Stage);
+                Assert.Equal("LegendControlled", response.FoundationHosting);
+                Assert.False(string.IsNullOrWhiteSpace(response.FoundationModel));
+                Assert.False(response.ExternalAnsweringUsed);
+                Assert.False(response.EscalationUsed);
+                Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
+                Assert.Empty(response.ReasoningTransitionPath ?? []);
+                Assert.Empty(response.ScheduleCertificates ?? []);
+                Assert.False(string.IsNullOrWhiteSpace(response.Message));
+                Assert.DoesNotMatch(@"(?i)(?:^|[.!?]\s+)(?:the\s+)?(?:gate|it)\s+(?:is|must\s+be|has\s+to\s+be)\s+(?:open|closed)\b", response.Message!);
+                Assert.Equal((0, 0), responseExternalCounts);
 
                 var unknown = await operations.TryInferConversationWithDiscourseAsync(
                     "Describe the ultraviolet topography of an uncharted moon.", [],
@@ -368,58 +387,71 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.DoesNotContain("999", response.Message ?? string.Empty, StringComparison.Ordinal);
                 Assert.Equal((0, 0), externalCounts());
                 Assert.Equal(0, writes.OperationalWriteAttempts);
-                // ReplyAsync additionally persists the canonical, Founder-scoped
-                // transcript. Require its exact effects; no other writes are allowed.
-                Assert.Equal(new[]
-                {
-                    nameof(InternalMessage), nameof(LegendFounderAiDiscourseConversation),
-                    nameof(LegendFounderAiDiscourseTurn), nameof(MessageConversation),
-                    nameof(MessageConversationParticipant)
-                }, writes.ObservedWriteEntities.ToArray());
-                var thread = Assert.Single(await db.MessageConversations.AsNoTracking().ToListAsync());
-                Assert.Equal(response.ConversationId, thread.Id);
-                Assert.Equal(MessagingConversationTypes.Assistant, thread.ConversationType);
-                Assert.Equal(MessagingConversationPurposes.FounderAI, thread.Purpose);
-                Assert.Equal(FounderEnvironmentScope.FounderId, thread.OwnerUserId);
-                Assert.Equal(FounderEnvironmentScope.FounderId, thread.CreatedByUserId);
-                Assert.Equal(MessagingParticipantTypes.Agent, thread.OwnerParticipantType);
-                var member = Assert.Single(await db.MessageConversationParticipants.AsNoTracking().ToListAsync());
-                Assert.Equal(thread.Id, member.ConversationId);
-                Assert.Equal(FounderEnvironmentScope.FounderId, member.UserId);
-                Assert.Equal(MessagingParticipantTypes.Agent, member.ParticipantType);
-                Assert.True(member.IsActive);
-                var messages = await db.InternalMessages.AsNoTracking().ToListAsync();
-                Assert.Equal(2, messages.Count);
-                var human = Assert.Single(messages, x => x.AuthorKind == MessagingAuthorKinds.Human);
-                var terminal = Assert.Single(messages, x => x.AuthorKind == MessagingAuthorKinds.Service);
-                Assert.Equal(response.UserMessageId, human.Id);
-                Assert.Equal(response.MessageId, terminal.Id);
-                Assert.All(messages, x => Assert.Equal(thread.Id, x.ConversationId));
-                Assert.Equal(FounderEnvironmentScope.FounderId, human.SenderUserId);
-                Assert.Equal(MessagingParticipantTypes.Agent, human.SenderType);
-                Assert.Equal(prompt, human.Body);
-                Assert.Equal(string.Empty, terminal.SenderUserId);
-                Assert.Equal(string.Empty, terminal.SenderType);
-                Assert.Equal(human.Id, terminal.ReplyToMessageId);
-                Assert.Equal(response.Message ?? response.Error, terminal.Body);
-                var receipt = JsonSerializer.Deserialize<MessagingFounderAiResponseProvenance>(terminal.AiTurnMetadataJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                Assert.NotNull(receipt);
-                Assert.Equal(response.Succeeded, receipt.Succeeded);
-                Assert.Equal(response.Mode, receipt.Mode);
-                Assert.Equal(response.Reason, receipt.Reason);
-                Assert.Equal(response.Stage, receipt.Stage);
-                Assert.Equal(response.ResponseAuthority, receipt.ResponseAuthority);
-                Assert.Equal(response.ExternalAnsweringUsed, receipt.ExternalAnsweringUsed);
-                var discourse = Assert.Single(await db.LegendFounderAiDiscourseConversations.AsNoTracking().ToListAsync());
-                Assert.Equal(thread.Id, discourse.ConversationId);
-                Assert.Equal(FounderEnvironmentScope.FounderId, discourse.FounderAgentUserId);
-                var turn = Assert.Single(await db.LegendFounderAiDiscourseTurns.AsNoTracking().ToListAsync());
-                Assert.Equal(discourse.Id, turn.DiscourseConversationId);
-                Assert.Equal("user", turn.Role);
-                Assert.Equal(1, turn.SequenceNumber);
-                Assert.Equal(1, discourse.NextTurnSequence);
-                Assert.False(db.ChangeTracker.HasChanges());
+                await AssertExactFounderHistoryAsync(db, writes, prompt, response, MessagingAuthorKinds.Service);
             }, writes);
+    }
+
+    private static async Task AssertExactFounderHistoryAsync(
+        MasterAppDbContext db, WriteAttemptSentinel writes, string prompt,
+        LegendFounderAiChatResponse response, string expectedTerminalAuthorKind)
+    {
+        // ReplyAsync additionally persists the canonical, Founder-scoped
+        // transcript. Require its exact effects; no other writes are allowed.
+        Assert.Equal(new[]
+        {
+            nameof(InternalMessage), nameof(LegendFounderAiDiscourseConversation),
+            nameof(LegendFounderAiDiscourseTurn), nameof(MessageConversation),
+            nameof(MessageConversationParticipant)
+        }, writes.ObservedWriteEntities.ToArray());
+        var thread = Assert.Single(await db.MessageConversations.AsNoTracking().ToListAsync());
+        Assert.Equal(response.ConversationId, thread.Id);
+        Assert.Equal(MessagingConversationTypes.Assistant, thread.ConversationType);
+        Assert.Equal(MessagingConversationPurposes.FounderAI, thread.Purpose);
+        Assert.Equal(FounderEnvironmentScope.FounderId, thread.OwnerUserId);
+        Assert.Equal(FounderEnvironmentScope.FounderId, thread.CreatedByUserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, thread.OwnerParticipantType);
+        var member = Assert.Single(await db.MessageConversationParticipants.AsNoTracking().ToListAsync());
+        Assert.Equal(thread.Id, member.ConversationId);
+        Assert.Equal(FounderEnvironmentScope.FounderId, member.UserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, member.ParticipantType);
+        Assert.True(member.IsActive);
+        var messages = await db.InternalMessages.AsNoTracking().ToListAsync();
+        Assert.Equal(2, messages.Count);
+        var human = Assert.Single(messages, x => x.AuthorKind == MessagingAuthorKinds.Human);
+        var terminal = Assert.Single(messages, x => x.AuthorKind == expectedTerminalAuthorKind);
+        Assert.Equal(response.UserMessageId, human.Id);
+        Assert.Equal(response.MessageId, terminal.Id);
+        Assert.All(messages, x => Assert.Equal(thread.Id, x.ConversationId));
+        Assert.Equal(FounderEnvironmentScope.FounderId, human.SenderUserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, human.SenderType);
+        Assert.Equal(prompt, human.Body);
+        Assert.Equal(string.Empty, terminal.SenderUserId);
+        Assert.Equal(string.Empty, terminal.SenderType);
+        Assert.Equal(human.Id, terminal.ReplyToMessageId);
+        Assert.Equal(response.Message ?? response.Error, terminal.Body);
+        var receipt = JsonSerializer.Deserialize<MessagingFounderAiResponseProvenance>(terminal.AiTurnMetadataJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(receipt);
+        Assert.Equal(response.Succeeded, receipt.Succeeded);
+        Assert.Equal(response.Mode, receipt.Mode);
+        Assert.Equal(response.Reason, receipt.Reason);
+        Assert.Equal(response.Stage, receipt.Stage);
+        Assert.Equal(response.ResponseAuthority, receipt.ResponseAuthority);
+        Assert.Equal(response.ExternalAnsweringUsed, receipt.ExternalAnsweringUsed);
+        Assert.Equal(response.FoundationHosting, receipt.FoundationHosting);
+        Assert.Equal(response.FoundationModel, receipt.FoundationModel);
+        Assert.Equal(response.EscalationUsed, receipt.EscalationUsed);
+        Assert.Equal(response.EvidenceOrigin, receipt.EvidenceOrigin);
+        Assert.Equal(response.ReasoningTransitionPath, receipt.ReasoningTransitionPath);
+        Assert.Equal(JsonSerializer.Serialize(response.ScheduleCertificates), JsonSerializer.Serialize(receipt.ScheduleCertificates));
+        var discourse = Assert.Single(await db.LegendFounderAiDiscourseConversations.AsNoTracking().ToListAsync());
+        Assert.Equal(thread.Id, discourse.ConversationId);
+        Assert.Equal(FounderEnvironmentScope.FounderId, discourse.FounderAgentUserId);
+        var turn = Assert.Single(await db.LegendFounderAiDiscourseTurns.AsNoTracking().ToListAsync());
+        Assert.Equal(discourse.Id, turn.DiscourseConversationId);
+        Assert.Equal("user", turn.Role);
+        Assert.Equal(1, turn.SequenceNumber);
+        Assert.Equal(1, discourse.NextTurnSequence);
+        Assert.False(db.ChangeTracker.HasChanges());
     }
 
     private static bool SameText(string first, string second) =>

@@ -75,33 +75,47 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
             Assert.Equal(newDate, plan.Plan.ResultDimensions["closing_date"]);
 
             var founder = ControllerTestHelpers.BuildUser(FounderScope.FounderId);
-            var conversation = Guid.NewGuid().ToString("D");
             var service = services.GetRequiredService<LegendFounderAiConversationService>();
-            var first = await service.ReplyAsync(founder, Request(request, conversation));
+            var formatting = await service.ReplyAsync(founder, Request(
+                "For subsequent owner/date requests and recall in this conversation, return only a JSON object with exactly the string fields owner and closing_date. Preserve the observed spelling and opaque date text exactly. Acknowledge this formatting instruction now."));
+            Assert.True(formatting.Succeeded, $"authority={formatting.ResponseAuthority}; stage={formatting.Stage}; reason={formatting.Reason}; error={formatting.Error}");
+            Assert.Equal("LocalFoundation", formatting.ResponseAuthority);
+            Assert.Equal("foundation_response", formatting.Stage);
+            Assert.False(formatting.ExternalAnsweringUsed);
+            Assert.False(formatting.EscalationUsed);
+            var conversationId = Assert.IsType<Guid>(formatting.ConversationId);
+            var formattingMessageId = Assert.IsType<Guid>(formatting.MessageId);
+            var conversation = conversationId.ToString("D");
+            var first = await service.ReplyAsync(founder, Request(request, conversation, formattingMessageId));
             Assert.True(first.Succeeded, $"authority={first.ResponseAuthority}; stage={first.Stage}; reason={first.Reason}; error={first.Error}");
             Assert.Equal("LocalFoundation", first.ResponseAuthority);
             Assert.Equal("foundation_response", first.Stage);
             Assert.False(first.ExternalAnsweringUsed);
             Assert.False(first.EscalationUsed);
+            Assert.Equal(conversationId, first.ConversationId);
+            var firstMessageId = Assert.IsType<Guid>(first.MessageId);
             using var firstAnswer = JsonDocument.Parse(Assert.IsType<string>(first.Message));
             Assert.Equal(2, firstAnswer.RootElement.EnumerateObject().Count());
             Assert.Equal(newOwner, firstAnswer.RootElement.GetProperty("owner").GetString());
             Assert.Equal(newDate, firstAnswer.RootElement.GetProperty("closing_date").GetString());
 
             // The next request contains neither new value nor raw first-turn
-            // text. Recall must use the persisted, revalidated observation.
+            // text. Recall uses canonical server history and its revalidated
+            // observation, with the last committed terminal as its cursor.
             db.ChangeTracker.Clear();
             var stored = await services.GetRequiredService<LegendFounderAiDiscourseStateService>().GetStateAsync(founder, conversation);
             Assert.NotNull(stored);
             Assert.Contains(stored.Turns, turn => turn.IsComposed && turn.Role == "user" &&
                 turn.Nodes.Any(node => node.SemanticDimension == "owner" && node.SemanticValue == newOwner) &&
                 turn.Nodes.Any(node => node.SemanticDimension == "closing_date" && node.SemanticValue == newDate));
-            var recalled = await service.ReplyAsync(founder, Request("Recall the owner and date.", conversation));
+            var recalled = await service.ReplyAsync(founder, Request("Recall the owner and date.", conversation, firstMessageId));
             Assert.True(recalled.Succeeded, $"authority={recalled.ResponseAuthority}; stage={recalled.Stage}; reason={recalled.Reason}; error={recalled.Error}");
             Assert.Equal("LocalFoundation", recalled.ResponseAuthority);
             Assert.Equal("foundation_response", recalled.Stage);
             Assert.False(recalled.ExternalAnsweringUsed);
             Assert.False(recalled.EscalationUsed);
+            Assert.Equal(conversationId, recalled.ConversationId);
+            Assert.NotEqual(firstMessageId, Assert.IsType<Guid>(recalled.MessageId));
             using var recalledAnswer = JsonDocument.Parse(Assert.IsType<string>(recalled.Message));
             Assert.Equal(2, recalledAnswer.RootElement.EnumerateObject().Count());
             Assert.Equal(newOwner, recalledAnswer.RootElement.GetProperty("owner").GetString());
@@ -146,17 +160,13 @@ public sealed class LegendConnectNamedValueLanguageEndToEndTests
     private static string Source(string owner, string date) => "Owner is " + owner + "; closes on " + date + ".";
     private static Dictionary<string, string> Values(params (string Dimension, string Value)[] values) =>
         values.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal);
-    private static LegendFounderAiChatRequest Request(string text, string conversation) =>
+    private static LegendFounderAiChatRequest Request(string text, string? conversation = null, Guid? expectedLastMessageId = null) =>
         new()
         {
             Mode = "legend", NativeOnly = true, SourceLanguageCode = "en", ConversationId = conversation,
-            // Formatting is prior context; the latest native input retains its
-            // declared shape. Recall contains no prior owner/date values.
-            Messages =
-            [
-                new("user", "For the next request, return only a JSON object with exactly the string fields owner and closing_date. Preserve the observed spelling and opaque date text exactly."),
-                new("user", text)
-            ]
+            ExpectedLastMessageId = expectedLastMessageId,
+            // Only the current user turn is submitted; history comes from the server.
+            Messages = [new("user", text)]
         };
     private sealed class FounderScope : IDisposable
     {

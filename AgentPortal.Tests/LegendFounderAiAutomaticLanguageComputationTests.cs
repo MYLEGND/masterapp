@@ -50,16 +50,27 @@ public sealed class LegendFounderAiAutomaticLanguageComputationTests
                     Assert.False(await db.LegendLanguageMeaningNodeEvidence.AnyAsync(node =>
                         node.SemanticDimension == "total" && node.SemanticValue == expected));
 
-                    var response = await services.GetRequiredService<LegendFounderAiConversationService>()
-                        .ReplyAsync(ControllerTestHelpers.BuildUser(founderId), new LegendFounderAiChatRequest
+                    var service = services.GetRequiredService<LegendFounderAiConversationService>();
+                    var founder = ControllerTestHelpers.BuildUser(founderId);
+                    // Both actual turns omit the source-language declaration.
+                    var formatting = await LegendConnectComputedLanguageEndToEndContractTests.StartFormattedCalculationAsync(
+                        service, founder, sourceLanguageCode: null);
+                    var response = await service.ReplyAsync(founder, new LegendFounderAiChatRequest
                         {
                             Mode = "legend", NativeOnly = true, SourceLanguageCode = null,
+                            ConversationId = formatting.ConversationId.ToString("D"), ExpectedLastMessageId = formatting.MessageId,
                             Messages = [new("user", prompt)]
                         });
 
                     Assert.True(response.Succeeded, response.Error);
-                    Assert.Equal("native_response", response.Stage);
-                    Assert.Equal("LegendAi", response.ResponseAuthority);
+                    Assert.Equal(formatting.ConversationId, response.ConversationId);
+                    Assert.NotEqual(formatting.MessageId, Assert.IsType<Guid>(response.MessageId));
+                    Assert.Equal("foundation_response", response.Stage);
+                    Assert.Equal("LocalFoundation", response.ResponseAuthority);
+                    Assert.Equal("LegendControlled", response.FoundationHosting);
+                    Assert.False(string.IsNullOrWhiteSpace(response.FoundationModel));
+                    Assert.False(response.ExternalAnsweringUsed);
+                    Assert.False(response.EscalationUsed);
                     Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
                     Assert.Equal("The result is " + expected + ".", response.Message);
                     Assert.NotEmpty(response.ReasoningTransitionPath ?? []);

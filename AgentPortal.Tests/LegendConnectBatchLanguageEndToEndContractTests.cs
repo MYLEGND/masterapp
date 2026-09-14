@@ -265,15 +265,45 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
         $"Schedule {work} units in batches of {capacity}, each taking {duration} minutes with {required} resources from {available} available, within {limit} minutes.";
     private static Dictionary<string, string> Values(params (string Dimension, string Value)[] values) =>
         values.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal);
-    private static Task<LegendFounderAiChatResponse> ReplyAsync(IServiceProvider services, string request, string? formatInstruction = null) =>
-        services.GetRequiredService<LegendFounderAiConversationService>().ReplyAsync(ControllerTestHelpers.BuildUser(FounderScope.FounderId),
+    private static async Task<LegendFounderAiChatResponse> ReplyAsync(IServiceProvider services, string request, string? formatInstruction = null)
+    {
+        var service = services.GetRequiredService<LegendFounderAiConversationService>();
+        var founder = ControllerTestHelpers.BuildUser(FounderScope.FounderId);
+        Guid? conversationId = null;
+        Guid? expectedLastMessageId = null;
+        if (formatInstruction is not null)
+        {
+            var formatting = await service.ReplyAsync(founder, new LegendFounderAiChatRequest
+            {
+                Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
+                Messages = [new("user", formatInstruction + " Acknowledge this formatting instruction now.")]
+            });
+            Assert.True(formatting.Succeeded,
+                $"authority={formatting.ResponseAuthority}; stage={formatting.Stage}; reason={formatting.Reason}; error={formatting.Error}");
+            Assert.Equal("LocalFoundation", formatting.ResponseAuthority);
+            Assert.Equal("foundation_response", formatting.Stage);
+            Assert.False(formatting.ExternalAnsweringUsed);
+            Assert.False(formatting.EscalationUsed);
+            conversationId = Assert.IsType<Guid>(formatting.ConversationId);
+            expectedLastMessageId = Assert.IsType<Guid>(formatting.MessageId);
+        }
+        var response = await service.ReplyAsync(founder,
             new LegendFounderAiChatRequest
             {
                 Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
-                Messages = formatInstruction is null
-                    ? [new("user", request)]
-                    : [new("user", formatInstruction + "\n" + request)]
+                ConversationId = conversationId?.ToString("D"), ExpectedLastMessageId = expectedLastMessageId,
+                // Preserve the exact input bound by the governed calculation.
+                Messages = [new("user", request)]
             });
+        if (conversationId is not null)
+        {
+            Assert.True(response.Succeeded,
+                $"authority={response.ResponseAuthority}; stage={response.Stage}; reason={response.Reason}; error={response.Error}");
+            Assert.Equal(conversationId, response.ConversationId);
+            Assert.NotEqual(expectedLastMessageId, Assert.IsType<Guid>(response.MessageId));
+        }
+        return response;
+    }
     private sealed class FounderScope : IDisposable
     {
         public const string FounderId = "a1558f73-9e8d-4486-a290-4a33fe44b58e";

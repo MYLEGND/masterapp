@@ -116,8 +116,16 @@ public sealed class LegendConnectScheduleCertificatePropagationTests
                     Messages = [new("user", "Show the governed allocation.")]
                 });
             Assert.True(response.Succeeded, response.Error);
-            Assert.Equal("native_response", response.Stage);
-            Assert.Same(certificates, response.ScheduleCertificates);
+            Assert.Equal("foundation_response", response.Stage);
+            Assert.Equal("LocalFoundation", response.ResponseAuthority);
+            Assert.Equal("LegendControlled", response.FoundationHosting);
+            Assert.False(string.IsNullOrWhiteSpace(response.FoundationModel));
+            Assert.False(response.ExternalAnsweringUsed);
+            Assert.False(response.EscalationUsed);
+            Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
+            // The canonical history boundary reloads the immutable receipt;
+            // every certificate field must survive, rather than object identity.
+            Assert.Equal(JsonSerializer.Serialize(certificates), JsonSerializer.Serialize(response.ScheduleCertificates));
             Assert.Equal(proof.TransitionPath, response.ReasoningTransitionPath);
             var wire = JsonSerializer.Deserialize<LegendFounderAiChatResponse>(JsonSerializer.Serialize(response));
             Assert.NotNull(wire);
