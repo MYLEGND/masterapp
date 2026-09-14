@@ -46,6 +46,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -111,9 +115,21 @@ fun FounderAiConversationDialog(
     val scope = rememberCoroutineScope()
     var mode by remember { mutableStateOf("legend") }
     var nativeOnly by remember { mutableStateOf(false) }
+    var externalAnsweringBlocked by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) { viewModel.resolveAvailability() }
+    LaunchedEffect(viewModel) { viewModel.resolveAvailability() }
+    LaunchedEffect(state.availability) { if (state.availability is LoadState.Idle) draft = "" }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(viewModel, lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) viewModel.visible(true)
+            if (event == Lifecycle.Event.ON_STOP) viewModel.visible(false)
+        }
+        lifecycle.addObserver(observer)
+        viewModel.visible(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        onDispose { lifecycle.removeObserver(observer); viewModel.visible(false); viewModel.cancel() }
+    }
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
     Dialog(
@@ -139,6 +155,7 @@ fun FounderAiConversationDialog(
                     FounderAiDrawer(
                         mode = mode,
                         nativeOnly = nativeOnly,
+                        externalAnsweringBlocked = externalAnsweringBlocked,
                         canChangeMode = !state.isSending,
                         startNewConversation = {
                             viewModel.startNewConversation()
@@ -146,12 +163,20 @@ fun FounderAiConversationDialog(
                         },
                         selectMode = { selected ->
                             mode = selected
-                            if (selected == "teacher") nativeOnly = false
+                            if (selected == "teacher") { nativeOnly = false; externalAnsweringBlocked = false }
                             viewModel.startNewConversation()
                         },
                         setNativeOnly = { nativeOnly = it },
+                        setExternalAnsweringBlocked = { externalAnsweringBlocked = it; viewModel.startNewConversation() },
                         close = { scope.launch { drawerState.close() } },
-                        clear = viewModel::startNewConversation,
+                        conversations = state.conversations,
+                        hasMore = state.hasMoreConversations,
+                        loadMore = { viewModel.refresh(more = true) },
+                        openConversation = { id ->
+                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = true
+                            viewModel.openConversation(id)
+                            scope.launch { drawerState.close() }
+                        },
                     )
                 }
             },
@@ -167,12 +192,14 @@ fun FounderAiConversationDialog(
                     onDismiss()
                 },
                 updateDraft = { draft = it },
+                loadOlder = { viewModel.refresh(older = true) },
+                loadNewer = { viewModel.refresh(newer = true) },
+                retry = viewModel::retry,
                 submit = {
                     if (state.isSending) {
                         viewModel.cancel()
                     } else {
-                        viewModel.send(draft, mode, nativeOnly)
-                        draft = ""
+                        if (viewModel.send(draft, mode, nativeOnly, externalAnsweringBlocked)) draft = ""
                     }
                 },
             )
@@ -189,6 +216,9 @@ private fun FounderAiConversationContent(
     openDrawer: () -> Unit,
     close: () -> Unit,
     updateDraft: (String) -> Unit,
+    loadOlder: () -> Unit,
+    loadNewer: () -> Unit,
+    retry: () -> Unit,
     submit: () -> Unit,
 ) {
     val available = (state.availability as? LoadState.Data)?.value == true
@@ -241,6 +271,9 @@ private fun FounderAiConversationContent(
                     is LoadState.Error -> item { FounderAiStatusCard(access.message, isError = true) }
                     is LoadState.Data -> if (!access.value) item { FounderAiStatusCard("Founder AI is unavailable for this account.", isError = true) }
                 }
+                if (state.hasNewerMessages) item { TextButton(onClick = loadNewer) { Text(legendLocalized("Load newer messages")) } }
+                if (state.hasOlderMessages) item { TextButton(onClick = loadOlder) { Text(legendLocalized("Load earlier messages")) } }
+                if (state.canRetry && !state.isSending) item { TextButton(onClick = retry) { Text(legendLocalized("Check or retry the same request")) } }
                 if (state.messages.isEmpty()) {
                     item {
                         Column(
@@ -352,12 +385,17 @@ private fun FounderAiHeaderAction(
 private fun FounderAiDrawer(
     mode: String,
     nativeOnly: Boolean,
+    externalAnsweringBlocked: Boolean,
     canChangeMode: Boolean,
     startNewConversation: () -> Unit,
     selectMode: (String) -> Unit,
     setNativeOnly: (Boolean) -> Unit,
+    setExternalAnsweringBlocked: (Boolean) -> Unit,
     close: () -> Unit,
-    clear: () -> Unit,
+    conversations: List<com.mylegnd.legend.registered.core.model.FounderAiHistoryThread>,
+    hasMore: Boolean,
+    loadMore: () -> Unit,
+    openConversation: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -417,8 +455,8 @@ private fun FounderAiDrawer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(legendLocalized("Native-only"), style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
-                    Text(legendLocalized("Block OpenAI escalation for this LEGEND test."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("Block all external providers"), style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(legendLocalized("Disable external answering, research, and Azure translation."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 }
                 Switch(
                     checked = nativeOnly,
@@ -427,16 +465,24 @@ private fun FounderAiDrawer(
                 )
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(legendLocalized("Block external answering"), style = LegendTypography.Label)
+                Text(legendLocalized("Allow authorized research and translation."), style = LegendTypography.Label)
+            }
+            Switch(checked = externalAnsweringBlocked, enabled = canChangeMode && mode == "legend" && !nativeOnly,
+                onCheckedChange = setExternalAnsweringBlocked)
+        }
         HorizontalDivider(color = LegendColors.Divider, modifier = Modifier.padding(vertical = LegendSpacing.Xs))
         Text(legendLocalized("Recent"), style = LegendTypography.Label, color = LegendColors.TextTertiary)
-        Text(legendLocalized("The active conversation is retained in this session."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
-        Spacer(Modifier.weight(1f))
-        OutlinedButton(
-            onClick = clear,
-            enabled = canChangeMode,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
-            shape = LegendShapes.Compact,
-        ) { Text(legendLocalized("Clear conversation"), style = LegendTypography.Body) }
+        LazyColumn(Modifier.weight(1f)) {
+            items(conversations, key = { it.id }) { thread ->
+                TextButton(onClick = { openConversation(thread.id) }, enabled = canChangeMode) {
+                    Text(thread.subject ?: legendLocalized("New conversation"), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            if (hasMore) item { TextButton(onClick = loadMore) { Text(legendLocalized("Load more conversations")) } }
+        }
     }
 }
 
@@ -471,6 +517,7 @@ private fun FounderAiModeButton(
 
 @Composable
 private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
+    if (message.role == "service") { FounderAiStatusCard(message.content, isError = true); return }
     val isUser = message.role == "user"
     val authority = message.responseAuthority?.trim()
     if (isUser) {
@@ -511,8 +558,37 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
+                val capabilityStatus = listOfNotNull(
+                    if (message.reason == "provider_output_incomplete")
+                        legendLocalized("Partial answer: output limit reached") else if (message.stage == "response_partial") legendLocalized("Partial answer") else null,
+                    when (message.escalationDisposition) {
+                        "Restricted" -> legendLocalized("Teacher material restricted from training")
+                        "InsufficientEvidence" -> legendLocalized("Teacher material lacks sufficient evidence")
+                        else -> null
+                    },
+                    when (message.researchState) {
+                        "Conclusion" -> legendLocalized("Research completed")
+                        "InsufficientEvidence" -> legendLocalized("Research found insufficient evidence")
+                        "UnresolvedConflict" -> legendLocalized("Research found conflicting evidence")
+                        "Failure" -> legendLocalized("Research could not be completed")
+                        else -> null
+                    },
+                    if (message.escalationUsed == true) legendLocalized("Escalation used") else null,
+                    when (message.learningState) {
+                        "Submitted", "AwaitingCritic" -> legendLocalized("Teaching submitted for review")
+                        "InsufficientEvidence" -> legendLocalized("Teaching needs more evidence")
+                        else -> null
+                    },
+                    if (message.modelAssistanceState == "Applied" && !message.modelTrainingRunId.isNullOrBlank())
+                        legendLocalized("Promoted model applied") else null,
+                ).joinToString(" · ")
+                if (capabilityStatus.isNotEmpty()) {
+                    Text(capabilityStatus, style = LegendTypography.Label, color = LegendColors.OnNavy)
+                }
                 val authorityLabel = when (authority) {
                     "LegendAi" -> legendLocalized("Legend® Ai")
+                    "LocalFoundation" -> legendLocalized("LEGEND-controlled model")
+                    "HostedFoundation" -> legendLocalized("LEGEND · hosted foundation")
                     "GovernedResearch" -> legendLocalized("LEGEND governed research")
                     "OpenAITeacher" -> legendLocalized("OpenAI")
                     "SystemDiagnostic" -> legendLocalized("System diagnostic")

@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,21 @@ data class FounderAiTranscriptMessage(
     val role: String,
     val content: String,
     val responseAuthority: String? = null,
+    val reason: String? = null,
+    val foundationModel: String? = null,
+    val foundationHosting: String? = null,
+    val externalAnsweringUsed: Boolean? = null,
+    val escalationUsed: Boolean? = null,
+    val escalationDisposition: String? = null,
+    val researchState: String? = null,
+    val learningState: String? = null,
+    val modelAssistanceState: String? = null,
+    val modelVersion: String? = null,
+    val modelTrainingRunId: String? = null,
+    val modelProvenance: String? = null,
+    val id: String? = null,
+    val sentUtc: String? = null,
+    val stage: String? = null,
 )
 
 data class FounderAiConversationState(
@@ -44,6 +60,11 @@ data class FounderAiConversationState(
     val operationId: String? = null,
     val progress: String? = null,
     val failure: String? = null,
+    val conversations: List<FounderAiHistoryThread> = emptyList(),
+    val hasMoreConversations: Boolean = false,
+    val hasOlderMessages: Boolean = false,
+    val hasNewerMessages: Boolean = false,
+    val canRetry: Boolean = false,
 )
 
 /**
@@ -57,123 +78,207 @@ class FounderAiViewModel(
     private val _state = MutableStateFlow(FounderAiConversationState())
     val state: StateFlow<FounderAiConversationState> = _state.asStateFlow()
     private var conversationId = UUID.randomUUID().toString()
+    private var lastMessageId: String? = null
+    private var persisted = false
     private var operation: Job? = null
+    private var refreshJob: Job? = null
+    private var pollJob: Job? = null
+    private var generation = 0
+    private var retired = false
+    private var visible = false
+    private var historySkip = 0
+    private data class Pending(val id: String, val request: FounderAiChatRequest, val userMessageId: String? = null)
+    private var pending: Pending? = null
 
     fun resolveAvailability() {
-        if (_state.value.availability !is LoadState.Idle) return
+        if (retired || _state.value.availability !is LoadState.Idle) return
+        val epoch = generation
         viewModelScope.launch {
-            _state.value = _state.value.copy(availability = LoadState.Loading)
-            _state.value = _state.value.copy(
-                availability = when (val result = repository.access(role)) {
-                    is LoadState.Data -> LoadState.Data(result.value.available)
-                    is LoadState.Error -> LoadState.Error(result.message)
-                    else -> LoadState.Error("Founder AI availability could not be determined.")
-                },
-            )
+            _state.update { it.copy(availability = LoadState.Loading) }
+            val result = repository.access(role)
+            if (retired || epoch != generation) return@launch
+            _state.update { it.copy(availability = when (result) {
+                is LoadState.Data -> LoadState.Data(result.value.available)
+                is LoadState.Error -> LoadState.Error(result.message)
+                else -> LoadState.Error("Founder AI availability could not be determined.")
+            }) }
+            refresh()
         }
     }
 
-    fun send(
-        rawText: String,
-        mode: String,
-        nativeOnly: Boolean,
-        sourceLanguageCode: String? = null,
-    ) {
-        val text = rawText.trim()
-        if (text.isBlank() || _state.value.isSending || mode !in setOf("legend", "teacher")) return
-        if ((_state.value.availability as? LoadState.Data)?.value != true) return
+    fun visible(value: Boolean) {
+        visible = value
+        pollJob?.cancel()
+        if (!value || retired) { refreshJob?.cancel(); refreshJob = null; return }
+        refresh()
+        pollJob = viewModelScope.launch {
+            while (visible) { delay(20_000); refresh() }
+        }
+    }
 
-        val operationId = UUID.randomUUID().toString()
-        val submitted = _state.value.messages + FounderAiTranscriptMessage("user", text)
-        _state.value = _state.value.copy(
-            messages = submitted,
-            isSending = true,
-            operationId = operationId,
-            progress = "Preparing governed conversation…",
-            failure = null,
-        )
+    fun activateSession() {
+        if (!retired) return
+        // Activity ViewModelStore may return this same canonical account key
+        // after A→B→A. Old callbacks retain their earlier generation forever.
+        generation++; retired = false; visible = false
+        conversationId = UUID.randomUUID().toString(); lastMessageId = null; persisted = false
+        pending = null; historySkip = 0
+        operation = null; refreshJob = null; pollJob = null
+        _state.value = FounderAiConversationState()
+    }
+
+    fun disposeSession() {
+        retired = true; generation++
+        operation?.cancel(); refreshJob?.cancel(); pollJob?.cancel()
+        pending = null
+        _state.value = FounderAiConversationState()
+    }
+
+    fun refresh(more: Boolean = false, older: Boolean = false, newer: Boolean = false) {
+        if (retired || !visible || _state.value.isSending || refreshJob?.isActive == true ||
+            (_state.value.availability as? LoadState.Data)?.value != true) return
+        val epoch = generation
+        val thread = conversationId
+        refreshJob = viewModelScope.launch {
+            fun current() = !retired && epoch == generation && thread == conversationId
+            if (!older) {
+                when (val list = repository.conversations(role, if (more) historySkip else 0)) {
+                    is LoadState.Data -> if (current()) {
+                        if (!list.value.succeeded) { _state.update { it.copy(failure = list.value.errorMessage) }; return@launch }
+                        if (list.value.conversations.any { it.id == conversationId }) persisted = true
+                        historySkip = if (more) historySkip + list.value.conversations.size else maxOf(historySkip, list.value.conversations.size)
+                        _state.update { it.copy(conversations = (if (more) it.conversations + list.value.conversations else list.value.conversations + it.conversations).distinctBy { row -> row.id },
+                            hasMoreConversations = list.value.conversations.size == 50) }
+                    }
+                    is LoadState.Error -> { if (current()) historyFailure(list); return@launch }
+                    else -> return@launch
+                }
+            }
+            if (!current() || !persisted) return@launch
+            val cursor = _state.value.messages.firstOrNull().takeIf { older }
+            // Original server timestamp strings preserve SQL sub-millisecond ticks.
+            when (val result = repository.conversation(role, thread, cursor?.sentUtc, cursor?.id)) {
+                is LoadState.Data -> if (current()) {
+                    val detail = result.value.conversation
+                    if (!result.value.succeeded || detail == null) { _state.update { it.copy(failure = result.value.errorMessage) }; return@launch }
+                    if (detail.messages.any { it.authorKind !in setOf("Human", "Assistant", "Service") ||
+                        (it.authorKind != "Human" && it.responseProvenance == null) }) {
+                        _state.update { it.copy(failure = "Conversation history could not be verified.") }; return@launch
+                    }
+                    val messages = detail.messages.map { row -> transcript(row.authorKind, row.body, row.responseProvenance, row.id, row.sentUtc) }
+                    val pageIds = messages.map { it.id }.toSet()
+                    if (!older && !newer && _state.value.messages.isNotEmpty() && messages.isNotEmpty() &&
+                        _state.value.messages.none { it.id in pageIds }) {
+                        _state.update { it.copy(hasNewerMessages = true) }; return@launch
+                    }
+                    if (!older) lastMessageId = detail.messages.lastOrNull()?.id
+                    if (pending?.userMessageId != null && detail.messages.any { it.replyToMessageId == pending?.userMessageId }) pending = null
+                    _state.update { current ->
+                        val ids = messages.map { it.id }.toSet()
+                        val retained = if (newer) emptyList() else current.messages.filterNot { it.id in ids }
+                        current.copy(messages = if (older) messages + retained else retained + messages,
+                            hasOlderMessages = if (older || retained.isEmpty()) detail.hasOlderMessages else current.hasOlderMessages,
+                            canRetry = pending != null, hasNewerMessages = if (older) current.hasNewerMessages else false)
+                    }
+                }
+                is LoadState.Error -> if (current()) historyFailure(result)
+                else -> Unit
+            }
+        }
+    }
+
+    private fun historyFailure(error: LoadState.Error) {
+        if (error.status in listOf(401, 403)) disposeSession()
+        else _state.update { it.copy(failure = error.message) }
+    }
+
+    fun openConversation(id: String) {
+        if (_state.value.isSending || retired) return
+        generation++; refreshJob?.cancel(); refreshJob = null
+        conversationId = id; persisted = true; lastMessageId = null; pending = null
+        _state.update { it.copy(messages = emptyList(), failure = null, hasOlderMessages = false, hasNewerMessages = false, canRetry = false) }
+        refresh()
+    }
+
+    fun send(rawText: String, mode: String, nativeOnly: Boolean, externalAnsweringBlocked: Boolean = false,
+        sourceLanguageCode: String? = null): Boolean {
+        val text = rawText.trim()
+        if (retired || text.isBlank() || _state.value.isSending || mode !in setOf("legend", "teacher") ||
+            (_state.value.availability as? LoadState.Data)?.value != true) return false
+        if (_state.value.hasNewerMessages) { _state.update { it.copy(failure = "Load newer messages before sending a reply.") }; return false }
+        if (pending != null) { _state.update { it.copy(failure = "Check the pending request before sending another message.") }; return false }
+        val submission = Pending(UUID.randomUUID().toString(), FounderAiChatRequest(mode,
+            mode == "legend" && nativeOnly, mode == "legend" && externalAnsweringBlocked, sourceLanguageCode,
+            listOf(FounderAiChatMessage("user", text)), conversationId, lastMessageId))
+        pending = submission
+        execute(submission)
+        return true
+    }
+
+    fun retry() { if (!_state.value.isSending && !retired) pending?.let(::execute) }
+
+    private fun execute(submission: Pending) {
+        refreshJob?.cancel(); refreshJob = null
+        val epoch = generation
+        _state.update { it.copy(isSending = true, operationId = submission.id, canRetry = false,
+            progress = "Preparing governed conversation…", failure = null) }
         operation = viewModelScope.launch {
+            fun current() = !retired && epoch == generation && _state.value.operationId == submission.id
             try {
-                when (val result = repository.chat(
-                    role = role,
-                    operationId = operationId,
-                    chatRequest = FounderAiChatRequest(
-                        mode = mode,
-                        nativeOnly = mode == "legend" && nativeOnly,
-                        // Free-form input has no client-owned detector. Carry
-                        // a code only when a governed upstream selection knows
-                        // it; otherwise the server must identify the prompt.
-                        sourceLanguageCode = sourceLanguageCode,
-                        messages = submitted.map { FounderAiChatMessage(it.role, it.content) },
-                        conversationId = conversationId,
-                    ),
-                    onProgress = { envelope ->
-                        val update = envelope.progress?.message?.trim().orEmpty()
-                        if (update.isNotBlank()) {
-                            _state.update { current ->
-                                if (current.operationId != operationId) current else current.copy(
-                                    progress = envelope.elapsedSeconds?.let { "$update · ${it}s" } ?: update,
-                                )
-                            }
-                        }
-                    },
-                )) {
-                    is LoadState.Data -> {
+                when (val result = repository.chat(role, submission.id, submission.request) { envelope ->
+                    if (current()) {
+                        _state.update { it.copy(progress = envelope.progress?.message) }
+                        if (persisted) refresh()
+                    }
+                }) {
+                    is LoadState.Data -> if (current()) {
                         val response = result.value
-                        if (_state.value.operationId != operationId) return@launch
-                        if (response.succeeded && !response.message.isNullOrBlank()) {
-                            _state.value = _state.value.copy(
-                                messages = _state.value.messages + FounderAiTranscriptMessage(
-                                    role = "assistant",
-                                    content = response.message,
-                                    responseAuthority = response.responseAuthority,
-                                ),
-                            )
-                        } else {
-                            _state.value = _state.value.copy(failure = response.safeFailure())
-                        }
+                        if (response.failureKind == "authorization") { disposeSession(); return@launch }
+                        if (response.conversationId != null) { conversationId = response.conversationId; if (response.userMessageId != null || response.messageId != null) persisted = true }
+                        if (response.userMessageId != null) pending = submission.copy(userMessageId = response.userMessageId)
+                        if (response.messageId != null) {
+                            lastMessageId = response.messageId; pending = null
+                            _state.update { it.copy(messages = it.messages.filterNot { item -> item.id == response.messageId } +
+                                transcript(if (response.succeeded) "Assistant" else "Service", response.message ?: response.error.orEmpty(),
+                                    response, response.messageId, response.lastMessageUtc)) }
+                        } else if (response.reason in setOf("FOUNDER_HISTORY_STALE", "FOUNDER_HISTORY_REPLAY_MISMATCH", "FOUNDER_HISTORY_FORBIDDEN", "FOUNDER_HISTORY_CLOSED")) pending = null
+                        _state.update { it.copy(failure = if (response.succeeded) (if (response.messageId == null) "The response is missing its saved conversation receipt." else null) else response.error ?: "The Founder AI request did not produce a response.") }
                     }
-                    is LoadState.Error -> if (_state.value.operationId == operationId) {
-                        _state.value = _state.value.copy(failure = result.message)
-                    }
+                    is LoadState.Error -> if (current()) historyFailure(result)
                     else -> Unit
                 }
             } catch (_: CancellationException) {
-                // cancel() has already returned a truthful local status. The
-                // server receives the cancelled mobile request and stops work.
+                // Cancellation does not imply that an earlier tool action was rolled back.
             } finally {
-                if (_state.value.operationId == operationId) {
-                    _state.value = _state.value.copy(isSending = false, operationId = null, progress = null)
+                if (current()) {
+                    _state.update { it.copy(isSending = false, operationId = null, progress = null, canRetry = pending != null) }
+                    refresh()
                 }
             }
         }
     }
 
     fun cancel() {
-        val active = operation ?: return
-        if (!active.isActive) return
-        active.cancel()
-        operation = null
-        _state.value = _state.value.copy(
-            isSending = false,
-            operationId = null,
-            progress = null,
-            failure = "Response stopped. Your draft remains available.",
-        )
+        if (operation?.isActive != true) return
+        operation?.cancel(); operation = null
+        _state.update { it.copy(isSending = false, operationId = null, progress = null, canRetry = pending != null,
+            failure = "Response stopped. Check the saved outcome before sending again.") }
+        refresh()
     }
 
     fun startNewConversation() {
-        if (_state.value.isSending) return
-        conversationId = UUID.randomUUID().toString()
-        _state.value = _state.value.copy(messages = emptyList(), failure = null, progress = null)
+        if (_state.value.isSending || retired) return
+        generation++; refreshJob?.cancel(); refreshJob = null
+        conversationId = UUID.randomUUID().toString(); lastMessageId = null; persisted = false; pending = null
+        _state.update { it.copy(messages = emptyList(), failure = null, progress = null, canRetry = false, hasOlderMessages = false, hasNewerMessages = false) }
     }
 
-    private fun FounderAiChatResponse.safeFailure(): String = buildList {
-        error?.trim()?.takeIf(String::isNotBlank)?.let(::add)
-        if (failureKind?.isNotBlank() == true) add("Stage: ${stage ?: failureKind}.")
-        reason?.trim()?.takeIf(String::isNotBlank)?.let { add("Reason: $it.") }
-        reference?.trim()?.takeIf(String::isNotBlank)?.let { add("Reference: $it.") }
-    }.ifEmpty { listOf("The Founder AI request did not produce a response.") }.joinToString(" ")
+    private fun transcript(author: String, body: String, response: FounderAiChatResponse?, id: String?, sentUtc: String?) =
+        FounderAiTranscriptMessage(if (author == "Human") "user" else if (author == "Assistant") "assistant" else "service", body,
+            response?.responseAuthority, response?.reason, response?.foundationModel, response?.foundationHosting,
+            response?.externalAnsweringUsed, response?.escalationUsed, response?.escalationDisposition,
+            response?.researchState, response?.learningState, response?.modelAssistanceState, response?.modelVersion,
+            response?.modelTrainingRunId, response?.modelProvenance, id, sentUtc, response?.stage)
 }
 
 class HomeViewModel(private val repository: HomeRepository, private val role: String) : ViewModel() {
@@ -371,12 +476,14 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
                 if (revision != presentationRevision || selectedConversationId != id) return@launch
                 if (result is LoadState.Data) {
                     detailCache[id] = result.value
+                    _historyFailure.value = null
                     _detail.value = result
                     if (detailMarksRead) acknowledgeVisible(id, result.value)
                 } else if (result is LoadState.Error && result.status in setOf(401, 403, 404, 410)) {
                     detailCache.remove(id)
                     _detail.value = result
                 } else if (_detail.value !is LoadState.Data) _detail.value = result
+                else if (result is LoadState.Error) _historyFailure.value = result.message
             } while (detailRefreshPending)
         }.also { detailJob = it }
     }
@@ -446,12 +553,12 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
-    fun startConversation(recipient: MessagingRecipient, opened: (String) -> Unit) = viewModelScope.launch {
+    fun startConversation(recipient: MessagingRecipient, includeMessages: Boolean = true, opened: (String) -> Unit) = viewModelScope.launch {
         if (_isSending.value) return@launch
         _isSending.value = true
         val openedConversationId: String?
         try {
-            openedConversationId = beginConversation(recipient)
+            openedConversationId = beginConversation(recipient, includeMessages)
         } finally {
             _isSending.value = false
         }
@@ -495,13 +602,16 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         openedConversationId?.let(opened)
     }
 
-    private suspend fun beginConversation(recipient: MessagingRecipient): String? =
-        when (val result = repository.startConversation(role, recipient)) {
+    private suspend fun beginConversation(recipient: MessagingRecipient, includeMessages: Boolean = true): String? =
+        when (val result = repository.startConversation(role, recipient, includeMessages)) {
             is LoadState.Data -> {
-                selectedConversationId = result.value.id
-                ++presentationRevision
-                _detail.value = result
-                viewModelScope.launch { refreshInboxSilently() }
+                if (includeMessages) {
+                    selectedConversationId = result.value.id
+                    ++presentationRevision
+                    _detail.value = result
+                    viewModelScope.launch { refreshInboxSilently() }
+                }
+                // Metadata-only call setup must never replace canonical chat history.
                 result.value.id
             }
             is LoadState.Error -> {

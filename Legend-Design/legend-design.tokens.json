@@ -1,7 +1,7 @@
 {
   "$schema": "https://legend.design/schema/tokens/v1",
   "schemaVersion": 1,
-  "sourceOfTruth": "Legend-ios/Legend/DesignSystem/NextGen/LegendNextTheme.swift",
+  "sourceOfTruth": "Legend-Design/legend-design.tokens.json",
   "colors": {
     "midnight": { "light": "#0A162E" },
     "navy": { "light": "#10254C" },
@@ -33,15 +33,41 @@
     "contactNavy": { "light": "#142E5B" },
     "contactConnected": { "light": "#4AE28B" },
     "verified": { "light": "#1F7AEB" },
-    "chatTimestamp": { "light": "#0072E5", "dark": "#42BFFF" }
+    "presenceOnlineText": { "light": "#006B35", "dark": "#7BE8A3" },
+    "presenceOnlineFill": { "light": "#E8F5ED", "dark": "#123922" },
+    "presenceOfflineText": { "light": "#B42318", "dark": "#FFABA3" },
+    "presenceOfflineFill": { "light": "#FDECE9", "dark": "#4A2127" },
+    "chatTimestamp": { "light": "#64748B", "dark": "#94A3B8" }
   },
   "messaging": {
+    "messageBubble": {
+      "horizontalPadding": 10,
+      "verticalPadding": 7,
+      "cornerRadius": 16,
+      "metadataGap": 3,
+      "bodySize": 15,
+      "timestampSize": 11,
+      "timestampWeight": "regular",
+      "timestampColor": "chatTimestamp"
+    },
+    "contactCard": {
+      "cornerRadius": 16,
+      "minimumHeight": 64,
+      "horizontalPadding": 12,
+      "verticalPadding": 8,
+      "borderWidth": 1,
+      "borderOpacity": 0.35,
+      "shadowOpacity": 0.10,
+      "shadowRadius": 4,
+      "shadowOffsetY": 2
+    },
     "reactionBubble": {
-      "height": 32,
-      "horizontalPadding": 8,
+      "height": 22,
+      "touchTarget": 44,
+      "horizontalPadding": 5,
       "itemSpacing": 4,
       "borderWidth": 1,
-      "emojiSize": 20,
+      "emojiSize": 14,
       "ownFillColor": "chatTimestamp",
       "ownFillOpacity": 0.16,
       "otherFillColor": "surfaceElevated",
@@ -118,6 +144,8 @@
   "sizes": {
     "minimumTapTarget": 44,
     "callControl": 54,
+    "callPortrait": 256,
+    "unreadBadge": 22,
     "compactControlHeight": 36,
     "controlHeight": 46,
     "prominentControlHeight": 50,

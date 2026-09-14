@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSUserActivityTypes</key>
-	<array><string>INSendMessageIntent</string><string>INStartCallIntent</string></array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -73,6 +71,11 @@
 	<string>LEGEND® uses photo access only when you choose to manage media for a Legend update.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>LEGEND® reads, creates, and completes reminders on this device only when you choose to use Reminders in Today’s Activity.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+		<string>INStartCallIntent</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

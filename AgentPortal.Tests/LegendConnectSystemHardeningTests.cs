@@ -143,11 +143,11 @@ public sealed class LegendConnectSystemHardeningTests
             configuration,
             NullLogger<TranslationCapacityAuthority>.Instance);
         var abandoned = Assert.IsType<TranslationCapacityReservation>(
-            await firstAuthority.TryReserveAsync(
+            (await firstAuthority.TryReserveAsync(
                 "AzureTranslator",
                 10,
                 TranslationCapacityPurpose.Live,
-                reservationReference: "message:capacity-recovery"));
+                reservationReference: "message:capacity-recovery")).Reservation);
 
         await using (var expire = new MasterAppDbContext(options))
         {
@@ -162,11 +162,11 @@ public sealed class LegendConnectSystemHardeningTests
             configuration,
             NullLogger<TranslationCapacityAuthority>.Instance);
         var recovered = Assert.IsType<TranslationCapacityReservation>(
-            await retryAuthority.TryReserveAsync(
+            (await retryAuthority.TryReserveAsync(
                 "AzureTranslator",
                 6,
                 TranslationCapacityPurpose.Live,
-                reservationReference: "message:capacity-recovery"));
+                reservationReference: "message:capacity-recovery")).Reservation);
 
         Assert.Equal(abandoned.ReservationId, recovered.ReservationId);
         await retryAuthority.CompleteAsync(recovered, providerMayHaveConsumed: false);

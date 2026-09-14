@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Domain.Messaging;
@@ -25,7 +26,8 @@ internal sealed record ApplicationCopyManifestEntry(
     string SourceRevision,
     IReadOnlyList<string> Placeholders,
     string TranslationPolicy,
-    string ReuseScope);
+    string ReuseScope,
+    IReadOnlyDictionary<string, string>? PresetTranslations = null);
 
 internal interface IApplicationCopyManifestSource
 {
@@ -68,7 +70,9 @@ internal sealed class EmbeddedApplicationCopyManifestSource : IApplicationCopyMa
             entry.SourceRevision,
             string.Join(',', entry.Placeholders),
             entry.TranslationPolicy,
-            entry.ReuseScope)));
+            entry.ReuseScope) + (entry.PresetTranslations is null ? string.Empty :
+                "\u001f" + string.Join("\u001e", entry.PresetTranslations.OrderBy(item => item.Key, StringComparer.Ordinal)
+                    .Select(item => $"{item.Key}={item.Value}")))));
         var expectedVersion = "application-copy-v1-" + Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(catalogIdentity)))[..16].ToLowerInvariant();
         if (!string.Equals(manifest.CatalogVersion, expectedVersion, StringComparison.Ordinal))
@@ -86,6 +90,12 @@ internal sealed class EmbeddedApplicationCopyManifestSource : IApplicationCopyMa
                     ApplicationTranslationPolicies.ApprovedOnly or
                     ApplicationTranslationPolicies.NonTranslatable))
                 throw new InvalidOperationException($"Invalid application-copy definition: {entry.Id}");
+
+            if (entry.PresetTranslations is not null &&
+                (entry.TranslationPolicy != ApplicationTranslationPolicies.ApprovedOnly ||
+                 entry.PresetTranslations.Any(item => !LegendLanguageIdentity.TryNormalize(item.Key, out _) ||
+                    !TranslationOutputValidator.IsValid(entry.Source, item.Value, string.Join(',', entry.Placeholders)))))
+                throw new InvalidOperationException($"Invalid preset application copy: {entry.Id}");
 
             var placeholders = TranslationOutputValidator.PlaceholderNames(entry.Source);
             if (!placeholders.SequenceEqual(
@@ -130,6 +140,7 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
+        var started = Stopwatch.GetTimestamp();
         var manifest = _manifestSource.Manifest;
         var source = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
             manifest.SourceLanguageCode,
@@ -159,6 +170,11 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
 
             if (entry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly)
             {
+                if (Preset(entry, source, target) is { } preset)
+                {
+                    results[entry.Id] = preset;
+                    continue;
+                }
                 approvedMatches.TryGetValue(entry.Id, out var approved);
                 results[entry.Id] = approved is not null && TranslationOutputValidator.IsValid(
                         entry.Source,
@@ -211,7 +227,7 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
                 translation.ValidationState,
                 translation.CreatedUtc,
                 translation.Reused,
-                translation.ErrorCode);
+                translation.ErrorCode, translation.RetryAfterUtc);
         }
 
         var ordered = manifest.Entries.Select(entry => results[entry.Id]).ToArray();
@@ -226,6 +242,9 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
                 ordered.Length);
         }
 
+        var continuation = BuildContinuation(ordered);
+        ApplicationLocalizationTelemetry.Catalog(source, target, continuation.Disposition,
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         return new ApplicationLocalizationCatalog(
             manifest.CatalogVersion,
             source,
@@ -233,7 +252,29 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
             target,
             DateTime.UtcNow,
             failures == 0,
-            ordered);
+            ordered,
+            continuation);
+    }
+
+    internal static ApplicationLocalizationContinuation BuildContinuation(IReadOnlyList<ApplicationLocalizedCopy> entries)
+    {
+        var failures = entries.Where(entry => entry.FailureCode is not null).ToArray();
+        if (failures.Length == 0) return new("Complete", 0, null);
+        var actionable = failures.Where(entry => entry.FailureCode != "approved_translation_unavailable").ToArray();
+        if (actionable.Length == 0) return new("AwaitingApproval", failures.Length, null);
+        // Unknown, configuration, authorization and invalid-output errors stop automatic work.
+        // A pending entry may not conceal a terminal provider/capacity failure.
+        if (actionable.Any(entry => entry.FailureCode is not (
+            "translation_pending" or "translation_provider_timeout" or
+            "translation_provider_transient_failure" or "translation_provider_rate_limited" or
+            "translation_capacity_temporarily_unavailable" or "translation_capacity_reservation_pending" or
+            "translation_capacity_hourly_exhausted" or "translation_capacity_monthly_exhausted")))
+            return new("Blocked", failures.Length, null);
+        var retryAt = actionable.Max(entry => entry.RetryAfterUtc);
+        var delay = retryAt is { } date ? Math.Max(1, (int)Math.Ceiling((date - DateTime.UtcNow).TotalSeconds)) :
+            actionable.Any(entry => entry.FailureCode != "translation_pending") ? 15 : 1;
+        return new(actionable.Any(entry => entry.FailureCode != "translation_pending") ? "RetryableFailure" : "Pending",
+            failures.Length, delay);
     }
 
     public async Task<ApplicationLocalizedCopy> LocalizeAsync(
@@ -279,6 +320,10 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
             string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
         {
             result = Source(manifestEntry, sourceLanguage, targetLanguage);
+        }
+        else if (Preset(manifestEntry, sourceLanguage, targetLanguage) is { } preset)
+        {
+            result = preset;
         }
         else if (manifestEntry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly)
         {
@@ -374,6 +419,15 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
         DateTime.UtcNow,
         Reused: true,
         failureCode);
+
+    private static ApplicationLocalizedCopy? Preset(ApplicationCopyManifestEntry entry, string source, string target) =>
+        entry.PresetTranslations?.TryGetValue(target, out var text) == true
+            ? Source(entry, source, target) with
+            {
+                Text = text!, Provider = "ApplicationPreset", Provenance = "ApplicationCopyManifest",
+                ValidationState = "Preset"
+            }
+            : null;
 
     private static ApplicationLocalizedCopy Source(
         ApplicationCopyManifestEntry entry,

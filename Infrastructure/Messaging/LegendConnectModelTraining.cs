@@ -12,6 +12,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Messaging;
 
+internal static class LegendConnectModelTrainingConfiguration
+{
+    internal static readonly string[] ControlledProviders = ["LocalMlx", "ControlledTransformers", "ControlledMlx"];
+    internal static bool IsControlled(string? backend) => backend is "LocalMlx" or "ControlledTransformers" or "ControlledMlx";
+    internal static string ResolveBackend(IConfiguration? configuration)
+    {
+        var backend = configuration?["LegendConnect:ModelTraining:Backend"] ?? "ControlledTransformers";
+        return backend is "LocalMlx" or "ControlledTransformers" or "ControlledMlx" or "OpenAI" ? backend :
+            throw new InvalidOperationException("model_training_backend_invalid");
+    }
+}
+
 internal sealed record LegendModelTrainingUploadResult(
     bool Succeeded,
     string? FileId,
@@ -43,6 +55,9 @@ internal sealed record LegendModelTrainingJobLookupResult(
 
 internal interface ILegendConnectModelTrainingBackend
 {
+    string TrainingProvider => "OpenAI";
+    Task<LegendConnectTrainingCheckpoint?> GetCheckpointAsync(string runKey, CancellationToken cancellationToken = default) => Task.FromResult<LegendConnectTrainingCheckpoint?>(null);
+    Task<string> GetTrainingConfigurationIdentityAsync(CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
     Task<LegendModelTrainingUploadResult> UploadTrainingFileAsync(
         string fileName,
         byte[] jsonl,
@@ -801,7 +816,20 @@ internal static class LegendConnectModelLifecycleLease
                             now),
                     cancellationToken);
 
-            return claimed == 1;
+            if (claimed != 1)
+                return false;
+
+            // ExecuteUpdate bypasses the change tracker. A run already loaded
+            // by the lifecycle service still has a null lease; assigning null
+            // on completion would then persist no release. Refresh this one
+            // claimed entity so the existing release is tracked and saved.
+            var claimedEntry = db.ChangeTracker
+                .Entries<LegendConnectModelTrainingRun>()
+                .SingleOrDefault(entry => entry.Entity.Id == runId);
+            if (claimedEntry is not null)
+                await claimedEntry.ReloadAsync(cancellationToken);
+
+            return true;
         }
 
         var tracked =
@@ -827,7 +855,6 @@ internal static class LegendConnectModelLifecycleLease
 internal sealed class LegendConnectModelTrainingService
 {
     private const string Prefix = "LegendConnect:ModelTraining:";
-    private const string Provider = "OpenAI";
     private const int DefaultMaximumAttempts = 4;
 
     private readonly MasterAppDbContext _db;
@@ -1126,28 +1153,16 @@ internal sealed class LegendConnectModelTrainingService
 
             for (var i = 0; i < repetitions; i++)
             {
+                var messages = new List<object> { new { role = "system", content = task.Instructions } };
+                if (task.ConversationInput is { ValueKind: JsonValueKind.Array } conversation)
+                    messages.AddRange(conversation.EnumerateArray().Select(message => (object)message.Clone()));
+                else
+                    messages.Add(new { role = "user", content = task.Input });
+                messages.Add(new { role = "assistant", content = example.TargetText, weight = 1 });
                 var line =
                     JsonSerializer.Serialize(new
                     {
-                        messages = new object[]
-                        {
-                            new
-                            {
-                                role = "system",
-                                content = task.Instructions
-                            },
-                            new
-                            {
-                                role = "user",
-                                content = task.Input
-                            },
-                            new
-                            {
-                                role = "assistant",
-                                content = example.TargetText,
-                                weight = 1
-                            }
-                        }
+                        messages
                     });
 
                 writer.WriteLine(line);
@@ -1164,15 +1179,13 @@ internal sealed class LegendConnectModelTrainingService
         string baseModel,
         CancellationToken cancellationToken)
     {
-        var runKey =
-            StableHash(
-                string.Join(
-                    '|',
-                    "legend-model-training-v1",
-                    manifest.ScopeKey,
-                    manifest.DatasetIdentity,
-                    Provider,
-                    baseModel));
+        var configurationIdentity = await _backend.GetTrainingConfigurationIdentityAsync(cancellationToken);
+        var runIdentity = string.Join('|', "legend-model-training-v1", manifest.ScopeKey,
+            manifest.DatasetIdentity, _backend.TrainingProvider, baseModel);
+        // Preserve existing hosted job identities. Local identities additionally
+        // bind the immutable base, trainer implementation and resource settings.
+        var runKey = StableHash(string.IsNullOrEmpty(configurationIdentity)
+            ? runIdentity : runIdentity + "|" + configurationIdentity);
 
         var existing =
             await _db.Set<LegendConnectModelTrainingRun>()
@@ -1203,7 +1216,7 @@ internal sealed class LegendConnectModelTrainingService
                         manifest.DatasetIdentity,
                     DatasetEvaluatorVersion =
                         manifest.EvaluatorVersion,
-                    TrainingProvider = Provider,
+                    TrainingProvider = _backend.TrainingProvider,
                     BaseModel = baseModel,
                     State = "PendingDataset",
                     EvaluationState = "NotStarted",

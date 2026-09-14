@@ -1,22 +1,25 @@
 {
   "schemaVersion": 1,
-  "authorization": "Owner explicitly answered YES on 2026-09-12 to publishing exact candidate c7bf1ae3 to public MYLEGND/masterapp, renewing its one-time baseline against production 5cf3879b with exactly the existing nine failures and four skips, and releasing through the protected production workflow. Native held-out tests remain unchanged; the reviewed UI-contract update covers the requested Legend Connect inspectors. No additional failures, skips, or SQL proof exemptions are authorized.",
-  "sourceCommit": "c7bf1ae3af795bf9d7ec6a0b39b59f8801e8cda4",
-  "productionBaseCommit": "5cf3879b320a5e8bf4cd3670c7e651a40fa3523d",
+  "authorizationProfile": "founder-model-quality-20260913",
+  "authorization": "Owner explicitly instructed on 2026-09-13: I WANT IT ON PRODUCTION WITH THE FAILURES. THEN ONCE DEPLOYED YOU CAN GO AHEAD AND FIX THE REMAINING FAILURES. This one-time authorization covers the eleven individually reviewed model-quality failures captured for this frozen candidate, retaining Failed outcomes and four existing unexecuted opt-in cases. It does not waive authorization, isolation, external-provider policy, infrastructure, database, migration, artifact identity, or production proof requirements.",
+  "evidenceScope": "Exact frozen discovery roster with observed focused model-quality failures. Passed entries outside the focused cohort are required full-CI expectations, not claims of local execution. Only a fresh complete unfiltered workflow TRX can authorize release.",
+  "sourceCommit": "47532284be391a0eeb98b27224452fa3dd4a514d",
+  "productionBaseCommit": "144567d7a39ea76d50f3d5efd3aae08f3595f85e",
   "allowedPolicyPaths": [
-    ".github/workflows/agentportal-production-deploy.yml",
     ".github/legend-baseline-release.json",
-    "scripts/legend-baseline-regression.py",
-    "scripts/test-legend-baseline-regression.py",
-    "docs/legend-connect/repair-20260910/baseline-release-policy.md",
+    ".github/workflows/agentportal-production-deploy.yml",
+    "AgentPortal.Tests/LegendFounderAiContractTests.cs",
     "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs",
-    "AgentPortal.Tests/LegendFounderAiContractTests.cs"
+    "docs/legend-connect/repair-20260910/baseline-release-policy.md",
+    "scripts/legend-baseline-regression.py",
+    "scripts/test-legend-baseline-regression.py"
   ],
   "frozenFiles": {
-    "AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs": "c83e1007f394c895635547c11366e8121473e6e32733aa33d821cde614eec9ec",
-    "AgentPortal.Tests/LegendHeldOutFoundationPrerequisite.cs": "0190f448dea1590d974bdee56019123f04b8b0fc158a961c3afca90c98e26630",
-    "AgentPortal.Tests/LegendFounderAiContractTests.cs": "a42bad1b15d3fe9ddae207b9876a6d659596313ba66a0a4b9f341fec7a4bcfa9",
-    "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs": "1a74542940d5f9f65fd4575a665b16d3bda97e34a5bc9773411dadeaf4eb4210"
+    "AgentPortal.Tests/LegendConnectComputedLanguageEndToEndContractTests.cs": "bb3ddeff42437c4aba12585f47c25b46cb0f7639876029873a5688680364de54",
+    "AgentPortal.Tests/LegendFounderAiContractTests.cs": "23dcbf1db8224be031e8f0e9f58908feb972a198f295db6dfe717b983316ec2a",
+    "AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs": "f995458bfbcc5979aa632671d519dfa0e244a439d69294df67944ddbe88f1be0",
+    "AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs": "b05cd08b0c291da7a4906e71f5df22bc5df5dc4c611aa84e51569106c7504280",
+    "AgentPortal.Tests/LegendHeldOutFoundationPrerequisite.cs": "0190f448dea1590d974bdee56019123f04b8b0fc158a961c3afca90c98e26630"
   },
   "tests": [
     {
@@ -384,6 +387,62 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CapacityHold_ExistingTranslationTraceReportsBlockedAndNeverCallsProvider(reason: \"translation_capacity_configuration_unavailable\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CapacityHold_ExistingTranslationTraceReportsBlockedAndNeverCallsProvider(reason: \"translation_capacity_temporarily_unavailable\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_capacity_configuration_unavailable\", disposition: \"Blocked\", retry: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_capacity_reservation_pending\", disposition: \"RetryableFailure\", retry: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_capacity_temporarily_unavailable\", disposition: \"RetryableFailure\", retry: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_output_invalid\", disposition: \"Blocked\", retry: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_pending\", disposition: \"Pending\", retry: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_provider_access_denied\", disposition: \"Blocked\", retry: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_provider_authentication_failed\", disposition: \"Blocked\", retry: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_provider_failed\", disposition: \"Blocked\", retry: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_provider_rate_limited\", disposition: \"RetryableFailure\", retry: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_provider_timeout\", disposition: \"RetryableFailure\", retry: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(failure: \"translation_provider_transient_failure\", disposition: \"RetryableFailure\", retry: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.CatalogContinuation_UsesCapacityResetAndStopsAtApprovalOnly",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.ConcurrentIdenticalMisses_UseOneProviderOperation",
       "outcome": "Passed"
     },
@@ -392,11 +451,31 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.DuplicateBatchEntries_TranslateOnceAndRecordTheOtherDeliveryAsReuse",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.EveryEnabledLanguage_RetainsAndReusesTheSameSourceIdentity",
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.NewlyRegisteredLanguage_ReusesWithoutChangingTheRouter",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.QuotaNotice_EveryBaselineLanguage_IsPresetAndNeverInvokesTranslation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.RetainedBatch_RecordsProviderAndReuseInTheSameDurableLedger",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.RetainedIdentity_SeparatesTargetRevisionContextAndPrivacyScope",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.RetainedReuse_IsDurablyCountedAcrossRouterInstancesInBothDirections",
       "outcome": "Passed"
     },
     {
@@ -413,6 +492,50 @@
     },
     {
       "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.ServerOwnedNotificationTemplate_LocalizesBeforeInterpolation_AndReusesGlobally",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_capacity_configuration_unavailable\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_capacity_hourly_exhausted\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_capacity_monthly_exhausted\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_capacity_request_exceeds_limit\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_capacity_reservation_pending\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_capacity_temporarily_unavailable\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_provider_access_denied\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_provider_authentication_failed\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_provider_rate_limited\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_provider_request_rejected\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.ApplicationLocalizationArchitectureTests.TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(reason: \"translation_provider_transient_failure\")",
       "outcome": "Passed"
     },
     {
@@ -440,11 +563,59 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.AutomaticSourceDetection_UsesTheSameConfidenceAuthorityForSingleAndBatch(score: \"0.49\", succeeded: False, error: \"translation_language_ambiguous\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.AutomaticSourceDetection_UsesTheSameConfidenceAuthorityForSingleAndBatch(score: \"0.99\", succeeded: True, error: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.AutomaticSourceDetection_UsesTheSameConfidenceAuthorityForSingleAndBatch(score: \"1.1\", succeeded: False, error: \"translation_provider_failed\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.AutomaticSourceDetection_UsesTheSameConfidenceAuthorityForSingleAndBatch(score: \"\\\"unknown\\\"\", succeeded: False, error: \"translation_provider_failed\")",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.AzureTranslatorServiceTests.DetectLanguage_LowConfidenceFailsClosedAsAmbiguous",
       "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.AzureTranslatorServiceTests.DetectLanguage_UsesTheExistingV3ContractAndNormalizesHaitianCreole",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(status: BadRequest, expected: \"translation_provider_request_rejected\", attempts: 1)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(status: Forbidden, expected: \"translation_provider_access_denied\", attempts: 1)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(status: ServiceUnavailable, expected: \"translation_provider_transient_failure\", attempts: 3)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(status: TooManyRequests, expected: \"translation_provider_rate_limited\", attempts: 3)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(status: Unauthorized, expected: \"translation_provider_authentication_failed\", attempts: 1)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.IndependentAnswering_AllowsKnownAzureTranslationWhileNativeOnlyBlocksIt",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.IndependentAnswering_UnknownTranslationBoundaryCannotDiscardRestrictedPolicy",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorServiceTests.InvalidDeclaredSource_DoesNotSilentlyUseProviderAutoDetection",
       "outcome": "Passed"
     },
     {
@@ -508,11 +679,51 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CallerCancellation_DoesNotCacheAnUnavailableObservation",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityAuthority_EnforcesF0MonthlyBudgetAndHourlyVelocityFromAzure",
       "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityAuthority_HoldsAzureWorkWhenSubscriptionSyncIsUnavailable",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityDecision_DuplicateReservationAndMonthlyResetRemainDistinct",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityDecision_PreservesLookupDispositionWithoutAdditionalProviderRead(transient: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityDecision_PreservesLookupDispositionWithoutAdditionalProviderRead(transient: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(failure: Forbidden, retrySeconds: 120)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(failure: NotFound, retrySeconds: 120)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(failure: RequestTimeout, retrySeconds: 15)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(failure: ServiceUnavailable, retrySeconds: 15)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(failure: TooManyRequests, retrySeconds: 15)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.CapacityFailure_RetryFreshnessUsesFailureKindRatherThanMessageText(failure: Unauthorized, retrySeconds: 120)",
       "outcome": "Passed"
     },
     {
@@ -525,6 +736,10 @@
     },
     {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MeteredTier_HourlyVelocityStillBlocksTrafficWithoutAMonthlyAllowance",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.MissingResourceConfiguration_RetainsTwoMinuteFailureFreshness",
       "outcome": "Passed"
     },
     {
@@ -593,6 +808,10 @@
     },
     {
       "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.Snapshot_CountsDebtDespiteFutureTimestampsAndMarksLedgerAsEstimate",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests.TransientCapacityTimeout_RetriesOnceAfterFifteenSecondsWithoutNativeRefreshOrWaiterStorm",
       "outcome": "Passed"
     },
     {
@@ -1704,6 +1923,18 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.IdentityHardeningTests.FounderAuthority_EmptyObjectIdCannotGrantAccessThroughAnyBoundary(production: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.IdentityHardeningTests.FounderAuthority_EmptyObjectIdCannotGrantAccessThroughAnyBoundary(production: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.IdentityHardeningTests.FounderAuthority_ValidObjectIdRemainsUsableAcrossIdentityBoundaries",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.IdentityHardeningTests.OnboardingController_CreateInviteSetsNormalizedEmail",
       "outcome": "Passed"
     },
@@ -2157,7 +2388,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.AdmittedOperandRecombination_ProducesAnUnrecordedNumericAnswerThroughTheRealConversationBoundary(teachingKind: \"integer\", left: \"83\", right: \"35\", expected: \"48\")",
-      "outcome": "Passed"
+      "outcome": "Failed",
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendConnectComputedLanguageEndToEndContractTests.cs:261",
+      "failureMessageSha256": "d2b3cfb95e235250d4c253c1994e548c812b982e286a37b5fd08cd4cd61103ba"
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.AdmittedOperandRecombination_ProducesAnUnrecordedNumericAnswerThroughTheRealConversationBoundary(teachingKind: \"rational\", left: \"10/3\", right: \"1/4\", expected: \"37/12\")",
@@ -2169,7 +2403,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.CombinedFoundation_PreservesOriginalNumericRecombinationControl",
-      "outcome": "Passed"
+      "outcome": "Failed",
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendConnectComputedLanguageEndToEndContractTests.cs:261",
+      "failureMessageSha256": "d2b3cfb95e235250d4c253c1994e548c812b982e286a37b5fd08cd4cd61103ba"
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.MissingLiteralContextOrInvalidNumbers_CannotFallBackToPartialNumericMatches(request: \"Compute 83 against 1/0.\")",
@@ -2225,11 +2462,17 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers(teachingKind: \"integer\", left: \"-19\", right: \"26\", expected: \"-45\")",
-      "outcome": "Passed"
+      "outcome": "Failed",
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendConnectComputedLanguageEndToEndContractTests.cs:261",
+      "failureMessageSha256": "14889273f7e18d56b9e4cf74da28db322d33fd6f132f9e3b65a523e7a8fe0832"
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers(teachingKind: \"integer\", left: \"147\", right: \"26\", expected: \"121\")",
-      "outcome": "Passed"
+      "outcome": "Failed",
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendConnectComputedLanguageEndToEndContractTests.cs:261",
+      "failureMessageSha256": "c39c1f9582f3f8e379536a95ab095347f7fa1ebe9190377f2e1d415f92501bd6"
     },
     {
       "name": "AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers(teachingKind: \"rational\", left: \"21/2\", right: \"7/3\", expected: \"49/6\")",
@@ -2405,6 +2648,42 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectContinuationTests.TrustedExactTranslationMemory_PrecedesAzureWithoutCreatingAnotherProvider",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.CancellationDoesNotRetryOrCallAnotherProvider",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.CheckpointPreservesTrainingOriginAcrossServingHostMoveAndRejectsRecipeTampering",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.ClaimedSuccessWithoutVerifiedCheckpointCannotCompleteTraining",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.ConfigurationIdentityBindsBaseTrainerSettingsAndRejectsInvalidJobWithoutRequests",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.DisabledTrainingAndPublicEndpointMakeZeroRequests",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.FounderMacCheckpointRequiresNewSchemaOwnerAndCurrentHostReceipt",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.FounderMacRequiresExplicitMatchingBackendAndBoundsAndBindsCanonicalOwner",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.UploadAndJobBindExactBytesSettingsAndAuthenticatedControlledClient",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectControlledModelTrainingTests.UploadRejectsChangedReceiptWithoutRetryOrLocalPersistence",
       "outcome": "Passed"
     },
     {
@@ -2624,6 +2903,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectDashboardCountersTests.BatchedRouteAccounting_UsesAtomicRelationalDeltasAndTheExistingDashboard",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectDashboardCountersTests.CancelledCounterReadDoesNotReturnAnEmptySuccess",
       "outcome": "Passed"
     },
@@ -2793,6 +3076,214 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectEntitlementTests.UnlimitedAccount_IsStillMetered",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.ActualLocalSettingsBindTemplateAndBudgetWhileOnlyCheckpointMayDiffer",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"Answer: {\\\"consistent\\\":false,\\\"possible_false_pre\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":\\\"false\\\",\\\"possible_false_premise\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":false,\\\"consistent\\\":false,\\\"possi\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"consistent\\\":true,\\\"possible_false_premises\\\":[\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanJudgeScoresExactMathematicalFieldsWithoutInventingFormattingFailures(answer: \"{\\\"possible_false_premises\\\":[1,2,3], \\\"consistent\"···, correct: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleCanonicalizesRenamingPolarityAndOrderButPreservesDifferentStructures",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(premises: \"[[-1,2],[-2,3],[1],[-3]]\", variables: 3, expected: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(premises: \"[[-1,2],[1],[-2]]\", variables: 2, expected: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(premises: \"[[1],[-1]]\", variables: 1, expected: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(premises: \"[[1],[1],[-1],[-1]]\", variables: 1, expected: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(premises: \"[[1],[1],[-1]]\", variables: 1, expected: \"{\\\"consistent\\\":false,\\\"possible_false_premises\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleIndependentlyEnumeratesConsistentUniqueAndUnderdeterminedCases(premises: \"[[1]]\", variables: 1, expected: \"{\\\"consistent\\\":true,\\\"possible_false_premises\\\":[\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleRejectsUnboundedAmbiguousOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"boolean_premises\\\",\\\"variables\\\":1,\\\"p\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleRejectsUnboundedAmbiguousOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"boolean_premises\\\",\\\"variables\\\":1,\\\"p\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleRejectsUnboundedAmbiguousOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"boolean_premises\\\",\\\"variables\\\":1,\\\"p\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleRejectsUnboundedAmbiguousOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"boolean_premises\\\",\\\"variables\\\":2,\\\"p\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.BooleanOracleRejectsUnboundedAmbiguousOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"boolean_premises\\\",\\\"variables\\\":5,\\\"p\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.CompiledStateRenamingsCannotCrossTrainingAndHeldOutPartitions",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.ControlledMlxProofRequiresFullActualSettingsAndCannotUseHistoricalOrOtherEngineProof",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.CorpusCannotCreateSystemOrToolAuthority(role: \"system\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.CorpusCannotCreateSystemOrToolAuthority(role: \"tool\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.FounderExpectedResponseRequiresExecutableIndependentValidationBeforeAdmission(wrongAnswer: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.FounderExpectedResponseRequiresExecutableIndependentValidationBeforeAdmission(wrongAnswer: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.RemoteProofBindsActualEngineReasoningAndSamplingSettings",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.RenamedContradictionGroupsCannotBecomeIndependentHeldOutProblems",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.RenamingCaseAndScenarioCannotSplitTheSameExecutableProblem",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.ScenarioVariantsShareSplitAndCompileOneConversationTaskWithRealHistory",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateHeldOutTargetDoesNotEnterTrainingMessagesOrRuntimeInput",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(actual: \"{\\\"active_count\\\":1,\\\"marked_active_count\\\":1,\\\"ma\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(actual: \"{\\\"active_count\\\":2,\\\"active_count\\\":2,\\\"marked_ac\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(actual: \"{\\\"active_count\\\":2,\\\"marked_active_count\\\":1,\\\"ma\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(actual: \"{\\\"active_count\\\":2,\\\"marked_active_count\\\":1,\\\"ma\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(actual: \"{\\\"active_count\\\":2,\\\"marked_active_count\\\":1,\\\"ma\"···, correct: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateJudgeVerifiesRelationsAndRejectsContradictoryExtraFields(actual: \"{\\\"marked_share\\\":\\\"1/2\\\", \\\"active_count\\\":2, \\\"m\"···, correct: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateLabelsAndMembershipHaveDistinctComputedEffects(operation: \"mark\", active: 3, marked: 1, share: \"1/3\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateLabelsAndMembershipHaveDistinctComputedEffects(operation: \"remove\", active: 2, marked: 0, share: \"0\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateNoOpsAndCommutingInterleavingsCannotManufactureHeldOutIndependence",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":1,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":1,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":1,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":1,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":1,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":2,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateOracleRejectsInvalidOrSelfAuthorizingDeclarations(json: \"{\\\"kind\\\":\\\"set_state\\\",\\\"entities\\\":5,\\\"active\\\":\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateRemovalAndReactivationPreserveIndependentLabelsAndHandleEmptyDenominator",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectFoundationControlCompilerTests.StateScenarioIdentityIgnoresNamesAndSetOrderButPreservesCausalEventOrder",
       "outcome": "Passed"
     },
     {
@@ -3324,6 +3815,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectGovernedInternetResearchTests.HaitianCreoleResearch_CrossLanguageEvidenceCannotManufactureTranslationReceipt(translatedProposal: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedInternetResearchTests.HaitianCreoleResearch_CrossLanguageEvidenceCannotManufactureTranslationReceipt(translatedProposal: True)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectGovernedInternetResearchTests.PageFailure_PreservesValidatedSearchAndStageReceiptLineage",
       "outcome": "Passed"
     },
@@ -3520,6 +4019,50 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(operation: \"add\", left: \" 1\", right: \"2\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(operation: \"add\", left: \"9223372036854775807\", right: \"1\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(operation: \"add\", left: \"NaN\", right: \"1\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(operation: \"add\", left: null, right: \"2\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(operation: \"divide\", left: \"1\", right: \"0\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(operation: \"execute\", left: \"1\", right: \"2\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationUsesExistingExactRationalExecutor(operation: \"add\", left: \"17/3\", right: \"5/6\", expected: \"13/2\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationUsesExistingExactRationalExecutor(operation: \"compare\", left: \"2/3\", right: \"0.5\", expected: \"greater\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationUsesExistingExactRationalExecutor(operation: \"divide\", left: \"15\", right: \"28\", expected: \"15/28\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationUsesExistingExactRationalExecutor(operation: \"multiply\", left: \"0.125\", right: \"24\", expected: \"3\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectGovernedReasoningExecutorTests.SuppliedOperandCalculationUsesExistingExactRationalExecutor(operation: \"subtract\", left: \"-23\", right: \"18\", expected: \"-41\")",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectGovernedReasoningFrameBoundTests.Executor_AcceptsBoundedReasoningFramesWithStructuralGraphCoordinates",
       "outcome": "Passed"
     },
@@ -3701,6 +4244,14 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectHistoricalReevaluationWorkTests.HostedWorker_ReclaimsExpiredProviderSeed_DrainsMultiplePages_AndCompletesWithoutManualAdvancement",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectHistoricalReevaluationWorkTests.OversizedFailureDetail_FitsPersistedSchemaAndReleasesLease(unicodeBoundary: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectHistoricalReevaluationWorkTests.OversizedFailureDetail_FitsPersistedSchemaAndReleasesLease(unicodeBoundary: True)",
       "outcome": "Passed"
     },
     {
@@ -4040,6 +4591,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectLanguageTeacherTests.LocalTraining_DoesNotAuthorizeExternalTeacherOrCritic",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectLanguageTeacherTests.MalformedProviderOutput_FailsClosedWithoutReturningProposal",
       "outcome": "Passed"
     },
@@ -4081,6 +4636,82 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectLanguageTeacherTests.UnconfiguredTeacher_FailsClosedWithoutNetworkCall",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalEvaluation_UsesExecutedBaselineAndIndependentExactReference(candidate: \"expected\", baseline: \"wrong\", succeeded: True, candidateScore: 1, baselineScore: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalEvaluation_UsesExecutedBaselineAndIndependentExactReference(candidate: \"expected\", baseline: null, succeeded: False, candidateScore: 0, baselineScore: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalEvaluation_UsesExecutedBaselineAndIndependentExactReference(candidate: \"wrong\", baseline: \"expected\", succeeded: True, candidateScore: 0, baselineScore: 1)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.UnpromotedTrainingAndProcessingCurriculum_DoNotBlockConfiguredBaseOrActivateCandidate",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.CanonicallyValidatedTeacherOutput_CannotLaunderItsOriginThroughOwnedAttestation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.ChangedText_CannotReuseOldRightsAttestationOrDatasetIdentity",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.IncompletePermission_FailsClosed(key: \"PrivacyScope\", value: \"Private\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.IncompletePermission_FailsClosed(key: \"RightsBasis\", value: \"HumanVerified\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.IncompletePermission_FailsClosed(key: \"SharedTrainingPermitted\", value: \"false\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.IncompletePermission_FailsClosed(key: \"SourceReference\", value: \"\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.IncompletePermission_FailsClosed(key: \"TrainingPurpose\", value: \"CurrentOrganizationFacts\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.MissingConfigurationNeverDefaultsToUnrestrictedHostedCompilation(backend: \"LocalMlx\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.MissingConfigurationNeverDefaultsToUnrestrictedHostedCompilation(backend: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.SharedWeights_RequireRightsAndExcludeRestrictedOrigins(attest: False, provider: \"Founder\", scope: null, expectedCount: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.SharedWeights_RequireRightsAndExcludeRestrictedOrigins(attest: True, provider: \"Founder\", scope: \"Conversation\", expectedCount: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.SharedWeights_RequireRightsAndExcludeRestrictedOrigins(attest: True, provider: \"Founder\", scope: \"Tenant\", expectedCount: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.SharedWeights_RequireRightsAndExcludeRestrictedOrigins(attest: True, provider: \"Founder\", scope: \"User\", expectedCount: 0)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.SharedWeights_RequireRightsAndExcludeRestrictedOrigins(attest: True, provider: \"Founder\", scope: null, expectedCount: 1)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectLocalTrainingRightsTests.SharedWeights_RequireRightsAndExcludeRestrictedOrigins(attest: True, provider: \"OpenAI\", scope: null, expectedCount: 0)",
       "outcome": "Passed"
     },
     {
@@ -4352,6 +4983,38 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"evidence\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"malformed_conversation\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"missing_messages\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"semantic_instructions\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"source_hash\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"system_authority\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"target\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CanonicalTaskValidationDoesNotAdmitIncompleteEvidenceOrInvalidConversation(defect: \"target_hash\")",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.CapabilityPolicyRegistry_IsFailClosedAndSingleAuthority",
       "outcome": "Passed"
     },
@@ -4361,6 +5024,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.ExecutedRuntimeWorseThanGovernedReference_IsRejected",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelEvaluationTests.FoundationHeldOutUsesCanonicalTaskInstructionsBeforeRuntimeExecution",
       "outcome": "Passed"
     },
     {
@@ -4468,11 +5135,23 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectModelTrainingTests.LearningPauseStopsLifecycleAdvancementAndResumePollsTheSameJob",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectModelTrainingTests.RecoveredFailedJob_FailsWithoutReplacementCreate",
       "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.LegendConnectModelTrainingTests.RecoveredSucceededJob_BecomesChallengerButNeverPromotes",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelTrainingTests.RelationalClaimExcludesAnotherWorkerUntilTrackedReleaseIsPersisted",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectModelTrainingTests.RelationalUploadReleasesLeaseAndNextCycleImmediatelyCreatesOneJob",
       "outcome": "Passed"
     },
     {
@@ -4537,6 +5216,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectNativeReasoningModelServingTests.UnsupportedSymbolicRequest_NeverInvokesQualifiedModel",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectOperationalProofTests.CancelledLiveMetricsPollIsNotReportedAsServiceUnavailable",
       "outcome": "Passed"
     },
     {
@@ -4624,7 +5307,15 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_ServesBeforeProviderObservation",
+      "name": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_RespectsTheRequestProviderPolicy(policyMode: \"blocked\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_RespectsTheRequestProviderPolicy(policyMode: \"enabled\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_RespectsTheRequestProviderPolicy(policyMode: \"unspecified\")",
       "outcome": "Passed"
     },
     {
@@ -4900,6 +5591,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConnectResearchTransportSecurityTests.SearchAdapter_RestrictedAnsweringCreatesZeroClientsAndNoExecutedQueryReceipts(strictNativeOnly: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectResearchTransportSecurityTests.SearchAdapter_RestrictedAnsweringCreatesZeroClientsAndNoExecutedQueryReceipts(strictNativeOnly: True)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendConnectResearchTransportSecurityTests.SearchAdapter_SendsOnlyBoundedPublicQueriesAndNoInternalContext",
       "outcome": "Passed"
     },
@@ -4981,6 +5680,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendConnectRuntimePolicyTests.AutonomousAcquisition_CannotConsumeProtectedLiveReserve",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConnectRuntimePolicyTests.DiagnosticReadsDoNotSeedOrConvergeAnEmptyLanguageRegistry",
       "outcome": "Passed"
     },
     {
@@ -5548,6 +6251,50 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendConversationFactRetentionTests.LiteralFactsSurviveServiceRecreationOnlyWithinTheirActorAndConversation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConversationFactRetentionTests.ModelCannotInventFactsOrDropNegationAndQualifications(subject: \"Salma\", relation: \"approves\", value: \"claims\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConversationFactRetentionTests.ModelCannotInventFactsOrDropNegationAndQualifications(subject: \"Salma\", relation: \"cannot approve\", value: \"claims\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendConversationFactRetentionTests.ModelCannotInventFactsOrDropNegationAndQualifications(subject: \"Salma\", relation: \"cannot approve\", value: \"payments without review\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendExternalEscalationDispositionTests.CancelledRetentionDoesNotReportRecordedDisposition",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendExternalEscalationDispositionTests.ExternalAssistanceReceivesDispositionWithoutBecomingTrainingData(answered: False, disposition: \"InsufficientEvidence\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendExternalEscalationDispositionTests.ExternalAssistanceReceivesDispositionWithoutBecomingTrainingData(answered: True, disposition: \"Restricted\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFoundationResearchDecisionTests.FoundationToolPlanningCanRequestVerificationWithoutCurriculumEscalation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFoundationResearchDecisionTests.FoundationVerificationDoesNotGrantPrivateSourceAccess",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFoundationResearchDecisionTests.FoundationVerificationDoesNotReplaceInternalOperationalAuthority",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFoundationResearchDecisionTests.UnknownLanguageStillCannotAuthorizeResearch",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiAutomaticLanguageComputationTests.UndeclaredLanguage_UnseenOperandsReachNativeComputationWithoutExternalClients(left: \"-19\", right: \"26\", expected: \"-45\")",
       "outcome": "Passed"
     },
@@ -5808,10 +6555,6 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiConversationRoutingTests.CasualNativeEscalation_EntersGovernedDiagnosticTeacherPath",
-      "outcome": "Passed"
-    },
-    {
       "name": "AgentPortal.Tests.LegendFounderAiConversationRoutingTests.CasualNativeSuccess_DoesNotEnterProviderInspectionPath",
       "outcome": "Passed"
     },
@@ -5864,6 +6607,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiConversationRoutingTests.MissingSemanticFamily_DoesNotForceGovernedInspection",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiConversationRoutingTests.NativeEscalation_AllowsMissingKnowledgeButNotAmbiguityOrContradiction(reason: \"ambiguous_composed_meaning\", expected: False)",
       "outcome": "Passed"
     },
@@ -5912,6 +6659,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiConversationRoutingTests.SupportedNativeEvidence_IsAStructuredObjectWithoutInstructionAuthority",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiConversationRoutingTests.TeacherMode_DoesNotForceGovernedInspectionForCasualConversation",
       "outcome": "Passed"
     },
@@ -5925,7 +6676,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.AdmittedDeduction_RecombinesAHeldOutSubjectAndProducesAnOriginalNativeAnswer(prompt: \"Wren bird.\")",
-      "outcome": "Passed"
+      "outcome": "Failed",
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:116",
+      "failureMessageSha256": "2dcb18ab2fe6ec9bbeaef5c4d1e91a532fd4982f4bb0a9f11f81ceedf04b3d38"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.AdmittedOwnedRecordRequest_CannotServeAStaticCountWithoutItsExactReadReceipt(nativeOnly: False)",
@@ -5936,50 +6690,134 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"constrained_planning\", answer: \"Daily counts: 7, 7, 7, 7, 3. Hazardous sites first\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"constrained_planning\", answer: \"Day 1: 7 inspections. Day 2: 7 inspections. Day 3:\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"constrained_planning\", answer: \"Days one-four: seven inspections each. Day five: t\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"deduction\", answer: \"The premises contradict each other. At least one i\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"deduction\", answer: \"The records are inconsistent. Which premise is fal\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"internal_data_uncertainty\", answer: \"I cannot calculate the exact renewal rate from the\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(category: \"internal_data_uncertainty\", answer: \"The provided data does not contain information abo\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"constrained_planning\", answer: \"31 inspections at 7 per day. Hazardous sites first\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"constrained_planning\", answer: \"Daily counts: 7, 7, 7, 7, 3. Hazardous sites first\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"constrained_planning\", answer: \"Daily counts: 7, 7, 7, 7, 3. Hazardous sites first\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"constrained_planning\", answer: \"Daily counts: 7, 7, 7, 7, 3. Non-hazardous sites f\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"constrained_planning\", answer: \"Daily counts: 7, 7, 7, 7, 4. Hazardous sites first\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"deduction\", answer: \"The premises contradict each other. We cannot dete\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"deduction\", answer: \"There is no contradiction. We cannot determine whi\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"deduction\", answer: \"This creates a contradiction. Therefore, at least \"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"internal_data_uncertainty\", answer: \"The exact renewal rate cannot be determined. It wa\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"internal_data_uncertainty\", answer: \"The exact renewal rate cannot be determined. My es\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(category: \"internal_data_uncertainty\", answer: \"The template is unavailable. Our renewal rate was \"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.MatrixFixture_ConversationPersistenceIsSeparateFromGuardedOperations",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.MissingDeductionRule_CannotProjectAnUnobservedFactFromASharedSubject",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\", requiredAnswerElements: [\"34\", \"2/17\"])",
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeCalculator_UsesExactExecutorWithoutOrganizationalReads",
       "outcome": "Failed",
-      "reason": "semantic_transition_not_supported",
-      "failureMessageSha256": "64c2a019f4d4b58c0d42196bfb53f12570355b9c211220ef42604e1ae252357c"
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:646",
+      "failureMessageSha256": "dbc6894866981013ca287a71823ed1705361864eaf961deb3b81d8ce17a9e890"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\", requiredAnswerElements: [\"34\", \"2/17\"])",
+      "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"causal_diagnosis\", requiredAnswerElements: [\"template\", \"clerk\"])",
       "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "ea2086feb82c92f3483eb49d9cdefea92c7fed969f1c0ddf370b2844f8643d33"
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:684",
+      "failureMessageSha256": "557bbf3feb5d9184528ca01995ca1bd9c6ebec88e77d7da000e053dd42123da1"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\", requiredAnswerElements: [\"five\", \"hazardous\"])",
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\", requiredAnswerElements: [])",
       "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "f3b97bb782d2f7615a1a98a5ed81707e4f58c8cbdc4552ec71fdd11ef20f4d42"
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:728",
+      "failureMessageSha256": "98e784f65c328a8f00ba244e7f484dbe64671b408d7bbf655a91b8cd5eab4a32"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\", requiredAnswerElements: [\"Kestrel\", \"premise\"])",
       "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "bec5e17f9abf0a652284a38055edcd91f3f9d735716590e41df4af3ecd3960f8"
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:669",
+      "failureMessageSha256": "24994d7345a745e1d6b94b95a470d8f198ebf769f3ef2c32639086c19ab5b012"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"haitian_creole_conflict\", requiredAnswerElements: [\"25\", \"27\"])",
       "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "afc8904cd6b3d502cd2a3cae5164f9d35f50629f7f1c7dbbcafbbef0470ce567"
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:977",
+      "failureMessageSha256": "7e9caa6f1df271e26405a40bce207ddb46508004c245e83c4c0c818c15a09cc5"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\", requiredAnswerElements: [\"governed\"])",
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\", requiredAnswerElements: [])",
       "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "19153d3f3042e5c08d28916912daa81cda1cbd26017005a8dced5e5cae7f119b"
+      "reason": "model_quality_assertion",
+      "assertionSite": "LegendFounderAiHeldOutOperationMatrixTests.cs:635",
+      "failureMessageSha256": "556752aa49798fd5a5105e0e5a58b0959edc4dbaee527bb0ade804f21bbcfcd5"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\", requiredAnswerElements: [\"nine\", \"two\", \"Devon\", \"Monday\"])",
-      "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "f8e23d089e9a48c11b184793b8241c2b00bf7bd4f8c7e02eae7d624420af46a2"
+      "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyRequests_MakeNoProviderCallAndAttemptNoWrite",
@@ -5987,12 +6825,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt",
-      "outcome": "Failed",
-      "reason": "meaning_graph_component_unknown",
-      "failureMessageSha256": "c330d04612cc22f848dfdc6472dd658c431d11579991555dbd78730c02ad4e04"
+      "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.PermittedEscalationAndDirectProviderModeAreAttributedToTheProvider",
+      "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.OrdinaryReasoningRemainsLocalAndExplicitTeacherIsAttributedExternally",
       "outcome": "Passed"
     },
     {
@@ -6009,9 +6845,7 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier",
-      "outcome": "Failed",
-      "reason": "semantic_transition_not_supported",
-      "failureMessageSha256": "2653253f1044957c9aed9e65379426da2f0baeae54b5a6995e04fef3816726e3"
+      "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.UnobservedSemanticPremise_CannotBeDroppedBecauseItHasNoLiteralMeaningNode(premiseDimension: \"inventory_state\", premiseValue: \"available\", currentRequest: \"Robin\")",
@@ -6166,11 +7000,11 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiIndependentOperationRegressionTests.SemanticLanguageAmbiguity_FailsClosedEvenWhenEscalationIsAllowed(detectorError: \"translation_language_ambiguous\", expectedReason: \"source_language_ambiguous\")",
+      "name": "AgentPortal.Tests.LegendFounderAiIndependentOperationRegressionTests.SemanticLanguageAmbiguity_DoesNotTriggerHostedFallbackWhenControlledModelIsUnavailable(detectorError: \"translation_language_ambiguous\")",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiIndependentOperationRegressionTests.SemanticLanguageAmbiguity_FailsClosedEvenWhenEscalationIsAllowed(detectorError: \"translation_language_unsupported\", expectedReason: \"source_language_unsupported\")",
+      "name": "AgentPortal.Tests.LegendFounderAiIndependentOperationRegressionTests.SemanticLanguageAmbiguity_DoesNotTriggerHostedFallbackWhenControlledModelIsUnavailable(detectorError: \"translation_language_unsupported\")",
       "outcome": "Passed"
     },
     {
@@ -6187,14 +7021,6 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiInspectionRegressionTests.AdmittedOwnedRecordIntent_RequiresInspectionWithoutLexicalRouting(text: \"Show those.\")",
-      "outcome": "Passed"
-    },
-    {
-      "name": "AgentPortal.Tests.LegendFounderAiInspectionRegressionTests.CasualInstructions_PreserveResponderIdentity",
-      "outcome": "Passed"
-    },
-    {
-      "name": "AgentPortal.Tests.LegendFounderAiInspectionRegressionTests.CasualProviderReasoning_UsesPortableLowEffort",
       "outcome": "Passed"
     },
     {
@@ -6215,6 +7041,10 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiInspectionRegressionTests.CasualTeacherConversation_DoesNotForceLegendInspection(text: \"Tell me a joke.\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiInspectionRegressionTests.ConfiguredProviderReasoning_PreservesSupportedMaximumEffort",
       "outcome": "Passed"
     },
     {
@@ -6254,7 +7084,39 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiInspectionRegressionTests.UnifiedInstructions_PreserveResponderIdentityAndExternalDependency",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.AppliedGovernedModel_UsesVerifiedHostingReceiptWithoutAnotherInference(hosting: \"ExternalHosted\", expectedAuthority: \"HostedFoundation\", expectedExternal: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.AppliedGovernedModel_UsesVerifiedHostingReceiptWithoutAnotherInference(hosting: \"LegendControlled\", expectedAuthority: \"LocalFoundation\", expectedExternal: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.AppliedGovernedModel_UsesVerifiedHostingReceiptWithoutAnotherInference(hosting: \"UnverifiedProxy\", expectedAuthority: null, expectedExternal: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.AppliedGovernedModel_UsesVerifiedHostingReceiptWithoutAnotherInference(hosting: null, expectedAuthority: null, expectedExternal: False)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.ConfirmedMachineProposal_ProviderFailureCreatesNoMutationReceipt",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.ControlledLearningMaterial_UsesCanonicalAdmissionAndIndependentStatePartitionsWithoutModelCalls",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.Conversation_UsesCanonicalAccountPreferenceAcrossFreshRequests(mode: \"legend\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.Conversation_UsesCanonicalAccountPreferenceAcrossFreshRequests(mode: \"teacher\")",
       "outcome": "Passed"
     },
     {
@@ -6270,11 +7132,19 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.DetectedButRegistryUnsupportedLanguage_FailsClosedBeforeMeaningGraph",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.DetectedButRegistryUnsupportedLanguage_PreservesOriginalInputForControlledModel",
       "outcome": "Passed"
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.DiscourseReload_EndsAtThisRequestsCommittedTurnAndRejectsMissingSequence",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.DuplicateOperationIsRejectedBeforeInferenceForBothResponseFormats(stream: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.DuplicateOperationIsRejectedBeforeInferenceForBothResponseFormats(stream: True)",
       "outcome": "Passed"
     },
     {
@@ -6286,11 +7156,83 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.HeldOutFoundation_CurriculumInsufficiencyDoesNotBlockConversation(curriculumReason: \"curriculum_processing\", prompt: \"Rewrite this sentence more clearly: progress depen\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.HeldOutFoundation_CurriculumInsufficiencyDoesNotBlockConversation(curriculumReason: \"meaning_graph_component_unknown\", prompt: \"Help me turn a vague weekend idea into three pract\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.HeldOutFoundation_CurriculumInsufficiencyDoesNotBlockConversation(curriculumReason: \"semantic_transition_unavailable\", prompt: \"Explain why an analogy can clarify a difficult ide\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.HeldOutFoundation_FailedOwnedRecordReadCannotBecomeAnUngroundedAnswer",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.HeldOutFoundation_MultiTurnReferencePreservesTranscriptWithoutCurriculumMatch",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.HeldOutFoundation_ResearchFailureSurvivesSubsequentProviderFailure",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_ChangedPayloadWithSameOperationCannotRunAgain",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_ClientAssistantTextCannotCreateAuthoritativeContext",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_CommittedResponseSurvivesLostStorageAcknowledgement",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_CompletedOperationReplaysCanonicalResponseWithoutAnotherInference",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_ConfirmedActionWithoutAnyStableCallerIdentityIsRejectedBeforeClaim",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_ConfirmedTeachingIsNotRepeatedOrRestoredByRetry",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_FirstThreadUsesStableOperationIdentity(replayExplicitConversationId: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_FirstThreadUsesStableOperationIdentity(replayExplicitConversationId: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_PendingRetryDoesNotExtendDeadlineOrStartAnotherInference",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_ProviderFailureAfterToolDoesNotExecuteToolOnRetry",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_SaveCannotCommitDirtyOperationContext",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.History_StaleCursorRejectedAndNextDeviceUsesCanonicalTurns",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_NativeOnlyBlocksPermittedEscalationBeforeOpenAiIsCalled",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_NativeOnlyReturnsNativeAnswerWithoutCallingOpenAi",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_NativeOnlyUsesGovernedEvidenceWithoutCallingOpenAi",
       "outcome": "Passed"
     },
     {
@@ -6302,11 +7244,23 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_StillAttemptsNativeLegendFirstAndLabelsNativeResponseCorrectly",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_ThreadsTheGovernedSourceLanguageThroughMeaningAndNativeInference",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_ThreadsTheGovernedSourceLanguageThroughMeaningAndNativeInference",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LegendMode_UsesNativeEvidenceWithControlledFoundationAttribution",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LocalFoundation_ExhaustedContinuationReturnsExplicitPartialAnswer",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LocalFoundation_OnlySuccessfulMutationInvalidatesEarlierGovernedProof(mutationSucceeded: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.LocalFoundation_OnlySuccessfulMutationInvalidatesEarlierGovernedProof(mutationSucceeded: True)",
       "outcome": "Passed"
     },
     {
@@ -6338,15 +7292,15 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.MissingSourceLanguage_FailureFailsClosedWithExactDiagnostic(detectorError: \"translation_language_ambiguous\", expectedReason: \"source_language_ambiguous\", expectedStatus: 422)",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.MissingSourceLanguage_UnresolvedDetectionReachesControlledModelWithoutInventedIdentity(detectorError: \"translation_language_ambiguous\", expectedReason: \"source_language_ambiguous\")",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.MissingSourceLanguage_FailureFailsClosedWithExactDiagnostic(detectorError: \"translation_language_unsupported\", expectedReason: \"source_language_unsupported\", expectedStatus: 422)",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.MissingSourceLanguage_UnresolvedDetectionReachesControlledModelWithoutInventedIdentity(detectorError: \"translation_language_unsupported\", expectedReason: \"source_language_unsupported\")",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.MissingSourceLanguage_FailureFailsClosedWithExactDiagnostic(detectorError: \"translation_provider_failed\", expectedReason: \"source_language_identification_unavailable\", expectedStatus: 503)",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.MissingSourceLanguage_UnresolvedDetectionReachesControlledModelWithoutInventedIdentity(detectorError: \"translation_provider_failed\", expectedReason: \"source_language_identification_unavailable\")",
       "outcome": "Passed"
     },
     {
@@ -6370,7 +7324,23 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeConversationIdentity_CreatesCanonicalThreadOrRejectsMalformedIdentity(conversationId: \"\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeConversationIdentity_CreatesCanonicalThreadOrRejectsMalformedIdentity(conversationId: \"not-a-conversation\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeConversationIdentity_CreatesCanonicalThreadOrRejectsMalformedIdentity(conversationId: null)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeGap_DoesNotSubmitMachineProposalWithoutFounderConfirmation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeOnly_LocalModelCannotAuthorizeItsOwnExternalEscalation",
       "outcome": "Passed"
     },
     {
@@ -6387,18 +7357,6 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeReadOnlyContentBinding_UsesFounderToolAuthorityAndProducesZeroWriteProvenance",
-      "outcome": "Passed"
-    },
-    {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeWithoutConversationIdentity_SkipsUnusedDiscourseAnalysis(conversationId: \"\")",
-      "outcome": "Passed"
-    },
-    {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeWithoutConversationIdentity_SkipsUnusedDiscourseAnalysis(conversationId: \"not-a-conversation\")",
-      "outcome": "Passed"
-    },
-    {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.NativeWithoutConversationIdentity_SkipsUnusedDiscourseAnalysis(conversationId: null)",
       "outcome": "Passed"
     },
     {
@@ -6502,11 +7460,35 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.SuccessfulMutation_InvalidatesPriorReadsWhileKeepingConsequentialDuplicateReceipt",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.SupportedApprovedKnowledge_ReachesLocalFoundationAsEvidenceWithoutReplacingItsReply",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_CallsOpenAiDirectlyAndNeverCallsNativeLegendInference",
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ClassificationCancellationPropagatesWithoutProviderFallback",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ClassificationCancellationRetainsUnknownWithoutProviderFallback",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ContinuationPreservesAnIntentionalClosingRefrain",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ContinuationWithoutNewContentStopsAndRetainsPartialStatus(completed: False, repeated: \"First section.\\nMiddle section.\\nLast section.\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ContinuationWithoutNewContentStopsAndRetainsPartialStatus(completed: True, repeated: \"\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ContinuationWithoutNewContentStopsAndRetainsPartialStatus(completed: True, repeated: \"First section.\\nMiddle section.\\nLast section.\")",
       "outcome": "Passed"
     },
     {
@@ -6546,7 +7528,11 @@
       "outcome": "Passed"
     },
     {
-      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_UnavailableMeaningAnalysisCannotBeTreatedAsNoOwnedRecordIntent",
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_ToolAfterPartialIsExecutedBeforeFinalAnswer",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.TeacherMode_UnavailableMeaningAnalysisRetainsToolAuthorizationWithoutBlockingConversation",
       "outcome": "Passed"
     },
     {
@@ -6726,6 +7712,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderAiNativeOnlyProviderIsolationTests.ResearchToolDispatch_PreservesRequestProviderPolicy(nativeOnly: False, expectedTransportCalls: 1)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderAiNativeOnlyProviderIsolationTests.ResearchToolDispatch_PreservesRequestProviderPolicy(nativeOnly: True, expectedTransportCalls: 0)",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderAiNativeOnlyProviderIsolationTests.ResearchTransports_AreNeverCalledNativeOnlyAndCalledExactlyOnceWhenAllowed",
       "outcome": "Passed"
     },
@@ -6775,10 +7769,6 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderAiProviderResilienceTests.BillingQuota429IsNotClassifiedAsTransientRateLimiting",
-      "outcome": "Passed"
-    },
-    {
-      "name": "AgentPortal.Tests.LegendFounderAiProviderResilienceTests.CasualOutputBudgetScalesBelowGovernedConfiguredMaximum",
       "outcome": "Passed"
     },
     {
@@ -7398,6 +8388,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.LegendFounderProgressIdentityTests.CanonicalOidSupportsProgressWithoutLegacyNameIdentifierAndIsolatesTenants",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderProgressIdentityTests.HostedFoundationCompletionIsRetainedInSharedTransportWorkSummary",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.LegendFounderSelectedLanguageScopeTests.ExplicitEnabledSelection_PreservesItsCanonicalPartition(requested: \" EN-US \", expected: \"en-US\")",
       "outcome": "Passed"
     },
@@ -7443,6 +8441,42 @@
     },
     {
       "name": "AgentPortal.Tests.LegendFounderSelectedLanguageScopeTests.InitialViewWithoutSelection_PreservesEnglishDefault(requested: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.CalculationUsesOneExecutorWithoutOrganizationalEvidenceOrProviderCalls(arguments: \"{\", accepted: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.CalculationUsesOneExecutorWithoutOrganizationalEvidenceOrProviderCalls(arguments: \"{\\\"operation\\\":\\\"add\\\",\\\"left\\\":\\\"1\\\",\\\"left\\\":\\\"2\"···, accepted: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.CalculationUsesOneExecutorWithoutOrganizationalEvidenceOrProviderCalls(arguments: \"{\\\"operation\\\":\\\"divide\\\",\\\"left\\\":\\\"17\\\",\\\"right\\\"···, accepted: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.CalculationUsesOneExecutorWithoutOrganizationalEvidenceOrProviderCalls(arguments: \"{\\\"operation\\\":\\\"divide\\\",\\\"left\\\":\\\"1\\\",\\\"right\\\"\"···, accepted: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.CalculationUsesOneExecutorWithoutOrganizationalEvidenceOrProviderCalls(arguments: \"{\\\"operation\\\":\\\"execute\\\",\\\"left\\\":\\\"1\\\",\\\"right\\\"···, accepted: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.ReadOnlyTool_DeniesNonFounderBeforeDispatch(name: \"legend_calculate\", arguments: \"{\\\"operation\\\":\\\"add\\\",\\\"left\\\":\\\"1\\\",\\\"right\\\":\\\"\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.ReadOnlyTool_DeniesNonFounderBeforeDispatch(name: \"legend_capabilities\", arguments: \"{}\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.ReadOnlyTool_DeniesNonFounderBeforeDispatch(name: \"legend_inspect_repository\", arguments: \"{\\\"path\\\":\\\".\\\",\\\"git_reference\\\":null}\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendFounderToolAuthorizationTests.ReadOnlyTool_DeniesNonFounderBeforeDispatch(name: \"legend_software_remediation_status\", arguments: \"{}\")",
       "outcome": "Passed"
     },
     {
@@ -7499,6 +8533,270 @@
     },
     {
       "name": "AgentPortal.Tests.LegendLivingBalanceSheetCalculatorTests.NormalizeJson_MigratesLegacyIfDieShape_AndCanonicalizesEstatePlan",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.ChangedActualDestination_IsRejectedEvenIfReceiptClaimsLocal",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.ContextLimitFailure_PreservesAllowlistedReasonWithoutExternalFallback",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AbsentInvalidOrOtherActorCannotCreateAnyClient(actor: \"1fc326e9-178d-414d-8780-fbbdf74392a8\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AbsentInvalidOrOtherActorCannotCreateAnyClient(actor: \"founder@example.com\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AbsentInvalidOrOtherActorCannotCreateAnyClient(actor: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(endpoint: \"http://founder-connector.example/v1/responses\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(endpoint: \"https://founder-connector.example/other\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(endpoint: \"https://founder-connector.example/v1/responses#oth\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(endpoint: \"https://founder-connector.example/v1/responses?tar\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(endpoint: \"https://founder-connector.example:8443/v1/response\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AmbiguousOrUnencryptedConnectorFailsBeforeClient(endpoint: \"https://secret@founder-connector.example/v1/respon\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_AuthenticatedFounderUsesPinnedTlsConnectorAndExactMacReceipt",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_BufferedAndStreamingShareIdentityAndPolicyValidation(stream: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_BufferedAndStreamingShareIdentityAndPolicyValidation(stream: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_BufferedByteLimitRejectsMultibytePayloadBelowCharacterLimit",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_BufferedCannotAcceptAbsentOrMismatchedFramingReceipt(stream: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_BufferedCannotAcceptAbsentOrMismatchedFramingReceipt(stream: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_BufferedRejectsOversizedResponseWithoutFallback",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidConfiguredFounderCannotAuthorizeMatchingText(configuredFounder: \"\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidConfiguredFounderCannotAuthorizeMatchingText(configuredFounder: \"00000000-0000-0000-0000-000000000000\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidConfiguredFounderCannotAuthorizeMatchingText(configuredFounder: \"founder@example.com\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"ApiKey\", value: \"\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"EnableThinking\", value: \"true\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"Engine\", value: \"Vllm\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"EngineVersion\", value: \"unknown\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"HostKind\", value: \"FounderMacTypo\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"MacHostId\", value: \"unverified\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"MaxContextTokens\", value: \"32768\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"PresencePenalty\", value: \"-0.1\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_InvalidHostOrExecutionConfigurationFailsBeforeClient(setting: \"PresencePenalty\", value: \"2.1\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_PresencePenaltyMustMatchActualExecutionReceipt(actual: 0, accepted: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_PresencePenaltyMustMatchActualExecutionReceipt(actual: 1, accepted: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_PresencePenaltyMustMatchActualExecutionReceipt(actual: null, accepted: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_WrongHostReceiptCannotClaimControlledAnswer(field: \"host_kind\", value: \"AzureVm\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_WrongHostReceiptCannotClaimControlledAnswer(field: \"host_kind\", value: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_WrongHostReceiptCannotClaimControlledAnswer(field: \"host_verification\", value: \"azure-imds-resource-and-tag-v1\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.FounderMac_WrongHostReceiptCannotClaimControlledAnswer(field: \"mac_host_id\", value: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.IndependentAnswering_UnknownHostedModelCreatesZeroClients",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedLocalEvents_FailClosedWithoutThrowingOrExternalFallback(events: \"data: []\\n\\n\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedLocalEvents_FailClosedWithoutThrowingOrExternalFallback(events: \"data: {\\\"type\\\":42}\\n\\n\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedLocalEvents_FailClosedWithoutThrowingOrExternalFallback(events: \"data: {\\\"type\\\":\\\"response.completed\\\",\\\"response\\\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[42]\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[{\\\"type\\\":42}]\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[{\\\"type\\\":\\\"message\\\",\\\"content\\\":[42]}]\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MalformedNestedOutput_CannotThrowOrProduceCompletedEvaluationText(output: \"[{\\\"type\\\":\\\"message\\\",\\\"content\\\":[{\\\"type\\\":\\\"ou\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"adapter_version\", value: \"unapproved-adapter\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"azure_resource_id\", value: \"/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"host_verification\", value: \"unverified\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"hosting\", value: \"ExternalHosted\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"model\", value: \"different-model\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MismatchedServingReceipt_IsRejectedWithoutExternalFallback(field: \"model_revision\", value: \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MissingOrMismatchedEngine_CannotClaimControlledExecution(engine: \"DifferentEngine\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MissingOrMismatchedEngine_CannotClaimControlledExecution(engine: null)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MissingOrMismatchedExecutionReceipt_CannotBecomeCompletedProof(mismatched: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.MissingOrMismatchedExecutionReceipt_CannotBecomeCompletedProof(mismatched: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NativeOnly_UsesOnlyControlledClientAndRequiresExactReceipt",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NonCompletedGeneration_CannotBecomeCompletedAnswerOrEvaluationProof(status: \"failed\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NonCompletedGeneration_CannotBecomeCompletedAnswerOrEvaluationProof(status: \"incomplete\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.NonStringTerminalStatus_FailsAsMalformedDataWithoutThrowing",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"http://10.0.0.1/v1/responses\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"http://127.0.0.1/v1/responses?redirect=https://exa\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"http://user:password@127.0.0.1/v1/responses\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"https://8.8.8.8/v1/responses\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.PublicOrAmbiguousEndpoint_CannotBecomeLocalByConfigurationLabel(endpoint: \"https://example.com/v1/responses\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.UnknownModel_AbsentOrNativeOnlyPolicy_CreatesZeroClients(explicitNativeOnly: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.LegendLocalFoundationSecurityTests.UnknownModel_AbsentOrNativeOnlyPolicy_CreatesZeroClients(explicitNativeOnly: True)",
       "outcome": "Passed"
     },
     {
@@ -8106,6 +9404,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DeferredNotification_ExhaustedQuotaDeliversOriginalAndPresetNoticeWithoutCachingItAsTranslation",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.MessagingServiceTests.DeferredNotification_UsesRecipientAuthorityWithoutHoldingSend(failTranslation: False, fcm: False, exhaust: False)",
       "outcome": "Passed"
     },
@@ -8158,6 +9460,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_InvalidPreferencesNeverPersist(ringtone: \"https://attacker.invalid/tone.wav\", wallpaper: \"profile\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_InvalidPreferencesNeverPersist(ringtone: \"signature\", wallpaper: \"https://attacker.invalid/photo.png\")",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_MediaStateUsesExistingDeviceEpochAndPayloadValidation(payload: \"{\\\"screenSharing\\\":\\\"true\\\"}\", valid: False)",
       "outcome": "Passed"
     },
@@ -8202,6 +9512,14 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_PreferencesDenyUnknownAccountAndMissingDevice",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_PreferencesFollowTypedProfileAcrossDevicesAndIdentityAliases",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_RelationalConcurrencyPreventsTwoDevicesClaimingOneCall",
       "outcome": "Passed"
     },
@@ -8222,6 +9540,10 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_SnapshotUsesEachPeersWallpaperAndRecipientsRingtone",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.MessagingServiceTests.DirectCalls_StopAuthorizingSignalsWhenMembershipIsRevoked",
       "outcome": "Passed"
     },
@@ -8231,6 +9553,62 @@
     },
     {
       "name": "AgentPortal.Tests.MessagingServiceTests.Direct_chat_title_uses_the_counterpartys_current_profile_for_both_roles",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_CannotBypassRecipientOrActorAuthority(denial: \"revoked_actor\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_CannotBypassRecipientOrActorAuthority(denial: \"unknown\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_CannotBypassRecipientOrActorAuthority(denial: \"wrong_type\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_DefaultNavigationStillReturnsTranslatedHistory",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_MobileForwardsExplicitProjectionChoiceThroughExistingAuthority(includeMessages: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_MobileForwardsExplicitProjectionChoiceThroughExistingAuthority(includeMessages: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_ReturnsAuthorizedMetadataWithoutHydratingOrTranslatingHistory(existing: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_ReturnsAuthorizedMetadataWithoutHydratingOrTranslatingHistory(existing: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_SharedContentStillReturnsItsActualAcknowledgement(existing: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_SharedContentStillReturnsItsActualAcknowledgement(existing: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_WebPublishesOnlyActualNewMessageIdentity(body: \" \\t\", includeMessages: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_WebPublishesOnlyActualNewMessageIdentity(body: \"New message\", includeMessages: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_WebPublishesOnlyActualNewMessageIdentity(body: null, includeMessages: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.EmptyCallStart_WebPublishesOnlyActualNewMessageIdentity(body: null, includeMessages: True)",
       "outcome": "Passed"
     },
     {
@@ -8251,6 +9629,78 @@
     },
     {
       "name": "AgentPortal.Tests.MessagingServiceTests.FounderGovernanceResources_RequireCanonicalFounderAndSupportRevocation(resourceType: \"SocialContentPriority\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_AssistantTypeRemainsOutsideLegacyKnownTypeUnionAndDirectGroupActions",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_ConcurrentExpiryFencesLateCompletionAndRollsBackItsMessage_Sqlite",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_DeniesGenericMessagingAndForeignOrAlternateRoleActors",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_ExpiredOperationBecomesUnknownAndNeverAcceptsLateCompletion(newOperationFirst: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_ExpiredOperationBecomesUnknownAndNeverAcceptsLateCompletion(newOperationFirst: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_InvalidDeadlineCannotLeaveAnAddedConversationForLaterSave",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_MissingOrUnknownResponseProvenanceFailsClosed(corruptReceipt: \"{\\\"mode\\\":\\\"legend\\\",\\\"version\\\":1,\\\"succeeded\\\":t\"···)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_MissingOrUnknownResponseProvenanceFailsClosed(corruptReceipt: \"{\\\"mode\\\":\\\"legend\\\",\\\"version\\\":1}\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_OperationReplayPinsPayloadPolicyAndDeadlineWithoutDuplicatingTurns",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_PageBoundsAccountForTrailingSpacesUnicodeAndJsonEscaping(shape: \"escaped_controls\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_PageBoundsAccountForTrailingSpacesUnicodeAndJsonEscaping(shape: \"surrogates\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_PageBoundsAccountForTrailingSpacesUnicodeAndJsonEscaping(shape: \"trailing_spaces\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_PreservesLargeBodiesAndBoundsPageBeforeHydration",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_ReplayRoundTripsFailureWorkResearchAndScheduleMetadata",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_RequiresCurrentCursorAndRejectsSimultaneousDifferentOperation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_UnspecifiedStorageTimesRoundTripUtcCursorWithoutLosingTicks",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_UsesCanonicalStoreAndPreservesActualProvenanceAcrossServiceInstances(relational: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.FounderHistory_UsesCanonicalStoreAndPreservesActualProvenanceAcrossServiceInstances(relational: True)",
       "outcome": "Passed"
     },
     {
@@ -8359,6 +9809,58 @@
     },
     {
       "name": "AgentPortal.Tests.MessagingServiceTests.ParticipantModel_UsesTheFullLogicalIdentityInItsUniqueIndex",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_ExpiredLeaseRefreshedOnAnotherHostSurvivesAnAlreadyStartedCollector",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_ExpiryControlsObservationBeforeBoundedCleanupRuns",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_HubConnectionRegistersExistingCallRoutingWithoutAccessingPresenceStorage",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_OneDeviceDisconnectDoesNotOfflineAnotherAndOwnLeaseDoesNotOnlineAGroup",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_OnlyAuthorizedTypedContactsAndOpenConversationScopesAreProjected",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_RejectsOversizedQueriesAndHonorsCancellation",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_RevocationRemovesVisibilityEvenWhileThePriorLeaseIsFresh(revocation: \"closed\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_RevocationRemovesVisibilityEvenWhileThePriorLeaseIsFresh(revocation: \"membership\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_RevocationRemovesVisibilityEvenWhileThePriorLeaseIsFresh(revocation: \"target_revoked\")",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_RevokedActorCannotReadOrExtendAnExistingLease",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_SharedExternalIdentityCannotBorrowAnotherRoleOrReassignAConnection",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_StorageFailurePropagatesInsteadOfFabricatingOfflineResults",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.MessagingServiceTests.Presence_TwoHostCollectorsDoNotTurnAlreadyDeletedExpiredRowsIntoHeartbeatFailures",
       "outcome": "Passed"
     },
     {
@@ -10150,6 +11652,18 @@
       "outcome": "Passed"
     },
     {
+      "name": "AgentPortal.Tests.TranslationRequestCoalescerTests.CancelledWaiter_DoesNotReleaseFenceOrCancelOwner",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.TranslationRequestCoalescerTests.ConcurrentReorderedBatches_PreserveEachCallersResultOrder",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.TranslationRequestCoalescerTests.DifferentScopes_DoNotShareResults_AndFailureReleasesFence",
+      "outcome": "Passed"
+    },
+    {
       "name": "AgentPortal.Tests.UnifiedEventMapperTests.ToAnalytics_CarriesBehaviorFieldsThroughUnifiedPipeline",
       "outcome": "Passed"
     },
@@ -10282,5 +11796,5 @@
       "outcome": "Passed"
     }
   ],
-  "rosterSha256": "0d4b4af75b2212cc44f68af03ab6429fd023ed59a2c4b65c03c79a2e48f28ca9"
+  "rosterSha256": "cf68cac4babe3900c140bd73d6a75f558d5a45ebe4730adcf0d23fab163e5969"
 }

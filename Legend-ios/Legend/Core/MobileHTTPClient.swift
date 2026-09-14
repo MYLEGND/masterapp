@@ -2,6 +2,13 @@ import Foundation
 
 struct MobileEmptyRequest: Encodable, Sendable {}
 
+// Transport-only failure body; callers may decode their existing typed DTO.
+// It is never used as user-facing copy or written to diagnostics.
+struct MobileHTTPStreamFailure: Error {
+    let statusCode: Int
+    let body: Data
+}
+
 
 enum MultipartFormFileSource: Sendable {
     case data(Data)
@@ -150,9 +157,17 @@ struct MobileHTTPClient: Sendable {
                     headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
 
                     let (bytes, response) = try await session.bytes(for: request)
-                    guard let http = response as? HTTPURLResponse,
-                          (200 ... 299).contains(http.statusCode) else {
+                    guard let http = response as? HTTPURLResponse else {
                         throw MobileAPIError.invalidServerResponse
+                    }
+                    guard (200 ... 299).contains(http.statusCode) else {
+                        var body = Data()
+                        for try await byte in bytes {
+                            try Task.checkCancellation()
+                            guard body.count < 32_000_000 else { throw MobileAPIError.invalidServerResponse }
+                            body.append(byte)
+                        }
+                        throw MobileHTTPStreamFailure(statusCode: http.statusCode, body: body)
                     }
 
                     for try await line in bytes.lines {

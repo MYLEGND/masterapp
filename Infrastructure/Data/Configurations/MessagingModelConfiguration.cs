@@ -173,9 +173,14 @@ internal static class MessagingModelConfiguration
             .IsRequired()
             .HasMaxLength(40);
 
-        entity.Property(x => x.Body)
-            .IsRequired()
-            .HasMaxLength(10000);
+        // Founder conversations share this store and already accept larger
+        // bounded input. Ordinary messaging retains its 10,000-character
+        // application boundary; storage must not silently truncate chat text.
+        entity.Property(x => x.Body).IsRequired();
+
+        entity.Property(x => x.AuthorKind)
+            .IsRequired().HasMaxLength(32).HasDefaultValue("Human");
+        entity.Property(x => x.AiTurnMetadataJson).HasMaxLength(1000000);
 
         entity.Property(x => x.OriginalLanguage)
             .HasMaxLength(32);

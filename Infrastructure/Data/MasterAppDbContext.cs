@@ -47,6 +47,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<OnboardingInvite> OnboardingInvites => Set<OnboardingInvite>();
     public DbSet<OnboardingSubmission> OnboardingSubmissions => Set<OnboardingSubmission>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
+    public DbSet<MessagingConnectionLease> MessagingConnectionLeases => Set<MessagingConnectionLease>();
     public DbSet<MobileProfileSettings> MobileProfileSettings => Set<MobileProfileSettings>();
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
@@ -298,7 +299,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(32);
             entity.Property(item => item.LeaseOwner).HasMaxLength(128);
             entity.Property(item => item.LastErrorCode).HasMaxLength(120);
-            entity.Property(item => item.LastErrorMessage).HasMaxLength(500);
+            entity.Property(item => item.LastErrorMessage).HasMaxLength(LegendHistoricalReevaluationWorkItem.MaximumErrorMessageLength);
 
             entity.HasIndex(item => new { item.EvaluatorVersion, item.Phase, item.WorkKind, item.WorkIdentity })
                 .IsUnique()
@@ -1145,10 +1146,22 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => x.AgentUserId).IsUnique();
         });
 
+        modelBuilder.Entity<MessagingConnectionLease>(e =>
+        {
+            e.ToTable("MessagingConnectionLeases");
+            e.HasKey(row => row.ConnectionId);
+            e.Property(row => row.ConnectionId).HasMaxLength(128);
+            e.Property(row => row.ParticipantType).HasMaxLength(16).IsRequired();
+            e.HasIndex(row => new { row.ProfileId, row.ParticipantType, row.ExpiresUtc });
+            e.HasIndex(row => row.ExpiresUtc);
+        });
+
         modelBuilder.Entity<MobileProfileSettings>(e =>
         {
             e.Property(x => x.SendReadReceipts).HasDefaultValue(true);
             e.Property(x => x.PreferredReactionSkinTone).HasDefaultValue(0);
+            e.Property(x => x.CallRingtoneId).HasMaxLength(32).HasDefaultValue("signature");
+            e.Property(x => x.CallWallpaperMode).HasMaxLength(32).HasDefaultValue("legend");
             e.ToTable("MobileProfileSettings");
             e.HasKey(x => x.Id);
             e.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);

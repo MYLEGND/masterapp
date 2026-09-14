@@ -1,5 +1,8 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AgentPortal.Models;
 using Domain.Entities;
 using Domain.Messaging;
@@ -8,6 +11,8 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services;
+
+internal sealed record LegendFounderConversationFact(string Subject, string Relation, string Value);
 
 /// <summary>
 /// The one conversation-scoped persistence authority for Founder LEGEND AI
@@ -43,6 +48,70 @@ public sealed class LegendFounderAiDiscourseStateService
         string sourceLanguageCode = "en") =>
         _ = await RecordCurrentObservationAsync(
             founder, conversationId, role, meaning, cancellationToken, sourceLanguageCode);
+
+    /// <summary>
+    /// Retains literal user assertions in the existing actor/conversation
+    /// observation store. These carry no independently approved evidence and
+    /// cannot participate in canonical discourse-rule binding or shared training.
+    /// The local model proposes structure; application code verifies its source.
+    /// </summary>
+    internal async Task<int?> RecordFactsAsync(
+        ClaimsPrincipal founder,
+        string? conversationId,
+        string currentUserText,
+        IReadOnlyList<LegendFounderConversationFact> facts,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(currentUserText) || currentUserText.Length > 1_000_000 ||
+            facts is null || facts.Count is < 1 or > 12)
+            throw new ArgumentException("Conversation facts require bounded current-user evidence.", nameof(facts));
+
+        var tokens = Regex.Matches(currentUserText, @"\S+");
+        var nodes = new List<LegendConnectUtteranceMeaningNode>();
+        var relations = new List<LegendConnectUtteranceMeaningRelation>();
+        foreach (var fact in facts)
+        {
+            if (fact is null)
+                throw new ArgumentException("A conversation fact is missing.", nameof(facts));
+            var fields = new[] { fact.Subject, fact.Relation, fact.Value };
+            var dimensions = new[] { "subject", "relation", "value" };
+            var cursor = 0;
+            var firstNode = nodes.Count;
+            for (var index = 0; index < fields.Length; index++)
+            {
+                var field = fields[index];
+                if (string.IsNullOrWhiteSpace(field) || field.Length > 160 || field != field.Trim() ||
+                    field.Any(char.IsControl))
+                    throw new ArgumentException("Conversation fact fields must be bounded literal spans.", nameof(facts));
+                var start = currentUserText.IndexOf(field, cursor, StringComparison.Ordinal);
+                var end = start + field.Length;
+                if (start < 0 ||
+                    (start > 0 && char.IsLetterOrDigit(currentUserText[start - 1]) && char.IsLetterOrDigit(field[0])) ||
+                    (end < currentUserText.Length && char.IsLetterOrDigit(currentUserText[end]) && char.IsLetterOrDigit(field[^1])) ||
+                    // Do not omit negation, qualifications or other words
+                    // between the proposed subject, relation and value.
+                    (index > 0 && currentUserText[cursor..start].Any(char.IsLetterOrDigit)))
+                    throw new ArgumentException("Conversation fact is not a complete literal assertion in this user turn.", nameof(facts));
+                if (index == fields.Length - 1)
+                {
+                    var remainder = currentUserText[end..].TrimStart(' ', '\t');
+                    if (remainder.Length > 0 && remainder[0] is not ('.' or ',' or ';' or '!' or '?' or '\r' or '\n'))
+                        throw new ArgumentException("Conversation fact omits a trailing qualification.", nameof(facts));
+                }
+                var firstToken = tokens.Cast<Match>().TakeWhile(token => token.Index + token.Length <= start).Count();
+                var lastToken = tokens.Cast<Match>().TakeWhile(token => token.Index < end).Count();
+                var signature = "conversation:" + Convert.ToHexString(SHA256.HashData(
+                    Encoding.UTF8.GetBytes(dimensions[index] + "\0" + field))).ToLowerInvariant();
+                nodes.Add(new(signature, dimensions[index], field, firstToken, lastToken - firstToken,
+                    IndependentSupportCount: 0, Provenance: "ConversationUserAssertion"));
+                cursor = end;
+            }
+            relations.Add(new($"conversation-subject:{firstNode}", "user_assertion_subject_relation", firstNode, firstNode + 1, 0));
+            relations.Add(new($"conversation-value:{firstNode}", "user_assertion_relation_value", firstNode + 1, firstNode + 2, 0));
+        }
+        return await RecordCurrentObservationAsync(founder, conversationId, "user",
+            new(false, nodes, relations, [], "conversation_user_assertions"), cancellationToken, "und");
+    }
 
     internal async Task<int?> RecordCurrentObservationAsync(
         ClaimsPrincipal founder,
@@ -322,7 +391,7 @@ public sealed class LegendFounderAiDiscourseStateService
         // the late-binding defect. Nodes still come only from the curriculum
         // meaning authority, and the completed proposition is validated there
         // before transition selection.
-        if (meaning.Nodes.Count == 0)
+        if (meaning.Nodes.Count == 0 || meaning.Nodes.All(node => node.Provenance == "ConversationUserAssertion"))
             return [];
 
         var selectorSignatures = meaning.Nodes.Select(item => item.SemanticSignature)

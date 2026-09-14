@@ -198,13 +198,16 @@ public abstract class MessagingControllerBase : Controller
                 participant.ParticipantType,
                 request.Subject,
                 request.Body,
-                request.ClientMessageId, request.SharedPostId),
+                request.ClientMessageId, request.SharedPostId, request.IncludeMessages),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
 
         var conversation = result.Conversation!;
-        var initialMessageId = conversation.Messages.LastOrDefault()?.Id;
+        // Opening an existing conversation does not create a historical message again.
+        var initialMessageId = !string.IsNullOrWhiteSpace(request.Body) || request.SharedPostId.HasValue
+            ? conversation.Messages.LastOrDefault()?.Id
+            : null;
         await PublishConversationEventAsync(
             conversation,
             initialMessageId.HasValue ? "messageReceived" : "conversationUpdated",
@@ -414,6 +417,8 @@ public abstract class MessagingControllerBase : Controller
     private IActionResult Failure(string? errorCode, string? errorMessage)
     {
         var payload = new { errorCode, errorMessage };
+        if (errorCode == MessagingTranslationPresentation.UnavailableCode)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, payload);
         if (string.Equals(errorCode, "MESSAGING_ACTOR_INVALID", StringComparison.Ordinal) ||
             errorCode?.EndsWith("FORBIDDEN", StringComparison.Ordinal) == true ||
             string.Equals(errorCode, "MESSAGING_RECIPIENT_FORBIDDEN", StringComparison.Ordinal))

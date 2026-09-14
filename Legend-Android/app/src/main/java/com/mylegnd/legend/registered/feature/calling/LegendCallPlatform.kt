@@ -22,6 +22,32 @@ object LegendCallPlatform {
     var connection: Connection? = null
     private var avatarJob: Job? = null
     private var answeringCallId: String? = null
+    private var requestedAnswerCallId: String? = null
+    const val ANSWER_CALL_ID = "legend_answer_call_id"
+    private const val ANSWER_NONCE = "legend_answer_nonce"
+    private const val ANSWER_EXPIRES = "legend_answer_expires"
+    fun captureAnswerIntent(context: Context, intent: Intent?) {
+        val id = intent?.getStringExtra(ANSWER_CALL_ID) ?: return
+        val nonce = intent.getStringExtra(ANSWER_NONCE)
+        intent.removeExtra(ANSWER_CALL_ID); intent.removeExtra(ANSWER_NONCE)
+        val preferences = context.getSharedPreferences("legend_calls", Context.MODE_PRIVATE)
+        if (preferences.getLong(ANSWER_EXPIRES, 0) <= System.currentTimeMillis()) {
+            preferences.edit().remove(ANSWER_NONCE).remove(ANSWER_CALL_ID).remove(ANSWER_EXPIRES).apply()
+            return
+        }
+        // MainActivity is exported. Only the immutable notification PendingIntent
+        // holds this one-use presentation token; a guessed call ID grants nothing.
+        if (nonce == null || nonce != preferences.getString(ANSWER_NONCE, null) ||
+            id != preferences.getString(ANSWER_CALL_ID, null)) return
+        preferences.edit().remove(ANSWER_NONCE).remove(ANSWER_CALL_ID).remove(ANSWER_EXPIRES).apply()
+        requestedAnswerCallId = id
+        store?.requestSystemAnswer(id)
+    }
+    fun consumeAnswerRequest(callId: String): Boolean {
+        if (requestedAnswerCallId != callId) return false
+        requestedAnswerCallId = null
+        return true
+    }
     private val audioGate = LegendCallAudioGate()
     val hasTelecomAudioFocus: Boolean get() = audioGate.hasFocus
     val mediaSession: Int get() = audioGate.mediaSession
@@ -53,8 +79,10 @@ object LegendCallPlatform {
         // silent foreground notification; an in-flight avatar must not ring again.
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)
         activeConnection.setActive()
+        val scope = checkNotNull(owner.permissionScope())
         context.startForegroundService(Intent(context, LegendCallForegroundService::class.java)
-            .putExtra("video", call.video).putExtra("callId", call.id))
+            .putExtra("video", call.video).putExtra("callId", scope.callId)
+            .putExtra("permissionOwnerId", scope.ownerId).putExtra("permissionDeviceId", scope.deviceId))
         try {
             withTimeout(8_000) { audioGate.awaitReady(call.id, Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) }
             audioEvent("media-ready")
@@ -68,16 +96,23 @@ object LegendCallPlatform {
     const val CHANNEL = "legend_calls"
     const val NOTIFICATION = 7042
     private fun handle(context: Context) = PhoneAccountHandle(ComponentName(context, LegendConnectionService::class.java), "legend")
-    fun startScreenSharing(context: Context, permission: Intent) {
+    internal fun startScreenSharing(context: Context, permission: Intent, owner: LegendCallViewModel, scope: LegendCallPermissionScope) {
+        if (store !== owner || owner.permissionScope() != scope) return
         context.startForegroundService(Intent(context, LegendCallForegroundService::class.java)
-            .putExtra("video", true).putExtra("screenPermission", permission).putExtra("callId", store?.state?.value?.call?.id))
+            .putExtra("video", true).putExtra("screenPermission", permission).putExtra("callId", scope.callId)
+            .putExtra("permissionOwnerId", scope.ownerId).putExtra("permissionDeviceId", scope.deviceId))
     }
     fun register(context: Context) {
         val telecom = context.getSystemService(TelecomManager::class.java)
         telecom.registerPhoneAccount(PhoneAccount.builder(handle(context), "LEGEND®").setCapabilities(PhoneAccount.CAPABILITY_SELF_MANAGED).build())
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "Legend calls", NotificationManager.IMPORTANCE_HIGH).apply { description = "Incoming and ongoing Legend calls"
-            setSound(Uri.parse("android.resource://${context.packageName}/${R.raw.legend_incoming}"), AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
-            enableVibration(true) })
+        for ((channel, resource) in listOf(CHANNEL to R.raw.legend_incoming, "legend_calls_soft" to R.raw.legend_ringback)) {
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(channel, if (channel == CHANNEL) "Legend calls" else "Legend calls · Soft", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Incoming and ongoing Legend calls"
+                    setSound(Uri.parse("android.resource://${context.packageName}/$resource"), AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
+                    enableVibration(true)
+                })
+        }
     }
     fun incoming(context: Context, call: LegendCallSnapshot) {
         context.getSystemService(TelecomManager::class.java).addNewIncomingCall(handle(context), Bundle().apply { putString("legend_call_id", call.id) })
@@ -95,21 +130,34 @@ object LegendCallPlatform {
         showPushIncoming(context, call)
         store?.confirmIncomingPresentation(call.id)
     }
+    internal fun createAnswerPendingIntent(context: Context, call: LegendCallSnapshot): PendingIntent {
+        val answerNonce = java.util.UUID.randomUUID().toString()
+        context.getSharedPreferences("legend_calls", Context.MODE_PRIVATE).edit()
+            .putString(ANSWER_NONCE, answerNonce).putString(ANSWER_CALL_ID, call.id)
+            .putLong(ANSWER_EXPIRES, java.time.Instant.parse(call.expiresUtc).toEpochMilli()).apply()
+        return PendingIntent.getActivity(context, 7045, Intent(context, MainActivity::class.java)
+            .setData(Uri.parse("legend-call-action:answer/${Uri.encode(call.id)}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(ANSWER_CALL_ID, call.id).putExtra(ANSWER_NONCE, answerNonce),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
     fun showPushIncoming(context: Context, call: LegendCallSnapshot) {
         if (answeringCallId == call.id) return
         if (java.time.Instant.parse(call.expiresUtc).isBefore(java.time.Instant.now())) return
         register(context)
         val launch = PendingIntent.getActivity(context, 7043, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val decline = PendingIntent.getBroadcast(context, 7044, Intent(context, LegendCallActionReceiver::class.java).setAction("end").putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val answer = createAnswerPendingIntent(context, call)
+        val decline = PendingIntent.getBroadcast(context, 7044, Intent(context, LegendCallActionReceiver::class.java).setAction("end").setData(Uri.parse("legend-call-action:end/${Uri.encode(call.id)}")).putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val manager = context.getSystemService(NotificationManager::class.java)
-        check(manager.areNotificationsEnabled() && manager.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE) {
+        val channel = if (call.incomingRingtoneResource == "legend_ringback") "legend_calls_soft" else CHANNEL
+        check(manager.areNotificationsEnabled() && manager.getNotificationChannel(channel)?.importance != NotificationManager.IMPORTANCE_NONE) {
             "Enable Legend call notifications to receive incoming calls."
         }
-        val notification = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_legend_notification)
+        val notification = NotificationCompat.Builder(context, channel).setSmallIcon(R.drawable.ic_legend_notification)
             .addExtras(Bundle().apply { putString("legend_call_id", call.id) })
             .setContentTitle(call.callerName).setContentText("Incoming Legend® call").setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX).setContentIntent(launch).setFullScreenIntent(launch, true)
-            .setOngoing(true).setOnlyAlertOnce(true).setTimeoutAfter((java.time.Instant.parse(call.expiresUtc).toEpochMilli() - System.currentTimeMillis()).coerceAtLeast(1)).addAction(0, "Decline", decline).addAction(0, "Open call", launch).build()
+            .setOngoing(true).setOnlyAlertOnce(true).setTimeoutAfter((java.time.Instant.parse(call.expiresUtc).toEpochMilli() - System.currentTimeMillis()).coerceAtLeast(1)).addAction(0, "Decline", decline).addAction(0, "Answer", answer).build()
         notification.flags = notification.flags or Notification.FLAG_INSISTENT
         manager.notify(NOTIFICATION, notification)
         avatarJob?.cancel()
@@ -130,6 +178,9 @@ object LegendCallPlatform {
         audioEvent("call-ended")
         audioGate.ended()
         answeringCallId = null
+        requestedAnswerCallId = null
+        context.getSharedPreferences("legend_calls", Context.MODE_PRIVATE).edit()
+            .remove(ANSWER_NONCE).remove(ANSWER_CALL_ID).remove(ANSWER_EXPIRES).apply()
         avatarJob?.cancel(); avatarJob = null
         connection?.setDisconnected(DisconnectCause(DisconnectCause.LOCAL)); connection?.destroy(); connection = null
         context.stopService(Intent(context, LegendCallForegroundService::class.java))
@@ -165,7 +216,14 @@ class LegendConnectionService : ConnectionService() {
     override fun onCreateIncomingConnection(manager: PhoneAccountHandle?, request: ConnectionRequest): Connection {
         val store = LegendCallPlatform.store ?: return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
         if (request.extras?.getString("legend_call_id") != store.state.value.call?.id) return Connection.createFailedConnection(DisconnectCause(DisconnectCause.ERROR))
-        return makeConnection(store).apply { setRinging() }
+        val connection = makeConnection(store).apply { setRinging() }
+        // Telecom must first own the returned connection before it becomes active.
+        Handler(Looper.getMainLooper()).post {
+            if (LegendCallPlatform.store === store && LegendCallPlatform.connection === connection &&
+                LegendCallPlatform.consumeAnswerRequest(store.state.value.call?.id ?: ""))
+                store.requestSystemAnswer()
+        }
+        return connection
     }
     override fun onCreateOutgoingConnectionFailed(manager: PhoneAccountHandle?, request: ConnectionRequest) { LegendCallPlatform.store?.platformFailed() }
     override fun onCreateIncomingConnectionFailed(manager: PhoneAccountHandle?, request: ConnectionRequest) { LegendCallPlatform.store?.platformFailed() }
@@ -188,10 +246,14 @@ class LegendConnectionService : ConnectionService() {
 class LegendCallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val call = LegendCallPlatform.store?.state?.value?.call ?: run { stopSelf(); return START_NOT_STICKY }
-        if (intent?.getStringExtra("callId")?.let { it != call.id } == true) return START_NOT_STICKY
+        val owner = LegendCallPlatform.store ?: run { stopSelf(); return START_NOT_STICKY }
+        val call = owner.state.value.call ?: run { stopSelf(); return START_NOT_STICKY }
+        val scope = owner.permissionScope() ?: return START_NOT_STICKY
+        if (intent?.getStringExtra("callId") != scope.callId ||
+            intent.getStringExtra("permissionOwnerId") != scope.ownerId ||
+            intent.getStringExtra("permissionDeviceId") != scope.deviceId) return START_NOT_STICKY
         val launch = PendingIntent.getActivity(this, 7043, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val end = PendingIntent.getBroadcast(this, 7044, Intent(this, LegendCallActionReceiver::class.java).setAction("end").putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val end = PendingIntent.getBroadcast(this, 7044, Intent(this, LegendCallActionReceiver::class.java).setAction("end").setData(Uri.parse("legend-call-action:end/${Uri.encode(call.id)}")).putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(this, LegendCallPlatform.CHANNEL).setSmallIcon(R.drawable.ic_legend_notification)
             .setContentTitle("LEGEND®").setContentText("Call in progress").setOngoing(true).setCategory(NotificationCompat.CATEGORY_CALL)
             .setContentIntent(launch).addAction(0, "End call", end).setSilent(true).build()
@@ -206,9 +268,9 @@ class LegendCallForegroundService : Service() {
         try {
             ServiceCompat.startForeground(this, LegendCallPlatform.NOTIFICATION, notification, types)
             LegendCallPlatform.foregroundReady(call.id)
-            if (screenPermission != null) LegendCallPlatform.store?.captureScreen(screenPermission)
+            if (screenPermission != null) owner.captureScreen(screenPermission, scope)
         }
-        catch (_: RuntimeException) { LegendCallPlatform.store?.platformFailed(); stopSelf() }
+        catch (_: RuntimeException) { if (owner.permissionScope() == scope) { owner.platformFailed(); stopSelf() } }
         return START_NOT_STICKY
     }
 }

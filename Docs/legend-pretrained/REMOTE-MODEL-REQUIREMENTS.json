@@ -1,0 +1,115 @@
+{
+  "verified_on": "2026-09-12",
+  "scope": "Official documentation and repository metadata only. No model files downloaded, remote hardware provisioned, or remote inference executed.",
+  "remote_baseline": {
+    "repository": "Qwen/Qwen3-4B-Instruct-2507",
+    "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+    "license": "Apache-2.0",
+    "weight_dtype": "BF16",
+    "repository_size_decimal_gb": 8.06,
+    "thinking_supported": false,
+    "native_context_tokens": 262144,
+    "status": "Official checkpoint identity verified; not downloaded or executed remotely. The removed community MLX quantization is historical evidence and is not this remote checkpoint.",
+    "sources": [
+      "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507",
+      "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/tree/main",
+      "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/commit/cdbee75f17c01a7cc42f958dc650907174af0554"
+    ]
+  },
+  "requested_model": {
+    "repository": "Qwen/Qwen3.8-27B",
+    "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+    "public_repository_verified": true,
+    "license": "Apache-2.0",
+    "architecture": "Qwen3_5ForConditionalGeneration",
+    "repository_size_decimal_gb": 55.6,
+    "modalities_documented": [
+      "text",
+      "images",
+      "video"
+    ],
+    "native_context_tokens": 262144,
+    "sources": [
+      "https://huggingface.co/Qwen/Qwen3.8-27B",
+      "https://huggingface.co/Qwen/Qwen3.8-27B/tree/main",
+      "https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/config.json"
+    ]
+  },
+  "official_fp8_variant": {
+    "repository": "Qwen/Qwen3.8-27B-FP8",
+    "license": "Apache-2.0",
+    "repository_size_decimal_gb": 30.9,
+    "selection_status": "Not selected or validated; this is a distinct quantized artifact, not a silent replacement for the requested checkpoint.",
+    "source": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8/tree/main"
+  },
+  "documented_execution": {
+    "api": "OpenAI-compatible chat/completions",
+    "thinking_default": true,
+    "reasoning_effort_values": [
+      "low",
+      "medium",
+      "xhigh"
+    ],
+    "reasoning_effort_default": "xhigh",
+    "preserve_thinking_default": true,
+    "thinking_sampling": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 20
+    },
+    "nonthinking_sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "presence_penalty": 1.5
+    },
+    "deployment_note": "These are documented model settings, not LEGEND runtime selections. LEGEND must separate reasoning from final text and executable tool calls, preserve its own tool permissions, and bind actual settings to the existing serving proof.",
+    "source": "https://huggingface.co/Qwen/Qwen3.8-27B"
+  },
+  "remote_serving_recipe": {
+    "engine": "vLLM",
+    "documented_minimum_vllm": "0.17.0",
+    "documented_transformers_minimum": "5.8.0",
+    "recipe_verified_build": "0.26.1rc1.dev608+g99a10304d",
+    "reasoning_parser": "qwen3",
+    "tool_call_parser": "qwen3_coder",
+    "official_recipe_hardware_evidence": "The vLLM project reports a separate Inferact NVFP4 checkpoint on one RTX 5090 at 32768 context with eager execution. This does not establish LEGEND account capacity or validate a 27B quantization for LEGEND.",
+    "source": "https://recipes.vllm.ai/Qwen/Qwen3.8-27B"
+  },
+  "integration_boundary": {
+    "authority": "Existing ILegendConnectModelInferenceTransport and LegendFounderAiConversationService response loop",
+    "current_protocol": "Bounded LEGEND-controlled Responses envelope with exact model, revision, adapter, hosting and generation receipts",
+    "bare_vllm_compatibility_verified": false,
+    "source_implementation": "Existing model transport now binds authenticated requests to AzureResourceId, Vllm engine/version, parser and generation settings. The existing worker requires exact Azure IMDS resource/tag verification before artifact access or ML imports, owns a pinned loopback engine, emits bounded final-content/tool receipts, and uses the existing training lifecycle's authenticated remote job protocol. No MLX execution branch remains in the worker.",
+    "required_work": "Validate the approved remote deployment with actual pinned checkpoints, engine/parser compatibility, GPU memory and serving/training lease behavior, then run identical held-out application prompts and governed lifecycle tests.",
+    "hosted_answering_api_is_independent": false,
+    "legacy_mlx_experiment_is_remote_validation": false
+  },
+  "model_free_source_verification": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-legend-controlled-foundation.py -v",
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0,
+    "elapsed_seconds": 2.032,
+    "environment": "Local CPU source/HTTP fixtures only, with synthetic protocol envelopes and mocked IMDS; no model files, datasets, ML imports, GPU execution, or actual Azure host verification.",
+    "coverage": ["Mac denied before artifact access or process launch", "Pinned IMDS identity/tag, no proxy/redirect", "HTTP auth and disabled-training admission", "Exact receipt framing", "Reasoning separated before tool handling", "Escaped structured tool arguments", "Bounded SSE", "Incomplete terminal status", "Cancellation including first-header wait and owned process group"]
+  },
+  "unperformed_checks": [
+    "Remote deployment operating cost and authorized budget",
+    "Remote 4B versus requested 27B application acceptance on identical code and prompts",
+    "Remote native-only external-answering isolation and concurrency measurements",
+    "Remote training, held-out evaluation and governed promotion"
+  ],
+  "baseline_model": {
+    "repository": "Qwen/Qwen3-4B-Instruct-2507",
+    "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+    "license": "Apache-2.0",
+    "weight_format": "BF16 official, not historical community MLX conversion",
+    "repository_size_decimal_gb": 8.06,
+    "native_context_tokens": 262144,
+    "reasoning": "non-thinking only",
+    "source": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/commit/cdbee75f17c01a7cc42f958dc650907174af0554",
+    "artifact_hashes": "Must verify remotely after acquisition; no local download"
+  },
+  "capacity_status": "Verified no existing GPU; East US2 quota zero A100 family and10 total regional,24 required. No paid resource provisioned."
+}

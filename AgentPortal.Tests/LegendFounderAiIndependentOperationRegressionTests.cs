@@ -34,16 +34,14 @@ namespace AgentPortal.Tests;
 public sealed class LegendFounderAiIndependentOperationRegressionTests
 {
 
-    // A governed determination that the source language is ambiguous or
-    // unsupported is not an outage. Without a proven language identity the
-    // input semantics cannot be established, so it fails closed in every mode
-    // and never reaches the provider.
+    // An undeclared language may remain unknown without becoming English.
+    // This deliberately unconfigured-model fixture checks the independent
+    // failure contract; real capability is exercised by the remote harness.
     [Theory]
-    [InlineData("translation_language_ambiguous", "source_language_ambiguous")]
-    [InlineData("translation_language_unsupported", "source_language_unsupported")]
-    public async Task SemanticLanguageAmbiguity_FailsClosedEvenWhenEscalationIsAllowed(
-        string detectorError,
-        string expectedReason)
+    [InlineData("translation_language_ambiguous")]
+    [InlineData("translation_language_unsupported")]
+    public async Task SemanticLanguageAmbiguity_DoesNotTriggerHostedFallbackWhenControlledModelIsUnavailable(
+        string detectorError)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -66,14 +64,17 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 sourceLanguageCode: null));
 
         Assert.False(response.Succeeded);
-        Assert.Equal("source_language_identification", response.Stage);
-        Assert.Equal(expectedReason, response.Reason);
+        Assert.Equal("local_foundation_unavailable", response.Stage);
+        Assert.Equal("local_foundation_not_configured", response.Reason);
+        Assert.False(response.ExternalAnsweringUsed);
+        Assert.False(response.EscalationUsed);
         Assert.Equal(0, handler.RequestCount);
+        Assert.Empty(operations.Invocations);
     }
 
 
-    // The same failure in native-only testing remains an absolute zero-OpenAI
-    // boundary with its exact governed reason.
+    // Source detection cannot turn an unavailable controlled model into an
+    // implicit hosted fallback; neither authority is given an invented language.
     [Fact]
     public async Task SourceLanguageFailure_NativeOnlyStillFailsClosedWithZeroProviderCalls()
     {
@@ -99,10 +100,11 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 sourceLanguageCode: null));
 
         Assert.False(response.Succeeded);
-        Assert.Equal("source_language_identification", response.Stage);
+        Assert.Equal("local_foundation_unavailable", response.Stage);
         Assert.Equal(
-            "source_language_identification_unavailable",
+            "local_foundation_not_configured",
             response.Reason);
+        Assert.False(response.ExternalAnsweringUsed);
         Assert.Equal(1, detector.DetectionCount);
         Assert.Same(LegendConnectExternalProviderPolicy.NativeOnly, detector.ObservedPolicy);
         Assert.Equal(0, handler.RequestCount);
@@ -738,6 +740,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 db,
                 new ConfigurationBuilder().Build()),
             translation ?? ControllerTestHelpers.BuildTranslationService(),
+            languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db),
             softwareRemediation: null);
 
     // Structural finding F, stated as executable evidence rather than as an
@@ -792,7 +795,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 "A symbolically authorized answer.",
                 3,
                 "governed",
-                "declarative"));
+                "declarative"), providerPolicy: LegendConnectExternalProviderPolicy.ProviderEnabled);
 
         if (expectedSelectable)
         {

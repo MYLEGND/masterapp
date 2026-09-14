@@ -18,6 +18,66 @@ namespace AgentPortal.Tests;
 
 public sealed class AzureTranslatorServiceTests
 {
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "translation_provider_authentication_failed", 1)]
+    [InlineData(HttpStatusCode.Forbidden, "translation_provider_access_denied", 1)]
+    [InlineData(HttpStatusCode.BadRequest, "translation_provider_request_rejected", 1)]
+    [InlineData(HttpStatusCode.TooManyRequests, "translation_provider_rate_limited", 3)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "translation_provider_transient_failure", 3)]
+    public async Task HttpFailureCategory_IsPreservedAcrossExistingDetectionSingleAndBatch(
+        HttpStatusCode status, string expected, int attempts)
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(status));
+        var service = CreateService(handler);
+        Assert.Equal(expected, (await service.DetectLanguageAsync("Hello")).ErrorCode);
+        Assert.Equal(expected, (await service.TranslateAsync("Hello", "ht", "en")).ErrorCode);
+        var batch = await service.TranslateBatchAsync(new[] { "Hello", "Goodbye" }, "ht", "en");
+        Assert.All(batch, result => { Assert.False(result.Succeeded); Assert.Null(result.TranslatedText); Assert.Equal(expected, result.ErrorCode); });
+        Assert.Equal(3 * attempts, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task IndependentAnswering_AllowsKnownAzureTranslationWhileNativeOnlyBlocksIt()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("[{\"translations\":[{\"text\":\"Bonjou\",\"to\":\"ht\"}]}]"));
+        var service = CreateService(handler);
+        var translated = await service.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.IndependentAnswering);
+        Assert.True(translated.Succeeded);
+        Assert.Equal("Bonjou", translated.TranslatedText);
+        Assert.Equal(1, handler.CallCount);
+        var blocked = await service.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+        Assert.False(blocked.Succeeded);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task IndependentAnswering_UnknownTranslationBoundaryCannotDiscardRestrictedPolicy()
+    {
+        var unknown = new PolicyUnawareTranslator();
+        ITranslationService boundary = unknown;
+        var result = await boundary.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.IndependentAnswering);
+        var detected = await boundary.DetectLanguageAsync("Hello", CancellationToken.None,
+            LegendConnectExternalProviderPolicy.IndependentAnswering);
+        Assert.False(result.Succeeded);
+        Assert.False(detected.Succeeded);
+        Assert.Equal(0, unknown.Calls);
+        Assert.True(LegendConnectExternalProviderPolicy.IndependentAnswering.ForbidsExternalAnswering);
+        Assert.False(LegendConnectExternalProviderPolicy.IndependentAnswering.ForbidsExternalProviders);
+    }
+
+    private sealed class PolicyUnawareTranslator : ITranslationService
+    {
+        public int Calls { get; private set; }
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
+        { Calls++; return Task.FromResult(new TranslationDetectionResult(true, "en")); }
+        public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage,
+            string? sourceLanguage = null, CancellationToken cancellationToken = default)
+        { Calls++; return Task.FromResult(new TranslationProviderResult(true, "unexpected", "en", "unknown")); }
+    }
+
     [Fact]
     public async Task PlainLabels_UsePlainTransportAndMixedBatchesPreserveOrder()
     {
@@ -172,7 +232,7 @@ public sealed class AzureTranslatorServiceTests
         var result = await service.TranslateAsync("Hello", "ht", "en");
 
         Assert.False(result.Succeeded);
-        Assert.Equal("translation_provider_failed", result.ErrorCode);
+        Assert.Equal("translation_provider_request_rejected", result.ErrorCode);
         Assert.Equal(1, handler.CallCount);
     }
 
@@ -232,6 +292,42 @@ public sealed class AzureTranslatorServiceTests
         Assert.Equal(1, handler.CallCount);
         Assert.Contains("One", handler.RequestBody, StringComparison.Ordinal);
         Assert.Contains("Two", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("0.49", false, "translation_language_ambiguous")]
+    [InlineData("1.1", false, "translation_provider_failed")]
+    [InlineData("\"unknown\"", false, "translation_provider_failed")]
+    [InlineData("0.99", true, null)]
+    public async Task AutomaticSourceDetection_UsesTheSameConfidenceAuthorityForSingleAndBatch(
+        string score, bool succeeded, string? error)
+    {
+        var handler = new RecordingHandler(_ => JsonResponse(
+            "[{\"detectedLanguage\":{\"language\":\"ht\",\"score\":" + score +
+            "},\"translations\":[{\"text\":\"Good evening\",\"to\":\"en\"}]}]"));
+        var service = CreateService(handler);
+        var single = await service.TranslateAsync("Bonswa", "en");
+        var batch = Assert.Single(await service.TranslateBatchAsync(["Bonswa"], "en"));
+        foreach (var result in new[] { single, batch })
+        {
+            Assert.Equal(succeeded, result.Succeeded);
+            Assert.Equal(error, result.ErrorCode);
+            Assert.Equal(succeeded ? "ht" : null, result.DetectedLanguage);
+            Assert.Equal(succeeded ? "Good evening" : null, result.TranslatedText);
+        }
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task InvalidDeclaredSource_DoesNotSilentlyUseProviderAutoDetection()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("[]"));
+        var service = CreateService(handler);
+        var single = await service.TranslateAsync("Bonswa", "en", "not a language!");
+        var batch = Assert.Single(await service.TranslateBatchAsync(["Bonswa"], "en", "not a language!"));
+        Assert.Equal("translation_language_unsupported", single.ErrorCode);
+        Assert.Equal("translation_language_unsupported", batch.ErrorCode);
+        Assert.Equal(0, handler.CallCount);
     }
 
     private static AzureTranslatorService CreateService(RecordingHandler handler)

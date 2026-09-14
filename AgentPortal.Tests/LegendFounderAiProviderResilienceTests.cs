@@ -111,20 +111,6 @@ public sealed class LegendFounderAiProviderResilienceTests
     }
 
     [Fact]
-    public void CasualOutputBudgetScalesBelowGovernedConfiguredMaximum()
-    {
-        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveMaxOutputTokens", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
-        var casual = Assert.IsType<int>(method!.Invoke(null, new object[] { conversation, false, 8_000 }));
-        var governed = Assert.IsType<int>(method.Invoke(null, new object[] { conversation, true, 8_000 }));
-
-        Assert.InRange(casual, 256, 1_200);
-        Assert.Equal(8_000, governed);
-    }
-
-    [Fact]
     public void RetainedKnowledgeQueryCarriesPriorFounderContextWhenAvailable()
     {
         var method = typeof(LegendFounderAiConversationService).GetMethod("BuildRetainedKnowledgeQuery", BindingFlags.NonPublic | BindingFlags.Static);

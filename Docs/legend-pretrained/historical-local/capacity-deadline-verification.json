@@ -1,0 +1,9 @@
+{
+  "scenario": "contended_host_capacity_never_starts_training",
+  "exit_code": 1,
+  "elapsed_seconds": 30.30333216697909,
+  "receipt_status": "failed",
+  "failure_type": "TimeoutError",
+  "weights_updated": false,
+  "checkpoint_present": false
+}

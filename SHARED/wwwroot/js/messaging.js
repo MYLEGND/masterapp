@@ -77,6 +77,15 @@
     pollTimer: null,
     realtime: null,
     realtimeStarted: false,
+    presenceTimer: null,
+    presenceFlight: null,
+    presenceDirty: false,
+    presenceGeneration: 0,
+    presence: null,
+    callSelection: null,
+    callSelectionFlight: null,
+    callSelectionController: null,
+    callSelectionVersion: 0,
     isOpen: false,
     isOpening: false,
     isJourneyOpen: false,
@@ -288,10 +297,16 @@
     return 'Participant';
   }
 
+  function participantAvatarUrl(person) {
+    return person?.avatarUrl || (person?.userId && person?.participantType
+      ? `/Messaging/Participants/${encodeURIComponent(person.userId)}/Avatar?participantType=${encodeURIComponent(person.participantType)}` : '');
+  }
+
   function createAvatar(person, loading = 'lazy') {
     const displayName = person?.displayName || 'Participant';
     const avatar = document.createElement('span');
     avatar.className = 'messaging-avatar';
+    avatar.dataset.userContent = '';
     avatar.setAttribute('role', 'img');
     avatar.setAttribute('aria-label', `${displayName} profile image`);
 
@@ -299,10 +314,7 @@
     fallback.setAttribute('aria-hidden', 'true');
     avatar.append(fallback);
 
-    const avatarUrl = person?.avatarUrl ||
-      (person?.userId && person?.participantType
-        ? `/Messaging/Participants/${encodeURIComponent(person.userId)}/Avatar?participantType=${encodeURIComponent(person.participantType)}`
-        : '');
+    const avatarUrl = participantAvatarUrl(person);
     if (!avatarUrl) return avatar;
 
     const image = document.createElement('img');
@@ -798,9 +810,172 @@
     });
   }
 
+  function isDirectCallChoice(conversation) {
+    return conversation.conversationType !== 'Group' && conversation.conversationType !== 'Assistant' &&
+      conversation.purpose !== 'FounderAI' && conversation.isClosed !== true && conversation.isArchivedMembership !== true;
+  }
+
+  function cancelCallSelection() {
+    state.callSelectionVersion += 1;
+    state.callSelectionController?.abort();
+    state.callSelectionController = null;
+    state.callSelection = null;
+    const prompt = document.getElementById('messagingCallSelection');
+    if (prompt) prompt.hidden = true;
+    renderConversations();
+    renderSearchResults();
+  }
+
+  function selectConversationForCurrentIntent(conversation) {
+    if (state.callSelectionFlight) return;
+    if (state.callSelection) startSelectedCall(conversation.id, conversation.counterparty);
+    else loadConversation(conversation.id, true).catch(error => showError(error.message));
+  }
+
+  async function startSelectedCall(conversationId, recipient) {
+    if (!state.callSelection || state.callSelectionFlight) return;
+    const intent = state.callSelection;
+    const version = state.callSelectionVersion;
+    let failureVersion = version;
+    const client = state.callClient;
+    if (!client || state.realtime?.state !== 'Connected') { showError(applicationCopy('Calling is unavailable.')); return; }
+    const controller = new AbortController();
+    state.callSelectionController = controller;
+    const deadline = window.setTimeout(() => controller.abort(), 10000);
+    const flight = (async () => {
+      let id = conversationId;
+      if (!id) {
+        if (!recipient?.contactKey) throw new Error(applicationCopy('This participant is unavailable for calling.'));
+        // Reuse the existing authorized, unique direct-conversation owner. No
+        // placeholder message or second calling endpoint is created.
+        const result = await request('/Messaging/Conversations', { method: 'POST', signal: controller.signal,
+          body: JSON.stringify({ contactKey: recipient.contactKey, body: null, subject: null, includeMessages: false }) });
+        id = result?.conversation?.id;
+        if (!id) throw new Error(applicationCopy('The conversation could not be opened.'));
+      }
+      if (controller.signal.aborted || version !== state.callSelectionVersion) return;
+      window.clearTimeout(deadline);
+      // The existing call UI owns cancellation once media preparation starts.
+      // Retire the recipient picker before that handoff, not after permission.
+      cancelCallSelection();
+      failureVersion = state.callSelectionVersion;
+      await client.start(id, intent.video, recipient?.displayName);
+    })();
+    state.callSelectionFlight = flight;
+    try { await flight; }
+    catch (error) {
+      if (failureVersion === state.callSelectionVersion && state.callClient === client && !client.retired) showError(error.name === 'AbortError'
+        ? applicationCopy('The call could not be started in time. Please try again.') : error.message);
+    } finally {
+      window.clearTimeout(deadline);
+      if (state.callSelectionFlight === flight) state.callSelectionFlight = null;
+      if (state.callSelectionController === controller) state.callSelectionController = null;
+    }
+  }
+
+  function beginCallSelection(video) {
+    if (state.callSelectionFlight) return;
+    cancelCallSelection();
+    state.callSelection = { video };
+    const prompt = document.getElementById('messagingCallSelection');
+    const label = document.getElementById('messagingCallSelectionLabel');
+    if (prompt) prompt.hidden = false;
+    if (label) label.textContent = video ? applicationCopy('Choose a person for FaceTime') : applicationCopy('Choose a person to call');
+    elements.search.value = '';
+    renderConversations();
+    renderSearchResults();
+    const version = state.callSelectionVersion;
+    loadRecipients().then(() => {
+      if (version === state.callSelectionVersion && state.callSelection) renderSearchResults();
+    }).catch(error => { if (version === state.callSelectionVersion && state.callSelection) showError(error.message); });
+    elements.search.focus({ preventScroll: true });
+  }
+
+  function createPresencePill(conversationId, person) {
+    const pill = createTextElement('span', 'messaging-presence', '');
+    pill.hidden = true;
+    if (conversationId) pill.dataset.presenceConversation = conversationId;
+    else if (person?.userId && person?.participantType) {
+      pill.dataset.presenceUser = person.userId;
+      pill.dataset.presenceType = person.participantType;
+    }
+    return pill;
+  }
+
+  function renderPresence() {
+    const result = state.isOpen && !document.hidden ? state.presence : null;
+    root.querySelectorAll('.messaging-presence').forEach(pill => {
+      const entry = pill.dataset.presenceConversation
+        ? result?.conversations?.find(item => item.conversationId === pill.dataset.presenceConversation)
+        : result?.participants?.find(item => participantIdentityKey(item.userId, item.participantType) === participantIdentityKey(pill.dataset.presenceUser, pill.dataset.presenceType));
+      const known = typeof entry?.isOnline === 'boolean';
+      pill.hidden = !known;
+      pill.classList.toggle('is-online', entry?.isOnline === true);
+      pill.classList.toggle('is-offline', entry?.isOnline === false);
+      pill.textContent = known ? (entry.isOnline ? applicationCopy('Online') : applicationCopy('Offline')) : '';
+    });
+  }
+
+  function clearPresence() {
+    state.presenceGeneration += 1;
+    state.presence = null;
+    renderPresence();
+  }
+
+  async function refreshPresence() {
+    if (state.realtime?.state !== 'Connected') return;
+    if (state.presenceFlight) { state.presenceDirty = true; return; }
+    state.presenceDirty = false;
+    const generation = state.presenceGeneration;
+    const participants = new Map(), conversations = new Set();
+    if (state.isOpen && !document.hidden) {
+      // Query only messaging presentation targets, never profile/CRM surfaces.
+      if (state.active?.id) conversations.add(state.active.id);
+      root.querySelectorAll('.messaging-presence').forEach(pill => {
+        const bounds = pill.parentElement?.getBoundingClientRect();
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0 || bounds.bottom <= 0 || bounds.top >= window.innerHeight) return;
+        if (pill.dataset.presenceConversation) conversations.add(pill.dataset.presenceConversation);
+        else if (pill.dataset.presenceUser) participants.set(participantIdentityKey(pill.dataset.presenceUser, pill.dataset.presenceType),
+          { userId: pill.dataset.presenceUser, participantType: pill.dataset.presenceType });
+      });
+    }
+    const request = { participants: [...participants.values()].slice(0, 50), conversationIds: [...conversations].slice(0, 50) };
+    // No overlapping invokes: a slow transport expires the display, not the call.
+    const deadline = window.setTimeout(clearPresence, 10000);
+    const flight = state.realtime.invoke('Presence', request);
+    state.presenceFlight = flight;
+    try {
+      const result = await flight;
+      if (generation !== state.presenceGeneration) return;
+      state.presence = result;
+      renderPresence();
+    } catch (error) {
+      clearPresence();
+      console.warn('[messaging] Presence refresh failed; status cleared.');
+    } finally {
+      window.clearTimeout(deadline);
+      if (state.presenceFlight === flight) state.presenceFlight = null;
+      if (state.presenceDirty) refreshPresence();
+    }
+  }
+
+  function startPresence() {
+    window.clearInterval(state.presenceTimer);
+    clearPresence();
+    refreshPresence();
+    state.presenceTimer = window.setInterval(refreshPresence, 30000);
+  }
+
+  function stopPresence() {
+    window.clearInterval(state.presenceTimer);
+    state.presenceTimer = null;
+    clearPresence();
+  }
+
   function renderConversations() {
     elements.list.replaceChildren();
-    const scopedConversations = state.conversations.filter(isConversationInRecipientScope);
+    const scopedConversations = state.conversations.filter(isConversationInRecipientScope)
+      .filter(conversation => !state.callSelection || isDirectCallChoice(conversation));
     const scope = recipientScopeDescription();
     if (scopedConversations.length === 0) {
       elements.list.append(createTextElement('p', 'messaging-list-empty', scope.emptyConversations));
@@ -819,11 +994,24 @@
 
       const identity = document.createElement('span');
       identity.className = 'messaging-conversation-identity';
-      identity.append(createAvatar(conversation.counterparty));
+      const avatar = document.createElement('span');
+      avatar.className = 'messaging-conversation-avatar';
+      avatar.append(createAvatar(conversation.counterparty));
+      if (conversation.unreadCount > 0) {
+        const badge = createTextElement('span', 'messaging-unread-count', conversation.unreadCount > 99 ? '99+' : String(conversation.unreadCount));
+        badge.setAttribute('aria-label', String(conversation.unreadCount));
+        badge.setAttribute('aria-describedby', 'messagingUnreadDescription');
+        avatar.append(badge);
+      }
+      identity.append(avatar);
       const copy = document.createElement('span');
       copy.className = 'messaging-conversation-copy';
-      copy.append(createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member'));
-      copy.append(createTextElement('span', 'messaging-conversation-preview', conversation.lastMessagePreview || conversation.subject || 'No messages yet.'));
+      const title = createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member');
+      title.dataset.userContent = '';
+      copy.append(title);
+      const preview = createTextElement('span', 'messaging-conversation-preview', conversation.lastMessagePreview || conversation.subject || 'No messages yet.');
+      if (conversation.lastMessagePreview || conversation.subject) preview.dataset.userContent = '';
+      copy.append(preview, createPresencePill(conversation.id));
       if (state.drafts[`conversation:${conversation.id}`]) {
         copy.append(createTextElement('span', 'messaging-conversation-draft', 'Draft'));
       }
@@ -833,11 +1021,8 @@
       const meta = document.createElement('span');
       meta.className = 'messaging-conversation-meta';
       meta.append(createTextElement('time', 'messaging-conversation-time', formatConversationTime(conversation.lastMessageUtc)));
-      if (conversation.unreadCount > 0) {
-        meta.append(createTextElement('span', 'messaging-unread-count', String(conversation.unreadCount)));
-      }
       button.append(meta);
-      button.addEventListener('click', () => loadConversation(conversation.id, true).catch(error => showError(error.message)));
+      button.addEventListener('click', () => selectConversationForCurrentIntent(conversation));
       elements.list.append(button);
     }
 
@@ -849,6 +1034,8 @@
       );
       archivedConversations.forEach(appendConversation);
     }
+    renderPresence();
+    refreshPresence();
   }
 
   function participantName(conversation, userId, participantType) {
@@ -948,7 +1135,14 @@
   let reactionBubbleSettings = null;
   function reserveReactionOverlap(group) {
     if (!reactionBubbleSettings || !group.isConnected) return;
-    group.parentElement.style.setProperty('--messaging-reaction-reserve', `${group.getBoundingClientRect().height * reactionBubbleSettings.outsideFraction}px`);
+    const height = group.getBoundingClientRect().height;
+    const count = group.children.length;
+    group.closest('.messaging-message-row')?.style.setProperty('--messaging-reaction-width', `${count * reactionBubbleSettings.touchTarget + Math.max(0, count - 1) * reactionBubbleSettings.itemSpacing}px`);
+    const gutter = (reactionBubbleSettings.touchTarget - reactionBubbleSettings.height) / 2;
+    const outside = height > 0 ? gutter + reactionBubbleSettings.height * reactionBubbleSettings.outsideFraction : 0;
+    group.parentElement.style.setProperty('--messaging-reaction-reserve', `${outside}px`);
+    group.parentElement.style.setProperty('--messaging-reaction-offset', `${outside}px`);
+    group.parentElement.style.setProperty('--messaging-reaction-inside', `${Math.max(0, height - outside - gutter)}px`);
   }
   const reactionBubbleObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => {
     entries.forEach(({ target }) => { if (target.isConnected) reserveReactionOverlap(target); else reactionBubbleObserver.unobserve(target); });
@@ -1076,7 +1270,7 @@
     return picker;
   }
 
-  function appendMessageInteractions(card, conversation, message) {
+  function appendMessageInteractions(card, conversation, message, actions = card) {
     const reactions = document.createElement('div');
     reactions.className = 'messaging-reactions';
     (message.reactions || []).forEach(reaction => {
@@ -1090,7 +1284,9 @@
     });
     const menu = document.createElement('details');
     menu.className = 'messaging-message-actions';
-    const trigger = createTextElement('summary', '', 'React');
+    const trigger = createTextElement('summary', '', '⋯');
+    trigger.setAttribute('aria-label', applicationCopy('Message actions'));
+    trigger.setAttribute('title', applicationCopy('Message actions'));
     menu.append(trigger);
     const palette = document.createElement('div');
     palette.className = 'messaging-reaction-palette';
@@ -1142,8 +1338,8 @@
       anchor.className = 'messaging-reacted-content';
       content.replaceWith(anchor);
       anchor.append(content, reactions);
-      card.append(menu);
-    } else { card.append(menu, reactions); }
+      actions.append(menu);
+    } else { actions.append(menu); card.append(reactions); }
     reactionBubbleObserver?.observe(reactions);
     card.addEventListener('dblclick', event => {
       if (event.target.closest('a, button, input, summary, video, audio')) return;
@@ -1164,6 +1360,8 @@
   }
 
   function appendLinkedText(container, text) {
+    container.dataset.userContent = '';
+    container.setAttribute('translate', 'no');
     const value = String(text || '');
     const pattern = /https?:\/\/[^\s<>]+/gi;
     let offset = 0;
@@ -1250,6 +1448,11 @@
     const target = conversation ? currentCounterparty(conversation) : state.draftTarget;
     const isClosed = conversation?.isClosed === true;
     const isDraft = !conversation && Boolean(target);
+    state.originalMessageViews ??= new Set();
+    if (state.originalViewConversationId !== conversation?.id) {
+      state.originalMessageViews.clear();
+      state.originalViewConversationId = conversation?.id;
+    }
 
     elements.threadEmpty.hidden = Boolean(conversation || isDraft);
     elements.threadContent.hidden = !(conversation || isDraft);
@@ -1266,11 +1469,15 @@
 
     elements.threadAvatar.replaceChildren(createAvatar(target, 'eager'));
     elements.threadTitle.textContent = conversation?.displayTitle || target?.displayName || 'Member';
-    elements.threadSubject.textContent = [
-      roleLabel(target?.participantType),
-      'Secure conversation',
-      conversation?.subject || (isDraft ? 'New secure conversation' : '')
-    ].filter(Boolean).join(' · ');
+    elements.threadTitle.dataset.userContent = '';
+    elements.threadSubject.replaceChildren(createPresencePill(conversation?.id, target));
+    if (conversation?.subject) {
+      const subject = createTextElement('span', '', conversation.subject);
+      subject.dataset.userContent = '';
+      elements.threadSubject.append(subject);
+    }
+    renderPresence();
+    refreshPresence();
     if (conversation) {
       elements.mute.textContent = conversation.isMuted ? 'Unmute' : 'Mute';
       elements.closeConversation.textContent = isClosed ? 'Reopen' : 'Close';
@@ -1306,18 +1513,53 @@
         if (isOwn) card.classList.add('is-own');
         const meta = document.createElement('div');
         meta.className = 'messaging-message-meta';
-        meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId, message.senderType)));
+        if (!isOwn && conversation.conversationType === 'Group') {
+          const sender = createTextElement('span', 'messaging-message-sender', participantName(conversation, message.senderUserId, message.senderType));
+          sender.dataset.userContent = '';
+          card.append(sender);
+        }
         meta.append(createTextElement('time', '', formatMessageTime(message.sentUtc)));
         if (isOwn && messageIndex >= latestReadIndex) {
           const read = messageIndex === latestReadIndex;
           meta.append(createTextElement('span', `messaging-receipt is-${read ? 'read' : 'sent'}`, read ? 'Read' : 'Sent'));
         }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
-        card.append(meta);
+        if (message.reply) {
+          const reply = document.createElement('blockquote');
+          reply.className = 'messaging-message-reply';
+          if (message.reply.isDeleted) reply.textContent = applicationCopy('Message deleted');
+          else {
+            const author = createTextElement('strong', '', participantName(conversation, message.reply.senderUserId, message.reply.senderType));
+            author.dataset.userContent = '';
+            const excerpt = createTextElement('span', '', message.reply.body);
+            excerpt.dataset.userContent = '';
+            reply.append(author, excerpt);
+          }
+          card.append(reply);
+        }
         if (message.body) {
           const body = createTextElement('p', 'messaging-message-body', '');
-          appendLinkedText(body, message.body);
+          const retainedOriginal = state.originalMessageViews.has(message.id) && message.translation && message.originalBody;
+          appendLinkedText(body, retainedOriginal ? message.originalBody : message.body);
           card.append(body);
+          if (message.translation && message.originalBody && message.originalBody !== message.body) {
+            const toggle = createTextElement('button', 'messaging-translation-toggle', retainedOriginal ? applicationCopy('View translation') : applicationCopy('View original'));
+            toggle.type = 'button';
+            toggle.setAttribute('aria-pressed', String(Boolean(retainedOriginal)));
+            toggle.addEventListener('click', () => {
+              const showOriginal = toggle.getAttribute('aria-pressed') !== 'true';
+              if (showOriginal) state.originalMessageViews.add(message.id);
+              else state.originalMessageViews.delete(message.id);
+              body.replaceChildren();
+              appendLinkedText(body, showOriginal ? message.originalBody : message.body);
+              toggle.setAttribute('aria-pressed', String(showOriginal));
+              toggle.textContent = showOriginal ? applicationCopy('View translation') : applicationCopy('View original');
+            });
+            card.append(toggle);
+          }
+        }
+        if (message.translationNotice) {
+          card.append(createTextElement('p', 'messaging-message-body', message.translationNotice));
         }
         appendSharedContent(card, message.sharedContent);
 
@@ -1331,19 +1573,24 @@
               link.className = 'messaging-attachment';
               link.href = `/Messaging/Attachments/${encodeURIComponent(attachment.id)}`;
               link.textContent = attachment.originalFileName;
+              link.dataset.userContent = '';
               link.setAttribute('download', attachment.originalFileName || 'attachment');
               attachments.append(link);
             } else {
-              attachments.append(createTextElement(
-                'span',
-                `messaging-attachment is-${normalize(status) || 'pending'}`,
-                `${attachment.originalFileName} — ${status}`));
+              const item = createTextElement('span', `messaging-attachment is-${normalize(status) || 'pending'}`, '');
+              const fileName = createTextElement('span', '', attachment.originalFileName);
+              fileName.dataset.userContent = '';
+              item.append(fileName, document.createTextNode(' — '), createTextElement('span', '', status));
+              attachments.append(item);
             }
           });
           card.append(attachments);
         }
-        appendMessageInteractions(card, conversation, message);
-        elements.messages.append(card);
+        appendMessageInteractions(card, conversation, message, meta);
+        const row = document.createElement('div');
+        row.className = `messaging-message-row${isOwn ? ' is-own' : ''}${message.reactions?.length && !message.sharedContent ? ' has-reactions' : ''}`;
+        row.append(card, meta);
+        elements.messages.append(row);
       });
       restoreMessageScroll(conversation.id, shouldScrollToBottom);
     } else {
@@ -1407,8 +1654,16 @@
       item.insertBefore(createAvatar(result.person), item._messagingCopy);
     }
     item._messagingTitle.textContent = result.title;
-    item._messagingSubtitle.textContent = result.subtitle || '';
-    item._messagingSubtitle.hidden = !result.subtitle;
+    item._messagingTitle.dataset.userContent = '';
+    item._messagingSubtitle.replaceChildren(createPresencePill(result.conversationId, result.person));
+    if (result.person?.email) {
+      const identity = createTextElement('span', '', `${roleLabel(result.person.participantType)} · ${result.person.email}`);
+      identity.dataset.userContent = '';
+      item._messagingSubtitle.append(identity);
+    }
+    if (result.unreadCount > 0) item._messagingSubtitle.append(createTextElement('span', 'messaging-unread-count', String(result.unreadCount)));
+    item._messagingSubtitle.hidden = false;
+    renderPresence();
     item._messagingSelect = result.select;
   }
 
@@ -1429,7 +1684,7 @@
 
   function renderSearchResults() {
     const query = normalizeSearch(elements.search.value);
-    if (!query) {
+    if (!query && !state.callSelection) {
       state.searchResultNodes.forEach(item => item.remove());
       state.searchResultNodes.clear();
       setSearchStatus('');
@@ -1439,6 +1694,7 @@
 
     const matchingConversations = state.conversations
       .filter(conversation => conversation.isArchivedMembership !== true)
+      .filter(conversation => !state.callSelection || isDirectCallChoice(conversation))
       .filter(isConversationInRecipientScope)
       .filter(conversation => matchesSearch(searchText(conversation), query))
       .sort((left, right) =>
@@ -1448,7 +1704,7 @@
     const existingCounterparties = new Set(matchingConversations.map(conversation =>
       participantIdentityKey(conversation.counterparty?.userId, conversation.counterparty?.participantType)));
     const existingConversationIds = new Set(matchingConversations.map(conversation => conversation.id));
-    const recipientSource = state.recipientMatchesQuery === query
+    const recipientSource = query && state.recipientMatchesQuery === query
       ? state.recipientMatches
       : state.recipients;
     const matchingRecipients = recipientSource.filter(recipient =>
@@ -1463,12 +1719,14 @@
       ...matchingConversations.map(conversation => ({
         key: searchResultKey('conversation', conversation.id, 'conversation'),
         person: conversation.counterparty,
+        conversationId: conversation.id,
+        unreadCount: conversation.unreadCount,
         title: conversation.displayTitle || conversation.counterparty?.displayName || 'Member',
         subtitle: `Existing conversation${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ''}`,
         select: () => {
           elements.search.value = '';
           renderSearchResults();
-          loadConversation(conversation.id, true).catch(error => showError(error.message));
+          selectConversationForCurrentIntent(conversation);
         }
       })),
       ...matchingRecipients.map(recipient => ({
@@ -1480,6 +1738,7 @@
           recipient.email
         ].filter(Boolean).join(' · '),
         select: () => {
+          if (state.callSelection) { startSelectedCall(recipient.existingConversationId, recipient); return; }
           if (recipient.existingConversationId) {
             elements.search.value = '';
             renderSearchResults();
@@ -1928,6 +2187,170 @@
     state.pollTimer = null;
   }
 
+  function attachCalling(connection) {
+    const dialog = document.getElementById('legendBrowserCall');
+    if (!dialog || !window.LegendBrowserCalling) return;
+    const remote = document.getElementById('legendBrowserCallRemote');
+    const local = document.getElementById('legendBrowserCallLocal');
+    const name = document.getElementById('legendBrowserCallName');
+    const status = document.getElementById('legendBrowserCallStatus');
+    // A copied/duplicated tab must never inherit another media owner's device ID.
+    const deviceId = crypto.randomUUID();
+    let tone = null;
+    let sound = '';
+    let retired = false;
+    const portrait = document.getElementById('legendBrowserCallPortrait');
+    portrait.addEventListener('error', () => { portrait.hidden = true; });
+    const stopTone = () => { tone?.pause(); tone = null; sound = ''; };
+    const client = new window.LegendBrowserCalling({ connection, deviceId,
+      isActor: (id, type, aliases) => isCurrentParticipant(id, type) || (aliases || []).some(alias => isCurrentParticipant(alias, type)),
+      present: (call, caller) => {
+        if (retired) call = null;
+        if (!call) {
+          stopTone(); portrait.removeAttribute('src'); portrait.hidden = true;
+          dialog.querySelector('[data-legend-call-action="audio"]').hidden = true;
+          for (const action of ['mute', 'camera', 'share']) dialog.querySelector(`[data-legend-call-action="${action}"]`).setAttribute('aria-pressed', 'false');
+          if (dialog.open) dialog.close(); return;
+        }
+        const presentingIdentity = ['preparing', 'ringing'].includes(call.status);
+        name.hidden = !presentingIdentity;
+        name.textContent = caller ? call.calleeName : call.callerName;
+        document.getElementById('legendBrowserCallInitials').hidden = !presentingIdentity;
+        document.getElementById('legendBrowserCallInitials').textContent = initials(name.textContent || 'LEGEND');
+        const peer = caller ? { userId: call.calleeUserId, participantType: call.calleeType } : { userId: call.callerUserId, participantType: call.callerType };
+        const photo = participantAvatarUrl(peer);
+        const wallpaper = (caller ? call.calleeWallpaperMode : call.callerWallpaperMode) === 'profile';
+        portrait.classList.toggle('is-wallpaper', wallpaper);
+        if (photo && portrait.getAttribute('src') !== photo) { portrait.hidden = false; portrait.src = photo; }
+        if (!photo) portrait.removeAttribute('src');
+        if (!photo || !presentingIdentity) portrait.hidden = true;
+        status.textContent = ['preparing', 'ringing'].includes(call.status)
+          ? (caller ? (call.receivedUtc ? applicationCopy('Ringing') : applicationCopy('Calling')) : applicationCopy('Incoming call'))
+          : (call.status === 'active' ? applicationCopy('Connected') : applicationCopy('Connecting'));
+        dialog.querySelector('[data-legend-call-action="accept"]').hidden = caller || call.status !== 'ringing';
+        for (const action of ['mute', 'camera', 'share']) dialog.querySelector(`[data-legend-call-action="${action}"]`).hidden = ['preparing', 'ringing'].includes(call.status);
+        if (!dialog.open) dialog.showModal();
+        const next = ['preparing', 'ringing'].includes(call.status) ? (caller ? 'legend_ringback' : call.incomingRingtoneResource) : '';
+        if (next !== sound) {
+          stopTone(); sound = next;
+          if (next && /^[a-z0-9_]+$/.test(next)) {
+            tone = new Audio(`/_content/Shared/calling/${next}.wav`); tone.loop = true;
+            const playing = tone; const callId = call.id;
+            playing.play().catch(() => { if (tone === playing && client.call?.id === callId) status.textContent += ' · ' + applicationCopy('Tap the call to enable sound'); });
+          }
+        }
+      },
+      media: (incoming, outgoing, remoteScreenSharing) => {
+        if (retired) { remote.srcObject = null; local.srcObject = null; return; }
+        remote.classList.toggle('is-screen-sharing', Boolean(remoteScreenSharing));
+        if (incoming) { remote.srcObject = incoming; remote.play().catch(() => {
+          if (remote.srcObject !== incoming || !client.call) return;
+          status.textContent = applicationCopy('Tap Enable call audio to hear the call.');
+          dialog.querySelector('[data-legend-call-action="audio"]').hidden = false;
+        }); }
+        else if (!outgoing) remote.srcObject = null;
+        local.srcObject = outgoing;
+      },
+      warning: message => { if (!retired && client.call) status.textContent = applicationCopy(message); },
+      failure: message => { if (retired) return; showError(message); if (!state.isOpen) openCommandCenter().then(() => showError(message)); }
+    });
+    state.callClient = client;
+    dialog.addEventListener('click', event => {
+      if (retired) return;
+      if (tone?.paused) tone.play().catch(() => {});
+      const button = event.target.closest('[data-legend-call-action]');
+      if (!button) return;
+      const action = button.dataset.legendCallAction;
+      if (action === 'audio') {
+        const stream = remote.srcObject; const callId = client.call?.id;
+        remote.play().then(() => { if (remote.srcObject === stream && client.call?.id === callId) button.hidden = true; }).catch(() => { if (remote.srcObject === stream && client.call?.id === callId) status.textContent = applicationCopy('The browser blocked call audio. Check its audio permissions.'); });
+        return;
+      }
+      const callId = client.call?.id;
+      Promise.resolve().then(() => { if (!retired && client.call?.id === callId) return client[action](); }).then(() => {
+        if (retired || client.call?.id !== callId) return;
+        if (action === 'mute') button.setAttribute('aria-pressed', String(client.stream?.getAudioTracks().every(track => !track.enabled) || false));
+        if (action === 'camera') button.setAttribute('aria-pressed', String(client.stream?.getVideoTracks().every(track => !track.enabled) || false));
+        if (action === 'share') button.setAttribute('aria-pressed', String(Boolean(client.display)));
+      }).catch(error => {
+        if (retired || client.call?.id !== callId) return;
+        if (action === 'share' || action === 'camera') status.textContent = error.message;
+        else client.fail(error);
+      });
+    });
+    dialog.addEventListener('cancel', event => { event.preventDefault(); client.end().catch(error => showError(error.message)); });
+    for (const [id, video] of [['messagingChooseVoiceCall', false], ['messagingChooseVideoCall', true]]) {
+      document.getElementById(id)?.addEventListener('click', () => { if (!retired) beginCallSelection(video); });
+    }
+    document.getElementById('messagingCancelCallSelection')?.addEventListener('click', cancelCallSelection);
+    for (const [id, video] of [['messagingVoiceCall', false], ['messagingVideoCall', true]]) {
+      document.getElementById(id)?.addEventListener('click', () => {
+        if (!retired && state.active?.id) client.start(state.active.id, video, elements.threadTitle.textContent).catch(error => showError(error.message));
+      });
+    }
+    connection.onreconnected(() => {
+      if (retired) return;
+      const scope = client.scope();
+      client.sync().catch(error => { if (!retired) client.fail(error, scope); });
+    });
+    connection.onclose(() => { if (client.call) client.fail(new Error(applicationCopy('The call connection was lost.'))); });
+    const authChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('legend-session-retirement') : null;
+    const retire = () => {
+      if (retired) return;
+      retired = true; cancelCallSelection(); client.retire();
+      document.getElementById('legendCallingPreferences')?.close();
+      connection.stop().catch(() => {});
+    };
+    window.addEventListener('storage', event => { if (event.key === 'legend-session-retirement' && event.newValue) retire(); });
+    if (authChannel) authChannel.onmessage = event => { if (event.data === 'signed-out') retire(); };
+    document.addEventListener('submit', event => {
+      const form = event.target;
+      if (form instanceof HTMLFormElement && new URL(form.action, location.href).origin === location.origin && new URL(form.action, location.href).pathname.toLowerCase() === '/account/logout') {
+        authChannel?.postMessage('signed-out');
+        try { localStorage.setItem('legend-session-retirement', crypto.randomUUID()); } catch { /* BroadcastChannel remains available when storage is blocked. */ }
+        retire();
+      }
+    }, true);
+    window.addEventListener('pagehide', retire);
+    window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
+
+    const preferences = document.getElementById('legendCallingPreferences');
+    const preferenceForm = document.getElementById('legendCallingPreferencesForm');
+    const notice = document.getElementById('legendCallingPreferencesStatus');
+    const ringtone = document.getElementById('legendCallingRingtone');
+    const wallpaper = document.getElementById('legendCallingWallpaper');
+    const fill = (select, choices, selected) => {
+      select.replaceChildren(...choices.map(choice => new Option(applicationCopy(choice.label), choice.id, false, choice.id === selected)));
+    };
+    document.getElementById('messagingCallingProfile')?.addEventListener('click', async () => {
+      if (retired) return;
+      try {
+        const result = await client.command('preferences');
+        if (retired) return;
+        fill(ringtone, result.ringtones || [], result.preferences.ringtoneId);
+        fill(wallpaper, result.wallpapers || [], result.preferences.wallpaperMode);
+        notice.textContent = ''; preferences.showModal();
+      } catch (error) { if (!retired) showError(error.message); }
+    });
+    preferenceForm.addEventListener('submit', async event => {
+      event.preventDefault(); if (retired) return;
+      const submit = preferenceForm.querySelector('[type=submit]'); submit.disabled = true;
+      try {
+        await client.command('preferences', { preferences: { ringtoneId: ringtone.value, wallpaperMode: wallpaper.value } });
+        if (!retired) notice.textContent = applicationCopy('Calling preferences saved for this account on all devices.');
+      } catch (error) { if (!retired) notice.textContent = error.message; }
+      finally { submit.disabled = false; }
+    });
+    document.getElementById('legendCallingPreferencesClose').addEventListener('click', () => preferences.close());
+    const photoLink = [...document.querySelectorAll('a[href]')].find(link => {
+      const url = new URL(link.href, location.href);
+      return url.origin === location.origin && ['/profile', '/account/manageprofile'].includes(url.pathname.toLowerCase());
+    });
+    const editPhoto = document.getElementById('legendCallingEditPhoto');
+    editPhoto.hidden = !photoLink;
+    editPhoto.addEventListener('click', () => { if (!retired) photoLink?.click(); });
+  }
+
   async function startRealtime() {
     if (state.realtimeStarted) return;
     if (!window.signalR?.HubConnectionBuilder) {
@@ -1953,14 +2376,17 @@
         await refreshList();
       } catch (_) { }
     };
+    attachCalling(connection);
     connection.on('messageReceived', event => refreshForEvent(event, true));
     connection.on('conversationUpdated', event => refreshForEvent(event));
-    connection.onreconnecting(startPolling);
-    connection.onreconnected(stopPolling);
-    connection.onclose(startPolling);
+    connection.onreconnecting(() => { stopPresence(); startPolling(); });
+    connection.onreconnected(() => { stopPolling(); startPresence(); });
+    connection.onclose(() => { stopPresence(); startPolling(); });
     try {
       await connection.start();
       stopPolling();
+      startPresence();
+      state.callClient?.sync().catch(error => showError(error.message));
     } catch (error) {
       console.error('[messaging] SignalR connection start failed.', error);
       startPolling();
@@ -1978,6 +2404,8 @@
       document.body.classList.add('messaging-command-center-open');
       unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'true'));
       state.isOpen = true;
+      clearPresence();
+      refreshPresence();
       markCommandCenterOpen();
       showError('');
       elements.window.focus({ preventScroll: true });
@@ -2005,6 +2433,7 @@
   }
 
   function closeCommandCenter() {
+    cancelCallSelection();
     if (!state.isOpen) return;
     saveDraft();
     if (state.active?.id) {
@@ -2024,6 +2453,7 @@
     document.body.classList.remove('messaging-command-center-open');
     unreadBadges.forEach(badge => badge.closest('[data-messaging-open]')?.setAttribute('aria-expanded', 'false'));
     state.isOpen = false;
+    clearPresence();
     cancelDetailRequests();
     state.navigationVersion += 1;
     state.requestedConversationId = null;
@@ -2175,14 +2605,26 @@
     .then(response => { if (!response.ok) throw new Error('Design unavailable'); return response.json(); })
     .then(design => {
       for (const [role, key] of [['incoming-background', 'navy'], ['incoming-text', 'onNavy'],
-        ['outgoing-background', 'gold'], ['outgoing-text', 'onGold'], ['timestamp', 'chatTimestamp'], ['surface', 'surface']]) {
+        ['outgoing-background', 'gold'], ['outgoing-text', 'onGold'], ['timestamp', 'chatTimestamp'], ['surface', 'surface'],
+        ['presence-online-text', 'presenceOnlineText'], ['presence-online-fill', 'presenceOnlineFill'],
+        ['presence-offline-text', 'presenceOfflineText'], ['presence-offline-fill', 'presenceOfflineFill']]) {
         const color = design.colors?.[key]?.light;
         if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-${role}`, color);
       }
+      for (const [group, prefix] of [['messageBubble', 'bubble'], ['contactCard', 'card']]) {
+        for (const [key, css] of [['horizontalPadding','padding-x'], ['verticalPadding','padding-y'], ['cornerRadius','radius'], ['minimumHeight','min-height'], ['metadataGap','metadata-gap'], ['bodySize','body-size'], ['timestampSize','timestamp-size']]) {
+          const value = design.messaging?.[group]?.[key];
+          if (Number.isFinite(value)) root.style.setProperty(`--messaging-${prefix}-${css}`, `${value}px`);
+        }
+      }
+      const unreadBadge = design.sizes?.unreadBadge;
+      if (Number.isFinite(unreadBadge) && unreadBadge > 0) root.style.setProperty('--messaging-unread-badge', `${unreadBadge}px`);
+      const callPortrait = design.sizes?.callPortrait;
+      if (Number.isFinite(callPortrait) && callPortrait > 0) document.getElementById('legendBrowserCall')?.style.setProperty('--legend-call-portrait', `${callPortrait}px`);
       const bubble = design.messaging?.reactionBubble;
       if (bubble) {
         reactionBubbleSettings = bubble;
-        for (const [key, css] of [['height','height'], ['horizontalPadding','padding'], ['itemSpacing','gap'], ['borderWidth','border'], ['trailingInset','trailing'], ['emojiSize','emoji-size']]) {
+        for (const [key, css] of [['height','height'], ['touchTarget','touch-target'], ['horizontalPadding','padding'], ['itemSpacing','gap'], ['borderWidth','border'], ['trailingInset','trailing'], ['emojiSize','emoji-size']]) {
           if (Number.isFinite(bubble[key])) root.style.setProperty(`--messaging-reaction-${css}`, `${bubble[key]}px`);
         }
         for (const [key, css] of [['ownFillColor','own-fill'], ['otherFillColor','other-fill'], ['borderColor','border-color']]) {
@@ -2191,10 +2633,9 @@
         }
         if (Number.isFinite(bubble.ownFillOpacity)) root.style.setProperty('--messaging-reaction-own-opacity', `${bubble.ownFillOpacity * 100}%`);
         if (Number.isFinite(bubble.borderOpacity)) root.style.setProperty('--messaging-reaction-border-opacity', `${bubble.borderOpacity * 100}%`);
-        if (Number.isFinite(bubble.outsideFraction)) {
-          root.style.setProperty('--messaging-reaction-outside', `${bubble.outsideFraction * 100}%`);
-          root.style.setProperty('--messaging-reaction-reserve', `${bubble.height * bubble.outsideFraction}px`);
-        }
+        root.style.setProperty('--messaging-reaction-reserve', '0px');
+        root.style.setProperty('--messaging-reaction-inside', '0px');
+        root.style.setProperty('--messaging-reaction-offset', '0px');
       }
       root.querySelectorAll('.messaging-reactions').forEach(reserveReactionOverlap);
       const semantic = design.platformSemanticColors;
@@ -2203,6 +2644,8 @@
         if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-receipt-${status}`, color);
       }
     }).catch(() => {});
+  document.addEventListener('visibilitychange', () => { clearPresence(); refreshPresence(); });
+  window.addEventListener('pagehide', stopPresence);
   window.addEventListener('legend-signalr-ready', startRealtime);
   startRealtime();
 })();

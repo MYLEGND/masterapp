@@ -4,6 +4,88 @@ import XCTest
 
 @MainActor
 final class LegendLaunchCacheTests: XCTestCase {
+    func testLocalizationCacheRetainsLanguagesAndHonorsFreshApprovalWithdrawal() throws {
+        func catalog(_ language: String, failure: String? = nil) -> LegendApplicationLocalizationCatalog {
+            LegendApplicationLocalizationCatalog(catalogVersion: "v1", sourceLanguageCode: "en", languageCode: language,
+                locale: language, generatedUtc: "2026-09-13T00:00:00Z", isComplete: failure == nil,
+                entries: [LegendApplicationLocalizedCopy(id: "entry", source: "Settings", text: failure == nil ? "Anviwònman" : "Settings",
+                    context: "visual interface copy", sourceRevision: "r1", placeholders: [], provider: "AzureTranslator",
+                    provenance: "ProviderDerived", validationState: "Observation", createdUtc: "now", reused: true, failureCode: failure)])
+        }
+        var saved = LegendApplicationLocalizationCache()
+        _ = saved.remember(catalog("ht")); _ = saved.remember(catalog("es"))
+        let restored = try JSONDecoder.mobile.decode(LegendApplicationLocalizationCache.self, from: JSONEncoder.mobile.encode(saved))
+        XCTAssertEqual(restored.matching("ht")?.languageCode, "ht")
+        XCTAssertEqual(restored.matching("es")?.languageCode, "es")
+        XCTAssertNil(restored.matching("fr"))
+        _ = saved.remember(catalog("ht", failure: "approved_translation_unavailable"))
+        XCTAssertNil(saved.matching("ht")?.entries.first?.validatedText(source: "Settings", context: "visual interface copy", revision: "r1", placeholders: []))
+        for index in 0..<12 { _ = saved.remember(catalog("language-\(index)")) }
+        XCTAssertEqual(saved.catalogs.count, 8)
+    }
+
+    func testLocalizationContinuationRequiresBoundedServerInstruction() throws {
+        func receipt(_ disposition: String, delay: Int = 2_678_400) -> LegendApplicationLocalizationContinuation {
+            LegendApplicationLocalizationContinuation(disposition: disposition, remainingEntries: 1, retryAfterSeconds: delay,
+                maximumConsecutiveNoProgress: 3, maximumDurationSeconds: 180, maximumRequestsPerPass: 64, cooldownSeconds: 60)
+        }
+        XCTAssertTrue(receipt("RetryableFailure").isResumable)
+        XCTAssertFalse(receipt("Blocked").isResumable)
+        XCTAssertFalse(receipt("AwaitingApproval").isResumable)
+        XCTAssertFalse(receipt("Pending", delay: 0).isResumable)
+    }
+
+    func testWarmLanguageSwitchUsesExistingActorCacheAndRejectsStaleAccountCallbacks() async throws {
+        let cache = InMemoryLaunchCache()
+        let actor = try Self.cachedActor()
+        cache.writeSession(MobileSessionCacheEntry(actor: actor, capabilities: ["messaging"], permittedParticipantTypes: [.client],
+            cachedUtc: Date(), credentialFingerprint: LegendSessionCredentialFingerprint.make(from: Self.validTokens()), preferredLanguageCode: "ht"))
+        let coordinator = MobileSessionCoordinator(configuration: Self.readyConfiguration(), tokenStore: StubTokenStore(tokens: Self.validTokens()),
+            authorizer: NeverAuthorizer(), tokenExchanger: NeverExchanger(), sessionService: HangingSessionService(), diagnostics: LegendDiagnostics(), launchCache: cache)
+        coordinator.restore()
+        guard case .authenticated(let current) = coordinator.state else { return XCTFail("Fixture requires the existing verified cached session") }
+        let manifestURL = try XCTUnwrap(Bundle.main.url(forResource: "legend-application-copy", withExtension: "json"))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any])
+        let entries = try XCTUnwrap(manifest["entries"] as? [[String: Any]])
+        let source = try XCTUnwrap(entries.first { $0["source"] as? String == "Settings" && $0["context"] as? String == "visual interface copy" })
+        func catalog(_ language: String, _ text: String) throws -> LegendApplicationLocalizationCatalog {
+            LegendApplicationLocalizationCatalog(catalogVersion: try XCTUnwrap(manifest["catalogVersion"] as? String), sourceLanguageCode: "en", languageCode: language,
+                locale: language, generatedUtc: "2026-09-13T00:00:00Z", isComplete: true,
+                entries: [LegendApplicationLocalizedCopy(id: try XCTUnwrap(source["id"] as? String), source: "Settings", text: text,
+                    context: "visual interface copy", sourceRevision: try XCTUnwrap(source["sourceRevision"] as? String), placeholders: [], provider: "AzureTranslator",
+                    provenance: "ProviderDerived", validationState: "Observation", createdUtc: "now", reused: true, failureCode: nil)])
+        }
+        var payload = LegendApplicationLocalizationCache()
+        _ = payload.remember(try catalog("ht", "Anviwònman")); _ = payload.remember(try catalog("es", "Configuración"))
+        cache.writePayload(try JSONEncoder.mobile.encode(payload), kind: .localization, actorKey: legendLaunchActorKey(actor.identity))
+        let localization = LegendApplicationLocalization()
+        localization.setForeground(false) // No model/provider/network work; exercise the real offline presentation path.
+        await localization.activate(session: current, coordinator: coordinator, launchCache: cache)
+        XCTAssertEqual(LegendLocalized("Settings"), "Anviwònman")
+        await localization.refresh(session: current, coordinator: coordinator, launchCache: cache, preferredLanguageCode: "es")
+        XCTAssertEqual(LegendLocalized("Settings"), "Configuración")
+        XCTAssertEqual(cache.readSession()?.preferredLanguageCode, "es")
+        XCTAssertEqual(cache.readSession()?.credentialFingerprint, LegendSessionCredentialFingerprint.make(from: Self.validTokens()))
+        await localization.refresh(session: current, coordinator: coordinator, launchCache: cache, preferredLanguageCode: "ht")
+        XCTAssertEqual(LegendLocalized("Settings"), "Anviwònman")
+        XCTAssertEqual(cache.readSession()?.preferredLanguageCode, "ht")
+        // An effective English catalog is retained separately and cannot change the saved communication preference.
+        _ = payload.remember(try catalog("en", "Settings"))
+        cache.writePayload(try JSONEncoder.mobile.encode(payload), kind: .localization, actorKey: legendLaunchActorKey(actor.identity))
+        await localization.activate(session: current, coordinator: coordinator, launchCache: cache)
+        XCTAssertEqual(cache.readSession()?.preferredLanguageCode, "ht")
+        let otherActor = try MobileActor(identity: LogicalParticipantIdentity(userID: "client-other", participantType: .client), profileID: "00000000-0000-0000-0000-000000000099", displayName: "Other", avatar: nil)
+        let stale = MobileSession(actor: otherActor, capabilities: [], preferredLanguageCode: "es")
+        await localization.activate(session: stale, coordinator: coordinator, launchCache: cache)
+        await localization.refresh(session: stale, coordinator: coordinator, launchCache: cache, preferredLanguageCode: "es")
+        XCTAssertEqual(localization.activeActorKey, legendLaunchActorKey(actor.identity))
+        XCTAssertEqual(LegendLocalized("Settings"), "Anviwònman")
+        coordinator.signOut(); localization.clearPresentation()
+        await localization.activate(session: current, coordinator: coordinator, launchCache: cache)
+        XCTAssertNil(localization.activeActorKey)
+        XCTAssertEqual(LegendLocalized("Settings"), "Settings")
+    }
+
     func testUnchangedLocalizationDoesNotInvalidateAuthenticatedPresentation() {
         let localization = LegendApplicationLocalization()
         let revision = localization.revision

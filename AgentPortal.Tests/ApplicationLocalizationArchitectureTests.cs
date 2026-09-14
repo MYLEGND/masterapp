@@ -5,10 +5,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Messaging;
+using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -16,6 +18,125 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplicationLocalizationArchitectureTests
 {
+    [Theory]
+    [InlineData("translation_capacity_configuration_unavailable")]
+    [InlineData("translation_capacity_temporarily_unavailable")]
+    public async Task CapacityHold_ExistingTranslationTraceReportsBlockedAndNeverCallsProvider(string reason)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        await registry.ListEnabledTranslationLanguagesAsync();
+        var capacity = new Mock<ITranslationCapacityAuthority>(MockBehavior.Strict);
+        capacity.Setup(item => item.TryReserveAsync(It.IsAny<string>(), It.IsAny<int>(), TranslationCapacityPurpose.Live,
+            It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(new TranslationCapacityReservationResult(null, reason));
+        var logger = new Mock<ILogger<LegendConnectTranslationRouter>>();
+        var provider = new RecordingTranslationProvider();
+        var router = new LegendConnectTranslationRouter(provider, registry, capacity.Object, logger.Object);
+        var result = await router.TranslateAsync("A private original", "ht", "en");
+        Assert.False(result.Succeeded);
+        Assert.Equal(reason, result.ErrorCode);
+        Assert.Equal(0, provider.TranslateOperations);
+        logger.Verify(item => item.Log(LogLevel.Information, It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((state, type) => state.ToString()!.Contains("Stage=translation_capacity", StringComparison.Ordinal) &&
+                state.ToString()!.Contains("Outcome=blocked", StringComparison.Ordinal) &&
+                state.ToString()!.Contains("ReasonCode=" + reason, StringComparison.Ordinal) &&
+                !state.ToString()!.Contains("A private original", StringComparison.Ordinal)),
+            It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("translation_capacity_configuration_unavailable")]
+    [InlineData("translation_capacity_temporarily_unavailable")]
+    [InlineData("translation_capacity_reservation_pending")]
+    [InlineData("translation_capacity_hourly_exhausted")]
+    [InlineData("translation_capacity_monthly_exhausted")]
+    [InlineData("translation_capacity_request_exceeds_limit")]
+    [InlineData("translation_provider_authentication_failed")]
+    [InlineData("translation_provider_access_denied")]
+    [InlineData("translation_provider_rate_limited")]
+    [InlineData("translation_provider_transient_failure")]
+    [InlineData("translation_provider_request_rejected")]
+    public void TranslationOperationalReasons_RemainVisibleWithoutAdmittingPrivateDiagnosticText(string reason)
+    {
+        Assert.Equal(reason, LegendConnectTelemetry.NormalizeDiagnosticReason(reason));
+        Assert.Equal("unclassified_reason", LegendConnectTelemetry.NormalizeDiagnosticReason(reason + ": private user text"));
+    }
+
+    [Theory]
+    [InlineData("translation_pending", "Pending", true)]
+    [InlineData("translation_provider_timeout", "RetryableFailure", true)]
+    [InlineData("translation_provider_transient_failure", "RetryableFailure", true)]
+    [InlineData("translation_provider_rate_limited", "RetryableFailure", true)]
+    [InlineData("translation_capacity_temporarily_unavailable", "RetryableFailure", true)]
+    [InlineData("translation_capacity_reservation_pending", "RetryableFailure", true)]
+    [InlineData("translation_provider_failed", "Blocked", false)]
+    [InlineData("translation_provider_authentication_failed", "Blocked", false)]
+    [InlineData("translation_provider_access_denied", "Blocked", false)]
+    [InlineData("translation_capacity_configuration_unavailable", "Blocked", false)]
+    [InlineData("translation_output_invalid", "Blocked", false)]
+    public void CatalogContinuation_TypedFailureCannotBeConcealedByPendingEntries(string failure, string disposition, bool retry)
+    {
+        var entries = new[] { FailedCopy(failure), FailedCopy("translation_pending") };
+        var result = ApplicationLocalizationService.BuildContinuation(entries);
+        Assert.Equal(disposition, result.Disposition);
+        Assert.Equal(2, result.RemainingEntries);
+        Assert.Equal(retry, result.RetryAfterSeconds is > 0);
+        Assert.InRange(result.MaximumRequestsPerPass, 1, 64);
+        Assert.InRange(result.MaximumDurationSeconds, 1, 180);
+    }
+
+    [Fact]
+    public void CatalogContinuation_UsesCapacityResetAndStopsAtApprovalOnly()
+    {
+        var reset = DateTime.UtcNow.AddDays(3);
+        var result = ApplicationLocalizationService.BuildContinuation(new[] {
+            FailedCopy("translation_capacity_monthly_exhausted") with { RetryAfterUtc = reset } });
+        Assert.Equal("RetryableFailure", result.Disposition);
+        Assert.InRange(result.RetryAfterSeconds!.Value, 259_199, 259_201);
+        Assert.Null(ApplicationLocalizationService.BuildContinuation(new[] { FailedCopy("approved_translation_unavailable") }).RetryAfterSeconds);
+        Assert.Equal("Complete", ApplicationLocalizationService.BuildContinuation(Array.Empty<ApplicationLocalizedCopy>()).Disposition);
+    }
+
+    private static ApplicationLocalizedCopy FailedCopy(string code) => new(
+        Guid.NewGuid().ToString("N"), "Source", "Source", "visual interface copy", "revision",
+        Array.Empty<string>(), "SourceFallback", "Source", "Fallback", DateTime.UtcNow, false, code);
+
+    [Fact]
+    public async Task QuotaNotice_EveryBaselineLanguage_IsPresetAndNeverInvokesTranslation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var languages = await registry.ListEnabledTranslationLanguagesAsync();
+        var manifest = new EmbeddedApplicationCopyManifestSource();
+        var entries = manifest.Manifest.Entries.Where(item => item.PresetTranslations is not null).ToArray();
+        Assert.Equal(2, entries.Length);
+        foreach (var entry in entries)
+        {
+        Assert.Equal("ApprovedOnly", entry.TranslationPolicy);
+        var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
+        var translations = new Mock<IRetainedTranslationService>(MockBehavior.Strict);
+        var intelligence = new Mock<ILegendConnectTranslationIntelligence>(MockBehavior.Strict);
+        var actor = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var service = new ApplicationLocalizationService(manifest, preferences.Object, registry,
+            translations.Object, intelligence.Object, NullLogger<ApplicationLocalizationService>.Instance);
+        foreach (var language in languages)
+        {
+            preferences.Setup(item => item.GetCanonicalPreferredLanguageAsync(actor, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(language.Code);
+            Assert.True(entry.PresetTranslations!.ContainsKey(language.Code));
+            for (var delivery = 0; delivery < 2; delivery++)
+            {
+                var notice = await service.LocalizeAsync(actor, entry.Source, entry.Context);
+                Assert.Equal(entry.PresetTranslations[language.Code], notice.Text);
+                Assert.True(notice.Reused);
+                Assert.Null(notice.FailureCode);
+            }
+        }
+        translations.VerifyNoOtherCalls();
+        intelligence.VerifyNoOtherCalls();
+        }
+    }
+
     [Theory]
     [InlineData("Ringing")]
     [InlineData("The call status could not be confirmed. Please try again.")]
@@ -69,6 +190,98 @@ public sealed class ApplicationLocalizationArchitectureTests
         Assert.Equal(1, provider.TranslateOperations);
         Assert.Single(db.Set<Domain.Entities.LegendTranslationAlignment>()
             .Where(item => item.RetainedTranslationIdentity != null));
+    }
+
+    [Fact]
+    public async Task RetainedReuse_IsDurablyCountedAcrossRouterInstancesInBothDirections()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var forward = Request("ht");
+        var reverse = Request("en") with { SourceLanguageCode = "ht", SourceText = "Byenveni, {name}." };
+        foreach (var request in new[] { forward, reverse })
+            Assert.True((await router.TranslateRetainedAsync(request)).Succeeded);
+        db.ChangeTracker.Clear();
+        var anotherDeviceRequest = await BuildRouterAsync(db, provider);
+        foreach (var request in new[] { forward, reverse })
+            Assert.True((await anotherDeviceRequest.TranslateRetainedAsync(request)).Reused);
+        Assert.Equal(2, provider.TranslateOperations);
+        var pairs = db.Set<LegendTranslationPairDemand>().ToArray();
+        Assert.Equal(2, pairs.Length);
+        Assert.All(pairs, pair => {
+            Assert.Equal(2, pair.TranslationRequestCount);
+            Assert.Equal(1, pair.AzureFallbackCount);
+            Assert.Equal(1, pair.ProviderObservationReuseCount);
+            Assert.Equal(0, pair.TranslationMemoryHitCount);
+        });
+        var usage = Assert.Single(db.Set<LegendTranslationSystemUsage>());
+        Assert.Equal(2, usage.ProviderOperationCount);
+        Assert.Equal(forward.SourceText.Length + reverse.SourceText.Length, usage.ProviderObservationCharactersAvoided);
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var dashboard = await new LegendConnectOperations(db, registry,
+            new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance), Configuration())
+            .GetDashboardCountersAsync();
+        Assert.Equal(2, dashboard.ProviderObservationReuseCount);
+        Assert.Equal(2, dashboard.ProviderOperationCount);
+        Assert.Equal(0, dashboard.TranslationRoutingReconciliationGap);
+        Assert.Equal(usage.ProviderObservationCharactersAvoided, dashboard.ProviderObservationCharactersAvoided);
+    }
+
+    [Fact]
+    public async Task RetainedBatch_RecordsProviderAndReuseInTheSameDurableLedger()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var requests = new[] { Request("ht"), Request("ht") with { StableSourceContentId = "other", SourceText = "Hello, {name}." } };
+        Assert.All(await router.TranslateRetainedBatchAsync(requests), result => Assert.True(result.Succeeded));
+        var reuseWrites = 0;
+        db.SavingChanges += (_, _) => reuseWrites++;
+        Assert.All(await router.TranslateRetainedBatchAsync(requests), result => Assert.True(result.Reused));
+        Assert.Equal(2, reuseWrites); // One pair delta and one avoided-character delta, independent of batch size.
+        Assert.Equal(1, provider.BatchOperations);
+        Assert.Equal(0, provider.TranslateOperations);
+        var pair = Assert.Single(db.Set<LegendTranslationPairDemand>());
+        Assert.Equal(4, pair.TranslationRequestCount);
+        Assert.Equal(2, pair.AzureFallbackCount);
+        Assert.Equal(2, pair.ProviderObservationReuseCount);
+        var usage = Assert.Single(db.Set<LegendTranslationSystemUsage>());
+        Assert.Equal(1, usage.ProviderOperationCount);
+        Assert.Equal(requests.Sum(request => request.SourceText.Length), usage.ProviderObservationCharactersAvoided);
+    }
+
+    [Fact]
+    public async Task DuplicateBatchEntries_TranslateOnceAndRecordTheOtherDeliveryAsReuse()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var request = Request("ht");
+        var results = await router.TranslateRetainedBatchAsync(new[] { request, request });
+        Assert.False(results[0].Reused);
+        Assert.True(results[1].Reused);
+        Assert.Equal(1, provider.BatchOperations);
+        var demand = Assert.Single(db.Set<LegendTranslationPairDemand>());
+        Assert.Equal(2, demand.TranslationRequestCount);
+        Assert.Equal(1, demand.AzureFallbackCount);
+        Assert.Equal(1, demand.ProviderObservationReuseCount);
+        Assert.Single(db.Set<LegendTranslationAlignment>().Where(row => row.RetainedTranslationIdentity != null));
+    }
+
+    [Fact]
+    public async Task NewlyRegisteredLanguage_ReusesWithoutChangingTheRouter()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        db.Add(new LegendLanguageDefinition { LanguageCode = "sw", CanonicalName = "Swahili", NativeName = "Kiswahili",
+            StoragePartition = "/sw", IsEnabled = true, IsTranslationEnabled = true });
+        await db.SaveChangesAsync();
+        var request = Request("sw");
+        Assert.True((await router.TranslateRetainedAsync(request)).Succeeded);
+        Assert.True((await router.TranslateRetainedAsync(request)).Reused);
+        Assert.Equal(1, provider.TranslateOperations);
     }
 
     [Fact]
@@ -261,7 +474,9 @@ public sealed class ApplicationLocalizationArchitectureTests
             registry,
             new AlwaysAvailableCapacity(),
             NullLogger<LegendConnectTranslationRouter>.Instance,
-            intelligence: new LegendConnectTranslationIntelligence(db, configuration));
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration),
+            demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(db, NullLogger<TranslationSystemUsageRecorder>.Instance));
         var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
         preferences.Setup(item => item.GetCanonicalPreferredLanguageAsync(
                 It.IsAny<MessagingActor>(), It.IsAny<CancellationToken>()))
@@ -283,7 +498,7 @@ public sealed class ApplicationLocalizationArchitectureTests
 
         Assert.Equal("ht", first.LanguageCode);
         Assert.False(first.IsComplete);
-        Assert.Equal(new EmbeddedApplicationCopyManifestSource().Manifest.Entries.Count(entry => entry.TranslationPolicy == "ApprovedOnly"),
+        Assert.Equal(new EmbeddedApplicationCopyManifestSource().Manifest.Entries.Count(entry => entry.TranslationPolicy == "ApprovedOnly" && entry.PresetTranslations?.ContainsKey("ht") != true),
             first.Entries.Count(item => item.FailureCode == "approved_translation_unavailable"));
         Assert.Contains(first.Entries, item =>
             item.Source == "Secure sign in" && item.Text.StartsWith("[ht]", StringComparison.Ordinal));
@@ -361,7 +576,9 @@ public sealed class ApplicationLocalizationArchitectureTests
             registry,
             new AlwaysAvailableCapacity(),
             NullLogger<LegendConnectTranslationRouter>.Instance,
-            intelligence: new LegendConnectTranslationIntelligence(db, configuration));
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration),
+            demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(db, NullLogger<TranslationSystemUsageRecorder>.Instance));
     }
 
     private static IConfiguration Configuration() => new ConfigurationBuilder()
@@ -379,17 +596,17 @@ public sealed class ApplicationLocalizationArchitectureTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<TranslationCapacityReservation?> TryReserveAsync(
+        public Task<TranslationCapacityReservationResult> TryReserveAsync(
             string provider,
             int characters,
             TranslationCapacityPurpose purpose,
             string? reservationReference = null,
-            CancellationToken cancellationToken = default) => Task.FromResult<TranslationCapacityReservation?>(new(
+            CancellationToken cancellationToken = default) => Task.FromResult(new TranslationCapacityReservationResult(new TranslationCapacityReservation(
                 provider,
                 DateOnly.FromDateTime(DateTime.UtcNow),
                 characters,
                 purpose,
-                Guid.NewGuid()));
+                Guid.NewGuid())));
 
         public Task CompleteAsync(
             TranslationCapacityReservation reservation,

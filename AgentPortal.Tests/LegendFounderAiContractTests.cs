@@ -143,23 +143,36 @@ public sealed class LegendFounderAiContractTests
 
         Assert.NotNull(reply);
 
-        // No public mutation surface belongs on this interface.
+        // Reply remains the only execution surface. Canonical history reads
+        // must retain the authenticated principal rather than accept an actor ID.
         var publicMethods =
             type.GetMethods(
                     BindingFlags.Instance |
                     BindingFlags.Public |
                     BindingFlags.DeclaredOnly)
                 .Select(method => method.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
 
         Assert.Equal(
             new[]
             {
+                nameof(LegendFounderAiConversationService.GetConversationPageAsync),
+                nameof(LegendFounderAiConversationService.ListConversationsAsync),
                 nameof(
                     LegendFounderAiConversationService
                         .ReplyAsync)
             },
             publicMethods);
+        foreach (var name in publicMethods)
+        {
+            Assert.Equal(typeof(System.Security.Claims.ClaimsPrincipal),
+                type.GetMethod(name)!.GetParameters()[0].ParameterType);
+        }
+        Assert.Equal(typeof(Task<MessagingConversationListResult>),
+            type.GetMethod(nameof(LegendFounderAiConversationService.ListConversationsAsync))!.ReturnType);
+        Assert.Equal(typeof(Task<MessagingConversationResult>),
+            type.GetMethod(nameof(LegendFounderAiConversationService.GetConversationPageAsync))!.ReturnType);
     }
 
     [Fact]
@@ -195,12 +208,18 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("'Accept': 'application/x-ndjson'", script, StringComparison.Ordinal);
         Assert.Contains("consumeChatResultStream", script, StringComparison.Ordinal);
         Assert.Contains("structuredFailureMessage", script, StringComparison.Ordinal);
-        Assert.Contains("result.responseAuthority", script, StringComparison.Ordinal);
-        Assert.Contains("result.stage", script, StringComparison.Ordinal);
+        // Both terminal POST results and reloaded canonical rows retain server
+        // provenance before the same renderer consumes authority and stage.
+        Assert.Contains("conversation.messages.push({ ...result, id: result.messageId", script, StringComparison.Ordinal);
+        Assert.Contains("return { ...item.responseProvenance, id: item.id", script, StringComparison.Ordinal);
+        Assert.Contains("message.responseAuthority,", script, StringComparison.Ordinal);
+        Assert.Contains("message.stage,", script, StringComparison.Ordinal);
+        Assert.Contains("metadata.stage === 'response_partial'", script, StringComparison.Ordinal);
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
         Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
         Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
-        Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("result.responseAuthority ||", script, StringComparison.Ordinal);
+        Assert.Contains("item.authorKind !== 'Human' && !item.responseProvenance", script, StringComparison.Ordinal);
         Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
         Assert.Contains("responseAuthority === 'GovernedResearch'", script, StringComparison.Ordinal);
         Assert.Contains("'LEGEND governed research'", script, StringComparison.Ordinal);
@@ -209,7 +228,11 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("'System diagnostic'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
-        Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
+        Assert.Contains("All external providers are blocked for this clean conversation.", script, StringComparison.Ordinal);
+        Assert.Contains("Strict provider blocking is disabled for this clean conversation.", script, StringComparison.Ordinal);
+        Assert.Contains("externalAnsweringBlocked: conversation.externalAnsweringBlocked === true", script, StringComparison.Ordinal);
+        Assert.Contains("responseAuthority === 'LocalFoundation'", script, StringComparison.Ordinal);
+        Assert.Contains("'LEGEND-controlled model'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
     }
 
@@ -252,7 +275,10 @@ public sealed class LegendFounderAiContractTests
             StringComparison.Ordinal);
         Assert.Contains("val reason: String? = null", androidContracts, StringComparison.Ordinal);
         Assert.Contains("sourceLanguageCode: String? = null", androidViewModel, StringComparison.Ordinal);
-        Assert.Contains("sourceLanguageCode = sourceLanguageCode", androidViewModel, StringComparison.Ordinal);
+        // The immutable pending request now passes the nullable language as a
+        // positional argument, alongside only the current Human turn and cursor.
+        Assert.Contains("mode == \"legend\" && externalAnsweringBlocked, sourceLanguageCode,", androidViewModel, StringComparison.Ordinal);
+        Assert.Contains("listOf(FounderAiChatMessage(\"user\", text)), conversationId, lastMessageId)", androidViewModel, StringComparison.Ordinal);
 
         Assert.DoesNotContain("sourceLanguageCode: 'en'", web, StringComparison.Ordinal);
         Assert.DoesNotContain("sourceLanguageCode: \"en\"", ios, StringComparison.Ordinal);
@@ -300,6 +326,16 @@ public sealed class LegendFounderAiContractTests
             1,
             modal.Split("id=\"legendFounderAiNativeOnly\"", StringSplitOptions.None).Length - 1);
         Assert.Equal(
+            1,
+            modal.Split("id=\"legendFounderAiExternalAnsweringBlocked\"", StringSplitOptions.None).Length - 1);
+        foreach (var source in new[] { modal, mobile, androidPresentation })
+        {
+            Assert.Contains("Block all external providers", source, StringComparison.Ordinal);
+            Assert.Contains("Disable external answering, research, and Azure translation.", source, StringComparison.Ordinal);
+            Assert.Contains("Block external answering", source, StringComparison.Ordinal);
+            Assert.Contains("Allow authorized research and translation.", source, StringComparison.Ordinal);
+        }
+        Assert.Equal(
             2,
             modal.Split("legend-founder-ai-logo-image", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("legendFounderAiMobileNew", modal, StringComparison.Ordinal);
@@ -339,11 +375,14 @@ public sealed class LegendFounderAiContractTests
             mobile.Split("Image(\"LegendAiIcon\")", StringSplitOptions.None).Length - 1);
         Assert.Contains("nativeOnly: Bool", mobile, StringComparison.Ordinal);
         Assert.Contains("stop.fill", mobile, StringComparison.Ordinal);
-        Assert.Contains("Keep OpenAI off for this direct LEGEND test.", mobile, StringComparison.Ordinal);
+        Assert.Contains("Disable external answering, research, and Azure translation.", mobile, StringComparison.Ordinal);
         Assert.Contains(
-            "Toggle(LegendLocalized(\"Native-only\")",
+            "Toggle(LegendLocalized(\"Block all external providers\"), isOn: Binding(get: { nativeOnly }, set: { nativeOnly = $0; store.clearConversation() }))",
             mobile,
             StringComparison.Ordinal);
+        Assert.Contains("Toggle(isOn: Binding(get: { externalAnsweringBlocked }, set: { externalAnsweringBlocked = $0; store.clearConversation() }))", mobile, StringComparison.Ordinal);
+        Assert.Contains(".disabled(store.isSending || mode != \"legend\")", mobile, StringComparison.Ordinal);
+        Assert.Contains(".disabled(store.isSending || mode != \"legend\" || nativeOnly)", mobile, StringComparison.Ordinal);
         Assert.Contains("responseAuthority", mobile, StringComparison.Ordinal);
         Assert.Contains("case \"LegendAi\":", mobile, StringComparison.Ordinal);
         Assert.Contains("case \"GovernedResearch\":", mobile, StringComparison.Ordinal);
@@ -1307,8 +1346,19 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY: 'false'", sql, StringComparison.Ordinal);
         Assert.Contains("$matrixResult.SqlPrincipalVerified -isnot [bool]", sql, StringComparison.Ordinal);
         Assert.Contains("$matrixResult.Authority -ne 'release_workflow_matrix'", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("id-token: write", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("azure/login", sql, StringComparison.Ordinal);
+        Assert.Contains("id-token: write", sql, StringComparison.Ordinal);
+        Assert.Contains("uses: azure/login@v2", sql, StringComparison.Ordinal);
+        Assert.Contains("client-id: ${{ secrets.AZURE_CLIENT_ID }}", sql, StringComparison.Ordinal);
+        Assert.Contains("ref: ${{ needs.build.outputs.candidate_sha }}", sql, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/export-legend-foundation-test-environment.py $privateConfig --format json", sql, StringComparison.Ordinal);
+        Assert.Contains("if ($LASTEXITCODE -ne 0) { throw 'Controlled foundation configuration could not be loaded.' }", sql, StringComparison.Ordinal);
+        Assert.Contains("[Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, 'Process')", sql, StringComparison.Ordinal);
+        Assert.Contains("finally {", sql, StringComparison.Ordinal);
+        Assert.Contains("Remove-Item $privateConfig -Force", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("GITHUB_ENV", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("webapps-deploy", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet-ef database update", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("az role assignment", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("az webapp", sql, StringComparison.Ordinal);
     }
 
@@ -1458,8 +1508,19 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/run-legend-production-shadow.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("LEGEND-Production-ReadOnly-Validation", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("id-token: write", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("azure/login", workflow, StringComparison.Ordinal);
+        Assert.Contains("id-token: write", workflow, StringComparison.Ordinal);
+        Assert.Contains("uses: azure/login@v2", workflow, StringComparison.Ordinal);
+        Assert.Contains("client-id: ${{ secrets.AZURE_CLIENT_ID }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("ref: ${{ env.LEGEND_VALIDATION_CANDIDATE_SHA }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("steps.build.outcome == 'success' && steps.foundation_identity.outcome == 'success'", workflow, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/export-legend-foundation-test-environment.py \"$model_environment\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("source \"$model_environment\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("trap 'rm -f \"$model_environment\"' EXIT", workflow, StringComparison.Ordinal);
+        Assert.Contains("umask 077", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("GITHUB_ENV", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("webapps-deploy", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet-ef database update", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("az role assignment", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("az webapp", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
@@ -1490,7 +1551,12 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain(sqlSecretExpression, workflow[transcriptStart..], StringComparison.Ordinal);
         Assert.Contains("steps.configuration.outcome == 'success'", workflow[setupStart..diagnosticStart], StringComparison.Ordinal);
         Assert.Contains("'SecretStoreInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
-        Assert.Contains("'AzureConfigurationInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("FOUNDATION_CONFIGURATION_INSPECTED: ${{ steps.regression.outputs.foundation_configuration_inspected || steps.diagnostic.outputs.foundation_configuration_inspected }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("FOUNDATION_CONFIGURATION_LOADED: ${{ steps.regression.outputs.foundation_configuration_loaded || steps.diagnostic.outputs.foundation_configuration_loaded }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("'AzureConfigurationInspected': os.environ['FOUNDATION_CONFIGURATION_INSPECTED'] == 'true'", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("'FoundationConfigurationLoaded': os.environ['FOUNDATION_CONFIGURATION_LOADED'] == 'true'", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("'FoundationIdentityOutcome': os.environ['FOUNDATION_IDENTITY_OUTCOME']", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.DoesNotContain("'AzureConfigurationInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
         Assert.Contains("LEGEND_PRODUCTION_OBSERVATION_REQUIRED: 'true'", diagnostic, StringComparison.Ordinal);
         var gate = workflow[workflow.IndexOf("      - name: Enforce complete diagnostic and regression result", StringComparison.Ordinal)..];
         Assert.Contains("$REGRESSION_OUTCOME", gate, StringComparison.Ordinal);

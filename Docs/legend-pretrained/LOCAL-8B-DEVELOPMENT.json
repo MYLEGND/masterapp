@@ -1,0 +1,204 @@
+{
+  "code_revision": "e5d33373 + local correction build7, uncommitted; not final",
+  "results_sha256": "220fe8fe986748be9e5b59ee8dcfa6d1f867d258914b54fb037f792d76a5ad85",
+  "scope": "Synthetic candidate data, real controlled model. Prompt/catalog differ from build4; no isolated model causal comparison yet.",
+  "results": [
+    {
+      "testName": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_RespectsTheRequestProviderPolicy(policyMode: \"blocked\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0129601"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Dashboard_ReconcilesEveryTerminalStageAndSeparatesProviderReuseFromNativeCoverage",
+      "outcome": "Passed",
+      "duration": "00:00:00.0725621"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.OpenProviderContradiction_BlocksReusableObservation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0162888"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Router_SelectsExactlyOneTerminalStageInCanonicalOrder(selectedStage: \"promoted-model\", expectedProvider: \"LegendConnectPromotedTranslationModel\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0019395"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalEvaluation_UsesExecutedBaselineAndIndependentExactReference(candidate: \"expected\", baseline: \"wrong\", succeeded: True, candidateScore: 1, baselineScore: 0)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0000041"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_RespectsTheRequestProviderPolicy(policyMode: \"unspecified\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.8358610"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalEvaluation_UsesExecutedBaselineAndIndependentExactReference(candidate: \"wrong\", baseline: \"expected\", succeeded: True, candidateScore: 0, baselineScore: 1)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0106348"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.UnpromotedTrainingAndProcessingCurriculum_DoNotBlockConfiguredBaseOrActivateCandidate",
+      "outcome": "Passed",
+      "duration": "00:00:00.8100619"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.SameLanguageBypass_RemainsOutsideDirectionalRoutingAndAccountQuota",
+      "outcome": "Passed",
+      "duration": "00:00:00.0314407"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalTraining_RejectsOpaquePathTraversalAndUnknownBackend",
+      "outcome": "Passed",
+      "duration": "00:00:00.0105389"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\", requiredAnswerElements: [\"Kestrel\", \"premise\"])",
+      "outcome": "Failed",
+      "duration": "00:00:27.8866327"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Router_SelectsExactlyOneTerminalStageInCanonicalOrder(selectedStage: \"azure\", expectedProvider: \"AzureTranslator\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.9418969"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.RolledBackPromotedTranslationModel_CannotServeAndFallsThroughToAzure",
+      "outcome": "Passed",
+      "duration": "00:00:00.0047460"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.TrustedExactMemory_ExcludesProviderDerivedObservation",
+      "outcome": "Passed",
+      "duration": "00:00:00.0739702"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Router_SelectsExactlyOneTerminalStageInCanonicalOrder(selectedStage: \"structural\", expectedProvider: \"LegendConnectStructuralComposition\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0015277"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalUpload_IsContentAddressedAndDoesNotReplaceChangedArtifact",
+      "outcome": "Passed",
+      "duration": "00:00:00.0104888"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.LocalEvaluation_UsesExecutedBaselineAndIndependentExactReference(candidate: \"expected\", baseline: null, succeeded: False, candidateScore: 0, baselineScore: 0)",
+      "outcome": "Passed",
+      "duration": "00:00:00.0001205"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Router_SelectsExactlyOneTerminalStageInCanonicalOrder(selectedStage: \"memory\", expectedProvider: \"LegendConnectTranslationMemory\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0017282"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectLocalModelLifecycleTests.SuccessfulStatusWithoutActualCheckpointIsRejected",
+      "outcome": "Passed",
+      "duration": "00:00:00.0062715"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Router_SelectsExactlyOneTerminalStageInCanonicalOrder(selectedStage: \"provider-observation\", expectedProvider: \"LegendConnectProviderObservation\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0015791"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.Router_SelectsExactlyOneTerminalStageInCanonicalOrder(selectedStage: \"contextual\", expectedProvider: \"LegendConnectContextualComposition\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0025768"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\", requiredAnswerElements: [\"nine\", \"two\", \"Devon\", \"Monday\"])",
+      "outcome": "Passed",
+      "duration": "00:00:27.8775165"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.NoActiveModel_FailsClosedWithoutInventingVersion",
+      "outcome": "Passed",
+      "duration": "00:00:00.0007235"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectProductionNeuralRoutingTests.ActivePromotedModel_RespectsTheRequestProviderPolicy(policyMode: \"enabled\")",
+      "outcome": "Passed",
+      "duration": "00:00:00.0021614"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.ProviderFailure_AfterInternalMissesRemainsExplicitInBothRoutingAndProviderAccounting",
+      "outcome": "Passed",
+      "duration": "00:00:00.0180179"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiModeIsolationTests.SupportedApprovedKnowledge_ReachesLocalFoundationAsEvidenceWithoutReplacingItsReply",
+      "outcome": "Passed",
+      "duration": "00:00:00.1981830"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.LowQualityMachineAlignment_DoesNotServeAndFallsBackWithoutPromotion",
+      "outcome": "Passed",
+      "duration": "00:00:00.0202500"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.ProviderObservationReuse_IsAccountedSeparatelyAndNeverAsNativeMemory",
+      "outcome": "Passed",
+      "duration": "00:00:00.0035003"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests.DisabledPair_BypassesAllInternalCandidatesAndKeepsAzureFallbackVisible",
+      "outcome": "Passed",
+      "duration": "00:00:00.0056710"
+    },
+    {
+      "testName": "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\", requiredAnswerElements: [\"34\", \"2/17\"])",
+      "outcome": "Failed",
+      "duration": "00:00:34.2087879"
+    }
+  ],
+  "responses": [
+    {
+      "Label": "native_capability:rewriting",
+      "Prompt": "Rewrite this rough note as a concise professional update for a regional supervisor without changing any facts: we checked nine renewals, two lack proof of payment, Devon will call those households before Monday, nothing has been reinstated yet.",
+      "Message": "We have reviewed nine renewal cases, and two of them are missing proof of payment. Devon will contact those households by Monday. No reinstatements have been processed yet.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-8B-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ProviderCalls": 0,
+      "ToolCalls": []
+    },
+    {
+      "Label": "native_capability:deduction",
+      "Prompt": "Every audited file carries a signed attestation. File Kestrel was audited and carries no signed attestation. What follows logically, and which premise must be false if both records describe the same file?",
+      "Message": "The logical conclusion is that the premise stating \"Every audited file carries a signed attestation\" must be false if both records describe the same file. This is because the file \"Kestrel\" was audited and carries no signed attestation, which directly contradicts the premise that all audited files have a signed attestation. Therefore, the premise that every audited file carries a signed attestation is false.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-8B-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ProviderCalls": 0,
+      "ToolCalls": []
+    },
+    {
+      "Label": "native_capability:arithmetic",
+      "Prompt": "A dispatch board opens with 41 open tickets. Twelve are closed, five new tickets arrive, and four of the remaining tickets are flagged for review. How many tickets are still open, and what share of them are flagged? Show the calculation.",
+      "Message": "To determine the number of open tickets and the share that are flagged for review, we can follow these steps:\n\n1. **Initial number of open tickets**: 41\n2. **Number of closed tickets**: 12\n3. **Number of new tickets arriving**: 5\n4. **Number of tickets flagged for review**: 4\n\n### Step 1: Calculate the number of open tickets after closing some\n$$ \\text{Open tickets after closing} = 41 - 12 = 29 $$\n\n### Step 2: Add the new tickets to the open tickets\n$$ \\text{Total open tickets after new arrivals} = 29 + 5 = 34 $$\n\n### Step 3: Determine the share of open tickets that are flagged for review\n$$ \\text{Share of flagged tickets} = \\frac{4}{34} \\approx 0.1176 $$\n\n### Final Answer:\n- **Number of open tickets**: 34\n- **Share of open tickets flagged for review**: Approximately 11.76%\n\nThus, there are 34 open tickets, and about 11.76% of them are flagged for review.",
+      "Succeeded": true,
+      "Error": null,
+      "ResponseAuthority": "LocalFoundation",
+      "Stage": "foundation_response",
+      "Reason": null,
+      "FoundationModel": "mlx-community/Qwen3-8B-4bit",
+      "FoundationHosting": "LegendControlled",
+      "ExternalAnsweringUsed": false,
+      "ProviderCalls": 0,
+      "ToolCalls": []
+    }
+  ]
+}

@@ -18,6 +18,8 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     private var pending: [UUID: LegendCallSnapshot] = [:]
     private var reported = Set<UUID>()
     private var reportCompletions: [UUID: [(Error?) -> Void]] = [:]
+    var prepareIncomingAccount: ((LegendCallSnapshot) async throws -> LegendCallStore)?
+    private var incomingPreparation: [UUID: Task<LegendCallStore, Error>] = [:]
     private override init() {
         let configuration = CXProviderConfiguration()
         configuration.supportsVideo = true
@@ -45,6 +47,7 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             RTCAudioSession.sharedInstance().isAudioEnabled = false
         }
         owner = store
+        store.audioActivated(audioSessionActive)
         start()
         store.registerVoipToken(token)
         for call in pending.values where store.owns(call) {
@@ -52,9 +55,12 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
         }
     }
     func retireAccount(unless identity: LogicalParticipantIdentity? = nil) {
-        guard let owner else { return }
-        if let identity, owner.belongs(to: identity) { return }
-        owner.shutdown()
+        if let identity, let owner, owner.belongs(to: identity) { return }
+        owner?.shutdown()
+        for id in Array(pending.keys) {
+            provider.reportCall(with: id, endedAt: Date(), reason: .failed)
+            finished(id)
+        }
     }
     func detach(_ store: LegendCallStore) {
         guard owner === store else { return }
@@ -92,10 +98,19 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             }
         }
     }
+    static func ringtoneFilename(_ resource: String?, bundle: Bundle = .main) -> String {
+        // Device capability allowlist, not an alternative preference authority.
+        guard let resource, ["legend_incoming", "legend_ringback"].contains(resource),
+              bundle.url(forResource: resource, withExtension: "wav") != nil else { return "legend_incoming.wav" }
+        return resource + ".wav"
+    }
     private func reportIncoming(_ call: LegendCallSnapshot, completion: @escaping (Error?) -> Void) {
         if reported.contains(call.id) { completion(nil); return }
         if reportCompletions[call.id] != nil { reportCompletions[call.id]?.append(completion); return }
         reportCompletions[call.id] = [completion]
+        let configuration = provider.configuration
+        configuration.ringtoneSound = Self.ringtoneFilename(call.incomingRingtoneResource)
+        provider.configuration = configuration
         // Called synchronously from PushKit, before authentication or network I/O.
         provider.reportNewIncomingCall(with: call.id, update: Self.update(call)) { error in
             Task { @MainActor in
@@ -115,12 +130,8 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
         }
     }
     private func donateCaller(_ call: LegendCallSnapshot) {
-        guard let path = call.callerImagePath,
-              path.hasPrefix("/api/v1/mobile/notifications/"), !path.contains("\\"),
-              let base = Bundle.main.object(forInfoDictionaryKey: "LegendAPIBaseURL") as? String,
-              let origin = URL(string: base), origin.scheme == "https", origin.host != nil,
-              let url = URL(string: path, relativeTo: origin)?.absoluteURL,
-              url.host == origin.host, url.scheme == origin.scheme else { return }
+        guard let base = Bundle.main.object(forInfoDictionaryKey: "LegendAPIBaseURL") as? String,
+              let url = call.participantImageURL(outgoing: false, apiBaseURL: URL(string: base)) else { return }
         let image = INImage(url: url)
         let person = INPerson(personHandle: INPersonHandle(value: call.callerType + ":" + call.callerUserId, type: .unknown),
             nameComponents: nil, displayName: call.callerName, image: image,
@@ -132,7 +143,30 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
         interaction.direction = .incoming
         interaction.donate { _ in }
     }
-    func finished(_ id: UUID) { pending.removeValue(forKey: id) }
+    func finished(_ id: UUID) {
+        pending.removeValue(forKey: id)
+        incomingPreparation.removeValue(forKey: id)?.cancel()
+    }
+
+    private func prepareIncoming(_ call: LegendCallSnapshot) async throws -> LegendCallStore {
+        if let task = incomingPreparation[call.id] { return try await task.value }
+        let task = Task { @MainActor [weak self] () throws -> LegendCallStore in
+            guard let self, self.pending[call.id] != nil, call.expiresUtc > Date() else { throw CancellationError() }
+            let store: LegendCallStore
+            if let owner = self.owner, owner.owns(call) { store = owner }
+            else {
+                guard let prepare = self.prepareIncomingAccount else { throw CancellationError() }
+                store = try await prepare(call)
+            }
+            try Task.checkCancellation()
+            guard self.pending[call.id] != nil, call.expiresUtc > Date(), store.owns(call) else { throw CancellationError() }
+            await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+            try Task.checkCancellation()
+            return store
+        }
+        incomingPreparation[call.id] = task
+        return try await task.value
+    }
     private static func update(_ call: LegendCallSnapshot) -> CXCallUpdate {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: call.callerName)
@@ -167,8 +201,11 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
                     if error != nil || call.expiresUtc <= Date() {
                         self.provider.reportCall(with: call.id, endedAt: Date(), reason: .unanswered); self.finished(call.id); return
                     }
-                    if let owner = self.owner, owner.owns(call) {
-                        await owner.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+                    do { _ = try await self.prepareIncoming(call) }
+                    catch {
+                        guard self.pending[call.id] != nil else { return }
+                        self.provider.reportCall(with: call.id, endedAt: Date(), reason: .failed)
+                        self.finished(call.id)
                     }
                 }
             }
@@ -179,17 +216,32 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
             }
         }
     }
-    nonisolated func providerDidReset(_ provider: CXProvider) { Task { @MainActor in self.audioActivationChanged(false); self.owner?.providerDidReset(provider); self.pending.removeAll() } }
+    nonisolated func providerDidReset(_ provider: CXProvider) {
+        Task { @MainActor in
+            self.audioActivationChanged(false); self.owner?.providerDidReset(provider)
+            for task in self.incomingPreparation.values { task.cancel() }
+            self.incomingPreparation.removeAll(); self.pending.removeAll()
+        }
+    }
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         Task { @MainActor in guard let owner = self.owner else { action.fail(); return }; owner.provider(provider, perform: action) }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         Task { @MainActor in
-            for _ in 0..<30 {
-                if let owner = self.owner, owner.current?.id == action.callUUID { self.finished(action.callUUID); owner.provider(provider, perform: action); return }
-                try? await Task.sleep(for: .milliseconds(100))
+            do {
+                let store: LegendCallStore
+                if let owner = self.owner, owner.current?.id == action.callUUID { store = owner }
+                else {
+                    guard let call = self.pending[action.callUUID] else { throw CancellationError() }
+                    store = try await self.prepareIncoming(call)
+                }
+                guard store.current?.id == action.callUUID else { throw CancellationError() }
+                self.finished(action.callUUID)
+                store.provider(provider, perform: action)
+            } catch {
+                action.fail(); provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed)
+                self.finished(action.callUUID)
             }
-            action.fail(); provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed); self.finished(action.callUUID)
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {

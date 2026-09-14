@@ -1,3 +1,4 @@
+using Shared.Auth;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.Data.Sqlite;
@@ -61,8 +62,7 @@ public class AssistantContextService
 
     public static bool IsLikelyGuestUser(ClaimsPrincipal user, string? firstPartyTenantId = null, string? firstPartyDomain = null)
     {
-        var tid = user.FindFirstValue("tid")
-                  ?? user.FindFirstValue("http://schemas.microsoft.com/identity/claims/tenantid");
+        var tid = user.GetCanonicalTenantId();
         if (!string.IsNullOrWhiteSpace(firstPartyTenantId)
             && !string.IsNullOrWhiteSpace(tid))
         {

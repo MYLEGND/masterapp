@@ -67,7 +67,7 @@ public sealed class LegendConnectTranslationServingReconciliationTests
 
         var activeModel = new Mock<ILegendConnectActiveModelInference>();
         activeModel.Setup(item => item.TryTranslateAsync(
-                "en", "ht", "source", It.IsAny<CancellationToken>()))
+                "en", "ht", "source", It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()))
             .Callback(() => calls.Add("promoted-model"))
             .ReturnsAsync(selectedStage == "promoted-model"
                 ? new LegendConnectActiveModelInferenceResult(true, "model result", "ft:test", null)
@@ -347,7 +347,7 @@ public sealed class LegendConnectTranslationServingReconciliationTests
         var intelligence = EmptyIntelligence();
         var activeModel = new Mock<ILegendConnectActiveModelInference>();
         activeModel.Setup(item => item.TryTranslateAsync(
-                "en", "ht", "provider failure", It.IsAny<CancellationToken>()))
+                "en", "ht", "provider failure", It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()))
             .ReturnsAsync(new LegendConnectActiveModelInferenceResult(
                 false,
                 null,

@@ -45,6 +45,8 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         var actor = NormalizeActor(new MessagingActor(userId, participantType));
         if (command.DeviceId == Guid.Empty || !await IsValidActorAsync(actor, cancellationToken))
             return new(false, "Calling is unavailable for this account.");
+        if (command.Action == "preferences")
+            return await CallingPreferencesAsync(actor, command.Preferences, cancellationToken);
         if (command.SignalData?.Length > 24_000)
             return new(false, "The call signal is too large.");
         if (command.Action is "register-voip" or "unregister-voip")
@@ -186,7 +188,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
             [new(actor.UserId, actor.ParticipantType), new(other.UserId, other.ParticipantType)], ct);
         var caller = identities.Values.FirstOrDefault(p => IsSameParticipant(p.UserId, p.ParticipantType, actor.UserId, actor.ParticipantType));
         var callee = identities.Values.FirstOrDefault(p => IsSameParticipant(p.UserId, p.ParticipantType, other.UserId, other.ParticipantType));
-        if (caller == null || callee == null) return new(false, "Call identity unavailable.");
+        if (caller == null || callee == null) return new(false, ApplicationCopyText.Source("Call identity unavailable."));
         var now = DateTime.UtcNow;
         var otherIds = await ParticipantUserIdFormsAsync(new(other.UserId, other.ParticipantType), ct);
         var busy = await _db.LegendCallSessions.AnyAsync(c => c.ExpiresUtc > now &&
@@ -213,8 +215,9 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         };
         _db.LegendCallSessions.Add(call);
         await _db.SaveChangesAsync(ct);
-        await PublishCallAsync(new(await SnapshotAsync(call, ct)), ct);
-        return new(true, null, await SnapshotAsync(call, ct), Policy: CurrentCallPolicy(call, policy));
+        var snapshot = await SnapshotAsync(call, ct);
+        await PublishCallAsync(new(snapshot), ct);
+        return new(true, null, snapshot, Policy: CurrentCallPolicy(call, policy));
     }
 
     private async Task<LegendCallResult> HandleCallAsync(MessagingActor actor, LegendCallCommand command, LegendCallPolicy policy, CancellationToken ct)
@@ -345,7 +348,73 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     {
         var callerIds = await ParticipantUserIdFormsAsync(new(call.CallerUserId, call.CallerType), ct);
         var calleeIds = await ParticipantUserIdFormsAsync(new(call.CalleeUserId, call.CalleeType), ct);
-        return CallSnapshot(call) with { CallerUserIds = callerIds, CalleeUserIds = calleeIds, CallerImagePath = call.Status == "ringing" ? await _notifications.GetCallSenderImagePathAsync(call.Id, ct) : null };
+        var images = await _notifications.GetCallParticipantImagePathsAsync(call.Id, ct);
+        var preferences = await ReadCallPreferencesAsync([new(call.CallerUserId, call.CallerType), new(call.CalleeUserId, call.CalleeType)], ct);
+        var callerPreferences = preferences[0];
+        var calleePreferences = preferences[1];
+        return CallSnapshot(call) with
+        {
+            CallerUserIds = callerIds, CalleeUserIds = calleeIds, CallerImagePath = images.Caller, CalleeImagePath = images.Callee,
+            CallerWallpaperMode = callerPreferences.WallpaperMode, CalleeWallpaperMode = calleePreferences.WallpaperMode,
+            IncomingRingtoneResource = CallingRingtones.Single(option => option.Id == calleePreferences.RingtoneId).Resource!
+        };
+    }
+
+    private static readonly LegendCallPreferenceChoice[] CallingRingtones =
+    [
+        new("signature", ApplicationCopyText.Source("LEGEND signature"), "legend_incoming"),
+        new("soft", ApplicationCopyText.Source("LEGEND soft chime"), "legend_ringback")
+    ];
+
+    private static readonly LegendCallPreferenceChoice[] CallingWallpapers =
+    [
+        new("legend", ApplicationCopyText.Source("LEGEND default")),
+        new("profile", ApplicationCopyText.Source("My profile picture"))
+    ];
+
+    private async Task<MessagingParticipantIdentity?> CallProfileIdentityAsync(MessagingActor actor, CancellationToken ct)
+    {
+        var identities = await _participantIdentities.ResolveIdentitiesAsync([new(actor.UserId, actor.ParticipantType)], ct);
+        return identities.Values.SingleOrDefault(identity => IsSameParticipant(identity.UserId, identity.ParticipantType, actor.UserId, actor.ParticipantType));
+    }
+
+    private async Task<LegendCallPreferences[]> ReadCallPreferencesAsync(MessagingActor[] actors, CancellationToken ct)
+    {
+        // Resolve both peers together so each status/heartbeat does not repeat
+        // the same profile and preference queries for every participant.
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(actors.Select(actor =>
+            new MessagingParticipantReference(actor.UserId, actor.ParticipantType)), ct);
+        var profileIds = identities.Values.Select(identity => identity.ProfileId).Distinct().ToArray();
+        var rows = await _db.MobileProfileSettings.AsNoTracking().Where(row => profileIds.Contains(row.ProfileId)).ToArrayAsync(ct);
+        return actors.Select(actor =>
+        {
+            if (!identities.TryGetValue(MessagingParticipantIdentityKey.Create(actor.UserId, actor.ParticipantType), out var identity)) return new LegendCallPreferences();
+            var row = rows.SingleOrDefault(row => row.ProfileId == identity.ProfileId && row.ParticipantType == identity.ParticipantType);
+            return row is null ? new LegendCallPreferences() : new(row.CallRingtoneId, row.CallWallpaperMode);
+        }).ToArray();
+    }
+
+    private async Task<LegendCallResult> CallingPreferencesAsync(MessagingActor actor, LegendCallPreferences? requested, CancellationToken ct)
+    {
+        var identity = await CallProfileIdentityAsync(actor, ct);
+        if (identity is null) return new(false, ApplicationCopyText.Source("Call identity unavailable."));
+        var row = await _db.MobileProfileSettings.SingleOrDefaultAsync(item =>
+            item.ProfileId == identity.ProfileId && item.ParticipantType == identity.ParticipantType, ct);
+        if (requested is not null)
+        {
+            if (!CallingRingtones.Any(option => option.Id == requested.RingtoneId) || !CallingWallpapers.Any(option => option.Id == requested.WallpaperMode))
+                return new(false, ApplicationCopyText.Source("Choose an available ringtone and calling wallpaper."));
+            if (row is null)
+            {
+                row = new MobileProfileSettings { ProfileId = identity.ProfileId, ParticipantType = identity.ParticipantType };
+                _db.MobileProfileSettings.Add(row);
+            }
+            row.CallRingtoneId = requested.RingtoneId;
+            row.CallWallpaperMode = requested.WallpaperMode;
+            row.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+        return new(true, null, Preferences: row is null ? new() : new(row.CallRingtoneId, row.CallWallpaperMode), Ringtones: CallingRingtones, Wallpapers: CallingWallpapers);
     }
 
     internal static LegendCallSnapshot CallSnapshot(LegendCallSession call) => new(

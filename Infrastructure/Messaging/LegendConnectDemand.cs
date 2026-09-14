@@ -7,6 +7,10 @@ namespace Infrastructure.Messaging;
 
 internal interface ITranslationDemandRecorder
 {
+    Task TryRecordBatchAsync(string pairKey, int requestCount, int providerCharacters,
+        bool translationMemoryHit = false, bool azureFallback = false,
+        bool providerObservationReused = false, CancellationToken cancellationToken = default);
+
     Task TryRecordAsync(
         string pairKey,
         int providerCharacters,
@@ -61,7 +65,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         _logger = logger;
     }
 
-    public async Task TryRecordAsync(
+    public Task TryRecordAsync(
         string pairKey,
         int providerCharacters,
         bool translationMemoryHit = false,
@@ -73,6 +77,31 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         bool neuralModelFailed = false,
         bool providerObservationReused = false,
         CancellationToken cancellationToken = default)
+        => RecordAsync(pairKey, providerCharacters, translationMemoryHit, azureFallback,
+            contextualCompositionObserved, contextualInternalServed, structuralInternalServed,
+            neuralModelServed, neuralModelFailed, providerObservationReused, cancellationToken, 1);
+
+    public Task TryRecordBatchAsync(string pairKey, int requestCount, int providerCharacters,
+        bool translationMemoryHit = false, bool azureFallback = false,
+        bool providerObservationReused = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestCount);
+        return RecordAsync(pairKey, providerCharacters, translationMemoryHit, azureFallback,
+            false, false, false, false, false, providerObservationReused, cancellationToken, requestCount);
+    }
+
+    private async Task RecordAsync(
+        string pairKey,
+        int providerCharacters,
+        bool translationMemoryHit = false,
+        bool azureFallback = false,
+        bool contextualCompositionObserved = false,
+        bool contextualInternalServed = false,
+        bool structuralInternalServed = false,
+        bool neuralModelServed = false,
+        bool neuralModelFailed = false,
+        bool providerObservationReused = false,
+        CancellationToken cancellationToken = default, int requestCount = 1)
     {
         try
         {
@@ -80,23 +109,23 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                 return;
 
             var providerCharacterDelta = Math.Max(0, providerCharacters);
-            var memoryDelta = translationMemoryHit ? 1 : 0;
+            var memoryDelta = translationMemoryHit ? requestCount : 0;
             // AzureFallbackCount is the deployed aggregate name, but its
             // durable semantic is provider work required after the internal
             // route—not a completed Azure call.
-            var providerFallbackRequiredDelta = azureFallback ? 1 : 0;
-            var contextualObservedDelta = contextualCompositionObserved ? 1 : 0;
-            var contextualServedDelta = contextualInternalServed ? 1 : 0;
-            var structuralServedDelta = structuralInternalServed ? 1 : 0;
-            var neuralServedDelta = neuralModelServed ? 1 : 0;
-            var neuralFailedDelta = neuralModelFailed ? 1 : 0;
-            var providerObservationReuseDelta = providerObservationReused ? 1 : 0;
+            var providerFallbackRequiredDelta = azureFallback ? requestCount : 0;
+            var contextualObservedDelta = contextualCompositionObserved ? requestCount : 0;
+            var contextualServedDelta = contextualInternalServed ? requestCount : 0;
+            var structuralServedDelta = structuralInternalServed ? requestCount : 0;
+            var neuralServedDelta = neuralModelServed ? requestCount : 0;
+            var neuralFailedDelta = neuralModelFailed ? requestCount : 0;
+            var providerObservationReuseDelta = providerObservationReused ? requestCount : 0;
             var now = DateTime.UtcNow;
 
             if (_db.Database.IsRelational())
             {
                 var affected = await ApplyRelationalDeltaAsync(
-                    pairKey,
+                    pairKey, requestCount,
                     providerCharacterDelta,
                     memoryDelta,
                     providerFallbackRequiredDelta,
@@ -115,7 +144,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                 {
                     Id = Guid.NewGuid(),
                     PairKey = pairKey,
-                    TranslationRequestCount = 1,
+                    TranslationRequestCount = requestCount,
                     ProviderCharacterCount = providerCharacterDelta,
                     TranslationMemoryHitCount = memoryDelta,
                     AzureFallbackCount = providerFallbackRequiredDelta,
@@ -139,7 +168,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                     // that row rather than silently losing telemetry.
                     _db.ChangeTracker.Clear();
                     await ApplyRelationalDeltaAsync(
-                        pairKey,
+                        pairKey, requestCount,
                         providerCharacterDelta,
                         memoryDelta,
                         providerFallbackRequiredDelta,
@@ -162,7 +191,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                 demand = new LegendTranslationPairDemand { Id = Guid.NewGuid(), PairKey = pairKey };
                 _db.Set<LegendTranslationPairDemand>().Add(demand);
             }
-            demand.TranslationRequestCount++;
+            demand.TranslationRequestCount += requestCount;
             demand.ProviderCharacterCount += providerCharacterDelta;
             demand.TranslationMemoryHitCount += memoryDelta;
             demand.AzureFallbackCount += providerFallbackRequiredDelta;
@@ -190,6 +219,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
 
     private Task<int> ApplyRelationalDeltaAsync(
         string pairKey,
+        int requestCount,
         int providerCharacters,
         int memoryHits,
         int providerFallbacksRequired,
@@ -204,7 +234,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         _db.Set<LegendTranslationPairDemand>()
             .Where(item => item.PairKey == pairKey)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.TranslationRequestCount, item => item.TranslationRequestCount + 1)
+                .SetProperty(item => item.TranslationRequestCount, item => item.TranslationRequestCount + requestCount)
                 .SetProperty(item => item.ProviderCharacterCount, item => item.ProviderCharacterCount + providerCharacters)
                 .SetProperty(item => item.TranslationMemoryHitCount, item => item.TranslationMemoryHitCount + memoryHits)
                 .SetProperty(item => item.AzureFallbackCount, item => item.AzureFallbackCount + providerFallbacksRequired)

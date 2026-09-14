@@ -1343,6 +1343,7 @@ public sealed partial class MessagingServiceTests
     public async Task MessageTranslation_CanonicalSenderPreferenceRoutesEnToEs_WhenRecipientReads()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db, "en", "es", "fr");
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
         var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
         var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
@@ -1652,6 +1653,7 @@ public sealed partial class MessagingServiceTests
     public async Task SendMessage_PersistsOriginalAndStagesRecipientLocalizedNotification()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
         var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
         var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
@@ -1766,11 +1768,38 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(original, Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
 
         var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
-        var presented = Assert.Single(recipient.Conversation!.Messages);
-        Assert.Equal(original, presented.Body);
-        Assert.Null(presented.OriginalBody);
-        Assert.Null(presented.Translation);
+        Assert.False(recipient.Succeeded);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableCode, recipient.ErrorCode);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, recipient.ErrorMessage);
+        Assert.Null(recipient.Conversation);
+        Assert.Equal(original, (await db.InternalMessages.SingleAsync()).Body);
+        Assert.Null(source.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
+        var participant = await db.MessageConversationParticipants.SingleAsync(row =>
+            row.ConversationId == started.Conversation.Id && row.UserId == client.UserId);
+        Assert.Null(participant.LastReadMessageId);
+
+        // A transient provider failure withholds the entire page. Once the provider
+        // recovers, the same durable original is presented and only that success is cached.
+        var recoveredTranslator = new DeferredTranslationProbe();
+        var recoveredService = CreateService(db, recoveredTranslator);
+        var recovered = await recoveredService.GetConversationAsync(client, started.Conversation.Id);
+        Assert.True(recovered.Succeeded);
+        var presented = Assert.Single(recovered.Conversation!.Messages);
+        Assert.Equal(source.Id, presented.Id);
+        Assert.Equal("Bonjou.", presented.Body);
+        Assert.Equal(original, presented.OriginalBody);
+        Assert.Equal("ht", presented.Translation!.TargetLanguage);
+        Assert.Equal(1, recoveredTranslator.Calls);
+        var cached = Assert.Single(await db.MessageTranslations.ToListAsync());
+        Assert.Equal(source.Id, cached.InternalMessageId);
+        Assert.Equal("Bonjou.", cached.TranslatedText);
+        Assert.Equal(original, (await db.InternalMessages.SingleAsync()).Body);
+        Assert.Null(participant.LastReadMessageId);
+        var cachedPage = await recoveredService.GetConversationAsync(client, started.Conversation.Id);
+        Assert.True(cachedPage.Succeeded);
+        Assert.Equal(source.Id, Assert.Single(cachedPage.Conversation!.Messages).Id);
+        Assert.Equal(1, recoveredTranslator.Calls);
     }
 
     [Fact]
@@ -2046,6 +2075,7 @@ public sealed partial class MessagingServiceTests
     public async Task MessageTranslation_UsesSenderCanonicalPreferenceAndPreservesDetectedLanguageMetadata()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         await SeedAgentAndClientAsync(
             db,
             linkClientToAgent: true,
@@ -2103,9 +2133,28 @@ public sealed partial class MessagingServiceTests
             "client-1",
             MessagingParticipantTypes.Client);
 
-        // The sender's canonical route preference is ht while detection still
-        // records English body metadata. Routing must not silently treat that
-        // detection as the user's language identity.
+        // Match the migrated production registry before snapshotting preference.
+        // Reading that preference must neither bootstrap nor mutate the registry.
+        var languageIds = await db.LegendLanguageDefinitions.OrderBy(item => item.LanguageCode)
+            .Select(item => item.Id).ToArrayAsync();
+        EventHandler<SavingChangesEventArgs> rejectPreferenceWrite = (_, _) =>
+            Assert.Fail("A canonical language preference read must not save changes.");
+        db.SavingChanges += rejectPreferenceWrite;
+        try
+        {
+            Assert.Equal("ht", await new ControlledResourceAccessService(db)
+                .GetCanonicalPreferredLanguageAsync(agent));
+        }
+        finally
+        {
+            db.SavingChanges -= rejectPreferenceWrite;
+        }
+        Assert.False(db.ChangeTracker.HasChanges());
+        Assert.Equal(languageIds, await db.LegendLanguageDefinitions.OrderBy(item => item.LanguageCode)
+            .Select(item => item.Id).ToArrayAsync());
+
+        // Preference remains ht while detection records the English body;
+        // neither metadata value may stand in for the other.
         var opened = await service.StartConversationAsync(
             new StartMessagingConversationCommand(
                 agent,
@@ -4024,7 +4073,8 @@ public sealed partial class MessagingServiceTests
         ITranslationService? translation = null,
         string? configuredFounderOid = null,
         IConfiguration? configuration = null,
-        Domain.Social.ISocialFeedService? social = null)
+        Domain.Social.ISocialFeedService? social = null,
+        IApplicationLocalizationService? applicationLocalization = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var images = new MessagingProfileImageResolver(
@@ -4043,7 +4093,7 @@ public sealed partial class MessagingServiceTests
                 new NoopNotificationRealtimePublisher(),
                 new ApplePushDeliverySignal(),
                 NullLogger<NotificationEngine>.Instance),
-            configuredFounderOid, social: social);
+            configuredFounderOid, social: social, applicationLocalization: applicationLocalization);
     }
 
     private static IConfiguration FounderConfiguration(string founderOid) =>

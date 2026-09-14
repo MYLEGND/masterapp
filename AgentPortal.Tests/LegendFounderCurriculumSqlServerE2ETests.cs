@@ -81,6 +81,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "LegendConnect:LanguageRegistry:Baseline:0:NativeName",
                     "English")
             })
+            .AddControlledFoundation()
             .Build();
 
         var registry =
@@ -328,7 +329,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             $"transition sources but found {independentSupport}.");
 
         var factory =
-            new CountingHttpClientFactory();
+            new CountingHttpClientFactory(allowControlledFoundation: true);
         var discourseProfiles = new AgentProfileAccessResolver(db);
 
         var chat =
@@ -341,7 +342,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 new LegendFounderAiDiscourseStateService(
                     db, discourseProfiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(),
+                modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
 
         var fallbackFragments = new[]
         {
@@ -491,11 +494,23 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             Assert.True(
                 reply.Succeeded,
-                $"User-facing ReplyAsync failed for '{prompt}'.");
+                $"User-facing ReplyAsync failed for '{prompt}': authority={reply.ResponseAuthority}; stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}");
 
-            Assert.Equal(
-                native.Answer,
-                reply.Message);
+            // Governed realization above remains independently verified.
+            // These are protocol and bounded surface checks only. Natural
+            // relevance and absence of invented claims require independent
+            // review of the actual remote model responses recorded above.
+            Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+            Assert.Equal("foundation_response", reply.Stage);
+            Assert.False(reply.ExternalAnsweringUsed);
+            Assert.False(reply.EscalationUsed);
+            Assert.Null(reply.LearningState);
+            Assert.Null(reply.ResearchOutcome);
+            Assert.False(string.IsNullOrWhiteSpace(reply.Message));
+            Assert.InRange(reply.Message!.Length, 1, 1000);
+            Assert.Matches(@"(?i)\b(hi|hello|hey|welcome|morning|meet|help|assist|ready|well|here|doing)\b", reply.Message);
+            Assert.DoesNotMatch(@"(?i)\b(not configured|unconfigured|model unavailable|foundation unavailable|curriculum incomplete|insufficient curriculum)\b", reply.Message);
+            Assert.DoesNotMatch(@"(?i)\b(I|I've|I have)\s+(sent|emailed|contacted|booked|purchased|promoted|trained)\b", reply.Message);
 
             Assert.False(
                 string.Equals(
@@ -524,7 +539,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             passed++;
 
             _output.WriteLine(
-                "RESULT: PASS");
+                "RESULT: PROTOCOL_PASS; NATURAL_LANGUAGE_QUALITY: NOT_REVIEWED");
         }
 
         _output.WriteLine("");
@@ -532,7 +547,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             "============================================================");
 
         _output.WriteLine(
-            $"DIRECT PROMPTS PASSED: {passed}/8");
+            $"DIRECT PROTOCOL CHECKS PASSED: {passed}/8");
 
         _output.WriteLine(
             $"DIRECT PROMPTS FAILED: {8 - passed}/8");
@@ -542,10 +557,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             $"{factory.CreateClientCalls}");
 
         _output.WriteLine(
-            "FALLBACK RESPONSES ACCEPTED: 0");
+            "KNOWN FALLBACK PHRASES ACCEPTED: 0; OPEN-ENDED CLAIM REVIEW: REQUIRED");
 
         _output.WriteLine(
-            "RELEASE BEHAVIOR PROOF: PASS");
+            "RELEASE BEHAVIOR PROOF: NOT_ESTABLISHED; INDEPENDENT REMOTE RESPONSE REVIEW REQUIRED");
 
         _output.WriteLine(
             "============================================================");
@@ -1515,6 +1530,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
                     new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
                 })
+                .AddControlledFoundation()
                 .Build();
             var registry = new LegendLanguageRegistry(db, configuration);
             var corpus = new LegendConnectCorpusService(
@@ -1533,7 +1549,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
             var profiles = new AgentProfileAccessResolver(db);
             var founderLegend = new FounderLegendConnectService(operations, profiles);
-            var factory = new CountingHttpClientFactory();
+            var factory = new CountingHttpClientFactory(allowControlledFoundation: true);
             // Production remains strictly read-only. Conversation-scoped
             // discourse state is exercised through its canonical persistence
             // authority in an isolated test store while every meaning graph,
@@ -1572,7 +1588,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 diagnosticLoggerFactory.CreateLogger<LegendFounderAiConversationService>(),
                 discourse,
                 registry,
-                translation);
+                translation,
+                modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
+                    diagnosticLoggerFactory.CreateLogger<LegendConnectModelInferenceTransport>()),
+                languagePreferences: new ControlledResourceAccessService(discourseDb),
+                historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(discourseDb));
 
             isolatedPhase = "fixture_preflight";
             diagnosticCapture.ResetDiagnostics();
@@ -2210,6 +2230,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     ["NativeEvidenceCount"] = native.EvidenceCount,
                     ["NativeSupported"] = native.Supported ? 1 : 0
                 };
+                // Transcript writes remain entirely in the isolated history store;
+                // the production connection is still protected SELECT-only.
+                replyConversationId ??= Guid.NewGuid().ToString("D");
+                var historyCursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+                    ControllerTestHelpers.BuildFounderHistoryScopes(discourseDb), founderId!,
+                    Guid.Parse(replyConversationId), proofCase.Messages.Take(proofCase.Messages.Count - 1).ToArray());
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -2217,8 +2243,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         Mode = "legend",
                         NativeOnly = true,
                         ConversationId = replyConversationId,
+                        ExpectedLastMessageId = historyCursor,
                         SourceLanguageCode = proofCase.DeclaredSourceLanguageCode,
-                        Messages = proofCase.Messages
+                        Messages = [proofCase.Messages[^1]]
                     }, matrixToken);
 
                 Assert.Equal(providerCallsBefore, factory.CreateClientCalls);
@@ -2238,8 +2265,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     Assert.False(native.RequiresEscalation);
                     Assert.False(string.IsNullOrWhiteSpace(native.Answer));
                     Assert.True(reply.Succeeded);
-                    Assert.Equal("LegendAi", reply.ResponseAuthority);
-                    Assert.Equal("native_response", reply.Stage);
+                    Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+                    Assert.Equal("foundation_response", reply.Stage);
+                    Assert.Equal("LegendControlled", reply.FoundationHosting);
+                    Assert.False(string.IsNullOrWhiteSpace(reply.FoundationModel));
+                    Assert.False(reply.ExternalAnsweringUsed);
+                    Assert.False(reply.EscalationUsed);
                     Assert.Equal(native.Answer, reply.Message);
                     if (proofCase.Reference == "automatic-language-native-arithmetic")
                     {
@@ -2785,7 +2816,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(shadow, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(shadow), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(shadow));
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -3018,7 +3049,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -3515,7 +3546,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             new LegendFounderAiDiscourseStateService(
                 db, new AgentProfileAccessResolver(db), operations),
             registry,
-            ControllerTestHelpers.BuildTranslationService());
+            ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
+        var historyConversationId = Guid.NewGuid();
+        var historyCursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+            ControllerTestHelpers.BuildFounderHistoryScopes(db), founderId, historyConversationId, history);
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,
@@ -3523,7 +3557,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             {
                 Mode = "legend",
                 NativeOnly = true,
-                Messages = [.. history, new("user", request)]
+                ConversationId = historyConversationId.ToString("D"),
+                ExpectedLastMessageId = historyCursor,
+                Messages = [new("user", request)]
             });
         replyClock.Stop();
 
@@ -3891,6 +3927,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
                 Assert.NotNull(token);
 
+                var historyConversationId = Guid.NewGuid();
+                var historyCursor = await ControllerTestHelpers.SeedFounderHistoryAsync(
+                    host.Services.GetRequiredService<IServiceScopeFactory>(), founderId,
+                    historyConversationId, request.History ?? []);
                 var chatRequest = new HttpRequestMessage(
                     HttpMethod.Post,
                     "/founder/legend-ai/chat")
@@ -3899,7 +3939,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     {
                         Mode = "legend",
                         NativeOnly = true,
-                        Messages = [.. (request.History ?? []), new("user", request.Text)]
+                        ConversationId = historyConversationId.ToString("D"),
+                        ExpectedLastMessageId = historyCursor,
+                        Messages = [new("user", request.Text)]
                     })
                 };
                 chatRequest.Headers.Add("X-Legend-Connect-Founder", founderId);
@@ -4299,6 +4341,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             curriculum: serviceProvider.GetRequiredService<LegendConnectCurriculumService>()));
                     services.AddScoped<AgentProfileAccessResolver>();
                     services.AddScoped<FounderLegendConnectService>();
+                    services.AddScoped<LegendFounderAiDiscourseStateService>();
+                    services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
+                    ControllerTestHelpers.AddFounderHistoryServices(services);
                     services.AddScoped<LegendFounderAiConversationService>();
                     services.AddSingleton<LegendFounderAiProgressBroker>();
                 })
@@ -5331,7 +5376,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "LanguageDetectionCompleted" or "LanguageGraphAnalyzed" or "LanguageCandidatesRead" or
                 "SourceLanguageResolved" or "NativeInferenceCompleted" or "ResearchDecision" or "ProviderEscalation" or
                 "CaseAssertionFailed" or "stage_completed" or "MeaningGraphObserved" or "DiscourseStateObserved" or "OwnedRecordClassified" or
-                "ProviderRetry" or "ProviderRejected" or "ProviderEscalationRejected" or "ProviderTransportFailed" or "ProviderJsonInvalid" or
+                "ProviderRetry" or "ProviderRejected" or "FoundationProviderRejected" or "ProviderTransportFailed" or "ProviderJsonInvalid" or
                 "OwnedRecordClassificationException" or "DiscourseObservationException" or "SourceLanguageException" or "LanguageRegistryRead" or "ResearchCompleted" or
                 "TranslationProviderBoundary" or "TranslationProviderCompleted" or "NativeInferenceException" or "NativeAnswer" or "GovernedExecutionFailed" or
                 "TranslationStageStarted" or "TranslationStageEnded" or "TranslationCompleted" or "TranslationBoundaryFailed" or
@@ -5840,7 +5885,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         }
     }
 
-    private sealed class CountingHttpClientFactory : IHttpClientFactory
+    private sealed class CountingHttpClientFactory(bool allowControlledFoundation = false) : IHttpClientFactory
     {
         private int _createClientCalls;
         private int _sendCalls;
@@ -5849,6 +5894,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         public HttpClient CreateClient(string name)
         {
+            if (allowControlledFoundation && name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             Interlocked.Increment(ref _createClientCalls);
             return new HttpClient(new NoNetworkHandler(() => Interlocked.Increment(ref _sendCalls)))
             {

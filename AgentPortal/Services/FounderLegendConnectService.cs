@@ -241,7 +241,8 @@ public sealed class FounderLegendConnectService
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
             CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null)
+            LegendConnectExternalProviderPolicy? providerPolicy = null,
+            bool foundationRequestedVerification = false)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.DecideResearchNeededAsync(
@@ -249,7 +250,8 @@ public sealed class FounderLegendConnectService
             sourceLanguageCode,
             internalInference,
             cancellationToken,
-            providerPolicy);
+            providerPolicy,
+            foundationRequestedVerification);
     }
 
     internal async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
@@ -411,6 +413,17 @@ public sealed class FounderLegendConnectService
             sourceLanguageCode);
     }
 
+    internal async Task<string> RecordExternalEscalationDispositionAsync(
+        ClaimsPrincipal user,
+        Guid correlationId,
+        bool answerProduced,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.RecordExternalEscalationDispositionAsync(
+            correlationId, answerProduced, cancellationToken);
+    }
+
     internal async Task<LegendConnectMachineTeachingSubmissionResult>
         QueueMachineTeachingProposalAsync(
             ClaimsPrincipal user,
@@ -479,11 +492,18 @@ public sealed class FounderLegendConnectService
 
     public async Task<FounderLegendConnectOperationResult> EnsureAutonomousLearningActiveAsync(
         ClaimsPrincipal user,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var founder = await ResolveFounderActorAsync(
             user,
             cancellationToken);
+
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering)
+        {
+            return new FounderLegendConnectOperationResult(false,
+                "This request blocks external answering and cannot activate global provider-backed acquisition. Controlled-model training remains governed by its configured batch lifecycle.");
+        }
 
         if (_runtimePolicy is null)
         {
@@ -536,8 +556,8 @@ public sealed class FounderLegendConnectService
         LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
-        return nativeOnly
+        var restrictedProviders = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering;
+        return restrictedProviders
             ? await _operations.GetProviderCapacityAsync(cancellationToken, providerPolicy)
             : await _operations.GetProviderCapacityAsync(cancellationToken);
     }
@@ -555,7 +575,7 @@ public sealed class FounderLegendConnectService
             LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
+        var restrictedProviders = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering;
         var unavailablePolicy = new LegendConnectRuntimePolicySnapshot(
             false, 0, 0, 0, false, true, "Shadow", 0.98m,
             null, null, DateTime.MinValue);
@@ -587,14 +607,14 @@ public sealed class FounderLegendConnectService
             : await ReadOperationalDiagnosticStageAsync(
                 "production_readiness",
                 unavailableReadiness,
-                token => nativeOnly
+                token => restrictedProviders
                     ? _runtimePolicy.GetReadinessAsync(token, providerPolicy)
                     : _runtimePolicy.GetReadinessAsync(token),
                 cancellationToken);
         var capacity = await ReadOperationalDiagnosticStageAsync(
             "provider_capacity",
             unavailableCapacity,
-            token => nativeOnly
+            token => restrictedProviders
                 ? _operations.GetProviderCapacityAsync(token, providerPolicy)
                 : _operations.GetProviderCapacityAsync(token),
             cancellationToken);
@@ -713,7 +733,7 @@ public sealed class FounderLegendConnectService
             LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
+        var restrictedProviders = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering;
         var knowledge = await _operations.GetLanguageKnowledgeAsync(
             language,
             cancellationToken);
@@ -733,7 +753,7 @@ public sealed class FounderLegendConnectService
                 false,
                 "Legend Connect runtime policy authority is unavailable.",
                 [], 0, 0, 0, 0, 0)
-            : nativeOnly
+            : restrictedProviders
                 ? await _runtimePolicy.GetReadinessAsync(cancellationToken, providerPolicy)
                 : await _runtimePolicy.GetReadinessAsync(cancellationToken);
         return new(
@@ -755,8 +775,8 @@ public sealed class FounderLegendConnectService
         LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
-        return nativeOnly
+        var restrictedProviders = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering;
+        return restrictedProviders
             ? await _operations.GetMetricDetailAsync(metricKey, cancellationToken, providerPolicy)
             : await _operations.GetMetricDetailAsync(metricKey, cancellationToken);
     }
@@ -772,7 +792,7 @@ public sealed class FounderLegendConnectService
         LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var nativeOnly = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders;
+        var restrictedProviders = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering;
         var dashboard = await _operations.GetDashboardCountersAsync(cancellationToken, providerPolicy);
         var translationQuality = await _operations.GetTranslationQualitySummaryAsync(cancellationToken);
         var accountScale = _entitlements is null
@@ -780,7 +800,7 @@ public sealed class FounderLegendConnectService
             : await _entitlements.GetFounderScaleAsync(cancellationToken);
         var readiness = _runtimePolicy is null
             ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
-            : nativeOnly
+            : restrictedProviders
                 ? await _runtimePolicy.GetReadinessAsync(cancellationToken, providerPolicy)
                 : await _runtimePolicy.GetReadinessAsync(cancellationToken);
         var runtimeAuditCount = _runtimePolicy is null
@@ -1923,7 +1943,7 @@ public sealed class FounderLegendConnectService
     /// server-side object-ID-first resolution and historical directory-email
     /// reconciliation for an already-provisioned profile.
     /// </summary>
-    private async Task<string> ResolveFounderActorAsync(
+    internal async Task<string> ResolveFounderActorAsync(
         ClaimsPrincipal user,
         CancellationToken cancellationToken)
     {

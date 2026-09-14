@@ -8,6 +8,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
     let nameStatus: String?
     let subtitle: String?
     let detail: String?
+    let statusContent: AnyView?
     let isVerified: Bool
     let avatar: Avatar
     let action: Action
@@ -18,6 +19,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         nameStatus: String? = nil,
         subtitle: String? = nil,
         detail: String? = nil,
+        statusContent: AnyView? = nil,
         isVerified: Bool = false,
         onOpen: (() -> Void)? = nil,
         @ViewBuilder avatar: () -> Avatar,
@@ -28,10 +30,13 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         self.nameStatus = nameStatus
         self.subtitle = subtitle
         self.detail = detail
+        self.statusContent = statusContent
         self.isVerified = isVerified
         self.avatar = avatar()
         self.action = action()
     }
+
+    private var metrics: LegendSharedDesign.ContactCardToken { LegendSharedDesign.contactCard }
 
     var body: some View {
         HStack(spacing: LegendNextSpacing.sm) {
@@ -48,24 +53,24 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
             action
                 .foregroundStyle(LegendNextColor.contactAction)
         }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, LegendNextSpacing.xs)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .padding(.horizontal, metrics.horizontalPadding)
+        .padding(.vertical, metrics.verticalPadding)
+        .frame(maxWidth: .infinity, minHeight: metrics.minimumHeight, alignment: .leading)
         .background(
             LegendNextColor.contactNavy,
             in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
+                cornerRadius: metrics.cornerRadius,
                 style: .continuous
             )
         )
         .overlay {
             RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
+                cornerRadius: metrics.cornerRadius,
                 style: .continuous
             )
-            .strokeBorder(LegendNextColor.contactBorder.opacity(0.82), lineWidth: 1)
+            .strokeBorder(LegendNextColor.contactBorder.opacity(metrics.borderOpacity), lineWidth: metrics.borderWidth)
         }
-        .shadow(color: LegendNextColor.midnight.opacity(0.24), radius: 7, y: 3)
+        .shadow(color: LegendNextColor.midnight.opacity(metrics.shadowOpacity), radius: metrics.shadowRadius, y: metrics.shadowOffsetY)
         .contentShape(Rectangle())
     }
 
@@ -90,6 +95,8 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
                             .lineLimit(1)
                     }
                 }
+
+                if let statusContent { statusContent }
 
                 if let subtitle = normalized(subtitle) {
                     Text(subtitle)

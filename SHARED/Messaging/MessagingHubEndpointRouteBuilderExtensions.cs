@@ -22,7 +22,7 @@ public static class MessagingHubEndpointRouteBuilderExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(authenticationSchemes);
 
         return endpoints
-            .MapHub<MessagingHub>(pattern)
+            .MapHub<MessagingHub>(pattern, options => options.CloseOnAuthenticationExpiration = true)
             .RequireAuthorization(new AuthorizeAttribute
             {
                 AuthenticationSchemes = authenticationSchemes

@@ -28,19 +28,32 @@ public sealed class NotificationSenderPresentationTests
             CalleeType = actor.ParticipantType, ExpiresUtc = DateTime.UtcNow.AddMinutes(1) };
         db.LegendCallSessions.Add(call); await db.SaveChangesAsync();
         var identity = new MessagingParticipantIdentity("sender", "Agent", Guid.NewGuid(), "Sender", null, "S");
+        var recipientIdentity = new MessagingParticipantIdentity("receiver", "Client", Guid.NewGuid(), "Receiver", null, "R");
+        var recipientPhoto = new MessagingProfileImage(new byte[] { 4, 5, 6 }, "image/png");
         var photo = new MessagingProfileImage(new byte[] { 1, 2, 3 }, "image/png");
         var images = new Mock<IMessagingProfileImageResolver>();
         images.Setup(x => x.ResolveIdentitiesAsync(It.IsAny<IEnumerable<MessagingParticipantReference>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<(string, string), MessagingParticipantIdentity> { [("sender", "Agent")] = identity });
+            .ReturnsAsync((System.Collections.Generic.IEnumerable<MessagingParticipantReference> refs, CancellationToken _) => refs.ToDictionary(r => (r.UserId, r.ParticipantType), r => r.UserId == "sender" ? identity : recipientIdentity));
         images.Setup(x => x.ResolveAsync(identity, It.IsAny<CancellationToken>())).ReturnsAsync(photo);
+        images.Setup(x => x.ResolveAsync(recipientIdentity, It.IsAny<CancellationToken>())).ReturnsAsync(recipientPhoto);
         var messaging = new Mock<IMessagingService>();
         messaging.Setup(x => x.GetConversationRealtimeRecipientsAsync(actor, call.ConversationId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new MessagingRealtimeRecipient(actor.UserId, actor.ParticipantType) });
-        using var services = new ServiceCollection().AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider())
+        messaging.Setup(x => x.GetConversationRealtimeRecipientsAsync(new MessagingActor("sender", "Agent"), call.ConversationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new MessagingRealtimeRecipient("sender", "Agent") });
+        var protection = new EphemeralDataProtectionProvider();
+        using var services = new ServiceCollection().AddSingleton<IDataProtectionProvider>(protection)
             .AddSingleton(messaging.Object).BuildServiceProvider();
         var engine = new NotificationEngine(db, images.Object, Mock.Of<INotificationRealtimePublisher>(),
             new ApplePushDeliverySignal(), NullLogger<NotificationEngine>.Instance, services);
-        var path = await engine.GetCallSenderImagePathAsync(call.Id);
+        var paths = await engine.GetCallParticipantImagePathsAsync(call.Id);
+        var path = paths.Caller;
+        Assert.NotNull(paths.Callee);
+        var calleeToken = Uri.UnescapeDataString(paths.Callee.Split("?token=")[1]);
+        Assert.Same(recipientPhoto, await engine.GetSenderImageAsync(call.Id, calleeToken));
+        var legacyToken = protection.CreateProtector("Legend.NotificationSenderImage.v1").ToTimeLimitedDataProtector()
+            .Protect(JsonSerializer.Serialize(new { NotificationId = call.Id, RecipientUserId = actor.UserId, RecipientType = actor.ParticipantType, IsCall = true }), TimeSpan.FromMinutes(1));
+        Assert.Same(photo, await engine.GetSenderImageAsync(call.Id, legacyToken));
         Assert.NotNull(path);
         var token = Uri.UnescapeDataString(path.Split("?token=")[1]);
         Assert.Same(photo, await engine.GetSenderImageAsync(call.Id, token));
@@ -48,11 +61,14 @@ public sealed class NotificationSenderPresentationTests
         Assert.Null(await engine.GetSenderImageAsync(call.Id, token + "tampered"));
         call.CalleeType = "Agent"; await db.SaveChangesAsync();
         Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
-        call.CalleeType = "Client"; call.Status = "ended"; await db.SaveChangesAsync();
+        call.CalleeType = "Client";
+        call.CallerType = "Client"; await db.SaveChangesAsync();
+        Assert.Null(await engine.GetSenderImageAsync(call.Id, calleeToken));
+        call.CallerType = "Agent"; call.Status = "ended"; await db.SaveChangesAsync();
         Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
         call.Status = "ringing"; call.ExpiresUtc = DateTime.UtcNow.AddSeconds(-1); await db.SaveChangesAsync();
         Assert.Null(await engine.GetSenderImageAsync(call.Id, token));
-        Assert.Null(await engine.GetCallSenderImagePathAsync(call.Id));
+        Assert.Null((await engine.GetCallParticipantImagePathsAsync(call.Id)).Caller);
         call.ExpiresUtc = DateTime.UtcNow.AddMinutes(1); await db.SaveChangesAsync();
         messaging.Setup(x => x.GetConversationRealtimeRecipientsAsync(actor, call.ConversationId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<MessagingRealtimeRecipient>());

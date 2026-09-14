@@ -42,7 +42,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
 - An inference is still only a proposal: it must use direct support, quote an exact passage containing the proposed inference, reference two or three returned premise claim identifiers, and name one returned discriminating claim identifier. A correction may identify only the exact returned source it explicitly corrects.
 - Prefer original primary evidence. Identify copied, syndicated, press-release-derived, and common-origin material so dependent sources cannot masquerade as independent confirmations.
 - Record authorship, publication/update/effective dates, methodology availability, provenance completeness, and citation targets only when the public source actually exposes them. For an official release record, its explicitly stated release date is its publication and effective date. Do not guess missing metadata.
-- Express evidence statements in the supplied final response language, while preserving query and document languages.
+- Preserve the original document language in every exact quote and evidence_language. Return claim and contradiction proposals only when that document language matches the supplied final response language; this extraction transport cannot certify a governed translation. Return other-language sources as sources without translated claim proposals. Never translate a quote or relabel its language to satisfy the response-language constraint.
 - Do not resolve conflicts, infer authorization, retrieve documents for LEGEND, write knowledge, submit forms, download files, or mutate anything.
 """;
 
@@ -182,6 +182,13 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 false, TransportName, ProviderName, model, settingsIdentity,
                 attemptedQueries, receipts, [], [], [], [], latency, null, reason, retryable, candidateCounts);
         }
+
+        // This configured search adapter uses an external generative model.
+        // Public research permission does not authorize external generation.
+        // Preserve the request decision before reading credentials or creating
+        // a client; pure page retrieval has its own distinct network boundary.
+        if (LegendConnectExternalProviderPolicy.Resolve(request.ProviderPolicy).ForbidsExternalAnswering)
+            return Failure("internet_research_external_generation_forbidden", false);
 
         if (!TryReadConfiguration(out var endpoint, out var apiKey, out var model, out settingsIdentity))
             return Failure("internet_research_configuration_unavailable", false, model);

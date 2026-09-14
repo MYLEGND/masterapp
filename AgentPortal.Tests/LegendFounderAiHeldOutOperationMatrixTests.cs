@@ -92,6 +92,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Contains("Wren", native.Answer!, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains("mortal", native.Answer!, StringComparison.OrdinalIgnoreCase);
                 Assert.DoesNotContain(corpusTexts, text => SameText(text, native.Answer!));
+                Assert.Equal(0, writes.OperationalWriteAttempts);
+                Assert.Empty(writes.ObservedWriteEntities);
+                Assert.False(db.ChangeTracker.HasChanges());
 
                 var response = await services.GetRequiredService<LegendFounderAiConversationService>()
                     .ReplyAsync(founder, new LegendFounderAiChatRequest
@@ -102,14 +105,15 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         Messages = [new("user", prompt)]
                     });
                 Assert.True(response.Succeeded, response.Error);
-                Assert.Equal("LegendAi", response.ResponseAuthority);
-                Assert.Equal("native_response", response.Stage);
-                Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
-                Assert.Equal(native.Answer, response.Message);
+                Assert.Equal("LocalFoundation", response.ResponseAuthority);
+                Assert.Equal("LegendControlled", response.FoundationHosting);
+                Assert.False(response.ExternalAnsweringUsed);
                 Assert.Equal((0, 0), externalCounts());
                 Assert.Equal(0, writes.OperationalWriteAttempts);
-                Assert.Empty(writes.ObservedWriteEntities);
+                await AssertExactFounderHistoryAsync(db, writes, prompt, response, MessagingAuthorKinds.Assistant);
                 Assert.All(db.ChangeTracker.Entries(), entry => Assert.Equal(EntityState.Unchanged, entry.State));
+                Assert.Contains("Wren", response.Message!, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("mortal", response.Message!, StringComparison.OrdinalIgnoreCase);
             }, writes);
     }
 
@@ -242,7 +246,37 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         Mode = "legend", NativeOnly = false, SourceLanguageCode = "en",
                         Messages = [new("user", "Observed.")]
                     });
-                Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
+                var responseExternalCounts = externalCounts();
+                Record([
+                    new
+                    {
+                        Label = "admitted_conflicting_transitions",
+                        Prompt = "Observed.",
+                        Response = response,
+                        ProviderCalls = responseExternalCounts.Sends,
+                        ProviderClientConstructions = responseExternalCounts.Clients,
+                        OperationalWriteAttempts = (int?)null,
+                        ObservedWriteEntities = (string[]?)null,
+                        WriteObservation = "not_instrumented"
+                    }
+                ]);
+                // A controlled acknowledgment is permitted without a matching
+                // transition. It cannot choose or certify either conflicting
+                // gate conclusion or turn this conflict into external escalation.
+                // This checks non-resolution/isolation, not clarification quality.
+                Assert.True(response.Succeeded, response.Error);
+                Assert.Equal("LocalFoundation", response.ResponseAuthority);
+                Assert.Equal("foundation_response", response.Stage);
+                Assert.Equal("LegendControlled", response.FoundationHosting);
+                Assert.False(string.IsNullOrWhiteSpace(response.FoundationModel));
+                Assert.False(response.ExternalAnsweringUsed);
+                Assert.False(response.EscalationUsed);
+                Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
+                Assert.Empty(response.ReasoningTransitionPath ?? []);
+                Assert.Empty(response.ScheduleCertificates ?? []);
+                Assert.False(string.IsNullOrWhiteSpace(response.Message));
+                Assert.DoesNotMatch(@"(?i)(?:^|[.!?]\s+)(?:the\s+)?(?:gate|it)\s+(?:is|must\s+be|has\s+to\s+be)\s+(?:open|closed)\b", response.Message!);
+                Assert.Equal((0, 0), responseExternalCounts);
 
                 var unknown = await operations.TryInferConversationWithDiscourseAsync(
                     "Describe the ultraviolet topography of an uncharted moon.", [],
@@ -323,6 +357,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.False(inference.RequiresEscalation);
                 Assert.True(inference.OwnedRecordIntent?.RequiresGovernedReadReceipt);
                 Assert.Null(inference.ReadOnlyContentRequest);
+                // The inference authority itself must remain strictly read-only.
+                Assert.Equal(0, writes.OperationalWriteAttempts);
+                Assert.Empty(writes.ObservedWriteEntities);
+                Assert.False(db.ChangeTracker.HasChanges());
 
                 var response = await services.GetRequiredService<LegendFounderAiConversationService>().ReplyAsync(
                     founder, new LegendFounderAiChatRequest
@@ -330,12 +368,90 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                         Mode = "legend", NativeOnly = nativeOnly, SourceLanguageCode = "en",
                         Messages = [new("user", prompt)]
                     });
+                var responseExternalCounts = externalCounts();
+                Record([
+                    new
+                    {
+                        Label = "admitted_owned_record:" +
+                            (nativeOnly ? "native_only" : "provider_enabled"),
+                        Prompt = prompt,
+                        Response = response,
+                        ProviderCalls = responseExternalCounts.Sends,
+                        ProviderClientConstructions = responseExternalCounts.Clients,
+                        writes.OperationalWriteAttempts,
+                        ObservedWriteEntities = writes.ObservedWriteEntities.ToArray(),
+                        WriteObservation = "active_save_changes_sentinel"
+                    }
+                ]);
                 Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
                 Assert.DoesNotContain("999", response.Message ?? string.Empty, StringComparison.Ordinal);
                 Assert.Equal((0, 0), externalCounts());
                 Assert.Equal(0, writes.OperationalWriteAttempts);
-                Assert.Empty(writes.ObservedWriteEntities);
+                await AssertExactFounderHistoryAsync(db, writes, prompt, response, MessagingAuthorKinds.Service);
             }, writes);
+    }
+
+    private static async Task AssertExactFounderHistoryAsync(
+        MasterAppDbContext db, WriteAttemptSentinel writes, string prompt,
+        LegendFounderAiChatResponse response, string expectedTerminalAuthorKind)
+    {
+        // ReplyAsync additionally persists the canonical, Founder-scoped
+        // transcript. Require its exact effects; no other writes are allowed.
+        Assert.Equal(new[]
+        {
+            nameof(InternalMessage), nameof(LegendFounderAiDiscourseConversation),
+            nameof(LegendFounderAiDiscourseTurn), nameof(MessageConversation),
+            nameof(MessageConversationParticipant)
+        }, writes.ObservedWriteEntities.ToArray());
+        var thread = Assert.Single(await db.MessageConversations.AsNoTracking().ToListAsync());
+        Assert.Equal(response.ConversationId, thread.Id);
+        Assert.Equal(MessagingConversationTypes.Assistant, thread.ConversationType);
+        Assert.Equal(MessagingConversationPurposes.FounderAI, thread.Purpose);
+        Assert.Equal(FounderEnvironmentScope.FounderId, thread.OwnerUserId);
+        Assert.Equal(FounderEnvironmentScope.FounderId, thread.CreatedByUserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, thread.OwnerParticipantType);
+        var member = Assert.Single(await db.MessageConversationParticipants.AsNoTracking().ToListAsync());
+        Assert.Equal(thread.Id, member.ConversationId);
+        Assert.Equal(FounderEnvironmentScope.FounderId, member.UserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, member.ParticipantType);
+        Assert.True(member.IsActive);
+        var messages = await db.InternalMessages.AsNoTracking().ToListAsync();
+        Assert.Equal(2, messages.Count);
+        var human = Assert.Single(messages, x => x.AuthorKind == MessagingAuthorKinds.Human);
+        var terminal = Assert.Single(messages, x => x.AuthorKind == expectedTerminalAuthorKind);
+        Assert.Equal(response.UserMessageId, human.Id);
+        Assert.Equal(response.MessageId, terminal.Id);
+        Assert.All(messages, x => Assert.Equal(thread.Id, x.ConversationId));
+        Assert.Equal(FounderEnvironmentScope.FounderId, human.SenderUserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, human.SenderType);
+        Assert.Equal(prompt, human.Body);
+        Assert.Equal(string.Empty, terminal.SenderUserId);
+        Assert.Equal(string.Empty, terminal.SenderType);
+        Assert.Equal(human.Id, terminal.ReplyToMessageId);
+        Assert.Equal(response.Message ?? response.Error, terminal.Body);
+        var receipt = JsonSerializer.Deserialize<MessagingFounderAiResponseProvenance>(terminal.AiTurnMetadataJson!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(receipt);
+        Assert.Equal(response.Succeeded, receipt.Succeeded);
+        Assert.Equal(response.Mode, receipt.Mode);
+        Assert.Equal(response.Reason, receipt.Reason);
+        Assert.Equal(response.Stage, receipt.Stage);
+        Assert.Equal(response.ResponseAuthority, receipt.ResponseAuthority);
+        Assert.Equal(response.ExternalAnsweringUsed, receipt.ExternalAnsweringUsed);
+        Assert.Equal(response.FoundationHosting, receipt.FoundationHosting);
+        Assert.Equal(response.FoundationModel, receipt.FoundationModel);
+        Assert.Equal(response.EscalationUsed, receipt.EscalationUsed);
+        Assert.Equal(response.EvidenceOrigin, receipt.EvidenceOrigin);
+        Assert.Equal(response.ReasoningTransitionPath, receipt.ReasoningTransitionPath);
+        Assert.Equal(JsonSerializer.Serialize(response.ScheduleCertificates), JsonSerializer.Serialize(receipt.ScheduleCertificates));
+        var discourse = Assert.Single(await db.LegendFounderAiDiscourseConversations.AsNoTracking().ToListAsync());
+        Assert.Equal(thread.Id, discourse.ConversationId);
+        Assert.Equal(FounderEnvironmentScope.FounderId, discourse.FounderAgentUserId);
+        var turn = Assert.Single(await db.LegendFounderAiDiscourseTurns.AsNoTracking().ToListAsync());
+        Assert.Equal(discourse.Id, turn.DiscourseConversationId);
+        Assert.Equal("user", turn.Role);
+        Assert.Equal(1, turn.SequenceNumber);
+        Assert.Equal(1, discourse.NextTurnSequence);
+        Assert.False(db.ChangeTracker.HasChanges());
     }
 
     private static bool SameText(string first, string second) =>
@@ -515,11 +631,29 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         AssertNativeCapability(row, requiredAnswerElements);
         AssertCapabilitySemantics(category, row.Message!);
+        if (category == "internal_data_uncertainty")
+            Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
+    }
+
+    [Fact]
+    public async Task NativeCalculator_UsesExactExecutorWithoutOrganizationalReads()
+    {
+        var row = await RunAsync("native_calculator:fraction_comparison",
+            "Use LEGEND's calculator to compare 13/7 with 1.85. Return only the calculator's comparison result. Do not look up organizational records.",
+            nativeOnly: true, sourceLanguageCode: "en");
+        Record([row]);
+        AssertNativeCapability(row, []);
+        Assert.Equal("legend_calculate", Assert.Single(row.ToolCalls));
+        Assert.Contains("greater", row.Message!, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("greater", row.Message!.Trim(), ignoreCase: true);
     }
 
     private static void AssertCapabilitySemantics(string category, string answer)
     {
-        var normalized = answer.ToLowerInvariant();
+        // These bounded checks inspect the original free-form answers. They
+        // reject known semantic failures; they are not a complete language
+        // judge, so the captured answers still require independent review.
+        var normalized = answer.ToLowerInvariant().Replace('’', '\'').Replace("*", "");
         switch (category)
         {
             case "rewriting":
@@ -529,8 +663,20 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             case "deduction":
                 Assert.Matches(@"cannot both|can't both|inconsisten|contradict", normalized);
                 // The records establish inconsistency, not which individual
-                // premise is false. Choosing one without further evidence fails.
-                Assert.Matches(@"cannot (?:determine|identify)|can't (?:determine|identify)|at least one|one or more|not enough|insufficient", normalized);
+                // premise is false. An early "at least one" cannot excuse a
+                // later unsupported choice of a particular false premise.
+                Assert.DoesNotMatch(@"\b(?:no|not an?|without a)\s+(?:contradiction|inconsistency)\b|\b(?:are|is)\s+(?:logically\s+)?consistent\b", normalized);
+                Assert.Matches(@"(?:cannot|can't|unable to)\s+(?:determine|identify|tell|establish|decide)[^.!?\n]{0,160}\b(?:which|individual|particular|specific)\b[^.!?\n]{0,80}\b(?:premise|record|statement|claim)\b|\bwhich\s+(?:premise|record|statement|claim)[^.!?\n]{0,100}(?:cannot|can't)\s+be\s+(?:determined|identified|established)|\b(?:no individual|no particular|no single|neither)\s+(?:premise|record|statement|claim)[^.!?\n]{0,100}\b(?:uniquely|necessarily)\b", normalized);
+                foreach (var sentence in Regex.Split(normalized, @"[.!?\n]+"))
+                {
+                    // Explicit conditional deductions are valid. Merely
+                    // saying both records describe the same file is not an
+                    // assumption that either record is true.
+                    var conditional = Regex.IsMatch(sentence,
+                        @"\bif\b[^.!?\n]{0,120}\b(?:is true|are true|holds|is correct|is verified)\b");
+                    if (!conditional)
+                        Assert.DoesNotMatch(@"\b(?:premise\s*[abc123]|universal(?:\s+\w+){0,3}|(?:first|second|third)\s+(?:premise|claim|record))\b[^.!?\n]{0,200}\b(?:must be|is(?: necessarily)?|has to be)\s+false\b", sentence);
+                }
                 break;
             case "causal_diagnosis":
                 // Both changes coincide with the outcome. Correct diagnosis
@@ -539,16 +685,84 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Matches(@"compar|check|test|unchanged|old template|previous template", normalized);
                 break;
             case "constrained_planning":
-                Assert.Contains("7", normalized);
-                Assert.Contains("3", normalized);
-                Assert.Matches(@"once|duplicate|repeat|unique", normalized);
+                AssertInspectionSchedule(normalized);
                 break;
             case "internal_data_uncertainty":
-                Assert.Matches(@"cannot|can't|unavailable|missing|insufficient|not available", normalized);
-                Assert.DoesNotMatch(@"\b\d+(?:\.\d+)?\s*%", normalized);
+                // Missing-data language must describe this requested rate,
+                // not an unrelated unavailable resource beside an invention.
+                Assert.Matches(@"\brenewal\s+(?:percentage|rate|statistics)\b", normalized);
+                Assert.Matches(@"(?:cannot|can't|unable to)\s+(?:determine|provide|calculate|establish)[^.!?\n]{0,180}\b(?:renewal|percentage|rate)\b|\b(?:renewal percentage|renewal rate|exact percentage|exact rate)[^.!?\n]{0,160}(?:cannot|can't)\s+be\s+(?:determined|calculated|established|provided)|\b(?:data|information|records?)[^.!?\n]{0,80}(?:does not contain|do not contain|doesn't contain|do not include|does not include|lacks?)[^.!?\n]{0,100}\brenewal\b", normalized);
+                Assert.DoesNotMatch(@"\b(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\s*(?:%|per\s*cent\b|percent\b)", normalized);
                 break;
         }
     }
+
+    private static void AssertInspectionSchedule(string answer)
+    {
+        var normalized = Regex.Replace(answer, @"\b(one|two|three|four|five|six|seven|eight|nine)\b",
+            match => (Array.IndexOf(new[] { "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" }, match.Value) + 1).ToString());
+        var dailyCounts = new Dictionary<int, int>();
+        void AddDay(int day, int count)
+        {
+            if (dailyCounts.TryGetValue(day, out var prior)) Assert.Equal(prior, count);
+            dailyCounts[day] = count;
+        }
+
+        foreach (Match match in Regex.Matches(normalized,
+                     @"\bday\s*(?<day>[1-9])\s*[:|=\-–—]\s*(?:(?:inspect|complete|clear|contact|visit|handle|the|remaining)\s+)*(?<count>\d+)\b"))
+            AddDay(int.Parse(match.Groups["day"].Value), int.Parse(match.Groups["count"].Value));
+        foreach (Match match in Regex.Matches(normalized,
+                     @"\bdays\s*(?<first>[1-9])\s*(?:[-–—]|through|to)\s*(?<last>[1-9])\s*[:|=\-–—]\s*(?<count>\d+)\b"))
+        {
+            var first = int.Parse(match.Groups["first"].Value);
+            var last = int.Parse(match.Groups["last"].Value);
+            Assert.True(first <= last);
+            for (var day = first; day <= last; day++) AddDay(day, int.Parse(match.Groups["count"].Value));
+        }
+        foreach (Match match in Regex.Matches(normalized,
+                     @"\b(?:daily|per-day)\s+(?:(?:inspection|inspection count)\s+)?(?:counts|sequence|schedule)\s*:\s*(?<counts>\d+\s*(?:[,;+]\s*\d+\s*){4})(?!\s*[,;+]\s*\d)"))
+        {
+            var counts = Regex.Matches(match.Groups["counts"].Value, @"\d+");
+            for (var day = 1; day <= counts.Count; day++) AddDay(day, int.Parse(counts[day - 1].Value));
+        }
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, dailyCounts.Keys.OrderBy(day => day).ToArray());
+        Assert.Equal(new[] { 7, 7, 7, 7, 3 }, dailyCounts.OrderBy(day => day.Key).Select(day => day.Value).ToArray());
+        Assert.Equal(31, dailyCounts.Values.Sum());
+        Assert.Matches(@"\bhazardous\s+(?:sites\s+)?first\b|\b(?:prioritize|prioritise|start with)\s+(?:the\s+)?hazardous\b", normalized);
+        Assert.DoesNotMatch(@"\bnon[- ]?hazardous\s+(?:sites\s+)?first\b", normalized);
+        Assert.Matches(@"\beach site\b[^.!?\n]{0,80}\bonce\b|\bno\s+(?:duplicate|repeated)\s+(?:contacts?|visits?|sites?)\b|\bno site\b[^.!?\n]{0,60}\btwice\b|\b(?:never|do not|don't)\s+(?:repeat|duplicate)\s+(?:a\s+)?(?:site|contact|visit)\b", normalized);
+        foreach (Match completion in Regex.Matches(normalized,
+                     @"\b(?:completion|complete|completed|finish|finishes|finished|done)\b[^.!?\n]{0,40}\bday\s*(?<day>\d+)\b"))
+            Assert.Equal(5, int.Parse(completion.Groups["day"].Value));
+    }
+
+    [Theory]
+    [InlineData("deduction", "The premises contradict each other. At least one is false, but we cannot determine which premise is false.")]
+    [InlineData("deduction", "The records are inconsistent. Which premise is false cannot be determined. If the observation is true, the universal premise must be false.")]
+    [InlineData("constrained_planning", "Day 1: 7 inspections. Day 2: 7 inspections. Day 3: 7 inspections. Day 4: 7 inspections. Day 5: 3 inspections. Hazardous sites first; each site is contacted once. Completion: day 5.")]
+    [InlineData("constrained_planning", "Days one-four: seven inspections each. Day five: three inspections. Prioritize hazardous sites. No duplicate contacts. Finished on day five.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; no site may be contacted twice. Completion day: 5.")]
+    [InlineData("internal_data_uncertainty", "The provided data does not contain information about client renewal percentages for the third quarter of last year. The exact client renewal percentage for that quarter cannot be determined.")]
+    [InlineData("internal_data_uncertainty", "I cannot calculate the exact renewal rate from the current records; the historical counts are missing.")]
+    public void CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(string category, string answer)
+        => AssertCapabilitySemantics(category, answer);
+
+    [Theory]
+    // The real e57bca4c deduction passed the old 'at least one' expression
+    // before its final answer selected the universal claim without evidence.
+    [InlineData("deduction", "This creates a contradiction. Therefore, at least one of the premises must be false. Premise A must be false. Premise B is assumed true in the scenario.")]
+    [InlineData("deduction", "The premises contradict each other. We cannot determine which premise is false. Final answer: the universal claim must be false.")]
+    [InlineData("deduction", "There is no contradiction. We cannot determine which premise is false.")]
+    [InlineData("constrained_planning", "31 inspections at 7 per day. Hazardous sites first, no duplicate contacts. Completion day five.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 4. Hazardous sites first; each site is contacted once. Completion day 5.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; each site is contacted once. Completion day 6.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Non-hazardous sites first; each site is contacted once. Completion day 5.")]
+    [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; repeat a site on the final day. Completion day 5.")]
+    [InlineData("internal_data_uncertainty", "The exact renewal rate cannot be determined. My estimate is 90%.")]
+    [InlineData("internal_data_uncertainty", "The exact renewal rate cannot be determined. It was ninety percent.")]
+    [InlineData("internal_data_uncertainty", "The template is unavailable. Our renewal rate was 85 percent.")]
+    public void CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(string category, string answer)
+        => Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertCapabilitySemantics(category, answer));
 
     public static TheoryData<string, string[]> NativeCapabilityCases()
     {
@@ -562,9 +776,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         // Coincident changes do not distinguish clerk reassignment from a template defect.
         cases.Add("causal_diagnosis", ["template", "clerk"]);
         // 31 inspections at 7 per day completes on day five.
-        cases.Add("constrained_planning", ["five", "hazardous"]);
+        cases.Add("constrained_planning", []);
         // Internal data must be answered from an authenticated governed read.
-        cases.Add("internal_data_uncertainty", ["governed"]);
+        cases.Add("internal_data_uncertainty", []);
         // The conflicting counts must both be named and reconciled.
         cases.Add("haitian_creole_conflict", ["25", "27"]);
         return cases;
@@ -584,13 +798,14 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         await using var db = BuildSentinelDb(writeSentinel);
         var founder = await AddFounderProfileAsync(db);
         ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
-        await AdmitFoundationPrerequisiteAsync(db);
         var handler = new RecordingProviderHandler();
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
             .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
-        var service = CreateService(db, handler, loggerFactory);
+        var historyScopes = ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db);
+        var service = CreateService(db, handler, loggerFactory, historyScopes);
         var conversationId = Guid.NewGuid().ToString("D");
+        Guid? cursor = null;
 
         writeSentinel.Arm();
 
@@ -607,11 +822,13 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                     Mode = "legend",
                     NativeOnly = true,
                     ConversationId = conversationId,
+                    ExpectedLastMessageId = cursor,
                     SourceLanguageCode = "en",
                     Messages = [new LegendFounderAiChatMessage("user", prompt)]
                 },
                 progress: (update, _) => { progress.Add(update); return ValueTask.CompletedTask; });
 
+            cursor = response.MessageId ?? response.UserMessageId ?? cursor;
             return new MatrixRow(
                 label,
                 prompt,
@@ -634,7 +851,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 handler.ClientConstructions - providerClientsBefore,
                 progress.ToArray())
             {
-                RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics()
+                RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics(),
+                FoundationModel = response.FoundationModel,
+                FoundationHosting = response.FoundationHosting,
+                ExternalAnsweringUsed = response.ExternalAnsweringUsed
             };
         }
 
@@ -645,7 +865,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         // Force the follow-up to reload canonical persisted discourse state.
         // No assistant answer or expected value is injected into the request.
         db.ChangeTracker.Clear();
-        service = CreateService(db, handler, loggerFactory);
+        service = CreateService(db, handler, loggerFactory, historyScopes);
 
         var followUp = await SendAsync(
             "native_capability:same_conversation_memory_turn_two",
@@ -691,7 +911,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
     private static bool IsAnswered(MatrixRow row) =>
         row.Succeeded &&
-        string.Equals(row.ResponseAuthority, "LegendAi", StringComparison.Ordinal) &&
+        (row.ResponseAuthority is "LocalFoundation" or "LegendAi") &&
         !string.IsNullOrWhiteSpace(row.Message);
 
     /// <summary>
@@ -730,17 +950,28 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         IReadOnlyList<string>? allowedWriteEntities = null)
     {
         AssertNativeBoundary(row, allowedWriteEntities);
-        Assert.True(
-            IsAnswered(row),
-            $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
-        Assert.Equal("LegendAi", row.ResponseAuthority);
-        Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, row.EvidenceOrigin);
-        Assert.True(row.EvidenceCount > 0, "A native capability answer requires positive governed evidence lineage.");
-        Assert.False(string.IsNullOrWhiteSpace(row.Message));
+        if (row.Label == "native_capability:tool_planning" && row.ResponseAuthority == "LegendAi")
+        {
+            Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, row.EvidenceOrigin);
+            Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
+        }
+        else
+        {
+            Assert.Equal("LocalFoundation", row.ResponseAuthority);
+            Assert.Equal("LegendControlled", row.FoundationHosting);
+            Assert.False(string.IsNullOrWhiteSpace(row.FoundationModel));
+            Assert.False(row.ExternalAnsweringUsed);
+        }
         Assert.DoesNotContain(
             "OpenAI",
             row.ModelProvenance ?? string.Empty,
             StringComparison.OrdinalIgnoreCase);
+        // No answer-quality assertion may precede the native attribution and
+        // external-call/operational-write boundary above.
+        Assert.True(
+            IsAnswered(row),
+            $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
+        Assert.False(string.IsNullOrWhiteSpace(row.Message));
         foreach (var element in requiredAnswerElements)
         {
             Assert.Contains(element, row.Message!, StringComparison.OrdinalIgnoreCase);
@@ -760,7 +991,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     }
 
     [Fact]
-    public async Task PermittedEscalationAndDirectProviderModeAreAttributedToTheProvider()
+    public async Task OrdinaryReasoningRemainsLocalAndExplicitTeacherIsAttributedExternally()
     {
         var escalated = await RunAsync(
             "escalation_allowed:deduction",
@@ -778,8 +1009,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Record([escalated, direct]);
 
         Assert.True(escalated.Succeeded, escalated.Error);
-        Assert.Equal("OpenAITeacher", escalated.ResponseAuthority);
-        Assert.Equal(1, escalated.ProviderCalls);
+        Assert.Equal("LocalFoundation", escalated.ResponseAuthority);
+        Assert.Equal("LegendControlled", escalated.FoundationHosting);
+        Assert.False(escalated.ExternalAnsweringUsed);
+        Assert.Equal(0, escalated.ProviderCalls);
         Assert.Equal(0, escalated.OperationalWriteAttempts);
         Assert.True(direct.Succeeded, direct.Error);
         Assert.Equal("OpenAITeacher", direct.ResponseAuthority);
@@ -791,7 +1024,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// owned-record request. The provider function call is scripted, so this
     /// is NOT evidence that LEGEND or the provider autonomously selects the
     /// tool, and it is not evidence of native-only tool planning, which
-    /// remains unimplemented. What it proves is bounded and exact: the request
+    /// is verified separately against the real controlled model. What it proves is bounded and exact: the request
     /// routes to the governed read path, the registered tool executes against
     /// the authenticated database, the receipt carries the canonical counts,
     /// and the answer delivered to the Founder carries those same counts.
@@ -804,9 +1037,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         string prompt)
     {
         var row = await RunAsync(
-            "escalation_allowed:governed_tool_read",
+            "explicit_teacher:governed_tool_read",
             prompt,
             nativeOnly: false,
+            mode: "teacher",
             providerResponses:
             [
                 ProviderTool("legend_client_lead_portfolio", "{}"),
@@ -850,6 +1084,31 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         ("haitian_creole_conflict", CreolePrompt)
     ];
 
+    [Fact]
+    public async Task MatrixFixture_ConversationPersistenceIsSeparateFromGuardedOperations()
+    {
+        // Script only the explicit external transport fixture: this proves
+        // database composition, never independent model capability.
+        var row = await RunAsync("fixture:conversation_isolation", "Explain the supplied scenario.",
+            nativeOnly: false, mode: "teacher", providerText: "A transport fixture response.",
+            inspectOperations: db =>
+            {
+                var audit = Assert.Single(db.Set<LegendConnectOperationalEvent>().AsNoTracking());
+                Assert.Equal("ExternalEscalationLearning", audit.Category);
+                Assert.Equal("Restricted", audit.Status);
+                Assert.Equal("external_teacher_training_rights_unverified", audit.ErrorCode);
+                Assert.Equal("provider=OpenAI;content_retained=false;training_eligible=false;canonical=false;privacy=metadata_only", audit.Summary);
+            });
+        Assert.True(row.Succeeded, row.Error);
+        Assert.Equal("OpenAITeacher", row.ResponseAuthority);
+        Assert.Equal(1, row.ProviderCalls);
+        Assert.Equal(2, row.PersistedConversationMessages);
+        Assert.True(row.PersistedDiscourseTurns > 0);
+        Assert.Equal(0, row.OperationalWriteAttempts);
+        Assert.Equal(new[] { nameof(LegendConnectOperationalEvent) }, row.ObservedWriteEntities);
+        Assert.Equal(0, row.PendingTrackedChanges);
+    }
+
     private static async Task<MatrixRow> RunAsync(
         string label,
         string prompt,
@@ -860,7 +1119,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         IReadOnlyList<LegendFounderAiChatMessage>? priorTurns = null,
         bool seedOperationalRecords = false,
         string? conversationId = null,
-        string? sourceLanguageCode = "en")
+        string? sourceLanguageCode = "en",
+        Action<MasterAppDbContext>? inspectOperations = null)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         using var writeSentinel = new WriteAttemptSentinel();
@@ -872,10 +1132,6 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             await SeedOperationalRecordsAsync(db);
         }
 
-        if (label.StartsWith("native_capability:", StringComparison.Ordinal) ||
-            label.StartsWith("native_only:", StringComparison.Ordinal))
-            await AdmitFoundationPrerequisiteAsync(db);
-
         // Every persistence attempt from this point on is counted and rejected,
         // so zero writes is proven at the command boundary instead of inferred
         // from unchanged row counts.
@@ -886,7 +1142,15 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
         using var loggerFactory = LoggerFactory.Create(builder => builder
             .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
-        var service = CreateService(db, handler, loggerFactory);
+        // Conversation persistence is exercised in its isolated canonical store.
+        // The operations store remains guarded against every attempted write.
+        await using var conversationDb = ControllerTestHelpers.BuildDb();
+        await AddFounderProfileAsync(conversationDb);
+        var historyScopes = ControllerTestHelpers.BuildFounderHistoryScopes(conversationDb);
+        conversationId ??= Guid.NewGuid().ToString("D");
+        var expectedLastMessageId = await ControllerTestHelpers.SeedFounderHistoryAsync(historyScopes,
+            FounderEnvironmentScope.FounderId, Guid.Parse(conversationId), priorTurns ?? []);
+        var service = CreateService(db, handler, loggerFactory, historyScopes, conversationDb);
 
         var messages = new List<LegendFounderAiChatMessage>(
             priorTurns ?? []) { new("user", prompt) };
@@ -900,11 +1164,13 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Mode = mode,
                 NativeOnly = nativeOnly,
                 ConversationId = conversationId,
+                ExpectedLastMessageId = expectedLastMessageId,
                 SourceLanguageCode = sourceLanguageCode,
                 Messages = messages
             },
             progress: (update, _) => { progress.Add(update); return ValueTask.CompletedTask; });
 
+        inspectOperations?.Invoke(db);
         return new MatrixRow(
             label,
             prompt,
@@ -932,7 +1198,12 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             handler.ClientConstructions,
             progress.ToArray())
         {
-            RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics()
+            PersistedConversationMessages = await conversationDb.InternalMessages.AsNoTracking().CountAsync(),
+            PersistedDiscourseTurns = await conversationDb.LegendFounderAiDiscourseTurns.AsNoTracking().CountAsync(),
+            RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics(),
+            FoundationModel = response.FoundationModel,
+            FoundationHosting = response.FoundationHosting,
+            ExternalAnsweringUsed = response.ExternalAnsweringUsed
         };
     }
 
@@ -955,7 +1226,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         return match.Success && int.TryParse(match.Groups["count"].Value, out var count) ? count : 0;
     }
 
-    private static void Record(IReadOnlyList<MatrixRow> rows)
+    private static void Record(IReadOnlyList<object> rows)
     {
         var path = Environment.GetEnvironmentVariable(
             "LEGEND_HELDOUT_MATRIX_PATH");
@@ -997,6 +1268,11 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         IReadOnlyList<LegendFounderAiProgressEvent> Progress)
     {
         public LegendFounderCurriculumSqlServerE2ETests.RuntimeDiagnosticSnapshot? RuntimeDiagnostics { get; init; }
+        public string? FoundationModel { get; init; }
+        public string? FoundationHosting { get; init; }
+        public bool? ExternalAnsweringUsed { get; init; }
+        public int? PersistedConversationMessages { get; init; }
+        public int? PersistedDiscourseTurns { get; init; }
     }
 
 
@@ -1042,11 +1318,15 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     private static LegendFounderAiConversationService CreateService(
         MasterAppDbContext db,
         RecordingProviderHandler handler,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IServiceScopeFactory? historyScopes = null,
+        MasterAppDbContext? conversationDb = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["OpenAI:ApiKey"] = "test-only-key",
+                ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120",
                 ["LegendConnect:CorpusAcquisition:Enabled"] = "false",
                 ["LegendConnect:LanguageRegistry:Baseline:0:Code"] = "en",
                 ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
@@ -1055,7 +1335,12 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 ["LegendConnect:LanguageRegistry:Baseline:1:Name"] = "Haitian Creole",
                 ["LegendConnect:LanguageRegistry:Baseline:1:NativeName"] = "Kreyòl ayisyen"
             })
+            .AddControlledFoundation()
             .Build();
+        var clients = new RecordingHttpClientFactory(handler);
+        var modelTransport = new LegendConnectModelInferenceTransport(clients, configuration,
+            loggerFactory.CreateLogger<LegendConnectModelInferenceTransport>());
+        var activeModel = new LegendConnectActiveModelInference(db, modelTransport, configuration);
         var registry = new LegendLanguageRegistry(db, configuration);
         var intelligence = new LegendConnectTranslationIntelligence(db, configuration);
         var corpus = new LegendConnectCorpusService(
@@ -1070,29 +1355,29 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             registry,
             corpus,
             configuration,
+            operationalEvents: new LegendConnectOperationalEventWriter(db,
+                loggerFactory.CreateLogger<LegendConnectOperationalEventWriter>()),
             curriculum: curriculum,
-            intelligence: intelligence);
+            intelligence: intelligence,
+            activeModelInference: activeModel);
         var accessResolver = new AgentProfileAccessResolver(db);
 
         return new LegendFounderAiConversationService(
-            new RecordingHttpClientFactory(handler),
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["OpenAI:ApiKey"] = "test-only-key",
-                    ["OpenAI:LegendFounderAiTimeoutSeconds"] = "45"
-                })
-                .Build(),
+            clients,
+            configuration,
             new FounderLegendConnectService(operations, accessResolver),
             loggerFactory.CreateLogger<LegendFounderAiConversationService>(),
-            new LegendFounderAiDiscourseStateService(db, accessResolver, operations),
+            new LegendFounderAiDiscourseStateService(conversationDb ?? db,
+                conversationDb is null ? accessResolver : new AgentProfileAccessResolver(conversationDb), operations),
             registry,
             ControllerTestHelpers.BuildTranslationService(),
             softwareRemediation: null,
             agencyCommand: new AgencyCommandService(
                 db,
                 new ProductionService(db, loggerFactory.CreateLogger<ProductionService>()),
-                loggerFactory.CreateLogger<AgencyCommandService>()));
+                loggerFactory.CreateLogger<AgencyCommandService>()),
+            modelInference: modelTransport,
+            activeModelInference: activeModel, languagePreferences: new ControlledResourceAccessService(db), historyScopes: historyScopes ?? ControllerTestHelpers.BuildIsolatedFounderHistoryScopes(db));
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(
@@ -1272,6 +1557,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     {
         public HttpClient CreateClient(string name)
         {
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             handler.ClientConstructions++;
             return new HttpClient(handler, disposeHandler: false)
             {

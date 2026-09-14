@@ -1,0 +1,163 @@
+{
+  "baseline": "11b2bd3cf59b0e903e4b22be0e98945cb82a1be8",
+  "production_observed": "144567d7a39ea76d50f3d5efd3aae08f3595f85e",
+  "branch": "implement/legend-pretrained-20260912",
+  "release_state": "staged; deployment held; not production accepted",
+  "source_sha256": {
+    "AgentPortal.Tests/MessagingCallingPreferencesTests.cs": "b0583cd5fe30f25037c37b1423220a4ebf48c4239035ec5cfe59bb94669fa2ec",
+    "AgentPortal.Tests/MessagingProjectionBatchTests.cs": "29e3e61873af30679d125bd9bdd4bc72618640d36b6a14f047b99edcf9c2e03a",
+    "AgentPortal.Tests/MessagingServiceTests.cs": "b780a541bb18c443742a534a17907d5a4be71882364fa05286bd3c433bba0b9a",
+    "AgentPortal.Tests/NotificationSenderPresentationTests.cs": "ef8d6470c7601c1a67d627718d57db4a1a2f860d8d49210402fd7581e6287de0",
+    "AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml": "401187e9f438ba5eeaf40a2fc9ee8402bd54ff3308cccac6634caa6dc0e97ed5",
+    "AgentPortal/Views/Shared/_Layout.cshtml": "c6f4839b7a0bfccf62495a8e777b0ac7eba7d8d1cfb80373530c0da16c7549e5",
+    "ClientApp/Views/Shared/_Layout.cshtml": "80b70fa004f007b3c31c2d6c7304c29991d086bee9635a356f6e657f40f7e62c",
+    "Domain/Entities/MobileProfileSettings.cs": "d4325aaea15764a976c3fb59c8fec823e67bc2bdfd62a9ed042fed8911a6adf5",
+    "Infrastructure/Data/MasterAppDbContext.cs": "6f62f9099590701b5965aa2347c212aed187090d36ff6a5c872371279ae8bb50",
+    "Infrastructure/Messaging/MessagingService.Calling.cs": "a339c96ee4ad8c7d701eac5c66725f04fb332b24b4359faec091445308f37ea1",
+    "Infrastructure/Migrations/20260913193539_AddCallingProfilePreferences.Designer.cs": "957d7667ae75e79e95af6d2be7fc88e40ed16548eb6b328b7605731e736e1086",
+    "Infrastructure/Migrations/20260913193539_AddCallingProfilePreferences.cs": "134cb4aa59d8fb9ae40385c6af08388ea91a3cbc92304482ce31546014e9f57c",
+    "Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs": "9bb5893f72036a2ab9ebd6fe3a6bee805e35f789e8a89296c0d2098a16c56b88",
+    "Infrastructure/Notifications/NotificationEngine.cs": "e511e33739f9637cdfcc6cb8e130af399f47c8aa651bc042944e7c3a9f13d014",
+    "Legend-Android/app/src/androidTest/java/com/mylegnd/legend/registered/LegendDirectCallingTest.kt": "3420d7542ec944bf217c2016bf43b93d406016ec19fd96ef29fa60f44c56f768",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/MainActivity.kt": "148de5ecbdcb4a6f8a74a410262fc56a1af20df813b3e419f3398cd78d5d861d",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/calling/LegendCallModels.kt": "8f7b1e0fbe05033228348e96f862c518c8f0dc5fb991a5e17d199248f1ea125c",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/calling/LegendCallPlatform.kt": "9b0277c70020a961dce096e1867353d97aa71ee11586e1e5e4ae530d70334779",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/calling/LegendCallScreen.kt": "bd254ae0940657a7fc48109adfe31c8ee4356f36631f15bff5154c5e62125515",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/calling/LegendCallViewModel.kt": "20c81e85b8a44cfe1560b7e21fcd41f3cbc9f2593f70ff814517c6fcfc5d2a41",
+    "Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendApp.kt": "1dac655cdb1420ac3cc37b51b23ae5d4107f415138d35beef04498d239e4745a",
+    "Legend-Android/app/src/test/java/com/mylegnd/legend/registered/LegendCallAudioLifecycleTest.kt": "f9b0d81fadb86ad8230b8d7087660b34b5fdf3a659c27db2bb61e933e2ed0dab",
+    "Legend-Design/legend-application-copy.json": "0c2deec035f9ca3e9f09b82a6c92541b06a4d24aa765a91b7009d8ab85f54bd2",
+    "Legend-ios/Legend.xcodeproj/project.pbxproj": "e49ec1e1f63854c940b70aedbe6b22278c0f4b0e10f35a34d7882764789f18b0",
+    "Legend-ios/Legend/Core/MobileSessionCoordinator.swift": "b1014935d550a3a0534845d605fa300dd2eb8ee43b6ad6bb363ea356b7c96288",
+    "Legend-ios/Legend/Features/Calling/LegendCallBroadcastReceiver.swift": "f465c9352a8e98b4265188fb91641f80f21edeedaf2455b82279b30f9ba8af5a",
+    "Legend-ios/Legend/Features/Calling/LegendCallModels.swift": "bdaa76b4e826d45eee1f91a0d321d314f8cc4cb49972fc249400cf502d171c48",
+    "Legend-ios/Legend/Features/Calling/LegendCallPreferencesView.swift": "2929e5341cf4792531048c0d3bd4fd8e7492bad7023b66d06acf420f9b75f323",
+    "Legend-ios/Legend/Features/Calling/LegendCallScreen.swift": "00c9fcd4ac4fd49ea53f4285feedf8e121aaae50754ec505cac9dd1570ae430a",
+    "Legend-ios/Legend/Features/Calling/LegendCallStore.swift": "46120bfbf49ba0927fc5e130517ad4a6478294c0f19bb8077898abafa6f69c6e",
+    "Legend-ios/Legend/Features/Calling/LegendCallSystem.swift": "60ff61b290e3750425d1291965c73ed028667c6a48700484eaa5046100975fa1",
+    "Legend-ios/Legend/Features/Calling/LegendRTCPeer.swift": "36f10e9340c8c56ecc1885e004a9f9b4e1b13f12bd78a4275dae8ea966c10b3e",
+    "Legend-ios/Legend/Features/Home/LegendApplicationShell.swift": "c7df85b219d9faec4a3c7237fed6ce1cc2f7c8b71027bf665f4a2bc236d85ca0",
+    "Legend-ios/Legend/Features/Messaging/MessagingHomeView.swift": "ecbef98f12dc55e24ca18e0be09ae00b2fb0f972d8e6a4d482b49c7f3d158ef9",
+    "Legend-ios/Legend/Resources/Info.plist": "386817e89bc30514dc552134a4db84108fc23705a2624c3a01713349655e2939",
+    "Legend-ios/Legend/Resources/Legend.entitlements": "497433adb06422bb5a11bb0f9a1192fb56da4d0ddc33b555a473cd961e6c82a0",
+    "Legend-ios/LegendBroadcast/Info.plist": "0de99272eb606f6e57b77165b675079075898e8879bebb3f8aa833d65d26ab63",
+    "Legend-ios/LegendBroadcast/LegendBroadcast.entitlements": "b67d815ffd64846f68366249faeb8b8c3ae0041d87fb3acb7e5c7ae63df4776d",
+    "Legend-ios/LegendBroadcast/SampleHandler.swift": "314831fb6e316f92992859b8cb835b2abf4e2acd08ba0ff6f3557605945fc09f",
+    "Legend-ios/LegendCallBroadcastShared/LegendBroadcastProtocol.swift": "cf73592c02d568e7a7db13a45c7ae7d9697c0c748daffae1385bb4e08712368f",
+    "Legend-ios/LegendNotificationService/Info.plist": "33a575d6e92b02da5b8ed0b22a4eead0affbd8b1d0a47e9f27645ae8ebc30758",
+    "Legend-ios/LegendTests/LegendDirectCallingTests.swift": "b55dbb377722cdd6a45ec542a939ad33baac17ae2960a1fceac83f0fed4691cc",
+    "Legend-ios/project.yml": "5549d4b433567318a88ff06cec167049cfa896078957d7db2a5f35ab98e62081",
+    "SHARED/Calling/LegendCallingContracts.cs": "3f373b084df3a23132d5fbdaed202e1c47edf6e24af872e38e7f88a967a2f56e",
+    "SHARED/Messaging/MessagingHubEndpointRouteBuilderExtensions.cs": "650bb96e38a22dc51b28965725520e9ab3c2c36d2a3aaa289ce3f5d365b7c284",
+    "SHARED/Shared.csproj": "2eba41e33b91e71377143f0a26a69347d3fe8df8ba5a8cf19d6bde393b0b1f99",
+    "SHARED/Views/Messaging/_CommandCenter.cshtml": "9d6a7afa1070d44e996b28e6d3933f5c129f8e2f5e0808bc27288d0067d71e4e",
+    "SHARED/wwwroot/css/dashboard-home-shared.css": "c3fc8538f0ea29eeaed8a4db98e1eb6e928e20c3de575499d4180159c47d6e6e",
+    "SHARED/wwwroot/js/legend-calling.js": "70e5995a9d29180a3f69eb04e3d29717c957d34b0822ae21140ea96ed13da5cc",
+    "SHARED/wwwroot/js/messaging.js": "134781eb04c7013d01fb3e757fff9822472e6086eb0242037381220e2ffad3de",
+    "scripts/generate-application-copy-manifest.rb": "470f8baeb428cb90cf959579deb841039ecac1c2802dfd880684f35815886588",
+    "tests/messaging/calling-ui.test.mjs": "07cec674135365c132e60fe1363e6468630cbe8c639f362720fbd01cab0d2b86",
+    "tests/messaging/calling.test.mjs": "2a3d8a20aadc881955dd091c8dc5348bbef1b9d17c291359af7e129589803067",
+    "tests/messaging/chat-state.test.mjs": "78c3f1a0b3bbaa43a2f26455f695661847052235a4c2f2181a4740b133c5536f"
+  },
+  "build": {
+    "command": "dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore -p:MasterAppArtifactsRoot=/private/tmp/legend-pretrained-artifacts -nodeReuse:false",
+    "exit_code": 0,
+    "warnings": 0,
+    "errors": 0,
+    "elapsed_seconds": 31.72,
+    "log": "/private/tmp/legend-pretrained-results/calling-final-build.log"
+  },
+  "combined_backend": {
+    "runner": "dotnet vstest",
+    "filter": "FullyQualifiedName~AgentPortal.Tests.ApplicationLocalizationArchitectureTests|FullyQualifiedName~AgentPortal.Tests.ApplicationLocalizationNativeContractTests|FullyQualifiedName~AgentPortal.Tests.ApplicationLocalizationWebContractTests|FullyQualifiedName~AgentPortal.Tests.AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~AgentPortal.Tests.CallingNetworkPolicyTests|FullyQualifiedName~AgentPortal.Tests.FounderCallRelayTests|FullyQualifiedName~AgentPortal.Tests.FounderLegendConnectLiveMetricsTests|FullyQualifiedName~AgentPortal.Tests.LegendConnectDashboardCountersTests|FullyQualifiedName~AgentPortal.Tests.LegendConnectTranslationServingReconciliationTests|FullyQualifiedName~AgentPortal.Tests.MessagingActorResolverTests|FullyQualifiedName~AgentPortal.Tests.MessagingHubTests|FullyQualifiedName~AgentPortal.Tests.MessagingProfileImageResolverTests|FullyQualifiedName~AgentPortal.Tests.MessagingServiceTests|FullyQualifiedName~AgentPortal.Tests.MobileMessagingTranslationEndToEndTests|FullyQualifiedName~AgentPortal.Tests.NotificationSenderPresentationTests|FullyQualifiedName~AgentPortal.Tests.TranslationEntitlementIdentityTests|FullyQualifiedName~AgentPortal.Tests.TranslationGlobalPolicyTests|FullyQualifiedName~AgentPortal.Tests.TranslationRequestCoalescerTests",
+    "settings": "/private/tmp/legend-translation-focused.runsettings",
+    "counters": {
+      "total": "295",
+      "executed": "295",
+      "passed": "295",
+      "failed": "0",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "elapsed_seconds": 35.6162,
+    "trx": "/private/tmp/legend-pretrained-results/calling-combined-final.trx",
+    "trx_sha256": "0d1aab3fe47677e8aa28f6d175035318ec8629165a5865a100a7cfef84bebcf5",
+    "dll_sha256": "018f7f6581b3c8fee8e32717ef829e825b050ca34df9ebf71001fbeeb8042cee",
+    "category": "isolated fixtures/SQLite and mocked providers; no production data"
+  },
+  "web": {
+    "command": "node --test tests/messaging/*.test.mjs",
+    "passed": 95,
+    "failed": 0,
+    "skipped": 0,
+    "log": "/private/tmp/legend-pretrained-results/calling-web-combined.log",
+    "category": "source-driven deterministic media/hub and DOM fixtures"
+  },
+  "ios": {
+    "main_batch_passed": 97,
+    "main_batch_failed": 0,
+    "cue_suite_passed": 25,
+    "final_cue_subset_passed": 2,
+    "category": "unsigned simulator and local socket fixtures, not physical devices",
+    "receipts": [
+      "/private/tmp/legend-pretrained-results/ios-calling-verification.json",
+      "/private/tmp/legend-pretrained-results/ios-calling-outgoing-cue-verification.json"
+    ]
+  },
+  "android": {
+    "passed": 21,
+    "failed": 0,
+    "skipped": 0,
+    "instrumentation_compiled": true,
+    "instrumentation_executed": false,
+    "signed_aab_produced": false,
+    "receipt": "/private/tmp/legend-android-calling-permission-verification.json"
+  },
+  "chrome": {
+    "adapter_sha256": "70e5995a9d29180a3f69eb04e3d29717c957d34b0822ae21140ea96ed13da5cc",
+    "passed": true,
+    "receipt": "/private/tmp/legend-real-browser-call-evidence.json",
+    "category": "Chrome152 synthetic microphone + in-memory signaling; bidirectional RTP and ICE restart; no audible/production/TURN/adaptation proof"
+  },
+  "layout": {
+    "dialog_fragment_sha256": "c8f2cfee056b3fd98ea21486cc4277d565c446bc016c4f0d9cea3786f2230773",
+    "css_sha256": "c3fc8538f0ea29eeaed8a4db98e1eb6e928e20c3de575499d4180159c47d6e6e",
+    "viewports": [
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 1280,
+        "height": 800
+      }
+    ],
+    "overflow": false,
+    "minimum_control_height": 44,
+    "receipt": "/private/tmp/legend-call-layout-evidence.json",
+    "category": "static actual shared markup/CSS with synthetic UI state"
+  },
+  "unperformed": [
+    "physical iOS/Android calling and screen capture",
+    "signed App Group/extension provisioning",
+    "signed mobile distribution",
+    "authenticated production and protected production-data checks",
+    "TURN/carrier/poor-network end-to-end measurements",
+    "full existing AI and production release gates"
+  ],
+  "paid_actions": [],
+  "database_mutations": [],
+  "deployment_executed": false,
+  "publication_ref": "staging/legend-calling-20260913",
+  "publication_policy": "No PR created or synchronized; existing PR123 and production unchanged. No workflow matches this non-PR push."
+}

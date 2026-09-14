@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 
 namespace AgentPortal.Services;
 
@@ -57,11 +58,35 @@ internal sealed class LegendFounderToolAuthority
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
 
+    internal IReadOnlyList<object> GetAvailableTools(
+        bool mutationConfirmed,
+        string? conversationId,
+        LegendConnectExternalProviderPolicy providerPolicy,
+        bool externalTeacher)
+    {
+        // Publish only capabilities whose request-level prerequisites exist.
+        // Execution still enforces Founder identity, exact scope and consent.
+        return Tools.Where(tool =>
+        {
+            var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            if (name == "legend_remember_conversation_facts")
+                return !string.IsNullOrWhiteSpace(conversationId);
+            if (name == "legend_request_teacher_escalation")
+                return !externalTeacher && !providerPolicy.ForbidsExternalAnswering;
+            if (name == "legend_research_internet" && providerPolicy.ForbidsExternalProviders)
+                return false;
+            return !RequiresExplicitFounderCommand(name) || mutationConfirmed;
+        }).ToArray();
+    }
+
     internal IReadOnlyList<object> Capabilities =>
         DescribeFounderCapabilities();
 
     internal bool IsReadOnly(string name) =>
         IsReadOnlyFounderTool(name);
+
+    private static bool RequiresExplicitFounderCommand(string name) =>
+        !IsReadOnlyFounderTool(name) && name != "legend_remember_conversation_facts";
 
     internal bool IsGovernedEvidence(string name) =>
         IsGovernedEvidenceTool(name);
@@ -72,6 +97,8 @@ internal sealed class LegendFounderToolAuthority
     private static bool IsGovernedEvidenceTool(string name) =>
         IsReadOnlyFounderTool(name) &&
         !string.Equals(name, "legend_capabilities", StringComparison.Ordinal) &&
+        !string.Equals(name, "legend_calculate", StringComparison.Ordinal) &&
+        !string.Equals(name, "legend_request_teacher_escalation", StringComparison.Ordinal) &&
         !string.Equals(name, "legend_research_internet", StringComparison.Ordinal);
 
     // This is a classification inside the one executable registry, not a
@@ -96,7 +123,9 @@ internal sealed class LegendFounderToolAuthority
     private static bool IsReadOnlyFounderTool(
         string name) =>
         name is
+            "legend_calculate" or
             "legend_capabilities" or
+            "legend_request_teacher_escalation" or
             "legend_software_remediation_status" or
             "legend_inspect_repository" or
             "legend_inspect_repair_validation" or
@@ -178,7 +207,8 @@ internal sealed class LegendFounderToolAuthority
         LegendConnectNativeInferenceSnapshot? internalInference,
         FounderAiMutationAuthorization? restrictedAuthorization,
         CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        LegendConnectExternalProviderPolicy? providerPolicy = null,
+        bool foundationRequestedVerification = false)
     {
         var decision = internalInference?.ResearchDecision ??
             await _legend.DecideResearchNeededAsync(
@@ -187,7 +217,8 @@ internal sealed class LegendFounderToolAuthority
                 sourceLanguageCode,
                 internalInference,
                 cancellationToken,
-                providerPolicy);
+                providerPolicy,
+                foundationRequestedVerification);
         var requestId = Guid.NewGuid();
         if (!decision.ResearchRequired)
         {
@@ -282,7 +313,19 @@ internal sealed class LegendFounderToolAuthority
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!IsReadOnlyFounderTool(call.Name))
+        // Pure argument validation preserves the diagnostic contract without
+        // reading protected state. All valid requests still require Founder
+        // authorization before dispatch.
+        string? diagnosticSection = null;
+        string? diagnosticLanguage = null;
+        if (call.Name == "legend_operational_diagnostics" &&
+            !TryReadOperationalDiagnosticArguments(
+                call.Arguments, out diagnosticSection, out diagnosticLanguage))
+        {
+            return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
+        }
+
+        if (RequiresExplicitFounderCommand(call.Name))
         {
             var authorizationFailure = await TryConsumeMutationAuthorizationAsync(
                 founder,
@@ -292,11 +335,64 @@ internal sealed class LegendFounderToolAuthority
                 return authorizationFailure;
         }
 
+        // Preserve the existing structured missing/malformed mutation-consent
+        // result above. Before dispatch, provider tool selection still grants
+        // no authority, including read-only services without actor arguments.
+        FounderGuard.EnsureFounderOrThrow(founder);
+
         switch (call.Name)
         {
+            case "legend_calculate":
+            {
+                if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                    return SerializeUnbounded(new { ok = false, error = "calculation_arguments_invalid" });
+                try
+                {
+                    using var arguments = JsonDocument.Parse(call.Arguments);
+                    var root = arguments.RootElement;
+                    if (!TryResolveFounderFunctionParameters(call.Name, out var schema) || !IsStrictSchemaInstance(schema, root))
+                        return SerializeUnbounded(new { ok = false, error = "calculation_arguments_invalid" });
+                    var operation = root.GetProperty("operation").GetString()!;
+                    var left = root.GetProperty("left").GetString()!;
+                    var right = root.GetProperty("right").GetString()!;
+                    if (!LegendConnectGovernedReasoningExecutor.TryCalculate(operation, left, right, out var result))
+                        return SerializeUnbounded(new { ok = false, error = "calculation_undefined_or_out_of_bounds" });
+                    return SerializeUnbounded(new { ok = true, operation, left, right, result,
+                        authority = "LegendConnectGovernedReasoningExecutor", scope = "supplied_operands_only" });
+                }
+                catch (JsonException)
+                {
+                    return SerializeUnbounded(new { ok = false, error = "calculation_arguments_invalid" });
+                }
+            }
+
             case "legend_capabilities":
             {
                 return SerializeUnbounded(DescribeFounderCapabilities());
+            }
+
+            case "legend_remember_conversation_facts":
+            {
+                // The existing conversation-state authority validates literal
+                // user spans and the authenticated conversation at execution.
+                // This never invokes global teaching or promotion permissions.
+                return SerializeUnbounded(new { ok = true, requiresConversationScope = true, persisted = false });
+            }
+
+            case "legend_request_teacher_escalation":
+            {
+                // This is a request for the existing conversation authority
+                // to decide. It performs no external call and cannot authorize
+                // itself or widen the immutable external-provider policy.
+                return SerializeUnbounded(new
+                {
+                    ok = providerPolicy?.ForbidsExternalAnswering == false,
+                    escalationRequested = true,
+                    externalCallPerformed = false,
+                    reason = providerPolicy?.ForbidsExternalAnswering == false
+                        ? "conversation_authority_must_verify_unresolved_evidence"
+                        : "external_provider_forbidden_by_policy"
+                });
             }
 
             case "legend_software_remediation_status":
@@ -440,12 +536,10 @@ internal sealed class LegendFounderToolAuthority
 
             case "legend_operational_diagnostics":
             {
-                if (!TryReadOperationalDiagnosticArguments(call.Arguments, out var section, out var language))
-                    return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
-                if (section is not null)
+                if (diagnosticSection is not null)
                 {
                     var selected = await _legend.GetOperationalDiagnosticSectionAsync(
-                        founder, section, language!, cancellationToken);
+                        founder, diagnosticSection, diagnosticLanguage!, cancellationToken);
                     return SerializeUnbounded(new
                     {
                         ok = selected.Stage.State == "available",
@@ -631,7 +725,9 @@ internal sealed class LegendFounderToolAuthority
                         sourceLanguage,
                         internalInference: null,
                         call.MutationAuthorization,
-                        cancellationToken));
+                        cancellationToken,
+                        providerPolicy,
+                        foundationRequestedVerification: true));
             }
 
             case "legend_submit_machine_learning_candidate":
@@ -1022,10 +1118,19 @@ internal sealed class LegendFounderToolAuthority
                         if (variations.Count == 0)
                             return """{"error":"curriculum_variations_required"}""";
 
+                        string? expectedResponse = null;
+                        if (example.TryGetProperty("expected_response", out var expectedResponseElement))
+                        {
+                            if (expectedResponseElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+                                return """{"error":"invalid_curriculum_expected_response"}""";
+                            expectedResponse = expectedResponseElement.ValueKind == JsonValueKind.String
+                                ? expectedResponseElement.GetString() : null;
+                        }
                         examples.Add(
                             new LegendConnectCurriculumExampleSubmission(
                                 exampleText,
-                                variations));
+                                variations,
+                                ExpectedResponse: expectedResponse));
                     }
 
                     if (examples.Count < 2)
@@ -1058,7 +1163,8 @@ internal sealed class LegendFounderToolAuthority
                 var result =
                     await _legend.EnsureAutonomousLearningActiveAsync(
                         founder,
-                        cancellationToken);
+                        cancellationToken,
+                        providerPolicy);
 
                 return SerializeUnbounded(result);
             }
@@ -1781,11 +1887,13 @@ internal sealed class LegendFounderToolAuthority
             {
                 name,
                 description,
-                access = conditionallyRestrictedResearch
+                access = name == "legend_remember_conversation_facts"
+                    ? "authenticated_conversation_state"
+                    : conditionallyRestrictedResearch
                     ? "founder_governed_public_read_or_exact_authorized_restricted_read"
                     : readOnly ? "founder_governed_read" : "founder_governed_mutation",
                 sourceOfTruth = "BuildFounderTools",
-                requiresExplicitFounderCommand = !readOnly,
+                requiresExplicitFounderCommand = RequiresExplicitFounderCommand(name),
                 restrictedClassRequiresExistingAuthorization = conditionallyRestrictedResearch,
                 zeroWrite = conditionallyRestrictedResearch,
                 canOverrideAuthorities = false,
@@ -1808,10 +1916,71 @@ internal sealed class LegendFounderToolAuthority
         [
             new
             {
+                type = "function", name = "legend_calculate",
+                description = "Compute an exact bounded operation on supplied integers, decimals or fractions. Use for calculations where an executable check helps. Returns a reduced fraction or integer; compare returns less, equal or greater. Does not verify that supplied quantities describe real records. No records, curriculum, research or external provider required.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        operation = new { type = "string", @enum = new[] { "add", "subtract", "multiply", "divide", "compare" } },
+                        left = new { type = "string", minLength = 1, maxLength = 64 },
+                        right = new { type = "string", minLength = 1, maxLength = 64 }
+                    },
+                    required = new[] { "operation", "left", "right" }, additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
                 type = "function",
                 name = "legend_capabilities",
                 description =
                     "Discover the exact governed LEGEND capabilities exposed to this Founder AI session from the same tool registry the model can execute. Use this when planning system inspection or remediation instead of guessing that an operation exists. This is read-only and creates no second authority.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_remember_conversation_facts",
+                description = "Retain user-stated facts only in this authenticated conversation when the user asks you to remember or record them. Supply subject/relation/value text copied exactly from the current user message, without paraphrase, inference, or normalized dates. These remain private user assertions, not approved organization knowledge or trained model weights. No global learning or promotion occurs.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        facts = new
+                        {
+                            type = "array", minItems = 1, maxItems = 12,
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    subject = new { type = "string", minLength = 1, maxLength = 160 },
+                                    relation = new { type = "string", minLength = 1, maxLength = 160 },
+                                    value = new { type = "string", minLength = 1, maxLength = 160 }
+                                },
+                                required = new[] { "subject", "relation", "value" }, additionalProperties = false
+                            }
+                        }
+                    },
+                    required = new[] { "facts" }, additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_request_teacher_escalation",
+                description = "Request one optional external OpenAI Teacher escalation for a factual question that remains unresolved after governed knowledge and research. This only requests a decision: the existing conversation authority checks actual work, permissions, research availability, and remaining time. Native-only blocks external answering. Model confidence never authorizes escalation.",
                 parameters = new
                 {
                     type = "object",
@@ -1920,7 +2089,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_client_lead_portfolio",
                 description =
-                    "Read the current Founder-visible counts of client and lead records held by this deployment, including the canonical CRM status breakdown of workstation leads. Use this for any question about how many clients or leads exist; never answer such a question from recollection or the public internet. This is read-only, zero-write, and returns counts only.",
+                    "Read the current Founder-visible counts of client and lead records held by this deployment, including the canonical CRM status breakdown of workstation leads. Use this for questions about actual client or lead records in LEGEND, not counts supplied in a hypothetical scenario. Never infer current record counts from model recall or the public internet. This is read-only, zero-write, and returns counts only.",
                 parameters = new
                 {
                     type = "object",
@@ -2026,7 +2195,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_search_retained_knowledge",
                 description =
-                    "Search LEGEND's existing retained language evidence before relying on general OpenAI recall. Results preserve provenance, authority, contradiction and proposal state. Use focused semantic phrases rather than copying an entire long conversation.",
+                    "Retrieve approved LEGEND organizational knowledge or curriculum teachings when the request depends on those stored sources. This does not solve hypothetical scenarios or reasoning tasks whose premises are supplied in the conversation. Results preserve provenance, authority, contradictions and proposal state. Use a focused query for the needed stored evidence.",
                 parameters = new
                 {
                     type = "object",
@@ -2389,6 +2558,12 @@ internal sealed class LegendFounderToolAuthority
                                                     minLength = 1,
                                                     maxLength = 2000
                                                 },
+                                                expected_response = new
+                                                {
+                                                    type = new[] { "string", "null" },
+                                                    maxLength = 10000,
+                                                    description = "The exact explicitly supplied expected response for an executable foundation control, or null. Never infer or generate this field. The existing curriculum authority independently validates the oracle, source rights, eligibility, and later promotion."
+                                                },
                                                 variations = new
                                                 {
                                                     type = "array",
@@ -2424,6 +2599,7 @@ internal sealed class LegendFounderToolAuthority
                                             required = new[]
                                             {
                                                 "text",
+                                                "expected_response",
                                                 "variations"
                                             },
                                             additionalProperties = false

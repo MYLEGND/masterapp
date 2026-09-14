@@ -39,8 +39,9 @@ struct LegendCallPresentation: UIViewRepresentable {
     }
 }
 
-private struct LegendCallScreen: View {
+struct LegendCallScreen: View {
     @ObservedObject var store: LegendCallStore
+    @State private var showingCallingProfile = false
     @State private var snapshot: LegendCallImage?
     @State private var snapshotCapture: LegendCallFrameCapture?
     var body: some View {
@@ -53,46 +54,68 @@ private struct LegendCallScreen: View {
                 Button(LegendLocalized("Stop sharing")) { store.toggleScreenSharing() }
             }.padding().foregroundStyle(.white).background(LegendNextColor.navy, in: Capsule())
         } else {
+        GeometryReader { geometry in
         ZStack {
-            Color.black.ignoresSafeArea()
+            LegendNextGradient.hero.ignoresSafeArea()
+            if store.remoteVideo == nil, let imageURL = store.wallpaperImageURL {
+                GeometryReader { geometry in
+                    AsyncImage(url: imageURL) { image in
+                        image.resizable().scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    } placeholder: { Color.clear }
+                }.ignoresSafeArea().accessibilityHidden(true)
+                LegendNextGradient.hero.opacity(0.8).ignoresSafeArea()
+            }
             if let remote = store.remoteVideo { LegendRTCVideo(track: remote, screenSharing: store.remoteVideoFitsContent).ignoresSafeArea() }
-            if let local = store.localVideo, !store.sharingScreen {
+            if !presentingIdentity, let local = store.localVideo, !store.sharingScreen {
                 VStack { HStack { LegendRTCVideo(track: local).frame(width: 96, height: 132).clipShape(RoundedRectangle(cornerRadius: 20)); Spacer() }; Spacer() }.padding(.leading, 20).padding(.top, 110)
             }
-            VStack(spacing: 24) {
-                if store.remoteVideo == nil {
-                    Text(LegendLocalized("LEGEND®"))
-                        .font(LegendNextTypography.wordmark)
-                        .tracking(LegendSharedDesign.tracking("wordmark"))
-                        .frame(maxWidth: .infinity)
-                }
+            VStack(spacing: geometry.size.width > geometry.size.height ? 12 : 24) {
+                LegendAppWordmark(color: .white)
+                    .frame(minHeight: LegendSharedDesign.scalar(.sizes, "minimumTapTarget"))
+                    .padding(.vertical, LegendNextSpacing.micro)
+                    .padding(.bottom, LegendNextSpacing.xs)
                 if store.failure == nil { Text(statusLabel).font(.subheadline.weight(.semibold)).padding(.horizontal, 14).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule()) }
-                Spacer()
+                if store.failure != nil { Spacer(minLength: 0) }
                 if let failure = store.failure {
                     Image(systemName: "phone.down.fill").font(.largeTitle).foregroundStyle(LegendNextColor.gold)
                     Text(LegendLocalized(failure)).multilineTextAlignment(.center)
                     Button(LegendLocalized("Close")) { store.end(); store.dismissFailure() }
                         .buttonStyle(.borderedProminent).tint(LegendNextColor.gold).foregroundStyle(LegendNextColor.midnight)
                 } else {
-                    EmptyView()
+                    if presentingIdentity {
+                        let layout = geometry.size.width > geometry.size.height
+                            ? AnyLayout(HStackLayout(spacing: LegendNextSpacing.lg))
+                            : AnyLayout(VStackLayout(spacing: LegendNextSpacing.lg))
+                        layout {
+                        LegendNextAvatar(imageURL: store.participantImageURL,
+                            initials: store.name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined(),
+                            size: min(LegendSharedDesign.scalar(.sizes, "callPortrait"), geometry.size.width * 0.64, geometry.size.height * 0.36), accessibilityName: store.name)
+                        VStack(spacing: LegendNextSpacing.lg) {
+                    Text(store.name).font(LegendNextTypography.title)
+                        .multilineTextAlignment(.center).accessibilityAddTraits(.isHeader)
                     if store.status == "Calling" {
                         Text(LegendLocalized("Waiting for the recipient’s device to confirm receipt")).font(.subheadline).multilineTextAlignment(.center)
                     } else if store.status == "Ringing" {
                         Text(LegendLocalized("The recipient’s device received your call")).font(.subheadline).multilineTextAlignment(.center)
                     }
-                    if store.isStarting {
-                        ProgressView().tint(LegendNextColor.gold)
+                        }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    if store.isStarting || (presentingIdentity && !store.incoming) {
                         control(LegendLocalized("Cancel"), icon: "phone.down.fill", color: .red) { store.end() }
                     } else if store.incoming {
-                        HStack(spacing: 40) {
-                            control(LegendLocalized("Decline"), icon: "phone.down.fill", color: .red) { store.end() }
-                            control(LegendLocalized("Answer"), icon: "phone.fill", color: LegendNextColor.gold) { store.answer() }
-                        }
+                        // CallKit is the single incoming answer/decline surface on iOS.
+                        // Its system banner cannot be repositioned by the application.
+                        EmptyView()
                     } else {
                         HStack {
-                        Spacer()
-                        VStack(spacing: 16) {
+                            Spacer(minLength: 0)
+                            ScrollView(.vertical) {
+                                VStack(spacing: 16) {
                             control(store.muted ? LegendLocalized("Unmute") : LegendLocalized("Mute"), icon: store.muted ? "mic.slash.fill" : "mic.fill", color: store.muted ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.setMuted() }
+                            control(LegendLocalized("Calling profile"), icon: "person.crop.circle") { showingCallingProfile = true }
                             control(LegendLocalized("Speaker"), icon: store.speaker ? "speaker.wave.3.fill" : "ear.fill", color: store.speaker ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.toggleSpeaker() }
                             if store.current?.video == true && !store.sharingScreen {
                                 control(LegendLocalized("Camera"), icon: store.cameraEnabled ? "video.fill" : "video.slash.fill") { store.toggleCamera() }
@@ -114,22 +137,37 @@ private struct LegendCallScreen: View {
                         if store.current?.video == true && store.status == "Connected" {
                             Button { store.toggleScreenSharing() } label: {
                                 Image(systemName: store.sharingScreen ? "rectangle.slash" : "rectangle.on.rectangle").font(.title2).frame(width: LegendSharedDesign.scalar(.sizes, "callControl"), height: LegendSharedDesign.scalar(.sizes, "callControl"))
-                            }.background(.ultraThinMaterial, in: Circle()).accessibilityLabel(store.sharingScreen ? LegendLocalized("Stop sharing") : LegendLocalized("Share Legend® screen"))
+                            }.background(.ultraThinMaterial, in: Circle()).accessibilityLabel(store.sharingScreen ? LegendLocalized("Stop sharing") : LegendLocalized("Share device screen"))
                         }
+                                }
+                            }
+                            .frame(width: LegendSharedDesign.scalar(.sizes, "callControl") + 16)
                         }
-                        }
+                        .frame(maxHeight: .infinity)
                         control(LegendLocalized("End call"), icon: "phone.down.fill", color: .red) { store.end() }
                     }
                 }
                 Spacer().frame(height: 4)
-            }.padding(.horizontal, 16).padding(.vertical, 12)
+            }.padding(.horizontal, 16).padding(.bottom, 12)
+        }
         }.foregroundStyle(.white)
+        .sheet(isPresented: $showingCallingProfile) { LegendCallPreferencesView(store: store) }
+        .sheet(isPresented: $store.broadcastPickerPresented) {
+            VStack(spacing: LegendNextSpacing.lg) {
+                Text(LegendLocalized("Share device screen")).font(LegendNextTypography.title)
+                Text(LegendLocalized("Use the system broadcast control to share your screen with this call. Notifications and other apps may be visible.")).multilineTextAlignment(.center)
+                LegendSystemBroadcastPicker().frame(width: 60, height: 60)
+            }.padding().presentationDetents([.medium])
+        }
         .sheet(item: $snapshot) { item in LegendCallImageShare(image: item.image) }
         .onDisappear { snapshotCapture?.cancel(); snapshotCapture = nil }
         .alert(LegendLocalized("Call controls"), isPresented: Binding(get: { store.controlError != nil }, set: { if !$0 { store.controlError = nil } })) {
             Button(LegendLocalized("OK")) { store.controlError = nil }
         } message: { Text(store.controlError ?? "") }
         }
+    }
+    private var presentingIdentity: Bool {
+        store.isStarting || store.current?.status == "ringing"
     }
     private var statusLabel: String {
         switch store.status {

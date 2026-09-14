@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Threading.Channels;
+using Shared.Auth;
 
 namespace AgentPortal.Services;
 
@@ -13,6 +14,16 @@ public sealed class LegendFounderAiProgressBroker
     private const int Capacity = 8;
 
     private readonly ConcurrentDictionary<OperationKey, OperationProgress> _operations = new();
+
+    // The existing actor/operation registry fences simultaneous transport
+    // submissions. Completion releases the fence; this is not durable replay.
+    internal bool TryBeginExecution(ClaimsPrincipal actor, Guid operationId)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(operationId, Guid.Empty);
+        var operation = _operations.GetOrAdd(OperationKey.Create(actor, operationId),
+            static _ => new OperationProgress());
+        return Interlocked.CompareExchange(ref operation.ExecutionStarted, 1, 0) == 0;
+    }
 
     public ChannelReader<LegendFounderAiProgressEvent> Subscribe(
         ClaimsPrincipal actor,
@@ -68,23 +79,28 @@ public sealed class LegendFounderAiProgressBroker
 
     internal int ActiveOperationCount => _operations.Count;
 
-    private readonly record struct OperationKey(string ActorId, Guid OperationId)
+    private readonly record struct OperationKey(string TenantId, string ActorId, Guid OperationId)
     {
         internal static OperationKey Create(
             ClaimsPrincipal actor,
             Guid operationId)
         {
             ArgumentNullException.ThrowIfNull(actor);
-            var actorId = actor.FindFirst(ClaimTypes.NameIdentifier)?.Value?.Trim();
+            if (actor.Identity?.IsAuthenticated != true)
+                throw new InvalidOperationException("An authenticated actor is required for LEGEND progress.");
+            var actorId = actor.GetCanonicalUserId();
+            if (string.IsNullOrWhiteSpace(actorId))
+                actorId = actor.FindFirst(ClaimTypes.NameIdentifier)?.Value?.Trim();
             if (string.IsNullOrWhiteSpace(actorId))
                 throw new InvalidOperationException(
                     "A stable authenticated actor identity is required for LEGEND progress.");
-            return new(actorId, operationId);
+            return new(actor.GetCanonicalTenantId(), actorId, operationId);
         }
     }
 
     private sealed class OperationProgress
     {
+        public int ExecutionStarted;
         public Channel<LegendFounderAiProgressEvent> Channel { get; } =
             System.Threading.Channels.Channel.CreateBounded<LegendFounderAiProgressEvent>(
                 new BoundedChannelOptions(Capacity)

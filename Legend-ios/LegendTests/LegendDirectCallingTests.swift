@@ -1,11 +1,239 @@
 import XCTest
 import AVFoundation
+import Network
 import UIKit
+import SwiftUI
 @preconcurrency import WebRTC
 @testable import Legend
 
 @MainActor
 final class LegendDirectCallingTests: XCTestCase {
+    func testCallingPreferencesStayOnExistingCallContractAndRingtonePathIsBounded() throws {
+        let command = LegendCallCommand(action: "preferences", deviceId: UUID(),
+            preferences: LegendCallPreferences(ringtoneId: "soft", wallpaperMode: "profile"))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(command)) as? [String: Any])
+        XCTAssertEqual(json["action"] as? String, "preferences")
+        let preferences = try XCTUnwrap(json["preferences"] as? [String: String])
+        XCTAssertEqual(preferences, ["ringtoneId": "soft", "wallpaperMode": "profile"])
+        let result = try JSONDecoder().decode(LegendCallResult.self, from: Data(#"{"succeeded":true,"preferences":{"ringtoneId":"soft","wallpaperMode":"profile"},"ringtones":[{"id":"soft","label":"Soft","resource":"legend_ringback"}],"wallpapers":[{"id":"profile","label":"Profile photo"}]}"#.utf8))
+        XCTAssertEqual(result.preferences, command.preferences)
+        XCTAssertEqual(result.ringtones?.first?.resource, "legend_ringback")
+        XCTAssertEqual(result.wallpapers?.first?.id, "profile")
+        XCTAssertEqual(LegendCallSystem.ringtoneFilename("legend_ringback"), "legend_ringback.wav")
+        XCTAssertEqual(LegendCallSystem.ringtoneFilename("../../private"), "legend_incoming.wav")
+        XCTAssertEqual(LegendCallSystem.ringtoneFilename("https://other.test/sound"), "legend_incoming.wav")
+        XCTAssertEqual(LegendCallSystem.ringtoneFilename(nil), "legend_incoming.wav")
+    }
+
+    func testBroadcastReceiverRejectsStaleHandshakeWithoutEndingCurrentCapture() async throws {
+        let directory = URL(fileURLWithPath: "/private/tmp/lcb-" + UUID().uuidString.prefix(8))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let receiver = LegendCallBroadcastReceiver(rootResolver: { directory })
+        defer { receiver.stop(notify: false) }
+        var stopped = false
+        receiver.onStopped = { stopped = true }
+        try await receiver.prepare(width: 1280, height: 720, fps: 10)
+        let file = LegendBroadcastProtocol.invitationURL(directory)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !FileManager.default.fileExists(atPath: file.path), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let invitation = try JSONDecoder().decode(LegendBroadcastProtocol.Invitation.self, from: Data(contentsOf: file))
+        let socket = try XCTUnwrap(invitation.validated(root: directory))
+        func connection(nonce: String) -> NWConnection {
+            let client = NWConnection(to: .unix(path: socket.path), using: .tcp)
+            client.stateUpdateHandler = { [weak client] state in
+                if case .ready = state { client?.send(content: Data(nonce.utf8), completion: .contentProcessed { _ in }) }
+            }
+            client.start(queue: DispatchQueue(label: "legend.call.fixture"))
+            return client
+        }
+        let rejected = expectation(description: "Stale broadcast is disconnected")
+        let stale = connection(nonce: String(repeating: "0", count: 64))
+        defer { stale.cancel() }
+        stale.receive(minimumIncompleteLength: 1, maximumLength: 1) { _, _, complete, error in
+            if complete || error != nil { rejected.fulfill() }
+        }
+        await fulfillment(of: [rejected], timeout: 3)
+        XCTAssertFalse(stopped)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+        let received = expectation(description: "Current broadcast reaches existing frame receiver")
+        receiver.onFrame = { pixels, timestamp in
+            XCTAssertEqual(CVPixelBufferGetWidth(pixels), 2)
+            XCTAssertEqual(CVPixelBufferGetHeight(pixels), 2)
+            XCTAssertEqual(timestamp, 123)
+            received.fulfill()
+        }
+        let current = connection(nonce: invitation.nonce)
+        defer { current.cancel() }
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2), format: format).image { context in
+            UIColor.blue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        let data = try XCTUnwrap(image.jpegData(compressionQuality: 0.5))
+        var frame = LegendBroadcastProtocol.encodeHeader(size: data.count, timestamp: 123); frame.append(data)
+        // The connection serializes this after its handshake send.
+        let sendDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while FileManager.default.fileExists(atPath: file.path), ContinuousClock.now < sendDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        let acknowledged = expectation(description: "Receiver grants admission for exactly the next frame")
+        current.receive(minimumIncompleteLength: 1, maximumLength: 1) { data, _, _, _ in
+            XCTAssertEqual(data, Data([1])); acknowledged.fulfill()
+        }
+        current.send(content: frame, completion: .contentProcessed { _ in })
+        await fulfillment(of: [received, acknowledged], timeout: 3)
+        XCTAssertFalse(stopped)
+        receiver.stop(notify: false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    func testBroadcastInvitationAndFrameBoundsRejectUntrustedIPC() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/call-group")
+        func invitation(nonce: String = String(repeating: "a", count: 64), socket: String = "call.sock",
+                        expiry: TimeInterval = 60, width: Int = 1280, fps: Int = 10) -> LegendBroadcastProtocol.Invitation {
+            .init(nonce: nonce, socketName: socket, expiresUtc: Date().addingTimeInterval(expiry), width: width, height: 720, fps: fps)
+        }
+        XCTAssertNotNil(invitation().validated(root: root))
+        XCTAssertNil(invitation(nonce: "unbound").validated(root: root))
+        XCTAssertNil(invitation(socket: "../other-call").validated(root: root))
+        XCTAssertNil(invitation(expiry: -1).validated(root: root))
+        XCTAssertNil(invitation(expiry: 3600).validated(root: root))
+        XCTAssertNil(invitation(width: 8192).validated(root: root))
+        XCTAssertNil(invitation(fps: 60).validated(root: root))
+        XCTAssertNil(invitation().validated(root: URL(fileURLWithPath: "/" + String(repeating: "x", count: 104))))
+        let valid = LegendBroadcastProtocol.decodeHeader(LegendBroadcastProtocol.encodeHeader(size: 2_000_000, timestamp: 123456789))
+        XCTAssertEqual(valid?.size, 2_000_000)
+        XCTAssertEqual(valid?.timestamp, 123456789)
+        XCTAssertNil(LegendBroadcastProtocol.decodeHeader(LegendBroadcastProtocol.encodeHeader(size: 2_000_001, timestamp: 1)))
+        XCTAssertNil(LegendBroadcastProtocol.decodeHeader(LegendBroadcastProtocol.encodeHeader(size: 0, timestamp: 1)))
+        XCTAssertNil(LegendBroadcastProtocol.decodeHeader(LegendBroadcastProtocol.encodeHeader(size: 1, timestamp: -1)))
+        XCTAssertNil(LegendBroadcastProtocol.decodeHeader(Data(repeating: 0, count: 13)))
+    }
+
+    func testLockedRestoreAndCallWakeRemainFencedDuringBiometricPromptAndSignOut() async throws {
+        let service = CallingWakeService(actorID: "callee", suspended: true)
+        let biometric = CallingWakeBiometrics(suspended: true)
+        let coordinator = wakeCoordinator(tokens: CallingWakeTokens(), service: service, biometric: biometric)
+        coordinator.restore()
+        while biometric.authenticationCount == 0 { await Task.yield() }
+        XCTAssertEqual(coordinator.state, .loading)
+        let task = Task { try await coordinator.prepareIncomingCall(wakeCall()) }
+        while await service.requests == 0 { await Task.yield() }
+        XCTAssertEqual(coordinator.state, .loading, "Incoming calls must not unlock the protected application")
+        coordinator.signOut()
+        await service.resume()
+        biometric.resume(true)
+        do { _ = try await task.value; XCTFail("Retired incoming wake must not survive sign-out") } catch {}
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(coordinator.state, .signedOut)
+        let requests = await service.requests
+        XCTAssertEqual(requests, 1, "The old Face ID result must not begin another bootstrap")
+    }
+
+    func testLockedIncomingWakeUsesSelectedKeychainIdentityWithoutUnlockingProtectedUI() async throws {
+        let tokens = CallingWakeTokens()
+        let service = CallingWakeService(actorID: "callee")
+        let biometric = CallingWakeBiometrics()
+        let coordinator = wakeCoordinator(tokens: tokens, service: service, biometric: biometric)
+        let store = try await coordinator.prepareIncomingCall(wakeCall())
+        defer { store.shutdown(); coordinator.signOut() }
+        XCTAssertTrue(store.owns(wakeCall()))
+        XCTAssertEqual(coordinator.state, .loading)
+        XCTAssertEqual(biometric.authenticationCount, 0)
+        let requests = await service.requests
+        XCTAssertEqual(requests, 1, "A locked launch must still validate its selected actor on the server")
+    }
+
+    func testLockedIncomingWakeRejectsWrongPushActorAndServerActorWithoutUnlockingUI() async throws {
+        for wrongPush in [true, false] {
+            let service = CallingWakeService(actorID: wrongPush ? "callee" : "other-account")
+            let biometric = CallingWakeBiometrics()
+            let coordinator = wakeCoordinator(tokens: CallingWakeTokens(), service: service, biometric: biometric)
+            do {
+                _ = try await coordinator.prepareIncomingCall(wakeCall(callee: wrongPush ? "other-account" : "callee"))
+                XCTFail("An incoming push and server bootstrap must both match the selected typed account")
+            } catch {}
+            XCTAssertEqual(coordinator.state, .loading)
+            XCTAssertEqual(biometric.authenticationCount, 0)
+            let requests = await service.requests
+            XCTAssertEqual(requests, wrongPush ? 0 : 1)
+            coordinator.signOut()
+        }
+    }
+
+    func testLockedIncomingWakeRejectsLegacyUnboundCredentialAndRevokedSession() async throws {
+        let biometric = CallingWakeBiometrics()
+        for legacy in [true, false] {
+            let service = CallingWakeService(actorID: "callee", authenticated: false)
+            let tokens: any SecureTokenStoring = legacy ? CallingLegacyWakeTokens() : CallingWakeTokens()
+            let coordinator = wakeCoordinator(tokens: tokens, service: service, biometric: biometric)
+            do { _ = try await coordinator.prepareIncomingCall(wakeCall()); XCTFail("The wake must fail closed") }
+            catch {}
+            XCTAssertEqual(coordinator.state, .loading)
+            let requests = await service.requests
+            XCTAssertEqual(requests, legacy ? 0 : 1)
+            coordinator.signOut()
+        }
+        XCTAssertEqual(biometric.authenticationCount, 0)
+    }
+
+    func testSignOutDuringLockedBootstrapCannotAttachAnOldCallOwner() async throws {
+        let service = CallingWakeService(actorID: "callee", suspended: true)
+        let coordinator = wakeCoordinator(tokens: CallingWakeTokens(), service: service, biometric: CallingWakeBiometrics())
+        let task = Task { try await coordinator.prepareIncomingCall(wakeCall()) }
+        while await service.requests == 0 { await Task.yield() }
+        coordinator.signOut()
+        await service.resume()
+        do { _ = try await task.value; XCTFail("Signing out must invalidate an in-flight call wake") }
+        catch {}
+        XCTAssertEqual(coordinator.state, .signedOut)
+    }
+
+    func testParticipantImagesUseSignedSameOriginCurrentCallAndCorrectDirection() throws {
+        var call = wakeCall()
+        let base = URL(string: "https://api.example.test")!
+        XCTAssertNil(call.participantImageURL(outgoing: true, apiBaseURL: base))
+        let path = "/api/v1/mobile/notifications/\(call.id.uuidString)/sender-image"
+        call.calleeImagePath = path + "?token=callee-receipt"
+        call.callerImagePath = path + "?token=caller-receipt"
+        XCTAssertEqual(call.participantImageURL(outgoing: true, apiBaseURL: base)?.query, "token=callee-receipt")
+        XCTAssertEqual(call.participantImageURL(outgoing: false, apiBaseURL: base)?.query, "token=caller-receipt")
+        call.callerWallpaperMode = "profile"; call.calleeWallpaperMode = "legend"
+        XCTAssertNil(call.wallpaperImageURL(outgoing: true, apiBaseURL: base))
+        XCTAssertEqual(call.wallpaperImageURL(outgoing: false, apiBaseURL: base)?.query, "token=caller-receipt")
+        call.callerWallpaperMode = "legend"; call.calleeWallpaperMode = "profile"
+        XCTAssertEqual(call.wallpaperImageURL(outgoing: true, apiBaseURL: base)?.query, "token=callee-receipt")
+        XCTAssertNil(call.wallpaperImageURL(outgoing: false, apiBaseURL: base))
+        for invalid in ["https://other.test" + path, "//other.test" + path,
+                        "/api/v1/mobile/notifications/\(UUID())/sender-image?token=wrong-call",
+                        path + "#fragment", "/api/v1/mobile/notifications/../private"] {
+            call.calleeImagePath = invalid
+            XCTAssertNil(call.participantImageURL(outgoing: true, apiBaseURL: base))
+        }
+        XCTAssertNil(call.participantImageURL(outgoing: false, apiBaseURL: URL(string: "http://api.example.test")))
+    }
+
+    private func wakeCall(callee: String = "callee") -> LegendCallSnapshot {
+        LegendCallSnapshot(id: UUID(), conversationId: UUID(), callerUserId: "caller", callerType: "Client",
+            calleeUserId: callee, calleeType: "Client", callerDeviceId: UUID(), calleeDeviceId: nil,
+            callerName: "Caller", calleeName: "Recipient", video: false, status: "ringing",
+            createdUtc: Date(), expiresUtc: Date().addingTimeInterval(45), epoch: 0)
+    }
+
+    private func wakeCoordinator(tokens: any SecureTokenStoring, service: CallingWakeService,
+                                 biometric: CallingWakeBiometrics) -> MobileSessionCoordinator {
+        MobileSessionCoordinator(configuration: MobileConfiguration(bundleIdentifier: "com.mylegnd.legend.registered",
+            apiBaseURL: URL(string: "https://api.example.test")!,
+            authorizationEndpoint: URL(string: "https://identity.example.test/authorize")!,
+            tokenEndpoint: URL(string: "https://identity.example.test/token")!, clientID: "public-client",
+            redirectScheme: "com-mylegnd-legend-registered", scope: "openid profile api://legend/mobile_access",
+            audience: "api://legend"), tokenStore: tokens, sessionService: service,
+            launchCache: CallingLockedLaunchCache(), biometricSecurity: biometric)
+    }
+
     func testDetachingCallPresentationDoesNotEndAnAccountOwnedPendingCall() throws {
         let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
             apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
@@ -180,13 +408,43 @@ final class LegendDirectCallingTests: XCTestCase {
         let unconfirmed = LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil)
         await store.receive(unconfirmed)
         XCTAssertEqual(store.status, "Calling")
+        store.audioActivated(false)
+        XCTAssertFalse(store.outgoingToneEligible, "CallKit still owns audio activation")
+        store.audioActivated(true)
+        XCTAssertTrue(store.outgoingToneEligible, "Local dialing must sound before a remote receipt arrives")
+        XCTAssertNil(store.controlError, "The bundled outgoing cue must be accepted by the existing audio player")
+        XCTAssertNil(store.current?.receivedUtc)
+        XCTAssertEqual(store.status, "Calling", "A dialing cue must not manufacture delivery confirmation")
         call.receivedUtc = Date()
         await store.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
         XCTAssertEqual(store.status, "Ringing")
         await store.receive(unconfirmed)
         XCTAssertEqual(store.status, "Ringing")
         XCTAssertNotNil(store.current?.receivedUtc)
+        XCTAssertTrue(store.outgoingToneEligible)
+        store.audioActivated(false)
+        XCTAssertFalse(store.outgoingToneEligible)
+        store.shutdown()
+        store.audioActivated(true)
+        XCTAssertFalse(store.outgoingToneEligible, "A retired call must not resume the cue")
     }
+
+    func testOutgoingCueWaitsForCallKitStartEvenWhenOldAudioActivationIsRetained() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        store.audioActivated(true)
+        XCTAssertFalse(store.outgoingToneEligible)
+        store.start(conversationId: UUID(), video: false, recipientName: "Recipient")
+        XCTAssertTrue(store.isStarting)
+        XCTAssertFalse(store.outgoingToneEligible, "A tap awaiting permissions/CallKit is not an admitted outgoing call")
+        store.end()
+        XCTAssertFalse(store.outgoingToneEligible)
+    }
+
 
     func testCancelledAnswerAfterRetirementCannotRestoreCall() async throws {
         try await verifyDelayedAnswer(throwsCancellation: true)
@@ -235,6 +493,35 @@ final class LegendDirectCallingTests: XCTestCase {
         XCTAssertEqual(store.name, "New recipient")
         await store.receive(LegendCallEvent(call: original, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
         XCTAssertNil(store.current, "Finished call events remain rejected")
+    }
+
+    func testOutgoingCallPresentationRendersAtCompactAndRegularDeviceSizes() throws {
+        let transport = try XCTUnwrap(MobileMessagingRealtimeClient(
+            apiBaseURL: URL(string: "https://example.invalid/api/v1/mobile")!,
+            participantType: .client, accessTokenProvider: { throw CancellationError() }))
+        let store = LegendCallStore(transport: transport,
+            identity: try LogicalParticipantIdentity(userID: "caller", participantType: .client))
+        defer { store.shutdown() }
+        store.start(conversationId: UUID(), video: true, recipientName: "Alex Morgan")
+        for size in [CGSize(width: 390, height: 760), CGSize(width: 320, height: 568), CGSize(width: 844, height: 340)] {
+            let renderer = ImageRenderer(content: LegendCallScreen(store: store)
+                .frame(width: size.width, height: size.height))
+            renderer.scale = 1
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size, size)
+            let attachment = XCTAttachment(image: image)
+            let filename = "legend-call-\(Int(size.width))-\(Int(size.height))"
+            attachment.name = filename
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent(filename + ".png")
+            try XCTUnwrap(image.pngData()).write(to: file)
+            print("LEGEND_CALL_RENDER \(file.path)")
+        }
+        XCTAssertTrue(store.isStarting)
+        XCTAssertEqual(store.name, "Alex Morgan")
+        store.end()
+        XCTAssertFalse(store.isStarting)
     }
 
     func testCallingSoundsArePackagedAndDecodable() throws {
@@ -338,4 +625,75 @@ private struct CallingTestTokenStore: SecureTokenStoring {
     func read() throws -> OAuthTokenSet? { nil }
     func save(_ tokens: OAuthTokenSet) throws {}
     func clear() throws {}
+}
+
+private struct CallingLegacyWakeTokens: SecureTokenStoring {
+    func read() throws -> OAuthTokenSet? {
+        OAuthTokenSet(accessToken: "synthetic-call-token", refreshToken: nil, expiresAt: Date().addingTimeInterval(3600))
+    }
+    func save(_ tokens: OAuthTokenSet) throws {}
+    func clear() throws {}
+}
+private struct CallingWakeTokens: MultiAccountSecureTokenStoring {
+    func read() throws -> OAuthTokenSet? { try CallingLegacyWakeTokens().read() }
+    func save(_ tokens: OAuthTokenSet) throws {}
+    func clear() throws {}
+    func signedInAccounts() throws -> [MobileSignedInAccount] {
+        [MobileSignedInAccount(id: "callee", displayName: "Recipient", participantType: .client)]
+    }
+    func selectedAccountID() throws -> String? { "callee" }
+    func selectAccount(id: String) throws -> OAuthTokenSet? { try read() }
+    func upsert(_ tokens: OAuthTokenSet, for account: MobileSignedInAccount) throws -> MobileSignedInAccount { account }
+    func removeAccount(id: String) throws {}
+}
+private struct CallingLockedLaunchCache: LegendLaunchCaching {
+    func readSession() -> MobileSessionCacheEntry? { nil }
+    func writeSession(_ entry: MobileSessionCacheEntry) {}
+    func readPayload(_ kind: LegendLaunchPayloadKind, actorKey: String) -> Data? { nil }
+    func writePayload(_ data: Data, kind: LegendLaunchPayloadKind, actorKey: String) {}
+    func readProtectedImage(resourcePath: String) -> Data? { nil }
+    func readLastKnownProtectedImage(resourcePath: String) -> Data? { nil }
+    func writeProtectedImage(_ data: Data, resourcePath: String) {}
+    func clear() {}
+}
+@MainActor private final class CallingWakeBiometrics: MobileBiometricSessionSecuring {
+    var authenticationCount = 0
+    private let suspended: Bool
+    private var continuation: CheckedContinuation<Bool, Never>?
+    init(suspended: Bool = false) { self.suspended = suspended }
+    func resume(_ result: Bool) { continuation?.resume(returning: result); continuation = nil }
+    var isAvailable: Bool { true }
+    func hasPrompted(for identity: LogicalParticipantIdentity) -> Bool { true }
+    func markPrompted(for identity: LogicalParticipantIdentity) {}
+    func isEnabled(for identity: LogicalParticipantIdentity) -> Bool { true }
+    func disable(for identity: LogicalParticipantIdentity) {}
+    func enable(for identity: LogicalParticipantIdentity) async -> Bool { false }
+    func authenticate() async -> Bool {
+        authenticationCount += 1
+        if suspended { return await withCheckedContinuation { continuation = $0 } }
+        return false
+    }
+}
+private actor CallingWakeService: MobileSessionServicing {
+    let actorID: String
+    let authenticated: Bool
+    let suspended: Bool
+    var requests = 0
+    private var continuation: CheckedContinuation<Void, Never>?
+    init(actorID: String, authenticated: Bool = true, suspended: Bool = false) {
+        self.actorID = actorID; self.authenticated = authenticated; self.suspended = suspended
+    }
+    func resume() { continuation?.resume(); continuation = nil }
+    func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse {
+        requests += 1
+        if suspended { await withCheckedContinuation { continuation = $0 } }
+        return MobileBootstrapResponse(authenticated: authenticated,
+            actor: try MobileActor(identity: LogicalParticipantIdentity(userID: actorID, participantType: .client),
+                profileID: "00000000-0000-0000-0000-000000000001", displayName: "Recipient", avatar: nil),
+            permittedParticipantTypes: [.client], requiresParticipantSelection: false,
+            capabilities: MobileCapabilities(messaging: true), correlationID: "call-wake-fixture")
+    }
+    func selectRole(_ participantType: ParticipantType, accessToken: String) async throws -> MobileRoleSelectionResponse {
+        throw CancellationError()
+    }
 }

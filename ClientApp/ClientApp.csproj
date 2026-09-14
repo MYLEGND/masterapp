@@ -1,8 +1,5 @@
 <Project>
   <PropertyGroup>
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/ClientApp/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/ClientApp/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/ClientApp/</BaseOutputPath>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

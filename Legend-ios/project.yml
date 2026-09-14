@@ -65,12 +65,15 @@ targets:
       - package: WebRTC
       - target: LegendNotificationService
         embed: true
+      - target: LegendBroadcast
+        embed: true
 
     sources:
       - path: Legend
         excludes:
           - Resources/Info.plist
 
+      - path: LegendCallBroadcastShared
       - path: ../SHARED/Calling/Resources/raw/legend_ringback.wav
         buildPhase: resources
       - path: ../SHARED/Calling/Resources/raw/legend_incoming.wav
@@ -78,6 +81,8 @@ targets:
       - path: ../Legend-Design/legend-design.tokens.json
         buildPhase: resources
       - path: ../Legend-Design/legend-application-copy.json
+        buildPhase: resources
+      - path: ../Legend-Design/legend-reaction-emoji.json
         buildPhase: resources
 
     resources:
@@ -109,6 +114,9 @@ targets:
           - facetime
           - facetime-audio
           - tel
+        NSUserActivityTypes:
+          - INSendMessageIntent
+          - INStartCallIntent
         NSCameraUsageDescription: "LEGEND® uses the camera when you choose a video call or capture media for an update."
         NSMicrophoneUsageDescription: "LEGEND® uses the microphone when you join a call or record audio for an update."
         UIBackgroundModes:
@@ -149,6 +157,36 @@ targets:
         Release:
           APS_ENVIRONMENT: production
 
+  LegendBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LegendBroadcast
+        excludes:
+          - Info.plist
+          - LegendBroadcast.entitlements
+      - path: LegendCallBroadcastShared
+    info:
+      path: LegendBroadcast/Info.plist
+      properties:
+        CFBundleDisplayName: LEGEND Screen Broadcast
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SampleHandler"
+          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.registered.broadcast
+        PRODUCT_NAME: LegendBroadcast
+        PRODUCT_MODULE_NAME: LegendBroadcast
+        INFOPLIST_FILE: LegendBroadcast/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: LegendBroadcast/LegendBroadcast.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+
   LegendTests:
     type: bundle.unit-test
     platform: iOS
@@ -180,6 +218,7 @@ targets:
     info:
       path: LegendNotificationService/Info.plist
       properties:
+        LegendAPIBaseURL: "$(LEGEND_API_BASE_URL)"
         CFBundleDisplayName: Legend Notification Service
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
@@ -217,6 +256,13 @@ targets:
 schemes:
   Legend:
     build:
+      preActions:
+        - name: Verify current native testing checkout
+          settingsTarget: Legend
+          script: |
+            # Read-only source verification. Xcode pre-action failures are visible
+            # diagnostics, not a guaranteed target-build veto; preserve sandboxing.
+            PYTHONDONTWRITEBYTECODE=1 /usr/bin/env python3 "$SRCROOT/../scripts/sync-published-checkout.py" --check-native
       targets:
         Legend: all
         LegendTests:

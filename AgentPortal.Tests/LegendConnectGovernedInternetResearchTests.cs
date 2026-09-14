@@ -8,6 +8,7 @@ using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -694,6 +695,79 @@ public sealed class LegendConnectGovernedInternetResearchTests
         Assert.Single(outcome.Provenance.SourceIdentities);
         Assert.Single(outcome.Provenance.SearchQueryReceiptIdentities!);
         Assert.Single(outcome.Provenance.PageReceiptIdentities!);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HaitianCreoleResearch_CrossLanguageEvidenceCannotManufactureTranslationReceipt(
+        bool translatedProposal)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendConnect:Research:CodeSha"] = "0123456789abcdef0123456789abcdef01234567"
+        }).Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var search = new Mock<ILegendConnectResearchSearchTransport>(MockBehavior.Strict);
+        search.Setup(item => item.SearchAsync(It.IsAny<LegendConnectResearchSearchTransportRequest>(),
+            It.IsAny<CancellationToken>())).Returns(async (LegendConnectResearchSearchTransportRequest request, CancellationToken token) =>
+        {
+            var result = await new SuccessfulSearchTransport().SearchAsync(request, token);
+            return result with
+            {
+                QueryReceipts = result.QueryReceipts.Select(item => item with { QueryLanguageCode = "ht" }).ToArray(),
+                SearchResults = result.SearchResults.Select(item => item with { QueryLanguageCode = "ht" }).ToArray(),
+                ClaimCandidates = translatedProposal
+                    ? [new LegendConnectResearchClaimCandidate("translated-proposal", "Valè a se dis.",
+                        [result.Sources[0].CanonicalUri], DecisionUtc, "ht", true,
+                        SupportingExcerpt: "The value is ten.")]
+                    : []
+            };
+        });
+        var pages = new Mock<ILegendConnectResearchPageRetriever>(MockBehavior.Strict);
+        pages.Setup(item => item.RetrieveAsync(It.IsAny<LegendConnectResearchPageRetrievalRequest>(),
+            It.IsAny<CancellationToken>())).ReturnsAsync((LegendConnectResearchPageRetrievalRequest request, CancellationToken _) =>
+        {
+            var source = Assert.Single(request.Sources);
+            const string original = "The value is ten.";
+            var document = new LegendConnectRetrievedDocument("document-cross-language", source.SourceIdentity,
+                source.CanonicalUri, original, LegendLanguageIdentity.TextHash(original), DecisionUtc, true, null,
+                "en", "text/html", ReturnedBytes: 100);
+            var citation = new LegendConnectCitation("citation-cross-language", source.SourceIdentity,
+                document.DocumentIdentity, source.Title, source.CanonicalUri, DecisionUtc, "en");
+            return new LegendConnectResearchPageRetrievalResult(true, "FixturePageTransport", "fixture-settings",
+                request.SearchResults, request.Sources, [document], [citation],
+                [new LegendConnectRetrievedPageLineage(source.CanonicalUri, source.CanonicalUri,
+                    source.SourceIdentity, document.DocumentIdentity, citation.CitationIdentity)],
+                [new LegendConnectResearchPageReceipt("page-cross-language", source.CanonicalUri, source.CanonicalUri,
+                    DecisionUtc, DecisionUtc, "FixturePageTransport", "PublicInternet", 1, 0, 200, "text/html",
+                    100, 7, null, "NotMeteredByTransport", true, null, true, true)], 7, null, false);
+        });
+        var operations = new LegendConnectOperations(db, registry,
+            new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance),
+            configuration, researchSearch: search.Object, researchPages: pages.Object);
+        var decision = Decide("Verify the current public evidence.", Unsupported()) with { SourceLanguageCode = "ht" };
+        var request = Request(decision, new LegendConnectResearchAuthorization(true,
+            LegendConnectResearchContracts.PublicAuthorizationProvenance, null,
+            LegendConnectResearchAccessClass.PublicReadOnly, true, true));
+        const string question = "Verifye valè mezi sa a avèk sous piblik yo.";
+        request = request with
+        {
+            Question = question,
+            Queries = request.Queries.Select(query => query with { Query = question }).ToArray()
+        };
+        var outcome = await operations.ExecuteResearchAsync(request);
+
+        Assert.Equal(LegendConnectResearchOutcomeState.Failure, outcome.State);
+        Assert.Equal("internet_research_cross_language_translation_unavailable", outcome.Failure?.ReasonCode);
+        Assert.Equal("ht", outcome.Session.LanguageLineage!.UserLanguageCode);
+        Assert.Empty(outcome.Session.LanguageLineage.TranslationReceipts);
+        Assert.Equal("The value is ten.", Assert.Single(outcome.Session.Documents).ContentExcerpt);
+        Assert.Single(outcome.Session.Sources);
+        Assert.Single(outcome.Session.SearchQueryReceipts!);
+        Assert.Single(outcome.Session.PageReceipts!);
+        Assert.Empty(await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.LegendLanguageTextUnits));
     }
 
     private static LegendConnectResearchNeededDecision Decide(

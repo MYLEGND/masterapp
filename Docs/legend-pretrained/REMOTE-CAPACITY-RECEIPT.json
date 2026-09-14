@@ -1,0 +1,150 @@
+{
+  "observed_on": "2026-09-12",
+  "source": "Azure account read-only quota/SKU metadata and official prices.azure.com API",
+  "compute_provider": "Registered",
+  "region": "eastus2",
+  "paid_compute_provisioned": false,
+  "quota": [
+    {
+      "currentValue": "0",
+      "limit": "10",
+      "localName": "Total Regional vCPUs",
+      "name": {
+        "localizedValue": "Total Regional vCPUs",
+        "value": "cores"
+      }
+    },
+    {
+      "currentValue": "0",
+      "limit": "0",
+      "localName": "Standard NCADS_A100_v4 Family vCPUs",
+      "name": {
+        "localizedValue": "Standard NCADS_A100_v4 Family vCPUs",
+        "value": "StandardNCADSA100v4Family"
+      }
+    }
+  ],
+  "compute_prices": [
+    {
+      "currencyCode": "USD",
+      "tierMinimumUnits": 0.0,
+      "retailPrice": 3.673,
+      "unitPrice": 3.673,
+      "armRegionName": "eastus2",
+      "location": "US East 2",
+      "effectiveStartDate": "2022-06-01T00:00:00Z",
+      "meterId": "913f08d5-3b8a-5427-9522-fda75b58efd4",
+      "meterName": "NC24ads_A100_v4",
+      "productId": "DZH318Z09TGJ",
+      "skuId": "DZH318Z09TGJ/002S",
+      "productName": "NCads A100 v4 Series Linux",
+      "skuName": "Standard_NC24ads_A100_v4",
+      "serviceName": "Virtual Machines",
+      "serviceId": "DZH313Z7MMC8",
+      "serviceFamily": "Compute",
+      "unitOfMeasure": "1 Hour",
+      "type": "Consumption",
+      "isPrimaryMeterRegion": true,
+      "armSkuName": "Standard_NC24ads_A100_v4"
+    }
+  ],
+  "storage_prices": [
+    {
+      "currencyCode": "USD",
+      "tierMinimumUnits": 0.0,
+      "retailPrice": 4.8,
+      "unitPrice": 4.8,
+      "armRegionName": "eastus2",
+      "location": "US East 2",
+      "effectiveStartDate": "2019-01-01T00:00:00Z",
+      "meterId": "33e16a00-97e4-425d-8ed1-0682867920f3",
+      "meterName": "E6 LRS Disk",
+      "productId": "DZH318Z0BP88",
+      "skuId": "DZH318Z0BP88/009W",
+      "productName": "Standard SSD Managed Disks",
+      "skuName": "E6 LRS",
+      "serviceName": "Storage",
+      "serviceId": "DZH317F1HKN0",
+      "serviceFamily": "Storage",
+      "unitOfMeasure": "1/Month",
+      "type": "Consumption",
+      "isPrimaryMeterRegion": true,
+      "armSkuName": ""
+    },
+    {
+      "currencyCode": "USD",
+      "tierMinimumUnits": 0.0,
+      "retailPrice": 0.0184,
+      "unitPrice": 0.0184,
+      "armRegionName": "eastus2",
+      "location": "US East 2",
+      "effectiveStartDate": "2017-02-03T00:00:00Z",
+      "meterId": "10b97fb2-5db4-4ad2-a4e0-69b858d6b52d",
+      "meterName": "Hot LRS Data Stored",
+      "productId": "DZH318Z0BPH7",
+      "skuId": "DZH318Z0BPH7/0067",
+      "productName": "General Block Blob v2",
+      "skuName": "Hot LRS",
+      "serviceName": "Storage",
+      "serviceId": "DZH317F1HKN0",
+      "serviceFamily": "Storage",
+      "unitOfMeasure": "1 GB/Month",
+      "type": "Consumption",
+      "isPrimaryMeterRegion": false,
+      "armSkuName": ""
+    },
+    {
+      "currencyCode": "USD",
+      "tierMinimumUnits": 0.0,
+      "retailPrice": 0.002,
+      "unitPrice": 0.002,
+      "armRegionName": "eastus2",
+      "location": "US East 2",
+      "effectiveStartDate": "2018-11-01T00:00:00Z",
+      "meterId": "ce957933-8287-4f8b-83ee-53a5cbe056d9",
+      "meterName": "E6 LRS Disk Operations",
+      "productId": "DZH318Z0BP88",
+      "skuId": "DZH318Z0BP88/009W",
+      "productName": "Standard SSD Managed Disks",
+      "skuName": "E6 LRS",
+      "serviceName": "Storage",
+      "serviceId": "DZH317F1HKN0",
+      "serviceFamily": "Storage",
+      "unitOfMeasure": "10K",
+      "type": "Consumption",
+      "isPrimaryMeterRegion": false,
+      "armSkuName": ""
+    }
+  ],
+  "physical_capacity_confirmed": false,
+  "approved_experiment_spend_usd": 0,
+  "approved_max_compute_hours": 0,
+  "approval_scope": "WITHDRAWN. No remaining spending authority; no new quota/support requests. Historical20USD/fourhour grant retained in ledger only.",
+  "quota_provider": "Microsoft.Quota and Microsoft.Capacity Registered. Modern quota API works after Capacity registration.",
+  "subscription_policy": {
+    "quotaId": "PayAsYouGo_2014-09-01",
+    "spendingLimit": "Off",
+    "state": "Enabled"
+  },
+  "provisioning_blocker": "New spending prohibited; no qualifying GPU quota; model remains unconfigured",
+  "quota_requests": [
+    {
+      "id": "b8792525-63a7-403a-bded-043fddcd5576",
+      "resource": "A100family24",
+      "status": "Failed",
+      "reason": "QuotaNotAvailableForResource"
+    },
+    {
+      "id": "c3ff3bf1-b0c4-45a7-b6af-5273e307afed",
+      "resource": "regionalcores24",
+      "status": "Succeeded"
+    },
+    {
+      "id": "5d52fe8d-bcdb-4a6b-b4bc-b20bd05b25f9",
+      "resource": "H100family40",
+      "status": "Failed",
+      "reason": "QuotaNotAvailableForResource"
+    }
+  ],
+  "authorization_status": "WITHDRAWN: all unused$20authorization revoked; no new quota/support or billablecapacity without explicit new approval"
+}

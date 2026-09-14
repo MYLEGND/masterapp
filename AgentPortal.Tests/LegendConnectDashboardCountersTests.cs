@@ -43,7 +43,9 @@ public sealed class LegendConnectDashboardCountersTests
         db.AddRange(
             new LegendTranslationLearningEvent { IdempotencyKey = "pending", SourceLanguageCode = "en", SourceTextHash = "SOURCE", TargetLanguageCode = "fr", TargetTextHash = "missing", EligibilityState = "Eligible", ProcessingState = "Pending", FailureCode = "retry", Provenance = "ConsentedLiveTranslation" },
             new LegendTranslationLearningEvent { IdempotencyKey = "retired", SourceLanguageCode = "en", SourceTextHash = "RETIRED", EligibilityState = "Eligible", ProcessingState = "Pending", FailureCode = "retired" },
-            new LegendTranslationLearningEvent { IdempotencyKey = "privacy", EligibilityState = "NotEligible", ProcessingState = "Processed", FailureCode = "privacy", Provenance = "ConsentedLiveTranslation", PromotionOutcome = "Reused" });
+            new LegendTranslationLearningEvent { IdempotencyKey = "privacy", EligibilityState = "NotEligible", ProcessingState = "Processed", FailureCode = "privacy", Provenance = "ConsentedLiveTranslation", PromotionOutcome = "Reused" },
+            new LegendTranslationLearningEvent { IdempotencyKey = "healthy", SourceLanguageCode = "en", SourceTextHash = "SOURCE", TargetLanguageCode = "fr", TargetTextHash = "TARGET", EligibilityState = "Eligible", ProcessingState = "Processed", FailureCode = "  " },
+            new LegendTranslationLearningEvent { IdempotencyKey = "superseded-failure", SourceLanguageCode = "en", SourceTextHash = "SOURCE", TargetLanguageCode = "fr", TargetTextHash = "TARGET", EligibilityState = "Eligible", ProcessingState = "Superseded", FailureCode = "historical" });
         db.AddRange(
             new LegendCorpusCandidate { IdempotencyKey = "valid", SourceLanguageCode = "en", TargetLanguageCode = "fr", SourceTextHash = "SOURCE", SourceText = "Hello\tworld", IsApproved = true, FailureCode = "retry" },
             new LegendCorpusCandidate { IdempotencyKey = "mismatch", SourceLanguageCode = "en", TargetLanguageCode = "fr", SourceTextHash = "SOURCE", SourceText = "Different text", IsApproved = true, FailureCode = "invalid" });
@@ -63,6 +65,31 @@ public sealed class LegendConnectDashboardCountersTests
         Assert.DoesNotContain(commands.Sql, sql => sql.Contains("\"IdempotencyKey\"", StringComparison.Ordinal));
         Assert.DoesNotContain(commands.Sql, sql => sql.Contains("\"TranslationContext\"", StringComparison.Ordinal));
         Assert.True(commands.Sql.Count < 30, $"Expected scalar queries, observed {commands.Sql.Count} commands.");
+    }
+
+    [Fact]
+    public async Task BatchedRouteAccounting_UsesAtomicRelationalDeltasAndTheExistingDashboard()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        var recorder = new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance);
+        await recorder.TryRecordBatchAsync("en:ht", 100, 1000, azureFallback: true);
+        await recorder.TryRecordBatchAsync("en:ht", 100, 0, providerObservationReused: true);
+        await recorder.TryRecordAsync("en:ht", 0, translationMemoryHit: true);
+        db.ChangeTracker.Clear();
+        var row = await db.Set<LegendTranslationPairDemand>().SingleAsync();
+        Assert.Equal(201, row.TranslationRequestCount);
+        Assert.Equal(1000, row.ProviderCharacterCount);
+        Assert.Equal(100, row.AzureFallbackCount);
+        Assert.Equal(100, row.ProviderObservationReuseCount);
+        Assert.Equal(1, row.TranslationMemoryHitCount);
+        var counters = await Operations(db).GetDashboardCountersAsync();
+        Assert.Equal(201, counters.CrossLanguageTranslationRequestCount);
+        Assert.Equal(100, counters.ProviderObservationReuseCount);
+        Assert.Equal(0, counters.TranslationRoutingReconciliationGap);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => recorder.TryRecordBatchAsync("en:ht", 0, 0));
     }
 
     [Fact]

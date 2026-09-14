@@ -66,22 +66,24 @@ public sealed class LegendFounderAiInspectionRegressionTests
     }
 
     [Fact]
-    public void CasualInstructions_PreserveResponderIdentity()
+    public void UnifiedInstructions_PreserveResponderIdentityAndExternalDependency()
     {
         var method = typeof(LegendFounderAiConversationService)
-            .GetMethod("BuildCasualInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+            .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.NotNull(method);
 
-        var teacher = Assert.IsType<string>(method!.Invoke(null, new object[] { "teacher" }));
-        var legend = Assert.IsType<string>(method.Invoke(null, new object[] { "legend" }));
+        var teacher = Assert.IsType<string>(method!.Invoke(null, new object?[] { "teacher", null, null }));
+        var legend = Assert.IsType<string>(method.Invoke(null, new object?[] { "legend", null, null }));
 
         Assert.Contains("external OpenAI Teacher", teacher, StringComparison.Ordinal);
         Assert.Contains("Native LEGEND conversational inference is bypassed", teacher, StringComparison.Ordinal);
         Assert.DoesNotContain("You are Legend® Ai speaking", teacher, StringComparison.Ordinal);
 
         Assert.Contains("You are Legend® Ai speaking", legend, StringComparison.Ordinal);
-        Assert.DoesNotContain("external OpenAI Teacher", legend, StringComparison.Ordinal);
+        Assert.Contains("pretrained", legend, StringComparison.Ordinal);
+        Assert.Contains("OpenAI is an optional external teacher or escalation", legend, StringComparison.Ordinal);
+        Assert.Contains("must never be reported as local reasoning", legend, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -102,14 +104,14 @@ public sealed class LegendFounderAiInspectionRegressionTests
     }
 
     [Fact]
-    public void CasualProviderReasoning_UsesPortableLowEffort()
+    public void ConfiguredProviderReasoning_PreservesSupportedMaximumEffort()
     {
         var method = typeof(LegendFounderAiConversationService)
-            .GetMethod("ResolveReasoningEffortForRound", BindingFlags.NonPublic | BindingFlags.Static);
+            .GetMethod("NormalizeReasoningEffort", BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.NotNull(method);
-        Assert.Equal("low", Assert.IsType<string>(
-            method!.Invoke(null, new object[] { 0, false, "medium" })));
+        Assert.Equal("max", Assert.IsType<string>(
+            method!.Invoke(null, new object[] { "max" })));
     }
 
     [Fact]

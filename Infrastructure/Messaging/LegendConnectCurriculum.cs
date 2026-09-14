@@ -2032,6 +2032,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return Rejected("invalid_curriculum_family", "Use a concise semantic family key such as conversation.greeting.basic.", null);
         if (examples is null)
             return Rejected("invalid_curriculum_examples", "A structured curriculum family requires 2–100 distinct examples in its declared source language with controlled variations.", familyKey);
+        var existingCategory = await _db.Set<LegendCurriculumFamily>().AsNoTracking()
+            .Where(item => item.FamilyKey == familyKey).Select(item => item.SemanticCategory)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (existingCategory is not null && submission.SemanticCategory is not null &&
+            existingCategory != submission.SemanticCategory &&
+            (existingCategory == LegendModelCapabilityKeys.FoundationConversation ||
+             submission.SemanticCategory == LegendModelCapabilityKeys.FoundationConversation))
+            return Rejected("foundation_control_family_contract_conflict",
+                "An existing curriculum family cannot silently change into or out of the foundation control contract.", familyKey);
+        var foundationControls = (existingCategory ?? submission.SemanticCategory) == LegendModelCapabilityKeys.FoundationConversation;
+        if (foundationControls && (examples.Any(example => example.ExpectedResponse is null ||
+                !LegendFoundationConversationControl.TryValidateOracle(example.Text, example.ExpectedResponse, sourceDefinition.Code)) ||
+                examples.Select(example => example.ExpectedResponse).Distinct(StringComparer.Ordinal).Count() != examples.Count))
+            return Rejected("foundation_control_independent_validation_required",
+                "Each foundation control requires a distinct response independently verified by a supported executable public oracle.", familyKey);
+        if (!foundationControls && examples.Any(example => example.ExpectedResponse is not null))
+            return Rejected("foundation_control_contract_required", "Expected responses require the foundation conversation control contract.", familyKey);
         if (semanticTransitions is null)
             return Rejected(
                 "invalid_semantic_transition",
@@ -2313,6 +2330,31 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             sourceTextUnitsById[textUnit.Id] = textUnit;
         }
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (family.SemanticCategory == LegendModelCapabilityKeys.FoundationConversation)
+        {
+            for (var index = 0; index < examples.Count; index++)
+            {
+                // Preflight independently computed the target from the exact
+                // public task. It enters the existing canonical corpus with
+                // machine validation provenance, never fabricated translation.
+                var admitted = await _corpus.SubmitSystemValidatedMachineKnowledgeAsync(
+                    sourceLanguage, examples[index].ExpectedResponse!, null, null,
+                    LegendModelCapabilityKeys.FoundationConversation, cancellationToken);
+                if (!admitted.Succeeded || admitted.SourceTextUnitId is null)
+                    return Rejected(admitted.ErrorCode ?? "foundation_control_admission_failed",
+                        "The independently validated response could not enter the canonical corpus.", familyKey);
+                var responseUnit = await _db.Set<LegendLanguageTextUnit>().SingleAsync(
+                    unit => unit.Id == admitted.SourceTextUnitId.Value, cancellationToken);
+                var responseExample = await GetOrCreateExampleAsync(family, responseUnit, sourceLanguage,
+                    sourceExamples[index].Id, cancellationToken);
+                responseExample.Provenance = responseUnit.Provenance;
+            }
+            await _db.SaveChangesAsync(cancellationToken);
+            return new(true, createdSourceCount == 0, null,
+                "Executable foundation controls were independently validated and retained; training rights, evaluation and promotion remain separate gates.",
+                familyKey, family.Id, sourceExamples.Count, 0);
+        }
 
         var knownVariationsByExample = sourceExamples
             .Zip(examples, (curriculumExample, normalized) =>
@@ -17114,7 +17156,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if ((example.SemanticExampleKey is not null && semanticExampleKey is null) ||
                 !TryNormalizeMeaningGraph(example.MeaningGraph, text, out var meaningGraph))
                 return null;
-            normalized.Add(new NormalizedCurriculumExample(text, variations, meaningGraph, semanticExampleKey));
+            var expectedResponse = example.ExpectedResponse is null ? null : LegendLanguageIdentity.NormalizeText(example.ExpectedResponse);
+            if (example.ExpectedResponse is not null && (string.IsNullOrWhiteSpace(expectedResponse) || expectedResponse.Length > 10000)) return null;
+            normalized.Add(new NormalizedCurriculumExample(text, variations, meaningGraph, semanticExampleKey, expectedResponse));
         }
         return normalized;
     }
@@ -18534,7 +18578,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string Text,
         IReadOnlyDictionary<string, string> Variations,
         NormalizedMeaningGraph? MeaningGraph,
-        string? SemanticExampleKey);
+        string? SemanticExampleKey,
+        string? ExpectedResponse);
 
     private sealed record NormalizedMeaningGraph(
         IReadOnlyList<NormalizedMeaningNode> Nodes,

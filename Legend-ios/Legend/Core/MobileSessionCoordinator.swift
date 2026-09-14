@@ -96,6 +96,8 @@ final class MobileSessionCoordinator: ObservableObject {
     private var activeTokens: OAuthTokenSet?
     private var credentialRevision = 0
     private var credentialIsProvisional = false
+    private var retainedMessagingStore: MessagingStore?
+    private var retainedMessagingIdentity: LogicalParticipantIdentity?
 
     /// Hot-memory tier for the account-bound protected-image cache. Its durable
     /// tier is the existing launch cache, which is wiped with the account cache
@@ -144,6 +146,65 @@ final class MobileSessionCoordinator: ObservableObject {
         self.diagnostics = diagnostics ?? LegendDiagnostics()
         self.launchCache = launchCache ?? LegendLaunchCache()
         self.biometricSecurity = biometricSecurity ?? MobileBiometricSessionSecurity()
+        LegendCallSystem.shared.prepareIncomingAccount = { [weak self] call in
+            guard let self else { throw CancellationError() }
+            return try await self.prepareIncomingCall(call)
+        }
+    }
+
+    /// CallKit may wake a retained account while the application remains locked.
+    /// The push is only a selector: the existing session endpoint and call hub
+    /// independently authorize the credential and exact typed recipient.
+    func prepareIncomingCall(_ call: LegendCallSnapshot) async throws -> LegendCallStore {
+        guard configuration.validation.isReady, !credentialIsProvisional,
+              call.status == "ringing", call.expiresUtc > Date() else { throw CancellationError() }
+        switch state {
+        case .signedOut, .contractUnavailable, .authenticating, .roleSelection:
+            throw MobileAPIError.unauthorized(correlationID: nil)
+        case .loading, .failed, .authenticated: break
+        }
+        let revision = credentialRevision
+        guard let stored = try tokenStore.read(), !stored.requiresInteractiveSignIn else {
+            throw MobileAPIError.unauthorized(correlationID: nil)
+        }
+        let expected: LogicalParticipantIdentity?
+        if case .authenticated(let session) = state { expected = session.actor.identity }
+        else if let selectedIdentity = try selectedRetainedIdentity() {
+            expected = selectedIdentity
+        }
+        else {
+            expected = launchCache.readSession(matchingCredentialFingerprint:
+                LegendSessionCredentialFingerprint.make(from: stored))?.session.actor.identity
+        }
+        guard let expected, call.isCallee(expected) else {
+            throw MobileAPIError.forbidden(correlationID: nil)
+        }
+        let tokens = try await usableTokens(from: stored)
+        try Task.checkCancellation()
+        guard revision == credentialRevision else { throw CancellationError() }
+        var validated: MobileSession?
+        try await establishSession(using: tokens,
+            preferredParticipantType: expected.participantType,
+            receiveLockedSession: { session in
+                guard revision == self.credentialRevision,
+                      session.actor.identity == expected,
+                      session.capabilities.contains("messaging"), call.isCallee(session.actor.identity) else {
+                    throw MobileAPIError.forbidden(correlationID: nil)
+                }
+                validated = session
+            })
+        try Task.checkCancellation()
+        guard revision == credentialRevision, let validated, call.expiresUtc > Date() else { throw CancellationError() }
+        try persistConfirmedAccount(validated)
+        cacheSession(validated)
+        guard let calling = messagingStore(for: validated).calling else { throw MobileAPIError.invalidBaseURL }
+        return calling
+    }
+
+    private func selectedRetainedIdentity() throws -> LogicalParticipantIdentity? {
+        guard let accounts = multiAccountTokenStore, let selectedID = try accounts.selectedAccountID(),
+              let selected = try accounts.signedInAccounts().first(where: { $0.id == selectedID && !$0.requiresSignIn }) else { return nil }
+        return try LogicalParticipantIdentity(userID: selected.id, participantType: selected.participantType)
     }
 
     func restore() {
@@ -198,12 +259,18 @@ final class MobileSessionCoordinator: ObservableObject {
         let cachedSession = launchCache.readSession(
             matchingCredentialFingerprint: LegendSessionCredentialFingerprint.make(
                 from: storedTokens))?.session
-        if let cachedSession,
-           biometricSecurity.isEnabled(for: cachedSession.actor.identity) {
+        // A locked device cannot read the fully protected launch cache. Its selected
+        // keychain account still identifies the existing biometric preference.
+        let protectedIdentity = cachedSession?.actor.identity ?? (try? selectedRetainedIdentity())
+        let restoreRevision = credentialRevision
+        if let protectedIdentity,
+           biometricSecurity.isEnabled(for: protectedIdentity) {
             transition(to: .loading, reason: "Face ID required before cached session restoration")
             Task { [weak self] in
                 guard let self else { return }
-                guard await self.biometricSecurity.authenticate() else {
+                let unlocked = await self.biometricSecurity.authenticate()
+                guard restoreRevision == self.credentialRevision else { return }
+                guard unlocked else {
                     self.transition(
                         to: .failed(UserFacingFailure(
                             title: LegendLocalized("Face ID required"),
@@ -233,6 +300,7 @@ final class MobileSessionCoordinator: ObservableObject {
             transition(to: .loading, reason: "Stored session validation started")
         }
 
+        let restoreRevision = credentialRevision
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -241,10 +309,12 @@ final class MobileSessionCoordinator: ObservableObject {
                     summary: "Stored mobile credential found; server session validation started.")
 
                 let tokens = try await self.usableTokens(from: storedTokens)
+                guard restoreRevision == self.credentialRevision else { return }
                 try await self.establishSession(
                     using: tokens,
                     preferredParticipantType: cachedSession?.actor.identity.participantType)
             } catch {
+                guard restoreRevision == self.credentialRevision else { return }
                 let apiError = error as? MobileAPIError
 
                 if apiError?.provesInvalidBearerCredential == true ||
@@ -718,7 +788,7 @@ final class MobileSessionCoordinator: ObservableObject {
     }
 
     func makeMessagingStore() -> MessagingStore {
-        guard let apiBaseURL = configuration.apiBaseURL,
+        guard configuration.apiBaseURL != nil,
               case .authenticated(let currentSession) = state else {
             return MessagingStore(
                 api: MobileContractUnavailableMessagingAPI(),
@@ -729,16 +799,34 @@ final class MobileSessionCoordinator: ObservableObject {
             )
         }
 
+        return messagingStore(for: currentSession)
+    }
+
+    private func messagingStore(for currentSession: MobileSession) -> MessagingStore {
+        if retainedMessagingIdentity == currentSession.actor.identity, let retainedMessagingStore {
+            return retainedMessagingStore
+        }
+        retainedMessagingStore?.calling?.shutdown()
+        retainedMessagingStore = nil
+        retainedMessagingIdentity = currentSession.actor.identity
+        let identity = currentSession.actor.identity
+        let revision = credentialRevision
+        guard let apiBaseURL = configuration.apiBaseURL else { preconditionFailure("Validated mobile API configuration is required.") }
+
         let accessTokenProvider: () async throws -> String = { [weak self] in
-            guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
-            return try await self.accessTokenForRequest()
+            guard let self, self.credentialRevision == revision,
+                  self.retainedMessagingIdentity == identity else { throw CancellationError() }
+            let token = try await self.accessTokenForRequest()
+            try Task.checkCancellation()
+            guard self.credentialRevision == revision, self.retainedMessagingIdentity == identity else { throw CancellationError() }
+            return token
         }
 
         let realtime = MobileMessagingRealtimeClient(
             apiBaseURL: apiBaseURL,
             participantType: currentSession.actor.identity.participantType,
             accessTokenProvider: accessTokenProvider)
-        return MessagingStore(
+        let store = MessagingStore(
             api: URLSessionMessagingAPI(
                 client: MobileHTTPClient(baseURL: apiBaseURL),
                 participantType: currentSession.actor.identity.participantType),
@@ -749,6 +837,8 @@ final class MobileSessionCoordinator: ObservableObject {
             realtime: realtime,
             calling: realtime.map { LegendCallStore(transport: $0, identity: currentSession.actor.identity) }
         )
+        retainedMessagingStore = store
+        return store
     }
 
     func applicationLocalizationCatalog(
@@ -998,7 +1088,8 @@ final class MobileSessionCoordinator: ObservableObject {
 
     private func establishSession(
         using tokens: OAuthTokenSet,
-        preferredParticipantType: ParticipantType? = nil
+        preferredParticipantType: ParticipantType? = nil,
+        receiveLockedSession: ((MobileSession) throws -> Void)? = nil
     ) async throws {
         guard let apiBaseURL = configuration.apiBaseURL else { throw MobileAPIError.invalidBaseURL }
         diagnostics.record(category: .authentication, summary: "Mobile session request started. Authorization header present: true.")
@@ -1030,10 +1121,12 @@ final class MobileSessionCoordinator: ObservableObject {
                     selected,
                     expectedParticipantType: preferredParticipantType,
                     clearCachedLaunch: false,
-                    reason: "Restored last selected mobile account")
+                    reason: "Restored last selected mobile account",
+                    receiveLockedSession: receiveLockedSession)
                 return
             }
 
+            if receiveLockedSession != nil { throw MobileAPIError.forbidden(correlationID: response.correlationID) }
             transition(to: .roleSelection(MobileRoleSelection(
                 permittedParticipantTypes: response.permittedParticipantTypes,
                 correlationID: response.correlationID))
@@ -1048,7 +1141,8 @@ final class MobileSessionCoordinator: ObservableObject {
             capabilities: response.capabilities.sessionCapabilities,
             permittedParticipantTypes: response.permittedParticipantTypes,
             preferredLanguageCode: response.preferredLanguageCode)
-        try commitConfirmedSession(session, reason: "Authenticated mobile session decoded")
+        if let receiveLockedSession { try receiveLockedSession(session) }
+        else { try commitConfirmedSession(session, reason: "Authenticated mobile session decoded") }
     }
 
     /// Applies the single authoritative role-selection response. Manual switches
@@ -1057,7 +1151,8 @@ final class MobileSessionCoordinator: ObservableObject {
         _ response: MobileRoleSelectionResponse,
         expectedParticipantType: ParticipantType,
         clearCachedLaunch: Bool,
-        reason: String
+        reason: String,
+        receiveLockedSession: ((MobileSession) throws -> Void)? = nil
     ) throws -> MobileSession {
         guard response.actor.identity.participantType == expectedParticipantType else {
             throw MobileAPIError.forbidden(correlationID: response.correlationID)
@@ -1068,6 +1163,10 @@ final class MobileSessionCoordinator: ObservableObject {
             capabilities: response.capabilities?.sessionCapabilities ?? ["messaging"],
             permittedParticipantTypes: response.permittedParticipantTypes,
             preferredLanguageCode: response.preferredLanguageCode)
+        if let receiveLockedSession {
+            try receiveLockedSession(session)
+            return session
+        }
         if clearCachedLaunch {
             launchCache.clear()
         }
@@ -1315,6 +1414,10 @@ final class MobileSessionCoordinator: ObservableObject {
 
     private func beginCredentialTransition() {
         credentialRevision += 1
+        LegendCallSystem.shared.retireAccount()
+        retainedMessagingStore?.calling?.shutdown()
+        retainedMessagingStore = nil
+        retainedMessagingIdentity = nil
         credentialIsProvisional = false
         refreshTask?.cancel()
         refreshTask = nil
@@ -1434,8 +1537,16 @@ final class MobileSessionCoordinator: ObservableObject {
     func handleCallAccountTransition(to newState: MobileSessionState) {
         switch newState {
         case .authenticated(let session):
+            if retainedMessagingIdentity != session.actor.identity {
+                retainedMessagingStore?.calling?.shutdown()
+                retainedMessagingStore = nil
+                retainedMessagingIdentity = nil
+            }
             LegendCallSystem.shared.retireAccount(unless: session.actor.identity)
         case .signedOut, .contractUnavailable, .roleSelection:
+            retainedMessagingStore?.calling?.shutdown()
+            retainedMessagingStore = nil
+            retainedMessagingIdentity = nil
             LegendCallSystem.shared.retireAccount()
         case .loading, .authenticating, .failed:
             // Temporary work or a failed refresh does not revoke the existing actor.

@@ -2,10 +2,81 @@ import Foundation
 import Combine
 import XCTest
 import UIKit
+import SwiftUI
 @testable import Legend
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testUnreadBadgeUsesCircularEdgeAtInboxAndPinnedSizes() throws {
+        for size: CGFloat in [46, 72] {
+            let center = LegendMessagingUnreadBadge.center(avatarSize: size)
+            XCTAssertEqual(hypot(center.x - size / 2, center.y - size / 2), size / 2, accuracy: 0.00001)
+            XCTAssertGreaterThan(center.x, size / 2)
+            XCTAssertLessThan(center.y, size / 2)
+            let view = Circle().fill(Color.gray).frame(width: size, height: size)
+                .overlay(alignment: .topLeading) { LegendMessagingUnreadBadge(count: 125, avatarSize: size) }
+                .padding(16).background(Color.white).environment(\.dynamicTypeSize, .accessibility3)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            let image = try XCTUnwrap(renderer.uiImage)
+            XCTAssertEqual(image.size.width, size + 32)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "unread-avatar-\(Int(size))-accessibility"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            try XCTUnwrap(image.pngData()).write(to: FileManager.default.temporaryDirectory.appendingPathComponent("unread-avatar-\(Int(size)).png"))
+        }
+    }
+
+    func testMessageBubbleActualRendererAtNormalAndAccessibilitySizes() async throws {
+        let sender = MessagingParticipant(identity: try LogicalParticipantIdentity(userID: "visual-fixture", participantType: .client),
+            profileID: "visual-fixture", displayName: "Alex Morgan", roleLabel: nil, avatar: nil, isVerified: false)
+        let cases: [(String, String, [String])] = [
+            ("short", "K", ["❤️", "👍"]),
+            ("wrapped", "A short message with enough reactions to wrap onto multiple rows.", ["❤️", "👍", "😂", "🙏", "🎉", "👀", "💯", "😊"]),
+            ("translated", "Thank you. The translated message and its final line must remain readable.", ["❤️", "👍"])
+        ]
+        for (sizeName, size) in [("normal", DynamicTypeSize.large), ("accessibility", .accessibility3)] {
+            for (name, text, emoji) in cases {
+                let message = ConversationMessage(id: UUID(), conversationID: UUID(), sender: sender, body: text,
+                    sentUTC: Date(timeIntervalSince1970: 1_700_000_000), attachments: [], isMine: name != "translated",
+                    reply: name == "translated" ? .init(id: UUID(), sender: sender, body: "The earlier question", isDeleted: false) : nil,
+                    translation: name == "translated" ? .init(originalLanguage: "ht", targetLanguage: "en", provider: "AzureTranslator") : nil,
+                    originalBody: name == "translated" ? "Mèsi. Mesaj orijinal la rete disponib." : nil,
+                    reactions: emoji.map { .init(emoji: $0, count: 2, reactedByCurrentActor: $0 == "❤️") })
+                let view = LegendMessageBubble(message: message, senderAvatar: nil, showsSender: false,
+                    onReply: {}, onDelete: {}, onReact: { _ in }, reactionOptions: emoji, openSharedPost: { _ in }, onOpenVerificationProfile: nil)
+                    .padding(12).frame(width: 390).environment(\.dynamicTypeSize, size).environment(\.colorScheme, .light)
+                let host = UIHostingController(rootView: view)
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 1800))
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                host.view.frame = window.bounds
+                host.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(150))
+                let measured = host.sizeThatFits(in: CGSize(width: 390, height: 1800))
+                XCTAssertLessThanOrEqual(measured.width, 390.5)
+                XCTAssertGreaterThan(measured.height, 44)
+                XCTAssertLessThan(measured.height, 1800)
+                host.view.frame = CGRect(origin: .zero, size: CGSize(width: 390, height: ceil(measured.height)))
+                host.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(150))
+                let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                    host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+                }
+                let data = try XCTUnwrap(image.pngData())
+                let file = FileManager.default.temporaryDirectory.appendingPathComponent("legend-message-\(sizeName)-\(name).png")
+                try data.write(to: file, options: .atomic)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "legend-message-\(sizeName)-\(name)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+                print("LEGEND_RENDER_FIXTURE \(file.path)")
+                window.isHidden = true
+            }
+        }
+    }
+
     func testBundledEmojiPickerSearchIncludesKeywordsAndCompleteSequences() throws {
         let catalog = try XCTUnwrap(LegendReactionEmojiCatalog.bundled)
         XCTAssertGreaterThan(catalog.entries.count, 3000)
@@ -31,7 +102,13 @@ final class MobileNativeContractTests: XCTestCase {
         }
         XCTAssertEqual(Set(catalog.palette("").map(\.baseEmoji)).count, catalog.palette("").count)
         XCTAssertEqual(LegendSharedDesign.reactionBubble.outsideFraction, 0.25)
-        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow, 8)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.height, 22)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.touchTarget, 44)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow, 16.5)
+        XCTAssertEqual(LegendSharedDesign.reactionBubble.overflow(for: 92), 28.5)
+        XCTAssertEqual(LegendSharedDesign.messageBubble.timestampSize, 11)
+        XCTAssertEqual(LegendSharedDesign.messageBubble.timestampWeight, "regular")
+        XCTAssertLessThan(LegendSharedDesign.contactCard.borderOpacity, 0.5)
     }
 
     func testReactionPreferenceTransportUsesActiveProfileForReadAndWrite() async throws {
@@ -806,6 +883,44 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertFalse(submitted.matches(body: "Original draft ", replyToMessageID: reply))
     }
 
+    func testCallMetadataStartUsesAuthorizedTransportWithoutPublishingOrHydratingHistory() async throws {
+        let identity = try LogicalParticipantIdentity(userID: "call-recipient", participantType: .agent)
+        let recipient = MessagingRecipient(identity: identity, profileID: "profile", displayName: "Recipient",
+            email: nil, roleLabel: nil, relationshipLabel: nil, existingConversationID: nil, avatar: nil)
+        let id = UUID()
+        let metadata = ConversationDetail(id: id, conversationType: "ClientAgent", title: "Recipient",
+            participants: [], messages: [], isMuted: false, isClosed: false, canManageMembers: false)
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.responseBody = try JSONEncoder().encode(metadata)
+        StubURLProtocol.requests = []
+        defer { StubURLProtocol.responseBody = nil; StubURLProtocol.requests = [] }
+        let api = URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .client)
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let resolved = expectation(description: "Authorized call target resolved")
+        store.startConversation(with: recipient, includeMessages: false) { target in
+            XCTAssertEqual(target, id)
+            resolved.fulfill()
+        }
+        await fulfillment(of: [resolved], timeout: 2)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(StubURLProtocol.requests.count, 1, "Call setup must not hydrate history or refresh translated inbox previews")
+        XCTAssertNil(store.selectedConversationID)
+        XCTAssertEqual(store.detailState, .idle, "A metadata-only response is not canonical chat history")
+        let request = try XCTUnwrap(StubURLProtocol.requests.first)
+        XCTAssertEqual(request.url?.path, "/api/v1/mobile/messaging/conversations")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Client")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: founderRequestBody(request)) as? [String: Any])
+        XCTAssertEqual(body["includeMessages"] as? Bool, false)
+        XCTAssertEqual(body["targetUserId"] as? String, identity.userID)
+        XCTAssertEqual(body["targetParticipantType"] as? String, "Agent")
+        _ = try await api.start(recipient: recipient, accessToken: "test-token")
+        let ordinary = try XCTUnwrap(StubURLProtocol.requests.last)
+        let ordinaryBody = try XCTUnwrap(JSONSerialization.jsonObject(with: founderRequestBody(ordinary)) as? [String: Any])
+        XCTAssertEqual(ordinaryBody["includeMessages"] as? Bool, true, "Ordinary chat navigation retains full history by default")
+    }
+
     func testMessageRetryReusesIdentityAfterLostAcknowledgementAndNewMessageGetsFreshIdentity() async {
         let api = InboxReconciliationMessagingAPI(conversationID: UUID())
         let store = MessagingStore(api: api, accessTokenProvider: { "token" },
@@ -1369,7 +1484,7 @@ final class MobileNativeContractTests: XCTestCase {
         {"type":"accepted","operationId":"test-operation","responseAuthority":"LegendAi"}
         {"type":"progress","progress":{"stage":"tool","message":"Reading governed evidence"}}
         {"type":"heartbeat","elapsedSeconds":4}
-        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Computed résultat.","responseAuthority":"LegendAi"}}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Computed résultat.","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z","responseAuthority":"LegendAi"}}
 
         """
         let bytes = Array(wire.utf8)
@@ -1395,6 +1510,44 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertNotNil(UUID(uuidString: request.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") ?? ""))
     }
 
+    func testFounderIndependentAnsweringRequestPreservesSeparatePolicy() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"Controlled answer.","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z","responseAuthority":"LocalFoundation"}}
+
+        """.utf8)
+        await store.send("Use authorized research without external answering.", nativeOnly: false, externalAnsweringBlocked: true)
+        let request = try XCTUnwrap(StubURLProtocol.requests.last)
+        let body = try founderRequestBody(request)
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(value["externalAnsweringBlocked"] as? Bool, true)
+        XCTAssertEqual(value["nativeOnly"] as? Bool, false)
+        XCTAssertNil(store.failureMessage)
+    }
+
+    func testFounderStreamRetainsCapabilityMetadataInTranscript() async {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"legend","message":"A partial answer.","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z","responseAuthority":"LocalFoundation","foundationModel":"configured-model","foundationHosting":"LegendControlled","externalAnsweringUsed":false,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic","escalationDisposition":"Restricted","stage":"response_partial","reason":"provider_output_incomplete"}}
+
+        """.utf8)
+        await store.send("Verify the evidence and retain this correction.")
+        XCTAssertEqual(store.messages.last?.responseAuthority, "LocalFoundation")
+        XCTAssertEqual(store.messages.last?.foundationModel, "configured-model")
+        XCTAssertEqual(store.messages.last?.foundationHosting, "LegendControlled")
+        XCTAssertEqual(store.messages.last?.externalAnsweringUsed, false)
+        XCTAssertEqual(store.messages.last?.escalationUsed, false)
+        XCTAssertEqual(store.messages.last?.researchState, "InsufficientEvidence")
+        XCTAssertEqual(store.messages.last?.learningState, "AwaitingCritic")
+        XCTAssertEqual(store.messages.last?.escalationDisposition, "Restricted")
+        XCTAssertEqual(store.messages.last?.reason, "provider_output_incomplete")
+        XCTAssertNil(store.messages.last?.modelTrainingRunId)
+        XCTAssertNil(store.messages.last?.modelAssistanceState)
+        XCTAssertNil(store.failureMessage)
+    }
+
     func testFounderStreamPreservesStructuredFailureDespiteSuccessfulTransport() async {
         let store = await availableFounderStore()
         defer { resetFounderStreamStub() }
@@ -1403,11 +1556,11 @@ final class MobileNativeContractTests: XCTestCase {
 
         """.utf8)
         await store.send("Read the governed record.")
-        XCTAssertEqual(store.messages.count, 1)
-        XCTAssertTrue(store.failureMessage?.contains("Evidence is unavailable.") == true)
-        XCTAssertTrue(store.failureMessage?.contains("governed_unavailable") == true)
-        XCTAssertTrue(store.failureMessage?.contains("source_withdrawn") == true)
-        XCTAssertTrue(store.failureMessage?.contains("safe-reference") == true)
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.canRetry)
+        // The exact backend summary remains a reusable catalog key. Typed
+        // diagnostics must not be concatenated into user-facing copy.
+        XCTAssertEqual(store.failureMessage, "Evidence is unavailable.")
     }
 
     func testFounderStreamRequiresTerminalResultAndConsistentSuccessStatus() async {
@@ -1420,7 +1573,7 @@ final class MobileNativeContractTests: XCTestCase {
             let store = await availableFounderStore()
             StubURLProtocol.responseBody = Data(wire.utf8)
             await store.send("Read the governed record.")
-            XCTAssertEqual(store.messages.count, 1)
+            XCTAssertTrue(store.messages.isEmpty)
             XCTAssertNotNil(store.failureMessage)
             XCTAssertFalse(store.isSending)
             resetFounderStreamStub()
@@ -1442,9 +1595,157 @@ final class MobileNativeContractTests: XCTestCase {
         await sending.value
         await fulfillment(of: [stopped], timeout: 2)
         XCTAssertFalse(store.isSending)
-        XCTAssertEqual(store.messages.count, 1)
-        XCTAssertEqual(store.failureMessage, "Response stopped. Your next message is ready to send.")
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertEqual(store.failureMessage, "Response stopped. Check the saved outcome before sending again.")
         XCTAssertEqual(StubURLProtocol.requests.count, 1)
+    }
+
+    func testFounderHistoryResumesCanonicalTurnsAndPreservesExactPagingCursor() async throws {
+        let store = await availableFounderStore()
+        defer { store.setVisible(false); resetFounderStreamStub() }
+        let thread = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        let first = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        let terminal = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        let older = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+        let timestamp = "2026-09-13T10:00:00.1234567Z"
+        var disconnectedWindow = false
+        var foregroundVersion = false
+        StubURLProtocol.onRequest = {
+            let request = StubURLProtocol.requests.last!
+            if request.url!.path.hasSuffix("/conversations") {
+                StubURLProtocol.responseBody = Data("{\"succeeded\":true,\"conversations\":[{\"id\":\"\(thread)\",\"subject\":\"Saved on web\"}]}".utf8)
+            } else {
+                let isOlder = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.contains(where: { $0.name == "beforeUtc" }) == true
+                var rows: String
+                if disconnectedWindow {
+                    rows = "{\"id\":\"eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee\",\"body\":\"Newer canonical content\",\"sentUtc\":\"2026-09-13T11:00:00.1234567Z\",\"authorKind\":\"Human\"}"
+                } else if isOlder {
+                    rows = "{\"id\":\"\(older)\",\"body\":\"Earlier original content\",\"sentUtc\":\"2026-09-13T10:00:00.1234566Z\",\"authorKind\":\"Human\"}"
+                } else {
+                    rows = """
+                    {"id":"\(first)","body":"Original source content","sentUtc":"\(timestamp)","authorKind":"Human"},
+                    {"id":"\(terminal)","body":"Controlled reply","sentUtc":"2026-09-13T10:00:00.1234568Z","authorKind":"Assistant","replyToMessageId":"\(first)","responseProvenance":{"succeeded":true,"mode":"legend","responseAuthority":"LocalFoundation","externalAnsweringUsed":false,"learningState":"AwaitingCritic","stage":"response_partial","reason":"response_continuation_no_progress"}}
+                    """
+                }
+                if foregroundVersion && !isOlder && !disconnectedWindow {
+                    rows += "," + "{\"id\":\"ffffffff-ffff-ffff-ffff-ffffffffffff\",\"body\":\"Foreground new canonical content\",\"sentUtc\":\"2026-09-13T10:01:00.1234567Z\",\"authorKind\":\"Human\"}"
+                }
+                StubURLProtocol.responseBody = Data("{\"succeeded\":true,\"conversation\":{\"id\":\"\(thread)\",\"messages\":[\(rows)],\"hasOlderMessages\":\(!isOlder)}}".utf8)
+            }
+        }
+        store.openConversation(thread)
+        store.setVisible(true)
+        await waitForFounderHistory { store.messages.count == 2 }
+        XCTAssertEqual(store.messages.first?.sentUtc, timestamp)
+        XCTAssertEqual(store.messages.last?.responseAuthority, "LocalFoundation")
+        XCTAssertEqual(store.messages.last?.stage, "response_partial")
+        XCTAssertEqual(store.messages.last?.learningState, "AwaitingCritic")
+        XCTAssertNil(store.messages.last?.modelTrainingRunId)
+        store.refreshHistory(older: true)
+        await waitForFounderHistory { store.messages.count == 3 }
+        let request = try XCTUnwrap(StubURLProtocol.requests.last)
+        let query = try XCTUnwrap(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(query.first(where: { $0.name == "beforeUtc" })?.value, timestamp)
+        XCTAssertEqual(query.first(where: { $0.name == "beforeMessageId" })?.value?.lowercased(), first)
+        XCTAssertEqual(store.messages.map(\.content), ["Earlier original content", "Original source content", "Controlled reply"])
+        store.setVisible(false)
+        foregroundVersion = true
+        store.setVisible(true)
+        await waitForFounderHistory { store.messages.last?.content == "Foreground new canonical content" }
+        XCTAssertEqual(store.messages.count, 4, "A foreground refresh must preserve explicitly loaded older messages")
+        XCTAssertTrue(StubURLProtocol.requests.allSatisfy { $0.httpMethod == "GET" })
+        disconnectedWindow = true
+        store.refreshHistory()
+        await waitForFounderHistory { store.hasNewerMessages }
+        XCTAssertEqual(store.messages.count, 4, "A disconnected head must not silently hide the missing middle")
+        store.refreshHistory(newer: true)
+        await waitForFounderHistory { store.messages.last?.content == "Newer canonical content" }
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertTrue(store.hasOlderMessages, "Backward paging from the new head must reach every intervening message")
+        XCTAssertFalse(store.hasNewerMessages)
+        store.setVisible(false)
+        StubURLProtocol.onRequest = nil
+        StubURLProtocol.responseBody = Data("{\"type\":\"result\",\"status\":409,\"result\":{\"succeeded\":false,\"mode\":\"legend\",\"failureKind\":\"history_pending\",\"error\":\"Pending\"}}\n".utf8)
+        await store.send("A new explicit request.", externalAnsweringBlocked: true)
+        let submitted = try XCTUnwrap(StubURLProtocol.requests.last)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: founderRequestBody(submitted)) as? [String: Any])
+        XCTAssertEqual((body["expectedLastMessageId"] as? String)?.lowercased(), "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+        XCTAssertEqual((body["messages"] as? [[String: Any]])?.compactMap { $0["role"] as? String }, ["user"])
+    }
+
+    func testFounderHttpUnknownOutcomeRetriesExactOperationWithoutInventingAssistant() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseStatus = 409
+        StubURLProtocol.responseBody = Data("""
+        {"succeeded":false,"mode":"legend","error":"The operation outcome is unknown.","stage":"request_interrupted","reason":"outcome_unknown","failureKind":"outcome_unknown","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}
+        """.utf8)
+        await store.send("Do the authorized operation.", externalAnsweringBlocked: true)
+        XCTAssertTrue(store.canRetry)
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertEqual(store.failureMessage, "The operation outcome is unknown.")
+        let initial = try XCTUnwrap(StubURLProtocol.requests.first)
+        await store.retry()
+        XCTAssertEqual(StubURLProtocol.requests.count, 2)
+        let replay = try XCTUnwrap(StubURLProtocol.requests.last)
+        XCTAssertEqual(initial.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id"), replay.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id"))
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: founderRequestBody(initial)) as? NSDictionary,
+            try JSONSerialization.jsonObject(with: founderRequestBody(replay)) as? NSDictionary,
+            "Retry must retain the same effective body and provider policy")
+        XCTAssertTrue(store.messages.isEmpty)
+        StubURLProtocol.responseBody = Data("""
+        {"succeeded":false,"mode":"legend","error":"The operation outcome is unknown.","stage":"request_interrupted","reason":"outcome_unknown","failureKind":"outcome_unknown","responseAuthority":"SystemDiagnostic","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","lastMessageUtc":"2026-09-13T10:00:00.1234567Z"}
+        """.utf8)
+        await store.retry()
+        XCTAssertFalse(store.canRetry)
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertEqual(store.messages.first?.role, "service")
+        XCTAssertEqual(store.messages.first?.reason, "outcome_unknown")
+        XCTAssertTrue(StubURLProtocol.requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") == initial.value(forHTTPHeaderField: "X-Legend-Ai-Operation-Id") })
+    }
+
+    func testFounderStreamAuthorizationClearsSavedMessagesAndPendingAccountState() async {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":503,"result":{"succeeded":false,"mode":"legend","error":"Private prior diagnostic","responseAuthority":"SystemDiagnostic","conversationId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","lastMessageUtc":"2026-09-13T10:00:00.1234567Z"}}
+
+        """.utf8)
+        await store.send("First persisted diagnostic.")
+        XCTAssertEqual(store.messages.count, 1)
+        XCTAssertEqual(store.failureMessage, "Private prior diagnostic")
+        StubURLProtocol.responseBody = Data("""
+        {"type":"result","status":403,"result":{"succeeded":false,"mode":"legend","failureKind":"authorization","error":"Founder authorization is required."}}
+
+        """.utf8)
+        await store.send("A request after account authorization changed.")
+        XCTAssertFalse(store.isAvailable)
+        XCTAssertFalse(store.isSending)
+        XCTAssertFalse(store.canRetry)
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.conversations.isEmpty)
+        XCTAssertNil(store.failureMessage)
+    }
+
+    private func founderRequestBody(_ request: URLRequest) throws -> Data {
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                if count <= 0 { break }
+                body.append(contentsOf: buffer.prefix(count))
+            }
+        }
+        return body
+    }
+
+    private func waitForFounderHistory(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !condition() && ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(condition(), "Expected the canonical history refresh to finish")
     }
 
     private func availableFounderStore() async -> LegendFounderAiStore {
@@ -1461,6 +1762,7 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     private func resetFounderStreamStub() {
+        StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = nil
         StubURLProtocol.responseChunks = nil
         StubURLProtocol.requests = []
@@ -1637,7 +1939,7 @@ private struct TestTokenExchanger: OAuthTokenExchanging {
 private struct StubMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
     func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] { [] }
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
     func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
@@ -1709,7 +2011,7 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
         return [recipient]
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         ConversationDetail(
             id: conversationID,
             conversationType: "ClientAgent",
@@ -1799,7 +2101,7 @@ private struct OfflineMessagingAPI: MessagingAPI {
         throw MobileAPIError.networkUnavailable
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         throw MobileAPIError.networkUnavailable
     }
 
@@ -1833,7 +2135,7 @@ private struct UnauthorizedMessagingAPI: MessagingAPI {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
@@ -1891,7 +2193,7 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
         ]
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         startedRecipient = recipient
         return ConversationDetail(
             id: UUID(),
@@ -2212,7 +2514,7 @@ private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
 
     func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
     func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] { [] }
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
     func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
     func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }

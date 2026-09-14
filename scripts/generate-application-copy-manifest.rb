@@ -15,7 +15,17 @@ VISUAL = "visual interface copy"
 ACCESSIBILITY = "accessibility copy"
 LITERAL = /"(?:\\.|[^"\\])*"/
 
+JS_LITERAL = Regexp.union(LITERAL, /'(?:\\.|[^'\\])*'/)
+
 def literal_value(token)
+  # JavaScript source markers may use either quote style. Normalize only
+  # quoted literal syntax; never evaluate script or interpolate user data.
+  if token.start_with?("'")
+    inner = token[1...-1].gsub(/\\.|"/) do |part|
+      part == "\\'" ? "'" : part == '"' ? '\\"' : part
+    end
+    token = '"' + inner + '"'
+  end
   JSON.parse(token)
 rescue JSON::ParserError
   nil
@@ -337,7 +347,8 @@ end
 Dir.glob([
   ROOT.join("Domain/**/*.cs").to_s,
   ROOT.join("Infrastructure/**/*.cs").to_s,
-  ROOT.join("AgentPortal/Mobile/**/*.cs").to_s
+  ROOT.join("AgentPortal/Mobile/**/*.cs").to_s,
+  ROOT.join("AgentPortal/Services/**/*.cs").to_s
 ]).sort.each do |path|
   source = File.read(path)
   source.scan(/ApplicationCopyText\.Source\(\s*(#{LITERAL})/) do |token|
@@ -369,9 +380,16 @@ end
 # existing DOM presenter resolve it; user content is never extracted here.
 Dir.glob([ROOT.join("AgentPortal/wwwroot/js/**/*.js").to_s,
           ROOT.join("SHARED/wwwroot/js/**/*.js").to_s]).sort.each do |path|
-  File.read(path).scan(/\bapplicationCopy\(\s*(#{LITERAL})/) do |token|
+  File.read(path).scan(/\bapplicationCopy\(\s*(#{JS_LITERAL})/) do |token|
     add.call(literal_value(token[0]), VISUAL)
   end
+end
+
+# Browser calling reports source-form transport errors to the shared presenter.
+# Extract only its static error/warning literals, never SDP, ICE or participant data.
+calling_browser = File.read(ROOT.join("SHARED/wwwroot/js/legend-calling.js"))
+calling_browser.scan(/(?:(?:new Error|this\.warning\?\.)\(\s*(?:result\?\.error\s*\|\|\s*)?|error\?\.message\s*\|\|\s*)(#{JS_LITERAL})/).each do |token|
+  add.call(literal_value(token[0]), VISUAL)
 end
 
 JSON.parse(File.read(DESIGN)).fetch("copy", {}).each_value do |source|
@@ -386,7 +404,12 @@ end
 # Retain those identities in this same catalog; current source entries win.
 if MANIFEST.exist?
   JSON.parse(File.read(MANIFEST)).fetch("entries").each do |entry|
-    entries[[entry.fetch("source"), entry.fetch("context")]] ||= entry
+    key = [entry.fetch("source"), entry.fetch("context")]
+    entries[key] ||= entry
+    if entry["presetTranslations"]
+      entries[key]["presetTranslations"] = entry["presetTranslations"]
+      entries[key]["translationPolicy"] = "ApprovedOnly"
+    end
   end
 end
 
@@ -400,7 +423,7 @@ catalog_identity = ordered_entries.map do |entry|
     entry["placeholders"].join(","),
     entry["translationPolicy"],
     entry["reuseScope"]
-  ].join("\u001f")
+  ].join("\u001f") + (entry["presetTranslations"] ? "\u001f" + entry["presetTranslations"].sort.map { |language, text| "#{language}=#{text}" }.join("\u001e") : "")
 end.join("\n")
 catalog_version = "application-copy-v1-#{Digest::SHA256.hexdigest(catalog_identity)[0, 16]}"
 manifest = {

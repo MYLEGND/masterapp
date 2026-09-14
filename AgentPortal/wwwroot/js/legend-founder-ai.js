@@ -8,11 +8,10 @@
         return;
     }
 
-    const STORAGE_KEY = 'legendFounderAi.conversations.v1';
     const UI_STORAGE_KEY = 'legendFounderAi.ui.v2';
     const DESIGN_TOKEN_URL = '/design/legend-design.tokens.json';
-    const MAX_CONVERSATIONS = 30;
-    const MAX_MESSAGES = 30;
+    const HISTORY_URL = modalElement.dataset.historyUrl;
+    const HISTORY_REFRESH_MS = 20000;
     const MOBILE_QUERY = '(max-width: 820px)';
 
     const transcript = document.getElementById('legendFounderAiTranscript');
@@ -22,7 +21,7 @@
     const send = document.getElementById('legendFounderAiSend');
     const sendIcon = document.getElementById('legendFounderAiSendIcon');
     const newConversation = document.getElementById('legendFounderAiNew');
-    const clearHistory = document.getElementById('legendFounderAiClearHistory');
+    const retryRequest = document.getElementById('legendFounderAiRetry');
     const history = document.getElementById('legendFounderAiHistory');
     const historyEmpty = document.getElementById('legendFounderAiHistoryEmpty');
     const conversationCount = document.getElementById('legendFounderAiConversationCount');
@@ -34,6 +33,7 @@
     const nativeOnly = document.getElementById(
         'legendFounderAiNativeOnly'
     );
+    const externalAnsweringBlocked = document.getElementById('legendFounderAiExternalAnsweringBlocked');
     const sidebar = document.getElementById('legendFounderAiSidebar');
     const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
@@ -54,7 +54,12 @@
 
     let busy = false;
     let activeRequest = null;
-    let state = loadState();
+    let state = defaultState();
+    let historyRequest = null;
+    let historyTimer = null;
+    let historySkip = 0;
+    let historyHasMore = false;
+    let accountGeneration = 0;
     let uiState = loadUiState();
 
     ensureActiveConversation();
@@ -256,6 +261,7 @@
 
     modalElement.addEventListener('shown.bs.modal', () => {
         syncViewportHeight();
+        void refreshHistory().finally(scheduleHistoryRefresh);
 
         if (isMobile()) {
             input?.blur();
@@ -264,9 +270,17 @@
     });
 
     modalElement.addEventListener('hidden.bs.modal', () => {
+        stopHistoryRefresh();
         setSidebarOpen(false);
         input?.blur();
     });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopHistoryRefresh();
+        else void refreshHistory().finally(scheduleHistoryRefresh);
+    });
+    window.addEventListener('pagehide', clearAuthenticatedHistory);
+    window.addEventListener('pageshow', () => void refreshHistory().finally(scheduleHistoryRefresh));
 
     window.addEventListener('resize', () => {
         syncViewportHeight();
@@ -281,23 +295,13 @@
     );
 
     function createId() {
-        if (
-            window.crypto &&
-            typeof window.crypto.randomUUID === 'function'
-        ) {
-            return window.crypto.randomUUID();
-        }
-
-        return (
-            Date.now().toString(36) +
-            '-' +
-            Math.random().toString(36).slice(2)
-        );
+        return window.crypto.randomUUID();
     }
 
     function newConversationRecord(
         mode = 'legend',
-        nativeOnlyEnabled = false
+        nativeOnlyEnabled = false,
+        externalAnsweringBlockedEnabled = false
     ) {
         const now = new Date().toISOString();
 
@@ -307,6 +311,7 @@
             nativeOnly:
                 mode === 'legend' &&
                 nativeOnlyEnabled === true,
+            externalAnsweringBlocked: mode === 'legend' && externalAnsweringBlockedEnabled === true,
             title: 'New conversation',
             createdUtc: now,
             updatedUtc: now,
@@ -323,62 +328,129 @@
         };
     }
 
-    function loadState() {
+    // Only canonical server history supplies prior turns. The legacy unscoped
+    // localStorage transcript is deliberately neither read, imported nor deleted.
+    function sortConversations() {
+        state.conversations.sort((a, b) => (b.updatedUtc || '').localeCompare(a.updatedUtc || ''));
+    }
+
+    function stopHistoryRefresh() {
+        window.clearTimeout(historyTimer);
+        historyTimer = null;
+        historyRequest?.abort();
+        historyRequest = null;
+    }
+
+    function clearAuthenticatedHistory() {
+        accountGeneration++;
+        const request = activeRequest;
+        activeRequest = null;
+        request?.abort();
+        stopHistoryRefresh();
+        historySkip = 0;
+        historyHasMore = false;
+        state = defaultState();
+        setBusy(false);
+        if (input) input.value = '';
+        renderAll();
+    }
+
+    async function readHistory(url, signal) {
+        const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal });
+        if (response.status === 401 || response.status === 403 || response.redirected) {
+            clearAuthenticatedHistory();
+            throw new Error('Conversation history is unavailable for this account.');
+        }
+        const result = await response.json();
+        if (!response.ok || result.succeeded !== true) {
+            throw new Error(result.errorMessage || 'Conversation history could not be loaded.');
+        }
+        return result;
+    }
+
+    function storedMessage(item) {
+        if (!['Human', 'Assistant', 'Service'].includes(item.authorKind) ||
+            (item.authorKind !== 'Human' && !item.responseProvenance)) {
+            throw new Error('Conversation history could not be verified.');
+        }
+        return { ...item.responseProvenance, id: item.id, sentUtc: item.sentUtc,
+            role: item.authorKind === 'Human' ? 'user' : item.authorKind === 'Assistant' ? 'assistant' : 'service',
+            content: item.body, replyToMessageId: item.replyToMessageId };
+    }
+
+    async function loadConversationPage(conversation, signal, older = false, newer = false) {
+        if (!conversation.persisted) return;
+        const parameters = new URLSearchParams({ take: '60' });
+        if (older && conversation.messages.length) {
+            const first = conversation.messages[0];
+            // Keep the original UTC wire string: Date conversion loses SQL ticks.
+            parameters.set('beforeUtc', first.sentUtc);
+            parameters.set('beforeMessageId', first.id);
+        }
+        const result = await readHistory(`${HISTORY_URL}/${conversation.id}?${parameters}`, signal);
+        if (signal.aborted) return;
+        const detail = result.conversation;
+        const page = detail.messages.map(storedMessage);
+        const pageIds = new Set(page.map(item => item.id));
+        if (!older && !newer && conversation.messages.length && page.length &&
+            !conversation.messages.some(item => pageIds.has(item.id))) {
+            // Do not splice disconnected windows or strand their missing middle.
+            conversation.hasNewer = true;
+            return;
+        }
+        if (newer) conversation.messages = [];
+        if (!older) conversation.hasNewer = false;
+        conversation.messages = older ? [...page, ...conversation.messages.filter(item => !pageIds.has(item.id))]
+            : [...conversation.messages.filter(item => !pageIds.has(item.id)), ...page];
+        conversation.hasOlder = older || conversation.messages.length === page.length
+            ? detail.hasOlderMessages === true : conversation.hasOlder;
+        conversation.title = detail.subject || 'New conversation';
+        conversation.updatedUtc = detail.lastMessageUtc;
+        if (!older) conversation.lastMessageId = page.at(-1)?.id || null;
+        const pending = conversation.pendingOperation;
+        if (pending && page.some(item => item.id === pending.terminalId || (pending.userMessageId && item.replyToMessageId === pending.userMessageId))) conversation.pendingOperation = null;
+    }
+
+    async function refreshHistory({ more = false, older = false, newer = false } = {}) {
+        if (busy || historyRequest || document.hidden || !modalElement.classList.contains('show')) return;
+        const request = new AbortController();
+        historyRequest = request;
+        const active = activeConversation();
         try {
-            const raw =
-                window.localStorage.getItem(STORAGE_KEY);
-
-            if (!raw) {
-                return defaultState();
+            if (!older) {
+                const skip = more ? historySkip : 0;
+                const result = await readHistory(`${HISTORY_URL}?take=50&skip=${skip}`, request.signal);
+                if (request.signal.aborted) return;
+                for (const row of result.conversations) {
+                    let conversation = state.conversations.find(item => item.id === row.id);
+                    if (!conversation) {
+                        conversation = { ...newConversationRecord('legend', false, true), id: row.id,
+                            persisted: true, messages: [], lastMessageId: null };
+                        state.conversations.push(conversation);
+                    }
+                    conversation.persisted = true;
+                    conversation.title = row.subject || 'New conversation';
+                    conversation.updatedUtc = row.lastMessageUtc;
+                }
+                historySkip = more ? skip + result.conversations.length : Math.max(historySkip, result.conversations.length);
+                historyHasMore = result.conversations.length === 50;
             }
-
-            const parsed = JSON.parse(raw);
-
-            if (
-                !parsed ||
-                !Array.isArray(parsed.conversations)
-            ) {
-                return defaultState();
-            }
-
-            parsed.conversations =
-                parsed.conversations
-                    .filter(
-                        conversation =>
-                            conversation &&
-                            typeof conversation.id === 'string' &&
-                            Array.isArray(conversation.messages)
-                    )
-                    .slice(0, MAX_CONVERSATIONS);
-
-            if (parsed.conversations.length === 0) {
-                return defaultState();
-            }
-
-            return parsed;
-        } catch {
-            return defaultState();
+            await loadConversationPage(active, request.signal, older, newer);
+            if (!request.signal.aborted && state.activeConversationId === active.id) renderAll();
+        } catch (error) {
+            if (!request.signal.aborted && status) status.textContent = error.message;
+        } finally {
+            if (historyRequest === request) historyRequest = null;
         }
     }
 
-    function saveState() {
-        try {
-            state.conversations =
-                state.conversations
-                    .sort(
-                        (a, b) =>
-                            new Date(b.updatedUtc) -
-                            new Date(a.updatedUtc)
-                    )
-                    .slice(0, MAX_CONVERSATIONS);
-
-            window.localStorage.setItem(
-                STORAGE_KEY,
-                JSON.stringify(state)
-            );
-        } catch {
-            // Browser conversation persistence is optional.
-        }
+    function scheduleHistoryRefresh() {
+        window.clearTimeout(historyTimer);
+        if (document.hidden || !modalElement.classList.contains('show')) return;
+        historyTimer = window.setTimeout(async () => {
+            await refreshHistory();
+            scheduleHistoryRefresh();
+        }, HISTORY_REFRESH_MS);
     }
 
     function ensureActiveConversation() {
@@ -396,9 +468,11 @@
         const conversation = newConversationRecord();
 
         state.conversations.unshift(conversation);
+        stopHistoryRefresh();
         state.activeConversationId = conversation.id;
+        scheduleHistoryRefresh();
 
-        saveState();
+        sortConversations();
 
         return conversation;
     }
@@ -441,8 +515,10 @@
             false
         );
         state.conversations.unshift(conversation);
+        stopHistoryRefresh();
         state.activeConversationId = conversation.id;
-        saveState();
+        scheduleHistoryRefresh();
+        sortConversations();
         setSidebarOpen(false);
         renderAll({ forceBottom: true });
 
@@ -462,13 +538,16 @@
         const conversation =
             newConversationRecord(
                 current.mode,
-                current.nativeOnly === true
+                current.nativeOnly === true,
+                current.externalAnsweringBlocked === true
             );
 
         state.conversations.unshift(conversation);
+        stopHistoryRefresh();
         state.activeConversationId = conversation.id;
+        scheduleHistoryRefresh();
 
-        saveState();
+        sortConversations();
         setSidebarOpen(false);
         renderAll({ forceBottom: true });
 
@@ -493,34 +572,13 @@
             return;
         }
 
+        stopHistoryRefresh();
         state.activeConversationId = id;
+        void refreshHistory().finally(scheduleHistoryRefresh);
 
-        saveState();
+        sortConversations();
         setSidebarOpen(false);
         renderAll({ forceBottom: true });
-        focusComposer();
-    }
-
-    function clearAllHistory() {
-        if (busy) {
-            return;
-        }
-
-        state = defaultState();
-
-        try {
-            window.localStorage.removeItem(STORAGE_KEY);
-        } catch {
-        }
-
-        saveState();
-        setSidebarOpen(false);
-        renderAll({ forceBottom: true });
-
-        if (status) {
-            status.textContent = '';
-        }
-
         focusComposer();
     }
 
@@ -619,6 +677,11 @@
             );
         }
 
+        if (externalAnsweringBlocked) {
+            externalAnsweringBlocked.checked = conversation.externalAnsweringBlocked === true;
+            externalAnsweringBlocked.disabled = busy || conversation.mode !== 'legend' || conversation.nativeOnly === true;
+        }
+
         if (input) {
             input.placeholder =
                 conversation.mode === 'teacher'
@@ -685,6 +748,7 @@
             title.className =
                 'legend-founder-ai-history-title';
 
+            title.setAttribute('data-user-content', '');
             title.textContent =
                 conversation.title ||
                 'New conversation';
@@ -734,6 +798,14 @@
             );
 
             history.appendChild(button);
+        }
+        if (historyHasMore) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'legend-founder-ai-history-item';
+            more.textContent = 'Load more conversations';
+            more.addEventListener('click', () => void refreshHistory({ more: true }));
+            history.appendChild(more);
         }
     }
 
@@ -792,6 +864,23 @@
             activeConversation();
 
         transcript.replaceChildren();
+        if (conversation.hasNewer) {
+            const newer = document.createElement('button');
+            newer.type = 'button';
+            newer.className = 'btn btn-sm btn-outline-secondary';
+            newer.textContent = 'Load newer messages';
+            newer.addEventListener('click', () => void refreshHistory({ newer: true }));
+            transcript.appendChild(newer);
+        }
+        if (conversation.hasOlder) {
+            const older = document.createElement('button');
+            older.type = 'button';
+            older.className = 'btn btn-sm btn-outline-secondary';
+            older.textContent = 'Load earlier messages';
+            older.addEventListener('click', () => void refreshHistory({ older: true }));
+            transcript.appendChild(older);
+        }
+        if (retryRequest) retryRequest.hidden = busy || !conversation.pendingOperation;
 
         if (conversation.messages.length === 0) {
             if (welcome) {
@@ -806,7 +895,8 @@
                     message.content,
                     false,
                     message.responseAuthority,
-                    message.stage
+                    message.stage,
+                    message
                 );
             }
         }
@@ -823,7 +913,8 @@
         content,
         scroll = true,
         responseAuthority = null,
-        stage = null
+        stage = null,
+        metadata = null
     ) {
         if (!transcript) {
             return;
@@ -868,7 +959,13 @@
         bubble.className =
             'legend-founder-ai-bubble';
 
-        bubble.textContent = content;
+        // Conversation content already carries the server's response language.
+        // The app-copy catalog may translate the authority label, never user
+        // text or a completed/streamed model response that happens to match it.
+        const body = document.createElement('span');
+        if (role !== 'service') body.setAttribute('data-user-content', '');
+        body.textContent = content;
+        bubble.appendChild(body);
 
         if (role !== 'user') {
             const authority =
@@ -879,6 +976,8 @@
 
             const hasNamedAuthority =
                 responseAuthority === 'LegendAi' ||
+                responseAuthority === 'HostedFoundation' ||
+                responseAuthority === 'LocalFoundation' ||
                 responseAuthority === 'GovernedResearch' ||
                 responseAuthority === 'OpenAITeacher' ||
                 responseAuthority === 'SystemDiagnostic';
@@ -887,6 +986,12 @@
                 authority.classList.add('is-native');
                 authority.textContent =
                     'Legend® Ai';
+            } else if (responseAuthority === 'LocalFoundation') {
+                authority.classList.add('is-native');
+                authority.textContent = 'LEGEND-controlled model';
+            } else if (responseAuthority === 'HostedFoundation') {
+                authority.classList.add('is-provider');
+                authority.textContent = 'LEGEND · hosted foundation';
             } else if (
                 responseAuthority === 'GovernedResearch'
             ) {
@@ -908,6 +1013,43 @@
 
             if (hasNamedAuthority) {
                 bubble.appendChild(authority);
+            }
+        }
+
+        if (role !== 'user' && metadata) {
+            const labels = [];
+            if (metadata.reason === 'provider_output_incomplete') labels.push('Partial answer: output limit reached');
+            else if (metadata.stage === 'response_partial') labels.push('Partial answer');
+            const escalationLabels = {
+                Restricted: 'Teacher material restricted from training',
+                InsufficientEvidence: 'Teacher material lacks sufficient evidence'
+            };
+            if (Object.hasOwn(escalationLabels, metadata.escalationDisposition)) labels.push(escalationLabels[metadata.escalationDisposition]);
+            const researchLabels = {
+                Conclusion: 'Research completed',
+                InsufficientEvidence: 'Research found insufficient evidence',
+                UnresolvedConflict: 'Research found conflicting evidence',
+                Failure: 'Research could not be completed'
+            };
+            const learningLabels = {
+                Submitted: 'Teaching submitted for review',
+                AwaitingCritic: 'Teaching submitted for review',
+                InsufficientEvidence: 'Teaching needs more evidence'
+            };
+            if (Object.hasOwn(researchLabels, metadata.researchState)) labels.push(researchLabels[metadata.researchState]);
+            if (metadata.escalationUsed === true) labels.push('Escalation used');
+            if (Object.hasOwn(learningLabels, metadata.learningState)) labels.push(learningLabels[metadata.learningState]);
+            if (metadata.modelAssistanceState === 'Applied' && typeof metadata.modelTrainingRunId === 'string' && metadata.modelTrainingRunId.trim()) labels.push('Promoted model applied');
+            if (labels.length) {
+                const status = document.createElement('div');
+                status.className = 'legend-founder-ai-response-authority';
+                for (const [index, label] of labels.entries()) {
+                    if (index) status.appendChild(document.createTextNode(' · '));
+                    const part = document.createElement('span');
+                    part.textContent = label;
+                    status.appendChild(part);
+                }
+                bubble.appendChild(status);
             }
         }
 
@@ -961,8 +1103,9 @@
             newConversation.disabled = value;
         }
 
-        if (clearHistory) {
-            clearHistory.disabled = value;
+        if (retryRequest) {
+            retryRequest.disabled = value;
+            retryRequest.hidden = !activeConversation().pendingOperation || value;
         }
 
         for (const button of modeButtons) {
@@ -975,6 +1118,9 @@
                 activeConversation().mode !== 'legend';
         }
 
+        if (externalAnsweringBlocked) {
+            externalAnsweringBlocked.disabled = value || activeConversation().mode !== 'legend' || activeConversation().nativeOnly === true;
+        }
         if (status) {
             status.textContent = message;
         }
@@ -1004,25 +1150,12 @@
             return fallback || 'Legend® Ai could not complete that response.';
         }
 
-        const details = [
-            result.responseAuthority && `Authority=${result.responseAuthority}`,
-            result.stage && `Stage=${result.stage}`,
-            result.reason && `Reason=${result.reason}`,
-            result.failureKind && `FailureKind=${result.failureKind}`,
-            Number.isFinite(result.providerStatusCode) &&
-                `ProviderStatus=${result.providerStatusCode}`,
-            result.reference && `Reference=${result.reference}`,
-            result.resumable === true && 'Resumable=true'
-        ].filter(Boolean);
-
-        const summary =
-            typeof result.error === 'string' && result.error.trim()
-                ? result.error.trim()
-                : fallback || 'Legend® Ai could not complete that response.';
-
-        return details.length > 0
-            ? `${summary} (${details.join('; ')})`
-            : summary;
+        // Preserve the authoritative summary as one exact catalog source.
+        // Typed diagnostic fields remain on the response contract; app-copy
+        // localization cannot match a summary concatenated with raw codes.
+        return typeof result.error === 'string' && result.error.trim()
+            ? result.error.trim()
+            : fallback || 'Legend® Ai could not complete that response.';
     }
 
     async function consumeChatResultStream(response, signal) {
@@ -1030,7 +1163,8 @@
             const raw = await response.text().catch(() => '');
             let result = null;
             try { result = raw ? JSON.parse(raw) : null; } catch { }
-            throw new Error(structuredFailureMessage(result, raw));
+            if (result && typeof result.succeeded === 'boolean') return result;
+            throw new Error(structuredFailureMessage(result));
         }
 
         const reader = response.body.getReader();
@@ -1039,6 +1173,7 @@
         let result = null;
 
         const consumeLine = line => {
+            if (signal?.aborted) return;
             const trimmed = line.trim();
             if (!trimmed) return;
 
@@ -1066,6 +1201,7 @@
         try {
             while (!signal?.aborted) {
                 const chunk = await reader.read();
+                if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
                 buffer += decoder.decode(
                     chunk.value || new Uint8Array(),
                     { stream: !chunk.done });
@@ -1086,10 +1222,6 @@
         if (!result) {
             throw new Error(
                 'Legend® Ai ended the response stream before returning a structured result.');
-        }
-
-        if (result.succeeded !== true) {
-            throw new Error(structuredFailureMessage(result));
         }
 
         return result;
@@ -1158,10 +1290,10 @@
         startNewConversation
     );
 
-    clearHistory?.addEventListener(
-        'click',
-        clearAllHistory
-    );
+    retryRequest?.addEventListener('click', () => {
+        const conversation = activeConversation();
+        if (!busy && conversation.pendingOperation) void executeConversationRequest(conversation, conversation.pendingOperation);
+    });
 
     mobileMenu?.addEventListener(
         'click',
@@ -1193,6 +1325,21 @@
         );
     }
 
+    externalAnsweringBlocked?.addEventListener('change', () => {
+        const current = activeConversation();
+        if (busy || current.mode !== 'legend' || current.nativeOnly === true) {
+            renderModes();
+            return;
+        }
+        const conversation = newConversationRecord('legend', false, externalAnsweringBlocked.checked);
+        state.conversations.unshift(conversation);
+        stopHistoryRefresh();
+        state.activeConversationId = conversation.id;
+        scheduleHistoryRefresh();
+        sortConversations();
+        renderAll({ forceBottom: true });
+    });
+
     nativeOnly?.addEventListener(
         'change',
         () => {
@@ -1212,179 +1359,118 @@
             // direct LEGEND test context.
             const conversation = newConversationRecord(
                 'legend',
-                nativeOnly.checked
+                nativeOnly.checked,
+                current.externalAnsweringBlocked === true
             );
             state.conversations.unshift(conversation);
-            state.activeConversationId = conversation.id;
-            saveState();
+            stopHistoryRefresh();
+        state.activeConversationId = conversation.id;
+        scheduleHistoryRefresh();
+            sortConversations();
             setSidebarOpen(false);
             renderAll({ forceBottom: true });
 
             if (status) {
                 status.textContent = conversation.nativeOnly
-                    ? 'Native-only test enabled. OpenAI escalation is blocked for this clean conversation.'
-                    : 'Native-only test disabled. Normal governed escalation is available for this clean conversation.';
+                    ? 'All external providers are blocked for this clean conversation.'
+                    : 'Strict provider blocking is disabled for this clean conversation.';
             }
 
             focusComposer();
         }
     );
 
-    form?.addEventListener(
-        'submit',
-        async event => {
-            event.preventDefault();
-
-            if (!input) {
-                return;
-            }
-
-            if (busy) {
-                abortActiveRequest();
-                return;
-            }
-
-            const text =
-                input.value.trim();
-
-            if (!text) {
-                return;
-            }
-
-            const conversation =
-                activeConversation();
-
-            conversation.messages.push({
-                role: 'user',
-                content: text
+    async function executeConversationRequest(conversation, operation) {
+        if (busy) return;
+        const epoch = accountGeneration;
+        stopHistoryRefresh();
+        setBusy(true, 'Preparing a response…');
+        const request = new AbortController();
+        activeRequest = request;
+        try {
+            const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+            const response = await fetch(modalElement.dataset.chatUrl, {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson',
+                    'RequestVerificationToken': token, 'X-Requested-With': 'XMLHttpRequest',
+                    'X-Legend-Ai-Operation-Id': operation.id },
+                // Retry uses this same immutable operation and effective request.
+                body: operation.body, signal: request.signal
             });
-
-            if (
-                conversation.messages.length >
-                MAX_MESSAGES
-            ) {
-                conversation.messages.splice(
-                    0,
-                    conversation.messages.length -
-                    MAX_MESSAGES
-                );
+            if (response.status === 401 || response.status === 403 || response.redirected) {
+                clearAuthenticatedHistory();
+                return;
             }
-
-            conversation.updatedUtc =
-                new Date().toISOString();
-
-            updateConversationTitle(conversation);
-            saveState();
-
-            input.value = '';
-            resizeInput();
+            const result = await consumeChatResultStream(response, request.signal);
+            if (activeRequest !== request) return;
+            if (result.failureKind === 'authorization') { clearAuthenticatedHistory(); return; }
+            if (result.conversationId) {
+                conversation.id = result.conversationId;
+                if (result.userMessageId || result.messageId) conversation.persisted = true;
+            }
+            if (result.userMessageId) operation.userMessageId = result.userMessageId;
+            if (result.messageId) {
+                operation.terminalId = result.messageId;
+                conversation.lastMessageId = result.messageId;
+                conversation.updatedUtc = result.lastMessageUtc;
+                conversation.messages = conversation.messages.filter(item => item.id !== result.messageId);
+                conversation.messages.push({ ...result, id: result.messageId, sentUtc: result.lastMessageUtc,
+                    role: result.succeeded ? 'assistant' : 'service', content: result.message || result.error || '' });
+                conversation.pendingOperation = null;
+            } else if (['FOUNDER_HISTORY_STALE', 'FOUNDER_HISTORY_REPLAY_MISMATCH', 'FOUNDER_HISTORY_FORBIDDEN', 'FOUNDER_HISTORY_CLOSED'].includes(result.reason)) {
+                // A definite rejection is not an invitation to resubmit actions.
+                conversation.pendingOperation = null;
+            }
+            if (status) status.textContent = result.succeeded
+                ? (result.messageId ? '' : 'The response is missing its saved conversation receipt.')
+                : structuredFailureMessage(result);
             renderAll({ forceBottom: true });
-
-            setBusy(true, 'Preparing a response…');
-
-            const request = new AbortController();
-            activeRequest = request;
-
-            try {
-                const token =
-                    form.querySelector(
-                        'input[name="__RequestVerificationToken"]'
-                    )?.value || '';
-
-                const operationId = crypto.randomUUID();
-                const response =
-                    await fetch(
-                        modalElement.dataset.chatUrl,
-                        {
-                            method: 'POST',
-                            credentials: 'same-origin',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/x-ndjson',
-                                'RequestVerificationToken': token,
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'X-Legend-Ai-Operation-Id': operationId
-                            },
-                            body: JSON.stringify({
-                                mode: conversation.mode,
-                                nativeOnly:
-                                    conversation.nativeOnly === true,
-                                // The web composer has no authoritative
-                                // language selection. Null requires the
-                                // server-owned governed identifier to resolve
-                                // the prompt instead of inventing English.
-                                sourceLanguageCode: null,
-                                conversationId: conversation.id,
-                                founderCommandConfirmed:
-                                    founderCommandConfirmed?.checked === true,
-                                messages: conversation.messages
-                            }),
-                            signal: request.signal
-                        }
-                    );
-
-                const result = await consumeChatResultStream(
-                    response,
-                    request.signal
-                );
-
-                if (activeRequest !== request) {
-                    return;
-                }
-
-                conversation.messages.push({
-                    role: 'assistant',
-                    content:
-                        result.message,
-                    responseAuthority:
-                        result.responseAuthority ||
-                        'SystemDiagnostic',
-                    stage:
-                        result.stage ||
-                        'unclassified'
-                });
-
-                if (
-                    conversation.messages.length >
-                    MAX_MESSAGES
-                ) {
-                    conversation.messages.splice(
-                        0,
-                        conversation.messages.length -
-                        MAX_MESSAGES
-                    );
-                }
-
-                conversation.updatedUtc =
-                    new Date().toISOString();
-
-                saveState();
-                renderAll({ forceBottom: true });
-                focusComposer();
-            } catch (error) {
-                const stopped = request.signal.aborted;
-
-                if (activeRequest === request && status) {
-                    status.textContent = stopped
-                        ? 'Response stopped. Your draft is ready to send.'
-                        : error instanceof Error
-                            ? error.message
-                            : 'Legend® Ai could not complete that response.';
-                }
-
-                focusComposer();
-            } finally {
-                if (activeRequest === request) {
-                    activeRequest = null;
-                    setBusy(false, status?.textContent || '');
-                }
-
-                if (founderCommandConfirmed) {
-                    founderCommandConfirmed.checked = false;
-                }
+        } catch (error) {
+            if (activeRequest === request && status) status.textContent = request.signal.aborted
+                ? 'Response stopped. Check the saved outcome before sending again.'
+                : error.message || 'The response could not be received. Check the saved outcome.';
+        } finally {
+            if (epoch !== accountGeneration) return;
+            if (activeRequest === request) {
+                activeRequest = null;
+                setBusy(false, status?.textContent || '');
             }
+            if (founderCommandConfirmed) founderCommandConfirmed.checked = false;
+            await refreshHistory();
+            scheduleHistoryRefresh();
         }
-    );
+    }
+
+    form?.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (busy) { abortActiveRequest(); return; }
+        const text = input?.value.trim();
+        if (!text) return;
+        const conversation = activeConversation();
+        if (conversation.hasNewer) {
+            if (status) status.textContent = 'Load newer messages before sending a reply.';
+            return;
+        }
+        if (conversation.pendingOperation) {
+            if (status) status.textContent = 'Check the pending request before sending another message.';
+            return;
+        }
+        // Only the current Human turn is submitted. Prior Assistant content,
+        // permissions and canonical ordering are resolved by the server.
+        const operation = { id: crypto.randomUUID(), body: JSON.stringify({
+            mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
+            externalAnsweringBlocked: conversation.externalAnsweringBlocked === true,
+            sourceLanguageCode: null, conversationId: conversation.id,
+            expectedLastMessageId: conversation.lastMessageId || null,
+            founderCommandConfirmed: founderCommandConfirmed?.checked === true,
+            messages: [{ role: 'user', content: text }]
+        }) };
+        conversation.pendingOperation = operation;
+        input.value = '';
+        resizeInput();
+        await executeConversationRequest(conversation, operation);
+        focusComposer();
+    });
 
     send?.addEventListener(
         'click',

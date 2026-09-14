@@ -53,7 +53,7 @@ public sealed class LegendConnectTrainingDatasetGroupSplitTests
         AddIndependentFamilies(db, 10, "leakage-independent");
         await db.SaveChangesAsync();
 
-        var manifest = await new LegendConnectTrainingDatasetCompiler(db)
+        var manifest = await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
             .CompileAsync();
         var all = manifest.Training.Concat(manifest.HeldOut).ToArray();
 
@@ -81,7 +81,7 @@ public sealed class LegendConnectTrainingDatasetGroupSplitTests
         SeedRuntimePolicy(db);
         AddIndependentFamilies(db, 12, "deterministic");
         await db.SaveChangesAsync();
-        var compiler = new LegendConnectTrainingDatasetCompiler(db);
+        var compiler = new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
 
         var first = await compiler.CompileAsync();
         var second = await compiler.CompileAsync();
@@ -109,7 +109,7 @@ public sealed class LegendConnectTrainingDatasetGroupSplitTests
         }
         await db.SaveChangesAsync();
 
-        var manifest = await new LegendConnectTrainingDatasetCompiler(db)
+        var manifest = await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
             .CompileAsync();
 
         Assert.Equal(3, manifest.Training.Count);
@@ -137,7 +137,7 @@ public sealed class LegendConnectTrainingDatasetGroupSplitTests
         AddIndependentFamilies(db, 8, "imbalanced-small");
         await db.SaveChangesAsync();
 
-        var manifest = await new LegendConnectTrainingDatasetCompiler(db)
+        var manifest = await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
             .CompileAsync();
 
         Assert.Equal(
@@ -193,7 +193,7 @@ public sealed class LegendConnectTrainingDatasetGroupSplitTests
         AddIndependentFamilies(db, 8, "duplicate-independent");
         await db.SaveChangesAsync();
 
-        var manifest = await new LegendConnectTrainingDatasetCompiler(db)
+        var manifest = await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
             .CompileAsync();
         var connected = manifest.Training
             .Concat(manifest.HeldOut)
@@ -214,7 +214,7 @@ public sealed class LegendConnectTrainingDatasetGroupSplitTests
         SeedRuntimePolicy(db);
         AddIndependentFamilies(db, 6, "historical-initial");
         await db.SaveChangesAsync();
-        var compiler = new LegendConnectTrainingDatasetCompiler(db);
+        var compiler = new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
         var historical = await compiler.CompileAsync();
         var historicalRows = PartitionRows(historical);
         var run = new LegendConnectModelTrainingRun

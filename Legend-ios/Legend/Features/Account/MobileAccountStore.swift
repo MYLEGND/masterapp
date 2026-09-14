@@ -541,8 +541,9 @@ final class MobileAccountStore: ObservableObject {
             isEmailVisible: profile.isEmailVisible,
             isPhoneVisible: profile.isPhoneVisible,
             preferredCommunicationLanguage: language))
-        if saved {
-            NotificationCenter.default.post(name: .legendPreferredLanguageDidChange, object: nil)
+        if saved, case .loaded(let savedProfile) = state {
+            NotificationCenter.default.post(name: .legendPreferredLanguageDidChange, object: nil,
+                userInfo: ["languageCode": savedProfile.translationAccess.preferredCommunicationLanguage ?? ""])
         }
         return saved
     }

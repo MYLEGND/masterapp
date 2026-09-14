@@ -1714,6 +1714,11 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
 internal interface ILegendConnectOperationalEventWriter
 {
+    Task<string> RecordEscalationDispositionAsync(
+        Guid correlationId,
+        bool answerProduced,
+        CancellationToken cancellationToken = default);
+
     Task TryRecordAsync(
         string category,
         string severity,
@@ -1743,6 +1748,56 @@ internal sealed class LegendConnectOperationalEventWriter : ILegendConnectOperat
     {
         _db = db;
         _logger = logger;
+    }
+
+    public async Task<string> RecordEscalationDispositionAsync(
+        Guid correlationId,
+        bool answerProduced,
+        CancellationToken cancellationToken = default)
+    {
+        if (correlationId == Guid.Empty)
+            throw new ArgumentException("An opaque escalation identity is required.", nameof(correlationId));
+
+        const string category = "ExternalEscalationLearning";
+        var existing = await _db.Set<LegendConnectOperationalEvent>()
+            .AsNoTracking().SingleOrDefaultAsync(item => item.Id == correlationId, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.Category != category)
+                throw new InvalidOperationException("Escalation identity is already used by another event.");
+            return existing.Status;
+        }
+
+        // The existing conversation authority does not grant retention of raw
+        // prompts or provider output. A provider answer also conveys no right
+        // to train an independent model. Preserve that disposition without
+        // admitting text to the corpus or laundering it as approved teaching.
+        var disposition = answerProduced ? "Restricted" : "InsufficientEvidence";
+        var entry = new LegendConnectOperationalEvent
+        {
+            Id = correlationId,
+            Category = category,
+            Severity = "Info",
+            Status = disposition,
+            CorrelationId = correlationId.ToString("N"),
+            ErrorCode = answerProduced
+                ? "external_teacher_training_rights_unverified"
+                : "external_teacher_no_usable_answer",
+            Summary = "provider=OpenAI;content_retained=false;training_eligible=false;canonical=false;privacy=metadata_only",
+            IsResolved = true,
+            OccurredUtc = DateTime.UtcNow
+        };
+        _db.Set<LegendConnectOperationalEvent>().Add(entry);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            _db.Entry(entry).State = EntityState.Detached;
+            throw;
+        }
+        return disposition;
     }
 
     public async Task TryRecordAsync(

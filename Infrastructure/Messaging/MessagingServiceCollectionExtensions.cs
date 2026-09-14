@@ -25,6 +25,7 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<IMessagingService>(provider => provider.GetRequiredService<MessagingService>());
         services.AddScoped<Shared.Calling.ILegendCallingAuthority>(provider =>
             provider.GetRequiredService<MessagingService>());
+        services.AddScoped<Shared.Messaging.IMessagingPresenceAuthority>(provider => provider.GetRequiredService<MessagingService>());
         services.AddHostedService<LegendCallPushDeliveryHostedService>();
         services.AddHostedService<LegendCallSignalDeliveryHostedService>();
         services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
@@ -58,23 +59,36 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<LegendConnectAutonomousLearningService>();
         services.AddScoped<LegendConnectTrainingDatasetCompiler>(provider =>
             new LegendConnectTrainingDatasetCompiler(
-                provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>()));
+                provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
+                provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<LegendConnectModelTrainingService>(provider =>
             new LegendConnectModelTrainingService(
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
                 provider.GetRequiredService<ILegendConnectModelTrainingBackend>(),
                 provider.GetRequiredService<IConfiguration>()));
-        services.AddScoped<ILegendConnectModelTrainingBackend, OpenAiLegendConnectModelTrainingBackend>();
-        services.AddScoped<ILegendConnectModelInferenceTransport, OpenAiLegendConnectModelInferenceTransport>();
+        services.AddScoped<ILegendConnectModelTrainingBackend>(provider =>
+            LegendConnectModelTrainingConfiguration.ResolveBackend(configuration) switch
+            {
+                "ControlledTransformers" or "ControlledMlx" => ActivatorUtilities.CreateInstance<ControlledLegendConnectModelTrainingBackend>(provider),
+                "LocalMlx" => throw new InvalidOperationException("Local MLX training is retired. Configure the authenticated LEGEND-controlled remote training backend."),
+                "OpenAI" => ActivatorUtilities.CreateInstance<OpenAiLegendConnectModelTrainingBackend>(provider),
+                _ => throw new InvalidOperationException("The configured training backend is unsupported.")
+            });
+        services.AddScoped<ILegendConnectModelInferenceTransport, LegendConnectModelInferenceTransport>();
         services.AddScoped<LegendConnectModelEvaluationService>(provider =>
             new LegendConnectModelEvaluationService(
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
                 provider.GetRequiredService<ILegendConnectModelEvaluationBackend>(),
                 provider.GetRequiredService<ILegendConnectActiveModelInference>(),
-                provider.GetRequiredService<IConfiguration>()));
-        services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
+                provider.GetRequiredService<IConfiguration>(),
+                provider.GetRequiredService<ILegendConnectModelInferenceTransport>(),
+                provider.GetRequiredService<ILegendConnectModelTrainingBackend>()));
+        services.AddScoped<ILegendConnectModelEvaluationBackend>(provider =>
+            LegendConnectModelTrainingConfiguration.IsControlled(LegendConnectModelTrainingConfiguration.ResolveBackend(configuration))
+                ? ActivatorUtilities.CreateInstance<LocalLegendConnectModelEvaluationBackend>(provider)
+                : ActivatorUtilities.CreateInstance<OpenAiLegendConnectModelEvaluationBackend>(provider));
         services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
         services.AddScoped<ILegendConnectResearchSearchTransport, LegendConnectConfiguredReadOnlySearchTransport>();
         services.AddScoped<ILegendConnectResearchPageRetriever, LegendConnectResearchPageRetriever>();
@@ -82,7 +96,8 @@ public static class MessagingServiceCollectionExtensions
             new LegendConnectModelPromotionService(
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
-                provider.GetRequiredService<IConfiguration>()));
+                provider.GetRequiredService<IConfiguration>(),
+                provider.GetRequiredService<ILegendConnectModelTrainingBackend>()));
         services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
         services.AddHttpClient("LegendModelTraining", client =>
@@ -92,6 +107,16 @@ public static class MessagingServiceCollectionExtensions
         services.AddHttpClient("LegendModelEvaluation", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddHttpClient("LegendLocalFoundation", client =>
+        {
+            // The inference transport owns the linked request deadline.
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            UseProxy = false
         });
         services.AddHttpClient("LegendLanguageTeacher", client =>
         {

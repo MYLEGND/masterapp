@@ -1399,6 +1399,8 @@ public sealed class LegendCurriculumManifestWorkItem
 /// </summary>
 public sealed class LegendHistoricalReevaluationWorkItem
 {
+    public const int MaximumErrorMessageLength = 500;
+
     public Guid Id { get; set; } = Guid.NewGuid();
     public int EvaluatorVersion { get; set; }
     public string Phase { get; set; } = string.Empty;

@@ -263,14 +263,18 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             }
 
             var countingFactory = new CountingHttpClientFactory();
+            var replyConfiguration = Configuration();
             var chat = new LegendFounderAiConversationService(
                 countingFactory,
-                Configuration(),
+                replyConfiguration,
                 new FounderLegendConnectService(operations, profiles),
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 discourse,
-                new LegendLanguageRegistry(db, Configuration()),
-                ControllerTestHelpers.BuildTranslationService());
+                new LegendLanguageRegistry(db, replyConfiguration),
+                ControllerTestHelpers.BuildTranslationService(),
+                languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db),
+                modelInference: new LegendConnectModelInferenceTransport(countingFactory, replyConfiguration,
+                    NullLogger<LegendConnectModelInferenceTransport>.Instance));
             var reply = await chat.ReplyAsync(
                 founder,
                 new LegendFounderAiChatRequest
@@ -282,22 +286,21 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                     Messages =
                     [
                         .. priorMessages,
-                        new LegendFounderAiChatMessage("user", currentRequest)
+                        new LegendFounderAiChatMessage("user", currentRequest + " Return only the selected option's name.")
                     ]
                 });
 
-            // A governed diagnostic is not a successfully answered correction.
-            Assert.Equal(hasGroundedCorrection, reply.Succeeded);
-            if (hasGroundedCorrection)
-            {
-                Assert.Equal("I understand the correction.", reply.Message);
-                Assert.Equal("LegendAi", reply.ResponseAuthority);
-            }
-            else
-            {
-                Assert.Equal("SystemDiagnostic", reply.ResponseAuthority);
-                Assert.NotEqual("I understand the correction.", reply.Message);
-            }
+            // Curriculum support still controls the independently inspected
+            // native proof above. General understanding of this correction
+            // must not require that curriculum function to have been admitted.
+            Assert.True(reply.Succeeded,
+                $"authority={reply.ResponseAuthority}; stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}");
+            Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+            Assert.Equal("foundation_response", reply.Stage);
+            Assert.False(reply.ExternalAnsweringUsed);
+            Assert.False(reply.EscalationUsed);
+            Assert.Null(reply.LearningState);
+            Assert.Equal("alpha", reply.Message?.Trim(), ignoreCase: true);
             Assert.Equal(0, countingFactory.CreateClientCalls);
         }
         finally
@@ -499,6 +502,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 ["AzureOpenAI:Endpoint"] = "https://legend.invalid",
                 ["AzureOpenAI:ApiKey"] = "test-key"
             })
+            .AddControlledFoundation()
             .Build();
 
     private static AgentProfile Profile(string actor, string prefix) => new()
@@ -722,6 +726,8 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
 
         public HttpClient CreateClient(string name)
         {
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             CreateClientCalls++;
             return new HttpClient(new NoNetworkHandler())
             {

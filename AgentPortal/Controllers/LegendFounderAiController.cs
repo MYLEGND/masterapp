@@ -31,15 +31,20 @@ public sealed class LegendFounderAiController : Controller
     public Task Progress(Guid operationId, CancellationToken cancellationToken) =>
         Transport.ProgressAsync(operationId, cancellationToken);
 
+    [HttpGet("founder/legend-ai/conversations")]
+    public Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0) =>
+        Transport.ListConversationsAsync(take, skip, cancellationToken);
+
+    [HttpGet("founder/legend-ai/conversations/{conversationId:guid}")]
+    public Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken,
+        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60) =>
+        Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken);
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-ai/chat")]
     public Task<IActionResult> Chat([FromBody] LegendFounderAiChatRequest request, CancellationToken cancellationToken) =>
         Transport.ChatAsync(request, cancellationToken);
-
-    internal static void RecordWorkObservation(
-        IDictionary<string, LegendFounderAiProgressEvent> observations,
-        LegendFounderAiProgressEvent update) => LegendFounderAiHttpTransport.RecordWorkObservation(observations, update);
 
     private static int MapStatus(LegendFounderAiChatResponse result) => LegendFounderAiHttpTransport.MapStatus(result);
 }

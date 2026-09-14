@@ -129,7 +129,7 @@ public interface ILegendConnectRuntimePolicyAuthority
     Task<LegendConnectProductionReadinessSnapshot> GetReadinessAsync(
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy) =>
-        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalAnswering
             ? Task.FromException<LegendConnectProductionReadinessSnapshot>(new InvalidOperationException(
                 "native_only_readiness_snapshot_policy_unavailable"))
             : GetReadinessAsync(cancellationToken);

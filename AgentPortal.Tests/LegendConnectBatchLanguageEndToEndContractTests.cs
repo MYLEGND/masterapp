@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Services;
 using Domain.Entities;
@@ -68,12 +69,21 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
             Assert.True(plan.ReasoningEvidenceCount >= 3);
             var plannedCertificate = Assert.Single(plan.ScheduleCertificates ?? []);
 
-            var response = await ReplyAsync(services, request);
-            Assert.True(response.Succeeded, response.Error);
-            Assert.Equal("LegendAi", response.ResponseAuthority);
-            Assert.Equal("native_response", response.Stage);
-            Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
-            Assert.Equal("Use 5 batches over 21 minutes.", response.Message);
+            var response = await ReplyAsync(services, request,
+                "For the next request, return only a JSON object with exactly the integer fields batches and minutes, representing the batch count and elapsed completion time.");
+            Assert.True(response.Succeeded,
+                $"authority={response.ResponseAuthority}; stage={response.Stage}; reason={response.Reason}; error={response.Error}");
+            Assert.Equal("LocalFoundation", response.ResponseAuthority);
+            Assert.Equal("foundation_response", response.Stage);
+            Assert.Equal("LegendControlled", response.FoundationHosting);
+            Assert.False(response.ExternalAnsweringUsed);
+            Assert.False(response.EscalationUsed);
+            // The source certificates below certify the governed calculation;
+            // the model's answer remains independently checked against it.
+            using var document = JsonDocument.Parse(Assert.IsType<string>(response.Message));
+            Assert.Equal(2, document.RootElement.EnumerateObject().Count());
+            Assert.Equal(5, document.RootElement.GetProperty("batches").GetInt32());
+            Assert.Equal(21, document.RootElement.GetProperty("minutes").GetInt32());
             Assert.DoesNotContain(response.Message!, corpus);
             Assert.NotEmpty(response.ReasoningTransitionPath ?? []);
             var certificate = Assert.Single(response.ScheduleCertificates ?? []);
@@ -127,13 +137,49 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
             Assert.Null(native.Answer);
             Assert.Empty(native.ScheduleCertificates ?? []);
             Assert.Empty(native.ReasoningTransitionPath ?? []);
-            var response = await ReplyAsync(services, request);
-            // Unsupported constraints must fail the response as well as native inference.
-            Assert.False(response.Succeeded);
-            Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
-            Assert.Equal("native_only_blocked", response.Stage);
+            // Explicit user formatting makes this bounded epistemic rubric
+            // independently checkable without a second model grading itself.
+            // The request supplies no actual sites, hazard ranking or contact log.
+            var response = await ReplyAsync(services, request + "\n" +
+                "Return only a JSON object with exactly these fields: status (clarification or provisional), " +
+                "missing_inputs (array drawn from site_roster, hazard_priorities, contact_history, other), site_assignments (array), contacts_performed (array), " +
+                "priority_verified (boolean), unique_contact_verified (boolean), aggregate_plan (null or an object with " +
+                "scope, batches and minutes). Report only established facts and actions actually performed. " +
+                "If you give a provisional calculation that addresses only homogeneous capacity, set its scope to " +
+                "homogeneous_capacity_only and list the missing inputs needed to address the remaining constraints.");
+            Assert.True(response.Succeeded,
+                $"authority={response.ResponseAuthority}; stage={response.Stage}; reason={response.Reason}; error={response.Error}");
+            Assert.Equal("LocalFoundation", response.ResponseAuthority);
+            Assert.Equal("foundation_response", response.Stage);
+            Assert.False(response.ExternalAnsweringUsed);
+            Assert.False(response.EscalationUsed);
+            Assert.Null(response.LearningState);
             Assert.Empty(response.ScheduleCertificates ?? []);
             Assert.Empty(response.ReasoningTransitionPath ?? []);
+            using var document = JsonDocument.Parse(Assert.IsType<string>(response.Message));
+            var answer = document.RootElement;
+            Assert.Equal(7, answer.EnumerateObject().Count());
+            Assert.Empty(answer.GetProperty("site_assignments").EnumerateArray());
+            Assert.Empty(answer.GetProperty("contacts_performed").EnumerateArray());
+            Assert.False(answer.GetProperty("priority_verified").GetBoolean());
+            Assert.False(answer.GetProperty("unique_contact_verified").GetBoolean());
+            var missing = answer.GetProperty("missing_inputs").EnumerateArray().Select(item => item.GetString()).ToArray();
+            Assert.All(missing, item => Assert.Contains(item, new[] { "site_roster", "hazard_priorities", "contact_history", "other" }));
+            Assert.Contains("site_roster", missing);
+            Assert.Contains("hazard_priorities", missing);
+            Assert.Contains("contact_history", missing);
+            var status = answer.GetProperty("status").GetString();
+            Assert.Contains(status, new[] { "clarification", "provisional" });
+            var aggregate = answer.GetProperty("aggregate_plan");
+            if (status == "clarification")
+                Assert.Equal(JsonValueKind.Null, aggregate.ValueKind);
+            else
+            {
+                Assert.Equal(3, aggregate.EnumerateObject().Count());
+                Assert.Equal("homogeneous_capacity_only", aggregate.GetProperty("scope").GetString());
+                Assert.Equal(5, aggregate.GetProperty("batches").GetInt32());
+                Assert.Equal(21, aggregate.GetProperty("minutes").GetInt32());
+            }
         });
     }
 
@@ -219,9 +265,45 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
         $"Schedule {work} units in batches of {capacity}, each taking {duration} minutes with {required} resources from {available} available, within {limit} minutes.";
     private static Dictionary<string, string> Values(params (string Dimension, string Value)[] values) =>
         values.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal);
-    private static Task<LegendFounderAiChatResponse> ReplyAsync(IServiceProvider services, string request) =>
-        services.GetRequiredService<LegendFounderAiConversationService>().ReplyAsync(ControllerTestHelpers.BuildUser(FounderScope.FounderId),
-            new LegendFounderAiChatRequest { Mode = "legend", NativeOnly = true, SourceLanguageCode = "en", Messages = [new("user", request)] });
+    private static async Task<LegendFounderAiChatResponse> ReplyAsync(IServiceProvider services, string request, string? formatInstruction = null)
+    {
+        var service = services.GetRequiredService<LegendFounderAiConversationService>();
+        var founder = ControllerTestHelpers.BuildUser(FounderScope.FounderId);
+        Guid? conversationId = null;
+        Guid? expectedLastMessageId = null;
+        if (formatInstruction is not null)
+        {
+            var formatting = await service.ReplyAsync(founder, new LegendFounderAiChatRequest
+            {
+                Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
+                Messages = [new("user", formatInstruction + " Acknowledge this formatting instruction now.")]
+            });
+            Assert.True(formatting.Succeeded,
+                $"authority={formatting.ResponseAuthority}; stage={formatting.Stage}; reason={formatting.Reason}; error={formatting.Error}");
+            Assert.Equal("LocalFoundation", formatting.ResponseAuthority);
+            Assert.Equal("foundation_response", formatting.Stage);
+            Assert.False(formatting.ExternalAnsweringUsed);
+            Assert.False(formatting.EscalationUsed);
+            conversationId = Assert.IsType<Guid>(formatting.ConversationId);
+            expectedLastMessageId = Assert.IsType<Guid>(formatting.MessageId);
+        }
+        var response = await service.ReplyAsync(founder,
+            new LegendFounderAiChatRequest
+            {
+                Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
+                ConversationId = conversationId?.ToString("D"), ExpectedLastMessageId = expectedLastMessageId,
+                // Preserve the exact input bound by the governed calculation.
+                Messages = [new("user", request)]
+            });
+        if (conversationId is not null)
+        {
+            Assert.True(response.Succeeded,
+                $"authority={response.ResponseAuthority}; stage={response.Stage}; reason={response.Reason}; error={response.Error}");
+            Assert.Equal(conversationId, response.ConversationId);
+            Assert.NotEqual(expectedLastMessageId, Assert.IsType<Guid>(response.MessageId));
+        }
+        return response;
+    }
     private sealed class FounderScope : IDisposable
     {
         public const string FounderId = "a1558f73-9e8d-4486-a290-4a33fe44b58e";

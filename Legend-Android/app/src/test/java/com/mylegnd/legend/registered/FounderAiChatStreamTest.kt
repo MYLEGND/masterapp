@@ -56,6 +56,30 @@ class FounderAiChatStreamTest {
         assertEquals("reasoning", result.stage)
     }
 
+    @Test fun nonSuccessHttpPreservesCanonicalUnknownReceipt() = runBlocking {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(409).message("Conflict")
+                .body("""{"succeeded":false,"mode":"legend","failureKind":"outcome_unknown","reason":"outcome_unknown","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc","userMessageId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","lastMessageUtc":"2026-09-13T10:00:00.1234567Z"}""".toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val result = FounderAiChatStream(client, "https://example.test").chat("Agent", "same-operation", request) {}
+        assertFalse(result.succeeded)
+        assertEquals("outcome_unknown", result.failureKind)
+        assertEquals("cccccccc-cccc-cccc-cccc-cccccccccccc", result.messageId)
+        assertEquals("2026-09-13T10:00:00.1234567Z", result.lastMessageUtc)
+    }
+
+    @Test fun authorizationHttpStatusCannotBeDemotedToAnOrdinaryTypedFailure() = runBlocking {
+        for (status in listOf(401, 403)) {
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("Unauthorized")
+                    .body("""{"succeeded":false,"mode":"legend","failureKind":"authorization"}""".toResponseBody("application/json".toMediaType())).build()
+            }.build()
+            val failure = runCatching { FounderAiChatStream(client, "https://example.test").chat("Agent", "same-operation", request) {} }.exceptionOrNull()
+            assertTrue(failure is LegendApiException)
+            assertEquals(status, (failure as LegendApiException).status)
+        }
+    }
+
     @Test fun samePostCarriesTypedRequestAndFinalResponse() = runBlocking {
         var calls = 0
         val authenticated = LegendApiClient.create("https://example.test", object : AccessTokenProvider {

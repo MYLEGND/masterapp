@@ -4230,9 +4230,19 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AiTurnMetadataJson")
+                        .HasMaxLength(1000000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AuthorKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("Human");
+
                     b.Property<string>("Body")
                         .IsRequired()
-                        .HasMaxLength(10000)
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ClientMessageId")
@@ -9414,6 +9424,32 @@ namespace Infrastructure.Migrations
                     b.ToTable("MessagingAuditEntries", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.MessagingConnectionLease", b =>
+                {
+                    b.Property<string>("ConnectionId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ParticipantType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("ConnectionId");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.HasIndex("ProfileId", "ParticipantType", "ExpiresUtc");
+
+                    b.ToTable("MessagingConnectionLeases", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.MetaSignalEvent", b =>
                 {
                     b.Property<long>("Id")
@@ -9744,6 +9780,20 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Bio")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("CallRingtoneId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("signature");
+
+                    b.Property<string>("CallWallpaperMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)")
+                        .HasDefaultValue("legend");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");

@@ -5,6 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Messaging;
+using Infrastructure.Data;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Xunit;
 
@@ -12,6 +15,100 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectModelTrainingTests
 {
+    [Fact]
+    public async Task RelationalUploadReleasesLeaseAndNextCycleImmediatelyCreatesOneJob()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        await SeedDatasetAsync(db);
+        var backend = new FakeBackend();
+        var service = Service(db, backend, enabled: true);
+
+        await service.ProcessOneAsync();
+        var uploaded = await db.Set<LegendConnectModelTrainingRun>().AsNoTracking().SingleAsync();
+        Assert.Equal("TrainingFileReady", uploaded.State);
+        Assert.Null(uploaded.LeaseExpiresUtc);
+        Assert.Null(uploaded.ExternalJobId);
+
+        // Same scoped service and tracked run reproduce the real worker path.
+        // No artificial clock jump, lease mutation, or tracker reset is used.
+        await service.ProcessOneAsync();
+        await using var observer = new MasterAppDbContext(options);
+        var created = await observer.Set<LegendConnectModelTrainingRun>().SingleAsync();
+        Assert.NotNull(created.ExternalJobId);
+        Assert.Null(created.LeaseExpiresUtc);
+        Assert.Equal(1, backend.UploadCalls);
+        Assert.Equal(1, backend.CreateCalls);
+        await service.ProcessOneAsync();
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(1, backend.PollCalls);
+    }
+
+    [Fact]
+    public async Task RelationalClaimExcludesAnotherWorkerUntilTrackedReleaseIsPersisted()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options;
+        await using var owner = new MasterAppDbContext(options);
+        await owner.Database.EnsureCreatedAsync();
+        var run = new LegendConnectModelTrainingRun { RunKey = "lease-regression", ScopeKey = "Global", Generation = 1,
+            DatasetIdentity = new string('a', 64), DatasetEvaluatorVersion = 1, TrainingProvider = "TestProvider", BaseModel = "test" };
+        owner.Add(run);
+        await owner.SaveChangesAsync();
+        await using var contender = new MasterAppDbContext(options);
+        var now = DateTime.UtcNow;
+        Assert.True(await LegendConnectModelLifecycleLease.TryClaimAsync(owner, run.Id, now, item => item.State == "PendingDataset", default));
+        Assert.Equal(now.AddMinutes(10), run.LeaseExpiresUtc);
+        Assert.False(await LegendConnectModelLifecycleLease.TryClaimAsync(contender, run.Id, now, item => item.State == "PendingDataset", default));
+        run.LeaseExpiresUtc = null;
+        await owner.SaveChangesAsync();
+        Assert.True(await LegendConnectModelLifecycleLease.TryClaimAsync(contender, run.Id, now, item => item.State == "PendingDataset", default));
+    }
+
+    [Fact]
+    public async Task LearningPauseStopsLifecycleAdvancementAndResumePollsTheSameJob()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedDatasetAsync(db);
+        var backend = new FakeBackend();
+        var training = Service(db, backend, enabled: true);
+        await training.ProcessOneAsync();
+        await training.ProcessOneAsync();
+        var run = Assert.Single(db.Set<LegendConnectModelTrainingRun>());
+        var job = run.ExternalJobId;
+        Assert.NotNull(job);
+        var state = run.State;
+        var polls = backend.PollCalls;
+        var services = new Moq.Mock<IServiceProvider>(Moq.MockBehavior.Strict);
+        await LegendConnectLearningHostedService.ProcessModelLifecycleCycleAsync(services.Object, false);
+        Assert.Equal(state, run.State);
+        Assert.Equal(job, run.ExternalJobId);
+        Assert.Equal(polls, backend.PollCalls);
+        services.VerifyNoOtherCalls();
+
+        var disabled = new ConfigurationBuilder().Build();
+        var compiler = new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
+        var evaluation = new LegendConnectModelEvaluationService(db, compiler,
+            new Moq.Mock<ILegendConnectModelEvaluationBackend>(Moq.MockBehavior.Strict).Object,
+            new Moq.Mock<ILegendConnectActiveModelInference>(Moq.MockBehavior.Strict).Object, disabled);
+        var promotion = new LegendConnectModelPromotionService(db, compiler, disabled);
+        services.Setup(x => x.GetService(typeof(LegendConnectModelTrainingService))).Returns(training);
+        services.Setup(x => x.GetService(typeof(LegendConnectModelEvaluationService))).Returns(evaluation);
+        services.Setup(x => x.GetService(typeof(LegendConnectModelPromotionService))).Returns(promotion);
+        await LegendConnectLearningHostedService.ProcessModelLifecycleCycleAsync(services.Object, true);
+        Assert.Equal(polls + 1, backend.PollCalls);
+        Assert.Equal(job, run.ExternalJobId);
+        Assert.Equal(1, backend.UploadCalls);
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal("NotStarted", run.EvaluationState);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+    }
+
     [Fact]
     public async Task DisabledTraining_DoesNotCreateRunOrCallBackend()
     {
@@ -550,7 +647,7 @@ public sealed class LegendConnectModelTrainingTests
 
         return new(
             db,
-            new LegendConnectTrainingDatasetCompiler(db),
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted),
             backend,
             configuration);
     }

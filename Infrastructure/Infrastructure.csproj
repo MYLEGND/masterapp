@@ -5,9 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ImportProjectExtensionProps>false</ImportProjectExtensionProps>
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/Infrastructure/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/Infrastructure/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/Infrastructure/</BaseOutputPath>
   </PropertyGroup>
 
   <ItemGroup>

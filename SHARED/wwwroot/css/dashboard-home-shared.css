@@ -4633,22 +4633,14 @@ header .legend-global-nav .container-fluid {
 
 .messaging-command-center-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: stretch;
+    flex-direction: column;
     gap: 1rem;
     padding: 1.1rem 1.35rem;
     border-bottom: 1px solid rgba(212, 170, 71, 0.28);
     background: rgba(5, 15, 36, 0.44);
 }
 
-.messaging-command-center-kicker {
-    margin: 0 0 0.16rem;
-    color: #f0d991;
-    font-size: 0.7rem;
-    font-weight: 900;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-}
 
 .messaging-command-center-header h2,
 .messaging-thread-header h3,
@@ -4660,12 +4652,6 @@ header .legend-global-nav .container-fluid {
     letter-spacing: -0.04em;
 }
 
-.messaging-command-center-title-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.62rem;
-}
 
 .messaging-recipient-scope {
     display: inline-flex;
@@ -4793,7 +4779,6 @@ header .legend-global-nav .container-fluid {
     text-decoration: underline;
 }
 
-.messaging-command-center-header-actions,
 .messaging-thread-actions,
 .messaging-send-actions,
 .messaging-thread-identity,
@@ -4805,12 +4790,22 @@ header .legend-global-nav .container-fluid {
     align-items: center;
 }
 
-.messaging-command-center-header-actions,
 .messaging-thread-actions,
 .messaging-send-actions,
 .messaging-attachments {
     gap: 0.55rem;
 }
+
+.messaging-command-center-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.messaging-command-center-header-actions > * { flex-shrink: 0; }
 
 .messaging-command-center-unread,
 .messaging-unread-count,
@@ -5823,9 +5818,11 @@ header .legend-global-nav .container-fluid {
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.65rem;
-    padding: 0.82rem 0.68rem;
-    border: 0;
-    border-bottom: 1px solid rgba(212, 170, 71, 0.15);
+    min-height: var(--messaging-card-min-height);
+    padding: var(--messaging-card-padding-y) var(--messaging-card-padding-x);
+    border: 1px solid rgba(212, 170, 71, 0.35);
+    border-radius: var(--messaging-card-radius);
+    margin-bottom: 0.5rem;
     background: transparent;
     color: var(--dash-text);
     text-align: left;
@@ -5835,7 +5832,6 @@ header .legend-global-nav .container-fluid {
 
 .messaging-conversation-item:hover,
 .messaging-conversation-item.is-active {
-    border-radius: 12px;
     background: rgba(212, 170, 71, 0.13);
     box-shadow: inset 3px 0 0 #e5bd55;
 }
@@ -5848,7 +5844,6 @@ header .legend-global-nav .container-fluid {
 .messaging-conversation-identity {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
     gap: 0.65rem;
 }
 
@@ -5878,6 +5873,11 @@ header .legend-global-nav .container-fluid {
     white-space: nowrap;
 }
 
+.messaging-presence { display: inline-flex; width: fit-content; align-items: center; border-radius: 999px; padding: 0.12rem 0.5rem; font-size: 0.72rem; font-weight: 600; line-height: 1.3; }
+.messaging-presence[hidden] { display: none; }
+.messaging-presence.is-online { color: var(--messaging-presence-online-text); background: var(--messaging-presence-online-fill); }
+.messaging-presence.is-offline { color: var(--messaging-presence-offline-text); background: var(--messaging-presence-offline-fill); }
+
 .messaging-conversation-draft {
     color: #9fc3ff;
     font-size: 0.67rem;
@@ -5896,6 +5896,24 @@ header .legend-global-nav .container-fluid {
     color: var(--dash-text-soft);
     font-size: 0.67rem;
     white-space: nowrap;
+}
+
+.messaging-conversation-avatar {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.messaging-conversation-avatar > .messaging-unread-count {
+    position: absolute;
+    left: 85.35533906%;
+    top: 14.64466094%;
+    transform: translate(-50%, -50%);
+    width: var(--messaging-unread-badge, 22px);
+    min-width: 0;
+    height: var(--messaging-unread-badge, 22px);
+    padding: 0;
+    border-radius: 50%;
 }
 
 .messaging-avatar {
@@ -5998,6 +6016,14 @@ header .legend-global-nav .container-fluid {
     white-space: nowrap;
 }
 
+/* Shared calling entry points select intent before the existing recipient list. */
+.messaging-call-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 10px; border: 1px solid var(--dash-gold); border-radius: 50%; background: var(--dash-royal-900); color: var(--dash-gold); cursor: pointer; }
+.messaging-call-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.messaging-call-button:focus-visible { outline: 2px solid var(--dash-gold); outline-offset: 3px; }
+.messaging-call-button:disabled { opacity: 0.5; cursor: default; }
+.messaging-call-selection { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 1rem; color: var(--dash-text); }
+.messaging-call-selection[hidden] { display: none; }
+
 .messaging-thread-actions {
     flex: 0 0 auto;
 }
@@ -6025,7 +6051,9 @@ header .legend-global-nav .container-fluid {
     min-height: 0;
     gap: 0.75rem;
     overflow-y: auto;
-    padding: 1rem 0.18rem 1rem 0;
+    padding: 1rem;
+    background: var(--messaging-surface);
+    border-radius: var(--messaging-bubble-radius);
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
@@ -6062,15 +6090,28 @@ header .legend-global-nav .container-fluid {
     font-weight: 800;
 }
 
+.messaging-message-row {
+    --messaging-actions-start: 0;
+    --messaging-actions-end: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    align-self: flex-start;
+    max-width: min(78%, 680px);
+    gap: var(--messaging-bubble-metadata-gap);
+}
+.messaging-message-row.has-reactions { min-width: min(calc(var(--messaging-reaction-width, 0px) + 2 * var(--messaging-bubble-padding-x)), 78%, 680px); }
+.messaging-message-row.has-reactions > .messaging-message { width: 100%; box-sizing: border-box; }
+.messaging-message-row.is-own { --messaging-actions-start: auto; --messaging-actions-end: 0; align-self: flex-end; align-items: flex-end; }
+
 .messaging-message {
     position: relative;
-    margin-top: 0.85rem;
-    align-self: flex-start;
+    margin-top: 0.35rem;
     width: fit-content;
-    max-width: min(78%, 680px);
-    padding: 0.72rem 0.82rem;
+    max-width: 100%;
+    padding: var(--messaging-bubble-padding-y) var(--messaging-bubble-padding-x);
     border: 1px solid transparent;
-    border-radius: 15px 15px 15px 4px;
+    border-radius: var(--messaging-bubble-radius);
     background: var(--messaging-incoming-background);
     color: var(--messaging-incoming-text);
 }
@@ -6084,28 +6125,25 @@ header .legend-global-nav .container-fluid {
 }
 .messaging-message-share.is-own { align-self: flex-end; }
 
-.messaging-message:not(.messaging-message-share) { margin-bottom: var(--messaging-reaction-reserve); }
+.messaging-message:not(.messaging-message-share) { margin-bottom: var(--messaging-reaction-reserve); padding-bottom: calc(var(--messaging-bubble-padding-y) + var(--messaging-reaction-inside)); }
 .messaging-message:not(.messaging-message-share).is-own {
     align-self: flex-end;
-    border-radius: 15px 15px 4px 15px;
     background: var(--messaging-outgoing-background);
     color: var(--messaging-outgoing-text);
 }
 
 .messaging-message-meta {
     justify-content: flex-start;
-    gap: 0.72rem;
-    margin-bottom: 0.38rem;
-    color: inherit;
-    font-size: 0.68rem;
+    gap: 0.4rem;
+    margin-bottom: 0.25rem;
+    color: var(--messaging-timestamp);
+    font-size: var(--messaging-bubble-timestamp-size);
+    font-weight: 400;
 }
 
 .messaging-message-meta time {
-    background: var(--messaging-surface);
-    border-radius: 999px;
-    padding: 0.08rem 0.3rem;
     color: var(--messaging-timestamp);
-    margin-left: auto;
+    white-space: nowrap;
 }
 
 .messaging-message-sender {
@@ -6135,9 +6173,10 @@ header .legend-global-nav .container-fluid {
     gap: 0.3rem;
     margin-top: 0.4rem;
 }
-.messaging-reactions { margin-top: 0; position: absolute; bottom: 0; right: var(--messaging-reaction-trailing); transform: translateY(var(--messaging-reaction-outside)); flex-wrap: wrap; justify-content: flex-end; max-width: 100%; gap: var(--messaging-reaction-gap); }
-.messaging-reactions .messaging-reaction { display: inline-flex; align-items: center; justify-content: center; min-height: var(--messaging-reaction-height); padding: 0 var(--messaging-reaction-padding); border: var(--messaging-reaction-border) solid color-mix(in srgb, var(--messaging-reaction-border-color) var(--messaging-reaction-border-opacity), transparent); border-radius: 999px; background: var(--messaging-reaction-other-fill); font-size: var(--messaging-reaction-emoji-size); }
-.messaging-reactions .messaging-reaction[aria-pressed="true"] { background: color-mix(in srgb, var(--messaging-reaction-own-fill) var(--messaging-reaction-own-opacity), transparent); }
+.messaging-reactions { margin-top: 0; position: absolute; bottom: 0; right: var(--messaging-reaction-trailing); transform: translateY(var(--messaging-reaction-offset)); flex-wrap: wrap; justify-content: flex-end; max-width: 100%; gap: var(--messaging-reaction-gap); }
+.messaging-reactions .messaging-reaction { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--messaging-reaction-touch-target); min-height: var(--messaging-reaction-touch-target); padding: 0 var(--messaging-reaction-padding); background: transparent; font-size: var(--messaging-reaction-emoji-size); isolation: isolate; }
+.messaging-reactions .messaging-reaction::before { content: ""; position: absolute; z-index: -1; height: var(--messaging-reaction-height); min-width: var(--messaging-reaction-height); inset-inline: var(--messaging-reaction-padding); border: var(--messaging-reaction-border) solid color-mix(in srgb, var(--messaging-reaction-border-color) var(--messaging-reaction-border-opacity), transparent); border-radius: 999px; background: var(--messaging-reaction-other-fill); }
+.messaging-reactions .messaging-reaction[aria-pressed="true"]::before { background: color-mix(in srgb, var(--messaging-reaction-own-fill) var(--messaging-reaction-own-opacity), var(--messaging-surface)); }
 .messaging-reaction-palette {
     flex-wrap: nowrap;
     max-width: 100%;
@@ -6167,7 +6206,16 @@ header .legend-global-nav .container-fluid {
 .messaging-emoji-option:disabled { cursor: wait; opacity: 0.55; }
 .messaging-emoji-status:empty { display: none; }
 .messaging-emoji-status { font-size: 0.85rem; }
-.messaging-message-actions summary { cursor: pointer; font-size: 0.75rem; }
+.messaging-message-actions { position: relative; }
+.messaging-message-actions summary { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; list-style: none; cursor: pointer; font-size: 1.2rem; line-height: 1; border-radius: 999px; }
+.messaging-message-actions summary::-webkit-details-marker { display: none; }
+.messaging-message-actions summary:focus-visible { outline: 2px solid var(--messaging-timestamp); outline-offset: 2px; }
+.messaging-message-actions[open] { z-index: 3; }
+.messaging-message-actions > .messaging-reaction-palette,
+.messaging-message-actions > .messaging-emoji-picker { position: absolute; bottom: 100%; inset-inline-start: var(--messaging-actions-start); inset-inline-end: var(--messaging-actions-end); width: min(20rem, calc(100vw - 3rem)); max-width: none; box-sizing: border-box; box-shadow: 0 4px 16px rgba(9, 18, 37, 0.15); }
+@media (pointer: coarse) {
+    .messaging-message-actions summary { min-width: 44px; min-height: 44px; }
+}
 .messaging-shared-content { display: grid; gap: 0.5rem; margin-top: 0.35rem; }
 .messaging-shared-author, .messaging-shared-open {
     justify-self: start; display: inline-flex; align-items: center;
@@ -6188,8 +6236,14 @@ header .legend-global-nav .container-fluid {
     opacity: 0.75;
 }
 
+.messaging-message-reply { display: grid; gap: 0.15rem; margin: 0 0 0.4rem; padding: 0.3rem 0.6rem; border-inline-start: 2px solid currentColor; font-size: 0.8em; opacity: 0.85; overflow-wrap: anywhere; }
+.messaging-translation-toggle { border: 0; border-radius: 4px; padding: 0.3rem 0; background: transparent; color: inherit; text-align: start; font: inherit; font-size: 0.8em; text-decoration: underline; cursor: pointer; }
+.messaging-translation-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
 .messaging-message-body {
     margin: 0;
+    font-size: var(--messaging-bubble-body-size);
+    line-height: 1.4;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
 }
@@ -6383,9 +6437,6 @@ header .legend-global-nav .container-fluid {
         font-size: 1.3rem;
     }
 
-    .messaging-command-center-title-row {
-        gap: 0.42rem;
-    }
 
     .messaging-recipient-scope-button {
         padding-inline: 0.48rem;
@@ -6956,3 +7007,21 @@ header .legend-global-nav .container-fluid {
         grid-column: 2;
     }
 }
+
+/* Browser calling shares the messaging shell's tokens and the native call authority. */
+.legend-browser-call { width: min(54rem, calc(100vw - 2rem)); height: min(46rem, calc(100dvh - 2rem)); padding: 0; border: 1px solid var(--dash-line-strong); border-radius: 1.5rem; color: var(--dash-text); background: var(--dash-royal-950); }
+.legend-browser-call::backdrop { background: rgb(4 10 28 / 78%); }
+.legend-browser-call-stage { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 100%; overflow: hidden; background: radial-gradient(ellipse at 80% 20%, var(--dash-gold-soft), transparent 65%), linear-gradient(145deg, var(--dash-royal-860), var(--dash-royal-950)); }
+.legend-browser-call-identity { position: relative; z-index: 1; text-align: center; padding: 2rem; text-shadow: 0 2px 8px var(--dash-royal-950); }
+.legend-browser-call-identity > p:first-child { color: var(--dash-gold); letter-spacing: .25em; font-weight: 700; }
+.legend-browser-call-stage > video { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+.legend-browser-call-stage > video[muted] { right: 1rem; top: 1rem; width: 22%; height: 22%; border-radius: .75rem; z-index: 2; }
+.legend-browser-call-controls { position: relative; z-index: 2; display: flex; flex-wrap: wrap; justify-content: center; gap: .75rem; padding: 1.5rem; background: var(--dash-royal-950); }
+
+.legend-browser-call-controls button { min-height: 44px; min-width: 44px; font-size: max(14px, .9rem); }
+.legend-browser-call-initials:not([hidden]) { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(64vw, 36vh, var(--legend-call-portrait, 36vh)); aspect-ratio: 1; display: grid; place-items: center; border: 1px solid var(--dash-gold); border-radius: 50%; background: var(--dash-royal-860); color: var(--dash-gold); font-size: 2.5rem; font-weight: 600; box-shadow: 0 0 0 1.2rem var(--dash-gold-soft); }
+.legend-browser-call-portrait { position: absolute; width: min(64vw, 36vh, var(--legend-call-portrait, 36vh)); aspect-ratio: 1; border-radius: 50%; object-fit: cover; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.legend-browser-call-portrait.is-wallpaper { transform: none; inset: 0; width: 100%; height: 100%; border-radius: 0; opacity: .55; }
+.legend-calling-preferences { max-width: min(32rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid var(--dash-line-strong); border-radius: 1rem; color: var(--dash-text); background: var(--dash-royal-950); }
+.legend-calling-preferences form { display: grid; gap: .75rem; }
+.legend-calling-preferences select { padding: .75rem; border-radius: .5rem; color: var(--dash-text); background: var(--dash-royal-860); }

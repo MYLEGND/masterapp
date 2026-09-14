@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using AgentPortal.Security;
 using Infrastructure.Messaging;
+using Domain.Messaging;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 
@@ -40,6 +41,27 @@ internal sealed class LegendFounderAiHttpTransport
     private HttpResponse Response => _context.Response;
     private HttpContext HttpContext => _context;
     private ClaimsPrincipal User => _context.User;
+
+    public async Task<IActionResult> ListConversationsAsync(int take, int skip, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _conversation.ListConversationsAsync(User, new(Take: take, Skip: skip, IncludeGroupImages: false), cancellationToken);
+            return new ObjectResult(result) { StatusCode = result.Succeeded ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden };
+        }
+        catch (ForbidResultException) { return new ForbidResult(); }
+    }
+
+    public async Task<IActionResult> GetConversationAsync(Guid conversationId, DateTime? beforeUtc, Guid? beforeMessageId, int take, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _conversation.GetConversationPageAsync(User, conversationId,
+                new(beforeUtc, take, IncludeGroupImage: false, BeforeMessageId: beforeMessageId), cancellationToken);
+            return new ObjectResult(result) { StatusCode = result.Succeeded ? StatusCodes.Status200OK : StatusCodes.Status404NotFound };
+        }
+        catch (ForbidResultException) { return new ForbidResult(); }
+    }
 
     public async Task ProgressAsync(Guid operationId, CancellationToken cancellationToken)
     {
@@ -92,7 +114,12 @@ internal sealed class LegendFounderAiHttpTransport
             : null;
         var transportTraceId = Activity.Current?.TraceId.ToString();
         var transportStarted = Stopwatch.GetTimestamp();
-        var operationId = ReadOperationId();
+        if (Request.Headers.ContainsKey(OperationHeader) && ReadOperationId() is null)
+            return new BadRequestObjectResult(LegendFounderAiChatResponse.ModeFailure(request.Mode ?? "invalid",
+                "The operation identity is invalid.", "validation", "request_identity", "invalid_operation_identity"));
+        if (LegendFounderAiConversationService.ValidateConfirmedRequestIdentity(request, ReadOperationId()) is { } identityFailure)
+            return new BadRequestObjectResult(identityFailure);
+        Guid? operationId = ReadOperationId() ?? Guid.NewGuid();
         Response.OnCompleted(() =>
         {
             // Server response completion is observable here; browser receipt
@@ -104,6 +131,10 @@ internal sealed class LegendFounderAiHttpTransport
                 Response.StatusCode);
             return Task.CompletedTask;
         });
+
+        // This local lease owns only progress fanout. Durable messaging receipts
+        // decide whether an operation may execute, including after a restart.
+        var ownsProgress = operationId is { } id && _progress.TryBeginExecution(User, id);
 
         // A long-running provider or governed inspection must not leave the
         // only response connection idle.  The production portal is served
@@ -118,6 +149,7 @@ internal sealed class LegendFounderAiHttpTransport
             await StreamChatAsync(
                 request,
                 operationId,
+                ownsProgress,
                 cancellationToken);
             return new EmptyResult();
         }
@@ -128,7 +160,7 @@ internal sealed class LegendFounderAiHttpTransport
                 request,
                 operationId,
                 cancellationToken,
-                operationId.HasValue
+                ownsProgress && operationId.HasValue
                     ? (update, token) => _progress.PublishAsync(User, operationId.Value, update, token)
                     : null);
 
@@ -145,14 +177,14 @@ internal sealed class LegendFounderAiHttpTransport
                     { StatusCode = StatusCodes.Status500InternalServerError };
             }
 
-            if (!result.Succeeded && (!legacyMobileJson || result.FailureKind == "authorization"))
+            if (!result.Succeeded && (!legacyMobileJson || result.FailureKind is "authorization" or "history_conflict" or "history_pending" or "history_unavailable" or "outcome_unknown"))
                 return new ObjectResult(result) { StatusCode = MapStatus(result) };
 
             return new OkObjectResult(result);
         }
         finally
         {
-            if (operationId.HasValue)
+            if (ownsProgress && operationId.HasValue)
                 _progress.Complete(User, operationId.Value);
         }
     }
@@ -160,6 +192,7 @@ internal sealed class LegendFounderAiHttpTransport
     private async Task StreamChatAsync(
         LegendFounderAiChatRequest request,
         Guid? operationId,
+        bool ownsProgress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -175,7 +208,6 @@ internal sealed class LegendFounderAiHttpTransport
         Task<LegendFounderAiChatResponse>? execution = null;
         using var writeGate = new SemaphoreSlim(1, 1);
         var started = Stopwatch.GetTimestamp();
-        var observations = new Dictionary<string, LegendFounderAiProgressEvent>(StringComparer.Ordinal);
 
         async ValueTask WriteFrameAsync(object value, CancellationToken token)
         {
@@ -194,8 +226,6 @@ internal sealed class LegendFounderAiHttpTransport
             LegendFounderAiProgressEvent update,
             CancellationToken token)
         {
-            RecordWorkObservation(observations, update);
-
             await WriteFrameAsync(
                 new { type = "progress", progress = update },
                 token);
@@ -208,6 +238,7 @@ internal sealed class LegendFounderAiHttpTransport
                 {
                     type = "accepted",
                     operationId,
+                    conversationId = string.IsNullOrEmpty(request.ConversationId) ? operationId?.ToString("D") : request.ConversationId,
                     responseAuthority = RequestedAuthority(request.Mode)
                 },
                 cancellationToken);
@@ -237,27 +268,6 @@ internal sealed class LegendFounderAiHttpTransport
             }
 
             var result = await execution;
-            var completedWork = observations
-                .Where(item => item.Value.Stage != "tool_unavailable")
-                .Select(item => item.Key)
-                .ToArray();
-            var remainingWork = observations
-                .Where(item => item.Value.Stage == "tool_unavailable")
-                .Select(item => item.Key)
-                .ToList();
-            if (!result.Succeeded)
-                remainingWork.Add(result.Stage ?? "unknown");
-
-            result = result with
-            {
-                OperationId = operationId?.ToString("D"),
-                CompletedWork = completedWork,
-                RemainingWork = remainingWork.Distinct(StringComparer.Ordinal).ToArray(),
-                // This transport repair keeps the original operation alive;
-                // it never claims a durable resume that does not exist.
-                Resumable = false
-            };
-
             await WriteFrameAsync(
                 new
                 {
@@ -283,23 +293,9 @@ internal sealed class LegendFounderAiHttpTransport
             streamCancellation.Cancel();
             if (execution is not null)
                 await execution;
-            if (operationId.HasValue)
+            if (ownsProgress && operationId.HasValue)
                 _progress.Complete(User, operationId.Value);
         }
-    }
-
-    internal static void RecordWorkObservation(
-        IDictionary<string, LegendFounderAiProgressEvent> observations,
-        LegendFounderAiProgressEvent update)
-    {
-        if (update.Stage is not ("native_response" or "tool_complete" or "tool_unavailable" or "response"))
-            return;
-        var identity = update.Tool is null
-            ? update.Stage
-            : update.ScopeIdentity ?? update.Tool;
-        // Latest evidence owns its effective scope. An unrelated successful
-        // read cannot remove this scope's failed observation.
-        observations[identity] = update;
     }
 
     private async Task<LegendFounderAiChatResponse> ExecuteAsync(
@@ -331,7 +327,8 @@ internal sealed class LegendFounderAiHttpTransport
                 User,
                 request,
                 cancellationToken,
-                progress);
+                progress,
+                operationId);
 
             executionOutcome = "completed";
             domainOutcome = result.Succeeded ? "succeeded" : "failed";
@@ -433,7 +430,8 @@ internal sealed class LegendFounderAiHttpTransport
         {
             "validation" => StatusCodes.Status400BadRequest,
             "authorization" => StatusCodes.Status403Forbidden,
-            "configuration" => StatusCodes.Status503ServiceUnavailable,
+            "configuration" or "history_unavailable" => StatusCodes.Status503ServiceUnavailable,
+            "history_conflict" or "history_pending" or "outcome_unknown" => StatusCodes.Status409Conflict,
             "language_identification" when result.Reason == "source_language_identification_unavailable" => StatusCodes.Status503ServiceUnavailable,
             "language_identification" => StatusCodes.Status422UnprocessableEntity,
             "timeout" => StatusCodes.Status504GatewayTimeout,

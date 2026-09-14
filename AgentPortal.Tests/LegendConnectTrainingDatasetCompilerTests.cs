@@ -55,7 +55,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         await db.SaveChangesAsync();
 
         var compiler =
-            new LegendConnectTrainingDatasetCompiler(db);
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
 
         var first = await compiler.CompileAsync();
         var second = await compiler.CompileAsync();
@@ -148,7 +148,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         await db.SaveChangesAsync();
 
         var manifest =
-            await new LegendConnectTrainingDatasetCompiler(db)
+            await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
                 .CompileAsync();
 
         Assert.Empty(manifest.Training);
@@ -219,7 +219,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         await db.SaveChangesAsync();
 
         var manifest =
-            await new LegendConnectTrainingDatasetCompiler(db)
+            await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
                 .CompileAsync();
 
         var example =
@@ -341,7 +341,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         await db.SaveChangesAsync();
 
         var manifest =
-            await new LegendConnectTrainingDatasetCompiler(db)
+            await new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted)
                 .CompileAsync();
         var all = manifest.Training
             .Concat(manifest.HeldOut)
@@ -414,7 +414,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         await db.SaveChangesAsync();
 
         var compiler =
-            new LegendConnectTrainingDatasetCompiler(db);
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
 
         var error =
             await Assert.ThrowsAsync<InvalidOperationException>(
@@ -444,7 +444,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         await db.SaveChangesAsync();
 
         var compiler =
-            new LegendConnectTrainingDatasetCompiler(db);
+            new LegendConnectTrainingDatasetCompiler(db, LegendModelTrainingTestConfiguration.Hosted);
 
         var error =
             await Assert.ThrowsAsync<InvalidOperationException>(

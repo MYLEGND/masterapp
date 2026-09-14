@@ -3,13 +3,13 @@ package com.mylegnd.legend.registered.feature.calling
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-@Serializable data class LegendCallCommand(val action: String, val deviceId: String, val callId: String? = null, val conversationId: String? = null, val video: Boolean = false, val signalKind: String? = null, val signalData: String? = null, val epoch: Int = 0)
+@Serializable data class LegendCallCommand(val action: String, val deviceId: String, val callId: String? = null, val conversationId: String? = null, val video: Boolean = false, val signalKind: String? = null, val signalData: String? = null, val epoch: Int = 0, val preferences: LegendCallPreferences? = null)
 @Serializable data class LegendCallPolicy(val stunUrls: List<String>, val wifiWidth: Int, val wifiHeight: Int, val wifiFps: Int, val cellularWidth: Int, val cellularHeight: Int, val cellularFps: Int, val videoBitrate: Int, val audioBitrate: Int, val ringSeconds: Int, val connectSeconds: Int, val recoveryAttempts: Int, val adaptation: LegendCallAdaptationPolicy? = null, val relay: LegendCallRelay? = null, val screenShare: LegendCallScreenSharePolicy? = null)
-@Serializable data class LegendCallSnapshot(val id: String, val conversationId: String, val callerUserId: String, val callerType: String, val calleeUserId: String, val calleeType: String, val callerDeviceId: String, val calleeDeviceId: String? = null, val callerName: String, val calleeName: String, val video: Boolean, val status: String, val createdUtc: String, val expiresUtc: String, val epoch: Int, val callerUserIds: List<String>? = null, val calleeUserIds: List<String>? = null, val receivedUtc: String? = null, val failureMessage: String? = null, val callerImagePath: String? = null) {
+@Serializable data class LegendCallSnapshot(val id: String, val conversationId: String, val callerUserId: String, val callerType: String, val calleeUserId: String, val calleeType: String, val callerDeviceId: String, val calleeDeviceId: String? = null, val callerName: String, val calleeName: String, val video: Boolean, val status: String, val createdUtc: String, val expiresUtc: String, val epoch: Int, val callerUserIds: List<String>? = null, val calleeUserIds: List<String>? = null, val receivedUtc: String? = null, val failureMessage: String? = null, val callerImagePath: String? = null, val calleeImagePath: String? = null, val callerWallpaperMode: String = "legend", val calleeWallpaperMode: String = "legend", val incomingRingtoneResource: String = "legend_incoming") {
     val terminal: Boolean get() = status in setOf("ended", "declined", "missed")
 }
 @Serializable data class LegendCallEvent(val call: LegendCallSnapshot, val signalKind: String? = null, val signalData: String? = null, val fromDeviceId: String? = null, val toDeviceId: String? = null)
-@Serializable data class LegendCallResult(val succeeded: Boolean, val error: String? = null, val call: LegendCallSnapshot? = null, val activeCalls: List<LegendCallSnapshot>? = null, val policy: LegendCallPolicy? = null)
+@Serializable data class LegendCallResult(val succeeded: Boolean, val error: String? = null, val call: LegendCallSnapshot? = null, val activeCalls: List<LegendCallSnapshot>? = null, val policy: LegendCallPolicy? = null, val preferences: LegendCallPreferences? = null, val ringtones: List<LegendCallPreferenceChoice>? = null, val wallpapers: List<LegendCallPreferenceChoice>? = null)
 
 @Serializable data class LegendCallAdaptationPolicy(val sampleSeconds: Int, val recoverySamples: Int, val lowBandwidth: Int, val highBandwidth: Int, val highLatencySeconds: Double, val lowWidth: Int, val lowHeight: Int, val lowFps: Int, val lowBitrate: Int, val mediumWidth: Int, val mediumHeight: Int, val mediumFps: Int, val mediumBitrate: Int, val audioPriority: Double)
 
@@ -64,3 +64,31 @@ internal fun LegendCallScreenSharePolicy.videoBudget(ceiling: Int, availableBand
 /** Presentation metadata cannot tear down healthy media when malformed or from a newer client. */
 internal fun Json.callMediaState(data: String): LegendCallMediaState? =
     runCatching { decodeFromString<LegendCallMediaState>(data) }.getOrNull()
+
+/** Presentation intent is never account or device authority. Backend accept revalidates again. */
+internal fun LegendCallSnapshot.canAnswerOnDevice(userId: String, participantType: String,
+    deviceId: String, now: java.time.Instant = java.time.Instant.now()): Boolean =
+    status == "ringing" && userId.isNotBlank() && deviceId.isNotBlank() &&
+        calleeType.equals(participantType, true) &&
+        (calleeUserIds ?: listOf(calleeUserId)).any { it.equals(userId, true) } &&
+        (calleeDeviceId == null || calleeDeviceId == deviceId) &&
+        runCatching { java.time.Instant.parse(expiresUtc).isAfter(now) }.getOrDefault(false)
+
+@Serializable data class LegendCallPreferences(val ringtoneId: String = "signature", val wallpaperMode: String = "legend")
+@Serializable data class LegendCallPreferenceChoice(val id: String, val label: String, val resource: String? = null)
+
+/** Permission results belong to one store, device and call, and are consumed once. */
+internal data class LegendCallPermissionScope(val ownerId: String, val deviceId: String, val callId: String)
+internal class LegendCallPermissionGate(private var pending: LegendCallPermissionScope? = null) {
+    fun pendingScope(): LegendCallPermissionScope? = pending
+    fun begin(scope: LegendCallPermissionScope): Boolean {
+        if (pending != null) return false
+        pending = scope
+        return true
+    }
+    fun consume(current: LegendCallPermissionScope?): LegendCallPermissionScope? {
+        val requested = pending
+        pending = null
+        return requested?.takeIf { it == current }
+    }
+}

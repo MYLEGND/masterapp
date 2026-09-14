@@ -209,6 +209,10 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 
         public HttpClient CreateClient(string name)
         {
+            // Only the configured controlled checkpoint uses real inference.
+            // External answering, research and Azure remain counted/refused.
+            if (name == "LegendLocalFoundation")
+                return LegendLocalFoundationTestConfiguration.CreateControlledClient();
             lock (_clients)
                 _clients.Add(name);
 
@@ -295,6 +299,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 // "model_inference_provider_unavailable" and is never reached,
                 // which would silently hide the promoted-model leak.
                 ["LegendConnect:ModelEvaluation:ApiKey"] = "test-model-key",
+                ["LegendConnect:ModelTraining:Backend"] = "OpenAI",
                 ["LegendConnect:ModelEvaluation:Endpoint"] =
                     "https://external.invalid/responses",
                 ["LegendConnect:ModelEvaluation:CodeSha"] =
@@ -306,6 +311,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                     "https://external.invalid/search",
                 ["LegendConnect:InternetResearch:SearchApiKey"] = "test-search-key"
             })
+            .AddControlledFoundation()
             .Build();
 
         var databaseName = Guid.NewGuid().ToString();
@@ -725,12 +731,10 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// The end-to-end model-state pair on a genuinely supported symbolic
     /// request.
     ///
-    /// Native-only must serve Legend's own symbolic answer, hold the promoted
-    /// model Dormant with the policy reason, and create neither the
-    /// LegendModelEvaluation client nor the conversation OpenAI client. The
-    /// provider-enabled control proves the same request really does reach the
-    /// model boundary exactly once and keeps Applied provider provenance, so
-    /// the native-only zeros are a decision, not an inert fixture.
+    /// Native-only retains the exact governed evidence and blocks the hosted
+    /// promoted model. ReplyAsync now requires the actual configured controlled
+    /// foundation to articulate it. This capability assertion intentionally
+    /// fails when remote compute is unconfigured; it has no scripted answer.
     /// </summary>
     [Fact]
     public async Task ReplyAsync_NativeOnly_AdmittedRequest_ServesSymbolicAnswerWithDormantModelAndNoExternalClient()
@@ -770,7 +774,9 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         // conclusion. A SystemDiagnostic, a wrong native authority, an empty
         // message or different text now fails this test.
         Assert.True(response.Succeeded, response.Error);
-        Assert.Equal("LegendAi", response.ResponseAuthority);
+        Assert.Equal("LocalFoundation", response.ResponseAuthority);
+        Assert.Equal("LegendControlled", response.FoundationHosting);
+        Assert.False(response.ExternalAnsweringUsed);
         Assert.Equal(SymbolicAnswer, response.Message);
 
         Assert.Equal(0, scope.External.CallsTo("LegendModelEvaluation"));
@@ -814,8 +820,8 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 
     /// <summary>
     /// The unresolved-request pair. Native-only must still create no
-    /// conversation OpenAI client; the provider-enabled control must reach the
-    /// provider and remain attributed to it, never to Legend.
+    /// conversation OpenAI client. The explicit Teacher control must reach
+    /// that optional boundary and remain attributed to it.
     /// </summary>
     [Fact]
     public async Task ReplyAsync_UnknownRequest_NativeOnlyMakesNoOpenAiCallAndProviderEnabledStaysAttributed()
@@ -855,12 +861,16 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             .Resolve<LegendFounderAiConversationService>()
             .ReplyAsync(
                 providerFounder,
-                NativeRequest(Unknown, nativeOnly: false));
+                new LegendFounderAiChatRequest
+                {
+                    Mode = "teacher", SourceLanguageCode = "en",
+                    Messages = [new LegendFounderAiChatMessage("user", Unknown)]
+                });
 
         Assert.NotNull(providerResponse);
         Assert.True(
             providerScope.External.CallsTo("OpenAI") > 0,
-            "Provider-enabled serving must reach the conversation provider; " +
+            "Explicit Teacher serving must reach the conversation provider; " +
             "otherwise the native-only zero above proves nothing.");
         Assert.Equal("OpenAITeacher", providerResponse.ResponseAuthority);
     }
@@ -870,6 +880,9 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     {
         using var founderEnvironment = new FounderEnvironmentScope(FounderId);
         await using var scope = BuildProductionEquivalentScope();
+        // This is the unavailable-compute failure contract, even when the
+        // separate real capability harness has a configured remote model.
+        scope.Resolve<IConfiguration>()["LegendConnect:Foundation:Enabled"] = "false";
         var founder = await SeedFounderAsync(scope.Db);
 
         var response = await scope.Resolve<LegendFounderAiConversationService>().ReplyAsync(
@@ -877,11 +890,13 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             NativeRequest("Please cite sources for the deepest ocean dive record.", nativeOnly: true));
 
         Assert.False(response.Succeeded);
-        Assert.Equal("native_only_research_blocked", response.Stage);
-        Assert.Equal("explicit_verification_requires_research", response.Reason);
+        Assert.Equal("local_foundation_unavailable", response.Stage);
+        Assert.Equal("local_foundation_not_configured", response.Reason);
         Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
         Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
-        Assert.Contains("blocked every internet operation", response.Message);
+        Assert.Equal("Unavailable", response.ResearchState);
+        Assert.False(response.ExternalAnsweringUsed);
+        Assert.False(response.EscalationUsed);
         AssertNoExternalProviderWasReached(scope.External, "blocked research cannot construct clients");
     }
 
@@ -963,7 +978,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     }
 
     /// <summary>
-    /// The provider-enabled control for the same end-to-end boundary. Without
+    /// The explicit Teacher control for the same end-to-end boundary. Without
     /// it, the zero counts above could mean the conversation path is simply
     /// inert in this fixture rather than closed by the policy.
     /// </summary>
@@ -979,7 +994,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             founder,
             new LegendFounderAiChatRequest
             {
-                Mode = "legend",
+                Mode = "teacher",
                 NativeOnly = false,
                 SourceLanguageCode = "en",
                 Messages =
@@ -993,7 +1008,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         Assert.NotNull(response);
         Assert.True(
             scope.External.SendAttempts > 0,
-            "Provider-enabled serving must still reach the conversation " +
+            "Explicit Teacher serving must still reach the conversation " +
             "provider; otherwise the native-only zero counts prove nothing.");
     }
 
@@ -1384,7 +1399,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         // observes real AzureTranslator client creation.
         Assert.False(allowed.Succeeded);
         Assert.Equal("AzureTranslator", allowed.Provider);
-        Assert.Equal("translation_capacity_unavailable", allowed.ErrorCode);
+        Assert.Equal("translation_capacity_configuration_unavailable", allowed.ErrorCode);
         Assert.NotEqual(
             "external_provider_forbidden_by_native_only_policy",
             allowed.ErrorCode);
@@ -1460,6 +1475,57 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         Assert.Equal(
             "search-result-1",
             allowedPages.ObservedSearchResultIdentity);
+    }
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 1)]
+    public async Task ResearchToolDispatch_PreservesRequestProviderPolicy(
+        bool nativeOnly,
+        int expectedTransportCalls)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        var search = new CountingResearchSearchTransport();
+        var pages = new CountingResearchPageRetriever();
+        await using var scope = BuildProductionEquivalentScope(
+            configureServices: services =>
+            {
+                services.RemoveAll<ILegendConnectResearchSearchTransport>();
+                services.RemoveAll<ILegendConnectResearchPageRetriever>();
+                services.AddSingleton<ILegendConnectResearchSearchTransport>(search);
+                services.AddSingleton<ILegendConnectResearchPageRetriever>(pages);
+            });
+        var founder = await SeedFounderAsync(scope.Db);
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                scope.Resolve<ILegendConnectOperations>(),
+                new AgentProfileAccessResolver(scope.Db)),
+            null);
+
+        var output = await authority.ExecuteAsync(
+            founder,
+            new FounderAiToolCall(
+                "research-policy-probe",
+                "legend_research_internet",
+                """{"question":"Verify the published environmental sampling methodology.","source_language":"en"}"""),
+            "legend",
+            CancellationToken.None,
+            nativeOnly
+                ? LegendConnectExternalProviderPolicy.NativeOnly
+                : LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.Equal(expectedTransportCalls, search.CallCount);
+        Assert.Equal(expectedTransportCalls, pages.CallCount);
+        if (nativeOnly)
+        {
+            Assert.Contains("native_only_external_research_forbidden", output);
+            AssertNoExternalProviderWasReached(scope.External,
+                "Tool dispatch must preserve native-only isolation,");
+        }
+        else
+        {
+            Assert.Contains("CountingSearchTransport", output);
+        }
     }
 
     private static LegendConnectResearchRequest ResearchRequest()

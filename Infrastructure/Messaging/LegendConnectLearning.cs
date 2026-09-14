@@ -1736,33 +1736,14 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                     .GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>()
                     .ReconcileLegacyAsync(25, stoppingToken);
                 var runtime = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
-                if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
+                var learningEnabled = (await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled;
+                if (learningEnabled)
                 {
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
                         .ProcessPendingAsync(25, stoppingToken);
                 }
 
-                // Phase 7 reuses this existing deployment-wide learning
-                // worker. The training service is configuration-gated and
-                // bounded to one durable lifecycle transition per tick.
-                await scope.ServiceProvider
-                    .GetRequiredService<LegendConnectModelTrainingService>()
-                    .ProcessOneAsync(stoppingToken);
-
-                // Phase 8 continues the same durable model lifecycle only
-                // after training has produced a challenger. Evaluation is
-                // separately configuration-gated and cannot promote a model.
-                await scope.ServiceProvider
-                    .GetRequiredService<LegendConnectModelEvaluationService>()
-                    .ProcessOneAsync(stoppingToken);
-
-                // Phase 9 is the sole authority that may move an evaluated
-                // challenger onto the existing pair ActiveModelVersion
-                // projection. It remains separately configuration-gated and
-                // does not participate in inference routing.
-                await scope.ServiceProvider
-                    .GetRequiredService<LegendConnectModelPromotionService>()
-                    .ProcessOneAsync(stoppingToken);
+                await ProcessModelLifecycleCycleAsync(scope.ServiceProvider, learningEnabled, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -1774,6 +1755,19 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
             }
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
+    }
+
+    // The runtime policy pauses advancement without cancelling or replacing an
+    // already accepted remote job. On resume the existing durable training
+    // authority reconciles that same job before evaluation and promotion.
+    internal static async Task ProcessModelLifecycleCycleAsync(
+        IServiceProvider services, bool learningEnabled, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!learningEnabled) return;
+        await services.GetRequiredService<LegendConnectModelTrainingService>().ProcessOneAsync(cancellationToken);
+        await services.GetRequiredService<LegendConnectModelEvaluationService>().ProcessOneAsync(cancellationToken);
+        await services.GetRequiredService<LegendConnectModelPromotionService>().ProcessOneAsync(cancellationToken);
     }
 
     /// <summary>
@@ -3253,16 +3247,17 @@ internal sealed class LegendConnectAutonomousLearningService
             return;
         }
 
-        var reservation = await _capacity.TryReserveAsync(
+        var capacityResult = await _capacity.TryReserveAsync(
             _provider.ProviderName,
             candidate.SourceText.Length,
             TranslationCapacityPurpose.Bootstrap,
             reservationReference: candidate.IdempotencyKey,
             cancellationToken: cancellationToken);
+        var reservation = capacityResult.Reservation;
         if (reservation is null)
         {
-            await DeferCandidateAsync(candidate, "translation_capacity_unavailable", cancellationToken);
-            await RecordAsync("CapacityReservation", "Warning", "Unavailable", pair.SourceLanguageCode, pair.PairKey, "translation_capacity_unavailable", "Autonomous acquisition deferred because live-reserved provider capacity was unavailable.", cancellationToken);
+            await DeferCandidateAsync(candidate, capacityResult.FailureCode ?? "translation_capacity_unavailable", cancellationToken);
+            await RecordAsync("CapacityReservation", "Warning", "Unavailable", pair.SourceLanguageCode, pair.PairKey, capacityResult.FailureCode ?? "translation_capacity_unavailable", "Autonomous acquisition deferred because live-reserved provider capacity was unavailable.", cancellationToken);
             return;
         }
 

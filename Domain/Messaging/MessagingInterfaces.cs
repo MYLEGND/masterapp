@@ -2,6 +2,23 @@ namespace Domain.Messaging;
 
 public interface IMessagingService
 {
+    Task<MessagingConversationListResult> ListFounderAiConversationsAsync(
+        MessagingActor actor, MessagingConversationListQuery query, CancellationToken cancellationToken = default) =>
+        Task.FromResult(MessagingConversationListResult.Failure("FOUNDER_HISTORY_UNAVAILABLE", ApplicationCopyText.Source("Conversation history is unavailable.")));
+
+    Task<MessagingConversationResult> GetFounderAiConversationPageAsync(
+        MessagingActor actor, Guid conversationId, MessagingConversationMessagePageQuery query,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(MessagingConversationResult.Failure("FOUNDER_HISTORY_UNAVAILABLE", ApplicationCopyText.Source("Conversation history is unavailable.")));
+
+    Task<MessagingFounderAiTurnResult> BeginFounderAiTurnAsync(
+        MessagingFounderAiBeginTurnCommand command, CancellationToken cancellationToken = default) =>
+        Task.FromResult(MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_UNAVAILABLE", ApplicationCopyText.Source("Conversation history is unavailable.")));
+
+    Task<MessagingMessageResult> CompleteFounderAiTurnAsync(
+        MessagingFounderAiCompleteTurnCommand command, CancellationToken cancellationToken = default) =>
+        Task.FromResult(MessagingMessageResult.Failure("FOUNDER_HISTORY_UNAVAILABLE", ApplicationCopyText.Source("Conversation history is unavailable.")));
+
     Task<MessagingReactionPreferences?> GetReactionPreferencesAsync(MessagingActor actor,
         CancellationToken cancellationToken = default);
     Task<MessagingOperationResult> SetReactionPreferencesAsync(MessagingActor actor, int preferredReactionSkinTone,

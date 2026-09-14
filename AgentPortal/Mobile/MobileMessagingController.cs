@@ -268,7 +268,8 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 request?.TargetUserId ?? string.Empty,
                 request?.TargetParticipantType ?? string.Empty,
-                InitialMessageBody: request?.InitialMessageBody, SharedPostId: request?.SharedPostId),
+                InitialMessageBody: request?.InitialMessageBody, SharedPostId: request?.SharedPostId,
+                IncludeMessages: request?.IncludeMessages ?? true),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -1134,7 +1135,7 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
                 message.Translation.OriginalLanguage,
                 message.Translation.TargetLanguage,
                 message.Translation.Provider),
-        message.OriginalBody) { Reactions = message.Reactions, SharedContent = message.SharedContent };
+        message.OriginalBody) { Reactions = message.Reactions, SharedContent = message.SharedContent, TranslationNotice = message.TranslationNotice };
 
     private static MobileAvatarDto? AvatarFor(
         MessagingParticipantSummary participant,
@@ -1211,6 +1212,8 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
 
     private IActionResult MessagingFailure(string? errorCode, string? errorMessage)
     {
+        if (errorCode == MessagingTranslationPresentation.UnavailableCode)
+            return Error(StatusCodes.Status503ServiceUnavailable, errorCode, errorMessage ?? MessagingTranslationPresentation.UnavailableMessage);
         var statusCode = string.Equals(errorCode, "MESSAGING_CONVERSATION_NOT_FOUND", StringComparison.Ordinal)
             ? StatusCodes.Status404NotFound
             : StatusCodes.Status403Forbidden;
@@ -1331,6 +1334,7 @@ public sealed record MobileMessageDto(
     MobileMessageTranslationDto? Translation = null,
     string? OriginalBody = null)
 {
+    public string? TranslationNotice { get; init; }
     public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
     public MessagingSharedContent? SharedContent { get; init; }
 }
@@ -1381,7 +1385,8 @@ public sealed record MobileStartConversationRequest(
     string? TargetUserId,
     string? TargetParticipantType,
     string? InitialMessageBody,
-    Guid? SharedPostId = null);
+    Guid? SharedPostId = null,
+    bool IncludeMessages = true);
 
 public sealed record MobileCreateGroupRequest(
     string? Subject,

@@ -409,6 +409,36 @@ public sealed class LegendConnectResearchTransportSecurityTests
                 1)));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SearchAdapter_RestrictedAnsweringCreatesZeroClientsAndNoExecutedQueryReceipts(bool strictNativeOnly)
+    {
+        var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendConnect:InternetResearch:ApiKey"] = "configured-but-must-not-be-used",
+            ["LegendConnect:InternetResearch:Model"] = "test-search-model"
+        }).Build();
+        var transport = new LegendConnectConfiguredReadOnlySearchTransport(clients.Object, configuration,
+            NullLogger<LegendConnectConfiguredReadOnlySearchTransport>.Instance);
+        var query = new LegendConnectBoundedSearchQuery("public-query", 1,
+            "Verify the current public release date.", "en", 1, "en");
+        var result = await transport.SearchAsync(new LegendConnectResearchSearchTransportRequest(
+            Guid.NewGuid(), "en", [query], 1, 1,
+            ProviderPolicy: strictNativeOnly ? LegendConnectExternalProviderPolicy.NativeOnly
+                : LegendConnectExternalProviderPolicy.IndependentAnswering));
+        Assert.False(result.Succeeded);
+        Assert.Equal("internet_research_external_generation_forbidden", result.FailureReason);
+        Assert.Empty(result.ExecutedQueries);
+        Assert.Empty(result.QueryReceipts);
+        Assert.Empty(result.SearchResults);
+        Assert.Empty(result.Sources);
+        Assert.Empty(result.ClaimCandidates);
+        Assert.Null(result.CostMicrounits);
+        clients.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task SearchAdapter_SendsOnlyBoundedPublicQueriesAndNoInternalContext()
     {

@@ -379,14 +379,22 @@ internal sealed partial class MessagingService : IMessagingService
                     latestMessages.Select(ToPreviewMessageSummary).ToArray(),
                     latestMessages.Select(ToPreviewMessageDetailRow).ToArray(),
                     cancellationToken);
-                var previewsByMessageId = translated.ToDictionary(message => message.Id, message => message.Body);
+                var previewsByMessageId = translated.ToDictionary(message => message.Id, message =>
+                    message.TranslationNotice is null ? message.Body : message.TranslationNotice + "\n\n" + message.Body);
 
+                var pendingNotice = translated.Count < latestMessages.Length
+                    ? await LocalizeApplicationCopyAsync(actor, MessagingTranslationPresentation.UnavailableMessage, null, cancellationToken)
+                    : null;
                 result = result.Select(conversation =>
                 {
-                    if (!latestMessagesByConversation.TryGetValue(conversation.Id, out var latest) ||
-                        !previewsByMessageId.TryGetValue(latest.Id, out var preview))
-                    {
+                    if (latestMessagesByConversation.TryGetValue(conversation.Id, out var unchanged) &&
+                        unchanged.VerificationReviewRequestId.HasValue)
                         return conversation;
+                    if (!latestMessagesByConversation.TryGetValue(conversation.Id, out var latest))
+                        return conversation;
+                    if (!previewsByMessageId.TryGetValue(latest.Id, out var preview))
+                    {
+                        return conversation with { LastMessagePreview = pendingNotice };
                     }
 
                     return conversation with { LastMessagePreview = Preview(preview) };
@@ -446,7 +454,8 @@ internal sealed partial class MessagingService : IMessagingService
         MessagingConversationMessagePageQuery? messagePage,
         CancellationToken cancellationToken,
         bool applyTranslation = true,
-        Guid? acknowledgedMessageId = null)
+        Guid? acknowledgedMessageId = null,
+        bool includeMessages = true)
     {
         using var timing = new ProjectionTiming(_logger, "conversation");
         actor = NormalizeActor(actor);
@@ -515,7 +524,7 @@ internal sealed partial class MessagingService : IMessagingService
             ? messagesQuery.Where(message => message.Id == acknowledgmentId)
             : messagesQuery;
         timing.Next("messages_query");
-        var newestMessages = await projectionMessages
+        var newestMessages = !includeMessages ? new List<MessageDetailRow>() : await projectionMessages
             .OrderByDescending(message => message.SentUtc)
             .ThenByDescending(message => message.Id)
             .Take(acknowledgedMessageId.HasValue ? 1 : take + 1)
@@ -546,7 +555,9 @@ internal sealed partial class MessagingService : IMessagingService
             .ToListAsync(cancellationToken);
         // The one-row lookahead determines history without a second query;
         // discard it before attachments, social cards or translation work.
-        var hasOlderMessages = !acknowledgedMessageId.HasValue && newestMessages.Count > take;
+        var hasOlderMessages = !includeMessages
+            ? await messagesQuery.AnyAsync(cancellationToken)
+            : !acknowledgedMessageId.HasValue && newestMessages.Count > take;
         // Reverse the database order: SQL Server GUID ordering differs from
         // .NET's comparer, so sorting ties again here would break the cursor.
         var messages = newestMessages.Take(take).Reverse().ToList();
@@ -633,9 +644,17 @@ internal sealed partial class MessagingService : IMessagingService
             messages.Where(message => message.SharedSocialPostId.HasValue)
                 .ToDictionary(message => message.Id, message => message.SharedSocialPostId!.Value),
             cancellationToken);
-        if (applyTranslation)
-            messageSummaries = await ApplyTranslationPresentationAsync(
-                actor, messageSummaries, messages, cancellationToken);
+        if (applyTranslation && includeMessages)
+        {
+            var presented = await ApplyTranslationPresentationAsync(actor, messageSummaries, messages, cancellationToken);
+            // Never return a successful partial page: its cursor could skip a
+            // withheld message permanently. Existing clients retain their last
+            // successful page and retry this unchanged boundary.
+            if (presented.Count != messageSummaries.Count)
+                return MessagingConversationResult.Failure(MessagingTranslationPresentation.UnavailableCode,
+                    await LocalizeApplicationCopyAsync(actor, MessagingTranslationPresentation.UnavailableMessage, null, cancellationToken));
+            messageSummaries = presented;
+        }
 
         timing.Next("capabilities");
         var isGroupOwner =
@@ -870,7 +889,7 @@ internal sealed partial class MessagingService : IMessagingService
                 conversationType,
                 requestedParticipantCount,
                 participants.Count);
-            return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId);
+            return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId, command.IncludeMessages);
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -994,7 +1013,7 @@ internal sealed partial class MessagingService : IMessagingService
                         concurrent.Id,
                         conversationType,
                         directConversationKey);
-                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId);
+                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken, command.SharedPostId, command.IncludeMessages);
                 }
             }
 
@@ -1007,7 +1026,8 @@ internal sealed partial class MessagingService : IMessagingService
             _notifications.NotifyCommittedMessages();
 
         return await GetConversationProjectionAsync(actor, conversation.Id, null, cancellationToken,
-            applyTranslation: false);
+            applyTranslation: false,
+            includeMessages: command.IncludeMessages || initialMessage is not null || command.SharedPostId.HasValue);
     }
 
     public async Task<MessagingConversationResult> CreateGroupAsync(
@@ -1248,20 +1268,28 @@ internal sealed partial class MessagingService : IMessagingService
             .OrderByDescending(notification => notification.OccurredUtc)
             .ThenByDescending(notification => notification.Id)
             .Take(Math.Clamp(take, 1, 100))
-            .Select(notification => new MessagingActivityNotification(
+            .Select(notification => new { Item = new MessagingActivityNotification(
                 notification.Id,
                 notification.Kind,
                 notification.Title,
                 notification.Detail,
                 notification.OccurredUtc,
-                notification.ControlledResourceRequestId))
+                notification.ControlledResourceRequestId), notification.SourceMessageId })
             .ToListAsync(cancellationToken);
 
-        return new MessagingActivityNotificationListResult(
-            true,
-            null,
-            null,
-            notifications);
+        var presentedNotifications = new List<MessagingActivityNotification>(notifications.Count);
+        foreach (var row in notifications)
+        {
+            if (row.SourceMessageId is null)
+            {
+                presentedNotifications.Add(row.Item);
+                continue;
+            }
+            var detail = await PrepareNotificationPresentationAsync(actor, row.Item.Id, cancellationToken);
+            if (detail is not null)
+                presentedNotifications.Add(row.Item with { Detail = detail });
+        }
+        return new MessagingActivityNotificationListResult(true, null, null, presentedNotifications);
     }
 
     public async Task<MessagingOperationResult> AddGroupParticipantAsync(
@@ -2653,7 +2681,10 @@ internal sealed partial class MessagingService : IMessagingService
                 .Distinct(StringComparer.Ordinal)
                 .ToArray()
             : await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        // Founder AI transcripts have a separate, stricter owner check within
+        // this same service. Generic messaging membership grants no access.
         var participantConversations = _db.MessageConversations.Where(conversation =>
+            conversation.Purpose != MessagingConversationPurposes.FounderAI &&
             conversation.Participants.Any(participant =>
                 participant.IsActive &&
                 actorUserIds.Contains(participant.UserId.ToLower()) &&
@@ -2843,7 +2874,8 @@ internal sealed partial class MessagingService : IMessagingService
         string? initialMessage,
         string? clientMessageId,
         CancellationToken cancellationToken,
-        Guid? sharedPostId = null)
+        Guid? sharedPostId = null,
+        bool includeMessages = true)
     {
         if (!string.IsNullOrWhiteSpace(initialMessage) || sharedPostId.HasValue)
         {
@@ -2859,7 +2891,10 @@ internal sealed partial class MessagingService : IMessagingService
                 applyTranslation: false, acknowledgedMessageId: sendResult.Message!.Id);
         }
 
-        return await GetConversationAsync(actor, conversationId, cancellationToken);
+        // Call setup needs authorized identity, not a translated history snapshot.
+        // Ordinary conversation opens retain the complete existing projection.
+        return await GetConversationProjectionAsync(actor, conversationId, null, cancellationToken,
+            includeMessages: includeMessages);
     }
 
     private async Task<bool> IsValidActorAsync(MessagingActor actor, CancellationToken cancellationToken)
@@ -4527,7 +4562,8 @@ internal sealed partial class MessagingService : IMessagingService
                     recipient, cancellationToken, resolvedSourceLanguage: sourceLanguage);
                 if (translated is null)
                     return null;
-                detail = translated.TranslatedText;
+                detail = translated.Notice is null ? translated.TranslatedText
+                    : translated.Notice + "\n\n" + translated.TranslatedText;
             }
         }
         notification.Detail = detail.Length > 1_000 ? detail[..1_000] : detail;
@@ -4586,7 +4622,11 @@ internal sealed partial class MessagingService : IMessagingService
                     pageCache: pageCache,
                     presentationCache: presentationCache,
                     normalizedLanguages: normalizedLanguages);
-                if (translation is not null)
+                if (translation is null)
+                    continue;
+                if (translation.Notice is not null)
+                    presentation = presentation with { TranslationNotice = translation.Notice };
+                else if (!string.Equals(translation.OriginalLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
                 {
                     presentation = presentation with
                     {
@@ -4600,7 +4640,7 @@ internal sealed partial class MessagingService : IMessagingService
                 }
             }
 
-            presented.Add(await ApplyReplyTranslationPresentationAsync(
+            var withReply = await ApplyReplyTranslationPresentationAsync(
                 presentation,
                 source,
                 actor,
@@ -4608,13 +4648,15 @@ internal sealed partial class MessagingService : IMessagingService
                 cancellationToken,
                 pageCache,
                 presentationCache,
-                normalizedLanguages));
+                normalizedLanguages);
+            if (withReply is not null)
+                presented.Add(withReply);
         }
 
         return presented;
     }
 
-    private async Task<MessagingMessageSummary> ApplyReplyTranslationPresentationAsync(
+    private async Task<MessagingMessageSummary?> ApplyReplyTranslationPresentationAsync(
         MessagingMessageSummary summary,
         MessageDetailRow? source,
         MessagingActor actor,
@@ -4646,8 +4688,8 @@ internal sealed partial class MessagingService : IMessagingService
             presentationCache: presentationCache,
             normalizedLanguages: normalizedLanguages);
         return translation is null
-            ? summary
-            : summary with { Reply = summary.Reply with { Body = translation.TranslatedText } };
+            ? null
+            : summary with { Reply = summary.Reply with { Body = translation.TranslatedText }, TranslationNotice = summary.TranslationNotice ?? translation.Notice };
     }
 
     private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationAsync(
@@ -4694,7 +4736,7 @@ internal sealed partial class MessagingService : IMessagingService
             return null;
 
         if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
-            return null;
+            return new CachedMessageTranslation(message.Body, sourceLanguage, "LegendConnectSameLanguage");
 
         var local = _db.MessageTranslations.Local
             .FirstOrDefault(translation =>
@@ -4751,6 +4793,16 @@ internal sealed partial class MessagingService : IMessagingService
         {
             _logger.LogWarning(ex, "Message translation provider failed. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
             return null;
+        }
+
+        // Exhausted user allowance is a deliverable original, never a successful
+        // translation/cache entry. ApprovedOnly application copy cannot invoke Azure.
+        if (!providerResult.Succeeded && providerResult.ErrorCode == "translation_quota_exhausted")
+        {
+            var notice = await LocalizeApplicationCopyAsync(billingAccount,
+                ApplicationCopyText.Source("Your translation character limit does not cover this text. Untranslated text is shown in its original language."),
+                null, cancellationToken);
+            return new CachedMessageTranslation(message.Body, sourceLanguage, "Original", notice);
         }
 
         if (!providerResult.Succeeded ||
@@ -5191,7 +5243,8 @@ internal sealed partial class MessagingService : IMessagingService
     private sealed record CachedMessageTranslation(
         string TranslatedText,
         string OriginalLanguage,
-        string Provider);
+        string Provider,
+        string? Notice = null);
 
     private sealed record MessageTranslationSource(
         Guid Id,

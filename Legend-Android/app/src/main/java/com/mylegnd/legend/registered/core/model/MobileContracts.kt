@@ -42,9 +42,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class FounderAiChatRequest(
     val mode: String,
     @SerialName("nativeOnly") val nativeOnly: Boolean,
+    @SerialName("externalAnsweringBlocked") val externalAnsweringBlocked: Boolean = false,
     @SerialName("sourceLanguageCode") val sourceLanguageCode: String? = null,
     val messages: List<FounderAiChatMessage>,
     @SerialName("conversationId") val conversationId: String,
+    val expectedLastMessageId: String? = null,
 )
 @Serializable data class FounderAiChatResponse(
     val succeeded: Boolean,
@@ -55,8 +57,44 @@ import kotlinx.serialization.Serializable
     @SerialName("providerStatusCode") val providerStatusCode: Int? = null,
     val reference: String? = null,
     @SerialName("responseAuthority") val responseAuthority: String? = null,
+    @SerialName("foundationModel") val foundationModel: String? = null,
+    @SerialName("foundationHosting") val foundationHosting: String? = null,
+    @SerialName("externalAnsweringUsed") val externalAnsweringUsed: Boolean? = null,
+    @SerialName("escalationUsed") val escalationUsed: Boolean? = null,
+    @SerialName("escalationDisposition") val escalationDisposition: String? = null,
+    @SerialName("researchState") val researchState: String? = null,
+    @SerialName("learningState") val learningState: String? = null,
+    @SerialName("modelAssistanceState") val modelAssistanceState: String? = null,
+    @SerialName("modelVersion") val modelVersion: String? = null,
+    @SerialName("modelTrainingRunId") val modelTrainingRunId: String? = null,
+    @SerialName("modelProvenance") val modelProvenance: String? = null,
     val stage: String? = null,
     val reason: String? = null,
+    val conversationId: String? = null,
+    val userMessageId: String? = null,
+    val messageId: String? = null,
+    val lastMessageUtc: String? = null,
+    val bodyIsError: Boolean = false,
+)
+// These existing messaging projections are returned directly by the shared
+// Founder transport, unlike the normalized ordinary mobile messaging DTOs.
+@Serializable data class FounderAiHistoryList(
+    val succeeded: Boolean, val errorMessage: String? = null,
+    val conversations: List<FounderAiHistoryThread> = emptyList(),
+)
+@Serializable data class FounderAiHistoryThread(
+    val id: String, val subject: String? = null, val lastMessageUtc: String? = null,
+)
+@Serializable data class FounderAiHistoryPage(
+    val succeeded: Boolean, val errorMessage: String? = null, val conversation: FounderAiHistoryConversation? = null,
+)
+@Serializable data class FounderAiHistoryConversation(
+    val id: String, val subject: String? = null, val lastMessageUtc: String? = null,
+    val messages: List<FounderAiHistoryMessage>, val hasOlderMessages: Boolean = false,
+)
+@Serializable data class FounderAiHistoryMessage(
+    val id: String, val body: String, val sentUtc: String, val authorKind: String,
+    val replyToMessageId: String? = null, val responseProvenance: FounderAiChatResponse? = null,
 )
 @Serializable data class FounderAiProgressEnvelope(
     val type: String,
@@ -105,7 +143,23 @@ import kotlinx.serialization.Serializable
     @SerialName("generatedUtc") val generatedUtc: String,
     @SerialName("isComplete") val isComplete: Boolean,
     val entries: List<ApplicationLocalizedCopy>,
+    val continuation: ApplicationLocalizationContinuation? = null,
 )
+
+@Serializable data class ApplicationLocalizationContinuation(
+    val disposition: String,
+    val remainingEntries: Int,
+    val retryAfterSeconds: Int? = null,
+    val maximumConsecutiveNoProgress: Int = 3,
+    val maximumDurationSeconds: Int = 180,
+    val maximumRequestsPerPass: Int = 64,
+    val cooldownSeconds: Int = 60,
+) {
+    fun isResumable(): Boolean = disposition in setOf("Pending", "RetryableFailure") &&
+        remainingEntries > 0 && retryAfterSeconds in 1..2_678_400 &&
+        maximumConsecutiveNoProgress in 1..10 && maximumDurationSeconds in 1..600 &&
+        maximumRequestsPerPass in 1..256 && cooldownSeconds in 15..900
+}
 
 @Serializable data class SelectRoleRequest(@SerialName("participantType") val participantType: String)
 @Serializable data class MobileReviewSignInRequest(val username: String, val password: String)
@@ -298,6 +352,7 @@ internal object FinancialPresentationOrder {
     @SerialName("verificationReview") val verificationReview: VerificationReview? = null,
     val translation: MessageTranslation? = null,
     @SerialName("originalBody") val originalBody: String? = null,
+    @SerialName("translationNotice") val translationNotice: String? = null,
     val reactions: List<MessageReaction> = emptyList(),
     val sharedContent: MessagingSharedContent? = null,
 )
@@ -306,7 +361,7 @@ internal object FinancialPresentationOrder {
 @Serializable data class MessageAttachment(val id: String, @SerialName("originalFileName") val originalFileName: String, @SerialName("contentType") val contentType: String, @SerialName("sizeBytes") val sizeBytes: Long, @SerialName("scanStatus") val scanStatus: String, @SerialName("createdUtc") val createdUtc: String, @SerialName("canDownload") val canDownload: Boolean)
 @Serializable data class MessageTranslation(@SerialName("originalLanguage") val originalLanguage: String, @SerialName("targetLanguage") val targetLanguage: String, val provider: String)
 @Serializable data class SendMessageRequest(val body: String, @SerialName("replyToMessageId") val replyToMessageId: String? = null, @SerialName("clientMessageId") val clientMessageId: String, @SerialName("sharedPostId") val sharedPostId: String? = null)
-@Serializable data class StartConversationRequest(@SerialName("targetUserId") val targetUserId: String, @SerialName("targetParticipantType") val targetParticipantType: String, @SerialName("initialMessageBody") val initialMessageBody: String? = null)
+@Serializable data class StartConversationRequest(@SerialName("targetUserId") val targetUserId: String, @SerialName("targetParticipantType") val targetParticipantType: String, @SerialName("initialMessageBody") val initialMessageBody: String? = null, @SerialName("includeMessages") val includeMessages: Boolean = true)
 @Serializable data class MessagingGroupParticipantRequest(@SerialName("userId") val userId: String, @SerialName("participantType") val participantType: String)
 @Serializable data class MessagingGroupImageRequest(@SerialName("contentType") val contentType: String, @SerialName("base64Content") val base64Content: String)
 @Serializable data class MessagingGroupMeetingRequest(val host: MessagingGroupParticipantRequest? = null, @SerialName("linkLabel") val linkLabel: String? = null, @SerialName("linkUrl") val linkUrl: String? = null, val schedule: MessagingGroupMeetingScheduleRequest? = null)
@@ -514,3 +569,11 @@ internal fun messageReceiptLabels(messages: List<ConversationMessage>, readers: 
     val contentType: String? = null, val body: String? = null,
     val authorDisplayName: String? = null, val media: List<SocialMedia> = emptyList(), val url: String,
 )
+
+// Optional server observations: missing rows never mean Offline.
+@Serializable data class MessagingPresenceParticipant(val userId: String, val participantType: String)
+@Serializable data class MessagingPresenceRequest(val participants: List<MessagingPresenceParticipant> = emptyList(), val conversationIds: List<String> = emptyList())
+@Serializable data class MessagingParticipantPresence(val userId: String, val participantType: String, val isOnline: Boolean)
+@Serializable data class MessagingConversationPresence(val conversationId: String, val isOnline: Boolean)
+@Serializable data class MessagingPresenceResult(val observedUtc: String, val refreshSeconds: Int,
+    val participants: List<MessagingParticipantPresence>, val conversations: List<MessagingConversationPresence>)

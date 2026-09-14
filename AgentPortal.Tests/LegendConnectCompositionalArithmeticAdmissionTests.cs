@@ -90,16 +90,26 @@ public sealed class LegendConnectCompositionalArithmeticAdmissionTests
                 Assert.All(plan.ReasoningTransitionPath ?? [], signature => Assert.Contains(signature, eligible));
                 Assert.True(plan.ReasoningEvidenceCount >= 3);
 
-                var reply = await services.GetRequiredService<LegendFounderAiConversationService>().ReplyAsync(
-                    ControllerTestHelpers.BuildUser(founderId), new LegendFounderAiChatRequest
+                var service = services.GetRequiredService<LegendFounderAiConversationService>();
+                var founder = ControllerTestHelpers.BuildUser(founderId);
+                var formatting = await LegendConnectComputedLanguageEndToEndContractTests.StartFormattedCalculationAsync(
+                    service, founder, "en", "The measured total is <value>.");
+                var reply = await service.ReplyAsync(founder, new LegendFounderAiChatRequest
                     {
                         Mode = "legend", NativeOnly = true, SourceLanguageCode = "en",
+                        ConversationId = formatting.ConversationId.ToString("D"), ExpectedLastMessageId = formatting.MessageId,
                         Messages = [new("user", request)]
                     });
                 Assert.True(reply.Succeeded, "reply: " + reply.Reason + "; " + reply.Error);
+                Assert.Equal(formatting.ConversationId, reply.ConversationId);
+                Assert.NotEqual(formatting.MessageId, Assert.IsType<Guid>(reply.MessageId));
                 Assert.Equal(expected, reply.Message);
-                Assert.Equal("LegendAi", reply.ResponseAuthority);
-                Assert.Equal("native_response", reply.Stage);
+                Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+                Assert.Equal("foundation_response", reply.Stage);
+                Assert.Equal("LegendControlled", reply.FoundationHosting);
+                Assert.False(string.IsNullOrWhiteSpace(reply.FoundationModel));
+                Assert.False(reply.ExternalAnsweringUsed);
+                Assert.False(reply.EscalationUsed);
                 Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, reply.EvidenceOrigin);
                 Assert.Equal(plan.ReasoningTransitionPath, reply.ReasoningTransitionPath);
                 Assert.Equal((0, 0), externalCounts());

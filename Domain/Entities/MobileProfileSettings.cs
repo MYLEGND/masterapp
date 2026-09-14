@@ -49,6 +49,9 @@ public sealed class MobileProfileSettings
     // 0 is the default emoji presentation; 1..5 are Unicode skin tones.
     public int PreferredReactionSkinTone { get; set; }
 
+    public string CallRingtoneId { get; set; } = "signature";
+    public string CallWallpaperMode { get; set; } = "legend";
+
     /// <summary>
     /// Explicit, member-controlled consent for future successful translated
     /// conversations to enter the governed Legend Connect learning pipeline.

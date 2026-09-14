@@ -38,9 +38,11 @@ internal class FounderAiChatStream(private val client: OkHttpClient, private val
                 try {
                     val result = response.use {
                         if (!it.isSuccessful) {
-                            val problem = runCatching {
-                                json.decodeFromString(MobileApiProblem.serializer(), it.body.string())
-                            }.getOrNull()
+                            if (it.code in listOf(401, 403)) throw LegendApiException(it.code, null)
+                            val raw = it.body.string()
+                            val terminal = runCatching { json.decodeFromString(FounderAiChatResponse.serializer(), raw) }.getOrNull()
+                            if (terminal != null && !terminal.succeeded) return@use terminal
+                            val problem = runCatching { json.decodeFromString(MobileApiProblem.serializer(), raw) }.getOrNull()
                             throw LegendApiException(it.code, problem)
                         }
                         if (it.body.contentType()?.subtype != "x-ndjson") {

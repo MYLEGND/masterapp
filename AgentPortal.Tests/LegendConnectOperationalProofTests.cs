@@ -57,6 +57,36 @@ public sealed class LegendConnectOperationalProofTests
     private const string FounderHeader = "X-Legend-Connect-Founder";
 
     [Fact]
+    public async Task CancelledLiveMetricsPollIsNotReportedAsServiceUnavailable()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            await using var db = ControllerTestHelpers.BuildDb();
+            await SeedFounderAgentAsync(db, founderId);
+            var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+            using var cancellation = new CancellationTokenSource();
+            operations.Setup(item => item.GetDashboardCountersAsync(
+                    It.IsAny<CancellationToken>(), It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                .Returns((CancellationToken token, LegendConnectExternalProviderPolicy? _) =>
+                {
+                    cancellation.Cancel();
+                    return Task.FromCanceled<LegendConnectDashboardCounters>(token);
+                });
+            var controller = Controller(Service(db, operations.Object), ControllerTestHelpers.BuildUser(founderId));
+            var result = Assert.IsType<StatusCodeResult>(await controller.GetLiveMetrics(cancellation.Token));
+            Assert.Equal(StatusCodes.Status499ClientClosedRequest, result.StatusCode);
+            operations.VerifyAll();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
+
+    [Fact]
     public async Task FounderShellAndInspectionSections_RemainBoundedAndDiscoverHistoricalCurriculum()
     {
         var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");

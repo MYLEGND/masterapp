@@ -17,6 +17,28 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectLanguageTeacherTests
 {
     [Fact]
+    public async Task LocalTraining_DoesNotAuthorizeExternalTeacherOrCritic()
+    {
+        var handler = new StubHttpMessageHandler();
+        var teacher = CreateTeacher(handler, new Dictionary<string, string?>
+        {
+            ["LegendConnect:ModelTraining:Backend"] = "LocalMlx",
+            ["OpenAI:ApiKey"] = "configured-but-not-authorized",
+            ["OpenAI:LegendFounderAiModel"] = "configured-teacher"
+        });
+        var result = await teacher.ProposeAsync(ProposalRequest());
+        Assert.False(result.Succeeded);
+        Assert.Equal("external_learning_not_authorized", result.ErrorCode);
+        foreach (var role in new[] { LegendLanguageTeacherRole.Teacher, LegendLanguageTeacherRole.Critic })
+        {
+            var preflight = teacher.Preflight(role);
+            Assert.False(preflight.IsReady);
+            Assert.Equal("external_learning_not_authorized", preflight.FailureCode);
+        }
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task UnconfiguredTeacher_FailsClosedWithoutNetworkCall()
     {
         var handler = new StubHttpMessageHandler();
@@ -432,6 +454,7 @@ public sealed class LegendConnectLanguageTeacherTests
     {
         var configuration =
             new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["LegendConnect:ModelTraining:Backend"] = "OpenAI" })
                 .AddInMemoryCollection(settings)
                 .Build();
 

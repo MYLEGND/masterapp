@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var browsingAsGuest = false
     @EnvironmentObject private var session: MobileSessionCoordinator
     @EnvironmentObject private var diagnostics: LegendDiagnostics
@@ -57,13 +58,15 @@ struct RootView: View {
                 localization.clearPresentation()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { _ in
+        .onChange(of: scenePhase) { _, phase in localization.setForeground(phase == .active) }
+        .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { notification in
             guard case .authenticated(let currentSession) = session.state else { return }
             Task {
                 await localization.refresh(
                     session: currentSession,
                     coordinator: session,
-                    launchCache: session.launchCache)
+                    launchCache: session.launchCache,
+                    preferredLanguageCode: (notification.userInfo?["languageCode"] as? String).flatMap { $0.isEmpty ? nil : $0 })
             }
         }
         .safeAreaInset(edge: .top) {

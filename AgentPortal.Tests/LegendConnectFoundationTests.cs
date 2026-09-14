@@ -231,8 +231,8 @@ public sealed class LegendConnectFoundationTests
             NullLogger<TranslationCapacityAuthority>.Instance);
 
         var live = Assert.IsType<TranslationCapacityReservation>(
-            await capacity.TryReserveAsync("AzureTranslator", 15, TranslationCapacityPurpose.Live));
-        Assert.Null(await capacity.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap));
+            (await capacity.TryReserveAsync("AzureTranslator", 15, TranslationCapacityPurpose.Live)).Reservation);
+        Assert.Null((await capacity.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap)).Reservation);
         await capacity.CompleteAsync(live, providerMayHaveConsumed: true);
 
         var ledger = await db.LegendTranslationProviderCapacities.SingleAsync();

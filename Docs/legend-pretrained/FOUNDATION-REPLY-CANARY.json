@@ -1,0 +1,69 @@
+{
+  "Category": "Candidate authoritative ReplyAsync \u002B production DI authorities \u002B actual hosted provider; synthetic authenticated Founder and empty in-memory data. Not live-Founder or production-data proof.",
+  "CodeRevision": "1.0.0\u002B144567d7a39ea76d50f3d5efd3aae08f3595f85e",
+  "SelectedModel": "gpt-6-astra",
+  "Status": "PASSED",
+  "Request": {
+    "Mode": "legend",
+    "sourceLanguageCode": "ht",
+    "NativeOnly": false,
+    "FounderCommandConfirmed": false,
+    "ConversationId": null,
+    "Messages": [
+      {
+        "Role": "user",
+        "Content": "Mwen gen 18 m\u00E8t riban. Chak pak\u00E8 bezwen 3 m\u00E8t. Konbyen pak\u00E8 mwen ka f\u00E8?"
+      },
+      {
+        "Role": "assistant",
+        "Content": "Ou ka f\u00E8 6 pak\u00E8."
+      },
+      {
+        "Role": "user",
+        "Content": "Si mwen fin f\u00E8 4 nan pak\u00E8 sa yo, konbyen m\u00E8t mwen rete? Reponn ak yon s\u00E8l fraz an krey\u00F2l ayisyen."
+      }
+    ]
+  },
+  "Response": {
+    "Succeeded": true,
+    "Mode": "legend",
+    "Message": "Ou rete ak 6 m\u00E8t riban.",
+    "Error": null,
+    "FailureKind": null,
+    "ProviderStatusCode": null,
+    "Reference": null,
+    "ResponseAuthority": "HostedFoundation",
+    "Stage": "foundation_response",
+    "Reason": null,
+    "OperationId": null,
+    "CompletedWork": null,
+    "RemainingWork": null,
+    "Resumable": false,
+    "ModelAssistanceState": null,
+    "ModelAssistanceReason": null,
+    "ModelVersion": null,
+    "ModelTrainingRunId": null,
+    "ModelProvenance": null,
+    "EvidenceOrigin": 3,
+    "ResearchOutcome": null,
+    "ScheduleCertificates": null,
+    "ReasoningTransitionPath": null,
+    "FoundationModel": "gpt-6-astra",
+    "FoundationHosting": "ExternalHosted",
+    "ExternalAnsweringUsed": true,
+    "EscalationUsed": false,
+    "LearningState": null,
+    "ResearchState": "NotRequired"
+  },
+  "HttpCalls": [
+    {
+      "Client": "OpenAI",
+      "StatusCode": 200,
+      "ElapsedMilliseconds": 3127.4366
+    }
+  ],
+  "CreateClientCount": 1,
+  "SaveChangesAttempts": 0,
+  "BlockedWrites": 0,
+  "ElapsedMilliseconds": 4458
+}

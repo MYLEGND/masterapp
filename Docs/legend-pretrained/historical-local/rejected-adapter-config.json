@@ -1,0 +1,41 @@
+{
+    "adapter_path": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/adapter",
+    "batch_size": 1,
+    "clear_cache_threshold": 0,
+    "config": null,
+    "data": "/private/tmp/legend-local-training-artifacts/jobs/4b1d0982f0945b58f8d71d152588454b009a17bf7875ea979ec1194539a932e6/data",
+    "fine_tune_type": "lora",
+    "grad_accumulation_steps": 1,
+    "grad_checkpoint": true,
+    "iters": 100,
+    "learning_rate": 0.0001,
+    "lora_parameters": {
+        "rank": 8,
+        "dropout": 0.0,
+        "scale": 20.0
+    },
+    "lr_schedule": null,
+    "mask_prompt": true,
+    "max_seq_length": 512,
+    "model": "/private/tmp/legend-local-models/qwen3-4b-instruct-2507-4bit",
+    "num_layers": 4,
+    "optimizer": "adam",
+    "optimizer_config": {
+        "adam": {},
+        "adamw": {},
+        "muon": {},
+        "sgd": {},
+        "adafactor": {}
+    },
+    "project_name": null,
+    "report_to": null,
+    "resume_adapter_file": null,
+    "save_every": 100,
+    "seed": 73,
+    "steps_per_eval": 100,
+    "steps_per_report": 10,
+    "test": false,
+    "test_batches": 500,
+    "train": true,
+    "val_batches": 1
+}

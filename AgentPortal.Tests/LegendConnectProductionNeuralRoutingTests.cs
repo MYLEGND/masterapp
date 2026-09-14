@@ -16,8 +16,11 @@ public sealed class LegendConnectProductionNeuralRoutingTests
     private const string RuntimeProof =
         "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1";
 
-    [Fact]
-    public async Task ActivePromotedModel_ServesBeforeProviderObservation()
+    [Theory]
+    [InlineData("enabled")]
+    [InlineData("blocked")]
+    [InlineData("unspecified")]
+    public async Task ActivePromotedModel_RespectsTheRequestProviderPolicy(string policyMode)
     {
         await using var db =
             ControllerTestHelpers.BuildDb();
@@ -81,7 +84,21 @@ public sealed class LegendConnectProductionNeuralRoutingTests
             await inference.TryTranslateAsync(
                 "en",
                 "ht",
-                "Hello");
+                "Hello", providerPolicy: policyMode switch
+                {
+                    "enabled" => LegendConnectExternalProviderPolicy.ProviderEnabled,
+                    "blocked" => LegendConnectExternalProviderPolicy.NativeOnly,
+                    _ => null
+                });
+
+        if (policyMode != "enabled")
+        {
+            Assert.False(result.Succeeded);
+            Assert.Equal("native_only_external_model_inference_forbidden", result.ErrorCode);
+            Assert.Null(transport.LastTask);
+            Assert.False(db.ChangeTracker.HasChanges());
+            return;
+        }
 
         Assert.True(
             result.Succeeded);

@@ -1,5 +1,6 @@
 package com.mylegnd.legend.registered
 
+import com.mylegnd.legend.registered.core.model.FounderAiHistoryPage
 import com.mylegnd.legend.registered.core.model.FounderAiChatMessage
 import com.mylegnd.legend.registered.core.model.FounderAiChatRequest
 import com.mylegnd.legend.registered.core.model.FounderAiChatResponse
@@ -32,6 +33,19 @@ class FounderAiMobileContractTest {
     }
 
     @Test
+    fun `independent answering request preserves research permission separately from strict native only`() {
+        val request = FounderAiChatRequest(mode = "legend", nativeOnly = false, externalAnsweringBlocked = true,
+            messages = listOf(FounderAiChatMessage("user", "Use approved evidence.")), conversationId = "independent-1")
+        val restored = json.decodeFromString(FounderAiChatRequest.serializer(), json.encodeToString(request))
+        assertTrue(restored.externalAnsweringBlocked)
+        assertFalse(restored.nativeOnly)
+        val legacy = json.decodeFromString(FounderAiChatRequest.serializer(),
+            """{"mode":"legend","nativeOnly":true,"messages":[],"conversationId":"old"}""")
+        assertFalse(legacy.externalAnsweringBlocked)
+        assertTrue(legacy.nativeOnly)
+    }
+
+    @Test
     fun `response authority remains server-projected for distinct native and teacher responders`() {
         val native = json.decodeFromString(
             FounderAiChatResponse.serializer(),
@@ -46,6 +60,61 @@ class FounderAiMobileContractTest {
         assertEquals("OpenAITeacher", teacher.responseAuthority)
         assertEquals("legend", native.mode)
         assertEquals("teacher", teacher.mode)
+    }
+
+    @Test
+    fun `foundation capability metadata survives response decoding and serialization`() {
+        val response = json.decodeFromString(
+            FounderAiChatResponse.serializer(),
+            """{"succeeded":true,"mode":"legend","message":"A partial answer.","responseAuthority":"HostedFoundation","foundationModel":"configured-model","foundationHosting":"external","externalAnsweringUsed":true,"escalationUsed":false,"researchState":"InsufficientEvidence","learningState":"AwaitingCritic","escalationDisposition":"Restricted","stage":"response_partial","reason":"provider_output_incomplete"}""",
+        )
+        val restored = json.decodeFromString(FounderAiChatResponse.serializer(), json.encodeToString(response))
+        assertEquals(response, restored)
+        assertEquals("configured-model", restored.foundationModel)
+        assertEquals("external", restored.foundationHosting)
+        assertEquals(true, restored.externalAnsweringUsed)
+        assertEquals(false, restored.escalationUsed)
+        assertEquals("InsufficientEvidence", restored.researchState)
+        assertEquals("AwaitingCritic", restored.learningState)
+        assertEquals("Restricted", restored.escalationDisposition)
+        assertEquals("response_partial", restored.stage)
+        assertEquals("provider_output_incomplete", restored.reason)
+        val legacy = json.decodeFromString(FounderAiChatResponse.serializer(),
+            """{"succeeded":true,"mode":"legend","message":"Older response."}""")
+        assertEquals(null, legacy.externalAnsweringUsed)
+        assertEquals(null, legacy.researchState)
+    }
+
+    @Test
+    fun `local foundation retains model lineage without inventing training or escalation`() {
+        val local = json.decodeFromString(FounderAiChatResponse.serializer(),
+            """{"succeeded":true,"mode":"legend","message":"Local answer.","responseAuthority":"LocalFoundation","foundationHosting":"LegendControlled","foundationModel":"local-pinned-model","externalAnsweringUsed":false,"escalationUsed":false}""")
+        assertEquals("LocalFoundation", local.responseAuthority)
+        assertEquals("LegendControlled", local.foundationHosting)
+        assertEquals(false, local.externalAnsweringUsed)
+        assertEquals(false, local.escalationUsed)
+        assertEquals(null, local.modelTrainingRunId)
+        assertEquals(null, local.modelAssistanceState)
+        val promoted = local.copy(modelAssistanceState = "Applied", modelVersion = "promoted-version",
+            modelTrainingRunId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", modelProvenance = "GovernedPromotedModel")
+        assertEquals(promoted, json.decodeFromString(FounderAiChatResponse.serializer(), json.encodeToString(promoted)))
+    }
+
+    @Test
+    fun `history retains exact SQL cursor and separates service outcomes from model replies`() {
+        val wire = """{"succeeded":true,"conversation":{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","messages":[{"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","body":"Original Haitian Creole content","sentUtc":"2026-09-13T10:00:00.1234567Z","authorKind":"Human"},{"id":"cccccccc-cccc-cccc-cccc-cccccccccccc","body":"Outcome unknown","sentUtc":"2026-09-13T10:00:00.1234568Z","authorKind":"Service","responseProvenance":{"succeeded":false,"mode":"legend","failureKind":"outcome_unknown","reason":"outcome_unknown","responseAuthority":"SystemDiagnostic"}}],"hasOlderMessages":true}}"""
+        val page = json.decodeFromString(FounderAiHistoryPage.serializer(), wire)
+        val rows = page.conversation!!.messages
+        assertEquals("2026-09-13T10:00:00.1234567Z", rows[0].sentUtc)
+        assertEquals("Service", rows[1].authorKind)
+        assertFalse(rows[1].responseProvenance!!.succeeded)
+        assertEquals("outcome_unknown", rows[1].responseProvenance!!.reason)
+        val request = FounderAiChatRequest("legend", false, true,
+            messages = listOf(FounderAiChatMessage("user", "New explicit request")),
+            conversationId = page.conversation.id, expectedLastMessageId = rows[1].id)
+        val replay = json.decodeFromString(FounderAiChatRequest.serializer(), json.encodeToString(request))
+        assertEquals(rows[1].id, replay.expectedLastMessageId)
+        assertEquals(listOf("user"), replay.messages.map { it.role })
     }
 
     @Test

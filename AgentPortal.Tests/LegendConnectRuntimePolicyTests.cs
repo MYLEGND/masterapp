@@ -18,6 +18,25 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectRuntimePolicyTests
 {
     [Fact]
+    public async Task DiagnosticReadsDoNotSeedOrConvergeAnEmptyLanguageRegistry()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+
+        await operations.GetDashboardCountersAsync(providerPolicy: LegendConnectExternalProviderPolicy.ProviderEnabled);
+        await policy.GetReadinessAsync(default, LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
+        Assert.Empty(await db.Set<LegendLanguagePair>().ToListAsync());
+        Assert.Empty(await db.Set<LegendConnectKnowledgeAuditEntry>().ToListAsync());
+    }
+
+    [Fact]
     public async Task FounderRuntimePolicy_PersistsAcrossAuthorityRecreation_AndAuditsChanges()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -248,6 +267,8 @@ public sealed class LegendConnectRuntimePolicyTests
 
         var initiallyBlocked = await policy.ActivateAsync("founder");
         Assert.Equal("BLOCKED", initiallyBlocked.State);
+        Assert.Equal("BLOCKED", Assert.Single(initiallyBlocked.Checks, item => item.Name == "Language Registry").State);
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
 
         await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
             100, 20, 80, true, "Shadow", 0.98m));
@@ -265,6 +286,10 @@ public sealed class LegendConnectRuntimePolicyTests
 
         await CompleteHistoricalConvergenceAsync(policy);
 
+        // Production migrations seed this catalog; InMemory fixtures must
+        // invoke the existing provisioner explicitly, never through readiness.
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
+        Assert.NotEmpty(await registry.ListEnabledTranslationLanguagesAsync());
         var idle = await policy.ActivateAsync("founder");
         Assert.Equal("ACTIVE — NO ELIGIBLE WORK", idle.State);
         Assert.Equal("IDLE", Assert.Single(idle.Checks, item => item.Name == "Approved Corpus").State);
@@ -294,6 +319,7 @@ public sealed class LegendConnectRuntimePolicyTests
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
+        Assert.NotEmpty(await registry.ListEnabledTranslationLanguagesAsync());
         var policy = Policy(db, registry, configuration);
         await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
             1_000, 250, 750, true, "Shadow", 0.98m));
@@ -352,8 +378,8 @@ public sealed class LegendConnectRuntimePolicyTests
             100, 80, 20, true, "Shadow", 0.98m));
         var capacity = new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance, policy);
 
-        Assert.Null(await capacity.TryReserveAsync("AzureTranslator", 21, TranslationCapacityPurpose.Bootstrap));
-        Assert.NotNull(await capacity.TryReserveAsync("AzureTranslator", 20, TranslationCapacityPurpose.Bootstrap));
+        Assert.Null((await capacity.TryReserveAsync("AzureTranslator", 21, TranslationCapacityPurpose.Bootstrap)).Reservation);
+        Assert.NotNull((await capacity.TryReserveAsync("AzureTranslator", 20, TranslationCapacityPurpose.Bootstrap)).Reservation);
     }
 
     [Fact]

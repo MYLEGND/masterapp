@@ -10,11 +10,13 @@ public sealed class MessagingHub : Hub
 {
     private readonly IMessagingActorContextResolver _actorContextResolver;
     private readonly ILegendCallingAuthority? _calling;
+    private readonly IMessagingPresenceAuthority? _presence;
 
-    public MessagingHub(IMessagingActorContextResolver actorContextResolver, ILegendCallingAuthority? calling = null)
+    public MessagingHub(IMessagingActorContextResolver actorContextResolver, ILegendCallingAuthority? calling = null, IMessagingPresenceAuthority? presence = null)
     {
         _actorContextResolver = actorContextResolver;
         _calling = calling;
+        _presence = presence;
     }
 
     public async Task<LegendCallResult> Call(LegendCallCommand command)
@@ -25,13 +27,34 @@ public sealed class MessagingHub : Hub
         return await _calling.ExecuteAsync(actor.Value.UserId, actor.Value.ParticipantType, command, Context.ConnectionAborted);
     }
 
+    public async Task<MessagingPresenceResult> Presence(MessagingPresenceRequest request)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(Context.ConnectionAborted);
+        deadline.CancelAfter(TimeSpan.FromSeconds(8));
+        var context = Context.GetHttpContext();
+        var actor = context == null ? null : await _actorContextResolver.ResolveAsync(context, deadline.Token);
+        if (actor == null || _presence == null) throw new HubException("Messaging presence is unavailable.");
+        await _presence.TouchConnectionAsync(actor.Value.UserId, actor.Value.ParticipantType, Context.ConnectionId, deadline.Token);
+        return await _presence.ReadPresenceAsync(actor.Value.UserId, actor.Value.ParticipantType, request, deadline.Token);
+    }
+
     public static string GroupName(string userId, string participantType) =>
         $"messaging:{participantType.Trim().ToLowerInvariant()}:{userId.Trim().ToLowerInvariant()}";
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         LegendCallConnections.Remove(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            if (_presence != null) await _presence.RemoveConnectionAsync(Context.ConnectionId, deadline.Token);
+        }
+        finally
+        {
+            // A failed presence cleanup remains observable, while hub retirement
+            // always completes. Its lease still expires without another heartbeat.
+            await base.OnDisconnectedAsync(exception);
+        }
     }
 
     public override async Task OnConnectedAsync()

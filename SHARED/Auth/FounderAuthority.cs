@@ -10,7 +10,7 @@ namespace Shared.Auth;
 /// delegate the authoritative decision here so the rule cannot drift:
 ///
 ///  * The canonical Entra Object ID (oid) is the authoritative founder identity.
-///  * A configured FOUNDER_OID must be present AND a valid GUID before founder
+///  * A configured FOUNDER_OID must be present AND a valid, nonempty GUID before founder
 ///    authority can be granted; the caller's canonical oid must match it.
 ///  * Email / preferred_username / UPN / display name / NameIdentifier never
 ///    independently grant founder access.
@@ -41,7 +41,7 @@ public static class FounderAuthority
 
         var founderOid = Normalize(configuredFounderOid);
         var configured = !string.IsNullOrWhiteSpace(founderOid);
-        var valid = configured && Guid.TryParse(founderOid, out _);
+        var valid = GetConfiguredObjectId(founderOid) is not null;
 
         // Authoritative path: canonical Object ID must match a valid configured OID.
         if (valid)
@@ -61,24 +61,21 @@ public static class FounderAuthority
     }
 
     /// <summary>
-    /// True when FOUNDER_OID is present and a valid GUID. Used by startup guards
+    /// True when FOUNDER_OID is present and a valid, nonempty GUID. Used by startup guards
     /// to fail closed in production before the first request.
     /// </summary>
     public static bool IsConfiguredAndValid(string? configuredFounderOid)
-    {
-        var founderOid = Normalize(configuredFounderOid);
-        return !string.IsNullOrWhiteSpace(founderOid) && Guid.TryParse(founderOid, out _);
-    }
+        => GetConfiguredObjectId(configuredFounderOid) is not null;
 
     /// <summary>
     /// Returns the normalized configured Entra object ID only when it is present
-    /// and valid. Service boundaries that already receive a server-resolved
+    /// and a valid, nonempty GUID. Service boundaries that already receive a server-resolved
     /// canonical object ID use this instead of recreating founder parsing.
     /// </summary>
     public static string? GetConfiguredObjectId(string? configuredFounderOid)
     {
         var founderOid = Normalize(configuredFounderOid);
-        return !string.IsNullOrWhiteSpace(founderOid) && Guid.TryParse(founderOid, out _)
+        return Guid.TryParse(founderOid, out var identity) && identity != Guid.Empty
             ? founderOid
             : null;
     }
@@ -93,9 +90,9 @@ public static class FounderAuthority
         string? configuredFounderOid)
     {
         var founderOid = GetConfiguredObjectId(configuredFounderOid);
-        var userId = Normalize(canonicalUserId);
+        var userId = GetConfiguredObjectId(canonicalUserId);
         return founderOid is not null &&
-               Guid.TryParse(userId, out _) &&
+               userId is not null &&
                string.Equals(userId, founderOid, StringComparison.Ordinal);
     }
 

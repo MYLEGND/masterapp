@@ -5,7 +5,8 @@ public sealed record StartMessagingConversationRequest(
     string? Subject,
     string? Body,
     string? ClientMessageId,
-    Guid? SharedPostId = null);
+    Guid? SharedPostId = null,
+    bool IncludeMessages = true);
 
 public sealed record SendMessagingMessageRequest(
     string Body,

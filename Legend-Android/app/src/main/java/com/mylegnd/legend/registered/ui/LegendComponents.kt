@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
@@ -45,7 +47,7 @@ import com.mylegnd.legend.registered.core.design.*
 ) { Text(name.take(1).uppercase(), color = LegendColors.GoldBright, style = LegendTypography.CardTitle) }
 
 /**
- * Android implementation of iOS's LegendContactCard.  Every compact person or
+ * Native Compose rendering of the shared contact-card tokens. Every compact person or
  * conversation presentation shares this surface, typography, and gold border
  * rather than creating an inbox-specific visual language.
  */
@@ -56,30 +58,33 @@ fun LegendContactCard(
     nameStatus: String? = null,
     subtitle: String? = null,
     detail: String? = null,
+    statusContent: (@Composable () -> Unit)? = null,
     isVerified: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     avatar: @Composable () -> Unit,
     action: @Composable () -> Unit,
 ) {
+    val metrics = LegendDesignAuthority.contactCard()
+    val shape = RoundedCornerShape(metrics.cornerRadius.dp)
     val interactionModifier = if (onClick != null) modifier.legendPressClickable(onClick, onLongClick) else modifier
     Surface(
         color = LegendColors.ContactNavy,
-        shape = LegendShapes.Control,
-        shadowElevation = 7.dp,
+        shape = shape,
         modifier = interactionModifier
             .fillMaxWidth()
+            .shadow(metrics.shadowRadius.dp, shape, ambientColor = LegendColors.Midnight.copy(alpha = metrics.shadowOpacity), spotColor = LegendColors.Midnight.copy(alpha = metrics.shadowOpacity))
             .border(
-                LegendSpacing.Hairline,
-                LegendColors.Gold.copy(alpha = LegendOpacity.ContactBorder),
-                LegendShapes.Control,
+                metrics.borderWidth.dp,
+                LegendColors.Gold.copy(alpha = metrics.borderOpacity),
+                shape,
             ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Xs),
+                .heightIn(min = metrics.minimumHeight.dp)
+                .padding(horizontal = metrics.horizontalPadding.dp, vertical = metrics.verticalPadding.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             avatar()
@@ -116,6 +121,7 @@ fun LegendContactCard(
                         )
                     }
                 }
+                statusContent?.invoke()
                 subtitle?.trim()?.takeIf(String::isNotEmpty)?.let {
                     Text(
                         it,

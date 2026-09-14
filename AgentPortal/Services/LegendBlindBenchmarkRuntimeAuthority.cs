@@ -102,7 +102,9 @@ internal sealed class LegendBlindBenchmarkRuntimeAuthority
                     cancellationToken:
                         cancellationToken,
                     sourceLanguageCode:
-                        benchmarkCase.SourceLanguageCode);
+                        benchmarkCase.SourceLanguageCode,
+                    providerPolicy:
+                        LegendConnectExternalProviderPolicy.NativeOnly);
             var latency =
                 ElapsedMicroseconds(started);
             if (!result.Supported ||

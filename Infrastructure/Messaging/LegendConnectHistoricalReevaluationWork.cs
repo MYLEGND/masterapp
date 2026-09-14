@@ -1085,7 +1085,13 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         const string fallback =
             "The canonical evaluator failed without exposing a more specific exception detail.";
         var normalized = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-        return normalized.Length <= 1000 ? normalized : normalized[..1000];
+        var maximumLength = LegendHistoricalReevaluationWorkItem.MaximumErrorMessageLength;
+        // SQL Server counts UTF-16 code units; keep a surrogate pair intact at the boundary.
+        if (normalized.Length <= maximumLength)
+            return normalized;
+        if (char.IsHighSurrogate(normalized[maximumLength - 1]) && char.IsLowSurrogate(normalized[maximumLength]))
+            maximumLength--;
+        return normalized[..maximumLength];
     }
 
     /// <summary>

@@ -47,11 +47,14 @@ env:
 jobs:
   # Keep this job name stable: it is the protected production required check.
   security:
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    environment:
+      name: Production
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout exact PR merge candidate
@@ -64,6 +67,9 @@ jobs:
         uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: '10.0.x'
+
+      - name: Verify exact baseline exception boundaries
+        run: python3 scripts/test-legend-baseline-regression.py
 
       - name: Restore
         run: dotnet restore MASTERAPP.sln
@@ -126,6 +132,13 @@ jobs:
             exit 1
           fi
 
+      - name: Login to existing Azure configuration authority
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Test full suite including security regressions
         env:
           LEGEND_BASELINE_PRODUCTION_BASE: ${{ github.event.pull_request.base.sha }}
@@ -137,12 +150,40 @@ jobs:
             exit 1
           fi
           mkdir -p "$results_dir"
+          # Resolve only the existing deployed foundation configuration. Keep the
+          # key scoped to this test process, never GITHUB_ENV or a public artifact.
+          umask 077
+          model_environment=$(mktemp "$RUNNER_TEMP/legend-foundation-env.XXXXXX")
+          trap 'rm -f "$model_environment"' EXIT
+          python3 scripts/export-legend-foundation-test-environment.py "$model_environment"
+          source "$model_environment"
+          rm -f "$model_environment"
+          unset LEGEND_CONTROLLED_REQUEST_CAPTURE LEGEND_HELDOUT_MATRIX_PATH
           run_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           set +e
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
             --logger 'trx;LogFileName=full-regression.trx' --results-directory "$results_dir" > "$results_dir/full-regression.log" 2>&1
           runner_exit=$?
           set -e
+          # Preserve only test identifiers/counts, never model text or credentials.
+          python3 - "$results_dir" <<'PYSUMMARY'
+          import collections, importlib.util, json, sys, xml.etree.ElementTree as ET
+          from pathlib import Path
+          directory = Path(sys.argv[1])
+          namespace = {'t': 'http://microsoft.com/schemas/VisualStudio/TeamTest/2010'}
+          rows = ET.parse(directory / 'full-regression.trx').findall('.//t:UnitTestResult', namespace)
+          spec = importlib.util.spec_from_file_location('baseline', 'scripts/legend-baseline-regression.py')
+          baseline = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(baseline)
+          summary = {'counts': dict(collections.Counter(row.get('outcome') for row in rows)),
+                     'failedTests': sorted({row.get('testName', '').split('(')[0] for row in rows if row.get('outcome') == 'Failed'}),
+                     'rosterSha256': baseline.roster_digest(row.get('testName') for row in rows),
+                     'failedCases': [{'name': row.get('testName'),
+                                      'assertionSite': baseline.assertion_site(row),
+                                      'failureMessageSha256': baseline.digest(baseline.message(row).encode())}
+                                     for row in rows if row.get('outcome') == 'Failed']}
+          (directory / 'failure-summary.json').write_text(json.dumps(summary, indent=2))
+          PYSUMMARY
           python3 scripts/legend-baseline-regression.py \
             --trx "$results_dir/full-regression.trx" \
             --manifest .github/legend-baseline-release.json \
@@ -152,12 +193,16 @@ jobs:
             --production-base-sha "$LEGEND_BASELINE_PRODUCTION_BASE" \
             --output "$results_dir/release-decision.json"
 
-      - name: Preserve explicit full-regression release decision
+      # Real-model execution is credentialed. Publish only the validator's
+      # bounded decision/count/hash summary; raw TRX and logs stay runner-private.
+      - name: Preserve full-regression decision and failure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: legend-regression-release-decision-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/release-decision.json
+          path: |
+            ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/release-decision.json
+            ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/failure-summary.json
           if-no-files-found: ignore
           retention-days: 14
 
@@ -854,8 +899,21 @@ jobs:
       name: LEGEND-Production-ReadOnly-Validation
     permissions:
       contents: read
+      id-token: write
 
     steps:
+      - name: Check out exact candidate configuration exporter
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.candidate_sha }}
+
+      - name: Authenticate approved read-only configuration identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -905,6 +963,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force diagnostics/private | Out-Null
           if ([string]::IsNullOrWhiteSpace($env:LEGEND_PRODUCTION_READONLY_CONNECTION) -or [string]::IsNullOrWhiteSpace($env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID)) { throw 'The existing SELECT-only validation authority is not configured.' }
+          $privateConfig = Join-Path $env:RUNNER_TEMP ('legend-foundation-' + [guid]::NewGuid().ToString('N') + '.json')
+          try {
+            python3 scripts/export-legend-foundation-test-environment.py $privateConfig --format json
+            if ($LASTEXITCODE -ne 0) { throw 'Controlled foundation configuration could not be loaded.' }
+            $foundationConfig = Get-Content $privateConfig -Raw | ConvertFrom-Json -AsHashtable
+            foreach ($entry in $foundationConfig.GetEnumerator()) {
+              [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, 'Process')
+            }
+          }
+          finally {
+            if (Test-Path $privateConfig) { Remove-Item $privateConfig -Force }
+          }
           $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
           $filter = "FullyQualifiedName=$testName"
           $matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH

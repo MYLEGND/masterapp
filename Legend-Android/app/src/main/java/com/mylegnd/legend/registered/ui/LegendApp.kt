@@ -57,8 +57,11 @@ import androidx.compose.material3.ModalBottomSheet as MaterialModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -200,6 +203,30 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             }
             DisposableEffect(calling) {
                 onDispose { if (activity?.isChangingConfigurations != true) callingOwner.deactivate(calling) }
+            }
+            // Calling uses the authenticated session immediately. Loading the
+            // app-wide translation catalog must not postpone incoming answers.
+            val messagingRealtime = calling.transport
+            LegendCallOverlay(calling)
+            val messagingLifecycle = LocalLifecycleOwner.current.lifecycle
+            DisposableEffect(messagingRealtime, messagingLifecycle) {
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_START -> { container.localization.setForeground(true); messagingRealtime.setPresenceForeground(true); calling.background(false); messagingRealtime.start() }
+                        Lifecycle.Event.ON_STOP -> { container.localization.setForeground(false); messagingRealtime.setPresenceForeground(false); calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
+                        else -> Unit
+                    }
+                }
+                val foreground = messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                container.localization.setForeground(foreground)
+                messagingRealtime.setPresenceForeground(foreground)
+                messagingLifecycle.addObserver(observer)
+                if (foreground) messagingRealtime.start()
+                onDispose {
+                    messagingLifecycle.removeObserver(observer)
+                    container.localization.setForeground(false)
+                    messagingRealtime.setPresenceForeground(false)
+                }
             }
             LaunchedEffect(
                 session.accountId,
@@ -856,7 +883,7 @@ private fun AuthenticatedShell(
     var isMessageThreadOpen by remember { mutableStateOf(false) }
     var openingSharedPostId by remember(session.accountId, session.actor.identity) { mutableStateOf<String?>(null) }
     var sharingPost by remember { mutableStateOf<SocialPost?>(null) }
-    var founderAiOpen by remember { mutableStateOf(false) }
+    var founderAiOpen by remember(session.accountId, session.actor.identity) { mutableStateOf(false) }
     var memberProfile by remember { mutableStateOf<SocialAuthor?>(null) }
     val notificationDestination by container.notificationNavigation.destination.collectAsStateWithLifecycle()
     val participantType = session.actor.identity.participantType
@@ -906,26 +933,10 @@ private fun AuthenticatedShell(
         factory = LegendViewModelFactory { NotificationsViewModel(container.notificationRepository, participantType) },
     )
     val founderAi: FounderAiViewModel = viewModel(
-        key = "founder-ai-$participantType",
+        key = "founder-ai:" + MessagingViewModel.sessionKey(session.accountId, session.actor.identity),
         factory = LegendViewModelFactory { FounderAiViewModel(container.founderAiRepository, participantType) },
     )
-    val messagingRealtime = calling.transport
-    LegendCallOverlay(calling)
-    val messagingLifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(messagingRealtime, messagingLifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> { calling.background(false); messagingRealtime.start() }
-                Lifecycle.Event.ON_STOP -> { calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
-                else -> Unit
-            }
-        }
-        messagingLifecycle.addObserver(observer)
-        if (messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) messagingRealtime.start()
-        onDispose {
-            messagingLifecycle.removeObserver(observer)
-        }
-    }
+    DisposableEffect(founderAi) { founderAi.activateSession(); onDispose { founderAi.disposeSession() } }
     val homeState by home.state.collectAsStateWithLifecycle()
     val founderAiState by founderAi.state.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
@@ -945,7 +956,7 @@ private fun AuthenticatedShell(
         }
     }
     LaunchedEffect(participantType) { container.fcmPushRegistration.registerForAuthenticatedActor(participantType) }
-    LaunchedEffect(session.capabilities.isFounder, participantType) {
+    LaunchedEffect(founderAi, session.capabilities.isFounder) {
         if (session.capabilities.isFounder) founderAi.resolveAvailability()
     }
     LaunchedEffect(messages, notifications, home) {
@@ -1062,6 +1073,7 @@ private fun AuthenticatedShell(
                     requestedConversationId = requestedConversationId,
                     onRequestedConversationOpened = { requestedConversationId = null },
                     onThreadOpenChanged = { isMessageThreadOpen = it },
+                    editCallingProfilePhoto = { tab = LegendTab.ACCOUNT },
                 )
                 LegendTab.ACCOUNT -> AccountScreen(
                     viewModel = account,
@@ -1083,8 +1095,8 @@ private fun AuthenticatedShell(
                     currentAccountId = session.accountId,
                     switchSignedInAccount = switchSignedInAccount,
                     addAccount = addAccount,
-                    refreshLocalization = {
-                        container.localization.refresh(session.accountId, participantType)
+                    refreshLocalization = { savedLanguage ->
+                        container.localization.refresh(session.accountId, participantType, savedLanguage)
                         messages.refreshPresentation()
                     },
                     signOut = signOut,
@@ -1099,10 +1111,12 @@ private fun AuthenticatedShell(
     }
     }
     if (founderAiOpen) {
-        FounderAiConversationDialog(
-            viewModel = founderAi,
-            onDismiss = { founderAiOpen = false },
-        )
+        key(founderAi) {
+            FounderAiConversationDialog(
+                viewModel = founderAi,
+                onDismiss = { founderAiOpen = false },
+            )
+        }
     }
     openingSharedPostId?.let { id ->
         val opened by social.openedPost.collectAsStateWithLifecycle()
@@ -2051,7 +2065,7 @@ private fun AgentClientsScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text(client.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
                                     Text(client.email, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (client.archived) legendLocalized("Archived / Deleted") else client.crmStatus, style = LegendTypography.Caption, color = LegendColors.GoldBright)
+                                    if (client.archived || !client.crmStatus.equals("Active", ignoreCase = true)) Text(if (client.archived) legendLocalized("Archived / Deleted") else client.crmStatus, style = LegendTypography.Caption, color = LegendColors.GoldBright)
                                 }
                                 Button(
                                     onClick = {
@@ -2337,7 +2351,7 @@ private class LegendClientCreationPortalWebViewClient(
 }
 
 @Composable
-private fun LegendHomeBrandBar(
+internal fun LegendHomeBrandBar(
     openFounderAi: (() -> Unit)?,
     create: (() -> Unit)?,
     showsHomeActions: Boolean = true,
@@ -2773,6 +2787,7 @@ private fun MessagesScreen(
     requestedConversationId: String?,
     onRequestedConversationOpened: () -> Unit,
     onThreadOpenChanged: (Boolean) -> Unit,
+    editCallingProfilePhoto: () -> Unit,
 ) {
     val context = LocalContext.current
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
@@ -2783,7 +2798,13 @@ private fun MessagesScreen(
     var creatingConversation by remember { mutableStateOf(false) }
     var conversationMenu by remember { mutableStateOf<ConversationSummary?>(null) }
     var callDirectoryOpen by remember { mutableStateOf(false) }
-    var callTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var directoryVideo by remember { mutableStateOf(false) }
+    var callDirectoryIntent by remember { mutableStateOf(java.util.UUID.randomUUID().toString()) }
+    var callingProfileOpen by remember { mutableStateOf(false) }
+    val callingProfile = LocalLegendCalling.current
+    if (callingProfileOpen && callingProfile != null) LegendCallingProfileSheet(callingProfile,
+        dismiss = { callingProfileOpen = false }, editProfilePhoto = editCallingProfilePhoto)
+    var callTarget by remember { mutableStateOf<Triple<String, String, Boolean>?>(null) }
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
@@ -2823,7 +2844,8 @@ private fun MessagesScreen(
                                     creatingConversation = true
                                     viewModel.loadRecipients()
                                 },
-                                onCallDirectory = { callDirectoryOpen = true },
+                                onCallDirectory = { video -> directoryVideo = video; callDirectoryIntent = java.util.UUID.randomUUID().toString(); callDirectoryOpen = true },
+                                onCallingProfile = { callingProfileOpen = true },
                             )
                         }
                         item {
@@ -2850,7 +2872,7 @@ private fun MessagesScreen(
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
                                     pinnedRow.forEach { row ->
                                         Column(Modifier.weight(1f).combinedClickable(onClick = { selectedConversationId = row.id; viewModel.open(row.id) }, onLongClick = { conversationMenu = row }).padding(LegendSpacing.Sm), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            BadgeBoxForPinnedConversation(row, mediaRepository, participantType)
+                                            LegendConversationAvatar(row, mediaRepository, participantType, 64.dp)
                                             Text(row.title, style = LegendTypography.Label, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
@@ -2926,13 +2948,19 @@ private fun MessagesScreen(
             load = viewModel::loadRecipients,
             choose = { recipient ->
                 val existingId = recipient.existingConversationId
+                val intent = callDirectoryIntent
+                val selectedVideo = directoryVideo
+                val selectedOwner = callingProfile
+                val wasCalling = callDirectoryOpen
                 if (callDirectoryOpen && existingId != null) {
                     callDirectoryOpen = false
-                    callTarget = existingId to recipient.displayName
-                } else viewModel.startConversation(recipient) { id ->
-                    if (callDirectoryOpen) {
-                        callDirectoryOpen = false
-                        callTarget = id to recipient.displayName
+                    callTarget = Triple(existingId, recipient.displayName, selectedVideo)
+                } else viewModel.startConversation(recipient, includeMessages = !wasCalling) { id ->
+                    if (wasCalling) {
+                        if (callDirectoryOpen && callDirectoryIntent == intent && LegendCallPlatform.store === selectedOwner) {
+                            callDirectoryOpen = false
+                            callTarget = Triple(id, recipient.displayName, selectedVideo)
+                        }
                     } else {
                         creatingConversation = false
                         selectedConversationId = id
@@ -2946,13 +2974,14 @@ private fun MessagesScreen(
                 }
             },
             isSending = viewModel.isSending.collectAsStateWithLifecycle().value,
-            dismiss = { creatingConversation = false; callDirectoryOpen = false },
+            dismiss = { creatingConversation = false; callDirectoryOpen = false; callDirectoryIntent = java.util.UUID.randomUUID().toString() },
         )
     }
     callTarget?.let { target ->
         LegendConversationCallSheet(
             conversationId = target.first,
             fallbackName = target.second,
+            video = target.third,
             dismiss = { callTarget = null },
         )
     }
@@ -3009,18 +3038,17 @@ private fun LegendChatLoadingContent() {
 @Composable
 private fun LegendMessagesInboxHeader(
     onNewMessage: () -> Unit,
-    onCallDirectory: () -> Unit,
+    onCallDirectory: (Boolean) -> Unit,
+    onCallingProfile: () -> Unit,
 ) {
+    val sectionName = legendLocalized("Messages")
     Surface(
         color = LegendColors.Navy,
         shape = LegendShapes.Card,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.padding(LegendSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(legendLocalized("Messages"), style = LegendTypography.Section, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
+        Row(Modifier.padding(LegendSpacing.Md).fillMaxWidth().semantics { contentDescription = sectionName; heading() },
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onNewMessage,
                 modifier = Modifier
@@ -3028,22 +3056,44 @@ private fun LegendMessagesInboxHeader(
                     .background(LegendGradients.Gold, CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.OnNavy.copy(alpha = 0.30f), CircleShape),
             ) { Icon(Icons.Default.Edit, legendLocalized("Start a new conversation", "accessibility copy"), tint = LegendColors.Midnight) }
-            Spacer(Modifier.width(LegendSpacing.Sm))
             IconButton(
-                onClick = onCallDirectory,
+                onClick = { onCallDirectory(false) },
                 modifier = Modifier
                     .size(48.dp)
                     .background(LegendColors.OnNavy.copy(alpha = 0.12f), CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape),
             ) { Icon(Icons.Default.Phone, legendLocalized("Call a connection", "accessibility copy"), tint = LegendColors.OnNavy) }
+            IconButton(onClick = { onCallDirectory(true) }, modifier = Modifier.size(48.dp)
+                .background(LegendColors.OnNavy.copy(alpha = 0.12f), CircleShape)
+                .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape)) {
+                Icon(Icons.Default.Videocam, legendLocalized("FaceTime"), tint = LegendColors.OnNavy)
+            }
+            IconButton(onClick = onCallingProfile, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.AccountCircle, legendLocalized("Calling profile"), tint = LegendColors.OnNavy)
+            }
         }
     }
 }
 
+
 @Composable
-private fun BadgeBoxForPinnedConversation(conversation: ConversationSummary, mediaRepository: AuthenticatedMediaRepository, participantType: String) {
-    BadgedBox(badge = { if (conversation.unreadCount > 0) Badge { Text(conversation.unreadCount.toString()) } }) {
-        LegendProtectedAvatar(conversation.groupAvatar ?: conversation.counterparty.avatar, conversation.title, participantType, mediaRepository, size = 64.dp)
+private fun LegendConversationAvatar(conversation: ConversationSummary, mediaRepository: AuthenticatedMediaRepository,
+    participantType: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size)) {
+        LegendProtectedAvatar(conversation.groupAvatar ?: conversation.counterparty.avatar, conversation.title,
+            participantType, mediaRepository, size = size)
+        if (conversation.unreadCount > 0) {
+            val diameter = LegendDesignAuthority.size("unreadBadge")
+            val inset = size * ((1 - kotlin.math.sqrt(0.5)) / 2).toFloat()
+            val unreadLabel = legendLocalized("{value1} unread messages", "accessibility copy", mapOf("value1" to conversation.unreadCount.toString()))
+            Box(Modifier.absoluteOffset(x = size - inset - diameter / 2, y = inset - diameter / 2)
+                .size(diameter).background(LegendColors.Error, CircleShape)
+                .semantics { contentDescription = unreadLabel }, contentAlignment = Alignment.Center) {
+                Text(if (conversation.unreadCount > 99) "99+" else conversation.unreadCount.toString(),
+                    style = LegendTypography.Caption, fontSize = LegendTypography.Caption.fontSize / LocalDensity.current.fontScale,
+                    color = LegendColors.OnNavy, maxLines = 1)
+            }
+        }
     }
 }
 
@@ -3060,23 +3110,18 @@ private fun LegendConversationRow(
         isGroup -> legendLocalized("Group chat")
         conversation.counterparty.identity.participantType.equals("Agent", ignoreCase = true) ->
             conversation.counterparty.roleLabel?.takeIf(String::isNotBlank) ?: legendLocalized("LEGEND guide")
-        else -> legendLocalized("Connection")
+        else -> null
     }
     LegendContactCard(
         displayName = conversation.title,
         subtitle = conversation.lastMessagePreview ?: legendLocalized("Start your conversation"),
         detail = relationship,
+        statusContent = { LegendMessagingPresence(conversationId = conversation.id) },
         isVerified = !isGroup && conversation.counterparty.isVerified,
         onClick = open,
         onLongClick = more,
         avatar = {
-            LegendProtectedAvatar(
-                avatar = conversation.groupAvatar ?: conversation.counterparty.avatar,
-                displayName = conversation.title,
-                participantType = participantType,
-                repository = mediaRepository,
-                size = 46.dp,
-            )
+            LegendConversationAvatar(conversation, mediaRepository, participantType, 46.dp)
         },
         action = {
             Column(
@@ -3093,14 +3138,6 @@ private fun LegendConversationRow(
                 }
                 when {
                     conversation.isPinned -> Icon(Icons.Default.PushPin, legendLocalized("Pinned conversation", "accessibility copy"), modifier = Modifier.size(15.dp), tint = LegendColors.GoldBright)
-                    conversation.unreadCount > 0 -> Text(
-                        conversation.unreadCount.coerceAtMost(99).toString(),
-                        style = LegendTypography.Label,
-                        color = LegendColors.OnNavy,
-                        modifier = Modifier
-                            .background(LegendColors.Error, CircleShape)
-                            .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
-                    )
                     conversation.isMuted -> Icon(Icons.Default.NotificationsOff, legendLocalized("Muted conversation", "accessibility copy"), modifier = Modifier.size(15.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
                     else -> Icon(Icons.Default.ChevronRight, legendLocalized("Open conversation", "accessibility copy"), modifier = Modifier.size(20.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
                 }
@@ -3113,23 +3150,31 @@ private fun LegendConversationRow(
 private fun LegendConversationCallSheet(
     conversationId: String,
     fallbackName: String,
+    video: Boolean,
     dismiss: () -> Unit,
 ) {
     val calling = LocalLegendCalling.current
-    var video by remember { mutableStateOf(false) }
+    // The selected mode goes straight to platform consent. A saved receipt cannot
+    // be overwritten by a replacement target while the OS result is outstanding.
+    var launched by rememberSaveable { mutableStateOf(false) }
+    var requestedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var requestedVideo by rememberSaveable { mutableStateOf(false) }
+    var requestedOwner by rememberSaveable { mutableStateOf<String?>(null) }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants.values.all { it }) { dismiss(); calling?.start(conversationId, video, fallbackName) }
+        val sameRequest = requestedId == conversationId && requestedVideo == video &&
+            requestedOwner == calling?.permissionOwnerId
+        requestedId = null
+        if (sameRequest) {
+            if (grants.isNotEmpty() && grants.values.all { it }) calling?.start(conversationId, video, fallbackName)
+            dismiss()
+        }
     }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
-        Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(fallbackName, style = LegendTypography.Section)
-            LegendCallActionCard("Legend voice call", "Private in-app audio", Icons.Default.Phone) {
-                video = false; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO))
-            }
-            LegendCallActionCard("Legend video call", "Connect face to face", Icons.Default.Videocam) {
-                video = true; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA))
-            }
-            TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) }
+    LaunchedEffect(Unit) {
+        if (!launched) {
+            launched = true
+            requestedId = conversationId; requestedVideo = video; requestedOwner = calling?.permissionOwnerId
+            permissions.launch(if (video) arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA)
+                else arrayOf(android.Manifest.permission.RECORD_AUDIO))
         }
     }
 }
@@ -3227,8 +3272,10 @@ private fun LegendRecipientPicker(
                             items(state.value, key = { "${it.identity.userId}:${it.identity.participantType}" }) { recipient ->
                                 LegendContactCard(
                                     displayName = recipient.displayName,
-                                    subtitle = if (participantType == "Agent") recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("Connection") else legendLocalized("Connection"),
+                                    subtitle = if (recipient.identity.participantType.equals("Agent", ignoreCase = true)) recipient.roleLabel?.takeIf(String::isNotBlank) ?: legendLocalized("Agent") else legendLocalized("Client"),
+                                    detail = recipient.email,
                                     isVerified = recipient.isVerified == true,
+                                    statusContent = { LegendMessagingPresence(participant = recipient.identity) },
                                     onClick = {
                                         if (!isSending) {
                                             if (isCreatingGroup) {
@@ -3609,8 +3656,8 @@ private fun MessageThread(
     val counterparty = conversation.participants.firstOrNull { it.identity != currentIdentity }
     val context = LocalContext.current
     var optionsOpen by remember { mutableStateOf(false) }
-    var callOpen by remember { mutableStateOf(false) }
-    if (callOpen) LegendConversationCallSheet(conversation.id, conversation.title) { callOpen = false }
+    var callMode by remember(conversation.id) { mutableStateOf<Boolean?>(null) }
+    callMode?.let { mode -> LegendConversationCallSheet(conversation.id, conversation.title, mode) { callMode = null } }
     var privacyOpen by remember { mutableStateOf(false) }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
     LaunchedEffect(conversation.id, conversation.messages.lastOrNull()?.id, lifecycleState) {
@@ -3653,6 +3700,7 @@ private fun MessageThread(
                     else counterparty?.let { openProfile(SocialAuthor(it.identity, it.profileId, it.displayName, it.avatar)) }
                 }) {
                     Text(conversation.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    LegendMessagingPresence(conversationId = conversation.id)
                     conversation.purpose?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 1) }
                 }
                 Box {
@@ -3663,7 +3711,8 @@ private fun MessageThread(
                         if (conversation.conversationType.equals("Group", ignoreCase = true)) {
                             DropdownMenuItem(text = { Text(legendLocalized("Group members and settings")) }, onClick = { optionsOpen = false; manageGroup(conversation) })
                         } else {
-                            DropdownMenuItem(text = { Text(legendLocalized("Voice or video call")) }, onClick = { optionsOpen = false; callOpen = true })
+                            DropdownMenuItem(text = { Text(legendLocalized("Call")) }, leadingIcon = { Icon(Icons.Default.Phone, null) }, onClick = { optionsOpen = false; callMode = false })
+                            DropdownMenuItem(text = { Text(legendLocalized("FaceTime")) }, leadingIcon = { Icon(Icons.Default.Videocam, null) }, onClick = { optionsOpen = false; callMode = true })
                         }
                         DropdownMenuItem(text = { Text(legendLocalized("Read receipt privacy")) }, onClick = { optionsOpen = false; privacyOpen = true })
                     }
@@ -3684,6 +3733,7 @@ private fun MessageThread(
             items(conversation.messages.filterNot { it.isDeleted }.asReversed(), key = { it.id }) { message ->
                 LegendMessageBubble(
                     message = message,
+                    showsSenderName = conversation.conversationType.equals("Group", ignoreCase = true),
                     mediaRepository = mediaRepository,
                     participantType = participantType,
                     reply = { replyTo = message },
@@ -3764,6 +3814,7 @@ private fun MessageThread(
 @Composable
 private fun LegendMessageBubble(
     message: ConversationMessage,
+    showsSenderName: Boolean,
     mediaRepository: AuthenticatedMediaRepository,
     participantType: String,
     reply: () -> Unit,
@@ -3772,6 +3823,7 @@ private fun LegendMessageBubble(
     reactionOptions: List<String>,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
+    var showingOriginal by remember(message.id, message.body, message.originalBody) { mutableStateOf(false) }
     var actionsOpen by remember(message.id) { mutableStateOf(false) }
     var emojiPicker by remember(message.id) { mutableStateOf(false) }
     var pendingEmojiPicker by remember(message.id) { mutableStateOf(false) }
@@ -3854,10 +3906,18 @@ private fun LegendMessageBubble(
     val openProfile = LocalLegendOpenProfile.current
     val openSharedPost = LocalLegendOpenSharedPost.current
     val reactionBubble = LegendDesignAuthority.reactionBubble()
+    val bubble = LegendDesignAuthority.messageBubble()
+    val replyLabel = legendLocalized("Reply")
+    val actionsLabel = legendLocalized("Message actions")
+    val unsendLabel = legendLocalized("Unsend message")
     val density = LocalDensity.current
     var reactionContentWidth by remember(message.id) { mutableStateOf(300.dp) }
-    var reactionHeight by remember(message.id) { mutableStateOf(reactionBubble.height.dp) }
-    val reactionInset = reactionHeight * reactionBubble.outsideFraction
+    var reactionHeight by remember(message.id) { mutableStateOf(reactionBubble.touchTarget.dp) }
+    val reactionVisualHeight = reactionBubble.height * density.fontScale
+    val reactionTouchHeight = maxOf(reactionBubble.touchTarget, reactionVisualHeight)
+    val reactionTouchPadding = reactionTouchHeight - reactionVisualHeight
+    val reactionInset = (maxOf(0f, reactionHeight.value - reactionTouchPadding) * reactionBubble.outsideFraction + reactionTouchPadding / 2).dp
+    val reactionInsideReserve = maxOf(0f, reactionHeight.value - reactionInset.value).dp
     val reactionMeasured: (Int) -> Unit = { height -> reactionHeight = with(density) { height.toDp() } }
     val isMediaMessage = !message.isDeleted && (message.sharedContent != null || message.attachments.isNotEmpty())
     val messageTextColor = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.OnNavy
@@ -3867,20 +3927,33 @@ private fun LegendMessageBubble(
             Box(Modifier.clickable { openProfile(senderProfile) }) { LegendProtectedAvatar(message.sender.avatar, message.sender.displayName, participantType, mediaRepository, size = 28.dp) }
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
-        Column(horizontalAlignment = Alignment.End) {
+        Column(horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(bubble.metadataGap.dp)) {
         Box(Modifier.padding(bottom = if (message.reactions.isEmpty() || message.attachments.isNotEmpty()) 0.dp else reactionInset)) {
-        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true })) {
-            Column(Modifier.padding(if (isMediaMessage) 0.dp else LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
+        Surface(color = if (isMediaMessage) androidx.compose.ui.graphics.Color.Transparent else if (message.isMine) LegendColors.Gold else LegendColors.Navy, contentColor = messageTextColor, shape = if (isMediaMessage) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(bubble.cornerRadius.dp), modifier = Modifier.widthIn(min = if (message.reactions.isEmpty()) 0.dp else (reactionBubble.touchTarget * minOf(2, message.reactions.size) + if (message.reactions.size > 1) reactionBubble.itemSpacing else 0f).dp, max = 300.dp).heightIn(min = if (message.reactions.isEmpty()) 0.dp else reactionHeight * (1 - reactionBubble.outsideFraction)).onSizeChanged { reactionContentWidth = with(density) { it.width.toDp() } }.combinedClickable(onClick = {}, onDoubleClick = { if (!message.isDeleted) react("❤️") }, onLongClick = { if (!message.isDeleted) actionsOpen = true }).semantics {
+            if (!message.isDeleted) customActions = buildList {
+                add(CustomAccessibilityAction(replyLabel) { reply(); true })
+                add(CustomAccessibilityAction(actionsLabel) { actionsOpen = true; true })
+                if (message.isMine) add(CustomAccessibilityAction(unsendLabel) { delete(); true })
+            }
+        }) {
+            Column(Modifier.padding(start = if (isMediaMessage) 0.dp else bubble.horizontalPadding.dp, end = if (isMediaMessage) 0.dp else bubble.horizontalPadding.dp,
+                top = if (isMediaMessage) 0.dp else bubble.verticalPadding.dp,
+                bottom = if (isMediaMessage) 0.dp else bubble.verticalPadding.dp + if (message.reactions.isEmpty()) 0.dp else reactionInsideReserve), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                if (!message.isMine && showsSenderName) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else LegendColors.GoldBright)
                 message.reply?.let { replyPreview ->
                     Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                if (message.isDeleted || message.body.isNotBlank()) Text(if (message.isDeleted) legendLocalized("Message unsent") else message.body, color = messageTextColor)
-                message.originalBody?.takeIf { it != message.body }?.let { original ->
-                    Text("${LegendCopy.value("message.original")}: $original", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
+                if (message.isDeleted || message.body.isNotBlank()) Text(if (message.isDeleted) legendLocalized("Message unsent") else if (showingOriginal) message.originalBody ?: message.body else message.body, color = messageTextColor, fontSize = bubble.bodySize.sp)
+                message.translationNotice?.let { notice ->
+                    Text(notice, style = LegendTypography.Label, color = messageTextColor)
+                }
+                message.originalBody?.takeIf { it != message.body }?.let {
+                    Text(legendLocalized(if (showingOriginal) "View translation" else "View original"),
+                        modifier = Modifier.clickable { showingOriginal = !showingOriginal }, style = LegendTypography.Label,
+                        color = if (isMediaMessage) LegendColors.TextSecondary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }
                 message.translation?.let { translation ->
-                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
+                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Caption, color = if (isMediaMessage) LegendColors.TextSecondary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
                 }
                 message.verificationReview?.let { review ->
                     Text("${review.resourceType}: ${review.status}", style = LegendTypography.Label, color = if (isMediaMessage) LegendColors.TextPrimary else if (message.isMine) LegendColors.OnGold else LegendColors.GoldBright)
@@ -3920,15 +3993,8 @@ private fun LegendMessageBubble(
         }
         if (message.attachments.isEmpty()) LegendMessageReactions(message, react, Modifier.align(androidx.compose.ui.AbsoluteAlignment.BottomRight).widthIn(max = reactionContentWidth), reactionMeasured)
         }
-        Row(Modifier.widthIn(max = 300.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = LegendColors.ChatTimestamp)
-            IconButton(onClick = reply, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(16.dp), tint = LegendColors.TextSecondary)
-            }
-            if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(16.dp), tint = LegendColors.TextSecondary)
-            }
-        }
+        Text(legendCompactTime(message.sentUtc), style = bubble.timestampStyle,
+            color = LegendDesignAuthority.color(bubble.timestampColor), modifier = Modifier.padding(horizontal = bubble.metadataGap.dp))
         }
     }
 }
@@ -3936,15 +4002,21 @@ private fun LegendMessageBubble(
 @Composable
 private fun LegendMessageReactions(message: ConversationMessage, react: (String?) -> Unit, modifier: Modifier = Modifier, measured: (Int) -> Unit = {}) {
     val bubble = LegendDesignAuthority.reactionBubble()
-    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = size.height * bubble.outsideFraction; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
+    val visualHeight = bubble.height * LocalDensity.current.fontScale
+    val touchHeight = maxOf(bubble.touchTarget, visualHeight)
+    val touchPadding = touchHeight - visualHeight
+    if (message.reactions.isNotEmpty()) FlowRow(modifier.onSizeChanged { measured(it.height) }.graphicsLayer { translationY = (maxOf(0f, size.height / density - touchPadding) * bubble.outsideFraction + touchPadding / 2) * density; translationX = -bubble.trailingInset.dp.toPx() }, horizontalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp, Alignment.End), verticalArrangement = Arrangement.spacedBy(bubble.itemSpacing.dp)) {
         message.reactions.forEach { reaction ->
-            Surface(modifier = Modifier.clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }, shape = CircleShape,
+            Box(Modifier.sizeIn(minWidth = bubble.touchTarget.dp, minHeight = touchHeight.dp)
+                .clickable { react(if (reaction.reactedByCurrentActor) null else reaction.emoji) }
+                .semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" }, contentAlignment = Alignment.Center) {
+            Surface(shape = CircleShape,
                 color = if (reaction.reactedByCurrentActor) LegendDesignAuthority.color(bubble.ownFillColor).copy(alpha = bubble.ownFillOpacity) else LegendDesignAuthority.color(bubble.otherFillColor),
                 border = BorderStroke(bubble.borderWidth.dp, LegendDesignAuthority.color(bubble.borderColor).copy(alpha = bubble.borderOpacity))) {
-                Box(Modifier.heightIn(min = bubble.height.dp).padding(horizontal = bubble.horizontalPadding.dp), contentAlignment = Alignment.Center) {
-                    Text(reaction.emoji, fontSize = bubble.emojiSize.sp,
-                        modifier = Modifier.semantics { contentDescription = "${reaction.emoji}, ${reaction.count} reactions" })
+                Box(Modifier.height(visualHeight.dp).padding(horizontal = bubble.horizontalPadding.dp), contentAlignment = Alignment.Center) {
+                    Text(reaction.emoji, fontSize = bubble.emojiSize.sp, lineHeight = bubble.emojiSize.sp)
                 }
+            }
             }
         }
     }
@@ -5396,7 +5468,7 @@ private fun AccountScreen(
     currentAccountId: String,
     switchSignedInAccount: (String) -> Unit,
     addAccount: () -> Unit,
-    refreshLocalization: suspend () -> Unit,
+    refreshLocalization: suspend (String?) -> Unit,
     signOut: () -> Unit,
 ) {
     val profile by viewModel.profile.collectAsStateWithLifecycle()
@@ -5541,7 +5613,8 @@ private fun AccountScreen(
             submit = { language ->
                 viewModel.updateLanguage(account, language) {
                     languageAccount = null
-                    profilePagerScope.launch { refreshLocalization() }
+                    val savedLanguage = (viewModel.profile.value as? LoadState.Data)?.value?.translationAccess?.preferredCommunicationLanguage
+                    profilePagerScope.launch { refreshLocalization(savedLanguage) }
                 }
             },
         )
@@ -8595,7 +8668,7 @@ private fun LegendCallActionCard(title: String, subtitle: String, icon: androidx
 private fun LegendMessageAttachmentOpen(
     attachment: MessageAttachment, repository: AuthenticatedMediaRepository, participantType: String,
     hasReactions: Boolean = false,
-    reactionReserve: androidx.compose.ui.unit.Dp = (LegendDesignAuthority.reactionBubble().height * LegendDesignAuthority.reactionBubble().outsideFraction).dp,
+    reactionReserve: androidx.compose.ui.unit.Dp = LegendDesignAuthority.reactionBubble().overflow().dp,
     doubleTap: (() -> Unit)? = null,
     longPress: (() -> Unit)? = null,
     reactionOverlay: @Composable BoxScope.() -> Unit = {},
@@ -8654,4 +8727,24 @@ private fun LegendMessageAttachmentOpen(
         if (inlineFile == null) reactionOverlay()
     }
     if (failed) Text(legendLocalized("Attachment unavailable"), color = LegendColors.Error)
+}
+
+/** Visible Messaging targets only; absent/server-filtered observations render nothing. */
+@Composable
+private fun LegendMessagingPresence(participant: MobileIdentity? = null, conversationId: String? = null) {
+    val transport = LocalLegendCalling.current?.transport ?: return
+    val observation by transport.presence.collectAsStateWithLifecycle()
+    val owner = remember(transport, participant, conversationId) { java.util.UUID.randomUUID().toString() }
+    DisposableEffect(transport, owner) {
+        transport.observePresence(owner, participant?.let { MessagingPresenceParticipant(it.userId, it.participantType) }, conversationId)
+        onDispose { transport.removePresenceObserver(owner) }
+    }
+    val online = if (conversationId != null) observation?.conversations?.firstOrNull { it.conversationId == conversationId }?.isOnline
+        else participant?.let { identity -> observation?.participants?.firstOrNull { it.userId == identity.userId && it.participantType == identity.participantType }?.isOnline }
+    if (online != null) {
+        val color = LegendDesignAuthority.color(if (online) "presenceOnlineText" else "presenceOfflineText")
+        val fill = LegendDesignAuthority.color(if (online) "presenceOnlineFill" else "presenceOfflineFill")
+        Text(legendLocalized(if (online) "Online" else "Offline"), style = LegendTypography.Caption, color = color,
+            modifier = Modifier.background(fill, CircleShape).padding(horizontal = 6.dp, vertical = 2.dp))
+    }
 }

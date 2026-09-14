@@ -925,7 +925,7 @@ public sealed class LegendConnectMeaningGraphTests
                 NullLogger<LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(db, profiles, operations),
                 registry,
-                ControllerTestHelpers.BuildTranslationService());
+                ControllerTestHelpers.BuildTranslationService(), languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db));
             var conversationId = Guid.NewGuid();
             const string unseenInput = "A private ungoverned surface request";
 
@@ -941,9 +941,14 @@ public sealed class LegendConnectMeaningGraphTests
 
             // Persisting structural discourse does not turn unavailable inference into success.
             Assert.False(response.Succeeded);
-            Assert.Contains("NativeFailure=", response.Message, StringComparison.Ordinal);
-            Assert.Contains("ProviderFailure=provider_api_key_unavailable", response.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain(unseenInput, response.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
+            Assert.Equal("local_foundation_unavailable", response.Stage);
+            Assert.Equal("local_foundation_not_configured", response.Reason);
+            Assert.False(response.ExternalAnsweringUsed);
+            Assert.False(response.EscalationUsed);
+            Assert.Null(response.Message);
+            Assert.False(string.IsNullOrWhiteSpace(response.Error));
+            Assert.DoesNotContain(unseenInput, response.Error, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(0, factory.CreateClientCalls);
             var turns = await new LegendFounderAiDiscourseStateService(db, profiles, operations)
                 .GetTurnsAsync(founderId, conversationId);

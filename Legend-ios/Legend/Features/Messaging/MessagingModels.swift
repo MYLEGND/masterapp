@@ -226,6 +226,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let reply: MessageReplyPreview?
     let verificationReview: VerificationReview?
     let translation: MessageTranslationPresentation?
+    let translationNotice: String?
     let originalBody: String?
     var reactions: [MessageReaction]
     let sharedContent: MessagingSharedContent?
@@ -243,7 +244,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case verificationReview
         case translation
         case reactions, sharedContent
-        case originalBody
+        case originalBody, translationNotice
     }
 
     init(
@@ -259,6 +260,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview: VerificationReview? = nil,
         translation: MessageTranslationPresentation? = nil,
         originalBody: String? = nil,
+        translationNotice: String? = nil,
         reactions: [MessageReaction] = [],
         sharedContent: MessagingSharedContent? = nil
     ) {
@@ -274,6 +276,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.verificationReview = verificationReview
         self.translation = translation
         self.originalBody = originalBody
+        self.translationNotice = translationNotice
         self.reactions = reactions
         self.sharedContent = sharedContent
     }
@@ -292,6 +295,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview = try container.decodeIfPresent(VerificationReview.self, forKey: .verificationReview)
         translation = try container.decodeIfPresent(MessageTranslationPresentation.self, forKey: .translation)
         originalBody = try container.decodeIfPresent(String.self, forKey: .originalBody)
+        translationNotice = try container.decodeIfPresent(String.self, forKey: .translationNotice)
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
         sharedContent = try container.decodeIfPresent(MessagingSharedContent.self, forKey: .sharedContent)
     }
@@ -585,11 +589,12 @@ struct StartConversationRequest: Encodable, Sendable {
     let targetUserID: String
     let targetParticipantType: ParticipantType
     let initialMessageBody: String?
+    let includeMessages: Bool
 
     private enum CodingKeys: String, CodingKey {
         case targetUserID = "targetUserId"
         case targetParticipantType = "targetParticipantType"
-        case initialMessageBody
+        case initialMessageBody, includeMessages
     }
 }
 
@@ -777,7 +782,7 @@ protocol MessagingAPI: Sendable {
         scope: MessagingRecipientScope?,
         accessToken: String
     ) async throws -> [MessagingRecipient]
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
@@ -902,6 +907,10 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+        try await start(recipient: recipient, includeMessages: true, accessToken: accessToken)
+    }
+
     func reactionPreferences(accessToken: String) async throws -> MessagingReactionPreferences {
         throw MobileMessagingContractError.unavailable
     }
@@ -1154,7 +1163,7 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -1288,13 +1297,14 @@ struct URLSessionMessagingAPI: MessagingAPI {
             response: [MessagingRecipient].self)
     }
 
-    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+    func start(recipient: MessagingRecipient, includeMessages: Bool, accessToken: String) async throws -> ConversationDetail {
         try await client.post(
             "/api/v1/mobile/messaging/conversations",
             body: StartConversationRequest(
                 targetUserID: recipient.identity.userID,
                 targetParticipantType: recipient.identity.participantType,
-                initialMessageBody: nil),
+                initialMessageBody: nil,
+                includeMessages: includeMessages),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,
@@ -1862,4 +1872,29 @@ struct LegendReactionEmojiCatalog: Decodable {
             entry.emoji == query || (!tokens.isEmpty && tokens.allSatisfy { token in entry.keywords.contains { $0.contains(token) } })
         }
     }
+}
+
+// Reachability observations come only from the authenticated shared messaging hub.
+struct MessagingPresenceParticipant: Codable, Hashable, Sendable {
+    let userId: String
+    let participantType: String
+}
+struct MessagingPresenceRequest: Encodable, Equatable, Sendable {
+    var participants: [MessagingPresenceParticipant] = []
+    var conversationIds: [UUID] = []
+}
+struct MessagingParticipantPresence: Decodable, Sendable {
+    let userId: String
+    let participantType: String
+    let isOnline: Bool
+}
+struct MessagingConversationPresence: Decodable, Sendable {
+    let conversationId: UUID
+    let isOnline: Bool
+}
+struct MessagingPresenceResult: Decodable, Sendable {
+    let observedUtc: Date
+    let refreshSeconds: Int
+    var participants: [MessagingParticipantPresence]
+    var conversations: [MessagingConversationPresence]
 }

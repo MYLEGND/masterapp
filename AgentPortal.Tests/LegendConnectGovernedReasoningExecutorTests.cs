@@ -18,6 +18,31 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
     private static readonly Guid DefaultSemanticFamilyId =
         Guid.Parse("11111111-1111-1111-1111-111111111111");
 
+    [Theory]
+    [InlineData("add", "17/3", "5/6", "13/2")]
+    [InlineData("subtract", "-23", "18", "-41")]
+    [InlineData("multiply", "0.125", "24", "3")]
+    [InlineData("divide", "15", "28", "15/28")]
+    [InlineData("compare", "2/3", "0.5", "greater")]
+    public void SuppliedOperandCalculationUsesExistingExactRationalExecutor(string operation, string left, string right, string expected)
+    {
+        Assert.True(LegendConnectGovernedReasoningExecutor.TryCalculate(operation, left, right, out var result));
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("divide", "1", "0")]
+    [InlineData("add", "9223372036854775807", "1")]
+    [InlineData("add", "NaN", "1")]
+    [InlineData("add", " 1", "2")]
+    [InlineData("execute", "1", "2")]
+    [InlineData("add", null, "2")]
+    public void SuppliedOperandCalculationRejectsUndefinedOrUnboundedOperations(string operation, string? left, string right)
+    {
+        Assert.False(LegendConnectGovernedReasoningExecutor.TryCalculate(operation, left, right, out var result));
+        Assert.Null(result);
+    }
+
     [Fact]
     public void Executor_AlwaysKeepsHigherStandardProofWhenBroadRuleDerivesSameState()
     {
