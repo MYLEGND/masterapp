@@ -1346,8 +1346,19 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("LEGEND_PRODUCTION_ISOLATED_SELECT_ONLY: 'false'", sql, StringComparison.Ordinal);
         Assert.Contains("$matrixResult.SqlPrincipalVerified -isnot [bool]", sql, StringComparison.Ordinal);
         Assert.Contains("$matrixResult.Authority -ne 'release_workflow_matrix'", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("id-token: write", sql, StringComparison.Ordinal);
-        Assert.DoesNotContain("azure/login", sql, StringComparison.Ordinal);
+        Assert.Contains("id-token: write", sql, StringComparison.Ordinal);
+        Assert.Contains("uses: azure/login@v2", sql, StringComparison.Ordinal);
+        Assert.Contains("client-id: ${{ secrets.AZURE_CLIENT_ID }}", sql, StringComparison.Ordinal);
+        Assert.Contains("ref: ${{ needs.build.outputs.candidate_sha }}", sql, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/export-legend-foundation-test-environment.py $privateConfig --format json", sql, StringComparison.Ordinal);
+        Assert.Contains("if ($LASTEXITCODE -ne 0) { throw 'Controlled foundation configuration could not be loaded.' }", sql, StringComparison.Ordinal);
+        Assert.Contains("[Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, 'Process')", sql, StringComparison.Ordinal);
+        Assert.Contains("finally {", sql, StringComparison.Ordinal);
+        Assert.Contains("Remove-Item $privateConfig -Force", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("GITHUB_ENV", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("webapps-deploy", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet-ef database update", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("az role assignment", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("az webapp", sql, StringComparison.Ordinal);
     }
 
@@ -1497,8 +1508,19 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
         Assert.Contains("scripts/run-legend-production-shadow.sh", workflow, StringComparison.Ordinal);
         Assert.Contains("LEGEND-Production-ReadOnly-Validation", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("id-token: write", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("azure/login", workflow, StringComparison.Ordinal);
+        Assert.Contains("id-token: write", workflow, StringComparison.Ordinal);
+        Assert.Contains("uses: azure/login@v2", workflow, StringComparison.Ordinal);
+        Assert.Contains("client-id: ${{ secrets.AZURE_CLIENT_ID }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("ref: ${{ env.LEGEND_VALIDATION_CANDIDATE_SHA }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("steps.build.outcome == 'success' && steps.foundation_identity.outcome == 'success'", workflow, StringComparison.Ordinal);
+        Assert.Contains("python3 scripts/export-legend-foundation-test-environment.py \"$model_environment\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("source \"$model_environment\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("trap 'rm -f \"$model_environment\"' EXIT", workflow, StringComparison.Ordinal);
+        Assert.Contains("umask 077", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("GITHUB_ENV", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("webapps-deploy", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet-ef database update", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("az role assignment", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("az webapp", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
@@ -1529,7 +1551,12 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain(sqlSecretExpression, workflow[transcriptStart..], StringComparison.Ordinal);
         Assert.Contains("steps.configuration.outcome == 'success'", workflow[setupStart..diagnosticStart], StringComparison.Ordinal);
         Assert.Contains("'SecretStoreInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
-        Assert.Contains("'AzureConfigurationInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("FOUNDATION_CONFIGURATION_INSPECTED: ${{ steps.regression.outputs.foundation_configuration_inspected || steps.diagnostic.outputs.foundation_configuration_inspected }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("FOUNDATION_CONFIGURATION_LOADED: ${{ steps.regression.outputs.foundation_configuration_loaded || steps.diagnostic.outputs.foundation_configuration_loaded }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("'AzureConfigurationInspected': os.environ['FOUNDATION_CONFIGURATION_INSPECTED'] == 'true'", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("'FoundationConfigurationLoaded': os.environ['FOUNDATION_CONFIGURATION_LOADED'] == 'true'", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.Contains("'FoundationIdentityOutcome': os.environ['FOUNDATION_IDENTITY_OUTCOME']", workflow[transcriptStart..], StringComparison.Ordinal);
+        Assert.DoesNotContain("'AzureConfigurationInspected': False", workflow[transcriptStart..], StringComparison.Ordinal);
         Assert.Contains("LEGEND_PRODUCTION_OBSERVATION_REQUIRED: 'true'", diagnostic, StringComparison.Ordinal);
         var gate = workflow[workflow.IndexOf("      - name: Enforce complete diagnostic and regression result", StringComparison.Ordinal)..];
         Assert.Contains("$REGRESSION_OUTCOME", gate, StringComparison.Ordinal);
