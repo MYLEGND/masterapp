@@ -29,9 +29,12 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   DOTNET_VERSION: '10.x'
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_WEBAPP_NAME: masterapp-portal
   LEGEND_VALIDATION_CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
   LEGEND_VALIDATION_WORKFLOW_SHA: ${{ github.workflow_sha }}
   LEGEND_VALIDATION_SCOPE: ${{ inputs.validation_scope || 'canonical_matrix' }}
@@ -99,18 +102,40 @@ jobs:
         continue-on-error: true
         run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo -p:SourceRevisionId="$LEGEND_VALIDATION_CANDIDATE_SHA"
 
+      - name: Read existing foundation configuration with Azure identity
+        id: foundation_identity
+        if: steps.build.outcome == 'success'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Run project regression suite (live resources require selected diagnostics)
         id: regression
-        if: steps.build.outcome == 'success'
+        if: steps.build.outcome == 'success' && steps.foundation_identity.outcome == 'success'
         shell: bash
         continue-on-error: true
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          model_environment=$(mktemp "$RUNNER_TEMP/legend-foundation-env.XXXXXX")
+          trap 'rm -f "$model_environment"' EXIT
+          python3 scripts/export-legend-foundation-test-environment.py "$model_environment"
+          source "$model_environment"
+          rm -f "$model_environment"
+          unset LEGEND_CONTROLLED_REQUEST_CAPTURE LEGEND_HELDOUT_MATRIX_PATH
+          # Failed assertions may contain model text. Keep raw results private.
+          results_dir=$(mktemp -d "$RUNNER_TEMP/legend-readonly-regression.XXXXXX")
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+            --logger 'trx;LogFileName=regression.trx' --results-directory "$results_dir" \
+            > "$results_dir/regression.log" 2>&1
 
       - name: Run canonical production read-only diagnostics
         id: diagnostic
         # A failed regression still permits bounded observation of a valid
         # build. The final gate below continues to fail the job for regression.
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && env.LEGEND_VALIDATION_SCOPE != 'provider_resources' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (env.LEGEND_VALIDATION_SCOPE == 'observation' || (env.LEGEND_VALIDATION_SCOPE == 'canonical_matrix' && steps.foundation_identity.outcome == 'success')) }}
         timeout-minutes: 14
         shell: bash
         continue-on-error: true
@@ -123,6 +148,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           export LEGEND_VALIDATION_NONCE="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+          umask 077
+          model_environment=$(mktemp "$RUNNER_TEMP/legend-foundation-env.XXXXXX")
+          trap 'rm -f "$model_environment"' EXIT
+          if [[ "$LEGEND_VALIDATION_SCOPE" == 'canonical_matrix' ]]; then
+            python3 scripts/export-legend-foundation-test-environment.py "$model_environment"
+            source "$model_environment"
+          fi
+          rm -f "$model_environment"
+          unset LEGEND_CONTROLLED_REQUEST_CAPTURE LEGEND_HELDOUT_MATRIX_PATH
           # Exact selected entrypoint: ProductionReadOnlyNativeProofMatrix or
           # ProductionReadOnlyCandidateObservation. The same matrix uses only
           # isolated local discourse persistence; all production SQL is guarded.
@@ -153,6 +187,9 @@ jobs:
         if: always()
         shell: bash
         env:
+          FOUNDATION_IDENTITY_OUTCOME: ${{ steps.foundation_identity.outcome }}
+          FOUNDATION_CONFIGURATION_INSPECTED: ${{ steps.regression.outputs.foundation_configuration_inspected || steps.diagnostic.outputs.foundation_configuration_inspected }}
+          FOUNDATION_CONFIGURATION_LOADED: ${{ steps.regression.outputs.foundation_configuration_loaded || steps.diagnostic.outputs.foundation_configuration_loaded }}
           CONFIGURATION_OUTCOME: ${{ steps.configuration.outcome }}
           RESTORE_OUTCOME: ${{ steps.restore.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
@@ -173,7 +210,11 @@ jobs:
               'ConfigurationSource': {
                   'EnvironmentReference': 'LEGEND-Production-ReadOnly-Validation',
                   'SourceKind': 'github_secret_expression',
-                  'SecretStoreInspected': False, 'AzureConfigurationInspected': False,
+                  'SecretStoreInspected': False,
+                  'AzureConfigurationInspected': os.environ['FOUNDATION_CONFIGURATION_INSPECTED'] == 'true',
+                  'FoundationConfigurationLoaded': os.environ['FOUNDATION_CONFIGURATION_LOADED'] == 'true',
+                  'FoundationIdentityOutcome': os.environ['FOUNDATION_IDENTITY_OUTCOME'],
+                  'FoundationConfigurationSource': 'existing_azure_appsettings',
                   'InputReferences': ({
                       'LEGEND_PRODUCTION_READONLY_CONNECTION': 'LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION',
                       'LEGEND_PRODUCTION_READONLY_FOUNDER_OID': 'LEGEND_PRODUCTION_READONLY_FOUNDER_OID',
@@ -196,7 +237,7 @@ jobs:
               output.write('## LEGEND diagnostic evidence\n\n')
               output.write('Candidate: `' + os.environ['LEGEND_VALIDATION_CANDIDATE_SHA'] + '`\n\n')
               output.write('Configuration observations apply only to the selected diagnostic process. '
-                           'Production and credential-store configuration were not inspected.\n\n')
+                           'Credential-store values were not inspected; foundation appsettings inspection is reported above.\n\n')
               output.write('```json\n' + json.dumps(transcript, indent=2) + '\n```\n')
               if report.exists():
                   output.write('```json\n' + json.dumps(json.loads(report.read_text()), indent=2) + '\n```\n')

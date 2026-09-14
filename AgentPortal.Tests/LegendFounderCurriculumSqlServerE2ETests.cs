@@ -1530,6 +1530,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
                     new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
                 })
+                .AddControlledFoundation()
                 .Build();
             var registry = new LegendLanguageRegistry(db, configuration);
             var corpus = new LegendConnectCorpusService(
@@ -1548,7 +1549,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
             var profiles = new AgentProfileAccessResolver(db);
             var founderLegend = new FounderLegendConnectService(operations, profiles);
-            var factory = new CountingHttpClientFactory();
+            var factory = new CountingHttpClientFactory(allowControlledFoundation: true);
             // Production remains strictly read-only. Conversation-scoped
             // discourse state is exercised through its canonical persistence
             // authority in an isolated test store while every meaning graph,
@@ -1587,7 +1588,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 diagnosticLoggerFactory.CreateLogger<LegendFounderAiConversationService>(),
                 discourse,
                 registry,
-                translation, languagePreferences: new ControlledResourceAccessService(discourseDb), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(discourseDb));
+                translation,
+                modelInference: new LegendConnectModelInferenceTransport(factory, configuration,
+                    diagnosticLoggerFactory.CreateLogger<LegendConnectModelInferenceTransport>()),
+                languagePreferences: new ControlledResourceAccessService(discourseDb),
+                historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(discourseDb));
 
             isolatedPhase = "fixture_preflight";
             diagnosticCapture.ResetDiagnostics();
@@ -2260,8 +2265,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     Assert.False(native.RequiresEscalation);
                     Assert.False(string.IsNullOrWhiteSpace(native.Answer));
                     Assert.True(reply.Succeeded);
-                    Assert.Equal("LegendAi", reply.ResponseAuthority);
-                    Assert.Equal("native_response", reply.Stage);
+                    Assert.Equal("LocalFoundation", reply.ResponseAuthority);
+                    Assert.Equal("foundation_response", reply.Stage);
+                    Assert.Equal("LegendControlled", reply.FoundationHosting);
+                    Assert.False(string.IsNullOrWhiteSpace(reply.FoundationModel));
+                    Assert.False(reply.ExternalAnsweringUsed);
+                    Assert.False(reply.EscalationUsed);
                     Assert.Equal(native.Answer, reply.Message);
                     if (proofCase.Reference == "automatic-language-native-arithmetic")
                     {
