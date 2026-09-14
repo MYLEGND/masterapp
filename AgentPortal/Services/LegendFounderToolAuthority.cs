@@ -5,6 +5,9 @@ using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Domain.Entities;
+using Domain.Enums;
+using System.Globalization;
 
 namespace AgentPortal.Services;
 
@@ -35,6 +38,7 @@ internal sealed class LegendFounderToolAuthority
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly AgencyCommandService? _agencyCommand;
+    private readonly IExecutionEngine? _executionEngine;
     private readonly HashSet<string> _consumedMutationAuthorizations =
         new(StringComparer.Ordinal);
     private readonly object _mutationAuthorizationLock = new();
@@ -49,11 +53,13 @@ internal sealed class LegendFounderToolAuthority
     internal LegendFounderToolAuthority(
         FounderLegendConnectService legend,
         IFounderSoftwareRemediationService? softwareRemediation,
-        AgencyCommandService? agencyCommand = null)
+        AgencyCommandService? agencyCommand = null,
+        IExecutionEngine? executionEngine = null)
     {
         _legend = legend;
         _softwareRemediation = softwareRemediation;
         _agencyCommand = agencyCommand;
+        _executionEngine = executionEngine;
     }
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
@@ -69,6 +75,8 @@ internal sealed class LegendFounderToolAuthority
         return Tools.Where(tool =>
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
+            if (name is "legend_list_personal_tasks" or "legend_create_personal_task" && _executionEngine is null)
+                return false;
             if (name == "legend_remember_conversation_facts")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
@@ -123,6 +131,7 @@ internal sealed class LegendFounderToolAuthority
     private static bool IsReadOnlyFounderTool(
         string name) =>
         name is
+            "legend_list_personal_tasks" or
             "legend_calculate" or
             "legend_capabilities" or
             "legend_request_teacher_escalation" or
@@ -309,7 +318,8 @@ internal sealed class LegendFounderToolAuthority
         FounderAiToolCall call,
         string mode,
         CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        LegendConnectExternalProviderPolicy? providerPolicy = null,
+        IReadOnlyList<object>? availableTools = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -342,6 +352,57 @@ internal sealed class LegendFounderToolAuthority
 
         switch (call.Name)
         {
+            case "legend_list_personal_tasks":
+            case "legend_create_personal_task":
+            {
+                if (_executionEngine is null)
+                    return SerializeUnbounded(new { ok = false, error = "personal_tasks_unavailable" });
+                if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
+                    return SerializeUnbounded(new { ok = false, error = "personal_task_arguments_invalid" });
+                JsonDocument arguments;
+                try { arguments = JsonDocument.Parse(call.Arguments); }
+                catch (JsonException) { return SerializeUnbounded(new { ok = false, error = "personal_task_arguments_invalid" }); }
+                using (arguments)
+                {
+                    var root = arguments.RootElement;
+                    if (!TryResolveFounderFunctionParameters(call.Name, out var schema) || !IsStrictSchemaInstance(schema, root))
+                        return SerializeUnbounded(new { ok = false, error = "personal_task_arguments_invalid" });
+                    var actor = await _legend.ResolveFounderActorAsync(founder, cancellationToken);
+                    if (call.Name == "legend_list_personal_tasks")
+                    {
+                        var period = root.GetProperty("period").GetString();
+                        var tasks = period == "overdue"
+                            ? await _executionEngine.GetOverdueAsync(actor, cancellationToken)
+                            : await _executionEngine.GetTodayAsync(actor, cancellationToken);
+                        return SerializeUnbounded(new { ok = true, scope = "authenticated_actor", period,
+                            timeBasis = "UTC", total = tasks.Count, truncated = tasks.Count > 100,
+                            tasks = tasks.Take(100).Select(task => new { task.Id, task.Title, dueDateUtc = TaskDueUtc(task), task.Status, task.Priority }) });
+                    }
+                    var title = root.GetProperty("title").GetString()!.Trim();
+                    var dueText = root.GetProperty("due_at").GetString()!;
+                    if (title.Length == 0 ||
+                        !System.Text.RegularExpressions.Regex.IsMatch(dueText, @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$", System.Text.RegularExpressions.RegexOptions.CultureInvariant) ||
+                        !DateTimeOffset.TryParse(dueText, CultureInfo.InvariantCulture, DateTimeStyles.None, out var due))
+                        return SerializeUnbounded(new { ok = false, error = "personal_task_due_time_requires_explicit_offset" });
+                    var id = Guid.ParseExact(call.MutationAuthorization!.CorrelationId, "N");
+                    var existing = await _executionEngine.GetByIdAsync(id, actor, cancellationToken);
+                    if (existing is not null && (existing.Source != "LegendFounderAi" || existing.SourceRef != id.ToString("N") ||
+                        existing.OwnerType != ActionOwnerType.Agent || existing.OwnerId != actor || existing.EffectiveAgentOid != actor || existing.CreatedBy != actor ||
+                        existing.ActionSurface != ActionSurface.CommandCenter || existing.RelatedEntityType != RelatedEntityType.Unknown ||
+                        !string.IsNullOrEmpty(existing.RelatedEntityId) || existing.Title != title || existing.DueDateUtc != due.UtcDateTime))
+                        return SerializeUnbounded(new { ok = false, error = "personal_task_operation_conflict" });
+                    var saved = existing ?? await _executionEngine.CreateActionAsync(new ActionItem
+                    {
+                        Id = id, Title = title, OwnerId = actor, EffectiveAgentOid = actor, CreatedBy = actor,
+                        OwnerType = ActionOwnerType.Agent, DueDateUtc = due.UtcDateTime,
+                        ActionSurface = ActionSurface.CommandCenter, Source = "LegendFounderAi", SourceRef = id.ToString("N")
+                    }, cancellationToken);
+                    return SerializeUnbounded(new { ok = true, scope = "authenticated_actor", saved.Id, saved.Title,
+                        dueDateUtc = TaskDueUtc(saved), saved.Status, reused = existing is not null,
+                        authority = "ExecutionEngine", calendarEventCreated = false, notificationScheduled = false });
+                }
+            }
+
             case "legend_calculate":
             {
                 if (string.IsNullOrWhiteSpace(call.Arguments) || call.Arguments.Length > MaximumNativeReadArgumentsCharacters)
@@ -368,7 +429,8 @@ internal sealed class LegendFounderToolAuthority
 
             case "legend_capabilities":
             {
-                return SerializeUnbounded(DescribeFounderCapabilities());
+                return SerializeUnbounded(DescribeCapabilities(availableTools ?? GetAvailableTools(
+                    false, null, LegendConnectExternalProviderPolicy.Resolve(providerPolicy), mode == "teacher")));
             }
 
             case "legend_remember_conversation_facts":
@@ -1233,6 +1295,9 @@ internal sealed class LegendFounderToolAuthority
         }
     }
 
+    private static DateTime? TaskDueUtc(ActionItem task) => task.DueDateUtc is { } due
+        ? DateTime.SpecifyKind(due, DateTimeKind.Utc) : null;
+
     private async Task<string?> TryConsumeMutationAuthorizationAsync(
         ClaimsPrincipal founder,
         FounderAiMutationAuthorization? authorization,
@@ -1854,9 +1919,12 @@ internal sealed class LegendFounderToolAuthority
         !value.Any(char.IsControl);
 
     private static IReadOnlyList<object> DescribeFounderCapabilities()
+        => DescribeCapabilities(BuildFounderTools());
+
+    private static IReadOnlyList<object> DescribeCapabilities(IEnumerable<object> tools)
     {
         var capabilities = new List<object>();
-        foreach (var tool in BuildFounderTools())
+        foreach (var tool in tools)
         {
             using var document = JsonDocument.Parse(
                 JsonSerializer.Serialize(tool, JsonOptions));
@@ -1948,6 +2016,23 @@ internal sealed class LegendFounderToolAuthority
             },
             new
             {
+                type = "function", name = "legend_list_personal_tasks",
+                description = "Read this authenticated user's tasks from the existing execution authority. Today includes the UTC day and undated tasks; overdue includes tasks due earlier today, so the lists can overlap. No other account, lead or client scope may be supplied. Returns at most 100 tasks; inspect truncation before claiming completeness.",
+                parameters = new { type = "object", properties = new { period = new { type = "string", @enum = new[] { "today", "overdue" } } }, required = new[] { "period" }, additionalProperties = false },
+                strict = true
+            },
+            new
+            {
+                type = "function", name = "legend_create_personal_task",
+                description = "Create a task in this authenticated user's existing Command Center after explicit request-level confirmation. Resolve a clear title and due time with an explicit UTC offset first; ask about ambiguous dates/timezones. This creates a task only, not a calendar meeting, email invitation, or scheduled push reminder. Report only the successful execution receipt.",
+                parameters = new { type = "object", properties = new {
+                    title = new { type = "string", minLength = 1, maxLength = 200 },
+                    due_at = new { type = "string", minLength = 20, maxLength = 40 }
+                }, required = new[] { "title", "due_at" }, additionalProperties = false },
+                strict = true
+            },
+            new
+            {
                 type = "function",
                 name = "legend_remember_conversation_facts",
                 description = "Retain user-stated facts only in this authenticated conversation when the user asks you to remember or record them. Supply subject/relation/value text copied exactly from the current user message, without paraphrase, inference, or normalized dates. These remain private user assertions, not approved organization knowledge or trained model weights. No global learning or promotion occurs.",
@@ -1995,7 +2080,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_system_overview",
                 description =
-                    "Read the current privacy-safe aggregate LEGEND Connect system metrics, readiness and operating state. Use this before making factual claims about current LEGEND system status.",
+                    "Read current privacy-safe LEGEND translation and corpus aggregates, explicit productionReadiness, and provider capacity. Use metric definitions, numeric values and snapshot timestamp; ratios are fractions, display values are rounded. These counters do not measure foundation-model intelligence, individual user quotas, website conversion causes or whole-application health. Use the returned readiness decision and checks; do not invent a readiness grade from counters or colors.",
                 parameters = new
                 {
                     type = "object",

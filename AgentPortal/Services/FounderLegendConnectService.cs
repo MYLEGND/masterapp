@@ -154,7 +154,7 @@ public sealed class FounderLegendConnectService
             ? new LegendConnectRuntimePolicySnapshot(false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue)
             : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var readiness = _runtimePolicy is null
-            ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
+            ? LegendConnectProductionReadinessSnapshot.Unavailable("Legend Connect runtime policy authority is unavailable.")
             : await _runtimePolicy.GetReadinessAsync(cancellationToken);
         return new FounderLegendConnectDashboardVm
         {
@@ -579,11 +579,8 @@ public sealed class FounderLegendConnectService
         var unavailablePolicy = new LegendConnectRuntimePolicySnapshot(
             false, 0, 0, 0, false, true, "Shadow", 0.98m,
             null, null, DateTime.MinValue);
-        var unavailableReadiness = new LegendConnectProductionReadinessSnapshot(
-            "BLOCKED",
-            false,
-            "Production readiness is unavailable in this bounded operational diagnostic.",
-            [], 0, 0, 0, 0, 0);
+        var unavailableReadiness = LegendConnectProductionReadinessSnapshot.Unavailable(
+            "Acquisition readiness is unavailable in this bounded operational diagnostic.");
         var unavailableCapacity = UnavailableProviderCapacity(
             "Provider capacity is unavailable in this bounded operational diagnostic.");
 
@@ -748,11 +745,7 @@ public sealed class FounderLegendConnectService
                 null, null, DateTime.MinValue)
             : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var readiness = _runtimePolicy is null
-            ? new LegendConnectProductionReadinessSnapshot(
-                "BLOCKED",
-                false,
-                "Legend Connect runtime policy authority is unavailable.",
-                [], 0, 0, 0, 0, 0)
+            ? LegendConnectProductionReadinessSnapshot.Unavailable("Legend Connect runtime policy authority is unavailable.")
             : restrictedProviders
                 ? await _runtimePolicy.GetReadinessAsync(cancellationToken, providerPolicy)
                 : await _runtimePolicy.GetReadinessAsync(cancellationToken);
@@ -799,7 +792,7 @@ public sealed class FounderLegendConnectService
             ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
             : await _entitlements.GetFounderScaleAsync(cancellationToken);
         var readiness = _runtimePolicy is null
-            ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
+            ? LegendConnectProductionReadinessSnapshot.Unavailable("Legend Connect runtime policy authority is unavailable.")
             : restrictedProviders
                 ? await _runtimePolicy.GetReadinessAsync(cancellationToken, providerPolicy)
                 : await _runtimePolicy.GetReadinessAsync(cancellationToken);
@@ -812,7 +805,9 @@ public sealed class FounderLegendConnectService
             translationQuality,
             accountScale,
             readiness,
-            runtimeAuditCount);
+            runtimeAuditCount,
+            accountScaleAvailable: _entitlements is not null,
+            runtimeAuditAvailable: _runtimePolicy is not null);
     }
 
     public async Task<FounderLegendConnectOperationResult> UpdateRuntimePolicyAsync(

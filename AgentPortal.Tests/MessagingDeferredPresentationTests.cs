@@ -16,8 +16,11 @@ namespace AgentPortal.Tests;
 
 public sealed partial class MessagingServiceTests
 {
-    [Fact]
-    public async Task DeferredNotification_ExhaustedQuotaDeliversOriginalAndPresetNoticeWithoutCachingItAsTranslation()
+    [Theory]
+    [InlineData("translation_quota_exhausted", "Limit karaktè tradiksyon ou a pa sifi pou tèks sa a. Tèks ki pa tradui yo parèt nan lang orijinal yo.", true)]
+    [InlineData("translation_provider_timeout", "Tradiksyon an poko pare. Mesaj ou yo toujou anrejistre. Tanpri eseye ankò.", false)]
+    public async Task MessageProjection_QuotaAndPendingFailuresUseDistinctPresetNoticesWithoutFalseCache(
+        string failureCode, string expectedNotice, bool deliverNotification)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -41,7 +44,7 @@ public sealed partial class MessagingServiceTests
         var localization = new ApplicationLocalizationService(new EmbeddedApplicationCopyManifestSource(),
             new ControlledResourceAccessService(db, configuration), registry, retained.Object, intelligence.Object,
             NullLogger<ApplicationLocalizationService>.Instance);
-        var translator = new DeferredTranslationProbe { Fail = true, FailureCode = "translation_quota_exhausted" };
+        var translator = new DeferredTranslationProbe { Fail = true, FailureCode = failureCode };
         var service = CreateService(db, translator, applicationLocalization: localization);
         var sender = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
         var recipient = new MessagingActor("client-1", MessagingParticipantTypes.Client);
@@ -55,9 +58,11 @@ public sealed partial class MessagingServiceTests
         Assert.Equal("Hello.", received.Body);
         Assert.Null(received.Translation);
         Assert.Null(received.OriginalBody);
-        Assert.Equal("Limit karaktè tradiksyon ou a pa sifi pou tèks sa a. Tèks ki pa tradui yo parèt nan lang orijinal yo.", received.TranslationNotice);
+        Assert.Equal(expectedNotice, received.TranslationNotice);
+        Assert.Equal(1, translator.Calls);
         var notification = await db.MobileActivityNotifications.SingleAsync();
-        Assert.Equal(received.TranslationNotice + "\n\nHello.", await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
+        Assert.Equal(deliverNotification ? received.TranslationNotice + "\n\nHello." : null,
+            await service.PrepareNotificationPresentationAsync(recipient, notification.Id));
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         retained.VerifyNoOtherCalls();
         intelligence.VerifyNoOtherCalls();
@@ -68,6 +73,52 @@ public sealed partial class MessagingServiceTests
         Assert.Equal("Bonjou.", translated.Body);
         Assert.Null(translated.TranslationNotice);
         Assert.Single(await db.MessageTranslations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MessageProjection_PendingTranslationPreservesScopedReadAndAllowsAuthorizedReply()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var client = await db.ClientProfiles.SingleAsync(item => item.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1", ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation, IsActive = true,
+            GrantedUtc = DateTime.UtcNow, GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = client.Id, ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        db.AgentProfiles.Add(new AgentProfile { AgentUserId = "unrelated-agent", IsActive = true });
+        await db.SaveChangesAsync();
+        var translator = new DeferredTranslationProbe { Fail = true };
+        var service = CreateService(db, translator);
+        var sender = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var recipient = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var started = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            sender, recipient.UserId, recipient.ParticipantType, InitialMessageBody: "Hello."));
+        Assert.True(started.Succeeded);
+        var id = started.Conversation!.Id;
+        var denied = await service.GetConversationAsync(new MessagingActor("unrelated-agent", MessagingParticipantTypes.Agent), id);
+        Assert.False(denied.Succeeded);
+        Assert.Null(denied.Conversation);
+        Assert.Equal(0, translator.Calls);
+        var page = await service.GetConversationAsync(recipient, id);
+        Assert.True(page.Succeeded, page.ErrorMessage);
+        Assert.False(page.Conversation!.IsClosed);
+        Assert.Equal("Hello.", Assert.Single(page.Conversation.Messages).Body);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, Assert.Single(page.Conversation.Messages).TranslationNotice);
+        Assert.Equal(1, translator.Calls);
+        var reply = await service.SendMessageAsync(new SendMessagingMessageCommand(recipient, id, "Mèsi.", "pending-translation-reply"));
+        Assert.True(reply.Succeeded, reply.ErrorMessage);
+        Assert.Equal("Mèsi.", reply.Message!.Body);
+        Assert.Equal(1, translator.Calls);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        Assert.Empty(await db.LegendTranslationUsageLedgers.ToListAsync());
+        Assert.Equal(2, await db.InternalMessages.CountAsync());
     }
 
     [Theory]
@@ -137,10 +188,12 @@ public sealed partial class MessagingServiceTests
         var activity = await service.ListActivityNotificationsAsync(recipient);
         if (failTranslation)
         {
-            Assert.False(page.Succeeded);
-            Assert.Equal(MessagingTranslationPresentation.UnavailableCode, page.ErrorCode);
-            Assert.Null(page.Conversation);
-            Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, Assert.Single(inbox.Conversations).LastMessagePreview);
+            Assert.True(page.Succeeded, page.ErrorMessage);
+            var original = Assert.Single(page.Conversation!.Messages);
+            Assert.Equal("Hello.", original.Body);
+            Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, original.TranslationNotice);
+            Assert.Null(original.Translation);
+            Assert.Equal(MessagingTranslationPresentation.UnavailableMessage + "\n\nHello.", Assert.Single(inbox.Conversations).LastMessagePreview);
             Assert.Empty(activity.Notifications);
         }
         else

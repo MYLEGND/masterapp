@@ -1768,10 +1768,13 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(original, Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
 
         var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
-        Assert.False(recipient.Succeeded);
-        Assert.Equal(MessagingTranslationPresentation.UnavailableCode, recipient.ErrorCode);
-        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, recipient.ErrorMessage);
-        Assert.Null(recipient.Conversation);
+        Assert.True(recipient.Succeeded, recipient.ErrorMessage);
+        var pendingOriginal = Assert.Single(recipient.Conversation!.Messages);
+        Assert.Equal(source.Id, pendingOriginal.Id);
+        Assert.Equal(original, pendingOriginal.Body);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, pendingOriginal.TranslationNotice);
+        Assert.Null(pendingOriginal.Translation);
+        Assert.Null(pendingOriginal.OriginalBody);
         Assert.Equal(original, (await db.InternalMessages.SingleAsync()).Body);
         Assert.Null(source.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
@@ -1779,8 +1782,8 @@ public sealed partial class MessagingServiceTests
             row.ConversationId == started.Conversation.Id && row.UserId == client.UserId);
         Assert.Null(participant.LastReadMessageId);
 
-        // A transient provider failure withholds the entire page. Once the provider
-        // recovers, the same durable original is presented and only that success is cached.
+        // A transient provider failure preserves the complete original page. Once
+        // the provider recovers, only the actual translated success is cached.
         var recoveredTranslator = new DeferredTranslationProbe();
         var recoveredService = CreateService(db, recoveredTranslator);
         var recovered = await recoveredService.GetConversationAsync(client, started.Conversation.Id);

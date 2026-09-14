@@ -92,6 +92,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             : azureCapacity?.Detail ?? "Azure Translator is not configured on this server."));
 
         IReadOnlyList<LegendLanguageDefinitionSnapshot> languages;
+        var registryObservationAvailable = true;
         try
         {
             languages = await _languages.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
@@ -99,12 +100,16 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(exception, "Legend Connect language registry readiness could not be read.");
+            registryObservationAvailable = false;
             languages = Array.Empty<LegendLanguageDefinitionSnapshot>();
         }
         var registryReady = languages.Any(item => item.IsLearningEnabled);
         checks.Add(Check("Language Registry", registryReady, registryReady
             ? $"{languages.Count(item => item.IsLearningEnabled)} enabled learning language(s) are available."
-            : "No enabled learning language is available."));
+            : registryObservationAvailable
+                ? "No enabled learning language is available."
+                : "The language registry could not be read; the enabled learning-language count is unknown.",
+            registryObservationAvailable));
 
         var now = DateTime.UtcNow;
         var learningWorkerReady = policy.LastLearningWorkerHeartbeatUtc is { } learningHeartbeat &&
@@ -170,7 +175,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             historicalConvergenceReady,
             historicalConvergenceReady
                 ? $"Historical language intelligence is converged at evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}."
-                : $"Historical language intelligence must complete evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} before autonomous production learning is ready."));
+                : $"Historical language intelligence must complete evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} before autonomous corpus acquisition is ready."));
 
         var candidates = await CandidateReadinessAsync(cancellationToken);
         var candidateReady = candidates.PendingEligible > 0;
@@ -198,7 +203,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             "ACTIVE — NO ELIGIBLE WORK" => "Autonomous acquisition is active; no eligible approved work is waiting.",
             "READY" => "All activation gates pass. Founder may activate autonomous acquisition.",
             "READY — NO ELIGIBLE WORK" => "All safety gates pass. Founder may activate autonomous acquisition now; it will remain idle until approved source-language knowledge creates eligible missing coverage.",
-            "DEGRADED" => "Autonomous acquisition is enabled but one or more safety gates no longer pass; no new work will start.",
+            "DEGRADED" => "Autonomous acquisition is enabled but one or more safety gates no longer pass; admission of a new autonomous acquisition cycle is blocked. This does not report whether other processing or in-flight work continues.",
             _ => FirstBlockedDetail(checks, policy.LearningEnabled)
         };
         return new LegendConnectProductionReadinessSnapshot(
@@ -1636,11 +1641,15 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         }
     }
 
-    private static LegendConnectReadinessCheck Check(string name, bool ready, string detail) =>
-        new(name, ready ? "READY" : "BLOCKED", detail);
+    private static LegendConnectReadinessCheck Check(string name, bool ready, string detail,
+        bool observationAvailable = true) =>
+        new(name, ready ? "READY" : "BLOCKED", detail)
+        {
+            ObservationAvailable = observationAvailable
+        };
 
     private static string FirstBlockedDetail(IEnumerable<LegendConnectReadinessCheck> checks, bool learningEnabled) =>
-        !learningEnabled ? "Learning is paused by the durable Founder runtime policy." :
+        !learningEnabled ? "The durable Founder runtime policy disables learning and autonomous acquisition admission." :
         checks.FirstOrDefault(item => item.State == "BLOCKED")?.Detail ?? "Legend Connect is not ready for autonomous acquisition.";
 
     private static string NormalizeContextualMode(string? mode)

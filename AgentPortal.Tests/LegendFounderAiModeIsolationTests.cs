@@ -2603,7 +2603,8 @@ public sealed partial class LegendFounderAiModeIsolationTests
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectOperations operations,
         FounderAiScenarioHandler handler,
-        ITranslationService? translation = null)
+        ITranslationService? translation = null,
+        IExecutionEngine? executionEngine = null)
     {
         // Scripted transport fixtures prove policy and orchestration only.
         // Actual local model/production-data acceptance uses the separate
@@ -2637,7 +2638,7 @@ public sealed partial class LegendFounderAiModeIsolationTests
             translation ?? ControllerTestHelpers.BuildTranslationService(),
             languagePreferences: new ControlledResourceAccessService(db), historyScopes: ControllerTestHelpers.BuildFounderHistoryScopes(db),
             modelInference: new LegendConnectModelInferenceTransport(clients, configuration,
-                NullLogger<LegendConnectModelInferenceTransport>.Instance));
+                NullLogger<LegendConnectModelInferenceTransport>.Instance), executionEngine: executionEngine);
     }
 
     private static LegendConnectNativeInferenceSnapshot NativeLanguageAnswer(

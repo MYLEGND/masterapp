@@ -178,8 +178,8 @@ public sealed class FounderLegendConnectDashboardVm
     public TranslationFounderScaleSnapshot AccountScale { get; init; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
     public LegendConnectRuntimePolicySnapshot RuntimePolicy { get; init; } = new(
         false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue);
-    public LegendConnectProductionReadinessSnapshot ProductionReadiness { get; init; } = new(
-        "BLOCKED", false, "Runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0);
+    public LegendConnectProductionReadinessSnapshot ProductionReadiness { get; init; } =
+        LegendConnectProductionReadinessSnapshot.Unavailable("Runtime policy authority is unavailable.");
     public IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot> RuntimeAudit { get; init; } =
         Array.Empty<LegendConnectFounderOperationalAuditSnapshot>();
 }
@@ -278,26 +278,42 @@ public sealed record FounderLegendConnectOperationResult(bool Succeeded, string 
 /// </summary>
 public sealed record FounderLegendConnectLiveMetricSnapshot(
     string DisplayValue,
-    string Tone);
+    string Tone)
+{
+    public decimal? Value { get; init; }
+    public string? Unit { get; init; }
+    public string? Definition { get; init; }
+    public bool ObservationAvailable { get; init; } = true;
+    public string? UnavailableReason { get; init; }
+}
 
 public sealed record FounderLegendConnectLiveMetricsSnapshot(
     IReadOnlyDictionary<string, FounderLegendConnectLiveMetricSnapshot> Metrics,
     LegendConnectProviderCapacitySnapshot? ProviderCapacity)
 {
+    public DateTime SnapshotCompletedUtc { get; init; }
+    public LegendConnectProductionReadinessSnapshot? ProductionReadiness { get; init; }
+    public string Scope => "Deployment-wide privacy-safe LEGEND translation and corpus aggregates; not general model intelligence, an individual account quota, or whole-application readiness. Counts describe persisted observations, not whether in-flight or unrecorded work exists. Metrics with observationAvailable=false have unknown values.";
+
     public static FounderLegendConnectLiveMetricsSnapshot Create(
         LegendConnectDashboardSnapshot dashboard,
         LegendConnectTranslationQualitySnapshot translationQuality,
         TranslationFounderScaleSnapshot accountScale,
         LegendConnectProductionReadinessSnapshot readiness,
-        int runtimeAuditCount)
-        => Create(LegendConnectDashboardCounters.FromDashboard(dashboard), translationQuality, accountScale, readiness, runtimeAuditCount);
+        int runtimeAuditCount,
+        bool accountScaleAvailable = true,
+        bool runtimeAuditAvailable = true)
+        => Create(LegendConnectDashboardCounters.FromDashboard(dashboard), translationQuality, accountScale, readiness,
+            runtimeAuditCount, accountScaleAvailable, runtimeAuditAvailable);
 
     public static FounderLegendConnectLiveMetricsSnapshot Create(
         LegendConnectDashboardCounters dashboard,
         LegendConnectTranslationQualitySnapshot translationQuality,
         TranslationFounderScaleSnapshot accountScale,
         LegendConnectProductionReadinessSnapshot readiness,
-        int runtimeAuditCount)
+        int runtimeAuditCount,
+        bool accountScaleAvailable = true,
+        bool runtimeAuditAvailable = true)
     {
         var metrics = new Dictionary<string, FounderLegendConnectLiveMetricSnapshot>(StringComparer.Ordinal);
         var routedRequestCount = dashboard.ReconciledTerminalRouteCount;
@@ -363,12 +379,43 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         Add(metrics, "active-directional-alignments", dashboard.ActiveDirectionalAtomicAlignmentCount, LegendConnectMetricTone.BeneficialActivity(dashboard.ActiveDirectionalAtomicAlignmentCount));
         Add(metrics, "legacy-multi-unit-assets-retired", dashboard.SupersededLegacyMultiUnitAssetCount, LegendConnectMetricTone.InformationalActivity(dashboard.SupersededLegacyMultiUnitAssetCount));
 
-        AddDisplay(metrics, "translation-quality-needs-review-summary", $"{translationQuality.NeedsReviewCount:N0} needs review", LegendConnectMetricTone.PendingWork(translationQuality.NeedsReviewCount));
-        AddDisplay(metrics, "active-pairs-summary", $"{dashboard.DirectionalPairCount:N0} pairs", LegendConnectMetricTone.InformationalActivity(dashboard.DirectionalPairCount));
-        AddDisplay(metrics, "runtime-audit-entries", $"{runtimeAuditCount:N0} entries", LegendConnectMetricTone.InformationalActivity(runtimeAuditCount));
-        AddDisplay(metrics, "operational-events-summary", $"{dashboard.RecentOperationalEventCount:N0} events", LegendConnectMetricTone.InformationalActivity(dashboard.RecentOperationalEventCount));
+        AddDisplay(metrics, "translation-quality-needs-review-summary", $"{translationQuality.NeedsReviewCount:N0} needs review", LegendConnectMetricTone.PendingWork(translationQuality.NeedsReviewCount), translationQuality.NeedsReviewCount, "count");
+        AddDisplay(metrics, "active-pairs-summary", $"{dashboard.DirectionalPairCount:N0} pairs", LegendConnectMetricTone.InformationalActivity(dashboard.DirectionalPairCount), dashboard.DirectionalPairCount, "count");
+        AddDisplay(metrics, "runtime-audit-entries", $"{runtimeAuditCount:N0} entries", LegendConnectMetricTone.InformationalActivity(runtimeAuditCount), runtimeAuditCount, "count");
+        AddDisplay(metrics, "operational-events-summary", $"{dashboard.RecentOperationalEventCount:N0} events", LegendConnectMetricTone.InformationalActivity(dashboard.RecentOperationalEventCount), dashboard.RecentOperationalEventCount, "count");
 
-        return new FounderLegendConnectLiveMetricsSnapshot(metrics, dashboard.ProviderCapacity);
+        if (!readiness.ObservationAvailable)
+            MarkUnavailable(metrics, ["approved-candidates", "eligible-pending", "rejected-ineligible",
+                "readiness-duplicates-prevented", "pairs-awaiting-knowledge"],
+                "The acquisition-readiness authority was unavailable; candidate counts were not observed.");
+        if (!accountScaleAvailable)
+            MarkUnavailable(metrics, ["high-consumption-accounts"],
+                "The account-usage authority was unavailable; high-consumption account counts were not observed.");
+        if (!runtimeAuditAvailable)
+            MarkUnavailable(metrics, ["runtime-audit-entries"],
+                "The runtime-policy authority was unavailable; audit entries were not observed.");
+
+        return new FounderLegendConnectLiveMetricsSnapshot(metrics, dashboard.ProviderCapacity)
+        {
+            ProductionReadiness = readiness,
+            SnapshotCompletedUtc = DateTime.UtcNow
+        };
+    }
+
+    private static void MarkUnavailable(
+        IDictionary<string, FounderLegendConnectLiveMetricSnapshot> metrics,
+        IReadOnlyList<string> keys,
+        string reason)
+    {
+        foreach (var key in keys)
+            metrics[key] = metrics[key] with
+            {
+                DisplayValue = "Unavailable",
+                Tone = LegendConnectMetricTone.Neutral,
+                Value = null,
+                ObservationAvailable = false,
+                UnavailableReason = reason
+            };
     }
 
     private static void Add(
@@ -376,19 +423,49 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         string key,
         long value,
         string tone) =>
-        AddDisplay(metrics, key, value.ToString("N0"), tone);
+        AddDisplay(metrics, key, value.ToString("N0"), tone, value, key switch
+        {
+            "azure-characters-used" or "consumed-live-characters" or "consumed-corpus-characters" or
+            "provider-characters-reserved" or "provider-billable-characters" or "same-language-avoided" or
+            "memory-avoided" or "structural-avoided" or "context-avoided" or
+            "promoted-translation-model-avoided" or "provider-observation-avoided" => "characters",
+            _ => "count"
+        });
 
     private static void AddPercent(
         IDictionary<string, FounderLegendConnectLiveMetricSnapshot> metrics,
         string key,
         decimal value,
         string tone) =>
-        AddDisplay(metrics, key, value.ToString("P0"), tone);
+        AddDisplay(metrics, key, value.ToString("P0"), tone, value, "ratio");
 
     private static void AddDisplay(
         IDictionary<string, FounderLegendConnectLiveMetricSnapshot> metrics,
         string key,
         string displayValue,
-        string tone) =>
-        metrics.Add(key, new FounderLegendConnectLiveMetricSnapshot(displayValue, tone));
+        string tone,
+        decimal? value = null,
+        string? unit = null) =>
+        metrics.Add(key, new FounderLegendConnectLiveMetricSnapshot(displayValue, tone)
+        {
+            Value = value,
+            Unit = unit,
+            Definition = key switch
+            {
+                "internal-coverage" => "(Exact translation memory + structural + contextual + promoted translation-model serves) / cross-language requests. Excludes retained provider-observation reuse. Zero can mean no requests; consult the denominator. Not foundation-model capability.",
+                "provider-avoidance" => "(Native translation serves + retained provider-observation reuse) / cross-language requests. Measures avoided provider work, not model confidence or accuracy.",
+                "provider-dependency" => "Provider-work-required routes / cross-language requests. Translation routing only; not external foundation-model inference or escalation.",
+                "provider-fallback-required" => "Translation routes requiring provider work. Not proof that a provider call succeeded or was billed; inspect operation receipts and failures.",
+                "provider-observation-reused" => "Previously retained provider translations served again without a new provider translation. Reuse is distinct from canonical promotion or weight training.",
+                "approved-candidates" => "Approved corpus acquisition candidates across processing states, not only pending work and not trained skills.",
+                "eligible-pending" => "Approved corpus acquisition candidates pending or processing; separate from downstream learning events.",
+                "pending-learning-jobs" => "Pending or processing downstream eligible learning events. Zero does not establish that acquisition has no backlog or that its routing is broken.",
+                "learning-failures" => "Persisted learning-event and corpus-candidate failures. Does not by itself diagnose cause or foundation-model training quality.",
+                "quota-denied" => "Recorded denied translation requests. This count alone does not identify the exhausted limit, affected account, remaining subscription capacity, or a configuration defect.",
+                "azure-characters-used" => "Provider-capacity monthly consumption when available, otherwise the recorded live plus corpus consumption. Distinct from live-only usage; inspect capacity source, period and freshness.",
+                "consumed-live-characters" => "Recorded live-translation characters for the current billing month; excludes corpus acquisition and training consumption.",
+                "consumed-corpus-characters" => "Recorded corpus acquisition plus training characters for the current billing month; not model-weight training evidence.",
+                _ => null
+            }
+        });
 }
