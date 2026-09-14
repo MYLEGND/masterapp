@@ -263,6 +263,204 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual('AcceptedKnownBaseline', report['status'])
 
 
+class ModelQualityRegressionTests(unittest.TestCase):
+    """Exact synthetic quality exceptions never authorize safety failures."""
+    check = RegressionTests.check
+    rejected = RegressionTests.rejected
+    result = RegressionTests.result
+
+    def setUp(self):
+        RegressionTests.setUp(self)
+        self.manifest['authorizationProfile'] = 'founder-model-quality-20260913'
+        methods = sorted(V.MODEL_QUALITY_METHODS)
+        self.assertEqual(6, len(methods))
+        sites = sorted(V.MODEL_QUALITY_ASSERTION_SITES)
+        self.assertTrue(sites)
+        for section in ('Results', 'TestDefinitions', 'TestEntries'):
+            self.root.find('t:' + section, NS).clear()
+        self.manifest['tests'] = []
+        for index, outcome in enumerate(['Failed'] * 11 + ['NotExecuted'] * 4 + ['Passed'] * 2):
+            method = methods[index % len(methods)] if index < 11 else V.PREFIX + 'Control' + str(index)
+            name = method + '(case: ' + str(index) + ')'
+            test_id, execution_id = 'quality-test-' + str(index), 'quality-execution-' + str(index)
+            result = element(self.root.find('t:Results', NS), 'UnitTestResult',
+                             testName=name, testId=test_id, executionId=execution_id,
+                             outcome=outcome, duration='00:00:01.000',
+                             startTime=(self.started + timedelta(seconds=1)).isoformat(),
+                             endTime=(self.started + timedelta(seconds=2)).isoformat())
+            item = {'name': name, 'outcome': outcome}
+            if outcome == 'Failed':
+                filename = method.rsplit('.', 1)[0].rsplit('.', 1)[1] + '.cs'
+                site = next(site for site in sites if site.startswith(filename + ':'))
+                error = element(element(result, 'Output'), 'ErrorInfo')
+                text = 'Assert.Equal() Failure: synthetic quality result ' + str(index)
+                element(error, 'Message').text = text
+                element(error, 'StackTrace').text = self.stack(site, method)
+                item.update(reason='model_quality_assertion', assertionSite=site,
+                            failureMessageSha256=V.digest(text.encode()))
+            definition = element(self.root.find('t:TestDefinitions', NS), 'UnitTest', id=test_id, name=name)
+            element(definition, 'Execution', id=execution_id)
+            class_name, method_name = method.rsplit('.', 1)
+            element(definition, 'TestMethod', className=class_name, name=method_name)
+            element(self.root.find('t:TestEntries', NS), 'TestEntry', testId=test_id, executionId=execution_id)
+            self.manifest['tests'].append(item)
+        counters = self.root.find('t:ResultSummary/t:Counters', NS)
+        counters.set('total', '17'); counters.set('executed', '13')
+        counters.set('failed', '11'); counters.set('passed', '2')
+        self.manifest['rosterSha256'] = V.roster_digest(item['name'] for item in self.manifest['tests'])
+        # Freeze both actual quality assertion owners, not an arbitrary stand-in.
+        for filename in ('LegendFounderAiHeldOutOperationMatrixTests.cs',
+                         'LegendConnectComputedLanguageEndToEndContractTests.cs'):
+            relative = 'AgentPortal.Tests/' + filename
+            path = self.source / relative
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('// frozen synthetic quality assertion owner\n')
+            self.manifest['frozenFiles'][relative] = V.digest(path.read_bytes())
+        subprocess.run(['git', 'add', '.'], cwd=self.source, check=True, capture_output=True)
+        subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                        'commit', '-qm', 'freeze quality assertion owners'],
+                       cwd=self.source, check=True, capture_output=True)
+        self.manifest['sourceCommit'] = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=self.source, text=True).strip()
+
+    @staticmethod
+    def stack(site, method='AgentPortal.Tests.SyntheticQualityCase.Check'):
+        filename, line = site.rsplit(':', 1)
+        return ('   at Xunit.Assert.Equal(Object expected, Object actual)\n'
+                '   at ' + method + '() in /checkout/AgentPortal.Tests/' + filename + ':line ' + line)
+
+    def error(self, index=0):
+        return self.result(index).find('t:Output/t:ErrorInfo', NS)
+
+    def rename(self, index, method, suffix='(case: changed)'):
+        name = method + suffix
+        self.result(index).set('testName', name)
+        definition = self.root.find('t:TestDefinitions', NS)[index]
+        definition.set('name', name)
+        class_name, method_name = method.rsplit('.', 1)
+        definition.find('t:TestMethod', NS).set('className', class_name)
+        definition.find('t:TestMethod', NS).set('name', method_name)
+        self.manifest['tests'][index]['name'] = name
+        self.manifest['rosterSha256'] = V.roster_digest(item['name'] for item in self.manifest['tests'])
+
+    def test_exact_quality_profile_retains_eleven_failures_and_four_skips(self):
+        report = self.check()
+        self.assertEqual('AcceptedKnownBaseline', report['status'])
+        self.assertEqual((11, 4, 17), (report['failed'], report['notExecuted'], report['total']))
+        self.assertFalse(report['allTestsPassed'])
+        self.assertTrue(report['failedOutcomesRetained'])
+        self.assertTrue(all(item['reason'] == 'model_quality_assertion' for item in report['knownFailures']))
+
+    def test_unknown_profile_rejects(self):
+        self.manifest['authorizationProfile'] = 'unreviewed-model-profile'
+        self.rejected()
+
+    def test_missing_explicit_profile_cannot_use_legacy_authorization(self):
+        del self.manifest['authorizationProfile']
+        self.rejected()
+
+    def test_other_method_rejects_even_with_matching_roster_and_error_hash(self):
+        self.rename(0, 'AgentPortal.Tests.IdentityHardeningTests.AuthenticationBypass')
+        self.rejected()
+
+    def test_unreviewed_theory_case_cannot_inherit_method_exception(self):
+        definition = self.root.find('t:TestDefinitions', NS)[0]
+        name = self.result().get('testName') + '-unreviewed'
+        self.result().set('testName', name); definition.set('name', name)
+        self.rejected()
+
+    def test_safety_site_cannot_be_added_by_manifest(self):
+        site = 'LegendFounderAiHeldOutOperationMatrixTests.cs:925'
+        self.assertNotIn(site, V.MODEL_QUALITY_ASSERTION_SITES)
+        self.manifest['tests'][0]['assertionSite'] = site
+        self.error().find('t:StackTrace', NS).text = self.stack(site)
+        self.rejected()
+
+    def test_first_repository_frame_must_be_the_exact_recorded_site(self):
+        trace = self.error().find('t:StackTrace', NS)
+        trace.text = self.stack('LegendFounderAiHeldOutOperationMatrixTests.cs:925') + '\n' + trace.text
+        self.rejected()
+
+    def test_earlier_production_frame_cannot_be_hidden_by_later_quality_frame(self):
+        trace = self.error().find('t:StackTrace', NS)
+        trace.text = ('   at Infrastructure.Authorization.Check() in '
+                      '/checkout/Infrastructure/Authorization.cs:line 42\n' + trace.text)
+        self.rejected()
+
+    def set_calculator_failure(self, text):
+        self.rename(0, V.PREFIX + 'NativeCalculator_UsesExactExecutorWithoutOrganizationalReads')
+        site = 'LegendFounderAiHeldOutOperationMatrixTests.cs:646'
+        self.manifest['tests'][0]['assertionSite'] = site
+        self.manifest['tests'][0]['failureMessageSha256'] = V.digest(text.encode())
+        self.error().find('t:Message', NS).text = text
+        self.error().find('t:StackTrace', NS).text = self.stack(site)
+
+    def test_calculator_only_exact_missing_action_is_eligible(self):
+        self.set_calculator_failure('Assert.Single() Failure: The collection was empty')
+        self.assertEqual(11, self.check()['failed'])
+
+    def test_calculator_extra_or_different_tool_cannot_be_authorized_by_hash(self):
+        for text in ('Assert.Single() Failure: The collection contained 2 items',
+                     'Assert.Equal() Failure: expected legend_calculate, actual legend_client_lead_portfolio'):
+            with self.subTest(failure=text):
+                self.set_calculator_failure(text)
+                self.rejected()
+
+    def test_changed_reviewed_site_still_rejects(self):
+        original = self.manifest['tests'][0]['assertionSite']
+        other = next(site for site in V.MODEL_QUALITY_ASSERTION_SITES if site != original)
+        self.error().find('t:StackTrace', NS).text = self.stack(other)
+        self.rejected()
+
+    def test_missing_stack_or_recorded_site_rejects(self):
+        original = deepcopy(self.error())
+        self.error().remove(self.error().find('t:StackTrace', NS))
+        self.rejected()
+        self.result().find('t:Output', NS).remove(self.error())
+        self.result().find('t:Output', NS).append(original)
+        del self.manifest['tests'][0]['assertionSite']
+        self.rejected()
+
+    def test_changed_failure_message_or_reason_rejects(self):
+        text = self.error().find('t:Message', NS)
+        original = text.text
+        text.text += '; unexpected provider call'
+        self.rejected()
+        text.text = original
+        self.manifest['tests'][0]['reason'] = 'authentication_failed'
+        self.rejected()
+
+    def test_missing_frozen_quality_owner_rejects(self):
+        original = dict(self.manifest['frozenFiles'])
+        for relative in ('AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs',
+                         'AgentPortal.Tests/LegendConnectComputedLanguageEndToEndContractTests.cs'):
+            with self.subTest(path=relative):
+                self.manifest['frozenFiles'] = {key: value for key, value in original.items() if key != relative}
+                self.rejected()
+
+    def test_new_failed_control_and_new_skip_reject(self):
+        self.result(15).set('outcome', 'Failed')
+        self.rejected()
+        self.result(15).set('outcome', 'NotExecuted')
+        self.rejected()
+
+    def test_quality_profile_still_binds_production_base_and_frozen_source(self):
+        self.base = 'f' * 40
+        self.rejected()
+        self.base = BASE
+        path = self.source / 'AgentPortal.Tests/LegendConnectComputedLanguageEndToEndContractTests.cs'
+        path.write_text('// changed runtime assertion\n')
+        self.rejected()
+
+    def test_quality_profile_rejects_runner_error_and_incomplete_roster(self):
+        self.root.find('t:ResultSummary/t:Counters', NS).set('error', '1')
+        self.rejected()
+        self.root.find('t:ResultSummary/t:Counters', NS).set('error', '0')
+        results = self.root.find('t:Results', NS)
+        results.remove(results[-1])
+        self.rejected()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--actual-trx')

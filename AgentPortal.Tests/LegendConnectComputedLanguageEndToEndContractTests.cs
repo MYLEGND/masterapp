@@ -254,10 +254,11 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
             Assert.False(string.IsNullOrWhiteSpace(response.FoundationModel));
             Assert.False(response.ExternalAnsweringUsed);
             Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, response.EvidenceOrigin);
-            Assert.Equal(native.Answer, response.Message);
             Assert.NotEmpty(response.ReasoningTransitionPath ?? []);
             Assert.Equal(plan.ReasoningTransitionPath, response.ReasoningTransitionPath);
             Assert.Equal((0, 0), externalCounts());
+            // Only answer quality follows the complete attribution/proof/provider boundary.
+            Assert.Equal(native.Answer, response.Message);
         });
     }
 

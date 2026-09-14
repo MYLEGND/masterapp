@@ -35,6 +35,40 @@ POLICY_PATHS = {
 }
 
 
+# Explicit owner-authorized 2026-09-13 model-quality cohort. This is not a
+# method-wide failure exemption: every observed case, message hash and first
+# assertion site must also match the frozen reviewed manifest.
+MODEL_QUALITY_PROFILE = 'founder-model-quality-20260913'
+MODEL_QUALITY_METHODS = frozenset({
+    PREFIX + 'AdmittedDeduction_RecombinesAHeldOutSubjectAndProducesAnOriginalNativeAnswer',
+    PREFIX + 'NativeCalculator_UsesExactExecutorWithoutOrganizationalReads',
+    PREFIX + 'NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority',
+    'AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.AdmittedOperandRecombination_ProducesAnUnrecordedNumericAnswerThroughTheRealConversationBoundary',
+    'AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.CombinedFoundation_PreservesOriginalNumericRecombinationControl',
+    'AgentPortal.Tests.LegendConnectComputedLanguageEndToEndContractTests.UnseenNumericOperands_AreObservedThroughTheDeclaredTemplateAndComputedWithoutRecordedAnswers',
+})
+MODEL_QUALITY_ASSERTION_SITES = frozenset(
+    {'LegendConnectComputedLanguageEndToEndContractTests.cs:261'} |
+    {'LegendFounderAiHeldOutOperationMatrixTests.cs:' + str(line) for line in (
+        115, 116, 635, 646, 647, 648, 660, 661, 664, 668, 669, 678,
+        684, 685, 693, 694, 695, 707, 719, 728, 729, 730, 731, 732,
+        733, 736, 977)}
+)
+MODEL_QUALITY_FILES = frozenset({
+    'AgentPortal.Tests/LegendFounderAiHeldOutOperationMatrixTests.cs',
+    'AgentPortal.Tests/LegendConnectComputedLanguageEndToEndContractTests.cs',
+})
+
+
+def assertion_site(result):
+    stack = result.findtext('t:Output/t:ErrorInfo/t:StackTrace', '', NS)
+    first = re.search(r'\bin ([^\r\n]+\.cs):line ([0-9]+)', stack)
+    if first is None:
+        return None
+    match = re.search(r'[/\\]AgentPortal\.Tests[/\\]([^/\\\r\n]+\.cs)$', first[1])
+    return match[1] + ':' + first[2] if match else None
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)
@@ -72,10 +106,15 @@ def validate(trx_path, manifest_path, source_root, runner_exit_code, run_start_u
     manifest = json.loads(Path(manifest_path).read_text(), object_pairs_hook=unique_json)
     require(isinstance(manifest, dict), 'Manifest must be an object')
     require(manifest.get('schemaVersion') == 1, 'Unsupported manifest schema')
+    profile = manifest.get('authorizationProfile', 'legacy-nine-native-20260911')
+    require(profile in ('legacy-nine-native-20260911', MODEL_QUALITY_PROFILE), 'Unknown authorization profile')
+    model_quality = profile == MODEL_QUALITY_PROFILE
     waiver = runner_exit_code != 0
     if waiver:
         frozen = manifest.get('frozenFiles')
         require(isinstance(frozen, dict) and frozen, 'Frozen source hashes are required')
+        if model_quality:
+            require(MODEL_QUALITY_FILES <= set(frozen), 'Quality assertion source files must be frozen')
         source_root = Path(source_root).resolve()
         require(isinstance(manifest.get('sourceCommit'), str) and re.fullmatch('[0-9a-f]{40}', manifest['sourceCommit']), 'Invalid source commit')
         require(isinstance(manifest.get('productionBaseCommit'), str) and re.fullmatch('[0-9a-f]{40}', manifest['productionBaseCommit']), 'Invalid production base commit')
@@ -104,13 +143,21 @@ def validate(trx_path, manifest_path, source_root, runner_exit_code, run_start_u
     require(len(skipped) == 4 and len({item['name'] for item in skipped}) == 4, 'Exactly four explicit allowed skip identities are required')
     if waiver:
         require(manifest.get('rosterSha256') == roster_digest(names), 'Baseline roster hash mismatch')
-        require(len(known) == 9 and len(skipped) == 4, 'Authorization requires exactly nine known failures and four skips')
-        require(len({item['name'] for item in known + skipped}) == 13, 'Ambiguous exception identities')
+        required_failures = 11 if model_quality else 9
+        require(len(known) == required_failures and len(skipped) == 4,
+                'Authorization requires exactly ' + str(required_failures) + ' known failures and four skips')
+        require(len({item['name'] for item in known + skipped}) == required_failures + 4, 'Ambiguous exception identities')
         require(all(names.count(item['name']) == 1 for item in known + skipped), 'Exception identity duplicated in roster')
-        require(Counter(item.get('reason') for item in known) == Counter({
-            'meaning_graph_component_unknown': 7, 'semantic_transition_not_supported': 2}), 'Invalid authorized reason set')
+        if not model_quality:
+            require(Counter(item.get('reason') for item in known) == Counter({
+                'meaning_graph_component_unknown': 7, 'semantic_transition_not_supported': 2}), 'Invalid authorized reason set')
         for item in known:
-            require(item['name'].startswith(PREFIX), 'Failure is outside the authorized held-out suite')
+            if model_quality:
+                require(item['name'].split('(')[0] in MODEL_QUALITY_METHODS, 'Failure is outside the authorized model-quality cohort')
+                require(item.get('reason') == 'model_quality_assertion', 'Invalid model-quality classification')
+                require(item.get('assertionSite') in MODEL_QUALITY_ASSERTION_SITES, 'Failure site is not an authorized quality assertion')
+            else:
+                require(item['name'].startswith(PREFIX), 'Failure is outside the authorized held-out suite')
             require(isinstance(item.get('failureMessageSha256'), str) and re.fullmatch('[0-9a-f]{64}', item['failureMessageSha256']), 'Exact failure message hash is required')
 
     trx_bytes = Path(trx_path).read_bytes()
@@ -173,10 +220,22 @@ def validate(trx_path, manifest_path, source_root, runner_exit_code, run_start_u
             expected = known_by_name.get(name)
             require(expected is not None, 'New failure: ' + name)
             error = message(result)
-            reasons = re.findall(r'(?:^|;\s*)reason=([a-z0-9_]+)(?=;|$)', error)
-            require(reasons == [expected['reason']], 'Known case changed failure reason: ' + name)
+            if model_quality:
+                require(assertion_site(result) == expected['assertionSite'], 'Known case changed assertion site: ' + name)
+                # Missing the explicitly requested action is a quality defect;
+                # an extra/different tool may cross request scope and is NOT waived.
+                if expected['assertionSite'] == 'LegendFounderAiHeldOutOperationMatrixTests.cs:646':
+                    require(error == 'Assert.Single() Failure: The collection was empty', 'Calculator exception permits only the recorded missing action')
+                reason = 'model_quality_assertion'
+            else:
+                reasons = re.findall(r'(?:^|;\s*)reason=([a-z0-9_]+)(?=;|$)', error)
+                require(reasons == [expected['reason']], 'Known case changed failure reason: ' + name)
+                reason = reasons[0]
             require(digest(error.encode()) == expected['failureMessageSha256'], 'Known case changed failure message: ' + name)
-            failures.append({'name': name, 'outcome': outcome, 'reason': reasons[0], 'failureMessageSha256': digest(error.encode())})
+            failure = {'name': name, 'outcome': outcome, 'reason': reason, 'failureMessageSha256': digest(error.encode())}
+            if model_quality:
+                failure['assertionSite'] = expected['assertionSite']
+            failures.append(failure)
         elif outcome == 'Passed':
             require(result.find('t:Output/t:ErrorInfo', NS) is None, 'Passed result contains failure evidence')
     actual_skips = Counter(r.get('testName') for r in results if r.get('outcome') == 'NotExecuted')

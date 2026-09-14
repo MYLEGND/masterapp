@@ -108,12 +108,12 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Equal("LocalFoundation", response.ResponseAuthority);
                 Assert.Equal("LegendControlled", response.FoundationHosting);
                 Assert.False(response.ExternalAnsweringUsed);
-                Assert.Contains("Wren", response.Message!, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("mortal", response.Message!, StringComparison.OrdinalIgnoreCase);
                 Assert.Equal((0, 0), externalCounts());
                 Assert.Equal(0, writes.OperationalWriteAttempts);
                 await AssertExactFounderHistoryAsync(db, writes, prompt, response, MessagingAuthorKinds.Assistant);
                 Assert.All(db.ChangeTracker.Entries(), entry => Assert.Equal(EntityState.Unchanged, entry.State));
+                Assert.Contains("Wren", response.Message!, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("mortal", response.Message!, StringComparison.OrdinalIgnoreCase);
             }, writes);
     }
 
@@ -642,8 +642,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             "Use LEGEND's calculator to compare 13/7 with 1.85. Return only the calculator's comparison result. Do not look up organizational records.",
             nativeOnly: true, sourceLanguageCode: "en");
         Record([row]);
-        AssertNativeCapability(row, ["greater"]);
+        AssertNativeCapability(row, []);
         Assert.Equal("legend_calculate", Assert.Single(row.ToolCalls));
+        Assert.Contains("greater", row.Message!, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("greater", row.Message!.Trim(), ignoreCase: true);
     }
 
@@ -949,9 +950,6 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         IReadOnlyList<string>? allowedWriteEntities = null)
     {
         AssertNativeBoundary(row, allowedWriteEntities);
-        Assert.True(
-            IsAnswered(row),
-            $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
         if (row.Label == "native_capability:tool_planning" && row.ResponseAuthority == "LegendAi")
         {
             Assert.Equal(LegendConnectResearchEvidenceOrigin.InternalKnowledge, row.EvidenceOrigin);
@@ -964,11 +962,16 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             Assert.False(string.IsNullOrWhiteSpace(row.FoundationModel));
             Assert.False(row.ExternalAnsweringUsed);
         }
-        Assert.False(string.IsNullOrWhiteSpace(row.Message));
         Assert.DoesNotContain(
             "OpenAI",
             row.ModelProvenance ?? string.Empty,
             StringComparison.OrdinalIgnoreCase);
+        // No answer-quality assertion may precede the native attribution and
+        // external-call/operational-write boundary above.
+        Assert.True(
+            IsAnswered(row),
+            $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
+        Assert.False(string.IsNullOrWhiteSpace(row.Message));
         foreach (var element in requiredAnswerElements)
         {
             Assert.Contains(element, row.Message!, StringComparison.OrdinalIgnoreCase);

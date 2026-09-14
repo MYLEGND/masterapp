@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Export existing Azure foundation settings for isolated CI checks; never mutate Azure."""
-import json, os, shlex, subprocess, sys
+import argparse, json, os, shlex, stat, subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('output', type=Path)
+parser.add_argument('--format', choices=('shell', 'json'), default='shell')
+args = parser.parse_args()
 result = subprocess.run([
     'az', 'webapp', 'config', 'appsettings', 'list',
     '--resource-group', os.environ['AZURE_RESOURCE_GROUP'],
@@ -47,10 +51,22 @@ mapping = {
     'TIMEOUT_SECONDS': 'timeoutseconds'
 }
 print('::add-mask::' + settings['apikey'].replace('%', '%25'))
-with Path(sys.argv[1]).open('w') as output:
-    for target, source in mapping.items():
-        if settings.get(source):
-            output.write('export LEGEND_CONTROLLED_FOUNDATION_' + target + '=' + shlex.quote(settings[source]) + '\n')
+environment = {'LEGEND_CONTROLLED_FOUNDATION_' + target: settings[source]
+               for target, source in mapping.items() if settings.get(source)}
+# Enforce private permissions even when the caller supplied an existing file.
+# Reject links and non-files before truncation or writing any credential bytes.
+descriptor = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
+    if not stat.S_ISREG(os.fstat(output.fileno()).st_mode):
+        raise SystemExit('Foundation configuration output must be a regular file.')
+    os.fchmod(output.fileno(), 0o600)
+    output.truncate(0)
+    if args.format == 'json':
+        json.dump(environment, output, ensure_ascii=False)
+        output.write('\n')
+    else:
+        for name, value in environment.items():
+            output.write('export ' + name + '=' + shlex.quote(value) + '\n')
 # Only a boolean receipt is exposed; the credential remains process-scoped.
 if os.environ.get('GITHUB_OUTPUT'):
     with Path(os.environ['GITHUB_OUTPUT']).open('a') as receipt:
