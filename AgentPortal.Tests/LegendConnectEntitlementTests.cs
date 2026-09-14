@@ -14,9 +14,11 @@ using Infrastructure.Moderation;
 using Infrastructure.Notifications;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
+using Moq;
 
 namespace AgentPortal.Tests;
 
@@ -145,6 +147,192 @@ public sealed class LegendConnectEntitlementTests
         var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
         Assert.False(ledger.Succeeded);
         Assert.Equal("ProviderFailed", ledger.State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProviderCancellation_SettlesAdmittedCapacityAndQuotaWithoutInventingSuccess(bool completedResponse)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = Authority(db, new TranslationAccessStub(granted: true), allowance: 20);
+        using var cancellation = new CancellationTokenSource();
+        var provider = new CancellationSettlementProvider(cancellation, completedResponse);
+        var router = Router(db, provider, authority, allowance: 20);
+        var reference = Reference("canceled-provider");
+        var pending = router.TranslateForAccountAsync("failure", "ht", "en", Account, reference, cancellation.Token);
+        if (completedResponse)
+        {
+            var response = await pending;
+            Assert.True(response.Succeeded);
+            Assert.Equal("translated", response.TranslatedText);
+        }
+        else
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Equal(1, provider.Calls);
+        var usage = await db.LegendTranslationUsagePeriods.SingleAsync();
+        Assert.Equal(0, usage.ReservedCharacters);
+        Assert.Equal(completedResponse ? 7 : 0, usage.ConsumedCharacters);
+        Assert.Equal(1, usage.ProviderOperationCount);
+        Assert.Equal(completedResponse ? 0 : 1, usage.ProviderFailureCount);
+        var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
+        Assert.True(ledger.ProviderExecuted);
+        Assert.Equal(completedResponse, ledger.Succeeded);
+        Assert.Equal(completedResponse ? "Succeeded" : "ProviderFailed", ledger.State);
+        Assert.NotNull(ledger.CompletedUtc);
+        Assert.Null(ledger.ReservationExpiresUtc);
+        var capacity = await db.Set<LegendTranslationProviderCapacity>().SingleAsync();
+        Assert.Equal(0, capacity.ReservedLiveCharacters);
+        Assert.Equal(7, capacity.LiveCharactersConsumed); // The provider may have billed even when its response was lost.
+        if (completedResponse)
+        {
+            var retry = await router.TranslateForAccountAsync("failure", "ht", "en", Account, reference);
+            Assert.False(retry.Succeeded);
+            Assert.Equal("translation_result_already_exists", retry.ErrorCode);
+            Assert.Equal(1, provider.Calls);
+        }
+    }
+
+    [Fact]
+    public async Task CapacityAdmissionCancellation_ReleasesPriorAccountReservationWithoutProviderExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = Authority(db, new TranslationAccessStub(granted: true), allowance: 20);
+        using var cancellation = new CancellationTokenSource();
+        var capacity = new Mock<ITranslationCapacityAuthority>();
+        capacity.Setup(value => value.TryReserveAsync(It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<TranslationCapacityPurpose>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns((string provider, int characters, TranslationCapacityPurpose purpose, string? reference, CancellationToken token) =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled<TranslationCapacityReservationResult>(token);
+            });
+        var provider = new RecordingProvider();
+        var router = Router(db, provider, authority, 20, capacity.Object);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => router.TranslateForAccountAsync(
+            "failure", "ht", "en", Account, Reference("admission-cancel"), cancellation.Token));
+        Assert.Equal(0, provider.TranslateCalls);
+        var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
+        Assert.Equal("Released", ledger.State);
+        Assert.False(ledger.ProviderExecuted);
+        Assert.False(ledger.Succeeded);
+        Assert.NotNull(ledger.CompletedUtc);
+        var period = await db.LegendTranslationUsagePeriods.SingleAsync();
+        Assert.Equal(0, period.ReservedCharacters);
+        Assert.Equal(0, period.ConsumedCharacters);
+        Assert.Equal(0, period.ProviderOperationCount);
+        capacity.Verify(value => value.CompleteAsync(It.IsAny<TranslationCapacityReservation>(),
+            It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CapacitySettlementTimeout_DoesNotCancelTheIndependentQuotaSettlement()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = Authority(db, new TranslationAccessStub(granted: true), allowance: 20);
+        var capacity = new Mock<ITranslationCapacityAuthority>();
+        capacity.Setup(value => value.TryReserveAsync(It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<TranslationCapacityPurpose>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TranslationCapacityReservationResult(new TranslationCapacityReservation(
+                "AzureTranslator", DateOnly.FromDateTime(DateTime.UtcNow), 7, TranslationCapacityPurpose.Live, Guid.NewGuid())));
+        capacity.Setup(value => value.CompleteAsync(It.IsAny<TranslationCapacityReservation>(), true, It.IsAny<CancellationToken>()))
+            .Returns((TranslationCapacityReservation reservation, bool executed, CancellationToken token) => Task.Delay(Timeout.Infinite, token));
+        var provider = new RecordingProvider();
+        var result = await Router(db, provider, authority, 20, capacity.Object).TranslateForAccountAsync(
+            "failure", "ht", "en", Account, Reference("settlement-timeout")).WaitAsync(TimeSpan.FromSeconds(8));
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, provider.TranslateCalls);
+        var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
+        Assert.True(ledger.Succeeded);
+        Assert.True(ledger.ProviderExecuted);
+        Assert.Equal("Succeeded", ledger.State);
+        Assert.NotNull(ledger.CompletedUtc);
+        var period = await db.LegendTranslationUsagePeriods.SingleAsync();
+        Assert.Equal(7, period.ConsumedCharacters);
+        Assert.Equal(0, period.ReservedCharacters);
+        Assert.Equal(1, period.ProviderOperationCount);
+        capacity.Verify(value => value.CompleteAsync(It.IsAny<TranslationCapacityReservation>(), true,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task InterruptedRelationalSettlement_RestoresOnlyLedgerTrackingBeforeTheNextSave()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var interruption = new InterruptQuotaCompletionSave();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection)
+            .AddInterceptors(interruption).Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var unrelated = new AgentProfile { AgentUserId = "unrelated-tracking-owner", ShortBio = "Before", IsActive = true };
+        db.AgentProfiles.Add(unrelated);
+        await db.SaveChangesAsync();
+        var authority = Authority(db, new TranslationAccessStub(granted: true), 20);
+        var admitted = await authority.TryReserveAsync(new TranslationQuotaReservationRequest(
+            Account, Reference("interrupted-save"), "en", "ht", "AzureTranslator", 7));
+        Assert.True(admitted.Succeeded);
+        var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
+        unrelated.ShortBio = "Still pending";
+        db.ChangeTracker.DetectChanges();
+        interruption.Enabled = true;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => authority.CompleteAsync(
+            admitted.Reservation!, providerExecuted: true, providerSucceeded: true, failureCode: null));
+        Assert.Equal(1, interruption.Interruptions);
+        Assert.Equal("Reserved", ledger.State);
+        Assert.False(ledger.Succeeded);
+        Assert.Null(ledger.CompletedUtc);
+        Assert.Equal(EntityState.Unchanged, db.Entry(ledger).State);
+        Assert.Equal(EntityState.Modified, db.Entry(unrelated).State);
+        Assert.Equal("Still pending", unrelated.ShortBio);
+        // A subsequent save (including translation retention) cannot replay rolled-back accounting.
+        await db.SaveChangesAsync();
+        await using var verified = new MasterAppDbContext(options);
+        var persisted = await verified.LegendTranslationUsageLedgers.SingleAsync();
+        Assert.Equal("Reserved", persisted.State);
+        Assert.False(persisted.Succeeded);
+        Assert.False(persisted.ProviderExecuted);
+        var period = await verified.LegendTranslationUsagePeriods.SingleAsync();
+        Assert.Equal(7, period.ReservedCharacters);
+        Assert.Equal(0, period.ConsumedCharacters);
+        Assert.Equal(0, period.ProviderOperationCount);
+        Assert.Equal("Still pending", (await verified.AgentProfiles.SingleAsync()).ShortBio);
+    }
+
+    private sealed class InterruptQuotaCompletionSave : SaveChangesInterceptor
+    {
+        public bool Enabled { get; set; }
+        public int Interruptions { get; private set; }
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (Enabled && eventData.Context!.ChangeTracker.Entries<LegendTranslationUsageLedger>()
+                .Any(entry => entry.Entity.State == "Succeeded"))
+            {
+                Enabled = false;
+                Interruptions++;
+                throw new OperationCanceledException("Synthetic interrupted quota save.");
+            }
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class CancellationSettlementProvider(CancellationTokenSource cancellation, bool completedResponse) : ITranslationProvider
+    {
+        public string ProviderName => "AzureTranslator";
+        public string ProviderVersion => "test";
+        public int Calls { get; private set; }
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
+            => Task.FromResult(new TranslationDetectionResult(true, "en"));
+        public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage,
+            string? sourceLanguage = null, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            cancellation.Cancel();
+            if (!completedResponse) cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new TranslationProviderResult(true, "translated", sourceLanguage, ProviderName));
+        }
     }
 
     [Fact]
@@ -574,13 +762,14 @@ public sealed class LegendConnectEntitlementTests
         MasterAppDbContext db,
         ITranslationProvider provider,
         ITranslationEntitlementAuthority authority,
-        long allowance)
+        long allowance,
+        ITranslationCapacityAuthority? capacity = null)
     {
         var configuration = Configuration(allowance);
         return new LegendConnectTranslationRouter(
             provider,
             new LegendLanguageRegistry(db, configuration),
-            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance),
+            capacity ?? new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance),
             NullLogger<LegendConnectTranslationRouter>.Instance,
             entitlements: authority);
     }

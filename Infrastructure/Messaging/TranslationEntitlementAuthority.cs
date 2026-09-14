@@ -459,22 +459,46 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         if (ledger is null || ledger.Succeeded || ledger.State != ReservedState)
             return;
 
-        await ReleasePeriodAsync(
-            new MessagingActor(ledger.UserId, ledger.ParticipantType),
-            ledger.PeriodStart,
-            ledger.BillableCharacters,
-            providerExecuted,
-            providerSucceeded,
-            cancellationToken);
+        var entry = _db.Entry(ledger);
+        var priorCurrent = entry.CurrentValues.Clone();
+        var priorOriginal = entry.OriginalValues.Clone();
+        var priorState = entry.State;
+        var priorModified = entry.Properties.Where(property => property.IsModified)
+            .Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            await ReleasePeriodAsync(
+                new MessagingActor(ledger.UserId, ledger.ParticipantType),
+                ledger.PeriodStart,
+                ledger.BillableCharacters,
+                providerExecuted,
+                providerSucceeded,
+                cancellationToken);
 
-        ledger.ProviderExecuted = providerExecuted;
-        ledger.Succeeded = providerSucceeded;
-        ledger.State = providerSucceeded ? SucceededState : providerExecuted ? "ProviderFailed" : "Released";
-        ledger.FailureCode = providerSucceeded ? null : Bound(failureCode, 80);
-        ledger.ReservationExpiresUtc = null;
-        ledger.CompletedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        await CommitAsync(transaction, cancellationToken);
+            ledger.ProviderExecuted = providerExecuted;
+            ledger.Succeeded = providerSucceeded;
+            ledger.State = providerSucceeded ? SucceededState : providerExecuted ? "ProviderFailed" : "Released";
+            ledger.FailureCode = providerSucceeded ? null : Bound(failureCode, 80);
+            ledger.ReservationExpiresUtc = null;
+            ledger.CompletedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                // The relational period update rolls back with this transaction. Restore only
+                // this ledger's prior tracking state so a later cache save cannot replay its
+                // terminal mutation without the matching period counters. Preserve other edits.
+                entry.CurrentValues.SetValues(priorCurrent);
+                entry.OriginalValues.SetValues(priorOriginal);
+                entry.State = priorState;
+                foreach (var property in entry.Properties)
+                    property.IsModified = priorModified.Contains(property.Metadata.Name);
+            }
+            throw;
+        }
     }
 
     public async Task RecordAvoidedAsync(

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Domain.Billing;
 using Domain.Entities;
 using Domain.Messaging;
@@ -29,6 +30,7 @@ internal sealed partial class MessagingService : IMessagingService
     private const int MaximumMeetingTimeZoneIdLength = 100;
     private const int MaximumMeetingCustomDescriptionLength = 240;
     private const int MaximumPinnedConversations = 6;
+    private static readonly TimeSpan ProjectionTranslationBudget = TimeSpan.FromSeconds(2);
 
     private readonly Microsoft.Extensions.Configuration.IConfiguration? _callConfiguration;
     private readonly MasterAppDbContext _db;
@@ -4600,6 +4602,11 @@ internal sealed partial class MessagingService : IMessagingService
         var pageCache = await _db.MessageTranslations.AsNoTracking()
             .Where(row => translationIds.Contains(row.InternalMessageId) && row.TargetLanguage == targetLanguage)
             .ToDictionaryAsync(row => row.InternalMessageId, cancellationToken);
+        // Stop admitting optional provider work after one shared page budget, including quotes.
+        // An admitted operation retains its normal deadline and settles/persists successfully;
+        // canceling it here could repeatedly purchase the same slow translation on every read.
+        var providerBudgetStarted = Stopwatch.GetTimestamp();
+        bool CanStartProviderWork() => Stopwatch.GetElapsedTime(providerBudgetStarted) < ProjectionTranslationBudget;
         var presentationCache = new Dictionary<Guid, CachedMessageTranslation?>();
         var normalizedLanguages = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var sources = sourceMessages.ToDictionary(message => message.Id);
@@ -4623,7 +4630,8 @@ internal sealed partial class MessagingService : IMessagingService
                     cancellationToken,
                     pageCache: pageCache,
                     presentationCache: presentationCache,
-                    normalizedLanguages: normalizedLanguages);
+                    normalizedLanguages: normalizedLanguages,
+                    canStartProviderWork: CanStartProviderWork);
                 if (translation is null)
                     presentation = presentation with { TranslationNotice = await PendingNoticeAsync() };
                 else if (translation.Notice is not null)
@@ -4651,7 +4659,8 @@ internal sealed partial class MessagingService : IMessagingService
                 pageCache,
                 presentationCache,
                 normalizedLanguages,
-                PendingNoticeAsync);
+                PendingNoticeAsync,
+                CanStartProviderWork);
             presented.Add(withReply);
         }
 
@@ -4667,7 +4676,8 @@ internal sealed partial class MessagingService : IMessagingService
         IReadOnlyDictionary<Guid, MessageTranslation> pageCache,
         Dictionary<Guid, CachedMessageTranslation?> presentationCache,
         Dictionary<string, string?> normalizedLanguages,
-        Func<Task<string>> pendingNotice)
+        Func<Task<string>> pendingNotice,
+        Func<bool>? canStartProviderWork)
     {
         if (summary.Reply is null ||
             source?.Reply is null ||
@@ -4689,7 +4699,8 @@ internal sealed partial class MessagingService : IMessagingService
             cancellationToken,
             pageCache: pageCache,
             presentationCache: presentationCache,
-            normalizedLanguages: normalizedLanguages);
+            normalizedLanguages: normalizedLanguages,
+            canStartProviderWork: canStartProviderWork);
         return translation is null
             ? summary with { TranslationNotice = summary.TranslationNotice ?? await pendingNotice() }
             : summary with { Reply = summary.Reply with { Body = translation.TranslatedText }, TranslationNotice = summary.TranslationNotice ?? translation.Notice };
@@ -4703,7 +4714,8 @@ internal sealed partial class MessagingService : IMessagingService
         string? resolvedSourceLanguage = null,
         IReadOnlyDictionary<Guid, MessageTranslation>? pageCache = null,
         Dictionary<Guid, CachedMessageTranslation?>? presentationCache = null,
-        Dictionary<string, string?>? normalizedLanguages = null)
+        Dictionary<string, string?>? normalizedLanguages = null,
+        Func<bool>? canStartProviderWork = null)
     {
         if (presentationCache is not null && presentationCache.TryGetValue(message.Id, out var presented))
             return presented;
@@ -4720,7 +4732,7 @@ internal sealed partial class MessagingService : IMessagingService
             }
         }
         var result = await GetOrCreateMessageTranslationCoreAsync(message, targetLanguage,
-            billingAccount, cancellationToken, resolvedSourceLanguage, pageCache);
+            billingAccount, cancellationToken, resolvedSourceLanguage, pageCache, canStartProviderWork);
         if (presentationCache is not null)
             presentationCache[message.Id] = result;
         return result;
@@ -4732,8 +4744,12 @@ internal sealed partial class MessagingService : IMessagingService
         MessagingActor billingAccount,
         CancellationToken cancellationToken,
         string? resolvedSourceLanguage,
-        IReadOnlyDictionary<Guid, MessageTranslation>? pageCache)
+        IReadOnlyDictionary<Guid, MessageTranslation>? pageCache,
+        Func<bool>? canStartProviderWork)
     {
+        // Already-normalized source metadata still permits cached/same-language presentation
+        // after the budget expires. Never infer a source language to evade detection.
+        if (resolvedSourceLanguage is null && canStartProviderWork?.Invoke() == false) return null;
         var sourceLanguage = resolvedSourceLanguage ?? await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
         if (sourceLanguage is null)
             return null;
@@ -4771,6 +4787,7 @@ internal sealed partial class MessagingService : IMessagingService
         if (cached is not null)
             return cached;
 
+        if (canStartProviderWork?.Invoke() == false) return null;
         TranslationProviderResult providerResult;
         try
         {
@@ -4828,15 +4845,28 @@ internal sealed partial class MessagingService : IMessagingService
             Provider = providerResult.Provider,
             CreatedUtc = DateTime.UtcNow
         };
+        // A valid paid result must be retained even when the caller disconnects just as it arrives.
+        // This is awaited existing-cache persistence, never a detached task or a second purchase.
+        using var persistence = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         _db.MessageTranslations.Add(created);
         try
         {
-            await _db.SaveChangesAsync(cancellationToken);
+            await _db.SaveChangesAsync(persistence.Token);
+        }
+        catch (OperationCanceledException) when (persistence.IsCancellationRequested)
+        {
+            _db.Entry(created).State = EntityState.Detached;
+            _logger.LogError("Completed translation retention timed out. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
+            cancellationToken.ThrowIfCancellationRequested();
+            return null;
         }
         catch (DbUpdateException)
         {
             _db.Entry(created).State = EntityState.Detached;
-            var concurrent = await _db.MessageTranslations
+            CachedMessageTranslation? concurrent;
+            try
+            {
+                concurrent = await _db.MessageTranslations
                 .AsNoTracking()
                 .Where(translation =>
                     translation.InternalMessageId == message.Id &&
@@ -4845,11 +4875,24 @@ internal sealed partial class MessagingService : IMessagingService
                     translation.TranslatedText,
                     sourceLanguage,
                     translation.Provider))
-                .SingleOrDefaultAsync(cancellationToken);
-            if (concurrent is null)
+                .SingleOrDefaultAsync(persistence.Token);
+            }
+            catch (OperationCanceledException) when (persistence.IsCancellationRequested)
+            {
+                _logger.LogError("Completed translation recovery timed out. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
+                cancellationToken.ThrowIfCancellationRequested();
                 return null;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (concurrent is null)
+            {
+                _logger.LogError("Completed translation could not be retained or recovered. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
+                return null;
+            }
             return concurrent;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         try
         {

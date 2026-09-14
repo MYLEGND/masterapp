@@ -2186,42 +2186,38 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             quotaReservation = quota.Reservation;
         }
 
-        var capacityResult = await TraceTranslationStageAsync("translation_capacity", _capacity.GetType().Name + ".TryReserveAsync",
-                    () => _capacity.TryReserveAsync(
-            _azure.ProviderName,
-            string.IsNullOrEmpty(text) ? 0 : _azure.RequestCharacterCount(text),
-            TranslationCapacityPurpose.Live,
-            reservationReference: requestReference,
-            cancellationToken: cancellationToken), externalProviderPolicy);
-        var reservation = capacityResult.Reservation;
-        if (reservation is null)
-        {
-            await CompleteQuotaSafelyAsync(
-                quotaReservation,
-                providerExecuted: false,
-                providerSucceeded: false,
-                failureCode: capacityResult.FailureCode ?? "translation_capacity_unavailable",
-                cancellationToken);
-            if (_operations is not null)
-            {
-                await _operations.TryRecordAsync(
-                    "CapacityReservation",
-                    "Warning",
-                    "Unavailable",
-                    source,
-                    pairKey,
-                    capacityResult.FailureCode ?? "translation_capacity_unavailable",
-                    summary: "Live translation capacity could not be reserved.",
-                    cancellationToken: cancellationToken);
-            }
-            return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, capacityResult.FailureCode ?? "translation_capacity_unavailable"));
-        }
-
+        TranslationCapacityReservation? reservation = null;
         var providerSucceeded = false;
         var providerExecuted = false;
         string? providerFailureCode = null;
         try
         {
+            var capacityResult = await TraceTranslationStageAsync("translation_capacity", _capacity.GetType().Name + ".TryReserveAsync",
+                        () => _capacity.TryReserveAsync(
+                _azure.ProviderName,
+                string.IsNullOrEmpty(text) ? 0 : _azure.RequestCharacterCount(text),
+                TranslationCapacityPurpose.Live,
+                reservationReference: requestReference,
+                cancellationToken: cancellationToken), externalProviderPolicy);
+            reservation = capacityResult.Reservation;
+            if (reservation is null)
+            {
+                providerFailureCode = capacityResult.FailureCode ?? "translation_capacity_unavailable";
+                if (_operations is not null)
+                {
+                    await _operations.TryRecordAsync(
+                        "CapacityReservation",
+                        "Warning",
+                        "Unavailable",
+                        source,
+                        pairKey,
+                        capacityResult.FailureCode ?? "translation_capacity_unavailable",
+                        summary: "Live translation capacity could not be reserved.",
+                        cancellationToken: cancellationToken);
+                }
+                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, capacityResult.FailureCode ?? "translation_capacity_unavailable"));
+            }
+
             providerExecuted = true;
             var result = await TraceTranslationStageAsync("translation_provider", _azure.GetType().Name + ".TranslateAsync",
                     () => _azure.TranslateAsync(
@@ -2250,54 +2246,51 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         }
         catch
         {
-            providerFailureCode = "translation_provider_failed";
+            providerFailureCode ??= providerExecuted ? "translation_provider_failed" : "translation_capacity_unavailable";
             throw;
         }
         finally
         {
-            try
+            // Once admitted, each ledger gets an independent bounded opportunity to settle,
+            // including when cancellation happens during capacity admission. Never detach EF work.
+            async Task<bool> SettleAsync(Func<CancellationToken, Task> settle, string stage)
             {
-                // Once the HTTP request starts, Azure may have accepted and
-                // billed its input even if a response is lost. Retain that
-                // character cost in the rolling ledger rather than releasing
-                // it and risking a tier overrun on a retry.
-                await TraceTranslationStageAsync("translation_capacity_finalization", _capacity.GetType().Name + ".CompleteAsync",
-                    () => _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken), externalProviderPolicy);
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                // A ledger-write failure must not alter a successfully returned
-                // provider result. It remains observable without logging text.
-                _logger.LogError(
-                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
-                    "TranslationBoundaryFailed", _capacity.GetType().Name + ".CompleteAsync", "translation_capacity_finalization", "failed", "capacity_finalization_failed", exception.GetType().Name);
-                if (_operations is not null)
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                try
                 {
-                    await _operations.TryRecordAsync(
-                        "CapacityFinalization",
-                        "Error",
-                        "Failed",
-                        source,
-                        pairKey,
-                        "capacity_finalization_failed",
-                        summary: "Provider capacity finalization failed after the translation path completed.",
-                        cancellationToken: CancellationToken.None);
+                    await settle(deadline.Token);
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    // Persistence outages leave auditable reservations; they do not change the
+                    // provider outcome or authorize another paid call to manufacture a receipt.
+                    _logger.LogError("Translation settlement failed. Stage={Stage} ExceptionType={ExceptionType}",
+                        stage, exception.GetType().Name);
+                    return false;
                 }
             }
 
-            await CompleteQuotaSafelyAsync(
-                quotaReservation,
-                providerExecuted,
-                providerSucceeded,
-                providerFailureCode,
-                cancellationToken);
+            var capacitySettled = reservation is null || await SettleAsync(
+                token => TraceTranslationStageAsync("translation_capacity_finalization", _capacity.GetType().Name + ".CompleteAsync",
+                    () => _capacity.CompleteAsync(reservation, providerExecuted, token), externalProviderPolicy),
+                "translation_capacity_finalization");
+            await SettleAsync(token => CompleteQuotaSafelyAsync(
+                quotaReservation, providerExecuted, providerSucceeded, providerFailureCode, token),
+                "translation_quota_finalization");
+
+            // Optional diagnostics follow both mandatory settlement attempts.
+            if (!capacitySettled && _operations is not null)
+                await SettleAsync(token => _operations.TryRecordAsync(
+                    "CapacityFinalization", "Error", "Failed", source, pairKey,
+                    "capacity_finalization_failed",
+                    summary: "Provider capacity finalization failed after the translation path completed.",
+                    cancellationToken: token), "translation_settlement_diagnostic");
             if (_systemUsage is not null && providerExecuted)
-            {
-                await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                await SettleAsync(token => _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
                     ProviderOperations: 1,
-                    ProviderBillableCharacters: providerSucceeded ? reservation.Characters : 0,
-                    ProviderFailures: providerSucceeded ? 0 : 1), cancellationToken);
-            }
+                    ProviderBillableCharacters: providerSucceeded ? reservation!.Characters : 0,
+                    ProviderFailures: providerSucceeded ? 0 : 1), token), "translation_usage_finalization");
         }
     }
 
