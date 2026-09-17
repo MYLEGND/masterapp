@@ -74,24 +74,37 @@
     return media.matches;
   }
 
+  function syncBodySheetState() {
+    const anyOpen = document.querySelector("[data-legend-mobile-sheet-open]");
+    document.body?.classList.toggle("legend-mobile-sheet-open", Boolean(anyOpen) && isMobile());
+  }
+
   function decorateModal(surface) {
     if (!surface || surface.nodeType !== 1) return;
     if (!isMobile()) {
       surface.removeAttribute("data-legend-mobile-sheet");
-      surface.querySelectorAll("[data-legend-mobile-sheet-panel],[data-legend-mobile-sheet-scroll]")
+      surface.removeAttribute("data-legend-mobile-sheet-open");
+      surface.querySelectorAll("[data-legend-mobile-sheet-panel],[data-legend-mobile-sheet-scroll],[data-legend-mobile-sheet-header],[data-legend-mobile-sheet-footer],[data-legend-mobile-sheet-close]")
         .forEach(node => {
           node.removeAttribute("data-legend-mobile-sheet-panel");
           node.removeAttribute("data-legend-mobile-sheet-scroll");
+          node.removeAttribute("data-legend-mobile-sheet-scroll-self");
+          node.removeAttribute("data-legend-mobile-sheet-header");
+          node.removeAttribute("data-legend-mobile-sheet-footer");
+          node.removeAttribute("data-legend-mobile-sheet-close");
         });
+      syncBodySheetState();
       return;
     }
 
     if (surface.matches(".modal")) {
       surface.setAttribute("data-legend-mobile-sheet", "");
+      surface.toggleAttribute("data-legend-mobile-sheet-open", surface.classList.contains("show"));
       const panel = surface.querySelector(":scope > .modal-dialog > .modal-content");
       panel?.setAttribute("data-legend-mobile-sheet-panel", "");
       const body = panel?.querySelector(":scope > .modal-body");
       body?.setAttribute("data-legend-mobile-sheet-scroll", "");
+      syncBodySheetState();
       return;
     }
 
@@ -120,6 +133,28 @@
       panel.querySelectorAll(
         "button[class*='close'], [role='button'][class*='close'], button[aria-label*='close' i], button[aria-label*='dismiss' i], [data-bs-dismiss='modal']"
       ).forEach(control => control.setAttribute("data-legend-mobile-sheet-close", ""));
+
+      if (surface.hasAttribute("hidden")) {
+        surface.setAttribute("data-legend-mobile-hidden-controlled", "1");
+      }
+      const explicitOpen =
+        surface.classList.contains("open") ||
+        surface.classList.contains("visible") ||
+        surface.classList.contains("is-open") ||
+        surface.classList.contains("show") ||
+        surface.getAttribute("aria-hidden") === "false";
+      const hiddenControlledOpen =
+        surface.getAttribute("data-legend-mobile-hidden-controlled") === "1" &&
+        !surface.hasAttribute("hidden");
+      const overlayControlledOpen =
+        surface !== semanticDialog &&
+        !surface.hasAttribute("hidden") &&
+        window.getComputedStyle(surface).display !== "none";
+      surface.toggleAttribute(
+        "data-legend-mobile-sheet-open",
+        explicitOpen || hiddenControlledOpen || overlayControlledOpen
+      );
+      syncBodySheetState();
     }
   }
 
