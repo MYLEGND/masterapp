@@ -36,7 +36,7 @@ public sealed class ClientBillingNotificationAndSchemaTests
         email.Setup(sender => sender.TrySendAsync(
                 profile.Email!,
                 It.Is<string>(subject => subject.Contains("Action needed", StringComparison.Ordinal)),
-                null,
+                It.Is<string>(html => html.Contains("LEGEND® Client Portal", StringComparison.Ordinal) && html.Contains("Action needed", StringComparison.Ordinal)),
                 It.Is<string>(body => body.Contains("review your payment method", StringComparison.Ordinal)),
                 null,
                 null,
@@ -79,7 +79,7 @@ public sealed class ClientBillingNotificationAndSchemaTests
         email.Setup(sender => sender.TrySendAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                null,
+                It.Is<string>(html => html.Contains("LEGEND® Client Portal", StringComparison.Ordinal)),
                 It.IsAny<string>(),
                 null,
                 null,
@@ -101,6 +101,49 @@ public sealed class ClientBillingNotificationAndSchemaTests
         Assert.Equal(1, notification.AttemptCount);
         Assert.True(notification.NextAttemptUtc >= before.AddMinutes(15));
         Assert.Null(notification.SentUtc);
+        email.VerifyAll();
+    }
+
+    [Fact]
+    public async Task SubscriptionTermsUpdated_DeliveryUsesBrandedCardAndNextPeriodDetails()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddProfileAsync(db);
+        var subscription = await AddSubscriptionAsync(db, profile.Id);
+        subscription.MonthlyAmountCents = 12_500;
+        subscription.NextBillingDateUtc = DateTime.UtcNow.AddDays(21);
+        var notifications = new ClientBillingNotificationService(db);
+        notifications.Queue(new ClientBillingNotificationRequest(
+            profile.Id,
+            subscription.Id,
+            ClientBillingNotificationKind.SubscriptionTermsUpdated,
+            $"subscription-terms-updated:{subscription.Id:N}:test",
+            AmountCents: subscription.MonthlyAmountCents,
+            Currency: subscription.Currency));
+        await db.SaveChangesAsync();
+
+        var email = new Mock<IEmailSender>(MockBehavior.Strict);
+        email.Setup(sender => sender.TrySendAsync(
+                profile.Email!,
+                It.Is<string>(subject => subject.Contains("membership has been updated", StringComparison.OrdinalIgnoreCase)),
+                It.Is<string>(html =>
+                    html.Contains("LEGEND® Client Portal", StringComparison.Ordinal) &&
+                    html.Contains("$125.00", StringComparison.Ordinal) &&
+                    html.Contains("Next billing period", StringComparison.Ordinal)),
+                It.Is<string>(body => body.Contains("$125.00", StringComparison.Ordinal)),
+                null,
+                null,
+                null))
+            .ReturnsAsync(true);
+
+        var delivery = new ClientBillingNotificationDeliveryService(
+            db,
+            email.Object,
+            NullLogger<ClientBillingNotificationDeliveryService>.Instance);
+
+        var result = await delivery.DeliverDueAsync(10);
+
+        Assert.Equal(1, result.Sent);
         email.VerifyAll();
     }
 
