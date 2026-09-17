@@ -1,0 +1,45 @@
+name: LEGEND website domain cutover facts
+
+on:
+  pull_request:
+    branches:
+      - production
+    paths:
+      - '.github/workflows/legend-website-domain-cutover.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_WEBAPP_NAME: masterapp-website
+
+jobs:
+  domain-facts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: Production
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Read exact custom-domain values
+        shell: bash
+        run: |
+          set -euo pipefail
+          verification_id="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query customDomainVerificationId -o tsv)"
+          inbound_ip="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query inboundIpAddress -o tsv)"
+          default_host="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query defaultHostName -o tsv)"
+          printf 'DEFAULT_HOST=%s\nINBOUND_IP=%s\nVERIFICATION_ID=%s\n' "$default_host" "$inbound_ip" "$verification_id"
+
+      - name: Show existing host bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp config hostname list -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query '[].{name:name,sslState:sslState}' -o table
