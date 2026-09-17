@@ -129,14 +129,11 @@
   window.visualViewport?.addEventListener("scroll", syncViewport, { passive: true });
   window.addEventListener("resize", syncViewport, { passive: true });
 
+  syncMode();
+  loadTokens();
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      syncMode();
-      loadTokens();
-    }, { once: true });
-  } else {
-    syncMode();
-    loadTokens();
+    document.addEventListener("DOMContentLoaded", syncMode, { once: true });
   }
 
   window.LegendMobilePlatform = {
