@@ -2224,7 +2224,7 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
-    public async Task UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule()
+    public async Task UpdateClientSubscription_EnforcesScopedMinimum_PreservesSchedule_AndQueuesNotification()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var profile = await AddClientProfileAsync(db);
@@ -2237,38 +2237,60 @@ public sealed class BillingCentralizationTests
             ClientSubscriptionPaymentStanding.Current,
             "subscription_update");
         var scheduledCharge = subscription.NextBillingDateUtc;
+        var notifications = new ClientBillingNotificationService(db);
         var orchestrator = new MasterAppBillingOrchestrator(
             db,
             BuildGateway().Object,
             Mock.Of<IBillingEntitlementService>(),
-            Mock.Of<IClientSubscriptionActivationPolicyService>());
+            Mock.Of<IClientSubscriptionActivationPolicyService>(),
+            notifications);
 
-        var denied = await orchestrator.UpdateClientSubscriptionAsync(
-            new UpdateClientSubscriptionCommand(
-                subscription.Id,
-                ClientSubscriptionOfferPriceType.Fixed150,
-                null,
-                BillingAnchorSelectionMode.SpecificDayOfMonth,
-                20,
-                "agent-1",
-                FounderAuthorized: false));
-        var updated = await orchestrator.UpdateClientSubscriptionAsync(
+        var scopedUpdate = await orchestrator.UpdateClientSubscriptionAsync(
             new UpdateClientSubscriptionCommand(
                 subscription.Id,
                 ClientSubscriptionOfferPriceType.Custom,
-                17_500,
+                7_500,
+                BillingAnchorSelectionMode.FifteenthOfMonth,
+                15,
+                "agent-1",
+                FounderAuthorized: false));
+
+        var scopedBelowMinimum = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            orchestrator.UpdateClientSubscriptionAsync(
+                new UpdateClientSubscriptionCommand(
+                    subscription.Id,
+                    ClientSubscriptionOfferPriceType.Custom,
+                    4_999,
+                    BillingAnchorSelectionMode.FifteenthOfMonth,
+                    15,
+                    "agent-1",
+                    FounderAuthorized: false)));
+
+        var founderUpdate = await orchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(
+                subscription.Id,
+                ClientSubscriptionOfferPriceType.Custom,
+                0,
                 BillingAnchorSelectionMode.SpecificDayOfMonth,
                 20,
                 "founder-oid",
                 FounderAuthorized: true));
 
         var persisted = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
-        Assert.False(denied.Success);
-        Assert.Equal("FOUNDER_SUBSCRIPTION_CONTROL_REQUIRED", denied.SafeErrorCode);
-        Assert.True(updated.Success);
-        Assert.Equal(17_500, persisted.MonthlyAmountCents);
+        var queued = await db.ClientBillingNotifications
+            .Where(x => x.ClientSubscriptionId == subscription.Id &&
+                        x.Kind == ClientBillingNotificationKind.SubscriptionTermsUpdated)
+            .OrderBy(x => x.CreatedUtc)
+            .ToListAsync();
+
+        Assert.True(scopedUpdate.Success);
+        Assert.Contains("between 5000", scopedBelowMinimum.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(founderUpdate.Success);
+        Assert.Equal(0, persisted.MonthlyAmountCents);
         Assert.Equal(20, persisted.BillingAnchorDay);
         Assert.Equal(scheduledCharge, persisted.NextBillingDateUtc);
+        Assert.Equal(2, queued.Count);
+        Assert.All(queued, item => Assert.Contains("next scheduled billing period", item.PlainTextBody, StringComparison.OrdinalIgnoreCase));
         Assert.Contains(await db.BillingAuditEntries.ToListAsync(), entry =>
             entry.EntityType == "ClientSubscription" &&
             entry.EntityId == subscription.Id.ToString() &&
