@@ -1,0 +1,100 @@
+name: ClientApp emergency redeploy
+
+on:
+  pull_request:
+    branches:
+      - production
+    paths:
+      - '.github/workflows/clientapp-emergency-redeploy.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_CLIENT_WEBAPP_NAME: masterapp-client
+  PRODUCTION_SHA: 5f236cbc0d69ff2198b7e1c4a45056ffa6a2d83f
+
+jobs:
+  redeploy-clientapp-only:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact current production
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCTION_SHA }}
+          fetch-depth: 1
+          lfs: true
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore ClientApp graph only
+        shell: pwsh
+        run: dotnet restore ClientApp/ClientApp.csproj
+
+      - name: Publish ClientApp only
+        shell: pwsh
+        run: |
+          dotnet publish ClientApp/ClientApp.csproj -c Release --no-restore -o publish/clientapp
+          if ($LASTEXITCODE -ne 0) { throw 'ClientApp publish failed.' }
+          if (-not (Test-Path 'publish/clientapp/ClientApp.dll')) { throw 'ClientApp.dll missing from publish output.' }
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify required production settings remain present
+        shell: pwsh
+        run: |
+          $connections = az webapp config connection-string list -g $env:AZURE_RESOURCE_GROUP -n $env:AZURE_CLIENT_WEBAPP_NAME -o json | ConvertFrom-Json
+          $settings = az webapp config appsettings list -g $env:AZURE_RESOURCE_GROUP -n $env:AZURE_CLIENT_WEBAPP_NAME -o json | ConvertFrom-Json
+          $db = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -eq $db -or [string]::IsNullOrWhiteSpace([string]$db.value)) {
+            $db = $settings | Where-Object { $_.name -in @('ConnectionStrings__MasterAppDb','ConnectionStrings:MasterAppDb') } | Select-Object -First 1
+          }
+          $secret = $settings | Where-Object { $_.name -in @('AzureAd__ClientSecret','AzureAd:ClientSecret') } | Select-Object -First 1
+          if ($null -eq $db -or [string]::IsNullOrWhiteSpace([string]$db.value)) { throw 'MasterAppDb is missing; refusing deployment.' }
+          if ($null -eq $secret -or [string]::IsNullOrWhiteSpace([string]$secret.value)) { throw 'ClientApp Entra secret is missing; refusing deployment.' }
+
+      - name: Deploy only ClientApp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_CLIENT_WEBAPP_NAME }}
+          slot-name: Production
+          package: publish/clientapp
+
+      - name: Restart only ClientApp
+        shell: pwsh
+        run: |
+          az webapp restart -g $env:AZURE_RESOURCE_GROUP -n $env:AZURE_CLIENT_WEBAPP_NAME
+          if ($LASTEXITCODE -ne 0) { throw 'ClientApp restart failed.' }
+
+      - name: Verify ClientApp startup
+        shell: pwsh
+        run: |
+          $urls = @('https://client.mylegnd.com/','https://client.mylegnd.com/Account/Login')
+          foreach ($url in $urls) {
+            $ok = $false
+            for ($i=0; $i -lt 8; $i++) {
+              try {
+                $response = Invoke-WebRequest -Uri $url -MaximumRedirection 0 -SkipHttpErrorCheck -TimeoutSec 20
+                $code = [int]$response.StatusCode
+                Write-Host "$url -> $code"
+                if ($code -in @(200,302,401,403)) { $ok = $true; break }
+              } catch {
+                Write-Host "$url probe failed: $($_.Exception.Message)"
+              }
+              Start-Sleep -Seconds 5
+            }
+            if (-not $ok) { throw "ClientApp did not recover at $url" }
+          }
