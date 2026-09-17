@@ -1,4 +1,5 @@
 name: LEGEND website domain cutover facts
+# read-only cutover inspection
 
 on:
   pull_request:
