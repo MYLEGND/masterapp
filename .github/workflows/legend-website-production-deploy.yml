@@ -33,7 +33,10 @@ env:
   AZURE_STATIC_WEB_APP_LOCATION: westus2
 
 jobs:
-  validate:
+  # Intentionally named security so the protected production branch receives its
+  # required status from the website-specific fail-closed validation instead of
+  # the unrelated AgentPortal/LEGEND release pipeline.
+  security:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -87,7 +90,7 @@ jobs:
 
   deploy:
     if: github.event_name == 'push'
-    needs: validate
+    needs: security
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
