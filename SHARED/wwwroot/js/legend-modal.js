@@ -172,6 +172,7 @@
       panel.setAttribute('data-legend-modal-panel', '');
     });
     surface.querySelectorAll('.modal-content').forEach(panel => panel.setAttribute('data-legend-modal-panel', ''));
+    window.LegendMobilePlatform?.decorateModal?.(surface);
   }
 
   function registerDialogs(node){
@@ -203,7 +204,7 @@
       if (rect.height > 0 && rect.top < viewportBottom && rect.bottom > viewportTop)
         bottom = Math.max(top, rect.top);
     }
-    const nominalMargin = window.matchMedia?.('(max-width: 900px)')?.matches ? 10 : 24;
+    const nominalMargin = window.LegendMobilePlatform?.isMobile?.() ? 0 : 24;
     const safeMargin = Math.min(nominalMargin, Math.max(0, (bottom - top) / 4));
     const areaStart = top + safeMargin;
     const safeHeight = Math.max(0, bottom - top - 2 * safeMargin);
@@ -332,6 +333,10 @@
   } else {
     document.addEventListener("DOMContentLoaded", observeContentRegion, { once: true });
   }
+  document.documentElement.addEventListener("legend:mobilemodechange", () => {
+    registerDialogs(document.body);
+    scheduleViewportOffsets();
+  });
   window.visualViewport?.addEventListener("resize", scheduleViewportOffsets, { passive: true });
   window.visualViewport?.addEventListener("scroll", scheduleViewportOffsets, { passive: true });
   window.addEventListener("resize", scheduleViewportOffsets, { passive: true });
