@@ -19,16 +19,21 @@
     z-index:1085;
 }
 
-.qv-booking-modal-shell .modal-dialog{
-    width:min(92vw, 1260px);
-    max-width:1260px;
-    margin:22px auto;
+@media (min-width: 841px) {
+    .qv-booking-modal-shell .modal-dialog{
+        width:min(92vw, 1260px);
+        max-width:1260px;
+        margin:22px auto;
+    }
+
+    .qv-booking-modal-shell .modal-content{
+        max-height:calc(100vh - 44px);
+        overflow:auto;
+        border-radius:24px;
+    }
 }
 
 .qv-booking-modal-shell .modal-content{
-    max-height:calc(100vh - 44px);
-    overflow:auto;
-    border-radius:24px;
     color:var(--qv-text);
     background:
         radial-gradient(circle at 18% -10%, rgba(37,99,235,.52), transparent 34%),
