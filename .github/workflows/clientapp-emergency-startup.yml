@@ -1,0 +1,130 @@
+name: ClientApp emergency startup diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostic/clientapp-startup-20260917
+    paths:
+      - '.github/workflows/clientapp-emergency-startup.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_CLIENT_WEBAPP_NAME: masterapp-client
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: Production
+    steps:
+      - name: Checkout production baseline
+        uses: actions/checkout@v4
+        with:
+          ref: production
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Inspect ClientApp Azure startup configuration safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          state="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME" --query state -o tsv)"
+          runtime="$(az webapp config show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME" --query linuxFxVersion -o tsv 2>/dev/null || true)"
+          settings="$(az webapp config appsettings list -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME" -o json)"
+          connections="$(az webapp config connection-string list -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME" -o json)"
+          python3 - <<'PY' "$state" "$runtime" "$settings" "$connections" > diagnostics/config-summary.txt
+          import json,sys
+          state,runtime,settings_raw,connections_raw=sys.argv[1:5]
+          settings={x.get("name"):x.get("value","") for x in json.loads(settings_raw)}
+          connections={x.get("name"):x.get("value","") for x in json.loads(connections_raw)}
+          def present(*names):
+              return any(str(settings.get(n,"")).strip() for n in names)
+          db = bool(str(connections.get("MasterAppDb","")).strip()) or present("ConnectionStrings__MasterAppDb","ConnectionStrings:MasterAppDb")
+          print("state="+state)
+          print("runtime="+runtime)
+          print("MasterAppDb_present="+str(db))
+          print("AzureAd_client_secret_present="+str(present("AzureAd__ClientSecret","AzureAd:ClientSecret")))
+          print("DataProtection_blob_present="+str(present("DataProtection__BlobUri","DataProtection:BlobUri")))
+          print("DataProtection_keyvault_present="+str(present("DataProtection__KeyVaultKeyId","DataProtection:KeyVaultKeyId")))
+          print("ASPNETCORE_ENVIRONMENT="+("Production" if settings.get("ASPNETCORE_ENVIRONMENT","Production")=="Production" else "non-Production"))
+          PY
+          cat diagnostics/config-summary.txt
+
+      - name: Enable bounded startup diagnostics and restart ClientApp
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp log config -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME" \
+            --application-logging filesystem --level error \
+            --detailed-error-messages true --failed-request-tracing true --web-server-logging filesystem \
+            --output none
+          az webapp restart -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME"
+          sleep 12
+          curl -sS -L -o diagnostics/client-response.html -w '%{http_code}\n' https://client.mylegnd.com/ | tee diagnostics/http-status.txt || true
+
+      - name: Download and extract startup logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp log download -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME" --log-file diagnostics/clientapp-logs.zip || true
+          if [ -f diagnostics/clientapp-logs.zip ]; then
+            unzip -q diagnostics/clientapp-logs.zip -d diagnostics/logs || true
+          fi
+          grep -RniE 'Unhandled exception|InvalidOperationException|STARTUP BLOCKED|DATABASE MISCONFIG|ClientSecret|DataProtection|SqlException|migration|500\.30|failed to start|Could not load|FileNotFoundException|TypeLoadException' diagnostics/logs 2>/dev/null | tail -n 200 > diagnostics/startup-errors.txt || true
+          cat diagnostics/startup-errors.txt || true
+
+      - name: Check production EF migration state without applying changes
+        shell: pwsh
+        run: |
+          $rawConnections = az webapp config connection-string list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_CLIENT_WEBAPP_NAME --output json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read ClientApp connection strings.' }
+          $connections = $rawConnections | ConvertFrom-Json
+          $db = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -eq $db -or [string]::IsNullOrWhiteSpace([string]$db.value)) {
+            $rawSettings = az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_CLIENT_WEBAPP_NAME --output json
+            $settings = $rawSettings | ConvertFrom-Json
+            $dbSetting = $settings | Where-Object { $_.name -in @('ConnectionStrings__MasterAppDb','ConnectionStrings:MasterAppDb') } | Select-Object -First 1
+            if ($null -ne $dbSetting) { $connection = [string]$dbSetting.value }
+          } else { $connection = [string]$db.value }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            'MasterAppDb connection unavailable' | Set-Content diagnostics/migrations.txt
+            exit 0
+          }
+          dotnet tool install --global dotnet-ef --version 10.0.2
+          $env:PATH += ':' + $HOME + '/.dotnet/tools'
+          dotnet restore Infrastructure/Infrastructure.csproj
+          dotnet ef migrations list --project Infrastructure/Infrastructure.csproj --context MasterAppDbContext --connection "$connection" --no-build *> diagnostics/migrations.txt
+          $code=$LASTEXITCODE
+          Get-Content diagnostics/migrations.txt
+          if ($code -ne 0) { exit 0 }
+
+      - name: Upload bounded diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clientapp-startup-diagnostic-${{ github.run_id }}
+          path: |
+            diagnostics/config-summary.txt
+            diagnostics/http-status.txt
+            diagnostics/startup-errors.txt
+            diagnostics/migrations.txt
+          if-no-files-found: ignore
+          retention-days: 1
