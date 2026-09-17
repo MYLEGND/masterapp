@@ -1,4 +1,5 @@
 name: LEGEND website custom domain TLS
+# isolated public-domain binding
 
 on:
   push:
