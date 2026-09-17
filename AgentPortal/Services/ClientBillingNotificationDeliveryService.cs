@@ -28,6 +28,7 @@ public sealed class ClientBillingNotificationDeliveryService
         var limit = Math.Clamp(maxItems, 1, 100);
         var notifications = await _db.ClientBillingNotifications
             .Include(notification => notification.ClientProfile)
+            .Include(notification => notification.ClientSubscription)
             .Where(notification =>
                 notification.SentUtc == null &&
                 notification.NotBeforeUtc <= nowUtc &&
@@ -56,7 +57,11 @@ public sealed class ClientBillingNotificationDeliveryService
 
             try
             {
-                if (await _emailSender.TrySendAsync(recipient, notification.Subject, null, notification.PlainTextBody))
+                if (await _emailSender.TrySendAsync(
+                        recipient,
+                        notification.Subject,
+                        BuildBrandedHtml(notification),
+                        notification.PlainTextBody))
                 {
                     notification.SentUtc = nowUtc;
                     notification.SafeFailureCode = null;
@@ -79,6 +84,60 @@ public sealed class ClientBillingNotificationDeliveryService
             await _db.SaveChangesAsync(cancellationToken);
 
         return new ClientBillingNotificationDeliveryResult(notifications.Count, sent, failed);
+    }
+
+    private static string BuildBrandedHtml(ClientBillingNotification notification)
+    {
+        var safeSubject = System.Net.WebUtility.HtmlEncode(notification.Subject);
+        var safeBody = System.Net.WebUtility.HtmlEncode(notification.PlainTextBody);
+        var subscription = notification.ClientSubscription;
+        var amount = subscription is null
+            ? null
+            : (subscription.MonthlyAmountCents / 100m).ToString("C2", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+        var nextBilling = subscription?.NextBillingDateUtc.HasValue == true
+            ? DateTime.SpecifyKind(subscription.NextBillingDateUtc.Value, DateTimeKind.Utc)
+                .ToLocalTime()
+                .ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            : null;
+        var safeAmount = System.Net.WebUtility.HtmlEncode(amount ?? string.Empty);
+        var safeNextBilling = System.Net.WebUtility.HtmlEncode(nextBilling ?? string.Empty);
+        var details = notification.Kind == Domain.Billing.ClientBillingNotificationKind.SubscriptionTermsUpdated && subscription is not null
+            ? $"""
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:18px;border:1px solid #dbe5f4;border-radius:12px;background:#f6f8fc;">
+                <tr>
+                  <td style="padding:16px 18px;">
+                    <div style="font-size:12px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:#2e5fa9;">Next billing period</div>
+                    <div style="margin-top:8px;font-size:30px;line-height:1;font-weight:800;color:#0d2145;">{safeAmount}<span style="font-size:15px;color:#66758c;"> / month</span></div>
+                    {(string.IsNullOrWhiteSpace(safeNextBilling) ? string.Empty : $"""<div style="margin-top:10px;font-size:14px;color:#506078;"><strong>Effective:</strong> {safeNextBilling}</div>""")}
+                  </td>
+                </tr>
+              </table>
+              """
+            : string.Empty;
+
+        return $"""
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#ffffff;font-family:Arial,sans-serif;color:#14213a;">
+  <tr>
+    <td align="center" style="padding:28px 14px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #d7e0ee;border-radius:18px;overflow:hidden;">
+        <tr>
+          <td style="padding:24px 28px;background:#0d2145;color:#ffffff;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#cbdcff;">LEGEND® Client Portal</div>
+            <div style="margin-top:8px;font-size:26px;line-height:1.18;font-weight:800;">{safeSubject}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 28px 28px 28px;background:#ffffff;">
+            <div style="font-size:15px;line-height:1.65;color:#506078;">{safeBody}</div>
+            {details}
+            <div style="margin-top:22px;padding-top:16px;border-top:1px solid #dbe5f4;font-size:13px;font-weight:800;color:#0d2145;">LEGEND®</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+""";
     }
 
     private static int ResolveRetryDelayMinutes(int attemptCount) =>
