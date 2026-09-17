@@ -94,5 +94,24 @@ test('page-specific AgentPortal mobile CSS no longer owns modal viewport geometr
   // Desktop geometry remains present; the repair is phone-only.
   assert.match(booking, /\.qv-booking-modal-shell \.modal-dialog\s*\{\s*width:min\(92vw, 1260px\)/);
   assert.match(founder, /@media \(min-width: 821px\) and \(max-width: 1100px\)/);
-  assert.match(clients, /@media \(min-width: 841px\)[\s\S]*?\.actions-hub-modal\.modal/);
+  assert.match(clients, /@media \(min-width: 841px\) \{[\s\S]*?\.actions-hub-modal\.modal/);
+
+  const workstation = read('AgentPortal/wwwroot/css/workstation-home-proposal.css');
+  assert.doesNotMatch(workstation, /@media \(max-width: 700px\)[\s\S]*?data-workstation-drawer/);
+  assert.match(workstation, /@media \(min-width: 841px\) \{[\s\S]*?#proposalOverlay\.hp-overlay/);
+});
+
+test('Explore and generic phone shell geometry have one shared owner', () => {
+  const shared = read('SHARED/wwwroot/css/legend-mobile-platform.css');
+  const agent = read('AgentPortal/Views/Shared/_Layout.cshtml');
+  const workspace = read('AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml');
+  const clientInline = read('ClientApp/wwwroot/css/layout-inline.css');
+  const clientSite = read('ClientApp/wwwroot/css/site.css');
+
+  assert.match(shared, /\.explore-drawer \{/);
+  assert.match(shared, /\.explore-list \{/);
+  assert.doesNotMatch(agent, /@@media \(max-width: 576px\)[\s\S]*?\.explore-drawer\s*\{/);
+  assert.doesNotMatch(workspace, /@@media \(max-width: 576px\)[\s\S]*?\.explore-(?:drawer|trigger)\s*\{/);
+  assert.doesNotMatch(clientInline, /@media \(max-width: 840px\)[\s\S]*?\.explore-drawer\s*\{/);
+  assert.doesNotMatch(clientSite, /@media \(max-width: 576px\)[\s\S]*?\.layout-content\s*\{/);
 });
