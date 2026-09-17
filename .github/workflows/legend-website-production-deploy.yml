@@ -1,0 +1,173 @@
+name: Validate and deploy LEGEND Website to Azure
+
+on:
+  pull_request:
+    branches:
+      - production
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'Legend-Website/**'
+      - 'Legend-Design/legend-design.tokens.json'
+      - 'Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png'
+      - '.github/workflows/legend-website-production-deploy.yml'
+  push:
+    branches:
+      - production
+    paths:
+      - 'Legend-Website/**'
+      - 'Legend-Design/legend-design.tokens.json'
+      - 'Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png'
+      - '.github/workflows/legend-website-production-deploy.yml'
+
+concurrency:
+  group: legend-website-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_STATIC_WEB_APP_NAME: legend-public-mylegnd
+  AZURE_STATIC_WEB_APP_LOCATION: westus2
+
+jobs:
+  # Intentionally named security so the protected production branch receives its
+  # required status from the website-specific fail-closed validation instead of
+  # the unrelated AgentPortal/LEGEND release pipeline.
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          lfs: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build public site from canonical LEGEND design authority
+        working-directory: Legend-Website
+        run: |
+          npm run build
+          cp public/staticwebapp.config.json dist/staticwebapp.config.json
+          npm run check
+
+      - name: Verify migration route boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Legend-Website/dist/index.html
+          test -f Legend-Website/dist/about/index.html
+          test -f Legend-Website/dist/contact/index.html
+          test -f Legend-Website/dist/logo/index.html
+          test -f Legend-Website/dist/privacy-terms/index.html
+          test ! -e Legend-Website/dist/store
+          test ! -e Legend-Website/dist/team
+          grep -q 'brand-banner' Legend-Website/dist/index.html
+          grep -q 'site-header' Legend-Website/dist/index.html
+          grep -q 'site-footer' Legend-Website/dist/index.html
+          grep -q 'assets/legend-logo.png' Legend-Website/dist/index.html
+          if grep -R 'href="/store"\|href="/team"' Legend-Website/dist --include='*.html'; then
+            echo '::error::Excluded Squarespace routes leaked into the new public site.'
+            exit 1
+          fi
+          git diff --check
+
+      - name: Preserve exact validated website artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-public-website-${{ github.sha }}
+          path: Legend-Website/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: Production
+    steps:
+      - name: Checkout immutable production tree
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          lfs: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Rebuild exact production website
+        working-directory: Legend-Website
+        run: |
+          npm run build
+          cp public/staticwebapp.config.json dist/staticwebapp.config.json
+          npm run check
+
+      - name: Login to existing Azure configuration authority
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure dedicated Static Web App exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name staticwebapp --upgrade --only-show-errors
+          if ! az staticwebapp show --name "$AZURE_STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --output none 2>/dev/null; then
+            az staticwebapp create \
+              --name "$AZURE_STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --location "$AZURE_STATIC_WEB_APP_LOCATION" \
+              --sku Free \
+              --output none
+          fi
+
+      - name: Resolve deployment token without persisting it
+        id: deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(az staticwebapp secrets list --name "$AZURE_STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.apiKey -o tsv)"
+          test -n "$token"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy exact production artifact
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.deployment.outputs.token }}
+          action: upload
+          app_location: Legend-Website/dist
+          output_location: ''
+          skip_app_build: true
+
+      - name: Verify Azure endpoint and preserved routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="$(az staticwebapp show --name "$AZURE_STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query defaultHostname -o tsv)"
+          test -n "$host"
+          for route in / /about /contact /logo /privacy-terms; do
+            body="$(mktemp)"
+            code="$(curl --retry 5 --retry-delay 4 --retry-all-errors -sS -L -o "$body" -w '%{http_code}' "https://$host$route")"
+            test "$code" = '200'
+            grep -q 'LEGEND®' "$body"
+            rm -f "$body"
+          done
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "https://$host/store")" = '404'
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "https://$host/team")" = '404'
+          echo "LEGEND website deployed and verified at https://$host" >> "$GITHUB_STEP_SUMMARY"

@@ -15,6 +15,10 @@ on:
       - production
     types:
       - synchronize
+    paths-ignore:
+      - 'Legend-Website/**'
+      - '.github/workflows/legend-website-production-deploy.yml'
+      - '.github/workflows/agentportal-production-deploy.yml'
 
 # Both hosts and the database are shared production resources. A later PR
 # must wait until the current release and its verification finish; it must
