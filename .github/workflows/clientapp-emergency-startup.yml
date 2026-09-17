@@ -2,9 +2,9 @@ name: ClientApp emergency startup diagnostic
 # bounded live diagnostic for client.mylegnd.com
 
 on:
-  push:
+  pull_request:
     branches:
-      - diagnostic/clientapp-startup-20260917
+      - production
     paths:
       - '.github/workflows/clientapp-emergency-startup.yml'
 
