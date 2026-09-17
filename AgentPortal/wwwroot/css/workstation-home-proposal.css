@@ -86,35 +86,6 @@
 #proposalDialog .hp-currency-input{flex:1 1 auto;background:transparent !important;border:none !important;box-shadow:none !important;color:#f8fafc !important;font-weight:700;font-size:.9rem;min-width:0;padding:0;}
 #proposalDialog .hp-currency-input:focus{outline:none;}
 
-@media (max-width: 900px){
-    #proposalOverlay.hp-overlay{
-        align-items:center;
-        justify-content:center;
-        padding:var(--legend-modal-area-start, max(10px, env(safe-area-inset-top))) 10px var(--legend-modal-area-end, max(10px, env(safe-area-inset-bottom))) 10px;
-    }
-    #proposalDialog.hp-dialog{
-        width:min(1380px,98vw);
-        max-height:min(calc(100dvh - 20px), var(--legend-modal-safe-height, calc(100dvh - 20px)));
-        border-radius:16px;
-        padding:.8rem .8rem 1rem;
-    }
-    #proposalDialog .hp-dialog-head{
-        position:sticky;
-        top:0;
-        z-index:5;
-        margin:-0.8rem -0.8rem .7rem;
-        padding:.8rem .8rem .7rem;
-        border-radius:16px 16px 0 0;
-        background:linear-gradient(180deg,rgba(11,21,41,.98),rgba(15,29,56,.96));
-        backdrop-filter:blur(4px);
-    }
-    #proposalDialog .hp-dialog-close{
-        width:48px;
-        height:48px;
-        font-size:2rem;
-    }
-}
-
 /* ── Proposal & Underwriting quick-list: centered fixed popout ─── */
 #rbShell .hp-proposal-menu:not([hidden]),
 #proposalMenu.hp-proposal-menu:not([hidden]),
@@ -654,23 +625,6 @@
         justify-content: flex-start;
     }
 
-    .ws-client-picker-overlay {
-        padding: 16px;
-    }
-
-    .ws-client-picker-dialog {
-        max-height: min(88vh, 960px);
-        border-radius: 22px;
-    }
-
-    .ws-client-picker-head,
-    .ws-client-picker-toolbar,
-    .ws-client-picker-status,
-    .ws-client-picker-results {
-        padding-left: 18px;
-        padding-right: 18px;
-    }
-
     .ws-client-picker-results {
         grid-template-columns: 1fr;
         padding-bottom: 18px;
@@ -1021,17 +975,3 @@
 #uwDialog select option { color: inherit !important; }
 
 /* Mobile */
-@media (max-width: 900px) {
-    #uwDialog {
-        border-radius: 16px !important;
-        padding: .8rem .8rem 1rem !important;
-    }
-    #uwDialog .uw-head {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 5 !important;
-        margin: -.8rem -.8rem .7rem !important;
-        padding: .8rem .8rem .7rem !important;
-        border-radius: 16px 16px 0 0 !important;
-    }
-}
