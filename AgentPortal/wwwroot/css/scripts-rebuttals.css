@@ -14484,58 +14484,46 @@ details.section{
     display: block !important;
 }
 
-#drawer.drawer[data-workstation-drawer="1"]{
-    position: fixed !important;
-    inset: auto !important;
-    top: 50% !important;
-    left: 50% !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: clamp(900px, 90vw, 1280px) !important;
-    max-height: 92vh !important;
-    height: auto !important;
-    transform: translate(-50%, -50%) scale(.97) !important;
-    border-radius: 26px !important;
-    transition: transform .18s ease, opacity .18s ease !important;
-    z-index: 90 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
+@media (min-width: 841px) {
+    #drawer.drawer[data-workstation-drawer="1"]{
+        position: fixed !important;
+        inset: auto !important;
+        top: 50% !important;
+        left: 50% !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: clamp(900px, 90vw, 1280px) !important;
+        max-height: 92vh !important;
+        height: auto !important;
+        transform: translate(-50%, -50%) scale(.97) !important;
+        border-radius: 26px !important;
+        transition: transform .18s ease, opacity .18s ease !important;
+        z-index: 90 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
 
-#drawer.drawer[data-workstation-drawer="1"].open{
-    transform: translate(-50%, -50%) scale(1) !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-}
+    #drawer.drawer[data-workstation-drawer="1"].open{
+        transform: translate(-50%, -50%) scale(1) !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
 
-#drawer.drawer[data-workstation-drawer="1"] .dbody{
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
+    #drawer.drawer[data-workstation-drawer="1"] .dbody{
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
 }
 
 #drawer.drawer[data-workstation-drawer="1"] #dPortalWrap[hidden]{
     display: none !important;
-}
-
-@media (max-width: 980px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        width: min(94vw, 960px) !important;
-    }
-}
-
-@media (max-width: 700px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        width: 100vw !important;
-        max-height: 100dvh !important;
-        border-radius: 0 !important;
-    }
 }
 
 /* Re-assert the real Leads Quick View styling inside workstation.
