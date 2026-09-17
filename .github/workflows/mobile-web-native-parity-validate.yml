@@ -1,0 +1,47 @@
+name: Validate mobile web native parity
+
+on:
+  push:
+    branches:
+      - fix/mobile-web-native-parity-20260917
+
+permissions:
+  contents: read
+
+jobs:
+  validate-mobile-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          lfs: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run focused layout contracts
+        run: node --test tests/layout/*.test.mjs
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore web projects
+        run: |
+          dotnet restore AgentPortal/AgentPortal.csproj
+          dotnet restore ClientApp/ClientApp.csproj
+
+      - name: Build AgentPortal Release
+        run: dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo
+
+      - name: Build ClientApp Release
+        run: dotnet build ClientApp/ClientApp.csproj -c Release --no-restore --nologo
+
+      - name: Verify patch whitespace
+        run: git diff --check HEAD^ HEAD
