@@ -774,48 +774,39 @@
     background: linear-gradient(180deg, rgba(20,35,66,.98), rgba(15,29,56,.98)) !important;
 }
 
-/* Keep workstation popouts centered in the visible workspace below the portal header. */
-#proposalOverlay.hp-overlay,
-.uw-overlay,
-.proposal-overlay,
-.note-self-overlay{
-    padding: var(--legend-modal-area-start, 24px) 1rem var(--legend-modal-area-end, 24px) !important;
-}
+/* Desktop keeps the established centered workspace presentation.
+   Phone geometry is owned by the shared LEGEND mobile sheet authority. */
+@media (min-width: 841px) {
+    #proposalOverlay.hp-overlay,
+    .uw-overlay,
+    .proposal-overlay,
+    .note-self-overlay{
+        padding: var(--legend-modal-area-start, 24px) 1rem var(--legend-modal-area-end, 24px) !important;
+    }
 
-#proposalDialog.hp-dialog,
-#uwDialog.uw-dialog,
-.proposal-dialog,
-.uw-dialog,
-.note-self-modal,
-#drawer.drawer[data-workstation-drawer="1"]{
-    max-height: min(92vh, var(--legend-modal-safe-height, calc(100dvh - 48px))) !important;
-}
+    #proposalDialog.hp-dialog,
+    #uwDialog.uw-dialog,
+    .proposal-dialog,
+    .uw-dialog,
+    .note-self-modal{
+        max-height: min(92vh, var(--legend-modal-safe-height, calc(100dvh - 48px))) !important;
+    }
 
-#captureDecisionModal.legend-popout-modal.show{
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: var(--legend-modal-area-start, 24px) var(--legend-modal-safe-margin, 24px) var(--legend-modal-area-end, 24px) !important;
-    overflow-y: auto !important;
-}
+    #captureDecisionModal.legend-popout-modal.show{
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: var(--legend-modal-area-start, 24px) var(--legend-modal-safe-margin, 24px) var(--legend-modal-area-end, 24px) !important;
+        overflow-y: auto !important;
+    }
 
-#captureDecisionModal.legend-popout-modal .modal-dialog{
-    margin: 0 auto !important;
-    max-width: min(calc(100vw - var(--legend-modal-safe-margin, 24px) - var(--legend-modal-safe-margin, 24px)), 760px) !important;
-}
+    #captureDecisionModal.legend-popout-modal .modal-dialog{
+        margin: 0 auto !important;
+        max-width: min(calc(100vw - var(--legend-modal-safe-margin, 24px) - var(--legend-modal-safe-margin, 24px)), 760px) !important;
+    }
 
-#captureDecisionModal.legend-popout-modal .modal-content{
-    max-height: min(760px, var(--legend-modal-safe-height, 86vh)) !important;
-}
-
-#drawer.drawer[data-workstation-drawer="1"]{
-    top: var(--legend-modal-safe-center, 50%) !important;
-}
-
-@media (max-width: 700px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        top: 50% !important;
-        max-height: 100dvh !important;
+    #captureDecisionModal.legend-popout-modal .modal-content{
+        max-height: min(760px, var(--legend-modal-safe-height, 86vh)) !important;
     }
 }
 
