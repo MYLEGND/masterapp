@@ -286,6 +286,7 @@
         min-height: 0;
         max-height: calc(var(--legend-mobile-viewport-height) - var(--legend-mobile-page-top));
         margin: 0;
+        padding: 0;
         overflow: hidden;
         border-radius: var(--legend-mobile-sheet-radius) var(--legend-mobile-sheet-radius) 0 0;
         background: var(--legend-mobile-surface);
@@ -325,7 +326,10 @@
         flex: 1 1 auto;
         min-height: 0;
         max-height: none;
-        padding-inline: var(--legend-mobile-page-horizontal);
+        padding:
+            var(--legend-mobile-page-top)
+            var(--legend-mobile-page-horizontal)
+            max(var(--legend-mobile-page-bottom), env(safe-area-inset-bottom));
         overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
@@ -335,6 +339,10 @@
     }
 
     html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet-panel][data-legend-mobile-sheet-scroll-self] {
+        padding:
+            var(--legend-mobile-page-top)
+            var(--legend-mobile-page-horizontal)
+            max(var(--legend-mobile-page-bottom), env(safe-area-inset-bottom));
         overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
