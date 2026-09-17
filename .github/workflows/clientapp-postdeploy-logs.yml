@@ -1,0 +1,76 @@
+name: ClientApp post-deploy startup logs
+
+on:
+  pull_request:
+    branches:
+      - production
+    paths:
+      - '.github/workflows/clientapp-postdeploy-logs.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_CLIENT_WEBAPP_NAME: masterapp-client
+
+jobs:
+  diagnose-clientapp-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: Production
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture safe App Service runtime facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME"             --query '{state:state,hostNames:hostNames,enabled:enabled,availabilityState:availabilityState,kind:kind}'             -o json > diagnostics/site.json
+          az webapp config show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME"             --query '{netFrameworkVersion:netFrameworkVersion,linuxFxVersion:linuxFxVersion,windowsFxVersion:windowsFxVersion,use32BitWorkerProcess:use32BitWorkerProcess,alwaysOn:alwaysOn,http20Enabled:http20Enabled,webSocketsEnabled:webSocketsEnabled}'             -o json > diagnostics/runtime.json
+          cat diagnostics/site.json
+          cat diagnostics/runtime.json
+
+      - name: Probe both Azure host and custom hostname
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            for url in "https://masterapp-client.azurewebsites.net/" "https://client.mylegnd.com/"; do
+              code="$(curl --connect-timeout 10 --max-time 30 -sS -L -o /tmp/body -w '%{http_code}' "$url" || true)"
+              echo "$url $code"
+              head -c 500 /tmp/body 2>/dev/null | tr '\n' ' '; echo
+            done
+          } | tee diagnostics/probes.txt
+
+      - name: Download current App Service logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp log config -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME"             --application-logging filesystem --level verbose             --detailed-error-messages true --failed-request-tracing true --web-server-logging filesystem             --output none
+          curl --connect-timeout 10 --max-time 20 -sS -o /dev/null https://masterapp-client.azurewebsites.net/ || true
+          sleep 4
+          az webapp log download -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_CLIENT_WEBAPP_NAME"             --log-file diagnostics/clientapp-logs.zip
+          unzip -q diagnostics/clientapp-logs.zip -d diagnostics/logs
+          grep -RniE 'Unhandled exception|InvalidOperationException|STARTUP BLOCKED|DATABASE MISCONFIG|ClientSecret|DataProtection|SqlException|migration|500\.30|failed to start|Could not load|FileNotFoundException|TypeLoadException|Hosting startup|Fatal|Critical|BackgroundService'             diagnostics/logs 2>/dev/null | tail -n 400 | tee diagnostics/startup-errors.txt || true
+
+      - name: Upload bounded startup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clientapp-postdeploy-logs-${{ github.run_id }}
+          path: |
+            diagnostics/site.json
+            diagnostics/runtime.json
+            diagnostics/probes.txt
+            diagnostics/startup-errors.txt
+          if-no-files-found: ignore
+          retention-days: 1
