@@ -1,0 +1,56 @@
+name: Validate subscription activation repair
+
+on:
+  push:
+    branches:
+      - fix/mobile-web-native-parity-20260917
+    paths:
+      - '.github/workflows/subscription-activation-repair-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          lfs: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preserve prior mobile layout contracts
+        run: node --test tests/layout/*.test.mjs
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore focused test graph
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Run activation and subscription tests
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj
+          -c Release --no-restore --nologo
+          --filter "FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientSubscriptionAdministrationTests|FullyQualifiedName~BillingCentralizationTests|FullyQualifiedName~ClientBillingNotificationAndSchemaTests"
+
+      - name: Build AgentPortal Release
+        run: dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo
+
+      - name: Restore ClientApp
+        run: dotnet restore ClientApp/ClientApp.csproj
+
+      - name: Build ClientApp Release
+        run: dotnet build ClientApp/ClientApp.csproj -c Release --no-restore --nologo
+
+      - name: Verify patch whitespace
+        run: git diff --check HEAD^ HEAD
