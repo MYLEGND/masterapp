@@ -91,7 +91,10 @@ public sealed record LegendConnectAutonomousLanguageFocusMutation(
 public sealed record LegendConnectReadinessCheck(
     string Name,
     string State,
-    string Detail);
+    string Detail)
+{
+    public bool ObservationAvailable { get; init; } = true;
+}
 
 public sealed record LegendConnectProductionReadinessSnapshot(
     string State,
@@ -102,7 +105,18 @@ public sealed record LegendConnectProductionReadinessSnapshot(
     long PendingCandidateCount,
     long RejectedOrIneligibleCandidateCount,
     long DuplicateCandidateCount,
-    long AwaitingKnowledgePairCount);
+    long AwaitingKnowledgePairCount)
+{
+    public bool ObservationAvailable { get; init; } = true;
+    public string Scope => "autonomous_corpus_acquisition_admission";
+    public string Definition => "This gate evaluates activation and admission of a new autonomous corpus acquisition cycle. It does not assess live translation, foundation inference, historical reevaluation, downstream learning, in-flight work or whole-application health. When observationAvailable is false, canActivate=false is a safety default and candidate counts are unknown, not observed zeros.";
+
+    public static LegendConnectProductionReadinessSnapshot Unavailable(string summary) =>
+        new("BLOCKED", false, summary, [], 0, 0, 0, 0, 0)
+        {
+            ObservationAvailable = false
+        };
+}
 
 public sealed record LegendConnectFounderOperationalAuditSnapshot(
     string FounderUserId,

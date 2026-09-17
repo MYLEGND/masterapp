@@ -147,21 +147,23 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(1, translator.Calls);
         if (providerFails)
         {
-            Assert.False(page.Succeeded);
-            Assert.Equal(MessagingTranslationPresentation.UnavailableCode, page.ErrorCode);
-            Assert.Null(page.Conversation);
+            Assert.True(page.Succeeded, page.ErrorMessage);
+            Assert.Equal(6, page.Conversation!.Messages.Count);
+            Assert.All(page.Conversation.Messages, message => Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, message.TranslationNotice));
+            Assert.Equal("Hello.", Assert.Single(page.Conversation.Messages.Where(message => message.Id == original.Message!.Id)).Body);
+            Assert.All(page.Conversation.Messages.Where(message => message.Reply is not null), message => Assert.Equal("Hello.", message.Reply!.Body));
+            Assert.All(page.Conversation.Messages, message => Assert.Null(message.Translation));
             Assert.Empty(await db.MessageTranslations.ToListAsync());
             Assert.Equal("Hello.", (await db.InternalMessages.SingleAsync(row => row.Id == original.Message!.Id)).Body);
             var participant = await db.MessageConversationParticipants.SingleAsync(row =>
                 row.ConversationId == conversationId && row.UserId == recipient.UserId);
             Assert.Null(participant.LastReadMessageId);
 
-            // Repeated quotations share one attempt even on a failed page. Neither
-            // failure is cached or advances the reader past the withheld original.
+            // Repeated quotations share one attempt even when translation fails.
+            // Original presentation does not cache a failed translation or mark a read.
             var failedRetry = await service.GetConversationPageAsync(recipient, conversationId, new MessagingConversationMessagePageQuery());
-            Assert.False(failedRetry.Succeeded);
-            Assert.Equal(MessagingTranslationPresentation.UnavailableCode, failedRetry.ErrorCode);
-            Assert.Null(failedRetry.Conversation);
+            Assert.True(failedRetry.Succeeded, failedRetry.ErrorMessage);
+            Assert.Equal(page.Conversation.Messages.Select(message => message.Id), failedRetry.Conversation!.Messages.Select(message => message.Id));
             Assert.Equal(2, translator.Calls);
             Assert.Empty(await db.MessageTranslations.ToListAsync());
             translator.Fail = false;

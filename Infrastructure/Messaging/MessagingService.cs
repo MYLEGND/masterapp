@@ -647,9 +647,8 @@ internal sealed partial class MessagingService : IMessagingService
         if (applyTranslation && includeMessages)
         {
             var presented = await ApplyTranslationPresentationAsync(actor, messageSummaries, messages, cancellationToken);
-            // Never return a successful partial page: its cursor could skip a
-            // withheld message permanently. Existing clients retain their last
-            // successful page and retry this unchanged boundary.
+            // Preserve every authorized message and its cursor. A translation
+            // delay presents the original with a notice, never a partial page.
             if (presented.Count != messageSummaries.Count)
                 return MessagingConversationResult.Failure(MessagingTranslationPresentation.UnavailableCode,
                     await LocalizeApplicationCopyAsync(actor, MessagingTranslationPresentation.UnavailableMessage, null, cancellationToken));
@@ -4605,6 +4604,9 @@ internal sealed partial class MessagingService : IMessagingService
         var normalizedLanguages = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var sources = sourceMessages.ToDictionary(message => message.Id);
         var presented = new List<MessagingMessageSummary>(summaries.Count);
+        string? pendingNotice = null;
+        async Task<string> PendingNoticeAsync() => pendingNotice ??=
+            await LocalizeApplicationCopyAsync(actor, MessagingTranslationPresentation.UnavailableMessage, null, cancellationToken);
         foreach (var summary in summaries)
         {
             var presentation = summary;
@@ -4623,8 +4625,8 @@ internal sealed partial class MessagingService : IMessagingService
                     presentationCache: presentationCache,
                     normalizedLanguages: normalizedLanguages);
                 if (translation is null)
-                    continue;
-                if (translation.Notice is not null)
+                    presentation = presentation with { TranslationNotice = await PendingNoticeAsync() };
+                else if (translation.Notice is not null)
                     presentation = presentation with { TranslationNotice = translation.Notice };
                 else if (!string.Equals(translation.OriginalLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
                 {
@@ -4648,15 +4650,15 @@ internal sealed partial class MessagingService : IMessagingService
                 cancellationToken,
                 pageCache,
                 presentationCache,
-                normalizedLanguages);
-            if (withReply is not null)
-                presented.Add(withReply);
+                normalizedLanguages,
+                PendingNoticeAsync);
+            presented.Add(withReply);
         }
 
         return presented;
     }
 
-    private async Task<MessagingMessageSummary?> ApplyReplyTranslationPresentationAsync(
+    private async Task<MessagingMessageSummary> ApplyReplyTranslationPresentationAsync(
         MessagingMessageSummary summary,
         MessageDetailRow? source,
         MessagingActor actor,
@@ -4664,7 +4666,8 @@ internal sealed partial class MessagingService : IMessagingService
         CancellationToken cancellationToken,
         IReadOnlyDictionary<Guid, MessageTranslation> pageCache,
         Dictionary<Guid, CachedMessageTranslation?> presentationCache,
-        Dictionary<string, string?> normalizedLanguages)
+        Dictionary<string, string?> normalizedLanguages,
+        Func<Task<string>> pendingNotice)
     {
         if (summary.Reply is null ||
             source?.Reply is null ||
@@ -4688,7 +4691,7 @@ internal sealed partial class MessagingService : IMessagingService
             presentationCache: presentationCache,
             normalizedLanguages: normalizedLanguages);
         return translation is null
-            ? null
+            ? summary with { TranslationNotice = summary.TranslationNotice ?? await pendingNotice() }
             : summary with { Reply = summary.Reply with { Body = translation.TranslatedText }, TranslationNotice = summary.TranslationNotice ?? translation.Notice };
     }
 

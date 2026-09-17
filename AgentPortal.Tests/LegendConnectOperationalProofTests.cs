@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -8,6 +9,7 @@ using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
@@ -1126,15 +1128,18 @@ public sealed class LegendConnectOperationalProofTests
             configuration,
             curriculum: curriculum,
             founderTrainingIngestion: founderTraining,
-            intelligence: intelligence);
+            intelligence: intelligence,
+            entitlementAuthority: new TranslationEntitlementAuthority(db, Mock.Of<IControlledResourceAccessService>(),
+                configuration, NullLogger<TranslationEntitlementAuthority>.Instance));
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         db.LegendTranslationSystemUsages.Add(new LegendTranslationSystemUsage
         {
             Id = Guid.NewGuid(),
             UsageDate = today,
-            ProviderOperationCount = 2,
-            ProviderBillableCharacters = 42,
+            ProviderOperationCount = 3,
+            ProviderBillableCharacters = 56,
+            ProviderFailureCount = 1,
             QuotaDeniedRequestCount = 1,
             UpdatedUtc = DateTime.UtcNow
         });
@@ -1152,19 +1157,116 @@ public sealed class LegendConnectOperationalProofTests
                 PeriodStart = new DateOnly(today.Year, today.Month, 1), SourceLanguageCode = "en", TargetLanguageCode = "fr",
                 Provider = "AzureTranslator", BillableCharacters = 18, ProviderExecuted = false, Succeeded = false,
                 State = "QuotaDenied", FailureCode = "translation_quota_exhausted", CreatedUtc = DateTime.UtcNow, CompletedUtc = DateTime.UtcNow
+            },
+            new LegendTranslationUsageLedger
+            {
+                Id = Guid.NewGuid(), RequestReference = "private-second-billable", UserId = "client-b", ParticipantType = "Client",
+                PeriodStart = new DateOnly(today.Year, today.Month, 1), SourceLanguageCode = "en", TargetLanguageCode = "ht",
+                Provider = "AzureTranslator", BillableCharacters = 14, ProviderExecuted = true, Succeeded = true,
+                State = "Completed", CreatedUtc = DateTime.UtcNow, CompletedUtc = DateTime.UtcNow
+            },
+            new LegendTranslationUsageLedger
+            {
+                Id = Guid.NewGuid(), RequestReference = "private-failed-request", UserId = "client-a", ParticipantType = "Client",
+                PeriodStart = new DateOnly(today.Year, today.Month, 1), SourceLanguageCode = "en", TargetLanguageCode = "ht",
+                Provider = "AzureTranslator", BillableCharacters = 0, ProviderExecuted = true, Succeeded = false,
+                State = "Failed", FailureCode = "translation_provider_timeout", CreatedUtc = DateTime.UtcNow, CompletedUtc = DateTime.UtcNow
             });
+        var period = new DateOnly(today.Year, today.Month, 1);
+        db.Set<LegendTranslationGlobalPolicy>().Add(new LegendTranslationGlobalPolicy { Id = 1, MonthlyCharacterAllowance = 100 });
+        foreach (var account in new[]
+        {
+            (Id: "client-a", Type: "Client", Consumed: 80L, Reserved: 5L, Allowance: 100L, Unlimited: false, Billable: 42L),
+            (Id: "client-b", Type: "Client", Consumed: 90L, Reserved: 10L, Allowance: 100L, Unlimited: false, Billable: 14L),
+            (Id: "client-unlimited", Type: "Client", Consumed: 999L, Reserved: 0L, Allowance: 1L, Unlimited: true, Billable: 0L),
+            (Id: "client-below", Type: "Client", Consumed: 79L, Reserved: 0L, Allowance: 100L, Unlimited: false, Billable: 0L),
+            (Id: "agent-high", Type: "Agent", Consumed: 40L, Reserved: 0L, Allowance: 50L, Unlimited: false, Billable: 0L)
+        })
+        {
+            db.LegendTranslationUsagePeriods.Add(new LegendTranslationUsagePeriod
+            {
+                UserId = account.Id, ParticipantType = account.Type, PeriodStart = period,
+                ConsumedCharacters = account.Consumed, ReservedCharacters = account.Reserved,
+                ProviderBillableCharacters = account.Billable
+            });
+            db.LegendTranslationEntitlements.Add(new LegendTranslationEntitlement
+            {
+                UserId = account.Id, ParticipantType = account.Type,
+                MonthlyCharacterAllowance = account.Allowance, IsUnlimited = account.Unlimited
+            });
+        }
+        db.LegendTranslationUsagePeriods.AddRange(
+            new LegendTranslationUsagePeriod { UserId = "client-global", ParticipantType = "Client", PeriodStart = period, ConsumedCharacters = 80 },
+            new LegendTranslationUsagePeriod { UserId = "client-stale-policy", ParticipantType = "Client", PeriodStart = period, ConsumedCharacters = 80 });
+        db.LegendTranslationEntitlements.Add(new LegendTranslationEntitlement
+        {
+            UserId = "client-stale-policy", ParticipantType = "Client", EntitlementSource = "GlobalPolicy", MonthlyCharacterAllowance = 9999
+        });
         await db.SaveChangesAsync();
+        var originalLedger = JsonSerializer.Serialize(await db.LegendTranslationUsageLedgers.AsNoTracking().OrderBy(item => item.Id).ToListAsync());
+        var originalPeriods = JsonSerializer.Serialize(await db.LegendTranslationUsagePeriods.AsNoTracking().OrderBy(item => item.Id).ToListAsync());
+        var originalEntitlements = JsonSerializer.Serialize(await db.LegendTranslationEntitlements.AsNoTracking().OrderBy(item => item.Id).ToListAsync());
+        var originalPolicy = JsonSerializer.Serialize(await db.Set<LegendTranslationGlobalPolicy>().AsNoTracking().SingleAsync());
 
         var billable = await operations.GetMetricDetailAsync("provider-billable-characters");
         var denied = await operations.GetMetricDetailAsync("quota-denied");
 
         Assert.Equal("Provider-billable characters", billable.Title);
-        Assert.Contains(billable.Sections.SelectMany(section => section.Rows), row => row.Contains("safe-billable-reference") && row.Contains("42"));
+        var billableRows = Assert.Single(billable.Sections.Where(section => section.Title == "Translation usage ledger"));
+        Assert.Equal(new[] { today.ToString("yyyy-MM-dd"), "Client", "en", "ht", "AzureTranslator", "2", "56", "Completed", "" }, Assert.Single(billableRows.Rows));
+        var periodRows = Assert.Single(billable.Sections.Where(section => section.Title == "Account-period aggregate"));
+        Assert.Equal(2, periodRows.Rows.Count);
+        Assert.Contains(periodRows.Rows, row => row.SequenceEqual(new[] { period.ToString("yyyy-MM-dd"), "Client", "6", "56" }));
+        Assert.Contains(Assert.Single(billable.Sections.Where(section => section.Title == "Daily system aggregate")).Rows, row => row[1] == "56");
         Assert.Contains("info", billable.Sections.SelectMany(section => section.RowTones));
         Assert.Equal("Quota denied", denied.Title);
-        Assert.Contains(denied.Sections.SelectMany(section => section.Rows), row => row.Contains("safe-denied-reference") && row.Contains("translation_quota_exhausted"));
+        Assert.Equal(new[] { today.ToString("yyyy-MM-dd"), "Client", "en", "fr", "AzureTranslator", "1", "18", "QuotaDenied", "translation_quota_exhausted" },
+            Assert.Single(Assert.Single(denied.Sections.Where(section => section.Title == "Translation usage ledger")).Rows));
         Assert.Contains("danger", denied.Sections.SelectMany(section => section.RowTones));
         Assert.DoesNotContain(denied.Sections, section => section.Title == "Current section summary");
+        var failures = await operations.GetMetricDetailAsync("provider-failures");
+        Assert.Equal(new[] { today.ToString("yyyy-MM-dd"), "Client", "en", "ht", "AzureTranslator", "1", "0", "Failed", "translation_provider_timeout" },
+            Assert.Single(Assert.Single(failures.Sections.Where(section => section.Title == "Translation usage ledger")).Rows));
+        var providerOperations = await operations.GetMetricDetailAsync("provider-operations");
+        Assert.Equal(3, Assert.Single(providerOperations.Sections.Where(section => section.Title == "Translation usage ledger"))
+            .Rows.Sum(row => int.Parse(row[5], CultureInfo.InvariantCulture)));
+        var high = await operations.GetMetricDetailAsync("high-consumption-accounts");
+        var highRows = Assert.Single(high.Sections).Rows;
+        Assert.Equal(2, highRows.Count);
+        Assert.Contains(highRows, row => row.SequenceEqual(new[] { "Client", "4", "400", "330", "15", (345m / 400m).ToString("P1", CultureInfo.InvariantCulture) }));
+        Assert.Contains(highRows, row => row.SequenceEqual(new[] { "Agent", "1", "50", "40", "0", (40m / 50m).ToString("P1", CultureInfo.InvariantCulture) }));
+        var entitlementAuthority = new TranslationEntitlementAuthority(db, Mock.Of<IControlledResourceAccessService>(),
+            configuration, NullLogger<TranslationEntitlementAuthority>.Instance);
+        Assert.Equal(0, configuration.GetValue<long>("LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance"));
+        Assert.Equal(5, (await entitlementAuthority.GetFounderScaleAsync()).HighConsumptionAccountCount);
+        Assert.Equal(5, highRows.Sum(row => int.Parse(row[1], CultureInfo.InvariantCulture)));
+        foreach (var key in new[] { "provider-operations", "provider-billable-characters", "quota-denied", "provider-failures", "high-consumption-accounts", "memory-avoided" })
+        {
+            var detail = await operations.GetMetricDetailAsync(key);
+            var serialized = JsonSerializer.Serialize(detail);
+            foreach (var identity in new[] { "client-a", "client-b", "client-unlimited", "client-below", "agent-high", "client-global", "client-stale-policy", "safe-billable-reference", "safe-denied-reference", "private-second-billable", "private-failed-request" })
+                Assert.DoesNotContain(identity, serialized, StringComparison.Ordinal);
+            Assert.DoesNotContain(detail.Sections.SelectMany(section => section.Columns), column => column is "Account reference" or "Request reference");
+        }
+        Assert.Equal(originalLedger, JsonSerializer.Serialize(await db.LegendTranslationUsageLedgers.AsNoTracking().OrderBy(item => item.Id).ToListAsync()));
+        Assert.Equal(originalPeriods, JsonSerializer.Serialize(await db.LegendTranslationUsagePeriods.AsNoTracking().OrderBy(item => item.Id).ToListAsync()));
+        Assert.Equal(originalEntitlements, JsonSerializer.Serialize(await db.LegendTranslationEntitlements.AsNoTracking().OrderBy(item => item.Id).ToListAsync()));
+        Assert.Equal(originalPolicy, JsonSerializer.Serialize(await db.Set<LegendTranslationGlobalPolicy>().AsNoTracking().SingleAsync()));
+        Assert.All(db.ChangeTracker.Entries(), entry => Assert.Equal(EntityState.Unchanged, entry.State));
+    }
+
+    [Fact]
+    public async Task MetricDetails_HighConsumptionRequiresTheExistingEntitlementAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var operations = Operations(db, new LegendLanguageRegistry(db, configuration), configuration);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            operations.GetMetricDetailAsync("high-consumption-accounts"));
+
+        Assert.Equal("Legend Connect translation entitlement authority is not available from the DI service graph.", error.Message);
+        Assert.False(db.ChangeTracker.HasChanges());
     }
 
     [Fact]
@@ -1347,7 +1449,9 @@ public sealed class LegendConnectOperationalProofTests
             configuration,
             curriculum: curriculum,
             founderTrainingIngestion: founderTraining,
-            intelligence: intelligence);
+            intelligence: intelligence,
+            entitlementAuthority: new TranslationEntitlementAuthority(db, Mock.Of<IControlledResourceAccessService>(),
+                configuration, NullLogger<TranslationEntitlementAuthority>.Instance));
         var keys = new[]
         {
             "active-languages", "directional-pairs", "learning-failures", "duplicate-prevention",
