@@ -212,9 +212,10 @@
 
         const actions = snapshot?.actions || {};
         const context = getBillingContext();
-        const canUpdate = !!(actions.canUpdatePendingOffer || actions.canUpdateLiveSubscription);
+        const founderCanUpdate = canSetFounderSubscriptionOptions() &&
+            (actions.canUpdatePendingOffer || actions.canUpdateLiveSubscription);
         if (configureButton) {
-            configureButton.hidden = canUpdate;
+            configureButton.hidden = founderCanUpdate;
             configureButton.disabled = !loaded ||
                 !context?.clientProfileId ||
                 !isPortalRecord(context) ||
@@ -224,8 +225,9 @@
         if (revokeButton) revokeButton.disabled = !loaded || !actions.canRevokeInvitation;
         if (cancelButton) cancelButton.disabled = !loaded || !actions.canCancelSubscription;
         if (updateButton) {
-            updateButton.hidden = !canUpdate;
-            updateButton.disabled = !loaded || !canUpdate;
+            updateButton.hidden = !founderCanUpdate;
+            updateButton.disabled = !loaded ||
+                !founderCanUpdate;
         }
     }
 
@@ -514,7 +516,7 @@
             const prepared = isLiveUpdate
                 ? prepareSubscriptionUpdate()
                 : preparePendingOfferUpdate();
-            if (!prepared) return;
+            if (!canSetFounderSubscriptionOptions() || !prepared) return;
             setSubscriptionSetupVisible(true, isLiveUpdate ? "update-live" : "update-pending");
             syncSubscriptionSetupControls();
             return;
