@@ -303,7 +303,6 @@ body.note-self-open{
 }
 
 @media (max-width: 900px){
-    .note-self-overlay,
 
 /* ========================================================================
    Term vs Whole special treatment
@@ -371,37 +370,6 @@ body.note-self-open{
 #mpShell #sideNav .nav-item[data-target="#sec-termwhole"] .nav-badge{
     color: #1d4ed8 !important;
 }
-    .uw-overlay,
-    .proposal-overlay{
-        align-items: center;
-        justify-content: center;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
-    }
-    .note-self-modal,
-    .uw-dialog,
-    .proposal-dialog{
-        width: min(98vw, 1400px);
-        max-height: calc(100dvh - 20px);
-    }
-    .note-self-head{
-        position: sticky;
-        top: 0;
-        z-index: 7;
-    }
-    .note-self-close,
-    .uw-close,
-    .proposal-dialog .uw-close{
-        width: 46px;
-        height: 46px;
-        font-size: 2rem;
-    }
-    #captureDecisionModal.legend-popout-modal .modal-dialog{
-        margin: auto;
-        max-width: min(96vw, 760px);
-    }
-    #captureDecisionModal.legend-popout-modal .modal-content{
-        max-height: calc(100dvh - 20px);
-    }
 }
 
 .uw-overlay{
@@ -960,13 +928,7 @@ body.note-self-open{
         }
     }
 
-    .uw-dialog{
-        width: 95vw;
-        max-height: 92vh;
-        padding: 14px;
-    }
-
-    .uw-grid{
+     .uw-grid{
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap:8px 10px;
     }
@@ -12295,53 +12257,6 @@ details.section{
 
 /* Mobile popout safety lock */
 @media (max-width: 900px){
-    .note-self-overlay,
-    .uw-overlay,
-    .proposal-overlay,
-    #proposalOverlay.hp-overlay{
-        align-items: center !important;
-        justify-content: center !important;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px !important;
-    }
-    .note-self-modal,
-    .uw-dialog,
-    .proposal-dialog,
-    #proposalDialog.hp-dialog,
-    #captureDecisionModal.legend-popout-modal .modal-content,
-    .zoom-qp-dialog{
-        max-height: calc(100dvh - 20px) !important;
-    }
-    #captureDecisionModal.legend-popout-modal .modal-dialog{
-        margin: auto !important;
-    }
-    .uw-head,
-    .proposal-dialog .uw-head,
-    #proposalDialog .hp-dialog-head,
-    .note-self-head,
-    #captureDecisionModal.legend-popout-modal .modal-header{
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 20 !important;
-    }
-    .note-self-close,
-    .uw-close,
-    .proposal-dialog .uw-close,
-    #proposalDialog .hp-dialog-close,
-    #captureDecisionModal.legend-popout-modal .btn-close,
-    .zoom-qp-close{
-        width: 46px !important;
-        height: 46px !important;
-        font-size: 2rem !important;
-        border: 2px solid rgba(244,216,144,.72) !important;
-        border-radius: 999px !important;
-        background: rgba(8,16,33,.9) !important;
-        color: #f8fafc !important;
-        line-height: 1 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-
     #rbShell #rbNavArrow.nav-rail-arrow{
         display: flex !important;
         position: fixed !important;
