@@ -28,6 +28,34 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Index(string token, string returnUrl = "/profile")
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
+        if (context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
+            context.Subscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod)
+        {
+            var resumed = await _activationService.ResumeActivatedAccountAsync(
+                token,
+                returnUrl,
+                HttpContext.RequestAborted);
+            if (resumed.Success &&
+                !string.IsNullOrWhiteSpace(resumed.ProtectedContinuationState))
+            {
+                _continuationService.StoreCookie(
+                    Response,
+                    resumed.ProtectedContinuationState,
+                    resumed.ContinuationExpiresUtc ?? DateTime.UtcNow.AddMinutes(20));
+
+                return RedirectToAction(
+                    "AzureLogin",
+                    "Account",
+                    new { returnUrl = _returnUrlNormalizer.Normalize(returnUrl) });
+            }
+
+            return RenderContext(
+                token,
+                returnUrl,
+                resumed.Context,
+                resumed.SanitizedMessage);
+        }
+
         return RenderContext(token, returnUrl, context);
     }
 
