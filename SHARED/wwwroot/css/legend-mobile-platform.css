@@ -104,6 +104,41 @@
         padding-block: var(--legend-mobile-xs);
     }
 
+
+    html[data-legend-mobile="1"] body.legend-web-app .explore-trigger {
+        position: static;
+        inset: auto;
+        width: var(--legend-mobile-tap-target);
+        height: var(--legend-mobile-tap-target);
+        min-width: var(--legend-mobile-tap-target);
+        min-height: var(--legend-mobile-tap-target);
+        border-radius: var(--legend-mobile-control-radius);
+    }
+
+    html[data-legend-mobile="1"] body.legend-web-app .explore-drawer {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + var(--legend-mobile-control-height) + var(--legend-mobile-sm));
+        right: var(--legend-mobile-page-horizontal);
+        left: var(--legend-mobile-page-horizontal);
+        width: auto;
+        max-width: none;
+        max-height: calc(var(--legend-mobile-viewport-height) - env(safe-area-inset-top) - var(--legend-mobile-control-height) - var(--legend-mobile-page-bottom));
+        overflow: hidden;
+        border-radius: var(--legend-mobile-sheet-radius);
+    }
+
+    html[data-legend-mobile="1"] body.legend-web-app .explore-drawer .explore-card {
+        max-height: inherit;
+        border-radius: inherit;
+    }
+
+    html[data-legend-mobile="1"] body.legend-web-app .explore-drawer .explore-list {
+        max-height: calc(var(--legend-mobile-viewport-height) - 190px - env(safe-area-inset-top));
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
     html[data-legend-mobile="1"] body.legend-web-app :is(
         button,
         .btn,
