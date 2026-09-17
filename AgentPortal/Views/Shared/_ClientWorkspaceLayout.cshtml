@@ -474,9 +474,10 @@
         }
     </style>
     <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
 </head>
 
-<body class="d-flex flex-column min-vh-100">
+<body class="legend-web-app legend-agent-portal d-flex flex-column min-vh-100">
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-light legend-global-nav" data-legend-global-nav>
@@ -818,6 +819,7 @@
         });
     })();
 </script>
+<script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 @await Html.PartialAsync("~/Views/Messaging/_SignalRClient.cshtml")
