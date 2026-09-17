@@ -1539,6 +1539,18 @@
     .backdrop.open{ display:block; }
 
 .drawer{
+        background: linear-gradient(135deg,#0f172a,#111827);
+        border:2px solid #a68023;
+        box-shadow: 0 32px 96px rgba(0,0,0,.38);
+        z-index: 90;
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+        color:#0f172a;
+}
+
+@media (min-width: 841px) {
+    .drawer{
         position: fixed;
         inset: auto;
         top: 50%;
@@ -1546,23 +1558,16 @@
         width: clamp(900px, 90vw, 1280px);
         max-height: 92vh;
         transform: translate(-50%, -50%) scale(.97);
-        background: linear-gradient(135deg,#0f172a,#111827);
-        border:2px solid #a68023;
         border-radius: 24px;
-        box-shadow: 0 32px 96px rgba(0,0,0,.38);
         transition: transform .18s ease, opacity .18s ease;
-        z-index: 90;
-        display:flex;
-        flex-direction:column;
-        overflow:hidden;
-        color:#0f172a;
         opacity:0;
         pointer-events:none;
-}
-.drawer.open{
+    }
+    .drawer.open{
         transform: translate(-50%, -50%) scale(1);
         opacity:1;
         pointer-events:auto;
+    }
 }
 
 /* Actions + Commitments hub modal system */
