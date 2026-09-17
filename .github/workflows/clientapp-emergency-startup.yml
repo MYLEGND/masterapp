@@ -1,4 +1,5 @@
 name: ClientApp emergency startup diagnostic
+# bounded live diagnostic for client.mylegnd.com
 
 on:
   push:
