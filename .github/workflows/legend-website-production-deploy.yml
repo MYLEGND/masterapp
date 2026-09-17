@@ -1,0 +1,121 @@
+name: Deploy LEGEND Website to Azure
+
+on:
+  push:
+    branches:
+      - production
+    paths:
+      - 'Legend-Website/**'
+      - '.github/workflows/legend-website-production-deploy.yml'
+
+concurrency:
+  group: legend-website-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_STATIC_WEB_APP_NAME: legend-public-mylegnd
+  AZURE_STATIC_WEB_APP_LOCATION: westus2
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout immutable production tree
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          lfs: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build public site from canonical LEGEND design authority
+        working-directory: Legend-Website
+        run: |
+          npm run build
+          cp public/staticwebapp.config.json dist/staticwebapp.config.json
+          npm run check
+
+      - name: Verify migration route boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Legend-Website/dist/index.html
+          test -f Legend-Website/dist/about/index.html
+          test -f Legend-Website/dist/contact/index.html
+          test -f Legend-Website/dist/logo/index.html
+          test -f Legend-Website/dist/privacy-terms/index.html
+          test ! -e Legend-Website/dist/store
+          test ! -e Legend-Website/dist/team
+          if grep -R "href=\"/store\"\|href=\"/team\"" Legend-Website/dist --include='*.html'; then
+            echo '::error::Excluded Squarespace routes leaked into the new public site.'
+            exit 1
+          fi
+
+      - name: Login to existing Azure configuration authority
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure dedicated Static Web App exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          az extension add --name staticwebapp --upgrade --only-show-errors
+          if ! az staticwebapp show --name "$AZURE_STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --output none 2>/dev/null; then
+            az staticwebapp create \
+              --name "$AZURE_STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --location "$AZURE_STATIC_WEB_APP_LOCATION" \
+              --sku Free \
+              --output none
+          fi
+
+      - name: Resolve deployment token without persisting it
+        id: deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(az staticwebapp secrets list --name "$AZURE_STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.apiKey -o tsv)"
+          if [ -z "$token" ]; then
+            echo '::error::Azure Static Web Apps deployment token was empty.'
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy exact production artifact
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.deployment.outputs.token }}
+          action: upload
+          app_location: Legend-Website/dist
+          output_location: ''
+          skip_app_build: true
+
+      - name: Verify Azure endpoint and preserved routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="$(az staticwebapp show --name "$AZURE_STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query defaultHostname -o tsv)"
+          test -n "$host"
+          for route in / /about /contact /logo /privacy-terms; do
+            code="$(curl --retry 5 --retry-delay 4 --retry-all-errors -sS -o /dev/null -w '%{http_code}' "https://$host$route")"
+            if [ "$code" != '200' ]; then
+              echo "::error::https://$host$route returned HTTP $code"
+              exit 1
+            fi
+          done
+          echo "LEGEND website deployed and verified at https://$host"
