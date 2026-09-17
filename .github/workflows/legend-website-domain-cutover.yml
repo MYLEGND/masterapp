@@ -43,4 +43,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "EXTERNAL_IP=$(az webapp config hostname get-external-ip -g "$AZURE_RESOURCE_GROUP" --webapp-name "$AZURE_WEBAPP_NAME" --query ip -o tsv)"
           az webapp config hostname list -g "$AZURE_RESOURCE_GROUP" --webapp-name "$AZURE_WEBAPP_NAME" --query '[].{name:name,sslState:sslState}' -o table
