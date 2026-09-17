@@ -119,9 +119,9 @@
       surface.setAttribute("data-legend-mobile-sheet", "");
       panel.setAttribute("data-legend-mobile-sheet-panel", "");
 
-      const header = panel.querySelector(":scope > .modal-header, :scope > [class*='-header'], :scope > [class*='-head']");
+      const header = panel.querySelector(":scope > .modal-header, :scope > [data-dialog-header], :scope > [class*='-header'], :scope > [class*='-head']");
       const scroll = panel.querySelector(":scope > .modal-body, :scope > [data-dialog-body], :scope > [class*='-body'], :scope > [class*='-content'], :scope > [class*='-main'], :scope > [class*='-doc'], :scope > [class*='-form']");
-      const footer = panel.querySelector(":scope > .modal-footer, :scope > [class*='-footer'], :scope > [class*='-foot']");
+      const footer = panel.querySelector(":scope > .modal-footer, :scope > [data-dialog-footer], :scope > [class*='-footer'], :scope > [class*='-foot']");
       header?.setAttribute("data-legend-mobile-sheet-header", "");
       if (scroll) {
         scroll.setAttribute("data-legend-mobile-sheet-scroll", "");
