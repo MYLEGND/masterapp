@@ -465,6 +465,65 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task ActivationStatus_RedeemedActiveSubscription_IsCompletedSuccess_NotFalseAlarm()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        const string token = "redeemed-active-token";
+        await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            token,
+            SubscriptionActivationInvitationStatus.Redeemed,
+            DateTime.UtcNow.AddDays(2));
+
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = profile.Id,
+            AcceptedOfferId = offer.Id,
+            OwnerAgentUserId = offer.OwnerAgentUserId,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            MonthlyAmountCents = offer.MonthlyAmountCents,
+            Currency = offer.Currency,
+            BillingTimeZoneId = "America/Phoenix",
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current,
+            IsPlatformManaged = true,
+            ActivatedUtc = DateTime.UtcNow.AddMinutes(-1),
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-1),
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var activationService = BuildActivationService(
+            db,
+            new Mock<IBillingOrchestrator>(),
+            BuildActivationPolicyService());
+        var continuationService = BuildContinuationService(db);
+        var controller = new ClientApp.Controllers.SubscriptionActivationController(
+            activationService,
+            continuationService,
+            new ClientAppReturnUrlNormalizer())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var result = await controller.Status(token);
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = System.Text.Json.JsonSerializer.Serialize(json.Value);
+        Assert.Contains("\"ok\":true", payload, StringComparison.Ordinal);
+        Assert.Contains("\"completed\":true", payload, StringComparison.Ordinal);
+        Assert.Contains("\"state\":\"AlreadyActivated\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"subscriptionStatus\":\"Active\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"entitlementReady\":true", payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ActivateAsync_FailedActivation_DoesNotCreateContinuation()
     {
         using var db = BuildDb();
