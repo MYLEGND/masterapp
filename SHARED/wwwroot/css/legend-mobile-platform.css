@@ -231,6 +231,31 @@
         transform: translateY(0);
     }
 
+    html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet]:not(.modal):not([data-legend-mobile-sheet-panel]):not([hidden]) {
+        position: fixed;
+        inset: 0;
+        z-index: 1090;
+        display: flex;
+        align-items: flex-end;
+        justify-content: stretch;
+        padding: var(--legend-mobile-page-top) 0 0;
+        overflow: hidden;
+    }
+
+    html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet][data-legend-mobile-sheet-panel] {
+        position: fixed;
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        max-width: none;
+        min-height: 0;
+        max-height: calc(var(--legend-mobile-viewport-height) - var(--legend-mobile-page-top));
+        margin: 0;
+        border-radius: var(--legend-mobile-sheet-radius) var(--legend-mobile-sheet-radius) 0 0;
+    }
+
     html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] > .modal-dialog > .modal-content,
     html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet-panel] {
         display: flex;
@@ -260,7 +285,8 @@
         background: color-mix(in srgb, var(--legend-mobile-text-secondary) 36%, transparent);
     }
 
-    html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] .modal-header {
+    html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] .modal-header,
+    html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet-header] {
         position: sticky;
         top: 0;
         z-index: 2;
@@ -287,7 +313,8 @@
         scroll-behavior: smooth;
     }
 
-    html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] .modal-footer {
+    html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] .modal-footer,
+    html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet-footer] {
         position: sticky;
         bottom: 0;
         z-index: 2;
@@ -302,7 +329,8 @@
     html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] :is(
         .btn-close,
         [data-bs-dismiss="modal"],
-        [data-legend-modal-dismiss]) {
+        [data-legend-modal-dismiss],
+        [data-legend-mobile-sheet-close]) {
         min-width: var(--legend-mobile-tap-target);
         min-height: var(--legend-mobile-tap-target);
         touch-action: manipulation;
