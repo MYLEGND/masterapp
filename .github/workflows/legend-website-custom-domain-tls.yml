@@ -40,6 +40,22 @@ jobs:
             fi
           done
 
+      - name: Ensure minimal App Service plan permission for certificate issuance
+        shell: bash
+        run: |
+          set -euo pipefail
+          principal_id="$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id -o tsv)"
+          subscription_id="$(az account show --query id -o tsv)"
+          scope="/subscriptions/$subscription_id/resourceGroups/MASTERAPP-RG/providers/Microsoft.Web/serverfarms/MASTERAPP-PLAN"
+          if ! az role assignment list --assignee "$principal_id" --scope "$scope" --query "[?roleDefinitionName=='Web Plan Contributor'].roleDefinitionName" -o tsv | grep -qx 'Web Plan Contributor'; then
+            az role assignment create \
+              --assignee-object-id "$principal_id" \
+              --assignee-principal-type ServicePrincipal \
+              --role "Web Plan Contributor" \
+              --scope "$scope" \
+              --output none
+          fi
+
       - name: Create and bind Azure managed certificates
         shell: bash
         run: |
