@@ -237,7 +237,10 @@
           record.addedNodes.forEach(node => { registerDialogs(node); });
           if (surfaces.has(record.target)) registerDialog(record.target);
           changed = changed || record.addedNodes.length > 0 || record.removedNodes.length > 0;
-        } else if (surfaces.has(record.target)) changed = true;
+        } else if (surfaces.has(record.target)) {
+          registerDialog(record.target);
+          changed = true;
+        }
       }
       if (changed) scheduleViewportOffsets();
     });
