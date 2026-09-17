@@ -4479,9 +4479,6 @@ namespace AgentPortal.Controllers;
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateClientSubscription([FromBody] UpdateClientSubscriptionQuickViewRequest request)
     {
-        if (!FounderGuard.IsFounder(User))
-            return Forbid();
-
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
@@ -4490,6 +4487,7 @@ namespace AgentPortal.Controllers;
         if (profile is null)
             return Forbid();
 
+        var isFounder = FounderGuard.IsFounder(User);
         if (!TryResolveSubscriptionOfferSelection(
                 request.SubscriptionPriceType,
                 request.SubscriptionCustomMonthlyAmount,
@@ -4497,7 +4495,7 @@ namespace AgentPortal.Controllers;
                 request.SubscriptionBillingAnchorDay,
                 hasFreeTrial: false,
                 freeTrialDays: null,
-                canSetFounderSubscriptionOptions: true,
+                canSetFounderSubscriptionOptions: isFounder,
                 out var selection,
                 out var subscriptionValidationError))
         {
@@ -4526,7 +4524,7 @@ namespace AgentPortal.Controllers;
                 selection.BillingAnchorMode,
                 selection.BillingAnchorDay,
                 agentOid,
-                FounderAuthorized: true));
+                FounderAuthorized: isFounder));
         if (!update.Success)
             return BadRequest(new { ok = false, code = update.SafeErrorCode, message = update.SanitizedSummary });
 
