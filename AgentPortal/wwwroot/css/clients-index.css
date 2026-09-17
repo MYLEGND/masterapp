@@ -1571,26 +1571,28 @@
     backdrop-filter: blur(8px);
 }
 
-.actions-hub-modal.modal,
-.quick-entry-shell.modal{
-    left: 0 !important;
-    top: 0 !important;
-    transform: none !important;
-    width: 100vw !important;
-    max-width: none !important;
-    height: 100vh !important;
-    background: rgba(4, 10, 24, .74) !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-}
+@media (min-width: 841px) {
+    .actions-hub-modal.modal,
+    .quick-entry-shell.modal{
+        left: 0 !important;
+        top: 0 !important;
+        transform: none !important;
+        width: 100vw !important;
+        max-width: none !important;
+        height: 100vh !important;
+        background: rgba(4, 10, 24, .74) !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }
 
-.actions-hub-modal .modal-dialog{
-    width: min(96vw, 1100px);
-    max-width: min(96vw, 1100px);
-    margin: clamp(18px, 4vh, 42px) auto !important;
+    .actions-hub-modal .modal-dialog{
+        width: min(96vw, 1100px);
+        max-width: min(96vw, 1100px);
+        margin: clamp(18px, 4vh, 42px) auto !important;
+    }
 }
 
 .actions-hub-content{
@@ -2162,11 +2164,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 }
 
 @media (max-width: 900px){
-    .actions-hub-modal .modal-dialog{
-        width: min(96vw, 1100px);
-        max-width: min(96vw, 1100px);
-    }
-
     .actions-hub-modal .qv-grid-two{
         grid-template-columns: 1fr;
     }
