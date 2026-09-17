@@ -1,0 +1,72 @@
+name: LEGEND website custom domain TLS
+
+on:
+  push:
+    branches:
+      - ops/website-custom-domain-tls-20260917
+    paths:
+      - '.github/workflows/legend-website-custom-domain-tls.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_WEBAPP_NAME: masterapp-website
+
+jobs:
+  bind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: Production
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bind only public LEGEND hostnames
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in mylegnd.com www.mylegnd.com; do
+            if ! az webapp config hostname list               --resource-group "$AZURE_RESOURCE_GROUP"               --webapp-name "$AZURE_WEBAPP_NAME"               --query "[?name=='$host'].name" -o tsv | grep -qx "$host"; then
+              az webapp config hostname add                 --resource-group "$AZURE_RESOURCE_GROUP"                 --webapp-name "$AZURE_WEBAPP_NAME"                 --hostname "$host"                 --output none
+            fi
+          done
+
+      - name: Create and bind Azure managed certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          for host in mylegnd.com www.mylegnd.com; do
+            thumbprint="$(az webapp config ssl create               --resource-group "$AZURE_RESOURCE_GROUP"               --name "$AZURE_WEBAPP_NAME"               --hostname "$host"               --query thumbprint -o tsv)"
+            test -n "$thumbprint"
+            az webapp config ssl bind               --resource-group "$AZURE_RESOURCE_GROUP"               --name "$AZURE_WEBAPP_NAME"               --certificate-thumbprint "$thumbprint"               --ssl-type SNI               --output none
+          done
+
+      - name: Verify host bindings and HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp config hostname list             --resource-group "$AZURE_RESOURCE_GROUP"             --webapp-name "$AZURE_WEBAPP_NAME"             --query "[?name=='mylegnd.com' || name=='www.mylegnd.com'].{name:name,sslState:sslState}"             -o table
+
+          for host in mylegnd.com www.mylegnd.com; do
+            for i in {1..12}; do
+              code="$(curl --connect-timeout 10 --max-time 25 -sS -L -o /tmp/body -w '%{http_code}' "https://$host/" || true)"
+              if [ "$code" = "200" ]; then
+                grep -q 'LEGEND®' /tmp/body
+                echo "$host HTTPS verified"
+                break
+              fi
+              if [ "$i" = "12" ]; then
+                echo "::error::$host HTTPS verification failed with HTTP $code"
+                exit 1
+              fi
+              sleep 10
+            done
+          done
