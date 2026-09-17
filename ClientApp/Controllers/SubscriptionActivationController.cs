@@ -1,6 +1,5 @@
 using ClientApp.Models;
 using ClientApp.Services;
-using Domain.Billing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -82,17 +81,13 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Status(string token)
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
-        var completed = context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
-            context.Subscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
-
         return Json(new
         {
-            ok = context.Availability == SubscriptionActivationAvailability.Ready || completed,
-            completed,
+            ok = context.Availability == SubscriptionActivationAvailability.Ready,
             state = context.Availability.ToString(),
             message = context.Message,
             subscriptionStatus = context.Subscription?.Status.ToString(),
-            entitlementReady = completed || context.Subscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod
+            entitlementReady = context.Subscription is not null
         });
     }
 
