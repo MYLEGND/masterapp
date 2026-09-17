@@ -2044,11 +2044,6 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 }
 
 @media (max-width: 767.98px) {
-    #metaSignalModal .meta-signal-dialog {
-        max-width: calc(100vw - 1rem);
-        margin: .5rem auto;
-    }
-
     #metaSignalModal .meta-signal-header,
     #metaSignalModal .meta-signal-body,
     #metaSignalModal .meta-signal-footer {
