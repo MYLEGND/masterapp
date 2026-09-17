@@ -313,6 +313,14 @@
         scroll-behavior: smooth;
     }
 
+    html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet-panel][data-legend-mobile-sheet-scroll-self] {
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        touch-action: pan-y;
+        -webkit-overflow-scrolling: touch;
+    }
+
     html[data-legend-mobile="1"] body.legend-web-app .modal[data-legend-mobile-sheet] .modal-footer,
     html[data-legend-mobile="1"] body.legend-web-app [data-legend-mobile-sheet-footer] {
         position: sticky;
