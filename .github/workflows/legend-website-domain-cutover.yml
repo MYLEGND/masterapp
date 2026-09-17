@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           verification_id="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query customDomainVerificationId -o tsv)"
-          inbound_ip="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query inboundIpAddress -o tsv)"
+          inbound_ip="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query possibleInboundIpAddresses -o tsv)"
           default_host="$(az webapp show -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query defaultHostName -o tsv)"
           printf 'DEFAULT_HOST=%s\nINBOUND_IP=%s\nVERIFICATION_ID=%s\n' "$default_host" "$inbound_ip" "$verification_id"
 
@@ -43,4 +43,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          az webapp config hostname list -g "$AZURE_RESOURCE_GROUP" -n "$AZURE_WEBAPP_NAME" --query '[].{name:name,sslState:sslState}' -o table
+          az webapp config hostname list -g "$AZURE_RESOURCE_GROUP" --webapp-name "$AZURE_WEBAPP_NAME" --query '[].{name:name,sslState:sslState}' -o table
