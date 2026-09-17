@@ -128,3 +128,41 @@ test('Explore and generic phone shell geometry have one shared owner', () => {
   assert.doesNotMatch(clientInline, /\.explore-drawer\s*\{\s*top:\s*12px/);
   assert.doesNotMatch(clientSite, /\.layout-content\s*\{\s*padding-top:\s*1rem;\s*padding-bottom:\s*1\.5rem;/);
 });
+
+
+test('Workstation and analytics no longer own phone viewport shells', () => {
+  const rebuttals = read('AgentPortal/wwwroot/css/scripts-rebuttals.css');
+  const analytics = read('AgentPortal/wwwroot/css/website-analytics.css');
+  const clients = read('AgentPortal/wwwroot/css/clients-index.css');
+
+  assert.doesNotMatch(rebuttals, /\.note-self-overlay,\s*\/\*[\s\S]*?Term vs Whole/);
+  assert.doesNotMatch(rebuttals, /@media \(max-width: 900px\)[\s\S]{0,500}?html\.lead-bridge-mobile #rbShell\s*\{\s*height:\s*100dvh/);
+  assert.doesNotMatch(rebuttals, /@media \(max-width: 900px\)[\s\S]{0,500}?#rbShell\s*\{\s*height:\s*100dvh/);
+  assert.doesNotMatch(rebuttals, /@media \(max-width: 700px\)[\s\S]{0,500}?data-workstation-drawer="1"[\s\S]{0,300}?100dvh/);
+  assert.match(rebuttals, /@media \(min-width: 841px\)[\s\S]*?data-workstation-drawer="1"/);
+
+  assert.doesNotMatch(analytics, /@media \(max-width: 480px\)\s*\{\s*\.ai-drawer\s*\{\s*width:\s*100vw/);
+  assert.match(analytics, /@media \(min-width: 841px\)[\s\S]*?\.ai-drawer/);
+  assert.doesNotMatch(analytics, /@media \(max-width: 991px\)[\s\S]{0,400}?#deviceIntelligenceModal \.modal-dialog\s*\{[\s\S]{0,200}?100vh/);
+
+  assert.doesNotMatch(clients, /@media \(max-width: 640px\)[\s\S]{0,600}?\.drawer\.crm-qv-shell\s*\{[\s\S]{0,250}?(?:100vw|max-height)/);
+  assert.match(clients, /@media \(min-width: 841px\)[\s\S]*?\.drawer\.crm-qv-shell/);
+});
+
+test('CRM quick views are semantic dialogs with shared mobile regions', () => {
+  for (const file of [
+    'AgentPortal/Views/Leads/_LeadQuickView.cshtml',
+    'AgentPortal/Views/Clients/_ClientsQuickView.cshtml',
+  ]) {
+    const source = read(file);
+    assert.match(source, /class="drawer crm-qv-shell[^"]*" id="drawer" role="dialog" aria-modal="true"/, file);
+    assert.match(source, /class="dhead" data-dialog-header/, file);
+    assert.match(source, /class="dbody" data-dialog-body/, file);
+  }
+
+  const platform = read('SHARED/wwwroot/js/legend-mobile-platform.js');
+  assert.match(platform, /data-dialog-header/);
+  assert.match(platform, /data-dialog-body/);
+  assert.match(platform, /data-legend-mobile-sheet-open/);
+  assert.match(platform, /legend-mobile-sheet-open/);
+});
