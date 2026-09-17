@@ -95,14 +95,27 @@
       return;
     }
 
-    const panel = surface.matches("[role='dialog'],[role='alertdialog']")
+    const semanticDialog = surface.matches("[role='dialog'],[role='alertdialog']")
       ? surface
       : surface.querySelector("[role='dialog'],[role='alertdialog']");
-    if (panel) {
+    if (semanticDialog) {
+      const nestedPanel = semanticDialog.querySelector(
+        ":scope > .modal-content, :scope > [class*='-panel'], :scope > [class*='-dialog'], :scope > [class*='-card'], :scope > [class*='-window']"
+      );
+      const panel = nestedPanel || semanticDialog;
       surface.setAttribute("data-legend-mobile-sheet", "");
       panel.setAttribute("data-legend-mobile-sheet-panel", "");
-      const scroll = panel.querySelector(".modal-body,[data-dialog-body],[class*='body']");
+
+      const header = panel.querySelector(":scope > .modal-header, :scope > [class*='-header'], :scope > [class*='-head']");
+      const scroll = panel.querySelector(":scope > .modal-body, :scope > [data-dialog-body], :scope > [class*='-body'], :scope > [class*='-content']");
+      const footer = panel.querySelector(":scope > .modal-footer, :scope > [class*='-footer'], :scope > [class*='-foot']");
+      header?.setAttribute("data-legend-mobile-sheet-header", "");
       scroll?.setAttribute("data-legend-mobile-sheet-scroll", "");
+      footer?.setAttribute("data-legend-mobile-sheet-footer", "");
+
+      panel.querySelectorAll(
+        "button[class*='close'], [role='button'][class*='close'], button[aria-label*='close' i], button[aria-label*='dismiss' i], [data-bs-dismiss='modal']"
+      ).forEach(control => control.setAttribute("data-legend-mobile-sheet-close", ""));
     }
   }
 
