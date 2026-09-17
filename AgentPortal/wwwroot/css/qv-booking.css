@@ -764,6 +764,7 @@
 }
 
 
+@media (min-width: 841px) {
 /* =========================================================
    VIEWPORT FIT SYSTEM
    Keeps scheduler inside visible modal without scroll.
@@ -924,6 +925,10 @@
     }
 }
 
+
+}
+
+@media (min-width: 841px) {
 /* =========================================================
    AUTO-FIT TIME SLOT GRID
    Handles 20, 24, or more slots evenly without clipping.
@@ -965,6 +970,9 @@
     min-height:0 !important;
     max-height:none !important;
     padding-block:0 !important;
+}
+
+
 }
 
 /* Calendar: make previous/next month days visually distinct */
