@@ -1,0 +1,4 @@
+candidate: legend-public-website
+scope: public-site-only
+excluded-routes: store,team
+azure-host: legend-public-mylegnd
