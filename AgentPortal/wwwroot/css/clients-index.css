@@ -2081,10 +2081,12 @@
     text-transform: uppercase;
 }
 
-.quick-entry-shell .modal-dialog{
-    margin: clamp(18px, 6vh, 64px) auto !important;
-    max-width: min(92vw, 640px) !important;
-    min-height: 0 !important;
+@media (min-width: 841px) {
+    .quick-entry-shell .modal-dialog{
+        margin: clamp(18px, 6vh, 64px) auto !important;
+        max-width: min(92vw, 640px) !important;
+        min-height: 0 !important;
+    }
 }
 
 .quick-entry-shell .modal-content{
@@ -8218,15 +8220,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         justify-content:flex-start;
     }
 
-    .modal.crm-command-modal{
-        width:min(96vw, 1040px);
-        max-height:90vh;
-    }
-
-    .modal.crm-command-modal .modal-body{
-        max-height:calc(90vh - 92px);
-    }
-
     .crm-command-modal-queues .myday-grid{
         grid-template-columns:repeat(2, minmax(0, 1fr));
     }
@@ -8245,12 +8238,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     .leads-crm .production-rollup,
     .clients-crm .production-rollup{
         grid-template-columns:1fr;
-    }
-
-    .modal.crm-command-modal{
-        top:50%;
-        width:min(96vw, 1040px);
-        border-radius:24px;
     }
 
     .modal.crm-command-modal .modal-head{
