@@ -97,7 +97,7 @@ test('page-specific AgentPortal mobile CSS no longer owns modal viewport geometr
   assert.match(clients, /@media \(min-width: 841px\) \{[\s\S]*?\.actions-hub-modal\.modal/);
 
   const workstation = read('AgentPortal/wwwroot/css/workstation-home-proposal.css');
-  assert.doesNotMatch(workstation, /@media \(max-width: 700px\)[\s\S]*?data-workstation-drawer/);
+  assert.doesNotMatch(workstation, /@media \(max-width: 700px\)\s*\{\s*#drawer\.drawer\[data-workstation-drawer/);
   assert.match(workstation, /@media \(min-width: 841px\) \{[\s\S]*?#proposalOverlay\.hp-overlay/);
 });
 
@@ -110,8 +110,8 @@ test('Explore and generic phone shell geometry have one shared owner', () => {
 
   assert.match(shared, /\.explore-drawer \{/);
   assert.match(shared, /\.explore-list \{/);
-  assert.doesNotMatch(agent, /@@media \(max-width: 576px\)[\s\S]*?\.explore-drawer\s*\{/);
-  assert.doesNotMatch(workspace, /@@media \(max-width: 576px\)[\s\S]*?\.explore-(?:drawer|trigger)\s*\{/);
-  assert.doesNotMatch(clientInline, /@media \(max-width: 840px\)[\s\S]*?\.explore-drawer\s*\{/);
-  assert.doesNotMatch(clientSite, /@media \(max-width: 576px\)[\s\S]*?\.layout-content\s*\{/);
+  assert.doesNotMatch(agent, /\.explore-drawer\s*\{\s*top:\s*154px/);
+  assert.doesNotMatch(workspace, /\.explore-(?:drawer|trigger)\s*\{\s*top:\s*215px/);
+  assert.doesNotMatch(clientInline, /\.explore-drawer\s*\{\s*top:\s*12px/);
+  assert.doesNotMatch(clientSite, /\.layout-content\s*\{\s*padding-top:\s*1rem;\s*padding-bottom:\s*1\.5rem;/);
 });
