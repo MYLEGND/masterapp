@@ -241,7 +241,7 @@
 
                         <div id="subscriptionCustomAmountWrap" class="is-hidden">
                             <label class="client-create-label" asp-for="SubscriptionCustomMonthlyAmount">Custom Monthly Amount (USD)</label>
-                            <input asp-for="SubscriptionCustomMonthlyAmount" class="client-create-input" id="SubscriptionCustomMonthlyAmount" type="number" min="@customMinimum" max="2500" step="0.01" placeholder="@customAmountPlaceholder" />
+                            <input asp-for="SubscriptionCustomMonthlyAmount" class="client-create-input" id="SubscriptionCustomMonthlyAmount" type="number" min="@customMinimum" max="@((Domain.Billing.ClientSubscriptionOfferPricing.CustomMaximumCents / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" step="0.01" placeholder="@customAmountPlaceholder" />
                             <span asp-validation-for="SubscriptionCustomMonthlyAmount" class="text-danger client-create-validation"></span>
                         </div>
 
