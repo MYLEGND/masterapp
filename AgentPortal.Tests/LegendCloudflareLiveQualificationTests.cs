@@ -45,6 +45,8 @@ public sealed class LegendCloudflareLiveQualificationTests
         {
             foreach (var scenario in suite.RootElement.GetProperty("cases").EnumerateArray())
             {
+                if (config["Qualification:CaseId"] is { Length: > 0 } selectedCase &&
+                    scenario.GetProperty("id").GetString() != selectedCase) continue;
                 var history = new List<object>();
                 var conversationId = Guid.NewGuid().ToString("D");
                 foreach (var turn in scenario.GetProperty("userTurns").EnumerateArray())
@@ -61,7 +63,7 @@ public sealed class LegendCloudflareLiveQualificationTests
                             config["Qualification:UserId"]!, "qualification-session", conversationId,
                             ["Founder", "LegendQualification"], "qualification-v1")));
                     records.Add(new { caseId = scenario.GetProperty("id").GetString(), prompt, response = result.Text,
-                        result.Succeeded, result.ErrorCode, result.ModelVersion, result.Hosting, result.CostMicrounits,
+                        result.Succeeded, result.ErrorCode, result.ModelVersion, result.Hosting, result.CostMicrounits, result.InferenceSettings,
                         elapsedMs = clock.ElapsedMilliseconds, evidence = "live-cloudflare-via-dotnet-transport",
                         scope = "synthetic-isolated-qualification-not-production-founder-session" });
                     Assert.True(result.Succeeded, result.ErrorCode);

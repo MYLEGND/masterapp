@@ -10,7 +10,7 @@ namespace Infrastructure.Messaging;
 /// <summary>Constructed only after Azure resolves current identity and conversation ownership.</summary>
 public sealed record LegendCloudflareRequestScope(
     string RequestId, string TenantId, string UserId, string SessionId,
-    string ConversationId, IReadOnlyList<string> Roles, string AuthorizationVersion);
+    string ConversationId, IReadOnlyList<string> Roles, string AuthorizationVersion, DateTime? ExpiresUtc = null);
 
 internal sealed partial class LegendConnectModelInferenceTransport
 {
@@ -52,7 +52,7 @@ internal sealed partial class LegendConnectModelInferenceTransport
             var cost = _configuration.GetValue<long?>(prefix + "Cloudflare:MaxCostMicrousd") ?? 0;
             var seconds = _configuration.GetValue<int?>(prefix + "TimeoutSeconds") ?? 60;
             var tokens = task.MaxOutputTokens ?? _configuration.GetValue<int?>(prefix + "MaxOutputTokens") ?? 2048;
-            if (cost is <= 0 or > 1_000_000 || seconds is < 1 or > 120 || tokens is < 1 or > 16384)
+            if (cost is <= 0 or > 1_000_000_000 || seconds is < 1 or > 120 || tokens is < 1 or > 16384)
                 return new(false, null, "cloudflare_limits_invalid");
             // Tool exposure stays closed until the Azure callback authority is integrated and verified.
             if (task.AllowTools || task.RequireToolCall ||
@@ -75,7 +75,9 @@ internal sealed partial class LegendConnectModelInferenceTransport
             if (task.EvidenceParts is { Count: > 0 })
                 return new(false, null, "cloudflare_evidence_projection_required");
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var expires = now + seconds * 1000L;
+            var expires = Math.Min(now + seconds * 1000L, scope.ExpiresUtc is { } scopeExpiry
+                ? new DateTimeOffset(scopeExpiry).ToUnixTimeMilliseconds() : long.MaxValue);
+            if (expires <= now) return new(false, null, "cloudflare_scope_expired");
             var payload = JsonSerializer.SerializeToUtf8Bytes(new
             {
                 version = "legend-cloudflare.v1", requestId = scope.RequestId, issuedAt = now, expiresAt = expires,
@@ -89,41 +91,55 @@ internal sealed partial class LegendConnectModelInferenceTransport
             if (payload.Length > 131072) return new(false, null, "cloudflare_context_too_large");
             var nonce = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(24));
             var stamp = now.ToString(CultureInfo.InvariantCulture);
-            var signing = string.Join('\n', "legend-service.v1", "POST", endpoint.AbsolutePath, keyId, stamp, nonce,
-                Convert.ToHexStringLower(SHA256.HashData(payload)));
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
             request.Content = new ByteArrayContent(payload);
             request.Content.Headers.ContentType = new("application/json");
             request.Headers.Add("X-Legend-Key-Id", keyId);
             request.Headers.Add("X-Legend-Timestamp", stamp);
             request.Headers.Add("X-Legend-Nonce", nonce);
-            request.Headers.Add("X-Legend-Signature", Convert.ToHexStringLower(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(signing))));
+            request.Headers.Add("X-Legend-Signature", LegendCloudflareServiceSignature.Sign(key, "POST", endpoint.AbsolutePath, keyId, now, nonce, payload));
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deadline.CancelAfter(TimeSpan.FromSeconds(seconds));
+            deadline.CancelAfter(TimeSpan.FromMilliseconds(expires - now));
             using var response = await _clients.CreateClient("LegendCloudflareFoundation")
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             // Bound both success and error bodies before materializing provider output.
             await response.Content.LoadIntoBufferAsync(262144, deadline.Token);
             using var document = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(deadline.Token));
             var root = document.RootElement;
-            if (!response.IsSuccessStatusCode || !root.TryGetProperty("version", out var version) ||
+            if (!root.TryGetProperty("version", out var version) ||
                 version.GetString() != "legend-cloudflare.v1" || !root.TryGetProperty("requestId", out var returnedId) ||
-                returnedId.GetString() != scope.RequestId || !root.TryGetProperty("status", out var status) || status.GetString() != "completed")
+                returnedId.GetString() != scope.RequestId)
                 return new(false, null, "cloudflare_execution_failed");
+            var usage = root.GetProperty("usage");
+            var charged = usage.GetProperty("costMicrousd").GetInt64();
+            if (charged < 0) return new(false, null, "cloudflare_usage_unverified");
+            if (!response.IsSuccessStatusCode || !root.TryGetProperty("status", out var status) || status.GetString() != "completed")
+            {
+                var code = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
+                    error.TryGetProperty("code", out var codeValue) && codeValue.ValueKind == JsonValueKind.String
+                        ? codeValue.GetString() : null;
+                if (code is null || code.Length > 100 || code.Any(c => c is not (>= 'a' and <= 'z') and not (>= '0' and <= '9') and not '_'))
+                    code = "execution_failed";
+                return new(false, null, "cloudflare_" + code, CostMicrounits: charged);
+            }
             var provider = root.GetProperty("provider");
             var modelId = provider.GetProperty("modelId").GetString();
             if (provider.GetProperty("name").GetString() != "cloudflare-workers-ai" ||
                 provider.GetProperty("hosting").GetString() != "cloudflare" || modelId?.StartsWith("@cf/", StringComparison.Ordinal) != true)
                 return new(false, null, "cloudflare_provider_receipt_invalid");
-            var usage = root.GetProperty("usage");
-            var charged = usage.GetProperty("costMicrousd").GetInt64();
-            if (charged < 0 || usage.GetProperty("costEvidence").GetString() != "provider_usage")
+            if (usage.GetProperty("costEvidence").GetString() != "provider_usage")
                 return new(false, null, "cloudflare_usage_unverified");
             var text = root.GetProperty("text").GetString();
             if (string.IsNullOrWhiteSpace(text)) return new(false, null, "cloudflare_empty_response");
             var output = JsonSerializer.SerializeToElement(new { model = modelId, status = "completed",
                 output = new[] { new { type = "message", role = "assistant", content = new[] { new { type = "output_text", text } } } } });
-            return new(true, text, CostMicrounits: charged, Output: output, ModelVersion: modelId, Hosting: "CloudflareHosted");
+            return new(true, text, CostMicrounits: charged, Output: output, ModelVersion: modelId, Hosting: "CloudflareHosted",
+                InferenceSettings: JsonSerializer.Serialize(new
+                {
+                    usage = usage.Clone(),
+                    modelSettings = root.TryGetProperty("modelSettings", out var settings) ? settings.Clone() : (JsonElement?)null,
+                    executionMode = root.TryGetProperty("executionMode", out var executionMode) ? executionMode.GetString() : null
+                }));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         { return new(false, null, "cloudflare_deadline_exceeded"); }

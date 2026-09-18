@@ -90,6 +90,11 @@
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../Legend-Cloudflare/tests/security/action-digest-vectors.json"
+          Link="legend-cloudflare-action-digest-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">
     <Copy
       SourceFiles="$(OutDir)AgentPortal.runtimeconfig.json"

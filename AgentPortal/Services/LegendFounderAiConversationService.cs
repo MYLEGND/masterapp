@@ -115,7 +115,8 @@ public sealed class LegendFounderAiConversationService
             new LegendFounderToolAuthority(
                 legend,
                 softwareRemediation,
-                agencyCommand);
+                agencyCommand,
+                historyScopes);
         _logger = logger;
 
         _timeoutSeconds =
@@ -281,8 +282,30 @@ public sealed class LegendFounderAiConversationService
             request.NativeOnly, request.ExternalAnsweringBlocked, request.SourceLanguageCode,
             request.FounderCommandConfirmed, request.ExpectedLastMessageId
         }))).ToLowerInvariant();
+        MessagingFounderAiCloudflareDelegation? cloudDelegation = null;
+        if (providerPolicy.AllowCloudflareInference)
+        {
+            var sessionId = founder.FindFirst("sid")?.Value;
+            var tenantId = founder.GetCanonicalTenantId();
+            var accountId = _configuration["LegendConnect:Foundation:Cloudflare:AccountId"];
+            var environment = _configuration["LegendConnect:Foundation:Cloudflare:Environment"];
+            if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(tenantId) ||
+                string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(environment) ||
+                !FounderAuthority.Evaluate(founder, AgentPortal.Security.FounderGuard.FounderOid,
+                    isProduction: true, developmentEmailFallback: _ => false))
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "A current authenticated Founder session is required for cloud inference.",
+                    "authorization", "cloudflare_scope", "cloudflare_session_scope_unavailable");
+            var authorizationVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join("|", tenantId, actor.UserId, sessionId, "Founder"))));
+            var expires = DateTime.UtcNow.AddSeconds(120);
+            cloudDelegation = new(accountId, tenantId, actor.UserId, sessionId,
+                _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:QualificationEnabled")
+                    ? new[] { "Founder", "LegendQualification" } : new[] { "Founder" },
+                authorizationVersion, environment, expires < deadline ? expires : deadline);
+        }
         var command = new MessagingFounderAiBeginTurnCommand(actor, conversationId, id,
-            request.ExpectedLastMessageId, latest.Content!, mode, fingerprint, deadline);
+            request.ExpectedLastMessageId, latest.Content!, mode, fingerprint, deadline, cloudDelegation);
         var begin = await InHistoryScopeAsync((history, token) => history.BeginFounderAiTurnAsync(command, token), budget.Token);
         if (!begin.Succeeded) return HistoryFailure(mode, begin.ErrorCode, begin.ErrorMessage, conversationId, id);
         if (begin.State != "Started") return ReplayHistory(mode, begin, conversationId, id);
@@ -324,7 +347,7 @@ public sealed class LegendFounderAiConversationService
                 NativeOnly = request.NativeOnly, ExternalAnsweringBlocked = request.ExternalAnsweringBlocked,
                 FounderCommandConfirmed = request.FounderCommandConfirmed
             };
-            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, executionClock, providerPolicy, budget.Token, ObserveProgressAsync, id));
+            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, executionClock, providerPolicy, budget.Token, ObserveProgressAsync, id, cloudDelegation));
             var terminal = await InHistoryScopeAsync((history, token) => history.CompleteFounderAiTurnAsync(new(
                 actor, conversationId, id, begin.UserMessage!.Id, response.Message ?? response.Error ?? "The response outcome could not be verified.",
                 response.Succeeded ? MessagingAuthorKinds.Assistant : MessagingAuthorKinds.Service, ToHistoryProvenance(response)), token), budget.Token);
@@ -460,7 +483,8 @@ public sealed class LegendFounderAiConversationService
             LegendFounderAiProgressEvent,
             CancellationToken,
             ValueTask>? progress = null,
-        Guid? operationId = null)
+        Guid? operationId = null,
+        MessagingFounderAiCloudflareDelegation? cloudDelegation = null)
     {
         ArgumentNullException.ThrowIfNull(founder);
         ArgumentNullException.ThrowIfNull(request);
@@ -1079,31 +1103,21 @@ public sealed class LegendFounderAiConversationService
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "Cloudflare inference is blocked for this request. No external model was called.",
                     "authorization", "cloudflare_policy", "cloudflare_inference_forbidden_by_policy");
-            var sessionId = founder.FindFirst("sid")?.Value;
-            var tenantId = founder.GetCanonicalTenantId();
-            var userId = founder.GetCanonicalUserId();
-            if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(tenantId) ||
-                string.IsNullOrWhiteSpace(userId) || operationId is null ||
-                !FounderAuthority.Evaluate(founder, AgentPortal.Security.FounderGuard.FounderOid,
-                    isProduction: true, developmentEmailFallback: _ => false))
+            if (cloudDelegation is null || operationId is null)
                 return LegendFounderAiChatResponse.ModeFailure(mode,
-                    "A current authenticated Founder session is required for cloud inference.",
+                    "The authenticated cloud request has no active delegation.",
                     "authorization", "cloudflare_scope", "cloudflare_session_scope_unavailable");
             if (requiresGovernedInspection || request.FounderCommandConfirmed)
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "The cloud tool connection has not completed qualification. This operation was not executed.",
                     "governed_tool", "cloudflare_tools", "cloudflare_tool_callback_not_qualified");
-            var roles = _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:QualificationEnabled")
-                ? new[] { "Founder", "LegendQualification" } : new[] { "Founder" };
-            var authorizationVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-                string.Join("|", tenantId, userId, sessionId, "Founder"))));
             var generated = await _modelInference!.GenerateAsync(model,
                 new LegendModelTaskRequest("conversation", instructions,
                     conversation[^1].Content ?? string.Empty, "governed_response",
                     ConversationInput: JsonSerializer.SerializeToElement(input, JsonOptions),
-                    ProviderPolicy: providerPolicy, RequestingActorId: userId,
-                    CloudflareScope: new(operationId.Value.ToString("D"), tenantId, userId, sessionId,
-                        request.ConversationId!, roles, authorizationVersion)), effectiveToken);
+                    ProviderPolicy: providerPolicy, RequestingActorId: cloudDelegation.UserId,
+                    CloudflareScope: new(operationId.Value.ToString("D"), cloudDelegation.TenantId, cloudDelegation.UserId, cloudDelegation.SessionId,
+                        request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc)), effectiveToken);
             if (!generated.Succeeded)
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "LEGEND could not complete the Cloudflare request. No local model or external teacher fallback was used.",
