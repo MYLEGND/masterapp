@@ -26,7 +26,7 @@ function callbackConfiguration(env) {
   requireSecurity(isIdentifier(env.LEGEND_TOOL_CALLBACK_KEY_ID) && isIdentifier(env.LEGEND_DEPLOYMENT_ENVIRONMENT),
     'tool_callback_configuration_invalid', 503);
   const cost = Number(env.LEGEND_TOOL_MAX_COST_MICROUSD);
-  requireSecurity(isNonnegativeInteger(cost) && cost > 0 && cost <= 1_000_000_000_000,
+  requireSecurity(isNonnegativeInteger(cost) && cost > 0 && cost <= 1_000_000_000,
     'tool_cost_ceiling_missing', 503);
   return { url, cost, environment: env.LEGEND_DEPLOYMENT_ENVIRONMENT };
 }
@@ -98,8 +98,11 @@ export function createToolBroker({ env, context: trustedContext, budget, fetcher
             value.toolCallId === call.id && value.actionDigest === actionDigest && value.idempotencyKey === idempotencyKey &&
             value.authorizationVersion === context.authorizationVersion && Object.hasOwn(value, 'output'),
           'tool_receipt_invalid', 502);
-          requireSecurity(value.usage && typeof value.usage.known === 'boolean' &&
-            (!value.usage.known || isNonnegativeInteger(value.usage.costMicrousd)), 'tool_usage_invalid', 502);
+          requireSecurity(value.usage && (
+            (value.usage.known === true && isNonnegativeInteger(value.usage.costMicrousd) &&
+              (value.usage.costEvidence === undefined || value.usage.costEvidence === 'provider_usage')) ||
+            (value.usage.known === false && value.usage.costEvidence === 'reserved_upper_bound' &&
+              value.usage.costMicrousd === config.cost)), 'tool_usage_invalid', 502);
           canonicalJson(value.output);
           return value;
         }, signal);
@@ -107,10 +110,16 @@ export function createToolBroker({ env, context: trustedContext, budget, fetcher
         error = caught instanceof SecurityError ? caught : new SecurityError('tool_callback_failed', 502);
       } finally { clearTimeout(timer); }
       const usageKnown = !dispatched || Boolean(receipt?.usage.known);
+      // Only an authenticated, reauthorized and action-bound successful receipt
+      // may establish completion separately from billing certainty. The full
+      // operator reservation remains charged; no provider usage is invented.
+      const executionCompleted = receipt?.usage.known === false &&
+        receipt.usage.costEvidence === 'reserved_upper_bound' && receipt.usage.costMicrousd === config.cost;
       let settled;
       try {
         settled = await budget.settle(context, { reservationId, usageKnown,
-          actualCostMicrousd: receipt?.usage.costMicrousd ?? 0 });
+          actualCostMicrousd: receipt?.usage.costMicrousd ?? 0,
+          ...(executionCompleted ? { executionCompleted: true } : {}) });
       } catch (settlementError) {
         // The durable full debit already exists even if a settlement receipt is
         // lost. Preserve its conservative evidence in the failed response.
@@ -121,7 +130,7 @@ export function createToolBroker({ env, context: trustedContext, budget, fetcher
       }
       const usage = { costMicrousd: settled.chargedMicrousd,
         costEvidence: usageKnown ? 'provider_usage' : 'reserved_upper_bound' };
-      if (!error && !usageKnown) error = new SecurityError('tool_usage_unavailable', 502);
+      if (!error && !usageKnown && !executionCompleted) error = new SecurityError('tool_usage_unavailable', 502);
       if (error) { error.usage = usage; throw error; }
       return { output: receipt.output, usage };
     },

@@ -49,6 +49,75 @@ test('tool callback uses only configured Azure URL, signs exact scope/action and
   assert.deepEqual(receipt, { output: { content: 'Scoped source.' }, usage: { costMicrousd: 25, costEvidence: 'provider_usage' } });
 });
 
+test('completed tool with explicit operator bound retains its full debit and permits the next model at concurrency one', async () => {
+  const { broker, input, session, h } = await setup(async (_, options) => {
+    const body = JSON.parse(options.body);
+    return responseFor(body, { usage: { known: false, costMicrousd: body.maxCostMicrousd, costEvidence: 'reserved_upper_bound' } });
+  }, { requestConcurrency: 1, userConcurrency: 1, tenantConcurrency: 1, accountConcurrency: 1 });
+  assert.deepEqual(await broker.execute(input), {
+    output: { content: 'Scoped source.' }, usage: { costMicrousd: 100, costEvidence: 'reserved_upper_bound' },
+  });
+  h.restart();
+  const reservation = [...h.storage.data].find(([key]) => key.startsWith('reservation:'))[1];
+  assert.equal(reservation.chargedMicrousd, 100);
+  assert.equal(reservation.usageKnown, false);
+  assert.equal(reservation.executionCompleted, true);
+  assert.ok([...h.storage.data].filter(([key]) => key.startsWith('leases:')).every(([, value]) => value.active.length === 0));
+  assert.ok([...h.storage.data].filter(([key]) => key.startsWith('quota:')).every(([, value]) => value.chargedMicrousd === 100));
+  await session.budget.reserve(session.context, { requestId: session.context.requestId, reservationId: 'next-model',
+    maxCostMicrousd: 900, deadlineUnixMs: session.context.deadlineUnixMs });
+  await assert.rejects(session.budget.reserve(session.context, { requestId: session.context.requestId, reservationId: 'excess',
+    maxCostMicrousd: 1, deadlineUnixMs: session.context.deadlineUnixMs }), { code: 'request_budget_exhausted' });
+  await assert.rejects(broker.execute(input), { code: 'reservation_replayed' });
+});
+
+test('missing, contradictory or mismatched conservative cost evidence never releases output or refunds unknown work', async () => {
+  for (const usage of [undefined, { known: false }, { known: false, costMicrousd: 100 },
+    { known: false, costMicrousd: 0, costEvidence: 'reserved_upper_bound' },
+    { known: false, costMicrousd: 99, costEvidence: 'reserved_upper_bound' },
+    { known: false, costMicrousd: 101, costEvidence: 'reserved_upper_bound' },
+    { known: false, costMicrousd: '100', costEvidence: 'reserved_upper_bound' },
+    { known: false, costMicrousd: 100, costEvidence: 'provider_usage' },
+    { known: true, costMicrousd: 100, costEvidence: 'reserved_upper_bound' }]) {
+    const { broker, input, h } = await setup(async (_, options) => responseFor(JSON.parse(options.body),
+      { usage, executionCompleted: true }));
+    await assert.rejects(broker.execute(input), error => error.code === 'tool_usage_invalid' &&
+      error.usage.costMicrousd === 100 && error.usage.costEvidence === 'reserved_upper_bound');
+    const reservation = [...h.storage.data].find(([key]) => key.startsWith('reservation:'))[1];
+    assert.equal(reservation.chargedMicrousd, 100);
+    assert.equal(reservation.usageKnown, false);
+    assert.equal(reservation.executionCompleted, false);
+    assert.ok([...h.storage.data].filter(([key]) => key.startsWith('leases:')).every(([, value]) => value.active.length === 1));
+  }
+});
+
+test('completed upper-bound receipt still requires exact action and successful reauthorization', async () => {
+  for (const override of [{ reauthorized: false }, { actionDigest: 'x'.repeat(64) },
+    { authorizationVersion: 'revoked' }, { contextDigest: 'x'.repeat(64) }]) {
+    const { broker, input, h } = await setup(async (_, options) => responseFor(JSON.parse(options.body), {
+      usage: { known: false, costMicrousd: 100, costEvidence: 'reserved_upper_bound' }, ...override,
+    }));
+    await assert.rejects(broker.execute(input), error => error.code === 'tool_receipt_invalid' && error.usage.costMicrousd === 100);
+    assert.equal([...h.storage.data].find(([key]) => key.startsWith('reservation:'))[1].executionCompleted, false);
+  }
+});
+
+test('lost settlement acknowledgment cannot release even a verified completed upper-bound output', async () => {
+  const { session, input, h } = await setup(() => {});
+  const broker = createToolBroker({ env: h.env, context: session.context, now: h.now,
+    budget: { reserve: session.budget.reserve, settle: async (...args) => {
+      await session.budget.settle(...args);
+      throw new Error('lost acknowledgment');
+    } },
+    fetcher: async (_, options) => responseFor(JSON.parse(options.body), {
+      usage: { known: false, costMicrousd: 100, costEvidence: 'reserved_upper_bound' },
+    }),
+  });
+  await assert.rejects(broker.execute(input), error => error.code === 'governance_unavailable' &&
+    error.usage.costMicrousd === 100 && error.usage.costEvidence === 'reserved_upper_bound');
+  assert.equal([...h.storage.data].find(([key]) => key.startsWith('reservation:'))[1].chargedMicrousd, 100);
+});
+
 test('action digest binds user, resource, environment, revision and exact argument semantics', async () => {
   const { input } = await setup(() => { throw new Error('must not run'); });
   const digest = await toolActionDigest(input.context, call, 'qualification');
@@ -107,7 +176,7 @@ test('unpublished tools, context overrides, malformed idempotency and canceled r
 
 test('unverified callback, local endpoint and missing execution-cost ceiling fail closed', async () => {
   for (const override of [{ LEGEND_TOOL_CALLBACK_ENABLED: 'false' }, { LEGEND_AZURE_TOOL_CALLBACK_URL: 'http://localhost:8000/run' },
-    { LEGEND_TOOL_MAX_COST_MICROUSD: undefined }]) {
+    { LEGEND_TOOL_MAX_COST_MICROUSD: undefined }, { LEGEND_TOOL_MAX_COST_MICROUSD: '1000000001' }]) {
     let calls = 0;
     const { h, broker, input } = await setup(async () => { calls++; });
     Object.assign(h.env, override);

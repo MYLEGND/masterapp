@@ -102,7 +102,7 @@ export class LegendGovernance {
         if (op === 'settle') return this.settle(tx, ids, now, record, input);
         if (op === 'close') {
           await tx.put(`request:${ids.request}`, { ...record, closed: true });
-          // Unknown reservations retain their concurrency leases through deadline.
+          // Unconfirmed executions retain their concurrency leases through deadline.
           return { closed: true };
         }
         throw new SecurityError('governance_operation_invalid', 400);
@@ -169,14 +169,19 @@ export class LegendGovernance {
 
   async settle(tx, ids, now, record, input) {
     requireSecurity(isIdentifier(input.reservationId) && typeof input.usageKnown === 'boolean' &&
-      (!input.usageKnown || isNonnegativeInteger(input.actualCostMicrousd)), 'settlement_invalid', 400);
+      (!input.usageKnown || isNonnegativeInteger(input.actualCostMicrousd)) &&
+      (input.executionCompleted === undefined || typeof input.executionCompleted === 'boolean'), 'settlement_invalid', 400);
+    // Supplied only by the trusted broker after a verified completed tool
+    // receipt. Model usage uncertainty never establishes execution completion.
+    const executionCompleted = input.executionCompleted === true;
     const key = `reservation:${ids.request}:${input.reservationId}`;
     const reservation = await tx.get(key);
     requireSecurity(reservation, 'reservation_missing', 409);
     const chargedMicrousd = input.usageKnown ? input.actualCostMicrousd : reservation.reservedMicrousd;
     requireSecurity(chargedMicrousd <= 1_000_000_000_000, 'settlement_invalid', 400);
     if (reservation.settled) {
-      requireSecurity(reservation.usageKnown === input.usageKnown && reservation.chargedMicrousd === chargedMicrousd,
+      requireSecurity(reservation.usageKnown === input.usageKnown && reservation.chargedMicrousd === chargedMicrousd &&
+        (reservation.executionCompleted ?? false) === executionCompleted,
         'settlement_conflict', 409);
       return { chargedMicrousd, usageKnown: reservation.usageKnown, overReservation: chargedMicrousd > reservation.reservedMicrousd };
     }
@@ -188,13 +193,13 @@ export class LegendGovernance {
     }
     requireSecurity(Number.isSafeInteger(record.chargedMicrousd + difference), 'budget_state_invalid', 503);
     await tx.put(`request:${ids.request}`, { ...record, chargedMicrousd: record.chargedMicrousd + difference });
-    if (input.usageKnown) {
+    if (input.usageKnown || executionCompleted) {
       for (const leaseKey of reservation.leaseKeys) {
         const leases = await tx.get(leaseKey);
         if (leases) await tx.put(leaseKey, { ...leases, active: leases.active.filter(lease => lease.id !== key && lease.until > now) });
       }
     }
-    await tx.put(key, { ...reservation, settled: true, chargedMicrousd, usageKnown: input.usageKnown });
+    await tx.put(key, { ...reservation, settled: true, chargedMicrousd, usageKnown: input.usageKnown, executionCompleted });
     return { chargedMicrousd, usageKnown: input.usageKnown, overReservation: chargedMicrousd > reservation.reservedMicrousd };
   }
 

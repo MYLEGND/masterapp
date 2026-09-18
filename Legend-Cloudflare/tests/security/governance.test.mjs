@@ -73,6 +73,33 @@ test('unknown usage keeps full cost and concurrency even when caller closes the 
   await reserve(third);
 });
 
+test('verified completion releases a lease while keeping unknown usage fully charged and immutable', async () => {
+  const h = harness({ accountConcurrency: 1, accountMicrousd: 120 });
+  const first = await h.session(); await reserve(first);
+  const settlement = { reservationId: 'reservation-1', usageKnown: false, actualCostMicrousd: 0, executionCompleted: true };
+  assert.equal((await first.budget.settle(first.context, settlement)).chargedMicrousd, 100);
+  h.restart();
+  assert.equal((await first.budget.settle(first.context, settlement)).chargedMicrousd, 100);
+  await assert.rejects(first.budget.settle(first.context, { ...settlement, usageKnown: true }), { code: 'settlement_conflict' });
+  const second = await h.session(envelope({ requestId: 'request-2' }));
+  await reserve(second, 'second-model', 20);
+  await second.budget.settle(second.context, { reservationId: 'second-model', usageKnown: true, actualCostMicrousd: 20 });
+  await assert.rejects(reserve(second, 'excess', 1), { code: 'account_budget_exhausted' });
+});
+
+test('uncertain execution cannot later be upgraded to completion to release its lease', async () => {
+  const h = harness({ accountConcurrency: 1 });
+  const first = await h.session(); await reserve(first);
+  await assert.rejects(first.budget.settle(first.context,
+    { reservationId: 'reservation-1', usageKnown: false, executionCompleted: 'true' }), { code: 'settlement_invalid' });
+  await first.budget.settle(first.context, { reservationId: 'reservation-1', usageKnown: false });
+  h.restart();
+  await assert.rejects(first.budget.settle(first.context,
+    { reservationId: 'reservation-1', usageKnown: false, executionCompleted: true }), { code: 'settlement_conflict' });
+  const second = await h.session(envelope({ requestId: 'request-2' }));
+  await assert.rejects(reserve(second), { code: 'account_concurrency_exhausted' });
+});
+
 test('scope substitution and duplicate reservation cannot execute again', async () => {
   const h = harness();
   const session = await h.session();
