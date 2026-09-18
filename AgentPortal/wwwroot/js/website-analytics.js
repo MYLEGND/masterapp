@@ -4851,6 +4851,23 @@ function escapeHtml(value) {
     if (baseBtn) baseBtn.addEventListener('click', () => { copyToClipboard(currentBaseLink()); baseBtn.textContent = 'Copied'; setTimeout(() => baseBtn.textContent='Copy', 1200); });
   }
 
+  function updateWebsiteEditorLinks() {
+    const protectEditor = document.getElementById('edit-protect-website');
+    if (protectEditor) {
+      const url = new URL('/WebsiteAnalytics/edit-website', window.location.origin);
+      url.searchParams.set('site', 'protect');
+      if (isFounder && state.scope.agentProfileId) {
+        url.searchParams.set('agentProfileId', state.scope.agentProfileId);
+      }
+      protectEditor.href = url.pathname + url.search;
+    }
+
+    const legendEditor = document.getElementById('edit-legend-website');
+    if (legendEditor) {
+      legendEditor.href = '/WebsiteAnalytics/edit-website?site=legend';
+    }
+  }
+
   function updateGrowthBaseLink() {
     const base = currentBaseLink();
     const baseEl = document.getElementById('growth-base-link');
@@ -4859,6 +4876,7 @@ function escapeHtml(value) {
     if (baseCopy) baseCopy.dataset.link = base;
     const baseOpen = document.getElementById('growth-open-base');
     if (baseOpen) baseOpen.href = base;
+    updateWebsiteEditorLinks();
     rerenderProductLinks();
   }
 })();
