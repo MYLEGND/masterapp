@@ -181,7 +181,7 @@ public sealed partial class MessagingServiceTests
     }
 
     [Fact]
-    public async Task FounderAiDelegation_ReplayCannotReplaceSessionRolesOrExtendStoredExpiry()
+    public async Task FounderAiDelegation_ReplayCannotReplaceStableIdentity()
     {
         await using var fixture = await FounderHistoryFixture.CreateAsync();
         var scope = DelegationScope();
@@ -191,7 +191,8 @@ public sealed partial class MessagingServiceTests
         foreach (var changed in new[]
         {
             scope with { SessionId = "another-session" }, scope with { Roles = new[] { "Founder" } },
-            scope with { AuthorizationVersion = "new-version" }, scope with { ExpiresUtc = scope.ExpiresUtc.AddSeconds(1) }
+            scope with { AuthorizationVersion = "new-version" }, scope with { AccountId = "other-account" },
+            scope with { TenantId = "other-tenant" }, scope with { Environment = "Qualification" }
         })
             Assert.Equal("FOUNDER_HISTORY_REPLAY_MISMATCH", (await fixture.Service.BeginFounderAiTurnAsync(request with { CloudflareDelegation = changed })).ErrorCode);
         var stored = await fixture.Service.GetFounderAiOperationDelegationAsync(fixture.Actor, request.ConversationId, request.OperationId);
@@ -199,5 +200,80 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(JsonSerializer.Serialize(scope), JsonSerializer.Serialize(stored.Delegation));
         Assert.Single(await fixture.Db.InternalMessages.ToListAsync());
         Assert.False(fixture.Db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FounderAiDelegation_FreshDeadlineReplayReturnsOriginalPendingReceiptWithoutRenewal(bool relational)
+    {
+        await using var fixture = await FounderHistoryFixture.CreateAsync(relational);
+        var scope = DelegationScope();
+        var request = fixture.Request("Recover the existing pending receipt.") with { CloudflareDelegation = scope };
+        var started = await fixture.Service.BeginFounderAiTurnAsync(request);
+        Assert.True(started.Succeeded);
+        var originalMetadata = (await fixture.Db.InternalMessages.AsNoTracking().SingleAsync()).AiTurnMetadataJson;
+        var replay = await fixture.NewService().BeginFounderAiTurnAsync(request with
+        {
+            ExecutionDeadlineUtc = request.ExecutionDeadlineUtc.AddSeconds(20),
+            CloudflareDelegation = scope with { ExpiresUtc = scope.ExpiresUtc.AddSeconds(20) }
+        });
+        Assert.True(replay.Succeeded, replay.ErrorMessage);
+        Assert.Equal("Pending", replay.State);
+        Assert.Equal(started.UserMessage!.Id, replay.UserMessage!.Id);
+        Assert.Equal(originalMetadata, (await fixture.Db.InternalMessages.AsNoTracking().SingleAsync()).AiTurnMetadataJson);
+        var callback = await fixture.NewService().GetFounderAiOperationDelegationAsync(fixture.Actor, request.ConversationId, request.OperationId);
+        Assert.NotNull(callback);
+        Assert.Equal(scope.ExpiresUtc, callback.Delegation.ExpiresUtc);
+        Assert.Equal(request.ExecutionDeadlineUtc, callback.ExecutionDeadlineUtc);
+        Assert.False(fixture.Db.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(false, "Pending")]
+    [InlineData(true, "Pending")]
+    [InlineData(false, "Completed")]
+    [InlineData(true, "Completed")]
+    [InlineData(false, "OutcomeUnknown")]
+    [InlineData(true, "OutcomeUnknown")]
+    public async Task FounderAiDelegation_ExpiredLeaseReceiptReplayCannotReactivateCallback(bool relational, string expectedState)
+    {
+        await using var fixture = await FounderHistoryFixture.CreateAsync(relational);
+        var scope = DelegationScope();
+        var request = fixture.Request("Recover only this existing result.") with { CloudflareDelegation = scope };
+        var started = await fixture.Service.BeginFounderAiTurnAsync(request);
+        Assert.True(started.Succeeded);
+        Guid? terminalId = null;
+        if (expectedState == "Completed")
+        {
+            var completed = await fixture.Service.CompleteFounderAiTurnAsync(new(fixture.Actor, request.ConversationId,
+                request.OperationId, started.UserMessage!.Id, "Original completed result.", MessagingAuthorKinds.Assistant, new(true, "legend")));
+            Assert.True(completed.Succeeded, completed.ErrorMessage);
+            terminalId = completed.Message!.Id;
+        }
+        // Move only the stored clock boundaries to the past. A retry must not
+        // replace them with its newly computed future admission deadline.
+        var stored = await fixture.Db.InternalMessages.SingleAsync(row => row.Id == started.UserMessage!.Id);
+        var json = JsonNode.Parse(stored.AiTurnMetadataJson!)!;
+        json["cloudflareDelegation"]!["expiresUtc"] = DateTime.UtcNow.AddMinutes(-3);
+        if (expectedState != "Pending") json["executionDeadlineUtc"] = DateTime.UtcNow.AddMinutes(-2);
+        var expiredMetadata = stored.AiTurnMetadataJson = json.ToJsonString();
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Null(await fixture.NewService().GetFounderAiOperationDelegationAsync(fixture.Actor, request.ConversationId, request.OperationId));
+        var replay = await fixture.NewService().BeginFounderAiTurnAsync(request with
+        {
+            ExecutionDeadlineUtc = DateTime.UtcNow.AddMinutes(5),
+            CloudflareDelegation = scope with { ExpiresUtc = DateTime.UtcNow.AddSeconds(110) }
+        });
+        Assert.True(replay.Succeeded, replay.ErrorMessage);
+        Assert.Equal(expectedState, replay.State);
+        Assert.Equal(started.UserMessage!.Id, replay.UserMessage!.Id);
+        if (terminalId is not null) Assert.Equal(terminalId, replay.TerminalMessage!.Id);
+        Assert.Equal(expiredMetadata, (await fixture.Db.InternalMessages.AsNoTracking().SingleAsync(row => row.Id == started.UserMessage!.Id)).AiTurnMetadataJson);
+        Assert.Equal(expectedState == "Pending" ? 1 : 2, await fixture.Db.InternalMessages.CountAsync());
+        Assert.Null(await fixture.NewService().GetFounderAiOperationDelegationAsync(fixture.Actor, request.ConversationId, request.OperationId));
+        Assert.False(fixture.Db.ChangeTracker.HasChanges());
+        Assert.Equal(0, fixture.Translation.TranslationCallCount);
     }
 }

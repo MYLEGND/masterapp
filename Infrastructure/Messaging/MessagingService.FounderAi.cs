@@ -214,8 +214,11 @@ internal sealed partial class MessagingService
             if (prior.SenderUserId != actor.UserId || prior.SenderType != actor.ParticipantType ||
                 !TryReadFounderAiRequest(prior, out var receipt) || prior.Body != command.Body ||
                 receipt!.RequestFingerprint != command.RequestFingerprint || receipt.Mode != command.Mode ||
-                !SameFounderAiDelegation(receipt.CloudflareDelegation, command.CloudflareDelegation))
+                !SameFounderAiReplayIdentity(receipt.CloudflareDelegation, command.CloudflareDelegation))
                 return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_REPLAY_MISMATCH", ApplicationCopyText.Source("This request identifier was already used for different content or settings."));
+            // A retry supplies a freshly computed admission deadline, but this
+            // branch only returns the old receipt. It never replaces metadata
+            // or grants execution using the new delegation/expiry.
             var terminal = await FounderAiTerminalAsync(conversation.Id, prior.Id, cancellationToken);
             if (terminal is not null) return FounderAiReplay(prior, terminal, command.OperationId);
             if (receipt.ExecutionDeadlineUtc > now)
@@ -424,11 +427,11 @@ internal sealed partial class MessagingService
         command.CloudflareDelegation is not { } value ||
         value.ExpiresUtc > now && value.ExpiresUtc <= now.AddSeconds(120) && value.ExpiresUtc <= command.ExecutionDeadlineUtc;
 
-    private static bool SameFounderAiDelegation(MessagingFounderAiCloudflareDelegation? prior, MessagingFounderAiCloudflareDelegation? current) =>
+    private static bool SameFounderAiReplayIdentity(MessagingFounderAiCloudflareDelegation? prior, MessagingFounderAiCloudflareDelegation? current) =>
         prior is null ? current is null : current is not null &&
         prior.AccountId == current.AccountId && prior.TenantId == current.TenantId && prior.UserId == current.UserId &&
         prior.SessionId == current.SessionId && prior.AuthorizationVersion == current.AuthorizationVersion &&
-        prior.Environment == current.Environment && prior.ExpiresUtc == current.ExpiresUtc &&
+        prior.Environment == current.Environment &&
         prior.Roles.SequenceEqual(current.Roles, StringComparer.Ordinal);
 
     private static bool ValidFounderAiResponse(MessagingFounderAiResponseProvenance value) =>
