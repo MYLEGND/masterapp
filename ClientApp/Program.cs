@@ -298,6 +298,8 @@ builder.Services.AddAuthentication(options =>
                 error,
                 description);
 
+            // Only known transient OIDC state failures are retried. All other
+            // remote failures retain the existing fail-closed behavior.
             if (!IsExpiredOidcGrant(error, description) && !IsRecoverableOidcStateFailure(description))
                 return;
 
