@@ -115,10 +115,10 @@ jobs:
         run: |
           set -euo pipefail
           cp Protect-Website/Program.cs /tmp/protect-program-original.cs
-          cp Protect-Website/ProtectWebsite.csproj /tmp/protect-project-original.csproj
           mkdir -p Protect-Website/wwwroot/design
           cp Legend-Design/legend-public-web.css Protect-Website/wwwroot/design/legend-public-web.css
           cp Legend-Design/legend-public-web.js Protect-Website/wwwroot/design/legend-public-web.js
+
           python3 - <<'PY'
           from pathlib import Path
           p=Path('Protect-Website/Program.cs')
@@ -128,23 +128,17 @@ jobs:
           if old not in s:
               raise SystemExit('Expected Key Vault registration not found')
           p.write_text(s.replace(old, '// Local UI smoke only: Key Vault registration bypassed in runner working copy.'))
-
-          proj=Path('Protect-Website/ProtectWebsite.csproj')
-          x=proj.read_text()
-          import re
-          x=re.sub(r'\s*<Content Include="\.\.\\Legend-Design\\legend-public-web\.css"[\s\S]*?</Content>', '', x)
-          x=re.sub(r'\s*<Content Include="\.\.\\Legend-Design\\legend-public-web\.js"[\s\S]*?</Content>', '', x)
-          proj.write_text(x)
           PY
+
           restore() {
-            kill "${pid:-}" 2>/dev/null || true
+            kill "\${pid:-}" 2>/dev/null || true
             cp /tmp/protect-program-original.cs Protect-Website/Program.cs
-            cp /tmp/protect-project-original.csproj Protect-Website/ProtectWebsite.csproj
             rm -f Protect-Website/wwwroot/design/legend-public-web.css Protect-Website/wwwroot/design/legend-public-web.js
             rmdir Protect-Website/wwwroot/design 2>/dev/null || true
           }
           trap restore EXIT
-          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
+
+          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --no-build --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
           pid=$!
           code=""
           for i in {1..45}; do
@@ -156,9 +150,11 @@ jobs:
             cat /tmp/protect-local.log
             exit 1
           fi
+
           grep -q 'legend-public-web.css' /tmp/protect-home.html
           grep -q 'LEGEND® LEGACY PROTECTION' /tmp/protect-home.html
           curl -fsSL http://127.0.0.1:5099/design/legend-public-web.css | grep -q 'LEGEND® public web presentation authority'
+
           for route in /Contact /Privacy /Terms /Quote /RiskAssessment; do
             route_code="$(curl -sS -o /tmp/protect-route.html -w '%{http_code}' "http://127.0.0.1:5099$route" || true)"
             if [ "$route_code" != "200" ]; then
@@ -167,9 +163,10 @@ jobs:
               exit 1
             fi
           done
+
           restore
           trap - EXIT
-          git diff --exit-code -- Protect-Website/Program.cs Protect-Website/ProtectWebsite.csproj Protect-Website/wwwroot
+          git diff --exit-code -- Protect-Website/Program.cs Protect-Website/wwwroot
 
       - name: Package exact validated artifacts
         shell: bash
