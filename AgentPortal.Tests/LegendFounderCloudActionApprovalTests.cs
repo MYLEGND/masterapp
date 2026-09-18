@@ -248,6 +248,19 @@ public sealed class LegendFounderCloudActionApprovalTests
         Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
     }
 
+    [Fact]
+    public async Task ApprovalIssuanceCannotSilentlyRoundAnExactNumericArgument()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var imprecise = Arguments.Replace("42", "9007199254740993", StringComparison.Ordinal);
+        var receipt = await fixture.NewAuthority().IssueCloudActionApprovalAsync(fixture.Principal, fixture.Scope,
+            ToolName, imprecise, fixture.Scope.ExpiresUtc, CancellationToken.None);
+        Assert.False(receipt.Succeeded);
+        Assert.Equal("cloud_action_arguments_invalid", receipt.Error);
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
     private static ClaimsPrincipal WithSession(string session)
     {
         var principal = ControllerTestHelpers.BuildUser(FounderId);

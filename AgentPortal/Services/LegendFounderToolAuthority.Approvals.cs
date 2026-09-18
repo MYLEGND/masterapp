@@ -249,7 +249,8 @@ internal sealed partial class LegendFounderToolAuthority
         try
         {
             using var document = JsonDocument.Parse(argumentsJson, new JsonDocumentOptions { MaxDepth = 32 });
-            if (document.RootElement.ValueKind != JsonValueKind.Object || !IsStrictSchemaInstance(schema, document.RootElement))
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !IsStrictSchemaInstance(schema, document.RootElement) ||
+                !PreservesCloudNumericArguments(document.RootElement))
                 return false;
             canonicalArguments = CanonicalCloudJson(document.RootElement);
             digest = ComputeCloudActionDigest(scope, name, canonicalArguments);
@@ -258,6 +259,19 @@ internal sealed partial class LegendFounderToolAuthority
         catch (Exception exception) when (exception is JsonException or ArgumentException or FormatException or OverflowException)
         { return false; }
     }
+
+    private static bool PreservesCloudNumericArguments(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Object => value.EnumerateObject().All(property => PreservesCloudNumericArguments(property.Value)),
+        JsonValueKind.Array => value.EnumerateArray().All(PreservesCloudNumericArguments),
+        // Azure's decimal/integer readers must execute the exact value the
+        // Founder reviewed. Reject precision loss instead of silently changing
+        // an approval to the nearest JavaScript binary64 number.
+        JsonValueKind.Number => value.TryGetDecimal(out var original) &&
+            decimal.TryParse(CanonicalCloudNumber(value.GetDouble()), NumberStyles.Float, CultureInfo.InvariantCulture, out var canonical) &&
+            original == canonical,
+        _ => true
+    };
 
     internal static string ComputeCloudToolIdempotencyKey(string requestId, string callId) =>
         CloudHash(requestId + ":tool:" + callId);
