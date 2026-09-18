@@ -1,5 +1,5 @@
 name: Validate subscription activation repair
-# exact-current rerun after subscription authority alignment
+# exact-current rerun after subscription authority alignment and actor-accurate audit
 
 on:
   push:
