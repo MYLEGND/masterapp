@@ -1,4 +1,4 @@
-import { RuntimeFailure } from './registry.mjs';
+import { RuntimeFailure, resolveModelSettings } from './registry.mjs';
 
 function normalizeUsage(usage) {
   const inputTokens = usage?.prompt_tokens ?? usage?.input_tokens;
@@ -10,6 +10,22 @@ function normalizeUsage(usage) {
 export function parseProviderResponse(raw, model) {
   if (!raw || typeof raw !== 'object' || raw.error || raw.success === false) throw new RuntimeFailure('provider_invalid_response');
   if (raw.model && raw.model !== model.id && raw.model !== model.id.slice(4)) throw new RuntimeFailure('provider_model_mismatch');
+  const usage = normalizeUsage(raw.usage);
+  const terminal = ['completed', 'incomplete'].includes(raw.status)
+    || (!raw.status && ['stop', 'length', 'tool_calls', 'function_call', 'content_filter'].includes(raw.choices?.[0]?.finish_reason));
+  try {
+    return { ...parseProviderOutput(raw), usage };
+  } catch (error) {
+    // Reject unsafe/incomplete output while retaining independently valid billing
+    // evidence. Never attach the rejected text, tools or reasoning to the error.
+    // A queued/running response may report partial tokens while still billing.
+    // Never release its reservation/lease merely because token counts exist.
+    if (error instanceof RuntimeFailure && terminal && usage) error.providerUsage = Object.freeze(usage);
+    throw error;
+  }
+}
+
+function parseProviderOutput(raw) {
   const choice = raw.choices?.[0];
   if (choice?.finish_reason === 'length' || raw.status === 'incomplete') throw new RuntimeFailure('provider_output_truncated');
   if (raw.status && raw.status !== 'completed') throw new RuntimeFailure('provider_not_complete');
@@ -38,26 +54,26 @@ export function parseProviderResponse(raw, model) {
   });
   if (!text?.trim() && !toolCalls.length) throw new RuntimeFailure('provider_empty_response');
   if ((text?.length ?? 0) > 262144) throw new RuntimeFailure('provider_output_too_large');
-  return { text: text ?? '', toolCalls, usage: normalizeUsage(raw.usage) };
+  return { text: text ?? '', toolCalls };
 }
 
-export function buildProviderInput(model, messages, task, maxOutputTokens) {
+export function buildProviderInput(model, messages, task, maxOutputTokens, settings = resolveModelSettings({}, model)) {
   const input = { messages, stream: false, [model.outputLimitParameter]: maxOutputTokens };
+  if (settings.reasoningParameter) input[settings.reasoningParameter] = settings.reasoningEffort;
   if (model.outputLimitParameter === 'max_completion_tokens') {
     input.store = false;
-    input.reasoning_effort = 'low';
     input.parallel_tool_calls = false;
   }
   if (task.tools?.length) input.tools = task.tools.map(tool => tool.function ? tool : ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.parameters } }));
   return input;
 }
 
-export async function generate(env, model, messages, task, maxOutputTokens, signal) {
+export async function generate(env, model, messages, task, maxOutputTokens, signal, settings = resolveModelSettings(env, model)) {
   if (!env.AI || typeof env.AI.run !== 'function') throw new RuntimeFailure('workers_ai_binding_missing');
   if (signal.aborted) throw new RuntimeFailure('cancelled');
   // Workers AI binding cancellation is not a documented guarantee. The caller
   // stops awaiting on cancellation, retains the full debit, and keeps its lease.
-  const raw = await env.AI.run(model.id, buildProviderInput(model, messages, task, maxOutputTokens));
+  const raw = await env.AI.run(model.id, buildProviderInput(model, messages, task, maxOutputTokens, settings));
   if (signal.aborted) throw new RuntimeFailure('cancelled');
   return parseProviderResponse(raw, model);
 }

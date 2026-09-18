@@ -1,5 +1,5 @@
 // Operator-owned registry. Catalog presence does not qualify an engine for use.
-export const REGISTRY_VERSION = '2026-09-18.1';
+export const REGISTRY_VERSION = '2026-09-18.2';
 
 const candidates = [
   ['@cf/qwen/qwen3-30b-a3b-fp8', 'efficient', 32768, 0.0509, 0.335, false, 'max_tokens'],
@@ -12,6 +12,11 @@ const candidates = [
 export const MODEL_REGISTRY = Object.freeze(candidates.map(([id, role, contextTokens, inputUsdPerMillion, outputUsdPerMillion, vision, outputLimitParameter]) => Object.freeze({
   id, role, contextTokens, inputUsdPerMillion, outputUsdPerMillion, outputLimitParameter,
   provider: 'cloudflare-workers-ai', hosting: 'cloudflare',
+  reasoning: Object.freeze({
+    parameter: outputLimitParameter === 'max_completion_tokens' ? 'reasoning_effort' : null,
+    supportedEfforts: Object.freeze(outputLimitParameter === 'max_completion_tokens' ? ['low', 'medium', 'high', 'provider_default'] : ['provider_default']),
+    defaultEffort: outputLimitParameter === 'max_completion_tokens' ? 'high' : 'provider_default',
+  }),
   capabilities: Object.freeze(['text', 'tools', 'reasoning', 'streaming', ...(vision ? ['vision'] : [])]),
   enabled: false, qualification: null,
   documentation: `https://developers.cloudflare.com/workers-ai/models/${id.split('/').at(-1)}/`,
@@ -24,6 +29,29 @@ export class RuntimeFailure extends Error {
 
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9_.:@-]{1,128}$/.test(value);
 const positiveCost = value => Number.isSafeInteger(value) && value > 0 && value <= 1_000_000_000_000;
+
+/** Operator-only settings, constrained to the authenticated schema's current wire format. */
+export function resolveModelSettings(env, model) {
+  let configured;
+  if (env.LEGEND_MODEL_SETTINGS_JSON !== undefined) {
+    let policy;
+    try { policy = JSON.parse(env.LEGEND_MODEL_SETTINGS_JSON); }
+    catch { throw new RuntimeFailure('model_settings_invalid'); }
+    if (!policy || policy.version !== 'legend-model-settings.v1' || !policy.models || Array.isArray(policy.models)
+      || typeof policy.models !== 'object' || Object.keys(policy).some(key => !['version', 'models'].includes(key))) throw new RuntimeFailure('model_settings_invalid');
+    for (const [id, settings] of Object.entries(policy.models)) {
+      const candidate = MODEL_REGISTRY.find(item => item.id === id);
+      if (!candidate || !settings || typeof settings !== 'object' || Array.isArray(settings)
+        || Object.keys(settings).length !== 1 || !Object.hasOwn(settings, 'reasoningEffort')) throw new RuntimeFailure('model_settings_invalid');
+      if (!candidate.reasoning.supportedEfforts.includes(settings.reasoningEffort)) throw new RuntimeFailure('model_reasoning_unsupported');
+    }
+    configured = policy.models[model.id];
+  }
+  const reasoningEffort = configured?.reasoningEffort ?? model.reasoning.defaultEffort;
+  return Object.freeze({ reasoningEffort,
+    reasoningParameter: reasoningEffort === 'provider_default' ? null : model.reasoning.parameter,
+    source: configured ? 'operator' : 'registry_default' });
+}
 
 /** Only deployment bindings and the authenticated session may grant qualification access. */
 export function resolveExecutionPolicy(env, envelope, context, now = Date.now()) {

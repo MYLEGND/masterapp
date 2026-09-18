@@ -74,7 +74,12 @@
         }
       ],
       "outputShapeOpaque": false,
-      "responsesInputDeclared": false
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": null,
+        "allowedEfforts": [],
+        "sourcePointer": null
+      }
     },
     {
       "modelId": "@cf/openai/gpt-oss-120b",
@@ -101,7 +106,12 @@
       ],
       "outputBranches": [],
       "outputShapeOpaque": true,
-      "responsesInputDeclared": true
+      "responsesInputDeclared": true,
+      "chatReasoningControl": {
+        "parameter": null,
+        "allowedEfforts": [],
+        "sourcePointer": null
+      }
     },
     {
       "modelId": "@cf/zai-org/glm-5.3-flash",
@@ -167,7 +177,16 @@
         }
       ],
       "outputShapeOpaque": false,
-      "responsesInputDeclared": false
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": "reasoning_effort",
+        "allowedEfforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "sourcePointer": "/input/anyOf/0/oneOf/0/properties/reasoning_effort"
+      }
     },
     {
       "modelId": "@cf/zai-org/glm-5.3",
@@ -233,7 +252,16 @@
         }
       ],
       "outputShapeOpaque": false,
-      "responsesInputDeclared": false
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": "reasoning_effort",
+        "allowedEfforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "sourcePointer": "/input/anyOf/0/oneOf/0/properties/reasoning_effort"
+      }
     },
     {
       "modelId": "@cf/deepseek-ai/deepseek-v4-pro-0813",
@@ -299,7 +327,16 @@
         }
       ],
       "outputShapeOpaque": false,
-      "responsesInputDeclared": false
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": "reasoning_effort",
+        "allowedEfforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "sourcePointer": "/input/anyOf/0/oneOf/0/properties/reasoning_effort"
+      }
     }
   ]
 }

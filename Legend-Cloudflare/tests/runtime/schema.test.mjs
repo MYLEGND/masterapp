@@ -15,6 +15,12 @@ test('adapter request fields agree with authenticated account schema projection'
     assert(Object.keys(request).every(key => observed.inputPropertyNames.includes(key)), model.id);
     assert(observed.inputRequired.every(key => Object.hasOwn(request, key)), model.id);
     assert.equal(request[model.outputLimitParameter], 256);
+    assert.equal(model.reasoning.parameter, observed.chatReasoningControl.parameter);
+    assert.deepEqual(model.reasoning.supportedEfforts.filter(effort => effort !== 'provider_default'), observed.chatReasoningControl.allowedEfforts);
+    if (observed.chatReasoningControl.parameter) {
+      assert.equal(request.reasoning_effort, 'high');
+      assert(observed.chatReasoningControl.allowedEfforts.includes(request.reasoning_effort));
+    } else assert.equal(Object.hasOwn(request, 'reasoning_effort'), false);
   }
 });
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_REGISTRY, estimateCostMicrousd, routeModel } from '../../src/runtime/registry.mjs';
+import { MODEL_REGISTRY, estimateCostMicrousd, routeModel, resolveModelSettings } from '../../src/runtime/registry.mjs';
 import { buildProviderInput, parseProviderResponse } from '../../src/runtime/adapter.mjs';
 import { orchestrate, createEventStream } from '../../src/runtime/orchestrator.mjs';
 import { CircuitBreaker } from '../../src/runtime/reliability.mjs';
@@ -110,7 +110,7 @@ test('adapter rejects malformed, truncated and mismatched output and excludes re
 });
 test('GLM provider request bounds all completion tokens and disables storage', () => {
   const input = buildProviderInput(MODEL_REGISTRY[2], [], { tools: [] }, 512);
-  assert.equal(input.max_completion_tokens, 512); assert.equal(input.store, false); assert.equal(input.reasoning_effort, 'low');
+  assert.equal(input.max_completion_tokens, 512); assert.equal(input.store, false); assert.equal(input.reasoning_effort, 'high');
 });
 test('circuit excludes repeatedly failing engines until cooldown', () => {
   let now = 100; const circuit = new CircuitBreaker({ now: () => now, cooldownMs: 50 });
@@ -161,4 +161,85 @@ test('lost settlement reports known actual spend when larger than reservation', 
   f.budget.settle = async () => { throw new Error('transport unavailable'); };
   const result = await orchestrate(f);
   assert.equal(result.status, 'failed'); assert.equal(result.usage.costEvidence, 'reserved_upper_bound'); assert.equal(result.usage.costMicrousd, 2038);
+});
+
+test('rejected output retains valid observed usage without publishing text or executing tools', async () => {
+  const rejected = [
+    { choices: [{ message: { content: 'partial answer', tool_calls: [call()] }, finish_reason: 'length' }], code: 'provider_output_truncated' },
+    { status: 'incomplete', output: [{ type: 'message', content: [{ type: 'output_text', text: 'partial' }] }], code: 'provider_output_truncated' },
+    { choices: [{ finish_reason: 'tool_calls', message: { content: '', tool_calls: [{ id: 'x', function: { name: 'read', arguments: '{bad' } }] } }], code: 'provider_invalid_tool_arguments' },
+  ];
+  for (const raw of rejected) {
+    const f = fixture(); let calls = 0; let tools = 0;
+    f.env.AI.run = async () => { calls++; return { ...raw, usage: { input_tokens: 20, output_tokens: 128 } }; };
+    f.toolBroker = { async execute() { tools++; } };
+    const result = await orchestrate(f);
+    assert.equal(result.status, 'failed'); assert.equal(result.error.code, raw.code);
+    assert.equal(result.text, ''); assert.deepEqual(result.toolResults, []); assert.equal(tools, 0); assert.equal(calls, 1);
+    assert.deepEqual(result.usage, { inputTokens: 20, outputTokens: 128, costMicrousd: 44, costEvidence: 'provider_usage' });
+    assert.equal(f.settlements[0].usageKnown, true); assert.equal(f.settlements[0].actualCostMicrousd, 44);
+  }
+});
+
+test('invalid or unattributable rejected-response usage retains full reservation', async () => {
+  for (const raw of [
+    { choices: [{ finish_reason: 'length' }], usage: { prompt_tokens: 20, completion_tokens: -1 } },
+    { choices: [{ finish_reason: 'length' }], usage: { prompt_tokens: 20 } },
+    { ...response('bad identity'), model: '@external/model' },
+    { ...response('provider error'), success: false },
+    { ...response('still running'), status: 'in_progress' },
+    { ...response('queued'), status: 'queued' },
+    { choices: [{ message: { content: 42 } }], usage: { prompt_tokens: 20, completion_tokens: 5 } },
+  ]) {
+    const f = fixture(); f.env.AI.run = async () => raw;
+    const result = await orchestrate(f);
+    assert.equal(result.status, 'failed'); assert.equal(result.usage.costEvidence, 'reserved_upper_bound');
+    assert.equal(result.usage.costMicrousd, [...f.reservations.values()][0].maxCostMicrousd);
+    assert.equal(f.settlements[0].usageKnown, false);
+  }
+});
+
+test('lost settlement on truncated output preserves known tokens and conservative debit', async () => {
+  const f = fixture(); f.env.AI.run = async () => ({ choices: [{ finish_reason: 'length' }], usage: { prompt_tokens: 20, completion_tokens: 128 } });
+  f.budget.settle = async () => { throw new Error('lost receipt'); };
+  const result = await orchestrate(f);
+  assert.equal(result.status, 'failed'); assert.equal(result.usage.inputTokens, 20); assert.equal(result.usage.outputTokens, 128);
+  assert.equal(result.usage.costEvidence, 'reserved_upper_bound'); assert.equal(result.usage.costMicrousd, [...f.reservations.values()][0].maxCostMicrousd);
+});
+
+test('operator reasoning settings reach exact supported wire parameter and receipt', async () => {
+  for (const model of MODEL_REGISTRY) {
+    for (const effort of model.reasoning.supportedEfforts) {
+      const f = fixture(); f.registry = f.registry.filter(item => item.id === model.id);
+      f.envelope.limits.maxCostMicrousd = 10_000_000;
+      f.envelope.task.reasoningEffort = 'untrusted-override';
+      f.env.LEGEND_MODEL_SETTINGS_JSON = JSON.stringify({ version: 'legend-model-settings.v1', models: { [model.id]: { reasoningEffort: effort } } });
+      const result = await orchestrate(f);
+      assert.equal(result.status, 'completed');
+      assert.deepEqual(result.modelSettings, { reasoningEffort: effort, reasoningParameter: effort === 'provider_default' ? null : 'reasoning_effort', source: 'operator' });
+      assert.equal(f.dispatches[0].input.reasoning_effort, effort === 'provider_default' ? undefined : effort);
+      assert.equal(f.dispatches[0].input[model.outputLimitParameter], 128);
+    }
+    const defaults = resolveModelSettings({}, model);
+    assert.equal(defaults.reasoningEffort, model.reasoning.parameter ? 'high' : 'provider_default');
+    assert.equal(defaults.source, 'registry_default');
+  }
+});
+
+test('invalid operator settings fail before reservation and never weaken silently', async () => {
+  const policies = [
+    'invalid json',
+    { version: 'wrong', models: {} },
+    { version: 'legend-model-settings.v1', models: { unknown: { reasoningEffort: 'high' } } },
+    { version: 'legend-model-settings.v1', models: { [MODEL_REGISTRY[0].id]: { reasoningEffort: 'high' } } },
+    { version: 'legend-model-settings.v1', models: { [MODEL_REGISTRY[1].id]: { reasoningEffort: 'high' } } },
+    { version: 'legend-model-settings.v1', models: { [MODEL_REGISTRY[2].id]: { reasoningEffort: 'ultra' } } },
+    { version: 'legend-model-settings.v1', models: { [MODEL_REGISTRY[2].id]: { reasoningEffort: 'high', max_tokens: 1 } } },
+  ];
+  for (const policy of policies) {
+    const f = fixture(); f.env.LEGEND_MODEL_SETTINGS_JSON = typeof policy === 'string' ? policy : JSON.stringify(policy);
+    const result = await orchestrate(f);
+    assert.equal(result.status, 'failed'); assert.match(result.error.code, /^model_(settings_invalid|reasoning_unsupported)$/);
+    assert.equal(f.reservations.size, 0); assert.equal(f.dispatches.length, 0);
+  }
 });
