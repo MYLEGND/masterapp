@@ -25,18 +25,11 @@ test('AgentPortal and ClientApp consume one shared mobile web authority', () => 
   assert.equal(existsSync(new URL('../../AgentPortal/wwwroot/css/mobile-client-booking.css', import.meta.url)), false);
 });
 
-test('ClientApp preserves desktop cascade without reviving the mobile duplicate', () => {
+test('ClientApp has one phone authority and no compatibility duplicate', () => {
   const layout = read('ClientApp/Views/Shared/_Layout.cshtml');
-  const desktop = read('ClientApp/wwwroot/css/client-desktop-compat.css');
-
   assert.equal(existsSync(new URL('../../ClientApp/wwwroot/css/client-mobile.css', import.meta.url)), false);
-  assert.equal(existsSync(new URL('../../ClientApp/wwwroot/css/client-desktop-compat.css', import.meta.url)), true);
-  assert.match(layout, /~\/css\/client-desktop-compat\.css/);
-  assert(
-    layout.indexOf('client-desktop-compat.css') < layout.indexOf('legend-mobile-platform.css'),
-    'desktop compatibility must retain the previous cascade slot before the shared phone authority');
-  assert.match(desktop, /@media \(min-width: 841px\) \{/);
-  assert.match(desktop, /Phone presentation is\s+owned only by the shared LEGEND mobile platform authority/);
+  assert.equal(existsSync(new URL('../../ClientApp/wwwroot/css/client-desktop-compat.css', import.meta.url)), false);
+  assert.doesNotMatch(layout, /client-(?:mobile|desktop-compat)\.css/);
 });
 
 test('standalone mobile booking uses the shared authority instead of a fourth shell', () => {
