@@ -188,7 +188,8 @@ static bool IsRecoverableOidcStateFailure(string? description)
         return false;
 
     return description.Contains("Correlation failed", StringComparison.OrdinalIgnoreCase) ||
-           description.Contains("Unable to unprotect the message.State", StringComparison.OrdinalIgnoreCase);
+           description.Contains("Unable to unprotect the message.State", StringComparison.OrdinalIgnoreCase) ||
+           description.Contains("message.State is null or empty", StringComparison.OrdinalIgnoreCase);
 }
 
 builder.Services.AddAuthentication(options =>
