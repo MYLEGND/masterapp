@@ -39,5 +39,20 @@
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
   </ItemGroup>
 
+    <ItemGroup>
+    <Content Include="..\Legend-Design\legend-public-web.css"
+             Link="wwwroot\design\legend-public-web.css"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-public-web.js"
+             Link="wwwroot\design\legend-public-web.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-design.tokens.json"
+             Link="wwwroot\design\legend-design.tokens.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
 </Project>
