@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "purpose": "Synthetic cross-language approval digest vectors; not model evaluation cases.",
+  "vectors": [
+    {
+      "name": "exact-repair-revision",
+      "action": {
+        "version": "legend-tool-action.v1",
+        "scope": {
+          "accountId": "account-1",
+          "tenantId": "tenant-1",
+          "userId": "user-1",
+          "sessionId": "session-1",
+          "conversationId": "conversation-1",
+          "roles": [
+            "founder"
+          ],
+          "authorizationVersion": "permission-v1"
+        },
+        "requestId": "request-1",
+        "environment": "qualification",
+        "name": "legend_review_action",
+        "arguments": {
+          "pull_request_number": 42,
+          "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "diff_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "canonicalAction": "{\"arguments\":{\"diff_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"pull_request_number\":42},\"environment\":\"qualification\",\"name\":\"legend_review_action\",\"requestId\":\"request-1\",\"scope\":{\"accountId\":\"account-1\",\"authorizationVersion\":\"permission-v1\",\"conversationId\":\"conversation-1\",\"roles\":[\"founder\"],\"sessionId\":\"session-1\",\"tenantId\":\"tenant-1\",\"userId\":\"user-1\"},\"version\":\"legend-tool-action.v1\"}",
+      "sha256": "206fbe3d1a3d8096c4c1338b23b171917fc24af0c06dc1157daaba9f0e1a4d2e"
+    },
+    {
+      "name": "unicode-escaping",
+      "action": {
+        "version": "legend-tool-action.v1",
+        "scope": {
+          "accountId": "account-1",
+          "tenantId": "tenant-1",
+          "userId": "user-1",
+          "sessionId": "session-1",
+          "conversationId": "conversation-1",
+          "roles": [
+            "founder"
+          ],
+          "authorizationVersion": "permission-v1"
+        },
+        "requestId": "request-1",
+        "environment": "qualification",
+        "name": "legend_review_action",
+        "arguments": {
+          "note": "Kreyòl français español 😀 <>&",
+          "lines": "first\nsecond\tquoted\"",
+          "path": "src/é.cs"
+        }
+      },
+      "canonicalAction": "{\"arguments\":{\"lines\":\"first\\nsecond\\tquoted\\\"\",\"note\":\"Kreyòl français español 😀 <>&\",\"path\":\"src/é.cs\"},\"environment\":\"qualification\",\"name\":\"legend_review_action\",\"requestId\":\"request-1\",\"scope\":{\"accountId\":\"account-1\",\"authorizationVersion\":\"permission-v1\",\"conversationId\":\"conversation-1\",\"roles\":[\"founder\"],\"sessionId\":\"session-1\",\"tenantId\":\"tenant-1\",\"userId\":\"user-1\"},\"version\":\"legend-tool-action.v1\"}",
+      "sha256": "bfbb36193c809e95b38a699569074ae2e53559fe0a120d0a1b9f0cb8a9cb95e0"
+    },
+    {
+      "name": "numeric-canonicalization",
+      "action": {
+        "version": "legend-tool-action.v1",
+        "scope": {
+          "accountId": "account-1",
+          "tenantId": "tenant-1",
+          "userId": "user-1",
+          "sessionId": "session-1",
+          "conversationId": "conversation-1",
+          "roles": [
+            "founder"
+          ],
+          "authorizationVersion": "permission-v1"
+        },
+        "requestId": "request-1",
+        "environment": "qualification",
+        "name": "legend_review_action",
+        "arguments": {
+          "integer": 1,
+          "zero": 0,
+          "small": 1e-7,
+          "decimal": 0.1,
+          "large": 1e+21
+        }
+      },
+      "canonicalAction": "{\"arguments\":{\"decimal\":0.1,\"integer\":1,\"large\":1e+21,\"small\":1e-7,\"zero\":0},\"environment\":\"qualification\",\"name\":\"legend_review_action\",\"requestId\":\"request-1\",\"scope\":{\"accountId\":\"account-1\",\"authorizationVersion\":\"permission-v1\",\"conversationId\":\"conversation-1\",\"roles\":[\"founder\"],\"sessionId\":\"session-1\",\"tenantId\":\"tenant-1\",\"userId\":\"user-1\"},\"version\":\"legend-tool-action.v1\"}",
+      "sha256": "6c401d833533d23813d2914247c88efd7c3753783f9318477166892e4d1b14e3"
+    },
+    {
+      "name": "ordered-array-and-keys",
+      "action": {
+        "version": "legend-tool-action.v1",
+        "scope": {
+          "accountId": "account-1",
+          "tenantId": "tenant-1",
+          "userId": "user-1",
+          "sessionId": "session-1",
+          "conversationId": "conversation-1",
+          "roles": [
+            "founder"
+          ],
+          "authorizationVersion": "permission-v1"
+        },
+        "requestId": "request-1",
+        "environment": "qualification",
+        "name": "legend_review_action",
+        "arguments": {
+          "z": false,
+          "a": [
+            "second",
+            "first",
+            null
+          ],
+          "nested": {
+            "z": 2,
+            "a": 1
+          }
+        }
+      },
+      "canonicalAction": "{\"arguments\":{\"a\":[\"second\",\"first\",null],\"nested\":{\"a\":1,\"z\":2},\"z\":false},\"environment\":\"qualification\",\"name\":\"legend_review_action\",\"requestId\":\"request-1\",\"scope\":{\"accountId\":\"account-1\",\"authorizationVersion\":\"permission-v1\",\"conversationId\":\"conversation-1\",\"roles\":[\"founder\"],\"sessionId\":\"session-1\",\"tenantId\":\"tenant-1\",\"userId\":\"user-1\"},\"version\":\"legend-tool-action.v1\"}",
+      "sha256": "284f435c8ef64d718c06f9e5c6c3e523d98791314a66c4bef9d3b9f27353ab2c"
+    }
+  ]
+}
