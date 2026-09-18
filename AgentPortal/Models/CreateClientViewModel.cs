@@ -153,11 +153,10 @@ namespace AgentPortal.Models
                         }
 
                         var customCents = decimal.ToInt32(decimal.Round(customAmount * 100m, 0, MidpointRounding.AwayFromZero));
-                        if (customCents < ClientSubscriptionOfferPricing.FounderCustomMinimumCents ||
-                            customCents > ClientSubscriptionOfferPricing.CustomMaximumCents)
+                        if (customCents < ClientSubscriptionOfferPricing.FounderCustomMinimumCents)
                         {
                             yield return new ValidationResult(
-                                $"Custom monthly amount must be between {(ClientSubscriptionOfferPricing.FounderCustomMinimumCents / 100m):0.00} and {(ClientSubscriptionOfferPricing.CustomMaximumCents / 100m):0.00}.",
+                                "Custom monthly amount cannot be negative.",
                                 new[] { nameof(SubscriptionCustomMonthlyAmount) });
                         }
                     }
