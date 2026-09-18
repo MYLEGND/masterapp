@@ -23,6 +23,7 @@ public sealed class WebsiteContentDocument
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
+    public WebsiteThemeOverride Theme { get; set; } = new();
     public DateTime? UpdatedUtc { get; set; }
 }
 
@@ -52,4 +53,13 @@ public sealed class WebsiteExtraComponent
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public WebsiteStyleOverride Style { get; set; } = new();
+}
+
+public sealed class WebsiteThemeOverride
+{
+    public string? Navy { get; set; }
+    public string? NavyDeep { get; set; }
+    public string? Gold { get; set; }
+    public string? GoldStrong { get; set; }
+    public string? Surface { get; set; }
 }
