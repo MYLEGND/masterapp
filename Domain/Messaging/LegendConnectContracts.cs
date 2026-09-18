@@ -1037,7 +1037,16 @@ public sealed record LegendConnectUtteranceMeaningNode(
     int IndependentSupportCount,
     string Provenance = "FounderApproved",
     Guid? SourceMeaningNodeEvidenceId = null,
-    LegendConnectSourceSlotBinding? SourceSlotBinding = null);
+    LegendConnectSourceSlotBinding? SourceSlotBinding = null,
+    LegendConnectCurrentTurnOccurrenceSnapshot? SupersededCurrentTurnOccurrence = null);
+
+public sealed record LegendConnectCurrentTurnOccurrenceSnapshot(
+    int NodeIndex,
+    string SemanticSignature,
+    string SemanticDimension,
+    string SemanticValue,
+    int StartTokenIndex,
+    int TokenLength);
 
 /// <summary>
 /// Structural receipt for a current-turn value in an explicitly taught source
