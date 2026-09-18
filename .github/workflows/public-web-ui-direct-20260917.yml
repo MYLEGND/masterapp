@@ -114,9 +114,24 @@ jobs:
           ConnectionStrings__MasterAppDb: Data Source=/tmp/protect-ui-smoke.db
         run: |
           set -euo pipefail
-          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --no-build --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
+          cp Protect-Website/Program.cs /tmp/protect-program-original.cs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Protect-Website/Program.cs')
+          s=p.read_text()
+          old='''builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential(),
+              new ProtectWebsite.Services.Configuration.ProtectKeyVaultSecretManager(builder.Environment.IsDevelopment()));'''
+          if old not in s:
+              raise SystemExit('Expected Key Vault registration not found')
+          p.write_text(s.replace(old, '// Local UI smoke only: Key Vault registration bypassed in runner working copy.'))
+          PY
+          restore() {
+            kill "${pid:-}" 2>/dev/null || true
+            cp /tmp/protect-program-original.cs Protect-Website/Program.cs
+          }
+          trap restore EXIT
+          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
           pid=$!
-          trap 'kill $pid 2>/dev/null || true' EXIT
           code=""
           for i in {1..45}; do
             code="$(curl -sS -o /tmp/protect-home.html -w '%{http_code}' http://127.0.0.1:5099/ || true)"
@@ -138,8 +153,9 @@ jobs:
               exit 1
             fi
           done
-          kill $pid
+          restore
           trap - EXIT
+          git diff --exit-code -- Protect-Website/Program.cs
 
       - name: Package exact validated artifacts
         shell: bash
