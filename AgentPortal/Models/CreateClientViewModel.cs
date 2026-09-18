@@ -152,12 +152,17 @@ namespace AgentPortal.Models
                                 new[] { nameof(SubscriptionCustomMonthlyAmount) });
                         }
 
-                        var customCents = decimal.ToInt32(decimal.Round(customAmount * 100m, 0, MidpointRounding.AwayFromZero));
-                        if (customCents < ClientSubscriptionOfferPricing.FounderCustomMinimumCents ||
-                            customCents > ClientSubscriptionOfferPricing.CustomMaximumCents)
+                        var maxSupportedAmount = ClientSubscriptionOfferPricing.CustomMaximumCents / 100m;
+                        if (customAmount < 0)
                         {
                             yield return new ValidationResult(
-                                $"Custom monthly amount must be between {(ClientSubscriptionOfferPricing.FounderCustomMinimumCents / 100m):0.00} and {(ClientSubscriptionOfferPricing.CustomMaximumCents / 100m):0.00}.",
+                                "Custom monthly amount cannot be negative.",
+                                new[] { nameof(SubscriptionCustomMonthlyAmount) });
+                        }
+                        else if (customAmount > maxSupportedAmount)
+                        {
+                            yield return new ValidationResult(
+                                "Custom monthly amount exceeds the supported billing range.",
                                 new[] { nameof(SubscriptionCustomMonthlyAmount) });
                         }
                     }

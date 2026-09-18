@@ -152,7 +152,9 @@
         }
         if (copy) {
             copy.textContent = mode === "update-live"
-                ? "Founder control: the new amount and billing anchor apply at the next scheduled charge. An accepted trial end is never changed here."
+                ? canSetFounderSubscriptionOptions()
+                    ? "The new amount and billing anchor apply at the next scheduled billing period. Founder pricing may use any supported amount."
+                    : "The new amount applies at the next scheduled billing period. Custom pricing must remain at or above the scoped-agent minimum."
                 : mode === "update-pending"
                     ? "Founder control: this replaces the pending offer and supersedes its prior invitation before a client can activate it."
                 : "Founder control: select whether this subscription includes a free trial. A trial securely saves the client card now and delays the first premium charge until the selected day.";
@@ -174,14 +176,24 @@
         const anchor = getNode("dBillingSubscriptionAnchor");
         const founderAnchorOption = anchor?.querySelector("[data-founder-only]");
         const anchorDayWrap = getNode("dBillingSubscriptionAnchorDayWrap");
+        const anchorDay = getNode("dBillingSubscriptionAnchorDay");
         const freeTrialWrap = getNode("dBillingSubscriptionFreeTrialWrap");
         const freeTrial = getNode("dBillingSubscriptionFreeTrial");
         const freeTrialDaysWrap = getNode("dBillingSubscriptionFreeTrialDaysWrap");
 
         const founderOptions = canSetFounderSubscriptionOptions();
         if (founderAnchorOption) founderAnchorOption.hidden = !founderOptions;
-        if (!founderOptions && anchor?.value === "SpecificDayOfMonth") {
+        const scopedLiveUpdate = !founderOptions && subscriptionSetupMode === "update-live";
+        if (!founderOptions && !scopedLiveUpdate && anchor?.value === "SpecificDayOfMonth") {
             anchor.value = "FirstOfMonth";
+        }
+        if (anchor) {
+            anchor.disabled = scopedLiveUpdate;
+            anchor.setAttribute("aria-disabled", scopedLiveUpdate ? "true" : "false");
+        }
+        if (anchorDay) {
+            anchorDay.readOnly = scopedLiveUpdate;
+            anchorDay.setAttribute("aria-readonly", scopedLiveUpdate ? "true" : "false");
         }
 
         const isCustom = priceType?.value === "Custom";
@@ -212,10 +224,11 @@
 
         const actions = snapshot?.actions || {};
         const context = getBillingContext();
-        const founderCanUpdate = canSetFounderSubscriptionOptions() &&
-            (actions.canUpdatePendingOffer || actions.canUpdateLiveSubscription);
+        const canUpdateLive = !!actions.canUpdateLiveSubscription;
+        const canUpdatePending = canSetFounderSubscriptionOptions() && !!actions.canUpdatePendingOffer;
+        const canUpdate = canUpdateLive || canUpdatePending;
         if (configureButton) {
-            configureButton.hidden = founderCanUpdate;
+            configureButton.hidden = canUpdate;
             configureButton.disabled = !loaded ||
                 !context?.clientProfileId ||
                 !isPortalRecord(context) ||
@@ -225,9 +238,8 @@
         if (revokeButton) revokeButton.disabled = !loaded || !actions.canRevokeInvitation;
         if (cancelButton) cancelButton.disabled = !loaded || !actions.canCancelSubscription;
         if (updateButton) {
-            updateButton.hidden = !founderCanUpdate;
-            updateButton.disabled = !loaded ||
-                !founderCanUpdate;
+            updateButton.hidden = !canUpdate;
+            updateButton.disabled = !loaded || !canUpdate;
         }
     }
 
@@ -516,7 +528,7 @@
             const prepared = isLiveUpdate
                 ? prepareSubscriptionUpdate()
                 : preparePendingOfferUpdate();
-            if (!canSetFounderSubscriptionOptions() || !prepared) return;
+            if (!prepared || (!isLiveUpdate && !canSetFounderSubscriptionOptions())) return;
             setSubscriptionSetupVisible(true, isLiveUpdate ? "update-live" : "update-pending");
             syncSubscriptionSetupControls();
             return;
