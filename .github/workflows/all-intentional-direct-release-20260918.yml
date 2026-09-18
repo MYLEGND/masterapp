@@ -122,6 +122,7 @@ jobs:
         continue-on-error: true
         run: |
           node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+          node --test tests/website/legend-public-cms.test.mjs
           python3 scripts/test-diagnostic-project-impact.py
           python3 scripts/test-sync-published-checkout.py
           npm --prefix Legend-Website run build
