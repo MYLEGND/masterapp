@@ -4252,59 +4252,7 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
         .actions{ justify-content:flex-start; }
     }
 
-    @media (max-width: 720px){
-        #legendWrap{ padding: 10px 10px 42px 10px; }
-        .head{ padding:16px; }
-        .kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
-        .pipeline-status-stack,
-        .pipeline-action-stack,
-        .pipeline-metrics-wrap,
-        .pipeline-quick-wrap{
-            width:100%;
-            justify-items:start;
-        }
-        .pipeline-action-row{
-            justify-content:flex-start;
-            width:100%;
-        }
-        .pipeline-head-actions,
-        .pipeline-interact{
-            width:100%;
-        }
-        .pipeline-head-btn,
-        .pipeline-quick .chip{
-            width:100%;
-            justify-content:center;
-        }
-        .pipeline-nav-btn{ min-width:160px; max-width:100%; flex:1 1 160px; }
-        .pipeline-board{ padding:12px; }
-        .pipeline-head{ padding:14px; }
-        .client-card-metrics{ grid-template-columns: 1fr; }
-        thead{ display:none; }
-        table, tbody, tr, td{ display:block; width:100%; }
-        tbody tr{
-            padding: 12px 14px;
-            border-bottom:1px solid rgba(0,0,0,.08);
-        }
-        tbody td{
-            border:0;
-            padding:8px 0;
-        }
-        tbody td::before{
-            content: attr(data-label);
-            display:block;
-            font-size:.72rem;
-            text-transform:uppercase;
-            letter-spacing:.24px;
-            color:var(--muted);
-            margin-bottom:4px;
-            font-weight:950;
-        }
-        .grid2{ grid-template-columns: 1fr; }
-        .select{ min-width:0; width:100%; }
-        .field{ flex:1 1 auto; }
-        .rem-title{ max-width:260px; }
-    }
+    
 
 /* Import button + link accents */
 .btn.btn-import{
@@ -5395,30 +5343,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
 }
 
-@media (max-width: 640px){
-    .leads-crm .pipeline-command-dock,
-    .clients-crm .pipeline-command-dock{
-        padding:12px;
-        gap:10px;
-    }
 
-    .pipeline-command-row{
-        gap:8px;
-    }
-
-    .pipeline-command-row-filters .select{
-        flex:1 1 100%;
-        min-width:0;
-    }
-
-    .pipeline-command-form{
-        min-width:100%;
-    }
-
-    .pipeline-command-summary{
-        width:100%;
-    }
-}
 
 /* ===== Shared CRM pipeline shell refinement ===== */
 .leads-crm .pipeline-head,
@@ -6246,90 +6171,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
 }
 
-@media (max-width: 640px){
-    .leads-crm .pipeline-head,
-    .clients-crm .pipeline-head{
-        padding:14px 14px 12px;
-    }
 
-    .leads-crm .pipeline-head-actions,
-    .clients-crm .pipeline-head-actions{
-        gap:6px;
-    }
-
-    .leads-crm .pipeline-head-btn,
-    .clients-crm .pipeline-head-btn,
-    .leads-crm .pipeline-quick .chip,
-    .clients-crm .pipeline-quick .chip{
-        width:100%;
-        justify-content:center;
-    }
-
-    .pipeline-command-row.pipeline-command-row-filters{
-        grid-template-columns: 1fr;
-    }
-
-    .pipeline-command-row-filters .pipeline-mini-btn{
-        width:100%;
-        justify-self:stretch;
-    }
-
-    .pipeline-nav-toolbar{
-        align-items:flex-start;
-    }
-
-    .pipeline-nav-title-row{
-        flex-direction:column;
-        align-items:flex-start;
-    }
-
-    .navy-shell .pipeline-nav-count,
-    .navy-shell-clients .pipeline-nav-count{
-        min-width:0;
-        width:100%;
-        grid-template-columns: auto 1fr;
-        align-items:center;
-        text-align:left;
-        gap:8px;
-    }
-
-    .pipeline-nav-count strong,
-    .pipeline-nav-count span{
-        display:inline;
-    }
-
-    .pipeline-nav-actions{
-        gap:10px;
-    }
-
-    .pipeline-nav-reset{
-        width:100%;
-    }
-
-    .pipeline-nav-danger{
-        width:100%;
-    }
-
-    .leads-crm .pipeline-focus.active,
-    .clients-crm .pipeline-focus.active{
-        align-items:flex-start;
-    }
-
-    .leads-crm .pipeline-focus .btn.btn-ghost,
-    .clients-crm .pipeline-focus .btn.btn-ghost{
-        width:100%;
-        justify-content:center;
-    }
-
-    .pipeline-lane{
-        min-height:360px;
-    }
-
-    .pipeline-lane-body{
-        min-height:260px;
-        max-height:none;
-    }
-}
 
 /* ===== Leads bucket card densification ===== */
 .leads-crm .pipeline-lane-body{
@@ -7604,59 +7446,9 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
 }
 
-@media (max-width: 720px){
-    .drawer.crm-qv-shell .lead-contact-card-head,
-    .drawer.crm-qv-shell .ph-actions-head{
-        align-items:stretch;
-    }
 
-    .drawer.crm-qv-shell .lead-contact-card-actions,
-    .drawer.crm-qv-shell .qv-right-actions{
-        justify-content:flex-start;
-    }
 
-    .drawer.crm-qv-shell .drawer-top-actions{
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
 
-    .drawer.crm-qv-shell .ph-item{
-        flex-direction:column;
-    }
-
-    .drawer.crm-qv-shell .ph-actions{
-        width:100%;
-        flex:0 0 auto;
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-
-    .drawer.crm-qv-shell .ph-actions .btn{
-        min-height:58px;
-        height:58px;
-    }
-}
-
-@media (max-width: 640px){
-    .drawer.crm-qv-shell .qv-grid-two{
-        grid-template-columns:1fr;
-    }
-
-    .drawer.crm-qv-shell .drawer-top-actions{
-        grid-template-columns:1fr;
-    }
-
-    .drawer.crm-qv-shell .qv-billing-header{
-        align-items:stretch;
-        flex-direction:column;
-    }
-
-    .drawer.crm-qv-shell .dhead{
-        padding:18px 16px 14px;
-    }
-
-    .drawer.crm-qv-shell .dbody{
-        padding:14px 16px 18px;
-    }
-}
 
 /* ===== Shared CRM Command Hub ===== */
 .leads-crm .crm-command-hub,
@@ -8211,44 +8003,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     }
 }
 
-@media (max-width: 820px){
-    .leads-crm .crm-command-hub,
-    .clients-crm .crm-command-hub{
-        padding:20px;
-    }
 
-    .leads-crm .crm-command-panel-rail,
-    .clients-crm .crm-command-panel-rail{
-        grid-template-columns:1fr;
-        min-width:0;
-        width:100%;
-    }
-
-    .leads-crm .crm-command-rail-group,
-    .clients-crm .crm-command-rail-group{
-        justify-items:start;
-    }
-
-    .leads-crm .crm-command-chip-row,
-    .clients-crm .crm-command-chip-row,
-    .leads-crm .crm-command-action-row,
-    .clients-crm .crm-command-action-row{
-        justify-content:flex-start;
-    }
-
-    .crm-command-modal-queues .myday-grid{
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-
-    .crm-command-modal-queues .myday-focus{
-        grid-template-columns:1fr;
-        align-items:flex-start;
-    }
-
-    .crm-command-modal-queues .myday-focus-actions{
-        justify-content:flex-start;
-    }
-}
 
 @media (max-width: 640px){
     .leads-crm .production-rollup,
