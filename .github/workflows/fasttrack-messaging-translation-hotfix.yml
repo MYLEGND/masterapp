@@ -1,0 +1,84 @@
+name: Fast-track messaging translation hotfix
+
+on:
+  push:
+    branches:
+      - hotfix/messaging-translation-failopen-20260918
+
+concurrency:
+  group: fasttrack-messaging-translation-hotfix
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DOTNET_VERSION: '10.x'
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_CLIENT_WEBAPP_NAME: masterapp-client
+  PROJECT_PATH: AgentPortal/AgentPortal.csproj
+  CLIENT_PROJECT_PATH: ClientApp/ClientApp.csproj
+  PUBLISH_DIR: ${{ github.workspace }}\publish\agentportal
+  CLIENT_PUBLISH_DIR: ${{ github.workspace }}\publish\clientapp
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout hotfix
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          lfs: true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build AgentPortal and ClientApp release packages
+        shell: pwsh
+        run: |
+          dotnet publish '${{ env.PROJECT_PATH }}' --configuration Release --output '${{ env.PUBLISH_DIR }}'
+          if ($LASTEXITCODE -ne 0) { throw 'AgentPortal publish failed.' }
+          dotnet publish '${{ env.CLIENT_PROJECT_PATH }}' --configuration Release --output '${{ env.CLIENT_PUBLISH_DIR }}'
+          if ($LASTEXITCODE -ne 0) { throw 'ClientApp publish failed.' }
+          foreach ($assembly in @('Infrastructure.dll','Domain.dll')) {
+            $portalHash = (Get-FileHash -Algorithm SHA256 (Join-Path '${{ env.PUBLISH_DIR }}' $assembly)).Hash
+            $clientHash = (Get-FileHash -Algorithm SHA256 (Join-Path '${{ env.CLIENT_PUBLISH_DIR }}' $assembly)).Hash
+            if ($portalHash -ne $clientHash) { throw "Shared assembly mismatch: $assembly" }
+          }
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy AgentPortal hotfix directly
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          package: ${{ env.PUBLISH_DIR }}
+
+      - name: Deploy ClientApp hotfix directly
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_CLIENT_WEBAPP_NAME }}
+          slot-name: Production
+          package: ${{ env.CLIENT_PUBLISH_DIR }}
+
+      - name: Confirm both Azure backends are running
+        shell: pwsh
+        run: |
+          $portalState = az webapp show --name '${{ env.AZURE_WEBAPP_NAME }}' --resource-group masterapp-rg --query state -o tsv
+          if ($LASTEXITCODE -ne 0 -or $portalState -ne 'Running') { throw 'masterapp-portal is not Running after deployment.' }
+          $clientState = az webapp show --name '${{ env.AZURE_CLIENT_WEBAPP_NAME }}' --resource-group masterapp-rg --query state -o tsv
+          if ($LASTEXITCODE -ne 0 -or $clientState -ne 'Running') { throw 'masterapp-client is not Running after deployment.' }
+          Write-Host "Fast-track deployed SHA ${{ github.sha }} to masterapp-portal and masterapp-client."
