@@ -2,9 +2,10 @@
   'use strict';
 
   const context = window.LEGEND_PUBLIC_CMS_CONTEXT || null;
-  if (!context || !context.siteKey || !context.apiBase) return;
+  if (!context || !context.siteKey || typeof context.apiBase !== 'string') return;
 
-  const API_BASE = String(context.apiBase).replace(/\/$/, '');
+  // Protect deliberately uses an empty base for its same-origin CMS authority.
+  const API_BASE = (context.apiBase.trim() || location.origin).replace(/\/$/, '');
   const SITE_KEY = String(context.siteKey).toLowerCase();
   const AGENT_SLUG = context.agentSlug || '';
   const pageKey = document.body?.dataset?.pageKey

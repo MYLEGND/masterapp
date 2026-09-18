@@ -1,0 +1,95 @@
+{
+  "candidateSha": "930f34dfa2d27ddd01372e886207623481dbf0fb",
+  "baseSha": "5c6780bc3cb76e77667584f1fc53914d6afce128",
+  "approvedBranch": "legend/approved-changes",
+  "runId": 35398341838,
+  "releaseJobId": 105773114629,
+  "editorTests": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "classification": "production JavaScript with DOM/network fixtures"
+  },
+  "baselineSameTests": {
+    "passed": 5,
+    "failed": 3,
+    "expectedFailures": true
+  },
+  "live": {
+    "host": "protect.mylegnd.com",
+    "runtimeSha": "930f34dfa2d27ddd01372e886207623481dbf0fb",
+    "scriptSha256": "04a58ccc858764f7ceee48c67c6b397ee27523f2c25bfe95e619d76887c7e73f",
+    "authenticatedPortalHandoff": true,
+    "saveLiveButtonVisible": true,
+    "editorPanelVisible": true,
+    "headingSelectionLoadsEditor": true,
+    "temporaryUnsavedPreviewRendered": true,
+    "reloadRestoredOriginalHeading": true,
+    "editorRemainedAvailableAfterReload": true,
+    "publicContentChangesPublished": false,
+    "liveSavePostPerformed": false
+  },
+  "releaseStatus": "success",
+  "observedTransientFailures": [
+    "Portal service unavailable during restart; recovered",
+    "Protect 503 and timeouts during restart; runtime and exact script then verified HTTP200",
+    "Browser navigation timeouts; fresh authenticated handoff subsequently succeeded"
+  ],
+  "nativeChanges": false,
+  "translationWork": "paused",
+  "completedAtUtc": "2026-09-18T22:25:28Z",
+  "ciChecks": {
+    "backend": {
+      "passed": 281,
+      "failed": 0,
+      "skipped": 0
+    },
+    "web": {
+      "passed": 61,
+      "failed": 0
+    },
+    "editor": {
+      "passed": 8,
+      "failed": 0
+    },
+    "staticWebsiteBuildAndCheck": "passed"
+  },
+  "workflowUrl": "https://github.com/MYLEGND/masterapp/actions/runs/35398341838",
+  "deployedHosts": [
+    {
+      "host": "portal.mylegnd.com",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    },
+    {
+      "host": "masterapp-portal.azurewebsites.net",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    },
+    {
+      "host": "client.mylegnd.com",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    },
+    {
+      "host": "masterapp-client.azurewebsites.net",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    },
+    {
+      "host": "masterapp-protect.azurewebsites.net",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    },
+    {
+      "host": "masterapp-parfait.azurewebsites.net",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    },
+    {
+      "host": "masterapp-website.azurewebsites.net",
+      "passed": true,
+      "actual": "930f34dfa2d27ddd01372e886207623481dbf0fb"
+    }
+  ]
+}
