@@ -57,6 +57,6 @@ public sealed class ClientBillingNotificationDeliveryHostedService : BackgroundS
     {
         return int.TryParse(_configuration["Billing:Notifications:IntervalSeconds"], out var seconds) && seconds >= 30
             ? TimeSpan.FromSeconds(seconds)
-            : TimeSpan.FromMinutes(3);
+            : TimeSpan.FromSeconds(30);
     }
 }
