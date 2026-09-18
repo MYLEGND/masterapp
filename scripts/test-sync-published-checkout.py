@@ -406,11 +406,22 @@ class RunningProcessDetectionTests(unittest.TestCase):
             with self.assertRaisesRegex(sync.SyncSkipped, 'Cannot verify'):
                 sync.native_editor_or_build_active()
 
-    def test_dotnet_process_blocks_without_reading_arguments(self):
+    def test_unknown_dotnet_process_still_blocks(self):
         with patch.object(sync.subprocess, 'run', return_value=
                           subprocess.CompletedProcess([], 0, stdout='/usr/local/share/dotnet/dotnet\n')) as run:
             self.assertTrue(sync.active_build_or_app())
-            run.assert_called_once()
+            self.assertEqual(run.call_count, 2)
+
+    def test_idle_dotnet_servers_do_not_block_but_real_work_does(self):
+        idle = '/usr/bin/dotnet /sdk/MSBuild.dll /nodemode:1\n/usr/bin/dotnet exec /sdk/VBCSCompiler.dll\n'
+        for arguments, expected in [(idle, False), (idle + '/usr/bin/dotnet build MASTERAPP.sln', True),
+                                    ('/usr/bin/dotnet /publish/AgentPortal.dll', True),
+                                    ('/usr/bin/dotnet unknown', True)]:
+            with self.subTest(arguments=arguments), patch.object(sync.subprocess, 'run', side_effect=[
+                subprocess.CompletedProcess([], 0, stdout='/usr/bin/dotnet\n'),
+                subprocess.CompletedProcess([], 0, stdout=arguments),
+            ]):
+                self.assertEqual(sync.native_editor_or_build_active(), expected)
 
 
 if __name__ == '__main__':

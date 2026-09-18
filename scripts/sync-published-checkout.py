@@ -5,6 +5,7 @@ import fcntl
 import json
 import os
 import re
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -30,13 +31,41 @@ def git(repo, *args, missing_ok=False):
     return result.stdout.strip()
 
 
+def active_dotnet_process():
+    result = subprocess.run(['ps', '-axo', 'args='], text=True, capture_output=True, timeout=10)
+    if result.returncode:
+        raise SyncSkipped('Cannot verify .NET activity; no source changed.')
+    for line in result.stdout.splitlines():
+        try:
+            args = shlex.split(line)
+        except ValueError:
+            if 'dotnet' in line:
+                return True
+            continue
+        if not args or Path(args[0]).name.lower() != 'dotnet':
+            continue
+        parameters = args[1:]
+        if parameters[:1] == ['exec']:
+            parameters = parameters[1:]
+        binary = Path(parameters[0]).name if parameters else ''
+        if binary in {'VBCSCompiler.dll', 'Microsoft.VisualStudio.ProjectSystem.Server.BuildHost.dll'}:
+            continue
+        if binary == 'MSBuild.dll' and any(x.lower().startswith('/nodemode:') for x in parameters[1:]):
+            continue
+        # Actual CLI builds, running apps and unrecognized dotnet processes block.
+        return True
+    return False
+
+
 def active_build_or_app():
     result = subprocess.run(['ps', '-axo', 'comm='], text=True, capture_output=True, timeout=10)
     if result.returncode:
         raise SyncSkipped('Could not verify running apps/builds; no source update attempted.')
     names = {Path(line.strip()).name.lower() for line in result.stdout.splitlines()}
     # Conservative across checkouts: do not modify source while an app or build is running.
-    if names & {'dotnet', 'agentportal', 'clientapp', 'xcodebuild', 'gradle', 'gradlew', 'legend'}:
+    if names & {'agentportal', 'clientapp', 'xcodebuild', 'gradle', 'gradlew', 'legend'}:
+        return True
+    if 'dotnet' in names and active_dotnet_process():
         return True
     if 'java' in names:
         # Idle Gradle daemons and Android Studio do not imply an active build.
@@ -66,9 +95,11 @@ def native_editor_or_build_active():
     # close instead of overwriting them or guessing from CPU utilization.
     if names & {'xcode', 'studio',
                 'xcodebuild', 'swift-frontend', 'swiftc', 'ibtool', 'actool', 'clang', 'gradle', 'gradlew',
-                'dotnet', 'agentportal', 'clientapp', 'parfaitapp', 'protectwebsite', 'legend', 'git'}:
+                'agentportal', 'clientapp', 'parfaitapp', 'protectwebsite', 'legend', 'git'}:
         return True
     if any('/android studio.app/' in command for command in commands):
+        return True
+    if 'dotnet' in names and active_dotnet_process():
         return True
     if 'java' in names:
         result = subprocess.run(['ps', '-axo', 'args='], text=True, capture_output=True, timeout=10)
