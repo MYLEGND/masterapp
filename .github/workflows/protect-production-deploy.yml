@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - production
+      - fix/protect-use-legend-website-authority-20260917
     paths:
       - 'Protect-Website/**'
       - 'Legend-Website/src/site.css'
