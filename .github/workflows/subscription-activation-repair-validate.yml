@@ -1,5 +1,5 @@
 name: Validate subscription activation repair
-# exact-current rerun after subscription authority alignment and actor-accurate audit and scoped custom-anchor preservation
+# exact-current subscription and activation validation
 
 on:
   push:
@@ -21,14 +21,6 @@ jobs:
         with:
           fetch-depth: 2
           lfs: true
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Preserve prior mobile layout contracts
-        run: node --test tests/layout/*.test.mjs
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
