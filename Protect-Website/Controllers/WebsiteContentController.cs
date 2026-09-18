@@ -220,6 +220,7 @@ public sealed class WebsiteContentController : ControllerBase
             });
         }
 
+        clean.Theme = SanitizeTheme(source.Theme);
         clean.UpdatedUtc = source.UpdatedUtc;
         return clean;
     }
@@ -231,6 +232,31 @@ public sealed class WebsiteContentController : ControllerBase
         Hidden = source.Hidden,
         Style = SanitizeStyle(source.Style)
     };
+
+    private static WebsiteThemeOverride SanitizeTheme(WebsiteThemeOverride? source)
+    {
+        source ??= new WebsiteThemeOverride();
+        return new WebsiteThemeOverride
+        {
+            Navy = SanitizeHex(source.Navy),
+            NavyDeep = SanitizeHex(source.NavyDeep),
+            Gold = SanitizeHex(source.Gold),
+            GoldStrong = SanitizeHex(source.GoldStrong),
+            Surface = SanitizeHex(source.Surface)
+        };
+    }
+
+    private static string? SanitizeHex(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim();
+        if (candidate.Length != 7 || candidate[0] != '#') return null;
+        for (var i = 1; i < candidate.Length; i++)
+        {
+            if (!Uri.IsHexDigit(candidate[i])) return null;
+        }
+        return candidate.ToLowerInvariant();
+    }
 
     private static WebsiteStyleOverride SanitizeStyle(WebsiteStyleOverride? source)
     {
