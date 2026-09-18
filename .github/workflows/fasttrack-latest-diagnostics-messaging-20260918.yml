@@ -1,0 +1,85 @@
+name: Fast-track restore latest diagnostics plus messaging hotfix
+
+on:
+  push:
+    branches:
+      - hotfix/messaging-on-latest-diagnostics-20260918
+    paths:
+      - '.github/workflows/fasttrack-latest-diagnostics-messaging-20260918.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: fasttrack-latest-diagnostics-messaging-20260918
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '10.x'
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_CLIENT_WEBAPP_NAME: masterapp-client
+  PORTAL_PROJECT: AgentPortal/AgentPortal.csproj
+  CLIENT_PROJECT: ClientApp/ClientApp.csproj
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact combined diagnostics and messaging revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          lfs: true
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish AgentPortal and ClientApp
+        shell: pwsh
+        run: |
+          dotnet publish '${{ env.PORTAL_PROJECT }}' -c Release -o portal-package -p:SourceRevisionId='${{ github.sha }}'
+          if ($LASTEXITCODE -ne 0) { throw 'AgentPortal publish failed.' }
+          dotnet publish '${{ env.CLIENT_PROJECT }}' -c Release -o client-package -p:SourceRevisionId='${{ github.sha }}'
+          if ($LASTEXITCODE -ne 0) { throw 'ClientApp publish failed.' }
+          foreach ($assembly in @('Infrastructure.dll','Domain.dll','Shared.dll')) {
+            $p = (Get-FileHash -Algorithm SHA256 (Join-Path 'portal-package' $assembly)).Hash
+            $c = (Get-FileHash -Algorithm SHA256 (Join-Path 'client-package' $assembly)).Hash
+            if ($p -ne $c) { throw "Shared assembly mismatch: $assembly" }
+          }
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy AgentPortal directly
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          package: portal-package
+
+      - name: Deploy ClientApp directly
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_CLIENT_WEBAPP_NAME }}
+          slot-name: Production
+          package: client-package
+
+      - name: Verify both backends are running
+        shell: pwsh
+        run: |
+          $portal = az webapp show --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --query state -o tsv
+          if ($LASTEXITCODE -ne 0 -or $portal -ne 'Running') { throw 'masterapp-portal is not Running.' }
+          $client = az webapp show --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_CLIENT_WEBAPP_NAME }}' --query state -o tsv
+          if ($LASTEXITCODE -ne 0 -or $client -ne 'Running') { throw 'masterapp-client is not Running.' }
+          Write-Host "Restored latest diagnostics/runtime tree and messaging hotfix at ${{ github.sha }}."
