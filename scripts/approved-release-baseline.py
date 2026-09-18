@@ -19,6 +19,24 @@ TARGETS = (
 )
 
 
+def selected_targets(request):
+    if not isinstance(request, dict):
+        raise ValueError('Release request must be an object')
+    if 'targets' not in request:
+        return TARGETS
+    names = request['targets']
+    inventory = {'masterapp-' + row[0]: row for row in TARGETS}
+    if (not isinstance(names, list) or not names or
+            any(not isinstance(name, str) or name not in inventory for name in names) or
+            len(set(names)) != len(names)):
+        raise ValueError('Release targets must be unique names from the existing deployment inventory')
+    # Other partial releases need their own reviewed migration/baseline policy.
+    # Absence of targets retains the existing complete-release behavior.
+    if names != ['masterapp-portal']:
+        raise ValueError('Only the approved portal-only target override is supported')
+    return tuple(inventory[name] for name in names)
+
+
 def validate_revision(value):
     if not isinstance(value, str) or not re.fullmatch(r'[a-fA-F0-9]{40}', value):
         raise ValueError('Live source identity is missing or invalid')
@@ -47,8 +65,9 @@ def main():
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
             raise SystemExit('Only the exact approved branch revision can be released')
+    targets = selected_targets(json.loads(Path('Docs/releases/direct-release-request.json').read_text()))
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        rows = list(pool.map(observe, TARGETS))
+        rows = list(pool.map(observe, targets))
     for row in rows:
         subprocess.run(['git', 'cat-file', '-e', row['revision'] + '^{commit}'], check=True)
         subprocess.run(['git', 'merge-base', '--is-ancestor', row['revision'], head], check=True)
@@ -58,6 +77,8 @@ def main():
             out.write('matrix=' + json.dumps({'include': rows}, separators=(',', ':')) + '\n')
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + rows[0]['revision'] + '\n')
+            out.write('targets=' + json.dumps(['masterapp-' + row['app'] for row in rows], separators=(',', ':')) + '\n')
+            out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
 
 
 if __name__ == '__main__':
