@@ -8,7 +8,7 @@ public static class ClientSubscriptionOfferPricing
     public const int Fixed150Cents = 15_000;
     public const int FounderCustomMinimumCents = 0;
     public const int CustomMinimumCents = Fixed50Cents;
-    public const int CustomMaximumCents = 250_000;
+    public const int CustomMaximumCents = int.MaxValue;
 
     public static int ResolveAuthoritativeMonthlyAmountCents(
         ClientSubscriptionOfferPriceType priceType,
@@ -34,7 +34,7 @@ public static class ClientSubscriptionOfferPricing
                 => customMonthlyAmountCents.Value,
             ClientSubscriptionOfferPriceType.Custom => throw new ArgumentOutOfRangeException(
                 nameof(customMonthlyAmountCents),
-                $"Custom offers must provide a monthly amount between {customMinimumCents} and {CustomMaximumCents} cents."),
+                $"Custom offers must provide a monthly amount of at least {customMinimumCents} cents and remain within the supported billing range."),
             _ => throw new ArgumentOutOfRangeException(nameof(priceType), priceType, "Unsupported subscription offer price type.")
         };
     }

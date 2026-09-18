@@ -117,6 +117,136 @@ public sealed class ClientSubscriptionAdministrationTests
     }
 
     [Fact]
+    public async Task UpdateClientSubscription_ScopedOwner_CanUpdateAboveMinimum_AndQueuesClientNotice()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", "client-1", "client1@example.com");
+        var offer = await AddOfferAsync(db, profile.Id, "agent-1");
+        var subscription = await AddSubscriptionAsync(db, profile.Id, offer.Id, "agent-1");
+        var scheduledCharge = subscription.NextBillingDateUtc;
+
+        var gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
+        gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
+        gateway.SetupGet(x => x.Environment).Returns(BillingProviderEnvironment.Sandbox);
+        var billingOrchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            Mock.Of<IClientSubscriptionActivationPolicyService>(),
+            new ClientBillingNotificationService(db));
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            BuildUser("agent-1"),
+            billingOrchestrator: billingOrchestrator);
+
+        var result = await controller.UpdateClientSubscription(
+            new ClientsController.UpdateClientSubscriptionQuickViewRequest
+            {
+                ClientProfileId = profile.Id,
+                SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Custom),
+                SubscriptionCustomMonthlyAmount = 75m,
+                SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth)
+            });
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        var persisted = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
+        var notice = await db.ClientBillingNotifications.SingleAsync(x =>
+            x.ClientSubscriptionId == subscription.Id &&
+            x.Kind == ClientBillingNotificationKind.SubscriptionTermsUpdated);
+
+        Assert.Contains("\"ok\":true", payload, StringComparison.Ordinal);
+        Assert.Equal(7_500, persisted.MonthlyAmountCents);
+        Assert.Equal(scheduledCharge, persisted.NextBillingDateUtc);
+        Assert.Contains("next scheduled billing period", notice.PlainTextBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpdateClientSubscription_ScopedOwner_AmountChangePreservesFounderSpecificBillingDay()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", "client-custom-anchor", "client1@example.com");
+        var offer = await AddOfferAsync(db, profile.Id, "agent-1");
+        var subscription = await AddSubscriptionAsync(db, profile.Id, offer.Id, "agent-1");
+        subscription.BillingAnchorDay = 20;
+        await db.SaveChangesAsync();
+
+        var gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
+        gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
+        gateway.SetupGet(x => x.Environment).Returns(BillingProviderEnvironment.Sandbox);
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            BuildUser("agent-1"),
+            billingOrchestrator: new MasterAppBillingOrchestrator(
+                db,
+                gateway.Object,
+                BuildEntitlementService(db),
+                Mock.Of<IClientSubscriptionActivationPolicyService>(),
+                new ClientBillingNotificationService(db)));
+
+        var result = await controller.UpdateClientSubscription(
+            new ClientsController.UpdateClientSubscriptionQuickViewRequest
+            {
+                ClientProfileId = profile.Id,
+                SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Custom),
+                SubscriptionCustomMonthlyAmount = 75m,
+                SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.SpecificDayOfMonth),
+                SubscriptionBillingAnchorDay = 20
+            });
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        var persisted = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
+
+        Assert.Contains("\"ok\":true", payload, StringComparison.Ordinal);
+        Assert.Equal(7_500, persisted.MonthlyAmountCents);
+        Assert.Equal(20, persisted.BillingAnchorDay);
+    }
+
+    [Fact]
+    public async Task UpdateClientSubscription_ScopedOwner_BelowMinimum_IsRejectedWithoutMutation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", "client-1", "client1@example.com");
+        var offer = await AddOfferAsync(db, profile.Id, "agent-1");
+        var subscription = await AddSubscriptionAsync(db, profile.Id, offer.Id, "agent-1");
+        var originalAmount = subscription.MonthlyAmountCents;
+
+        var gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
+        gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
+        gateway.SetupGet(x => x.Environment).Returns(BillingProviderEnvironment.Sandbox);
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            BuildUser("agent-1"),
+            billingOrchestrator: new MasterAppBillingOrchestrator(
+                db,
+                gateway.Object,
+                BuildEntitlementService(db),
+                Mock.Of<IClientSubscriptionActivationPolicyService>(),
+                new ClientBillingNotificationService(db)));
+
+        var result = await controller.UpdateClientSubscription(
+            new ClientsController.UpdateClientSubscriptionQuickViewRequest
+            {
+                ClientProfileId = profile.Id,
+                SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Custom),
+                SubscriptionCustomMonthlyAmount = 49.99m,
+                SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth)
+            });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        db.ChangeTracker.Clear();
+        Assert.Equal(originalAmount, (await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id)).MonthlyAmountCents);
+        Assert.Equal(0, await db.ClientBillingNotifications.CountAsync(x => x.ClientSubscriptionId == subscription.Id));
+    }
+
+    [Fact]
     public async Task ResendSubscriptionInvitation_UnownedClientProfile_ReturnsForbid()
     {
         await using var db = ControllerTestHelpers.BuildDb();

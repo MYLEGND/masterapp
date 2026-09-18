@@ -77,6 +77,8 @@ internal sealed class ClientBillingNotificationService : IClientBillingNotificat
                     ("Your Legend membership is active again", "Your payment was received and your Legend membership is active again."),
                 ClientBillingNotificationKind.UpcomingRenewal =>
                     ("Your Legend membership renewal is coming up", "Your membership renewal is coming up soon. You can review your saved payment method anytime in Membership & Billing."),
+                ClientBillingNotificationKind.SubscriptionTermsUpdated =>
+                    ("Your LEGEND® membership has been updated", $"Your membership will renew at {amount ?? "the updated amount"} beginning with your next scheduled billing period. No charge was made for this update."),
                 _ => throw new ArgumentOutOfRangeException(nameof(request.Kind), request.Kind, "Unsupported billing notification kind.")
             };
         }

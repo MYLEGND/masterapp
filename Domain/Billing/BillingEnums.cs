@@ -146,7 +146,8 @@ public enum ClientBillingNotificationKind
     GracePeriodFinalReminder = 7,
     MembershipCancelled = 8,
     MembershipReactivated = 9,
-    UpcomingRenewal = 10
+    UpcomingRenewal = 10,
+    SubscriptionTermsUpdated = 11
 }
 
 public enum ClientIdentityContinuationPurpose

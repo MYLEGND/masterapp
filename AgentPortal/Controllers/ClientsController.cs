@@ -4479,9 +4479,6 @@ namespace AgentPortal.Controllers;
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateClientSubscription([FromBody] UpdateClientSubscriptionQuickViewRequest request)
     {
-        if (!FounderGuard.IsFounder(User))
-            return Forbid();
-
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
@@ -4489,23 +4486,6 @@ namespace AgentPortal.Controllers;
         var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId);
         if (profile is null)
             return Forbid();
-
-        if (!TryResolveSubscriptionOfferSelection(
-                request.SubscriptionPriceType,
-                request.SubscriptionCustomMonthlyAmount,
-                request.SubscriptionBillingAnchorMode,
-                request.SubscriptionBillingAnchorDay,
-                hasFreeTrial: false,
-                freeTrialDays: null,
-                canSetFounderSubscriptionOptions: true,
-                out var selection,
-                out var subscriptionValidationError))
-        {
-            return BadRequest(new
-            {
-                message = subscriptionValidationError ?? "A valid subscription configuration is required."
-            });
-        }
 
         var subscription = await _db.ClientSubscriptions
             .AsNoTracking()
@@ -4518,6 +4498,31 @@ namespace AgentPortal.Controllers;
         if (subscription is null)
             return BadRequest(new { message = "No live subscription is available to update." });
 
+        var isFounder = FounderGuard.IsFounder(User);
+        var validationAnchorMode = isFounder
+            ? request.SubscriptionBillingAnchorMode
+            : nameof(BillingAnchorSelectionMode.FirstOfMonth);
+        var validationAnchorDay = isFounder
+            ? request.SubscriptionBillingAnchorDay
+            : null;
+
+        if (!TryResolveSubscriptionOfferSelection(
+                request.SubscriptionPriceType,
+                request.SubscriptionCustomMonthlyAmount,
+                validationAnchorMode,
+                validationAnchorDay,
+                hasFreeTrial: false,
+                freeTrialDays: null,
+                canSetFounderSubscriptionOptions: isFounder,
+                out var selection,
+                out var subscriptionValidationError))
+        {
+            return BadRequest(new
+            {
+                message = subscriptionValidationError ?? "A valid subscription configuration is required."
+            });
+        }
+
         var update = await _billingOrchestrator.UpdateClientSubscriptionAsync(
             new UpdateClientSubscriptionCommand(
                 subscription.Id,
@@ -4526,7 +4531,7 @@ namespace AgentPortal.Controllers;
                 selection.BillingAnchorMode,
                 selection.BillingAnchorDay,
                 agentOid,
-                FounderAuthorized: true));
+                FounderAuthorized: isFounder));
         if (!update.Success)
             return BadRequest(new { ok = false, code = update.SafeErrorCode, message = update.SanitizedSummary });
 

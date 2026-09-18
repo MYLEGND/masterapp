@@ -223,14 +223,14 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
-    public void OfferPricing_InvalidCustomAmount_IsRejected()
+    public void OfferPricing_HighCustomAmount_IsAllowedWithinTechnicalRange()
     {
-        var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
-                ClientSubscriptionOfferPriceType.Custom,
-                ClientSubscriptionOfferPricing.CustomMaximumCents + 1));
+        var amount = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+            ClientSubscriptionOfferPriceType.Custom,
+            5_000_000,
+            ClientSubscriptionOfferPricing.FounderCustomMinimumCents);
 
-        Assert.Contains("Custom offers must provide a monthly amount", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(5_000_000, amount);
     }
 
     [Fact]
@@ -2224,7 +2224,7 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
-    public async Task UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule()
+    public async Task UpdateClientSubscription_EnforcesScopedMinimum_AndFounderCanSetZero_WithoutRescheduling()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var profile = await AddClientProfileAsync(db);
@@ -2243,36 +2243,47 @@ public sealed class BillingCentralizationTests
             Mock.Of<IBillingEntitlementService>(),
             Mock.Of<IClientSubscriptionActivationPolicyService>());
 
-        var denied = await orchestrator.UpdateClientSubscriptionAsync(
-            new UpdateClientSubscriptionCommand(
-                subscription.Id,
-                ClientSubscriptionOfferPriceType.Fixed150,
-                null,
-                BillingAnchorSelectionMode.SpecificDayOfMonth,
-                20,
-                "agent-1",
-                FounderAuthorized: false));
-        var updated = await orchestrator.UpdateClientSubscriptionAsync(
+        var scoped = await orchestrator.UpdateClientSubscriptionAsync(
             new UpdateClientSubscriptionCommand(
                 subscription.Id,
                 ClientSubscriptionOfferPriceType.Custom,
-                17_500,
-                BillingAnchorSelectionMode.SpecificDayOfMonth,
-                20,
+                7_500,
+                BillingAnchorSelectionMode.FirstOfMonth,
+                null,
+                "agent-1",
+                FounderAuthorized: false));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            orchestrator.UpdateClientSubscriptionAsync(
+                new UpdateClientSubscriptionCommand(
+                    subscription.Id,
+                    ClientSubscriptionOfferPriceType.Custom,
+                    4_999,
+                    BillingAnchorSelectionMode.FirstOfMonth,
+                    null,
+                    "agent-1",
+                    FounderAuthorized: false)));
+
+        var founder = await orchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(
+                subscription.Id,
+                ClientSubscriptionOfferPriceType.Custom,
+                0,
+                BillingAnchorSelectionMode.FirstOfMonth,
+                null,
                 "founder-oid",
                 FounderAuthorized: true));
 
         var persisted = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
-        Assert.False(denied.Success);
-        Assert.Equal("FOUNDER_SUBSCRIPTION_CONTROL_REQUIRED", denied.SafeErrorCode);
-        Assert.True(updated.Success);
-        Assert.Equal(17_500, persisted.MonthlyAmountCents);
-        Assert.Equal(20, persisted.BillingAnchorDay);
+        Assert.True(scoped.Success);
+        Assert.True(founder.Success);
+        Assert.Equal(0, persisted.MonthlyAmountCents);
+        Assert.Equal(1, persisted.BillingAnchorDay);
         Assert.Equal(scheduledCharge, persisted.NextBillingDateUtc);
-        Assert.Contains(await db.BillingAuditEntries.ToListAsync(), entry =>
+        Assert.Equal(2, await db.BillingAuditEntries.CountAsync(entry =>
             entry.EntityType == "ClientSubscription" &&
             entry.EntityId == subscription.Id.ToString() &&
-            entry.Action == "terms_updated");
+            entry.Action == "terms_updated"));
     }
 
     private static MasterAppBillingOrchestrator BuildOrchestrator(MasterAppDbContext db)

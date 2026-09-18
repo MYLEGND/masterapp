@@ -188,13 +188,20 @@ public sealed class SubscriptionActivationService
                 context.Client.Id,
                 cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
+            const string pendingMessage =
+                "Your membership is active. Secure sign-in setup is still completing; reopen this activation link to continue. You will not be charged again.";
             return new SubscriptionActivationExecutionResult(
                 false,
-                "ENTRA_PROVISIONING_FAILED",
-                $"The subscription is active, but identity provisioning could not complete: {ex.Message}",
-                context with { Subscription = activationResult.Subscription });
+                "ACCOUNT_SIGNIN_SETUP_PENDING",
+                pendingMessage,
+                context with
+                {
+                    Availability = SubscriptionActivationAvailability.AlreadyActivated,
+                    Message = pendingMessage,
+                    Subscription = activationResult.Subscription
+                });
         }
 
         var continuation = await _continuationService.CreateProtectedStateAsync(
@@ -206,12 +213,72 @@ public sealed class SubscriptionActivationService
             activationResult.Subscription.Id,
             cancellationToken);
 
-        var completedContext = context with { Subscription = activationResult.Subscription };
+        var completedContext = context with
+        {
+            Availability = SubscriptionActivationAvailability.AlreadyActivated,
+            Message = "Your membership is active.",
+            Subscription = activationResult.Subscription
+        };
         return new SubscriptionActivationExecutionResult(
             true,
             null,
             "Subscription activated successfully.",
             completedContext,
+            continuation.ProtectedState,
+            continuation.ExpiresUtc);
+    }
+
+    public async Task<SubscriptionActivationExecutionResult> ResumeActivatedAccountAsync(
+        string token,
+        string returnUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await GetContextAsync(token, cancellationToken);
+        if (context.Availability != SubscriptionActivationAvailability.AlreadyActivated ||
+            context.Invitation is null ||
+            context.Client is null ||
+            context.Subscription is null ||
+            context.Subscription.Status is not ClientSubscriptionStatus.Active and not ClientSubscriptionStatus.GracePeriod)
+        {
+            return new SubscriptionActivationExecutionResult(
+                false,
+                "ACTIVATION_NOT_COMPLETED",
+                context.Message ?? "This activation cannot be resumed.",
+                context);
+        }
+
+        try
+        {
+            await _entraLifecycle.EnsureClientIdentityAsync(
+                context.Client.Id,
+                cancellationToken);
+            await _households.EnsurePrimaryHouseholdActiveAsync(
+                context.Client.Id,
+                cancellationToken);
+        }
+        catch
+        {
+            return new SubscriptionActivationExecutionResult(
+                false,
+                "ACCOUNT_SIGNIN_SETUP_PENDING",
+                "Your membership is active, but secure sign-in setup is temporarily unavailable. Try this activation link again shortly.",
+                context);
+        }
+
+        var continuation = await _continuationService.CreateProtectedStateAsync(
+            context.Client.Id,
+            context.Invitation.IntendedNormalizedEmail,
+            _returnUrlNormalizer.Normalize(returnUrl),
+            ClientIdentityContinuationPurpose.Activation,
+            context.Invitation.Id,
+            context.Subscription.Id,
+            cancellationToken);
+
+        return new SubscriptionActivationExecutionResult(
+            true,
+            null,
+            "Your membership is active and secure sign-in is ready.",
+            context,
             continuation.ProtectedState,
             continuation.ExpiresUtc);
     }

@@ -1,5 +1,6 @@
 using ClientApp.Models;
 using ClientApp.Services;
+using Domain.Billing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -28,6 +29,34 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Index(string token, string returnUrl = "/profile")
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
+        if (context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
+            context.Subscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod)
+        {
+            var resumed = await _activationService.ResumeActivatedAccountAsync(
+                token,
+                returnUrl,
+                HttpContext.RequestAborted);
+            if (resumed.Success &&
+                !string.IsNullOrWhiteSpace(resumed.ProtectedContinuationState))
+            {
+                _continuationService.StoreCookie(
+                    Response,
+                    resumed.ProtectedContinuationState,
+                    resumed.ContinuationExpiresUtc ?? DateTime.UtcNow.AddMinutes(20));
+
+                return RedirectToAction(
+                    "AzureLogin",
+                    "Account",
+                    new { returnUrl = _returnUrlNormalizer.Normalize(returnUrl) });
+            }
+
+            return RenderContext(
+                token,
+                returnUrl,
+                resumed.Context,
+                resumed.SanitizedMessage);
+        }
+
         return RenderContext(token, returnUrl, context);
     }
 
@@ -81,13 +110,17 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Status(string token)
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
+        var completed = context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
+            context.Subscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
+
         return Json(new
         {
-            ok = context.Availability == SubscriptionActivationAvailability.Ready,
+            ok = context.Availability == SubscriptionActivationAvailability.Ready || completed,
+            completed,
             state = context.Availability.ToString(),
             message = context.Message,
             subscriptionStatus = context.Subscription?.Status.ToString(),
-            entitlementReady = context.Subscription is not null
+            entitlementReady = completed
         });
     }
 
@@ -127,7 +160,7 @@ public sealed class SubscriptionActivationController : Controller
                 View("Unavailable", new SubscriptionActivationNoticeViewModel
                 {
                     Title = context.Availability == SubscriptionActivationAvailability.AlreadyActivated
-                        ? "Already Activated"
+                        ? "Membership Active"
                         : "Activation Unavailable",
                     Message = messageOverride ?? context.Message ?? "This activation flow is not available.",
                     ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
