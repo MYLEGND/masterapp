@@ -41,7 +41,69 @@ env:
   LEGEND_VALIDATION_SCOPE: ${{ inputs.validation_scope || 'canonical_matrix' }}
 
 jobs:
+  public-application-copy-inventory:
+    if: github.ref_name == 'validation/legend-native-translation-inventory-20260918'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: LEGEND-Production-ReadOnly-Validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Build bounded inventory candidate
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -p:SourceRevisionId="$GITHUB_SHA"
+      - name: Read current public copy identities with existing SELECT-only principal
+        env:
+          LEGEND_PRODUCTION_READONLY_CONNECTION: ${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}
+          LEGEND_PRODUCTION_READONLY_FOUNDER_OID: ${{ secrets.LEGEND_PRODUCTION_READONLY_FOUNDER_OID }}
+          LEGEND_PRODUCTION_OBSERVATION_REQUIRED: 'true'
+          LEGEND_VALIDATION_CANDIDATE_SHA: ${{ github.sha }}
+          LEGEND_VALIDATION_RUN_IDENTITY: ${{ github.run_id }}:${{ github.run_attempt }}
+          LEGEND_VALIDATION_RESULT_PATH: ${{ github.workspace }}/diagnostics/legend-shadow/public-copy-inventory.json
+          OPENAI_API_KEY: ''
+          OpenAI__ApiKey: ''
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics/legend-shadow/private
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+            --filter 'FullyQualifiedName=AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyPublicApplicationCopyInventory' \
+            --logger 'trx;LogFileName=inventory.trx' --results-directory diagnostics/legend-shadow/private \
+            > diagnostics/legend-shadow/private/inventory.log 2>&1
+      - name: Enforce inventory evidence and emit public identities only
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          root = Path('diagnostics/legend-shadow')
+          receipt = json.loads((root/'public-copy-inventory.json').read_text())
+          summary = {key: receipt[key] for key in ('Status','FailureCode','SqlPrincipalVerified','PhysicalSourcesVerified','ProviderClientCount','ProviderHttpCallCount','SaveChangesAttempts','SqlFailureCount','SqlCanceledCommandCount','SqlSucceededCommandCount','SelectCommandCount','BlockedCommandCount','CandidateSha')}
+          print(json.dumps(summary))
+          assert receipt['Status'] == 'passed'
+          assert receipt['SqlPrincipalVerified'] and receipt['PhysicalSourcesVerified']
+          assert receipt['CandidateSha'] == os.environ['GITHUB_SHA']
+          assert all(receipt[key] == 0 for key in ('ProviderClientCount','ProviderHttpCallCount','SaveChangesAttempts','SqlFailureCount','SqlCanceledCommandCount','BlockedCommandCount'))
+          assert receipt['SelectCommandCount'] > 0 and receipt['ExecutedCases'] == 1
+          trx=ET.parse(root/'private/inventory.trx')
+          cases=trx.findall('.//{*}UnitTestResult')
+          assert len(cases)==1 and cases[0].get('outcome')=='Passed'
+          catalog=receipt['CatalogInventory']
+          assert len(catalog['Catalogs'])==3
+          assert {row['LanguageCode'] for row in catalog['Catalogs']}=={'ht','es','fr'}
+          print('PUBLIC_COPY_INVENTORY_BEGIN')
+          print(json.dumps(catalog, separators=(',',':')))
+          print('PUBLIC_COPY_INVENTORY_END')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-copy-inventory-${{ github.sha }}
+          path: diagnostics/legend-shadow/public-copy-inventory.json
+          retention-days: 14
+          if-no-files-found: error
   production-readonly-diagnostic:
+    if: github.ref_name != 'validation/legend-native-translation-inventory-20260918'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:

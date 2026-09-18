@@ -1182,6 +1182,115 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         Assert.True(status == "passed", failureCode ?? "Translation inventory observation failed.");
     }
 
+    // Explicitly authorized aggregate inventory only: no preparation, model
+    // qualification, live Azure usage probe, or production release proof.
+    [ProductionObservationFact]
+    public async Task ProductionReadOnlyPublicApplicationCopyInventory()
+    {
+        var startedUtc = DateTime.UtcNow;
+        var started = Stopwatch.GetTimestamp();
+        var (candidateSha, runIdentity, resultPath) = RequireCandidateEvidenceIdentity();
+        var connectionString = RequiredObservationSetting("LEGEND_PRODUCTION_READONLY_CONNECTION");
+        var founderId = RequiredObservationSetting("LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+        const int queryTimeoutSeconds = 15;
+        const int observationTimeoutSeconds = 180;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(observationTimeoutSeconds));
+        var guard = new ReadOnlyLegendDbCommandInterceptor(restrictPhysicalTables: true);
+        var saves = new ObservationSaveGuard();
+        var external = new CountingHttpClientFactory();
+        var connection = new SqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "LEGEND bounded translation SELECT-only inventory",
+            ApplicationIntent = ApplicationIntent.ReadOnly,
+            ConnectTimeout = queryTimeoutSeconds,
+            Pooling = false,
+            TrustServerCertificate = false,
+            Encrypt = SqlConnectionEncryptOption.Mandatory
+        };
+        await using var sql = new SqlConnection(connection.ConnectionString);
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer(sql, options => options.CommandTimeout(queryTimeoutSeconds))
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+            .AddInterceptors(guard, saves).Options);
+        var status = "failed";
+        var phase = "connection";
+        string? failureCode = null;
+        var principalVerified = false;
+        var sourcesVerified = false;
+        TranslationCatalogInventory? catalogs = null;
+        TranslationCapacityInventory? capacity = null;
+        IReadOnlyList<TranslationSystemUsageInventory> systemUsage = [];
+        var cases = new List<TranslationInventoryCase>();
+        var requiredTables = RequiredTranslationInventoryTables(db);
+        requiredTables.Remove("dbo.LegendTranslationProviderReservations");
+        requiredTables.Remove("dbo.LegendTranslationProviderCapacities");
+        requiredTables.Remove("dbo.LegendTranslationSystemUsages");
+        try
+        {
+            await db.Database.OpenConnectionAsync(deadline.Token);
+            phase = "sql_principal";
+            await RequireSelectOnlyPrincipalAsync(db, deadline.Token);
+            principalVerified = true;
+            phase = "sql_sources";
+            await RequireSafePhysicalSourcesAsync(db, guard, deadline.Token, requiredTables);
+            sourcesVerified = true;
+            phase = "founder_identity";
+            Assert.True(await db.AgentProfiles.AsNoTracking().AnyAsync(item =>
+                item.IsActive && item.AgentUserId != null &&
+                item.AgentUserId.ToLower() == founderId.ToLower(), deadline.Token),
+                "The selected Founder identity has no active profile.");
+            await using var provider = TranslationInventoryServices(db, external);
+            phase = "application-copy-inventory";
+            var sectionStarted = Stopwatch.GetTimestamp();
+            catalogs = await ReadTranslationCatalogInventoryAsync(provider, deadline.Token, publicMissingIdentities: true);
+            cases.Add(new(phase, "passed", Stopwatch.GetElapsedTime(sectionStarted).TotalMilliseconds));
+            phase = "aggregate_assertions";
+            deadline.Token.ThrowIfCancellationRequested();
+            Assert.Equal(0, saves.Attempts);
+            Assert.Equal(0, guard.BlockedCommands);
+            Assert.Equal(0, external.CreateClientCalls);
+            Assert.Equal(0, external.SendCalls);
+            Assert.True(guard.SelectCommands > 0);
+            var commands = guard.SnapshotDiagnostics();
+            Assert.Equal(0, commands.FailedEvents + commands.CanceledEvents + commands.BlockedEvents);
+            status = "passed";
+        }
+        catch (Exception exception)
+        {
+            // Never export SQL, exception messages, identities, copy text or credentials.
+            failureCode = exception is OperationCanceledException ? "observation_deadline_exceeded"
+                : exception is SqlException sqlError ? "sql_error_" + sqlError.Number
+                : "observation_" + phase.Replace('-', '_') + "_failed";
+        }
+        finally
+        {
+            var commands = guard.SnapshotDiagnostics();
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
+            await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new
+            {
+                Version = "candidate-public-copy-inventory-v1", CandidateSha = candidateSha,
+                RunIdentity = runIdentity, StartedUtc = startedUtc, CompletedUtc = DateTime.UtcNow,
+                Status = status, FailureCode = failureCode, FailedPhase = status == "passed" ? null : phase,
+                Authority = "non-authoritative", DeployedSha = "unavailable", ReleaseProof = false,
+                Coverage = new[] { "application-copy-inventory" },
+                CapabilityLimitations = new[] { "no_translation_or_model_execution", "no_live_azure_usage_observation",
+                    "no_historical_dispatch_attribution", "no_deployed_sha_proof", "catalog_completion_is_not_translation_quality" },
+                SqlPrincipalVerified = principalVerified, PhysicalSourcesVerified = sourcesVerified,
+                PhysicalSources = requiredTables.Order(StringComparer.Ordinal).ToArray(),
+                ProviderClientCount = external.CreateClientCalls, ProviderHttpCallCount = external.SendCalls,
+                SelectCommandCount = guard.SelectCommands, BlockedCommandCount = guard.BlockedCommands,
+                SaveChangesAttempts = saves.Attempts, SqlFailureCount = commands.FailedEvents,
+                SqlCanceledCommandCount = commands.CanceledEvents, SqlSucceededCommandCount = commands.SucceededEvents,
+                SqlDiagnosticsTruncated = commands.Truncated,
+                ExecutedCases = cases.Count, CaseResults = cases,
+                QueryTimeoutSeconds = queryTimeoutSeconds, ObservationTimeoutSeconds = observationTimeoutSeconds,
+                CatalogInventory = catalogs, CapacityInventory = capacity, SystemUsage = systemUsage,
+                ElapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        Assert.True(status == "passed", failureCode ?? "Translation inventory observation failed.");
+    }
+
     private static HashSet<string> RequiredTranslationInventoryTables(MasterAppDbContext db) =>
         new[] { typeof(AgentProfile), typeof(LegendLanguageDefinition), typeof(LegendLanguageTextUnit),
                 typeof(LegendTranslationAlignment), typeof(LegendTranslationProviderReservation),
@@ -1212,7 +1321,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     private static async Task<TranslationCatalogInventory> ReadTranslationCatalogInventoryAsync(
-        IServiceProvider provider, CancellationToken token)
+        IServiceProvider provider, CancellationToken token, bool publicMissingIdentities = false)
     {
         var registry = provider.GetRequiredService<ILegendLanguageRegistry>();
         var languages = await registry.ListEnabledTranslationLanguagesReadOnlyAsync(token);
@@ -1222,7 +1331,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         var expectedIds = manifest.Entries.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
         var localization = provider.GetRequiredService<IApplicationLocalizationService>();
         var results = new List<TranslationCatalogInventoryRow>();
-        foreach (var language in languages)
+        foreach (var language in languages.Where(item => !publicMissingIdentities || new[] { "ht", "es", "fr" }.Contains(item.Code)))
         {
             token.ThrowIfCancellationRequested();
             Assert.True(LegendLanguageIdentity.TryNormalize(language.Code, out var normalized));
@@ -1248,9 +1357,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     group.Key.Provenance, group.Key.ValidationState, group.Count()))
                 .ToArray();
             results.Add(new(catalog.LanguageCode, catalog.Entries.Count, catalog.Entries.Count - remaining,
-                remaining, catalog.IsComplete, failureCounts, provenanceCounts));
+                remaining, catalog.IsComplete, failureCounts, provenanceCounts, publicMissingIdentities
+                    ? catalog.Entries.Where(entry => entry.FailureCode is not null)
+                        .Select(entry => new PublicApplicationCopyMissingIdentity(entry.Id, entry.SourceRevision,
+                            TranslationInventoryCategory("failure", entry.FailureCode))).ToArray() : null));
         }
-        Assert.Equal(languages.Count, results.Select(row => row.LanguageCode).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(publicMissingIdentities ? 3 : languages.Count, results.Select(row => row.LanguageCode).Distinct(StringComparer.Ordinal).Count());
         return new(manifest.CatalogVersion, languages.Count, results);
     }
 
@@ -1335,7 +1447,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         IReadOnlyList<TranslationCatalogInventoryRow> Catalogs);
     private sealed record TranslationCatalogInventoryRow(string LanguageCode, int TotalEntries, int CompletedEntries,
         int RemainingEntries, bool IsComplete, IReadOnlyDictionary<string, int> FailureCounts,
-        IReadOnlyList<TranslationInventoryProvenanceCount> CompletedProvenanceCounts);
+        IReadOnlyList<TranslationInventoryProvenanceCount> CompletedProvenanceCounts,
+        IReadOnlyList<PublicApplicationCopyMissingIdentity>? MissingEntries = null);
+    private sealed record PublicApplicationCopyMissingIdentity(string Id, string SourceRevision, string FailureCode);
     private sealed record TranslationInventoryProvenanceCount(string Provider, string Provenance, string ValidationState, int Entries);
     private sealed record TranslationCapacityInventory(string Provider, DateTime ObservedAtUtc,
         DateTime MonthlyWindowStartUtc, DateTime RollingHourWindowStartUtc,
