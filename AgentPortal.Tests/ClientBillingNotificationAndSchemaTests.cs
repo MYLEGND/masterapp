@@ -62,6 +62,53 @@ public sealed class ClientBillingNotificationAndSchemaTests
     }
 
     [Fact]
+    public async Task SubscriptionTermsUpdate_DeliversBrandedLegendCard()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddProfileAsync(db);
+        var subscription = await AddSubscriptionAsync(db, profile.Id);
+        subscription.MonthlyAmountCents = 7_500;
+
+        var notifications = new ClientBillingNotificationService(db);
+        notifications.Queue(new ClientBillingNotificationRequest(
+            profile.Id,
+            subscription.Id,
+            ClientBillingNotificationKind.SubscriptionTermsUpdated,
+            $"subscription-terms-updated:{subscription.Id:N}:test",
+            AmountCents: 7_500,
+            Currency: "USD"));
+        await db.SaveChangesAsync();
+
+        var email = new Mock<IEmailSender>(MockBehavior.Strict);
+        email.Setup(sender => sender.TrySendAsync(
+                profile.Email!,
+                It.Is<string>(subject => subject.Contains("updated", StringComparison.OrdinalIgnoreCase)),
+                It.Is<string>(html =>
+                    html.Contains("LEGEND® Client Portal", StringComparison.Ordinal) &&
+                    html.Contains("next scheduled billing period", StringComparison.OrdinalIgnoreCase)),
+                It.Is<string>(body =>
+                    body.Contains("$75.00", StringComparison.Ordinal) &&
+                    body.Contains("next scheduled billing period", StringComparison.OrdinalIgnoreCase)),
+                null,
+                null,
+                null))
+            .ReturnsAsync(true);
+
+        var delivery = new ClientBillingNotificationDeliveryService(
+            db,
+            email.Object,
+            NullLogger<ClientBillingNotificationDeliveryService>.Instance);
+
+        var result = await delivery.DeliverDueAsync(10);
+
+        Assert.Equal(1, result.Selected);
+        Assert.Equal(1, result.Sent);
+        Assert.Equal(0, result.Failed);
+        Assert.NotNull((await db.ClientBillingNotifications.SingleAsync()).SentUtc);
+        email.VerifyAll();
+    }
+
+    [Fact]
     public async Task NotificationDelivery_DefersOnlyTheFailedNoticeWithTheConfiguredRetrySchedule()
     {
         await using var db = ControllerTestHelpers.BuildDb();
