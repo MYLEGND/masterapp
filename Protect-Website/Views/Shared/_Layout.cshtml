@@ -95,6 +95,7 @@
 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/design/legend-website.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 
     <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" />
@@ -165,6 +166,7 @@
 <body class="@bodyClasses">
 @if (!isStandaloneQuoteLanding)
 {
+<div class="brand-banner">PROTECT <span>•</span> PREPARE <span>•</span> STEWARD <span>•</span> LEGACY</div>
 <header>
     <nav class="navbar">
         <div class="navbar-top">
@@ -605,7 +607,6 @@
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
     })();
 </script>
-<script src="~/js/protect-design.js" asp-append-version="true" defer></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
