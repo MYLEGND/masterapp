@@ -8,9 +8,10 @@ const layouts = [
   'AgentPortal/Views/Shared/_Layout.cshtml',
   'AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml',
   'ClientApp/Views/Shared/_Layout.cshtml',
+  'Protect-Website/Views/Shared/_Layout.cshtml',
 ];
 
-test('AgentPortal and ClientApp consume one shared mobile web authority', () => {
+test('all web apps consume one shared mobile web authority', () => {
   for (const file of layouts) {
     const source = read(file);
     assert.equal(source.split('~/_content/Shared/css/legend-mobile-platform.css').length - 1, 1, file);
@@ -79,10 +80,11 @@ test('shared mobile CSS owns generic page, controls, scrolling and sheets only a
   assert.match(css, /--legend-mobile-sheet-radius/);
   assert.match(css, /--legend-mobile-tap-target/);
   assert.match(css, /-webkit-overflow-scrolling: touch/);
-  assert.match(css, /overscroll-behavior: contain/);
+  assert.match(css, /overscroll-behavior-y: contain/);
   assert.match(css, /data-legend-mobile-sheet/);
   assert.match(css, /data-legend-mobile-sheet-panel/);
-  assert.match(css, /:not\(:has\(> \.modal-dialog\)\)/);
+  assert.match(css, /\.drawer\.crm-qv-shell\[data-legend-mobile-sheet\]/);
+  assert.match(css, /> \.dbody \{[\s\S]*?overflow-y: auto/);
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/);
 });
 
@@ -159,4 +161,45 @@ test('CRM quick views are semantic dialogs with shared mobile regions', () => {
   assert.match(platform, /data-dialog-body/);
   assert.match(platform, /data-legend-mobile-sheet-open/);
   assert.match(platform, /legend-mobile-sheet-open/);
+});
+
+
+test('mobile web dimensions are sourced from the exact iOS design tokens', () => {
+  const tokens = JSON.parse(read('Legend-Design/legend-design.tokens.json'));
+  assert.equal(tokens.spacing.pageHorizontal, 16);
+  assert.equal(tokens.spacing.pageTop, 12);
+  assert.equal(tokens.spacing.cardContent, 14);
+  assert.equal(tokens.radii.control, 16);
+  assert.equal(tokens.radii.card, 20);
+  assert.equal(tokens.radii.sheet, 28);
+  assert.equal(tokens.sizes.minimumTapTarget, 44);
+  assert.equal(tokens.sizes.compactControlHeight, 36);
+  assert.equal(tokens.sizes.controlHeight, 46);
+  assert.equal(tokens.typography.title.size, 22);
+  assert.equal(tokens.typography.body.size, 16);
+  assert.equal(tokens.typography.supporting.size, 14);
+
+  const platform = read('SHARED/wwwroot/js/legend-mobile-platform.js');
+  for (const binding of [
+    'sizes.compactControlHeight',
+    'spacing.cardContent',
+    'next?.typography?.title?.size',
+    'next?.typography?.body?.size',
+    'next?.typography?.supporting?.size',
+  ]) {
+    assert.match(platform, new RegExp(binding.replace(/[?.]/g, '\\$&')));
+  }
+});
+
+test('CRM phone geometry has one owner and Quick View body remains scrollable', () => {
+  const clients = read('AgentPortal/wwwroot/css/clients-index.css');
+  const shared = read('SHARED/wwwroot/css/legend-mobile-platform.css');
+
+  for (const width of [640, 650, 700, 720, 760, 800, 820, 840]) {
+    const pattern = new RegExp('@media \\(max-width:\\s*' + width + 'px\\)[\\s\\S]*?\\.drawer\\.crm-qv-shell');
+    assert.doesNotMatch(clients, pattern);
+  }
+
+  assert.match(shared, /\.drawer\.crm-qv-shell\[data-legend-mobile-sheet\] > \.dbody \{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;/);
+  assert.match(shared, /touch-action:\s*pan-y/);
 });
