@@ -160,3 +160,45 @@ test('CRM quick views are semantic dialogs with shared mobile regions', () => {
   assert.match(platform, /data-legend-mobile-sheet-open/);
   assert.match(platform, /legend-mobile-sheet-open/);
 });
+
+
+test('Protect, Parfait and LEGEND public website consume the same mobile authority', () => {
+  const protect = read('Protect-Website/Views/Shared/_Layout.cshtml');
+  assert.match(protect, /legend-web-app legend-protect/);
+  assert.match(protect, /~\/_content\/Shared\/css\/legend-mobile-platform\.css/);
+  assert.match(protect, /~\/_content\/Shared\/js\/legend-mobile-platform\.js/);
+  assert.match(protect, /~\/_content\/Shared\/js\/legend-modal\.js/);
+
+  for (const file of [
+    'ParfaitApp/Views/Shared/_Layout.cshtml',
+    'ParfaitApp/Views/Shared/_InternalLayout.cshtml',
+    'ParfaitApp/Views/Shared/_InternalAuthLayout.cshtml',
+  ]) {
+    const source = read(file);
+    assert.match(source, /legend-web-app legend-parfait/, file);
+    assert.match(source, /~\/_content\/Shared\/css\/legend-mobile-platform\.css/, file);
+    assert.match(source, /~\/_content\/Shared\/js\/legend-mobile-platform\.js/, file);
+    assert.match(source, /~\/_content\/Shared\/js\/legend-modal\.js/, file);
+  }
+
+  for (const project of [
+    'AgentPortal/AgentPortal.csproj',
+    'ClientApp/ClientApp.csproj',
+    'Protect-Website/ProtectWebsite.csproj',
+    'ParfaitApp/ParfaitApp.csproj',
+  ]) {
+    const source = read(project);
+    assert.match(source, /Legend-Design[\\/]legend-design\.tokens\.json/, project);
+    assert.match(source, /wwwroot[\\/]design[\\/]legend-design\.tokens\.json/, project);
+  }
+
+  const parfaitProject = read('ParfaitApp/ParfaitApp.csproj');
+  assert.match(parfaitProject, /SHARED[\\/]Shared\.csproj/);
+
+  const publicBuild = read('Legend-Website/scripts/build.mjs');
+  assert.match(publicBuild, /Legend-Design\/legend-design\.tokens\.json/);
+  assert.match(publicBuild, /SHARED\/wwwroot\/css\/legend-mobile-platform\.css/);
+  assert.match(publicBuild, /SHARED\/wwwroot\/js\/legend-mobile-platform\.js/);
+  assert.match(publicBuild, /SHARED\/wwwroot\/js\/legend-modal\.js/);
+  assert.match(publicBuild, /legend-web-app legend-public-website/);
+});
