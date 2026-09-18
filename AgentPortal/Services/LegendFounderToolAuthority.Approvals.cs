@@ -9,6 +9,7 @@ using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Shared.Auth;
 
 namespace AgentPortal.Services;
 
@@ -224,8 +225,10 @@ internal sealed partial class LegendFounderToolAuthority
     private async Task<bool> ReauthorizeCloudScopeAsync(
         ClaimsPrincipal founder, FounderAiActionScope scope, CancellationToken cancellationToken)
     {
+        var binding = AuthenticatedRequestBinding.Resolve(founder, DateTime.UtcNow);
         if (_authorizationScopes is null || founder.Identity?.IsAuthenticated != true || !ValidCloudScope(scope) ||
-            !string.Equals(founder.FindFirst("sid")?.Value, scope.SessionId, StringComparison.Ordinal))
+            binding is null || !string.Equals(binding.Id, scope.SessionId, StringComparison.Ordinal) ||
+            binding.ValidUntilUtc is { } bindingExpires && scope.ExpiresUtc > bindingExpires)
             return false;
         try
         {

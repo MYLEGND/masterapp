@@ -2,6 +2,7 @@ using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
+using Shared.Auth;
 
 namespace AgentPortal.Mobile;
 
@@ -119,6 +120,13 @@ public static class MobileBearerOptions
 
         options.Events = new JwtBearerEvents
         {
+            OnTokenValidated = context =>
+            {
+                if (context.Principal is { } principal)
+                    AuthenticatedRequestBinding.AttachValidatedEntraToken(principal,
+                        context.SecurityToken.Issuer, context.SecurityToken.ValidTo, DateTime.UtcNow);
+                return Task.CompletedTask;
+            },
             OnAuthenticationFailed = context =>
             {
                 context.HttpContext.RequestServices
@@ -179,6 +187,11 @@ public static class MobileReviewBearerOptions
 
         options.Events = new JwtBearerEvents
         {
+            OnTokenValidated = context =>
+            {
+                if (context.Principal is { } principal) AuthenticatedRequestBinding.DenyDelegation(principal);
+                return Task.CompletedTask;
+            },
             OnChallenge = context =>
             {
                 context.HandleResponse();

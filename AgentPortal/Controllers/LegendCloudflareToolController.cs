@@ -90,11 +90,8 @@ public sealed class LegendCloudflareToolController(
                 scope.GetProperty("sessionId").GetString() != delegation.SessionId ||
                 scope.GetProperty("authorizationVersion").GetString() != delegation.AuthorizationVersion ||
                 !scope.GetProperty("roles").EnumerateArray().Select(x => x.GetString()).SequenceEqual(delegation.Roles)) return StatusCode(403);
-            var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
-            {
-                new Claim("oid", delegation.UserId), new Claim("tid", delegation.TenantId),
-                new Claim("sid", delegation.SessionId)
-            }, "LegendPersistedDelegation"));
+            var principal = AuthenticatedRequestBinding.CreatePersistedDelegationPrincipal(
+                delegation.UserId, delegation.TenantId, delegation.SessionId, delegation.ExpiresUtc);
             if (!FounderAuthority.Evaluate(principal, FounderGuard.FounderOid, true, _ => false)) return StatusCode(403);
             var actionScope = new FounderAiActionScope(delegation.AccountId, delegation.TenantId, delegation.UserId,
                 delegation.SessionId, conversationId.ToString("D"), operationId.ToString("D"), delegation.Roles,

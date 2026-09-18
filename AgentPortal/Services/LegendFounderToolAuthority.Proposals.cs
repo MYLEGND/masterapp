@@ -77,7 +77,7 @@ internal sealed partial class LegendFounderToolAuthority
         if (row is null || !IsIntactCloudProposal(row) || row.ExpiresUtc <= DateTime.UtcNow ||
             !TryReadCloudReviewPolicy(services.ServiceProvider, out var policy) ||
             row.AccountId != policy.AccountId || row.Environment != policy.Environment ||
-            founder.GetCanonicalTenantId() != row.TenantId || string.IsNullOrWhiteSpace(founder.FindFirst("sid")?.Value))
+            founder.GetCanonicalTenantId() != row.TenantId || AuthenticatedRequestBinding.Resolve(founder, DateTime.UtcNow) is null)
             return null;
         try
         {

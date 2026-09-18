@@ -32,10 +32,12 @@ public sealed class LegendCloudflareToolCallbackTests
     private const string Nonce = "synthetic_nonce_with_32_characters";
     private static readonly byte[] SigningKey = Enumerable.Range(1, 32).Select(value => (byte)value).ToArray();
 
-    [Fact]
-    public async Task SignedReadUsesPersistedScope_AndIdenticalReplayUsesOneDurableReadExecution()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SignedReadUsesPersistedScope_AndIdenticalReplayUsesOneDurableReadExecution(bool tokenBound)
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(tokenBound);
         var envelope = fixture.Envelope();
         var body = Encoding.UTF8.GetBytes(envelope.ToJsonString());
         var first = await fixture.PostAsync(envelope, exactBody: body);
@@ -282,13 +284,13 @@ public sealed class LegendCloudflareToolCallbackTests
         public IConfiguration Configuration { get; }
         public Guid UserMessageId { get; private set; }
         public Mock<IFounderSoftwareRemediationService> Remediation { get; } = new(MockBehavior.Strict);
-        private Fixture(MasterAppDbContext db)
+        private Fixture(MasterAppDbContext db, bool tokenBound)
         {
             _priorFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
             Environment.SetEnvironmentVariable("FOUNDER_OID", FounderId);
             Db = db;
             Scopes = ControllerTestHelpers.BuildFounderHistoryScopes(db);
-            Scope = new("account-fixture", "tenant-fixture", FounderId, "session-fixture",
+            Scope = new("account-fixture", "tenant-fixture", FounderId, tokenBound ? "entra-token." + new string('b', 64) : "session-fixture",
                 Guid.NewGuid().ToString("D"), Guid.NewGuid().ToString("D"), new[] { "Founder", "Agent" },
                 "authorization-v1", "qualification", DateTime.UtcNow.AddSeconds(90), new string('a', 64));
             const string prefix = "LegendConnect:Foundation:Cloudflare:";
@@ -301,9 +303,9 @@ public sealed class LegendCloudflareToolCallbackTests
             Remediation.Setup(value => value.GetStatusAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new { authority = "SyntheticReadOnlyStatus" });
         }
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(bool tokenBound = false)
         {
-            var fixture = new Fixture(ControllerTestHelpers.BuildDb());
+            var fixture = new Fixture(ControllerTestHelpers.BuildDb(), tokenBound);
             try
             {
                 fixture.Db.AgentProfiles.Add(new AgentProfile { AgentUserId = FounderId, AgentUpn = "fixture@example.invalid", IsActive = true });

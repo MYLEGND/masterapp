@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Shared.Auth;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -52,6 +53,22 @@ public sealed class LegendFounderCloudActionApprovalTests
             Assert.Equal(vector.GetProperty("sha256").GetString(), LegendFounderToolAuthority.ComputeCloudActionDigest(scope,
                 action.GetProperty("name").GetString()!, action.GetProperty("arguments").GetRawText()));
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ActionScopeCannotOutliveItsAuthenticatedRequestBinding(bool expired)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var scope = fixture.Scope;
+        var principal = AuthenticatedRequestBinding.CreatePersistedDelegationPrincipal(scope.UserId, scope.TenantId,
+            scope.SessionId, expired ? DateTime.UtcNow.AddSeconds(-1) : scope.ExpiresUtc.AddSeconds(-10));
+        var receipt = await fixture.NewAuthority().IssueCloudActionApprovalAsync(principal, scope, ToolName,
+            Arguments, scope.ExpiresUtc, CancellationToken.None);
+        Assert.False(receipt.Succeeded);
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
+        fixture.Remediation.VerifyNoOtherCalls();
     }
 
     [Theory]
