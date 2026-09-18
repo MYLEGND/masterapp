@@ -167,18 +167,18 @@
 @if (!isStandaloneQuoteLanding)
 {
 <div class="brand-banner">PROTECT <span>•</span> PREPARE <span>•</span> STEWARD <span>•</span> LEGACY</div>
-<header>
+<header class="site-header">
     <nav class="navbar">
         <div class="navbar-top">
             @if (isLandingPage)
             {
-                <div class="navbar-brand" aria-label="Legend">
+                <div class="navbar-brand brand" aria-label="Legend">
                     <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </div>
             }
             else
             {
-                <a class="navbar-brand" asp-controller="Home" asp-action="Index">
+                <a class="navbar-brand brand" asp-controller="Home" asp-action="Index">
                     <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </a>
 
@@ -186,7 +186,7 @@
                     <span class="nav-toggle-bars"></span>
                 </button>
 
-                <div class="nav-links" id="navLinks">
+                <div class="nav-links nav" id="navLinks">
                     <a class="nav-link" asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
                     <a class="nav-link" asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
                     <a class="nav-link" asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Get a Quote</a>
@@ -265,7 +265,7 @@
     </div>
 </div>
 
-<footer class="footer mt-auto">
+<footer class="footer site-footer mt-auto">
     <div class="footer-shell">
         <nav class="footer-seo-links" aria-label="Protection planning links">
             <a href="/Quote/Life">Life Insurance</a>
