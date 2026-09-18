@@ -23,6 +23,33 @@ public sealed class LegendConnectController : Controller
     }
 
     [HttpGet]
+    [Route("founder/legend-connect/application-copy")]
+    public async Task<IActionResult> ApplicationCopyInventory([FromQuery] string language = "ht",
+        [FromQuery] int skip = 0, [FromQuery] int take = 250, CancellationToken cancellationToken = default)
+    {
+        try { return Ok(await _service.GetApplicationCopyInventoryAsync(User, language, skip, take, cancellationToken)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException exception) { return BadRequest(new { error = exception.Message }); }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(3 * 1024 * 1024)]
+    [RequestFormLimits(ValueLengthLimit = 2 * 1024 * 1024)]
+    [Route("founder/legend-connect/application-copy/import")]
+    public async Task<IActionResult> ImportApplicationCopy([FromForm] string artifactJson, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid) return BadRequest(new { error = "Artifact JSON is required." });
+        try { return Ok(await _service.AdmitApplicationCopyArtifactAsync(User, artifactJson, cancellationToken)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException exception) { return BadRequest(new { error = exception.Message }); }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            return Conflict(new { error = "Admission conflicted with retained records. Inspect the catalog before retrying." });
+        }
+    }
+
+    [HttpGet]
     [Route("founder/legend-connect/relay")]
     public async Task<IActionResult> GetCallRelay([FromServices] FounderCallRelayService relay, CancellationToken cancellationToken) =>
         Ok(await relay.GetAsync(cancellationToken));

@@ -26,6 +26,7 @@ public sealed class FounderLegendConnectService
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly ILegendIntelligenceEvaluationService? _intelligenceEvaluation;
+    private readonly IApplicationLocalizationService? _localization;
 
     public FounderLegendConnectService(
         ILegendConnectOperations operations,
@@ -34,7 +35,8 @@ public sealed class FounderLegendConnectService
         IMessagingService? messaging = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
         IFounderSoftwareRemediationService? softwareRemediation = null,
-        ILegendIntelligenceEvaluationService? intelligenceEvaluation = null)
+        ILegendIntelligenceEvaluationService? intelligenceEvaluation = null,
+        IApplicationLocalizationService? localization = null)
     {
         _operations = operations;
         _agentProfiles = agentProfiles;
@@ -43,6 +45,39 @@ public sealed class FounderLegendConnectService
         _runtimePolicy = runtimePolicy;
         _softwareRemediation = softwareRemediation;
         _intelligenceEvaluation = intelligenceEvaluation;
+        _localization = localization;
+    }
+
+    public async Task<object> GetApplicationCopyInventoryAsync(ClaimsPrincipal user, string language,
+        int skip = 0, int take = 250, CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        if (skip < 0 || take is < 1 or > 250) throw new ArgumentException("Inventory page size must be between 1 and 250.");
+        var catalog = await (_localization ?? throw new InvalidOperationException("Application localization is unavailable."))
+            .InspectCatalogAsync(language, cancellationToken);
+        var missing = catalog.Entries.Where(entry => entry.FailureCode is not null).ToArray();
+        return new
+        {
+            catalog.CatalogVersion, catalog.SourceLanguageCode, catalog.LanguageCode,
+            catalog.GeneratedUtc, catalog.IsComplete, TotalEntries = catalog.Entries.Count,
+            MissingEntries = missing.Length, ResolvedEntries = catalog.Entries.Count - missing.Length,
+            ProviderCalls = 0, Skip = skip, Take = take,
+            NextSkip = skip + take < missing.Length ? (int?)(skip + take) : null,
+            Entries = missing.Skip(skip).Take(take).Select(entry => new
+            {
+                entry.Id, entry.Source, entry.SourceRevision, entry.Context, entry.Placeholders,
+                TranslationPolicy = entry.FailureCode == "approved_translation_unavailable" ? "ApprovedOnly" : "AzureAllowed",
+                ReuseScope = TranslationReuseScopes.Global, entry.FailureCode
+            })
+        };
+    }
+
+    public async Task<ApplicationTranslationAdmissionResult> AdmitApplicationCopyArtifactAsync(
+        ClaimsPrincipal user, string artifactJson, CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await (_localization ?? throw new InvalidOperationException("Application localization is unavailable."))
+            .AdmitArtifactAsync(artifactJson, cancellationToken);
     }
 
     public async Task<FounderLegendConnectPageVm> GetDashboardAsync(

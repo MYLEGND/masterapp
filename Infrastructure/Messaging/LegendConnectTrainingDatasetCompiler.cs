@@ -241,6 +241,9 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                 .AsNoTracking()
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.SupersededUtc == null &&
+                  // An operational artifact never grants training rights, including
+                  // when its text happens to share older eligible text units.
+                  alignment.Provenance != ApplicationLocalizationService.ArtifactProvenance &&
                   source.IsTrainingEligible &&
                   target.IsTrainingEligible
             select new

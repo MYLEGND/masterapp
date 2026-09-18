@@ -173,6 +173,11 @@ public interface IRetainedTranslationService
         CancellationToken cancellationToken = default,
         int maximumProviderBatches = int.MaxValue)
     {
+        // Implementations without an inventory projection must fail closed: zero
+        // must never fall through to the paid single-request implementation.
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumProviderBatches);
+        if (maximumProviderBatches == 0)
+            throw new NotSupportedException("This retained translator does not support read-only inventory.");
         var results = new List<RetainedTranslationResult>(requests.Count);
         foreach (var request in requests)
             results.Add(await TranslateRetainedAsync(request, cancellationToken));

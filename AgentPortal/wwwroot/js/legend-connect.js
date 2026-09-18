@@ -25,6 +25,81 @@
             : String(input);
     };
 
+    const copyPanel = document.querySelector("[data-application-copy-panel]");
+    if (copyPanel) {
+        const status = copyPanel.querySelector("[data-copy-status]");
+        const result = copyPanel.querySelector("[data-copy-result]");
+        const table = copyPanel.querySelector("[data-copy-inventory-table]");
+        const rows = copyPanel.querySelector("[data-copy-entries]");
+        const previous = copyPanel.querySelector("[data-copy-previous]");
+        const next = copyPanel.querySelector("[data-copy-next]");
+        const form = copyPanel.querySelector("[data-copy-import-form]");
+        let language = "ht";
+        let offset = 0;
+        let nextOffset = null;
+        let busy = false;
+
+        async function requestCopy(url, options, importing) {
+            if (busy) return;
+            busy = true;
+            status.textContent = "Loading…";
+            form.querySelector("button[type=submit]").disabled = true;
+            previous.disabled = next.disabled = true;
+            try {
+                const response = await fetch(url, {
+                    credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(60000),
+                    headers: { Accept: "application/json" }, ...options
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || "Error");
+                result.hidden = false;
+                copyPanel.querySelectorAll("[data-copy-value]").forEach(node => {
+                    node.textContent = String(data[node.dataset.copyValue] ?? "");
+                });
+                copyPanel.querySelectorAll("[data-copy-inventory-result]").forEach(node => node.hidden = importing);
+                copyPanel.querySelectorAll("[data-copy-import-result]").forEach(node => node.hidden = !importing);
+                table.hidden = importing;
+                rows.replaceChildren();
+                if (!importing) {
+                    offset = data.skip;
+                    nextOffset = data.nextSkip;
+                    for (const entry of (data.entries || []).slice(0, 250)) {
+                        const row = document.createElement("tr");
+                        for (const value of [entry.id + "\n" + entry.sourceRevision + "\n" + entry.context, entry.source, entry.translationPolicy]) {
+                            const cell = document.createElement("td");
+                            cell.textContent = value;
+                            row.appendChild(cell);
+                        }
+                        rows.appendChild(row);
+                    }
+                }
+                status.textContent = "Complete";
+            } catch (error) {
+                status.textContent = "Error: " + (error?.message || "Error");
+            } finally {
+                busy = false;
+                form.querySelector("button[type=submit]").disabled = false;
+                previous.disabled = offset === 0;
+                next.disabled = nextOffset === null;
+            }
+        }
+
+        const inspectCopy = skip => requestCopy("/founder/legend-connect/application-copy?language=" +
+            encodeURIComponent(language) + "&skip=" + skip + "&take=250", {}, false);
+        copyPanel.querySelectorAll("[data-copy-inventory]").forEach(link => link.addEventListener("click", event => {
+            event.preventDefault();
+            if (busy) return;
+            language = link.dataset.copyInventory;
+            void inspectCopy(0);
+        }));
+        previous.addEventListener("click", () => void inspectCopy(Math.max(0, offset - 250)));
+        next.addEventListener("click", () => { if (nextOffset !== null) void inspectCopy(nextOffset); });
+        form.addEventListener("submit", event => {
+            event.preventDefault();
+            void requestCopy(form.action, { method: "POST", body: new FormData(form) }, true);
+        });
+    }
+
     const verifiedForm =
         document.querySelector("[data-verified-target-form]");
 

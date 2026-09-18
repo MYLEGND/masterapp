@@ -1,211 +1,149 @@
-name: Direct deploy all intentional September 18 updates
+name: Direct deploy shared application translation repair
 
 on:
   push:
-    branches:
-      - feature/public-website-editor-20260918
-    paths:
-      - '.github/workflows/all-intentional-direct-release-20260918.yml'
-
+    branches: [repair/translation-admission-20260918]
+    paths: ['.github/workflows/all-intentional-direct-release-20260918.yml']
 permissions:
   contents: read
   id-token: write
-
 concurrency:
-  group: all-intentional-direct-release-20260918
+  group: september-18-direct-release
   cancel-in-progress: false
-
+env:
+  RELEASE_SHA: ${{ github.sha }}
+  EXPECTED_BASE_SHA: fd22853357d4005269a0bf73ae88602c949d8995
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment:
-      name: Production
+    timeout-minutes: 30
+    environment: Production
     steps:
-      - name: Checkout exact release candidate
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: feature/public-website-editor-20260918
-          fetch-depth: 0
-
-      - name: Record exact release SHA
-        shell: bash
-        run: echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
-
-      - name: Build LEGEND website artifact
-        working-directory: Legend-Website
-        shell: bash
+      - name: Verify current live base before publication
+        id: base
+        run: |
+          python3 - <<'PYBASE'
+          import json, os, urllib.request
+          for host in ('portal.mylegnd.com','client.mylegnd.com'):
+              with urllib.request.urlopen('https://'+host+'/_deployment-provenance.json?translation_preflight='+os.environ['RELEASE_SHA'],timeout=30) as response:
+                  actual=json.load(response)['releaseSha']
+              print(host,actual)
+              assert actual == os.environ['EXPECTED_BASE_SHA'], 'Live revision changed; rebase before deployment'
+          PYBASE
+      - name: Build exact translation candidate
+        id: build
+        continue-on-error: true
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -p:SourceRevisionId="$RELEASE_SHA"
+      - name: Verify localization retention privacy limits and original delivery
+        id: tests
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+            --filter 'FullyQualifiedName~ApplicationLocalization|FullyQualifiedName~ApplicationTranslationAdmission|FullyQualifiedName~LegendConnectTrainingDatasetGroupSplitTests|FullyQualifiedName~LegendConnectEntitlementTests|FullyQualifiedName~AzureTranslatorServiceTests|FullyQualifiedName~AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~MessagingDeferredPresentationTests|FullyQualifiedName~FounderLegendConnectLiveMetricsTests' \
+            --logger 'trx;LogFileName=translation.trx' --results-directory /tmp/translation-results
+          python3 - <<'PYTEST'
+          import xml.etree.ElementTree as ET
+          root=ET.parse('/tmp/translation-results/translation.trx')
+          cases=root.findall('.//{*}UnitTestResult')
+          assert len(cases)>0 and all(c.get('outcome')=='Passed' for c in cases)
+          assert any('ApplicationTranslationAdmissionTests' in c.get('testName','') for c in cases), 'Admission suite did not execute'
+          print('Verified passing executions:',len(cases))
+          PYTEST
+      - name: Verify shared web catalog contracts
+        id: web
+        continue-on-error: true
+        run: node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs
+      - name: Publish existing portal and client packages
+        id: package
+        if: steps.tests.outcome == 'success' && steps.web.outcome == 'success'
         run: |
           set -euo pipefail
-          npm run build
-          cp public/web.config dist/web.config
-          npm run check
-          grep -q 'instagram.com/legend.vault' dist/index.html
-          grep -q 'apps.apple.com/us/app/legend/id6798419225' dist/index.html
-          grep -q 'Legend® ios App' dist/index.html
-          ! grep -q 'brand-banner' dist/index.html
-          ! grep -q 'Live Legendary' dist/index.html
-          test -f dist/legend-public-cms.js
-
-      - name: Build and publish all affected apps
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet build AgentPortal/AgentPortal.csproj -c Release --nologo
-          dotnet build ClientApp/ClientApp.csproj -c Release --nologo
-          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo
-
-          dotnet publish AgentPortal/AgentPortal.csproj -c Release -o /tmp/agentportal-publish --no-restore
-          dotnet publish ClientApp/ClientApp.csproj -c Release -o /tmp/clientapp-publish --no-restore
-          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect-publish --no-restore
-
-          mkdir -p /tmp/agentportal-publish/wwwroot /tmp/clientapp-publish/wwwroot /tmp/protect-publish/wwwroot
-          printf '{"releaseSha":"%s","release":"all-intentional-20260918"}\n' "$RELEASE_SHA" > /tmp/agentportal-publish/wwwroot/_deployment-provenance.json
-          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json /tmp/clientapp-publish/wwwroot/_deployment-provenance.json
-          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json /tmp/protect-publish/wwwroot/_deployment-provenance.json
-          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json Legend-Website/dist/_deployment-provenance.json
-
-      - name: Run subscription activation billing and management suite
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release             --filter 'FullyQualifiedName~BillingCentralizationTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~ClientSubscriptionAdministrationTests|FullyQualifiedName~ClientAppSubscriptionRedirectTests'             --logger 'console;verbosity=minimal'
-
-      - name: Run website analytics editor scope suite
-        shell: bash
-        run: |
-          set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release             --filter 'FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~WebsiteAnalyticsDeleteLeadTests|FullyQualifiedName~WebsiteAnalyticsInitialQualityModeTests'             --logger 'console;verbosity=minimal'
-
-      - name: Guard false-alert subscription behavior
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -q 'POST_ACTIVATION_SIGNIN_SETUP_PENDING' ClientApp/Services/SubscriptionActivationService.cs
-          grep -q 'Do not submit another payment' ClientApp/Services/SubscriptionActivationService.cs
-          grep -q 'Membership Active — Sign-In Setup Pending' ClientApp/Controllers/SubscriptionActivationController.cs
-          grep -q 'activated = isActivated' ClientApp/Controllers/SubscriptionActivationController.cs
-          grep -q 'UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule' AgentPortal.Tests/BillingCentralizationTests.cs
-          grep -q 'CancelClientSubscriptionAtPeriodEnd_UsesSharedOrchestrator_AndUpdatesOwnedSubscription' AgentPortal.Tests/ClientSubscriptionAdministrationTests.cs
-
-      - name: Login to Azure
-        uses: azure/login@v2
+          dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
+          dotnet publish ClientApp/ClientApp.csproj -c Release --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$RELEASE_SHA"
+          for app in agentportal clientapp; do
+            mkdir -p "/tmp/$app-publish/wwwroot"
+            printf '{"releaseSha":"%s","release":"translation-admission-20260918"}\n' "$RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
+          done
+      - uses: azure/login@v2
+        id: azure
+        if: steps.package.outcome == 'success'
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy Protect website
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-protect
-          slot-name: Production
-          package: /tmp/protect-publish
-
-      - name: Verify Protect exact release
-        shell: bash
-        run: |
-          set -euo pipefail
-          verify() {
-            base="$1"
-            for i in {1..60}; do
-              body="$(curl --connect-timeout 5 --max-time 12 -fsSL "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
-              if printf '%s' "$body" | grep -q "$RELEASE_SHA"; then
-                return 0
-              fi
-              sleep 5
-            done
-            return 1
-          }
-          verify https://masterapp-protect.azurewebsites.net
-          verify https://protect.mylegnd.com
-          curl --connect-timeout 5 --max-time 12 -fsSL https://protect.mylegnd.com/ | grep -q '<strong>LEGEND</strong>'
-          curl --connect-timeout 5 --max-time 12 -fsSL https://protect.mylegnd.com/design/legend-public-cms.js | grep -q 'Website Editor'
-
-      - name: Deploy LEGEND website
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-website
-          slot-name: Production
-          package: Legend-Website/dist
-
-      - name: Verify LEGEND exact release
-        shell: bash
-        run: |
-          set -euo pipefail
-          verify() {
-            base="$1"
-            for i in {1..60}; do
-              body="$(curl --connect-timeout 5 --max-time 12 -fsSL "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
-              if printf '%s' "$body" | grep -q "$RELEASE_SHA"; then
-                return 0
-              fi
-              sleep 5
-            done
-            return 1
-          }
-          verify https://masterapp-website.azurewebsites.net
-          verify https://www.mylegnd.com
-          curl --connect-timeout 5 --max-time 12 -fsSL https://www.mylegnd.com/ | grep -q '<strong>LEGEND®</strong>'
-          curl --connect-timeout 5 --max-time 12 -fsSL https://www.mylegnd.com/ | grep -q 'instagram.com/legend.vault'
-          curl --connect-timeout 5 --max-time 12 -fsSL https://www.mylegnd.com/ | grep -q 'Legend® ios App'
-
-      - name: Deploy AgentPortal
+      - name: Direct deploy AgentPortal
+        id: portal
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' }}
+        continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-portal
           slot-name: Production
           package: /tmp/agentportal-publish
-
-      - name: Verify AgentPortal exact release
-        shell: bash
-        run: |
-          set -euo pipefail
-          verify() {
-            base="$1"
-            for i in {1..60}; do
-              body="$(curl --connect-timeout 5 --max-time 12 -fsSL "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
-              if printf '%s' "$body" | grep -q "$RELEASE_SHA"; then
-                return 0
-              fi
-              sleep 5
-            done
-            return 1
-          }
-          verify https://masterapp-portal.azurewebsites.net
-          verify https://portal.mylegnd.com
-          curl --connect-timeout 5 --max-time 12 -fsSL https://portal.mylegnd.com/js/website-analytics.js | grep -q 'edit-protect-website'
-
-      - name: Deploy ClientApp
+      - name: Direct deploy ClientApp
+        id: client
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' }}
+        continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-client
           slot-name: Production
           package: /tmp/clientapp-publish
-
-      - name: Verify ClientApp exact release
-        shell: bash
+      - name: Verify every deployed target and collect all failures
+        id: live
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' }}
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          verify() {
-            base="$1"
-            for i in {1..60}; do
-              body="$(curl --connect-timeout 5 --max-time 12 -fsSL "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
-              if printf '%s' "$body" | grep -q "$RELEASE_SHA"; then
-                return 0
-              fi
-              sleep 5
-            done
-            return 1
-          }
-          verify https://masterapp-client.azurewebsites.net
-          verify https://client.mylegnd.com
+          python3 - <<'PYLIVE'
+          import concurrent.futures, json, os, time, urllib.request
+          hosts=('portal.mylegnd.com','masterapp-portal.azurewebsites.net','client.mylegnd.com','masterapp-client.azurewebsites.net')
+          def verify(host):
+              end=time.monotonic()+480
+              actual=None
+              while time.monotonic()<end:
+                  try:
+                      request=urllib.request.Request('https://'+host+'/_deployment-provenance.json?release='+os.environ['RELEASE_SHA'],headers={'Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(request,timeout=15) as response: actual=json.load(response).get('releaseSha')
+                      if actual==os.environ['RELEASE_SHA']: return {'host':host,'passed':True,'actual':actual}
+                  except Exception as error: actual=type(error).__name__
+                  time.sleep(5)
+              return {'host':host,'passed':False,'actual':actual}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool: rows=list(pool.map(verify,hosts))
+          os.makedirs('/tmp/translation-results',exist_ok=True)
+          with open('/tmp/translation-results/live.json','w') as output: json.dump(rows,output,indent=2)
+          for row in rows: print(json.dumps(row))
+          assert all(row['passed'] for row in rows)
+          PYLIVE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: translation-direct-release-${{ github.sha }}
+          path: /tmp/translation-results/
+          if-no-files-found: warn
+      - name: Enforce complete direct deployment outcome
+        if: always()
+        env:
+          BASE: ${{ steps.base.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          WEB: ${{ steps.web.outcome }}
+          PACKAGE: ${{ steps.package.outcome }}
+          AZURE: ${{ steps.azure.outcome }}
+          PORTAL: ${{ steps.portal.outcome }}
+          CLIENT: ${{ steps.client.outcome }}
+          LIVE: ${{ steps.live.outcome }}
+        run: |
+          python3 - <<'PYRESULT'
+          import json,os
+          results={key:os.environ[key] for key in ('BASE','BUILD','TESTS','WEB','PACKAGE','AZURE','PORTAL','CLIENT','LIVE')}
+          print(json.dumps(results,indent=2))
+          assert all(value=='success' for value in results.values())
+          PYRESULT

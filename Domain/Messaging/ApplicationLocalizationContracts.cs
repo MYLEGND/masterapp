@@ -38,8 +38,20 @@ public sealed record ApplicationLocalizationContinuation(
 
 public interface IApplicationLocalizationService
 {
+    Task<ApplicationTranslationAdmissionResult> AdmitArtifactAsync(
+        string artifactJson, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Artifact admission is unavailable.");
+
     Task<ApplicationLocalizationCatalog> GetCatalogAsync(
         MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<ApplicationLocalizationCatalog> InspectCatalogAsync(
+        string targetLanguageCode,
+        CancellationToken cancellationToken = default);
+
+    Task<ApplicationLocalizationCatalog> PrepareCatalogAsync(
+        string targetLanguageCode,
         CancellationToken cancellationToken = default);
 
     Task<ApplicationLocalizedCopy> LocalizeAsync(
@@ -49,6 +61,28 @@ public interface IApplicationLocalizationService
         IReadOnlyDictionary<string, string>? arguments = null,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ApplicationTranslationArtifact(
+    string SchemaVersion,
+    string CatalogVersion,
+    string SourceLanguageCode,
+    string AuthoringModel,
+    string AuthoringContext,
+    IReadOnlyList<ApplicationTranslationArtifactEntry> Entries);
+
+public sealed record ApplicationTranslationArtifactEntry(
+    string Id,
+    string Source,
+    string SourceRevision,
+    string Context,
+    string TranslationPolicy,
+    string ReuseScope,
+    string LanguageCode,
+    string Text,
+    IReadOnlyList<string> Placeholders);
+
+public sealed record ApplicationTranslationAdmissionResult(
+    string CatalogVersion, string ArtifactSha256, int Imported, int Reused);
 
 /// <summary>
 /// Source marker for shared/server-owned application copy. It deliberately
