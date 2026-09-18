@@ -201,6 +201,8 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.ToolName).IsRequired().HasMaxLength(128);
             entity.Property(row => row.AuthorizationKind).IsRequired().HasMaxLength(32);
             entity.Property(row => row.CanonicalArgumentsJson).IsRequired().HasMaxLength(32768);
+            entity.Property(row => row.ReviewBindingJson).HasMaxLength(4096);
+            entity.HasIndex(row => row.ParentProposalId).IsUnique().HasFilter("[ParentProposalId] IS NOT NULL");
             entity.Property(row => row.State).IsRequired().HasMaxLength(32);
             entity.Property(row => row.IdempotencyKey).HasMaxLength(64);
             entity.Property(row => row.ResultJson).HasMaxLength(32768);

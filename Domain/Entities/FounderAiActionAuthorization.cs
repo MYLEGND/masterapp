@@ -20,7 +20,10 @@ public sealed class FounderAiActionAuthorization
     public string ToolName { get; set; } = string.Empty;
     public string AuthorizationKind { get; set; } = "FounderApproval";
     public string CanonicalArgumentsJson { get; set; } = string.Empty;
-    public DateTime ApprovedUtc { get; set; }
+    public DateTime? CreatedUtc { get; set; }
+    public DateTime? ApprovedUtc { get; set; }
+    public Guid? ParentProposalId { get; set; }
+    public string? ReviewBindingJson { get; set; }
     public DateTime ExpiresUtc { get; set; }
     public string State { get; set; } = "Approved";
     public string? IdempotencyKey { get; set; }

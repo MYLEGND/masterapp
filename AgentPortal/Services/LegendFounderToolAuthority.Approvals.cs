@@ -84,11 +84,27 @@ internal sealed partial class LegendFounderToolAuthority
         Guid approvalId;
         string claimRevision;
         DateTime approvalExpiresUtc;
+        FounderAiActionAuthorization? reviewedRepairApproval = null;
         using (var services = _authorizationScopes!.CreateScope())
         {
             var db = services.ServiceProvider.GetRequiredService<MasterAppDbContext>();
             var approval = await db.FounderAiActionAuthorizations.SingleOrDefaultAsync(
                 row => row.ActionDigest == digest, cancellationToken);
+            if (approval is null && call.Name == CloudRepairTool)
+            {
+                if (!TryReadCloudRepairArguments(arguments, out var proposal))
+                    return CloudActionFailure("cloud_action_proposal_invalid");
+                var staged = await StageCloudRepairProposalAsync(founder, scope, proposal!, cancellationToken);
+                if (!staged.Succeeded || staged.Review is not { } review)
+                    return CloudActionFailure(staged.Error?.Replace("cloud_proposal_", "cloud_action_proposal_", StringComparison.Ordinal)
+                        ?? "cloud_action_proposal_unavailable");
+                return SerializeUnbounded(new
+                {
+                    ok = true, pendingApproval = true, executed = false, githubStaged = false,
+                    proposalId = review.ProposalId, reviewDigest = review.ReviewDigest, review.Revision,
+                    reviewExpiresUtc = review.ReviewExpiresUtc, reviewUrl = $"/founder/legend-ai/actions/{review.ProposalId:D}"
+                });
+            }
             if (approval is null && readOnly)
             {
                 // A costly read also needs durable one-dispatch semantics. This
@@ -102,6 +118,12 @@ internal sealed partial class LegendFounderToolAuthority
                 approval.AuthorizationKind != (readOnly ? "ReadExecution" : "FounderApproval") ||
                 approval.ExpiresUtc <= DateTime.UtcNow)
                 return CloudActionFailure("cloud_action_approval_required");
+            if (call.Name == CloudRepairTool)
+            {
+                if (!await HasReviewedCloudRepairApprovalAsync(approval, services.ServiceProvider, cancellationToken))
+                    return CloudActionFailure("cloud_action_reviewed_proposal_required");
+                reviewedRepairApproval = approval;
+            }
             if (approval.State == "Completed" &&
                 string.Equals(approval.IdempotencyKey, call.IdempotencyKey, StringComparison.Ordinal) &&
                 approval.ResultJson is not null)
@@ -137,6 +159,15 @@ internal sealed partial class LegendFounderToolAuthority
                 return CloudActionFailure("cloud_action_scope_denied");
             }
             deadline.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(0, (approvalExpiresUtc - DateTime.UtcNow).TotalMilliseconds)));
+            if (reviewedRepairApproval is not null)
+            {
+                using var services = _authorizationScopes!.CreateScope();
+                if (!await HasReviewedCloudRepairApprovalAsync(reviewedRepairApproval, services.ServiceProvider, cancellationToken))
+                {
+                    await RecordCloudActionOutcomeAsync(approvalId, claimRevision, call.IdempotencyKey!, null);
+                    return CloudActionFailure("cloud_action_reviewed_proposal_required");
+                }
+            }
             var output = await ExecuteAuthorizedCoreAsync(founder, call with
             {
                 Arguments = arguments,
@@ -144,7 +175,7 @@ internal sealed partial class LegendFounderToolAuthority
                 // an otherwise read-only cloud callback.
                 MutationAuthorization = readOnly ? null :
                     new FounderAiMutationAuthorization(approvalId.ToString("N"), scope, digest, call.IdempotencyKey)
-            }, mode, cancellationToken, providerPolicy);
+            }, mode, cancellationToken, providerPolicy, reviewedCloudRepair: reviewedRepairApproval is not null);
             if (Encoding.UTF8.GetByteCount(output) > MaximumCloudActionBytes ||
                 !await RecordCloudActionOutcomeAsync(approvalId, claimRevision, call.IdempotencyKey!, output))
             {
@@ -241,7 +272,7 @@ internal sealed partial class LegendFounderToolAuthority
         TenantId = scope.TenantId, UserId = scope.UserId, SessionId = scope.SessionId,
         ConversationId = Guid.Parse(scope.ConversationId), RequestId = Guid.Parse(scope.RequestId),
         Environment = scope.Environment, AuthorizationVersion = scope.AuthorizationVersion,
-        ToolName = name, CanonicalArgumentsJson = arguments, ApprovedUtc = DateTime.UtcNow, ExpiresUtc = expiresUtc,
+        ToolName = name, CanonicalArgumentsJson = arguments, CreatedUtc = DateTime.UtcNow, ApprovedUtc = DateTime.UtcNow, ExpiresUtc = expiresUtc,
         AuthorizationKind = readOnly ? "ReadExecution" : "FounderApproval", State = readOnly ? "AuthorizedRead" : "Approved"
     };
 

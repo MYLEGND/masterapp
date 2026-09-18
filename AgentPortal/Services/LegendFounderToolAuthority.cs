@@ -92,9 +92,13 @@ internal sealed partial class LegendFounderToolAuthority
         // imply suitable for cloud disclosure: drilldowns can contain another
         // account's identity, retained private text or unrestricted evidence.
         return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
-            .Where(tool => IsCloudReadableTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
+            .Concat(Tools.Where(tool => JsonSerializer.SerializeToElement(tool, JsonOptions)
+                .GetProperty("name").GetString() == CloudRepairTool))
+            .Where(tool => IsCloudExposedTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
                 .GetProperty("name").GetString()!)).ToArray();
     }
+
+    private static bool IsCloudExposedTool(string name) => IsCloudReadableTool(name) || name == CloudRepairTool;
 
     private static bool IsCloudReadableTool(string name) => name is
         "legend_calculate" or "legend_capabilities" or "legend_software_remediation_status" or
@@ -398,7 +402,7 @@ internal sealed partial class LegendFounderToolAuthority
     // One tool registry and dispatcher for both transitional and cloud callers.
     private async Task<string> ExecuteAuthorizedCoreAsync(
         ClaimsPrincipal founder, FounderAiToolCall call, string mode, CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy)
+        LegendConnectExternalProviderPolicy? providerPolicy, bool reviewedCloudRepair = false)
     {
         string? diagnosticSection = null;
         string? diagnosticLanguage = null;
@@ -434,7 +438,7 @@ internal sealed partial class LegendFounderToolAuthority
 
             case "legend_capabilities":
             {
-                return SerializeUnbounded(DescribeFounderCapabilities(cloudReadExposureOnly: providerPolicy?.AllowCloudflareInference == true));
+                return SerializeUnbounded(DescribeFounderCapabilities(cloudExposureOnly: providerPolicy?.AllowCloudflareInference == true));
             }
 
             case "legend_remember_conversation_facts":
@@ -521,7 +525,7 @@ internal sealed partial class LegendFounderToolAuthority
 
                 return SerializeUnbounded(
                     await _softwareRemediation.PrepareAsync(
-                        mode,
+                        reviewedCloudRepair ? "founder" : mode,
                         new FounderSoftwareRepairProposal(baseSha, title, summary, changes),
                         cancellationToken));
             }
@@ -1921,7 +1925,7 @@ internal sealed partial class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
-    private static IReadOnlyList<object> DescribeFounderCapabilities(bool cloudReadExposureOnly = false)
+    private static IReadOnlyList<object> DescribeFounderCapabilities(bool cloudExposureOnly = false)
     {
         var capabilities = new List<object>();
         foreach (var tool in BuildFounderTools())
@@ -1940,7 +1944,7 @@ internal sealed partial class LegendFounderToolAuthority
                 : null;
             if (string.IsNullOrWhiteSpace(name))
                 continue;
-            if (cloudReadExposureOnly && !IsCloudReadableTool(name))
+            if (cloudExposureOnly && !IsCloudExposedTool(name))
                 continue;
 
             var description = root.TryGetProperty("description", out var descriptionElement)
@@ -1957,7 +1961,9 @@ internal sealed partial class LegendFounderToolAuthority
             {
                 name,
                 description,
-                access = name == "legend_remember_conversation_facts"
+                access = cloudExposureOnly && canPrepareBoundedRepair
+                    ? "founder_exact_proposal_review"
+                    : name == "legend_remember_conversation_facts"
                     ? "authenticated_conversation_state"
                     : conditionallyRestrictedResearch
                     ? "founder_governed_public_read_or_exact_authorized_restricted_read"
@@ -1967,8 +1973,8 @@ internal sealed partial class LegendFounderToolAuthority
                 restrictedClassRequiresExistingAuthorization = conditionallyRestrictedResearch,
                 zeroWrite = conditionallyRestrictedResearch,
                 canOverrideAuthorities = false,
-                canModifyRepository = canPrepareBoundedRepair,
-                canCreateIsolatedRepairBranch = canPrepareBoundedRepair,
+                canModifyRepository = canPrepareBoundedRepair && !cloudExposureOnly,
+                canCreateIsolatedRepairBranch = canPrepareBoundedRepair && !cloudExposureOnly,
                 canMergeExactApprovedRepair,
                 canDeploy = false,
                 arbitrarySql = false,

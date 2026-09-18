@@ -903,7 +903,7 @@ public sealed partial class FounderSoftwareRemediationService : IFounderSoftware
         };
     }
 
-    private static string? ValidateProposal(FounderSoftwareRepairProposal proposal)
+    internal static string? ValidateProposal(FounderSoftwareRepairProposal proposal)
     {
         if (!IsCommitSha(proposal.BaseSha))
             return "An exact immutable 40-character base SHA is required.";

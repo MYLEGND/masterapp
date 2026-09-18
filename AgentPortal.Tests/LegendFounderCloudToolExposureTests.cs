@@ -29,11 +29,11 @@ public sealed class LegendFounderCloudToolExposureTests
     private const string FounderId = "587d1166-e29b-41d4-a716-446655440099";
 
     [Fact]
-    public async Task CloudCatalogReusesExactExistingSchemas_AndExposesOnlyAuditedReads()
+    public async Task CloudCatalogReusesExactExistingSchemas_AndExposesAuditedReadsAndReviewOnlyRepair()
     {
         await using var fixture = await Fixture.CreateAsync();
         var authority = fixture.Authority();
-        var original = authority.GetAvailableTools(false, fixture.Scope.ConversationId,
+        var original = authority.GetAvailableTools(true, fixture.Scope.ConversationId,
                 LegendConnectExternalProviderPolicy.CloudflareFoundation, false)
             .Select(value => JsonSerializer.SerializeToElement(value))
             .ToDictionary(value => value.GetProperty("name").GetString()!, StringComparer.Ordinal);
@@ -43,12 +43,12 @@ public sealed class LegendFounderCloudToolExposureTests
         Assert.Equal(new[]
         {
             "legend_calculate", "legend_capabilities", "legend_client_lead_portfolio", "legend_inspect_repository",
-            "legend_provider_capacity", "legend_software_remediation_status", "legend_system_overview"
+            "legend_prepare_software_repair", "legend_provider_capacity", "legend_software_remediation_status", "legend_system_overview"
         }, exposed.Select(value => value.GetProperty("name").GetString()).Order(StringComparer.Ordinal));
         foreach (var schema in exposed)
         {
             var name = schema.GetProperty("name").GetString()!;
-            Assert.True(authority.IsReadOnly(name));
+            Assert.True(authority.IsReadOnly(name) || name == "legend_prepare_software_repair");
             Assert.Equal(original[name].GetRawText(), schema.GetRawText());
         }
         Assert.Empty(authority.GetAvailableCloudTools(fixture.Scope.ConversationId, LegendConnectExternalProviderPolicy.NativeOnly));
@@ -109,8 +109,12 @@ public sealed class LegendFounderCloudToolExposureTests
         var names = output.EnumerateArray().Select(item => item.GetProperty("name").GetString()).ToArray();
         Assert.Contains("legend_calculate", names);
         Assert.DoesNotContain("legend_metric_detail", names);
-        Assert.DoesNotContain("legend_prepare_software_repair", names);
-        Assert.Equal(7, names.Length);
+        Assert.Contains("legend_prepare_software_repair", names);
+        Assert.Equal(8, names.Length);
+        var proposal = output.EnumerateArray().Single(item => item.GetProperty("name").GetString() == "legend_prepare_software_repair");
+        Assert.Equal("founder_exact_proposal_review", proposal.GetProperty("access").GetString());
+        Assert.False(proposal.GetProperty("canModifyRepository").GetBoolean());
+        Assert.False(proposal.GetProperty("canCreateIsolatedRepairBranch").GetBoolean());
     }
 
     [Fact]
