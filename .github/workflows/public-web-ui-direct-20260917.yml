@@ -135,7 +135,7 @@ jobs:
             rmdir Protect-Website/wwwroot/design 2>/dev/null || true
           }
           trap restore EXIT
-          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
+          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --no-build --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
           pid=$!
           code=""
           for i in {1..45}; do
