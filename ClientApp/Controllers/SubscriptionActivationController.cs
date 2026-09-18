@@ -110,13 +110,17 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Status(string token)
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
+        var completed = context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
+            context.Subscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
+
         return Json(new
         {
-            ok = context.Availability == SubscriptionActivationAvailability.Ready,
+            ok = context.Availability == SubscriptionActivationAvailability.Ready || completed,
+            completed,
             state = context.Availability.ToString(),
             message = context.Message,
             subscriptionStatus = context.Subscription?.Status.ToString(),
-            entitlementReady = context.Subscription is not null
+            entitlementReady = completed
         });
     }
 
