@@ -801,17 +801,6 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         UpdateClientSubscriptionCommand command,
         CancellationToken cancellationToken = default)
     {
-        if (!command.FounderAuthorized)
-        {
-            return new ClientSubscriptionLifecycleResult(
-                false,
-                "FORBIDDEN",
-                "FOUNDER_SUBSCRIPTION_CONTROL_REQUIRED",
-                "Only the founder can update a live client subscription.",
-                null,
-                false);
-        }
-
         var subscription = await _db.ClientSubscriptions
             .FirstOrDefaultAsync(x => x.Id == command.ClientSubscriptionId, cancellationToken)
             ?? throw new InvalidOperationException($"Client subscription {command.ClientSubscriptionId} was not found.");
@@ -841,7 +830,9 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var amountCents = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
             command.PriceType,
             command.CustomMonthlyAmountCents,
-            ClientSubscriptionOfferPricing.FounderCustomMinimumCents);
+            command.FounderAuthorized
+                ? ClientSubscriptionOfferPricing.FounderCustomMinimumCents
+                : ClientSubscriptionOfferPricing.CustomMinimumCents);
         var billingAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
             command.BillingAnchorSelectionMode,
             command.SelectedBillingAnchorDay);
@@ -878,13 +869,19 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             null,
             correlationId,
             "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged.");
+        QueueNotification(
+            subscription,
+            ClientBillingNotificationKind.SubscriptionTermsUpdated,
+            $"subscription-terms-updated:{subscription.Id:N}:{nowUtc.Ticks}",
+            amountCents: amountCents,
+            currency: subscription.Currency);
         await _db.SaveChangesAsync(cancellationToken);
 
         return new ClientSubscriptionLifecycleResult(
             true,
             subscription.Status.ToString(),
             null,
-            "Subscription terms were updated for the next scheduled charge.",
+            "Subscription terms were updated for the next scheduled billing period and the client was queued for notification.",
             null,
             false,
             subscription.ProviderCustomerId,
