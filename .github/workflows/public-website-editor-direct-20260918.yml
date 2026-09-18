@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: public-website-editor-direct-20260918
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate-deploy:
@@ -134,24 +134,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          verified=0
-          for i in {1..72}; do
-            home="$(mktemp)"
-            code="$(curl -sS -L -o "$home" -w '%{http_code}' "https://protect.mylegnd.com/?ui=${GITHUB_SHA}" || true)"
-            cms_code="$(curl -sS -o /tmp/protect-cms.js -w '%{http_code}' "https://protect.mylegnd.com/design/legend-public-cms.js?ui=${GITHUB_SHA}" || true)"
-            api_code="$(curl -sS -o /tmp/protect-content.json -w '%{http_code}' 'https://protect.mylegnd.com/api/website-content/public/protect' || true)"
-            if [ "$code" = "200" ] && [ "$cms_code" = "200" ] && [ "$api_code" = "200" ] &&
-               grep -q '<strong>LEGEND</strong>' "$home" &&
-               ! grep -q 'brand-banner' "$home" &&
-               grep -q 'instagram.com/legend.vault' "$home" &&
-               grep -q 'Legend® ios App' "$home" &&
-               grep -q 'Website Editor' /tmp/protect-cms.js; then
-              verified=1
-              break
-            fi
-            sleep 5
-          done
-          test "$verified" = "1"
+          verify_host() {
+            base="$1"
+            label="$2"
+            verified=0
+            for i in {1..48}; do
+              home="/tmp/protect-${label}-home.html"
+              code="$(curl --connect-timeout 5 --max-time 12 -sS -L -o "$home" -w '%{http_code}' "$base/?ui=${GITHUB_SHA}" || true)"
+              cms_code="$(curl --connect-timeout 5 --max-time 12 -sS -o "/tmp/protect-${label}-cms.js" -w '%{http_code}' "$base/design/legend-public-cms.js?ui=${GITHUB_SHA}" || true)"
+              api_code="$(curl --connect-timeout 5 --max-time 12 -sS -o "/tmp/protect-${label}-content.json" -w '%{http_code}' "$base/api/website-content/public/protect?ui=${GITHUB_SHA}" || true)"
+              echo "$label attempt=$i home=$code cms=$cms_code api=$api_code"
+              if [ "$code" = "200" ] && [ "$cms_code" = "200" ] && [ "$api_code" = "200" ] &&
+                 grep -q '<strong>LEGEND</strong>' "$home" &&
+                 ! grep -q 'brand-banner' "$home" &&
+                 grep -q 'instagram.com/legend.vault' "$home" &&
+                 grep -q 'Legend® ios App' "$home" &&
+                 grep -q 'Website Editor' "/tmp/protect-${label}-cms.js"; then
+                verified=1
+                break
+              fi
+              sleep 5
+            done
+            test "$verified" = "1"
+          }
+
+          verify_host "https://masterapp-protect.azurewebsites.net" "azure"
+          verify_host "https://protect.mylegnd.com" "custom"
 
       - name: Deploy LEGEND public website
         uses: azure/webapps-deploy@v3
@@ -166,9 +174,9 @@ jobs:
           set -euo pipefail
           verified=0
           for i in {1..72}; do
-            curl -sS -L "https://www.mylegnd.com/?ui=${GITHUB_SHA}" -o /tmp/live-legend.html || true
-            curl -sS "https://www.mylegnd.com/site.css?ui=${GITHUB_SHA}" -o /tmp/live-legend.css || true
-            cms_code="$(curl -sS -o /tmp/live-legend-cms.js -w '%{http_code}' "https://www.mylegnd.com/legend-public-cms.js?ui=${GITHUB_SHA}" || true)"
+            curl --connect-timeout 5 --max-time 12 -sS -L "https://www.mylegnd.com/?ui=${GITHUB_SHA}" -o /tmp/live-legend.html || true
+            curl --connect-timeout 5 --max-time 12 -sS "https://www.mylegnd.com/site.css?ui=${GITHUB_SHA}" -o /tmp/live-legend.css || true
+            cms_code="$(curl --connect-timeout 5 --max-time 12 -sS -o /tmp/live-legend-cms.js -w '%{http_code}' "https://www.mylegnd.com/legend-public-cms.js?ui=${GITHUB_SHA}" || true)"
             if [ "$cms_code" = "200" ] &&
                grep -q '<strong>LEGEND®</strong>' /tmp/live-legend.html &&
                ! grep -q 'brand-banner' /tmp/live-legend.html &&
@@ -194,11 +202,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          js_code="$(curl -sS -o /tmp/live-analytics.js -w '%{http_code}' 'https://portal.mylegnd.com/js/website-analytics.js' || true)"
+          js_code="$(curl --connect-timeout 5 --max-time 12 -sS -o /tmp/live-analytics.js -w '%{http_code}' 'https://portal.mylegnd.com/js/website-analytics.js' || true)"
           test "$js_code" = "200"
           grep -q 'edit-protect-website' /tmp/live-analytics.js
           grep -q 'edit-legend-website' /tmp/live-analytics.js
-          route_code="$(curl -sS -o /dev/null -w '%{http_code}' 'https://portal.mylegnd.com/WebsiteAnalytics/edit-website?site=protect' || true)"
+          route_code="$(curl --connect-timeout 5 --max-time 12 -sS -o /dev/null -w '%{http_code}' 'https://portal.mylegnd.com/WebsiteAnalytics/edit-website?site=protect' || true)"
           case "$route_code" in
             200|302|401) ;;
             *) echo "::error::Unexpected editor entrypoint status $route_code"; exit 1;;
