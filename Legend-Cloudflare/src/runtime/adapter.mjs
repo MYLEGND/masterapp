@@ -12,8 +12,9 @@ export function parseProviderResponse(raw, model) {
   if (raw.model && raw.model !== model.id && raw.model !== model.id.slice(4)) throw new RuntimeFailure('provider_model_mismatch');
   const choice = raw.choices?.[0];
   if (choice?.finish_reason === 'length' || raw.status === 'incomplete') throw new RuntimeFailure('provider_output_truncated');
+  if (raw.status && raw.status !== 'completed') throw new RuntimeFailure('provider_not_complete');
   if (choice?.finish_reason === 'content_filter') throw new RuntimeFailure('provider_output_rejected');
-  let text = choice?.message?.content ?? raw.response;
+  let text = choice?.message?.content ?? (raw.object === 'text_completion' ? choice?.text : undefined) ?? raw.response;
   let calls = choice?.message?.tool_calls ?? raw.tool_calls ?? [];
   // Accept the documented Responses-compatible variant without returning reasoning items.
   if (Array.isArray(raw.output)) {
