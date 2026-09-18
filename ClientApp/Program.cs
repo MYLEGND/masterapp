@@ -301,6 +301,7 @@ builder.Services.AddAuthentication(options =>
 
             // Known transient OIDC state failures restart the canonical login flow
             // instead of surfacing an authentication callback HTTP 500.
+            // Keep this recovery inside the existing OpenIdConnect remote-failure authority.
             if (!IsExpiredOidcGrant(error, description) && !IsRecoverableOidcStateFailure(description))
                 return;
 
