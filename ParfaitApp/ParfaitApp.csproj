@@ -68,6 +68,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Domain\Domain.csproj" />
     <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\SHARED\Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\\Legend-Design\\legend-design.tokens.json"
+             Link="wwwroot\\design\\legend-design.tokens.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="PrunePublishArtifacts" AfterTargets="ComputeFilesToPublish">
