@@ -4499,21 +4499,12 @@ namespace AgentPortal.Controllers;
             return BadRequest(new { message = "No live subscription is available to update." });
 
         var isFounder = FounderGuard.IsFounder(User);
-        var preserveScopedSpecificAnchor =
-            !isFounder &&
-            subscription.BillingAnchorDay is not null and not 1 and not 15 &&
-            string.Equals(
-                request.SubscriptionBillingAnchorMode,
-                nameof(BillingAnchorSelectionMode.SpecificDayOfMonth),
-                StringComparison.OrdinalIgnoreCase) &&
-            request.SubscriptionBillingAnchorDay == subscription.BillingAnchorDay;
-
-        var validationAnchorMode = preserveScopedSpecificAnchor
-            ? nameof(BillingAnchorSelectionMode.FirstOfMonth)
-            : request.SubscriptionBillingAnchorMode;
-        var validationAnchorDay = preserveScopedSpecificAnchor
-            ? null
-            : request.SubscriptionBillingAnchorDay;
+        var validationAnchorMode = isFounder
+            ? request.SubscriptionBillingAnchorMode
+            : nameof(BillingAnchorSelectionMode.FirstOfMonth);
+        var validationAnchorDay = isFounder
+            ? request.SubscriptionBillingAnchorDay
+            : null;
 
         if (!TryResolveSubscriptionOfferSelection(
                 request.SubscriptionPriceType,
@@ -4530,15 +4521,6 @@ namespace AgentPortal.Controllers;
             {
                 message = subscriptionValidationError ?? "A valid subscription configuration is required."
             });
-        }
-
-        if (preserveScopedSpecificAnchor)
-        {
-            selection = selection with
-            {
-                BillingAnchorMode = BillingAnchorSelectionMode.SpecificDayOfMonth,
-                BillingAnchorDay = subscription.BillingAnchorDay
-            };
         }
 
         var update = await _billingOrchestrator.UpdateClientSubscriptionAsync(
