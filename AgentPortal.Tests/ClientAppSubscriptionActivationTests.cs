@@ -724,6 +724,61 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task ActivationStatus_AlreadyActivatedActiveSubscription_IsHealthy()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        const string token = "already-activated-status-token";
+        await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            token,
+            SubscriptionActivationInvitationStatus.Redeemed,
+            DateTime.UtcNow.AddDays(2));
+
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = profile.Id,
+            AcceptedOfferId = offer.Id,
+            OwnerAgentUserId = offer.OwnerAgentUserId,
+            MonthlyAmountCents = offer.MonthlyAmountCents,
+            Currency = offer.Currency,
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var service = BuildActivationService(
+            db,
+            new Mock<IBillingOrchestrator>(),
+            BuildActivationPolicyService());
+        var continuation = BuildContinuationService(db);
+        var controller = new SubscriptionActivationController(
+            service,
+            continuation,
+            new ClientAppReturnUrlNormalizer())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Status(token);
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = System.Text.Json.JsonSerializer.Serialize(json.Value);
+        Assert.Contains("\"ok\":true", payload);
+        Assert.Contains("\"activated\":true", payload);
+        Assert.Contains("\"subscriptionStatus\":\"Active\"", payload);
+    }
+
+    [Fact]
     public async Task ActivateAsync_ZeroDollarOffer_RequiresOnlyAcknowledgement_AndSkipsProviderPlanResolution()
     {
         using var db = BuildDb();
