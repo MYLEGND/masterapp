@@ -1,0 +1,108 @@
+@model IReadOnlyList<Domain.Entities.RuntimeDiagnosticIncident>
+@{
+    ViewData["Title"] = "Runtime diagnostics";
+    var page = ViewData["Page"] as int? ?? 1;
+    var batch = ViewData["Batch"] as Domain.Entities.FounderSoftwareRepairBatch;
+    var details = ViewData["Details"] as bool? == true;
+}
+<section class="container py-4">
+    <h1>Runtime diagnostics</h1>
+    <p>Sanitized runtime observations for Founder review. An observation does not prove a code defect. Review does not stage, merge, or publish a repair.</p>
+    <p>Records expire after 30 days without another observation. Offline, startup, and fatal crashes may be missing.</p>
+    @if (batch is not null)
+    {
+        <article class="card mb-3"><div class="card-body">
+            <h2 class="h5">Repair batch · @batch.State</h2>
+            <p>Source head: <code>@batch.HeadSha</code>. Pull request: @batch.PullRequestNumber</p>
+            <p>Staging does not deploy. Publication requests the existing protected validation workflow; it does not bypass checks.</p>
+            @if (batch.State == "Staged")
+            {
+                <form asp-action="PublishBatch" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="pullRequestNumber" value="@batch.PullRequestNumber" />
+                    <input type="hidden" name="headSha" value="@batch.HeadSha" />
+                    <label><input type="checkbox" name="confirmed" value="true" required /> I approve validation and publication of this exact reviewed batch.</label>
+                    <button type="submit" class="btn btn-primary">Publish batch</button>
+                </form>
+            }
+            else { <p>Further writes remain locked. Refresh status to inspect remote observations; this does not retry or unlock an uncertain operation.</p> }
+            <form asp-action="RefreshBatchStatus" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-secondary">Refresh remote batch status</button>
+            </form>
+            @if (ViewData["BatchObservation"] is string observation)
+            {
+                <p>Read-only observations. Successful deployment is not verified by this status refresh.</p>
+                <pre>@observation</pre>
+            }
+        </div></article>
+    }
+    @if (Model.Count == 0)
+    {
+        <p>No retained observations are available.</p>
+    }
+    @foreach (var item in Model)
+    {
+        <article class="card mb-3">
+            <div class="card-body">
+                <h2 class="h5"><a asp-action="Details" asp-route-id="@item.Id">@item.AppIdentifier · @item.Platform · @item.ErrorName</a></h2>
+                <p>@item.Summary</p>
+                <dl class="row">
+                    <dt class="col-sm-3">Category</dt><dd class="col-sm-9">@item.Category</dd>
+                    <dt class="col-sm-3">Review</dt><dd class="col-sm-9">@(item.Disposition == "ConfirmedDefect" ? "Founder-confirmed — not independently reproduced by this system" : item.Disposition)</dd>
+                    <dt class="col-sm-3">Route pattern</dt><dd class="col-sm-9"><code>@item.Route</code></dd>
+                    <dt class="col-sm-3">Status</dt><dd class="col-sm-9">@item.StatusCode</dd>
+                    <dt class="col-sm-3">Occurrences</dt><dd class="col-sm-9">@item.Occurrences</dd>
+                    <dt class="col-sm-3">Last received UTC</dt><dd class="col-sm-9">@item.LastSeenUtc.ToString("u")</dd>
+                    <dt class="col-sm-3">Release correlation</dt><dd class="col-sm-9">@(item.ReleaseVerified ? "Server assembly metadata" : "Unverified client claim or unavailable") <code>@item.GitCommitHash</code></dd>
+                </dl>
+                @if (item.Recurred) { <p>Observed again after manual closure. A successful repair has not been verified.</p> }
+                @if (details)
+                {
+                    <p>Version: @item.AppVersion</p>
+                    <p>Source: <code>@item.SourceFilePath</code></p>
+                    @if (!string.IsNullOrWhiteSpace(item.StackTrace)) { <pre>@item.StackTrace</pre> }
+                    <p>Server correlation: <code>@item.CorrelationId</code></p>
+                    <p><a asp-action="RepairContext" asp-route-id="@item.Id">Open sanitized repair context</a></p>
+                    @if (item.Disposition == "ConfirmedDefect")
+                    {
+                        <details><summary>Review and stage a prepared repair</summary>
+                            <p>No paid analysis runs automatically. Supply a reviewed proposal with baseSha, title, summary, and changes (path/content). Only bounded existing source files are eligible; sensitive changes require the normal engineering review.</p>
+                            <form asp-action="StagePatch" asp-route-id="@item.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <label for="proposal-@item.Id">Exact proposed file changes</label>
+                                <textarea id="proposal-@item.Id" name="proposalJson" maxlength="200000" rows="12" class="form-control" required></textarea>
+                                <label><input type="checkbox" name="confirmed" value="true" required /> I reviewed this exact source proposal and approve staging only.</label>
+                                <button type="submit" class="btn btn-primary">Apply patch to staging</button>
+                            </form>
+                        </details>
+                    }
+                    <form asp-action="Disposition" asp-route-id="@item.Id" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="reviewVersion" value="@item.ReviewVersion" />
+                        <label for="disposition-@item.Id">Disposition</label>
+                        <select id="disposition-@item.Id" name="disposition" class="form-select">
+                            <option value="Observed">Needs review</option>
+                            <option value="ConfirmedDefect">Founder-confirmed defect</option>
+                            <option value="Dismissed">Dismissed</option>
+                            <option value="ManuallyClosed">Manually closed (repair not verified)</option>
+                        </select>
+                        <div class="form-check my-2">
+                            <input type="checkbox" name="confirmDefect" value="true" id="confirm-@item.Id" class="form-check-input" />
+                            <label for="confirm-@item.Id" class="form-check-label">I have independently confirmed a code defect.</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save review</button>
+                    </form>
+                }
+            </div>
+        </article>
+    }
+    <nav aria-label="Diagnostic pages">
+        @if (details) { <a asp-action="Index">All observations</a> }
+        else
+        {
+            @if (page > 1) { <a asp-action="Index" asp-route-page="@(page - 1)">Previous</a> }
+            @if (ViewData["HasMore"] as bool? == true) { <a asp-action="Index" asp-route-page="@(page + 1)">Next</a> }
+        }
+    </nav>
+</section>

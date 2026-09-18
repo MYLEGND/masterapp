@@ -1,3 +1,4 @@
+using Infrastructure.Diagnostics;
 using Infrastructure.DailyScripture;
 using Infrastructure.Data;
 using Infrastructure.Billing;
@@ -377,6 +378,8 @@ async Task CompleteClientSignInAsync(TokenValidatedContext context)
         $"/Account/ActivationRequired?returnUrl={Uri.EscapeDataString(returnUrlNormalizer.Normalize(completion.ReturnUrl))}&message={Uri.EscapeDataString(completion.SanitizedMessage ?? "The client sign-in could not be completed.")}");
 }
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 
 // ------------------------------------------------------------
@@ -412,7 +415,7 @@ else
     app.UseDeveloperExceptionPage();
 }
 
-app.UseLegendFailureDiagnostics("ClientApp");
+app.UseLegendFailureDiagnostics();
 app.UseStatusCodePagesWithReExecute("/Home/ErrorStatus", "?statusCode={0}");
 
 app.UseHttpsRedirection();

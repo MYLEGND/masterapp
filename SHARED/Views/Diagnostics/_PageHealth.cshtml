@@ -1,2 +1,12 @@
-<link rel="stylesheet" href="~/_content/Shared/css/page-health.css" asp-append-version="true" />
-<script src="~/_content/Shared/js/page-health.js" asp-append-version="true"></script>
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery DiagnosticsAntiforgery
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment DiagnosticsHost
+@{
+    var diagnosticsAction = ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor;
+    // Descriptor names are application structure, never URL parameters or route values.
+    var diagnosticsRoute = diagnosticsAction is null ? "/" : $"/{diagnosticsAction.ControllerName}/{diagnosticsAction.ActionName}";
+    var diagnosticsToken = DiagnosticsAntiforgery.GetAndStoreTokens(Context).RequestToken;
+    var diagnosticsFounder = ViewData["RuntimeDiagnosticsFounder"] is true;
+}
+<script src="~/_content/Shared/js/page-health.js" asp-append-version="true"
+        data-app="@DiagnosticsHost.ApplicationName" data-route="@diagnosticsRoute"
+        data-csrf="@diagnosticsToken" data-founder="@(diagnosticsFounder ? "true" : "false")"></script>

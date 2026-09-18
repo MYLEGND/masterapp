@@ -51,7 +51,7 @@ final class MobileSocialContractTests: XCTestCase {
 
     func testExternalShareUsesCanonicalResolvableURLWithoutCredentials() throws {
         let post = UUID()
-        let api = URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: URL(string: "https://example.test")!), participantType: .agent)
+        let api = URLSessionMessagingAPI(client: MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://example.test")!), participantType: .agent)
         let url = try XCTUnwrap(api.sharedPostURL(post))
         XCTAssertEqual(url.path, "/Social/Posts/\(post.uuidString)")
         XCTAssertNil(url.query)

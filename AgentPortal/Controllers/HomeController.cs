@@ -51,15 +51,23 @@ public class HomeController : Controller
         var statusCode = diagnostics?.StatusCode ?? StatusCodes.Status500InternalServerError;
         Response.StatusCode = statusCode;
 
-        if (diagnostics is not null)
-        {
-            Response.Headers["X-Legend-Failure-Kind"] = diagnostics.FailureKind;
-            if (!string.IsNullOrWhiteSpace(diagnostics.FailingPoint))
-                Response.Headers["X-Legend-Failing-Point"] = diagnostics.FailingPoint;
-        }
+        // Detailed capture belongs to the central server authority, not the response.
+        model.Diagnostics = null;
+        Response.Headers.Remove("X-Legend-Failure-Kind");
+        Response.Headers.Remove("X-Legend-Failing-Point");
+        Response.Headers.Remove("X-Legend-Redirect-Depth");
+        Response.Headers["X-Legend-Request-Id"] = model.RequestId;
+        Response.Headers.CacheControl = "no-store";
+        ViewData["FounderDiagnosticsUrl"] = AgentPortal.Security.FounderGuard.IsFounder(User)
+            ? "/founder/diagnostics" : null;
 
-        if (diagnostics is not null && AppFailureDiagnosticsBuilder.RequestPrefersJson(Request))
-            return new ObjectResult(diagnostics) { StatusCode = statusCode };
+        if (AppFailureDiagnosticsBuilder.RequestPrefersJson(Request))
+            return new ObjectResult(new
+            {
+                error = "request_failed",
+                message = "We couldn't complete this request. Please try again.",
+                requestId = model.RequestId
+            }) { StatusCode = statusCode };
 
         return View("Error", model);
     }

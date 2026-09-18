@@ -143,11 +143,22 @@ public class AccountController : Controller
         var model = new AgentPortal.Models.ErrorViewModel
         {
             RequestId = diagnostics.RequestId,
-            Diagnostics = diagnostics
+            Diagnostics = null
         };
 
         Response.StatusCode = StatusCodes.Status403Forbidden;
-        Response.Headers["X-Legend-Failure-Kind"] = diagnostics.FailureKind;
+        Response.Headers.Remove("X-Legend-Failure-Kind");
+        Response.Headers.Remove("X-Legend-Failing-Point");
+        Response.Headers.Remove("X-Legend-Redirect-Depth");
+        Response.Headers["X-Legend-Request-Id"] = diagnostics.RequestId;
+        Response.Headers.CacheControl = "no-store";
+        if (AppFailureDiagnosticsBuilder.RequestPrefersJson(Request))
+            return new ObjectResult(new
+            {
+                error = "access_denied",
+                message = "Your current account does not have permission to perform this action.",
+                requestId = diagnostics.RequestId
+            }) { StatusCode = StatusCodes.Status403Forbidden };
         return View("~/Views/Shared/Error.cshtml", model);
     }
 

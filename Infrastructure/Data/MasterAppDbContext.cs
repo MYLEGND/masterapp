@@ -57,6 +57,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<AppointmentSyncLog> AppointmentSyncLogs => Set<AppointmentSyncLog>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
     public DbSet<AnalyticsDriftAlert> AnalyticsDriftAlerts => Set<AnalyticsDriftAlert>();
+    public DbSet<RuntimeDiagnosticIncident> RuntimeDiagnosticIncidents => Set<RuntimeDiagnosticIncident>();
+    public DbSet<FounderSoftwareRepairBatch> FounderSoftwareRepairBatches => Set<FounderSoftwareRepairBatch>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
@@ -182,6 +184,40 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<FounderSoftwareRepairBatch>(entity =>
+        {
+            entity.ToTable("FounderSoftwareRepairBatches");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.Id).HasMaxLength(32);
+            entity.Property(row => row.BaseSha).IsRequired().HasMaxLength(40);
+            entity.Property(row => row.HeadSha).HasMaxLength(40);
+            entity.Property(row => row.State).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.OperationId).HasMaxLength(64);
+            entity.Property(row => row.Revision).IsRequired().HasMaxLength(32).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<RuntimeDiagnosticIncident>(entity =>
+        {
+            entity.ToTable("RuntimeDiagnosticIncidents");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.DeduplicationKey).IsRequired().HasMaxLength(64);
+            entity.HasIndex(row => row.DeduplicationKey).IsUnique();
+            entity.Property(row => row.AppIdentifier).IsRequired().HasMaxLength(64);
+            entity.Property(row => row.Platform).IsRequired().HasMaxLength(16);
+            entity.Property(row => row.Route).IsRequired().HasMaxLength(256);
+            entity.Property(row => row.ErrorName).IsRequired().HasMaxLength(80);
+            entity.Property(row => row.Summary).IsRequired().HasMaxLength(256);
+            entity.Property(row => row.Category).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.GitCommitHash).HasMaxLength(40);
+            entity.Property(row => row.AppVersion).HasMaxLength(80);
+            entity.Property(row => row.SourceFilePath).HasMaxLength(180);
+            entity.Property(row => row.StackTrace).HasMaxLength(2300);
+            entity.Property(row => row.CorrelationId).HasMaxLength(32);
+            entity.Property(row => row.Disposition).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.ReviewVersion).IsConcurrencyToken();
+            entity.HasIndex(row => row.LastSeenUtc);
+            entity.HasIndex(row => row.ExpiresUtc);
+        });
+
         modelBuilder.Entity<LegendCallSignal>(entity =>
         {
             entity.HasKey(x => x.Id);

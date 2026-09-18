@@ -1,3 +1,5 @@
+using Infrastructure.Diagnostics;
+using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
 using ProtectWebsite.Services.Communication;
 using Azure.Identity;
@@ -134,6 +136,8 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 
 if (!IsSqlServerConn(connString))
@@ -197,6 +201,7 @@ else
     app.UseHsts();
 }
 
+app.UseLegendFailureDiagnostics();
 app.UseHttpsRedirection();
 // Agent slug routing / context must run before routing so rewritten paths are routed correctly
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();

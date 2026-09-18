@@ -116,7 +116,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseBody = Data(#"{"preferredReactionSkinTone":4}"#.utf8)
         defer { StubURLProtocol.responseBody = nil }
         for role: ParticipantType in [.client, .agent] {
-            let api: any MessagingAPI = URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: role)
+            let api: any MessagingAPI = URLSessionMessagingAPI(client: MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: role)
             let loaded = try await api.reactionPreferences(accessToken: "test-token")
             XCTAssertEqual(loaded.preferredReactionSkinTone, 4)
             let saved = try await api.setReactionPreferences(.init(preferredReactionSkinTone: 4), accessToken: "test-token")
@@ -171,7 +171,7 @@ final class MobileNativeContractTests: XCTestCase {
     func testSharedPostOpenUsesAuthenticatedCanonicalSinglePostRoute() async throws {
         StubURLProtocol.responseStatus = 404
         defer { StubURLProtocol.responseStatus = 200 }
-        let api: any MobileSocialAPI = URLSessionMobileSocialAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
+        let api: any MobileSocialAPI = URLSessionMobileSocialAPI(client: MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
         let id = UUID()
         _ = try? await api.post(id: id, accessToken: "test-token")
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
@@ -185,7 +185,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseBody = Data("[]".utf8)
         defer { StubURLProtocol.responseBody = nil }
         let api: any MessagingAPI = URLSessionMessagingAPI(
-            client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
+            client: MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent)
         _ = try await api.conversations(offset: 24, limit: 24, accessToken: "test-token")
         var request = try XCTUnwrap(StubURLProtocol.lastRequest)
         var items = try XCTUnwrap(URLComponents(url: XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems)
@@ -208,7 +208,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = Data("[]".utf8)
         defer { StubURLProtocol.responseBody = nil }
-        let client = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
+        let client = MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession())
         let api = URLSessionMobileSocialAPI(client: client, participantType: .agent)
         let profile = MobileSocialAuthor(identity: try LogicalParticipantIdentity(userID: "client-1", participantType: .client),
             profileID: "profile-1", displayName: "Client", avatar: nil)
@@ -613,7 +613,7 @@ final class MobileNativeContractTests: XCTestCase {
 
     func testMobileHTTPClientMapsUnauthorizedAndForbiddenResponses() async throws {
         StubURLProtocol.responseStatus = 401
-        let unauthorizedClient = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
+        let unauthorizedClient = MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession())
         do {
             let _: MobileBootstrapResponse = try await unauthorizedClient.get("/api/v1/mobile/session", accessToken: "token", response: MobileBootstrapResponse.self)
             XCTFail("Expected an unauthorized error")
@@ -622,7 +622,7 @@ final class MobileNativeContractTests: XCTestCase {
         }
 
         StubURLProtocol.responseStatus = 403
-        let forbiddenClient = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
+        let forbiddenClient = MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession())
         do {
             let _: MobileBootstrapResponse = try await forbiddenClient.get("/api/v1/mobile/session", accessToken: "token", response: MobileBootstrapResponse.self)
             XCTFail("Expected a forbidden error")
@@ -635,7 +635,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = Data(#"{"title":"Explore Legend","subtitle":"Welcome","introduction":"Public reading","readings":[],"guides":[],"accountTitle":"Your account","accountDescription":"Sign in","links":[]}"#.utf8)
         defer { StubURLProtocol.responseBody = nil }
-        let client = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
+        let client = MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession())
         let content = try await client.getPublic("/api/v1/mobile/guest", response: MobileGuestSnapshot.self)
         XCTAssertEqual(content.title, "Explore Legend")
         let request = try XCTUnwrap(StubURLProtocol.lastRequest)
@@ -649,7 +649,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.lastRequestTimeout = nil
 
-        let client = MobileHTTPClient(
+        let client = MobileHTTPClient(runtimeDiagnostics: nil,
             baseURL: URL(string: "https://api.example.test")!,
             session: stubSession())
         let data = try await client.getData(
@@ -662,7 +662,7 @@ final class MobileNativeContractTests: XCTestCase {
 
     func testMobileHTTPClientPreservesVersionQueriesOnProtectedResourcePaths() async throws {
         StubURLProtocol.responseStatus = 200
-        let client = MobileHTTPClient(
+        let client = MobileHTTPClient(runtimeDiagnostics: nil,
             baseURL: URL(string: "https://api.example.test/mobile")!,
             session: stubSession())
         let resources = [
@@ -894,7 +894,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseBody = try JSONEncoder().encode(metadata)
         StubURLProtocol.requests = []
         defer { StubURLProtocol.responseBody = nil; StubURLProtocol.requests = [] }
-        let api = URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .client)
+        let api = URLSessionMessagingAPI(client: MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .client)
         let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
         let resolved = expectation(description: "Authorized call target resolved")
         store.startConversation(with: recipient, includeMessages: false) { target in
@@ -1753,7 +1753,7 @@ final class MobileNativeContractTests: XCTestCase {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.responseBody = Data("{\"available\":true}".utf8)
         let store = LegendFounderAiStore(
-            client: MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession()),
+            client: MobileHTTPClient(runtimeDiagnostics: nil, baseURL: URL(string: "https://api.example.test")!, session: stubSession()),
             participantType: .agent, accessTokenProvider: { "test-token" })
         await store.resolveAvailability()
         XCTAssertTrue(store.isAvailable)

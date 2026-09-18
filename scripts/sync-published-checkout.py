@@ -2,11 +2,13 @@
 """Conservative launcher sync and read-only native checkout verification."""
 import argparse
 import fcntl
+import json
 import os
 import re
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 
 class SyncSkipped(Exception):
@@ -114,7 +116,7 @@ def sync_checkout(repo, process_probe=active_build_or_app, native=False):
         return 'Updated to ' + ('native testing ' if native else 'published production ') + published[:12] + '.'
 
 
-def check_native_checkout(repo):
+def check_native_checkout(repo, provenance_output=None):
     """Verify the build source against the existing locally known testing ref.
 
     This never fetches, updates the index, modifies source, or rejects current
@@ -122,6 +124,18 @@ def check_native_checkout(repo):
     branch; without it, locally known published production remains the target.
     """
     repo = Path(git(repo, 'rev-parse', '--show-toplevel')).resolve()
+    output = None
+    if provenance_output is not None:
+        output = Path(provenance_output).resolve()
+        git_dir = Path(git(repo, 'rev-parse', '--absolute-git-dir')).resolve()
+        common = Path(git(repo, 'rev-parse', '--git-common-dir'))
+        common = (repo / common).resolve() if not common.is_absolute() else common.resolve()
+        protected = (repo, git_dir, common, common.parent) if common.name == '.git' else (repo, git_dir, common)
+        if any(output == root or root in output.parents for root in protected):
+            raise SyncSkipped('Native provenance must be a build artifact outside the source checkout and Git directories.')
+        # Scheme pre-actions are not guaranteed build vetoes. Remove the prior
+        # artifact before validation so a later bundle phase cannot copy stale identity.
+        output.unlink(missing_ok=True)
     configured = git(repo, 'config', '--get', 'legend.nativeTestingRef', missing_ok=True)
     workflow_candidate = configured is None and os.environ.get('GITHUB_ACTIONS') == 'true'
     target = configured if configured is not None else 'refs/remotes/origin/production'
@@ -153,6 +167,22 @@ def check_native_checkout(repo):
     dirty = git(repo, 'status', '--porcelain=v1', '--untracked-files=all')
     if git(repo, 'rev-parse', 'HEAD') != head or (not workflow_candidate and git(repo, 'rev-parse', '--verify', target + '^{commit}') != published):
         raise SyncSkipped('Checkout or testing ref changed during verification; retry after the source update completes.')
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=output.parent,
+                                             prefix='.legend-provenance-', delete=False) as artifact:
+                temporary = Path(artifact.name)
+                json.dump({'schemaVersion': 1, 'gitCommitHash': head,
+                           'hasLocalChanges': bool(dirty)}, artifact, separators=(',', ':'))
+                artifact.write('\n')
+                artifact.flush()
+                os.fsync(artifact.fileno())
+            os.replace(temporary, output)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
     verified = 'existing workflow candidate' if workflow_candidate else 'locally known ref'
     return (context + f'; localChanges={len(dirty.splitlines())}. '
             f'Verified against the {verified}; no remote refresh or source mutation occurs during builds.')
@@ -163,10 +193,13 @@ def main(argv=None):
     parser.add_argument('--sync-native', action='store_true', help='Synchronize the configured native tracking checkout when editors/builds are closed; preserve conflicting work.')
     parser.add_argument('--check-native', action='store_true', help='Fail if this checkout lacks the configured locally known native testing revision; never fetch or mutate source.')
     parser.add_argument('--strict', action='store_true', help='Return a failing exit status if synchronization is skipped.')
+    parser.add_argument('--native-provenance-output', type=Path, help='With --check-native, write verified checkout metadata to a generated build artifact outside source/Git.')
     args = parser.parse_args(argv)
+    if args.native_provenance_output is not None and not args.check_native:
+        parser.error('--native-provenance-output requires --check-native')
     if args.check_native:
         try:
-            print('[LEGEND native checkout] ' + check_native_checkout(Path(__file__).resolve().parent.parent))
+            print('[LEGEND native checkout] ' + check_native_checkout(Path(__file__).resolve().parent.parent, args.native_provenance_output))
             return 0
         except (SyncSkipped, OSError, subprocess.TimeoutExpired) as error:
             message = str(error) if isinstance(error, SyncSkipped) else 'Native checkout could not be verified.'

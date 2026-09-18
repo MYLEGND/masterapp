@@ -612,6 +612,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 45B75D57C6635BF29F33424D /* Build configuration list for PBXNativeTarget "Legend" */;
 			buildPhases = (
+				127A3DC90853511C12862CD0 /* Bundle verified native provenance */,
 				9E3CD2EA366E0F8A856611DA /* Sources */,
 				EADB7468BC942A7ED477A4C4 /* Resources */,
 				9CE20B10361D083D21BC8FC2 /* Frameworks */,
@@ -762,6 +763,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		127A3DC90853511C12862CD0 /* Bundle verified native provenance */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(DERIVED_FILE_DIR)/LegendBuildProvenance.json",
+			);
+			name = "Bundle verified native provenance";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/LegendBuildProvenance.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\ntest -s \"$DERIVED_FILE_DIR/LegendBuildProvenance.json\"\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\n/bin/cp \"$DERIVED_FILE_DIR/LegendBuildProvenance.json\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/LegendBuildProvenance.json\"\n";
+			showEnvVarsInLog = 0;
+		};
 		371B69414A6E5BEA4DAACB43 /* Include verified WebRTC archive symbols */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;

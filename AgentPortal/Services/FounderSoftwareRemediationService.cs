@@ -36,6 +36,7 @@ public interface IFounderSoftwareRemediationService
     Task<object> RequestReleaseAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> ReleaseApprovedAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken);
+    Task<object> ReconcileBatchAsync(CancellationToken cancellationToken);
 }
 
 public sealed record FounderSoftwareRepairChange(string Path, string Content);
@@ -46,7 +47,7 @@ public sealed record FounderSoftwareRepairProposal(
     string Summary,
     IReadOnlyList<FounderSoftwareRepairChange> Changes);
 
-public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediationService
+public sealed partial class FounderSoftwareRemediationService : IFounderSoftwareRemediationService
 {
     private const int MaximumChanges = 6;
     private const int MaximumPathLength = 260;
@@ -94,7 +95,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     {
     }
 
-    private FounderSoftwareRemediationService(
+    internal FounderSoftwareRemediationService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<FounderSoftwareRemediationService> logger,
@@ -315,122 +316,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         if (proposalError is not null)
             return Failure("invalid_repair_proposal", proposalError);
 
-        try
-        {
-            var client = await CreateGitHubClientAsync(options, cancellationToken);
-            var currentBaseSha = await ReadBranchShaAsync(client, options, cancellationToken);
-            if (!string.Equals(currentBaseSha, proposal.BaseSha, StringComparison.OrdinalIgnoreCase))
-            {
-                return new
-                {
-                    error = "base_sha_stale",
-                    detail = "The production base moved after this repair was inspected. Re-inspect and prepare against the current immutable base SHA.",
-                    currentBaseSha
-                };
-            }
-
-            var baseTreeSha = await ReadCommitTreeShaAsync(client, options, proposal.BaseSha, cancellationToken);
-            var treeEntries = new List<object>(proposal.Changes.Count);
-            foreach (var change in proposal.Changes)
-            {
-                using var blob = await SendGitHubAsync(
-                    client,
-                    HttpMethod.Post,
-                    $"repos/{options.RepositoryIdentity}/git/blobs",
-                    new { content = change.Content, encoding = "utf-8" },
-                    cancellationToken);
-                if (!blob.IsSuccessStatusCode)
-                    return GitHubFailure("repair_blob_creation_failed", blob.StatusCode);
-
-                using var blobJson = await JsonDocument.ParseAsync(await blob.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-                var blobSha = ReadString(blobJson.RootElement, "sha");
-                if (string.IsNullOrWhiteSpace(blobSha))
-                    return Failure("repair_blob_creation_failed", "GitHub did not return an immutable blob identity.");
-
-                treeEntries.Add(new { path = change.Path, mode = "100644", type = "blob", sha = blobSha });
-            }
-
-            using var tree = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/git/trees",
-                new { base_tree = baseTreeSha, tree = treeEntries },
-                cancellationToken);
-            if (!tree.IsSuccessStatusCode)
-                return GitHubFailure("repair_tree_creation_failed", tree.StatusCode);
-
-            using var treeJson = await JsonDocument.ParseAsync(await tree.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var treeSha = ReadString(treeJson.RootElement, "sha");
-            if (string.IsNullOrWhiteSpace(treeSha))
-                return Failure("repair_tree_creation_failed", "GitHub did not return an immutable tree identity.");
-
-            using var commit = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/git/commits",
-                new { message = proposal.Title, tree = treeSha, parents = new[] { proposal.BaseSha } },
-                cancellationToken);
-            if (!commit.IsSuccessStatusCode)
-                return GitHubFailure("repair_commit_creation_failed", commit.StatusCode);
-
-            using var commitJson = await JsonDocument.ParseAsync(await commit.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var commitSha = ReadString(commitJson.RootElement, "sha");
-            if (!IsCommitSha(commitSha))
-                return Failure("repair_commit_creation_failed", "GitHub did not return a valid immutable repair commit SHA.");
-
-            var branchName = $"founder-repair/{DateTimeOffset.UtcNow:yyyyMMdd}/{Guid.NewGuid():N}";
-            using var branch = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/git/refs",
-                new { @ref = $"refs/heads/{branchName}", sha = commitSha },
-                cancellationToken);
-            if (!branch.IsSuccessStatusCode)
-                return GitHubFailure("repair_branch_creation_failed", branch.StatusCode);
-
-            using var pullRequest = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/pulls",
-                new
-                {
-                    title = proposal.Title,
-                    head = branchName,
-                    @base = options.BaseBranch,
-                    body = BuildPullRequestBody(proposal, commitSha!)
-                },
-                cancellationToken);
-            if (!pullRequest.IsSuccessStatusCode)
-                return GitHubFailure("repair_pull_request_creation_failed", pullRequest.StatusCode);
-
-            using var pullJson = await JsonDocument.ParseAsync(await pullRequest.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            return new
-            {
-                capability = "prepare_software_repair",
-                prepared = true,
-                repository = options.RepositoryIdentity,
-                baseSha = proposal.BaseSha,
-                repairCommitSha = commitSha,
-                branch = branchName,
-                pullRequestNumber = ReadOptionalInt(pullJson.RootElement, "number"),
-                pullRequestUrl = ReadString(pullJson.RootElement, "html_url"),
-                ci = "Existing pull-request Security CI is triggered by the pull request. No deployment was requested.",
-                deployment = "not_authorized"
-            };
-        }
-        catch (FounderSoftwareRemediationException exception)
-        {
-            return Failure(exception.Code, exception.Message);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "Founder software repair preparation failed without exposing credentials.");
-            return Failure("repair_preparation_unavailable", "The bounded repair could not be prepared.");
-        }
+        return await StageBatchAsync(options, proposal, cancellationToken);
     }
 
     public async Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken)
@@ -489,69 +375,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         if (pullRequestNumber <= 0 || !IsCommitSha(headSha))
             return Failure("invalid_release_identity", "A positive pull-request number and exact immutable 40-character commit SHA are required.");
 
-        try
-        {
-            var client = await CreateGitHubClientAsync(options, cancellationToken);
-            var validation = await ReadValidationAsync(client, options, pullRequestNumber, headSha, cancellationToken);
-            using var validationJson = JsonDocument.Parse(JsonSerializer.Serialize(validation, JsonOptions));
-            if (!validationJson.RootElement.TryGetProperty("eligibleForProtectedMerge", out var eligible) || !eligible.GetBoolean())
-            {
-                return new
-                {
-                    error = "release_preconditions_not_met",
-                    detail = "The exact repair SHA is not yet eligible for a protected merge. No merge or deployment was attempted.",
-                    validation = validationJson.RootElement.Clone()
-                };
-            }
-
-            var protection = await ReadBranchProtectionAsync(client, options, cancellationToken);
-            if (!protection.Satisfied)
-            {
-                return new
-                {
-                    error = "protected_branch_requirements_not_verified",
-                    detail = "The production branch does not prove the required pull-request, strict-status, and admin-enforcement protections. No merge was attempted.",
-                    protection = protection
-                };
-            }
-
-            using var merge = await SendGitHubAsync(
-                client,
-                HttpMethod.Put,
-                $"repos/{options.RepositoryIdentity}/pulls/{pullRequestNumber}/merge",
-                new { commit_title = $"Founder-approved: PR #{pullRequestNumber}", sha = headSha, merge_method = "squash" },
-                cancellationToken);
-            if (!merge.IsSuccessStatusCode)
-                return GitHubFailure("protected_merge_rejected", merge.StatusCode);
-
-            using var mergeJson = await JsonDocument.ParseAsync(await merge.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var merged = mergeJson.RootElement.TryGetProperty("merged", out var mergedElement) && mergedElement.GetBoolean();
-            if (!merged)
-                return Failure("protected_merge_rejected", ReadString(mergeJson.RootElement, "message") ?? "GitHub did not merge the exact approved SHA.");
-
-            return new
-            {
-                capability = "release_approved_repair",
-                released = true,
-                pullRequestNumber,
-                approvedHeadSha = headSha,
-                mergeCommitSha = ReadString(mergeJson.RootElement, "sha"),
-                deployment = "Existing protected-production push workflow was triggered; use verify_deployment for its exact run state."
-            };
-        }
-        catch (FounderSoftwareRemediationException exception)
-        {
-            return Failure(exception.Code, exception.Message);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "Founder-approved release failed without exposing credentials.");
-            return Failure("protected_merge_unavailable", "The protected merge could not be completed.");
-        }
+        return await PublishBatchAsync(options, pullRequestNumber, headSha, cancellationToken);
     }
 
     public async Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken)
@@ -569,7 +393,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             using var response = await SendGitHubAsync(
                 client,
                 HttpMethod.Get,
-                $"repos/{options.RepositoryIdentity}/actions/runs?event=push&head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
+                $"repos/{options.RepositoryIdentity}/actions/workflows/agentportal-production-deploy.yml/runs?head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
                 null,
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -591,7 +415,8 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             {
                 capability = "verify_deployment",
                 commitSha,
-                verifiedThrough = "existing GitHub protected-production deployment workflow",
+                verifiedThrough = "existing GitHub protected-production workflow observations (not live deployment proof)",
+                liveDeploymentVerified = false,
                 workflowRuns = runs,
                 deploymentState = runs.Length == 0 ? "not_yet_observed" : "observed",
                 directAzureAccess = false
@@ -662,7 +487,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             missingChecks,
             incompleteOrFailedChecks = failedChecks,
             checks = checksByName.Select(pair => new { name = pair.Key, conclusion = pair.Value }).ToArray(),
-            eligibleForProtectedMerge = identityMatches && validChecks,
+            eligibleForProtectedMerge = false,
+            observedChecksPassed = identityMatches && validChecks,
+            mergeAuthority = "existing production workflow only; observed check names do not authorize merging",
             deployment = "not_authorized"
         };
     }
@@ -849,7 +676,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     {
         if (options.ValidationError is not null)
             return Unavailable(options.ValidationError);
-        var state = await ReadStateAsync(cancellationToken);
+        // Authorization must observe revocation committed by another request.
+        var state = _db is null ? null : await _db.FounderSoftwareRemediationAuthorityStates
+            .AsNoTracking().SingleOrDefaultAsync(item => item.ScopeKey == "Global", cancellationToken);
         return state?.IsRevoked == true
             ? Unavailable("Founder software remediation has been revoked. Connect and verify the configured GitHub App authority before a bounded repair can be prepared or released.")
             : null;
@@ -1041,17 +870,28 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             path.StartsWith("deploy", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("appsettings", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("launchSettings", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Migrations/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Security/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Auth/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Remediation", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("RuntimeDiagnostic", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("FounderDiagnostics", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("MobileApiControllerBase", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authorization", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authentication", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Identity/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Billing/", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("Program.cs", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".pem", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        return path.StartsWith("AgentPortal/", StringComparison.Ordinal) ||
-               path.StartsWith("Infrastructure/", StringComparison.Ordinal) ||
-               path.StartsWith("Application/", StringComparison.Ordinal) ||
-               path.StartsWith("Domain/", StringComparison.Ordinal) ||
-               path.StartsWith("Shared/", StringComparison.Ordinal) ||
-               path.StartsWith("AgentPortal.Tests/", StringComparison.Ordinal);
+        // Application roots are verified from repository build metadata before writes.
+        // This is a file-type boundary, not a second hardcoded app registry.
+        return path.Contains('/') && Path.GetExtension(path).ToLowerInvariant() is
+            ".cs" or ".cshtml" or ".swift" or ".kt" or ".js" or ".ts" or ".tsx" or ".jsx" or ".css";
+
     }
 
     private static bool IsRepositorySegment(string? value) =>

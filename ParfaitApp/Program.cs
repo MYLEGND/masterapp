@@ -1,3 +1,5 @@
+using Infrastructure.Diagnostics;
+using Shared.Diagnostics;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -279,6 +281,8 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 
 {
@@ -317,6 +321,7 @@ else
     app.UseHsts();
 }
 
+app.UseLegendFailureDiagnostics();
 app.UseHttpsRedirection();
 app.Use(async (context, next) =>
 {

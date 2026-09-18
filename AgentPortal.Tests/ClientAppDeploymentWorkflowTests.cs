@@ -7,6 +7,18 @@ namespace AgentPortal.Tests;
 public sealed class ClientAppDeploymentWorkflowTests
 {
     [Fact]
+    public void UnpublishedBatchCannotEnterProductionWorkflowEvenIfPreviewIsMadeReady()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+        foreach (var job in new[] { "security", "merge" })
+        {
+            var start = workflow.IndexOf("  " + job + ":", StringComparison.Ordinal);
+            var end = workflow.IndexOf("    runs-on:", start, StringComparison.Ordinal);
+            Assert.Contains("github.event.pull_request.head.ref != 'hotfix/staging-batch'", workflow[start..end], StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void MigrationReusesCandidateBoundStartupBinariesWithoutWeakeningReleaseGates()
     {
         var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));

@@ -10,6 +10,7 @@
 @inject MasterAppDbContext Db
 
 @{
+    ViewData["RuntimeDiagnosticsFounder"] = AgentPortal.Security.FounderGuard.IsFounder(User);
     var routeClientUserId = ViewContext.RouteData.Values["clientUserId"]?.ToString() ?? "";
     var queryClientUserId = Context.Request.Query["clientUserId"].ToString() ?? "";
     var bagClientUserId = (string?)ViewBag.ClientUserId ?? "";

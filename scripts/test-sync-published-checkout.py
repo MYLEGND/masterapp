@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the launcher sync against disposable real Git repositories."""
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -192,6 +193,46 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual(self.git(self.local, 'rev-parse', 'origin/production'), remote)
         self.assertEqual((self.local / '.git/index').read_bytes(), index)
         self.assertEqual((self.local / 'app.txt').read_text(), 'current uncommitted native changes')
+
+    def test_native_provenance_uses_verified_actual_head_and_no_private_paths(self):
+        self.commit(self.local, 'ahead.txt', 'local candidate')
+        (self.local / 'uncommitted.txt').write_text('working copy')
+        output = self.root / 'DerivedData' / 'LegendBuildProvenance.json'
+        before = self.git(self.local, 'status', '--porcelain=v1')
+        sync.check_native_checkout(self.local, output)
+        payload = json.loads(output.read_text())
+        self.assertEqual(payload, {'schemaVersion': 1,
+                                  'gitCommitHash': self.git(self.local, 'rev-parse', 'HEAD'),
+                                  'hasLocalChanges': True})
+        self.assertNotIn(str(self.local), output.read_text())
+        self.assertEqual(self.git(self.local, 'status', '--porcelain=v1'), before)
+
+    def test_native_provenance_removes_stale_artifact_when_guard_rejects_checkout(self):
+        output = self.root / 'LegendBuildProvenance.json'
+        sync.check_native_checkout(self.local, output)
+        self.assertTrue(output.is_file())
+        self.publish()
+        self.git(self.local, 'fetch', 'origin')
+        with self.assertRaisesRegex(sync.SyncSkipped, 'Stale or divergent'):
+            sync.check_native_checkout(self.local, output)
+        self.assertFalse(output.exists())
+
+    def test_native_provenance_cannot_write_or_delete_source_or_git(self):
+        for output in [self.local / 'source.json', self.local / '.git' / 'metadata.json']:
+            with self.subTest(output=output):
+                output.write_text('preserve existing file')
+                with self.assertRaisesRegex(sync.SyncSkipped, 'outside the source'):
+                    sync.check_native_checkout(self.local, output)
+                self.assertEqual(output.read_text(), 'preserve existing file')
+
+    def test_native_provenance_from_worktree_cannot_write_main_checkout(self):
+        worktree = self.root / 'native-worktree'
+        self.git(self.local, 'worktree', 'add', '--detach', str(worktree), 'HEAD')
+        output = self.local / 'main-source.json'
+        output.write_text('preserve main checkout')
+        with self.assertRaisesRegex(sync.SyncSkipped, 'outside the source'):
+            sync.check_native_checkout(worktree, output)
+        self.assertEqual(output.read_text(), 'preserve main checkout')
 
     def test_native_check_fails_stale_production_without_changing_local_work(self):
         before = self.git(self.local, 'rev-parse', 'HEAD')

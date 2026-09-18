@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-5d8a94d887c1c3d1",
+  "catalogVersion": "application-copy-v1-b956e070088dc028",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -1228,6 +1228,17 @@
       "source": "Device traffic filter",
       "context": "accessibility copy",
       "sourceRevision": "11ca4b83ac957225",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0f6cfb4c83c692bb3b919d83",
+      "source": "Diagnostic pages",
+      "context": "accessibility copy",
+      "sourceRevision": "45198dcb8837a49b",
       "placeholders": [
 
       ],
@@ -8874,6 +8885,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d40253dc892936500679405c",
+      "source": "All observations",
+      "context": "visual interface copy",
+      "sourceRevision": "ca31dbf7d5c0699c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5d34e3339206f4e23220c327",
       "source": "All open items",
       "context": "visual interface copy",
@@ -9758,6 +9780,17 @@
       "source": "Apply filters",
       "context": "visual interface copy",
       "sourceRevision": "d80ab19b7edb8272",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.1671da55af3b1ee1a3731f82",
+      "source": "Apply patch to staging",
+      "context": "visual interface copy",
+      "sourceRevision": "a2905c3b81630686",
       "placeholders": [
 
       ],
@@ -14092,6 +14125,17 @@
       "source": "Categories",
       "context": "visual interface copy",
       "sourceRevision": "b8b1d894c6837252",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ff6a1763da79a47b4909dd71",
+      "source": "Category",
+      "context": "visual interface copy",
+      "sourceRevision": "292c06f0045a45d0",
       "placeholders": [
 
       ],
@@ -20689,6 +20733,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.b3464818935b8c0bba4f12a8",
+      "source": "Dismissed",
+      "context": "visual interface copy",
+      "sourceRevision": "9d74727714dba768",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.fd43df25a333ac4b524a1fe4",
       "source": "Dispatch Coverage",
       "context": "visual interface copy",
@@ -20715,6 +20770,17 @@
       "source": "Display name",
       "context": "visual interface copy",
       "sourceRevision": "2b7f6a84de917e38",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d398ee40f5569d176f9e75ea",
+      "source": "Disposition",
+      "context": "visual interface copy",
+      "sourceRevision": "8881fc89a1e24959",
       "placeholders": [
 
       ],
@@ -21690,6 +21756,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.8ef22a86fd0e40f9fe777764",
+      "source": "Edit LEGEND Website",
+      "context": "visual interface copy",
+      "sourceRevision": "26a57afb85a894ad",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.34e3075ea26954dc10fad8a3",
       "source": "Edit Lead",
       "context": "visual interface copy",
@@ -21712,10 +21789,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.aeb834fbfa218e2b5cf0473d",
+      "source": "Edit Protect Website",
+      "context": "visual interface copy",
+      "sourceRevision": "4f94ba8586a08b8b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ad7d03189336e96749db0e63",
       "source": "Edit Submission",
       "context": "visual interface copy",
       "sourceRevision": "199411050ba7493d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e9190d7e177083c28c231458",
+      "source": "Edit Website",
+      "context": "visual interface copy",
+      "sourceRevision": "9215040dee50d1e4",
       "placeholders": [
 
       ],
@@ -23092,6 +23191,17 @@
       "source": "Exact Reason",
       "context": "visual interface copy",
       "sourceRevision": "22c580a46afeeddb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c395e2d47ea60a7e8d249ac7",
+      "source": "Exact proposed file changes",
+      "context": "visual interface copy",
+      "sourceRevision": "7ceb61176ac8455a",
       "placeholders": [
 
       ],
@@ -25321,6 +25431,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0078af386ae7aa917f742261",
+      "source": "Founder-confirmed defect",
+      "context": "visual interface copy",
+      "sourceRevision": "eab1f073acda331e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.87a86a0d388313353fe06860",
       "source": "Founder-controlled compositional anchors.",
       "context": "visual interface copy",
@@ -25633,6 +25754,28 @@
       "source": "Funnel Step",
       "context": "visual interface copy",
       "sourceRevision": "72ce9f155876f7ec",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ffd3376d140b4ce4885e3990",
+      "source": "Further writes are locked while publication or an uncertain remote outcome is being reconciled.",
+      "context": "visual interface copy",
+      "sourceRevision": "c23b957a3b8af034",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0fb8b9068a3288799d1494c4",
+      "source": "Further writes remain locked. Refresh status to inspect remote observations; this does not retry or unlock an uncertain operation.",
+      "context": "visual interface copy",
+      "sourceRevision": "da48da6cdd27a8da",
       "placeholders": [
 
       ],
@@ -27699,6 +27842,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.6bf8f96437ebe65fd126248b",
+      "source": "I approve validation and publication of this exact reviewed batch.",
+      "context": "visual interface copy",
+      "sourceRevision": "64e2ad1c2fd6bba1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5b39987196bf8d487d5a7236",
       "source": "I certify the information provided is true and complete.",
       "context": "visual interface copy",
@@ -27743,10 +27897,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.826cc007e189643bc301a98a",
+      "source": "I have independently confirmed a code defect.",
+      "context": "visual interface copy",
+      "sourceRevision": "f13e6e9a7fa3a119",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.38a5398ab0fdce622af1f74b",
       "source": "I have read and agree to the confidentiality obligations.",
       "context": "visual interface copy",
       "sourceRevision": "1efdf112263f09a8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.342e71d63a56f33ac272f419",
+      "source": "I reviewed this exact source proposal and approve staging only.",
+      "context": "visual interface copy",
+      "sourceRevision": "1c19ef96e4f75ae3",
       "placeholders": [
 
       ],
@@ -30520,6 +30696,17 @@
       "source": "Last provider / Founder expansion",
       "context": "visual interface copy",
       "sourceRevision": "accb2d19c478ec86",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c1c93c3bef814e7a4d56d05f",
+      "source": "Last received UTC",
+      "context": "visual interface copy",
+      "sourceRevision": "9f27fec8706d6585",
       "placeholders": [
 
       ],
@@ -33831,6 +34018,17 @@
       "source": "Manual Base Override",
       "context": "visual interface copy",
       "sourceRevision": "d04a5b26708ca5fd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c133dc6f15eb6ec3ddbeb87d",
+      "source": "Manually closed (repair not verified)",
+      "context": "visual interface copy",
+      "sourceRevision": "e74072e7e73763e1",
       "placeholders": [
 
       ],
@@ -37381,6 +37579,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0e316652c6f79a8c1f952281",
+      "source": "No paid analysis runs automatically. Supply a reviewed proposal with baseSha, title, summary, and changes (path/content). Only bounded existing source files are eligible; sensitive changes require the normal engineering review.",
+      "context": "visual interface copy",
+      "sourceRevision": "445ffecc75a7b38a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.4b68c4059a66b1b674bb8fb1",
       "source": "No payment method available",
       "context": "visual interface copy",
@@ -37539,6 +37748,17 @@
       "source": "No records are currently in this queue.",
       "context": "visual interface copy",
       "sourceRevision": "16e7f2283e93cec4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5e7ad845212d2e6bc031f54d",
+      "source": "No retained observations are available.",
+      "context": "visual interface copy",
+      "sourceRevision": "745618b9ca34ef50",
       "placeholders": [
 
       ],
@@ -38305,6 +38525,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ed749390d419cb0ae373d303",
+      "source": "Observed again after manual closure. A successful repair has not been verified.",
+      "context": "visual interface copy",
+      "sourceRevision": "a30bc324e900d2b0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.136929f548a0fe585630ecf8",
       "source": "Occupation",
       "context": "visual interface copy",
@@ -38331,6 +38562,17 @@
       "source": "Occurred UTC:",
       "context": "visual interface copy",
       "sourceRevision": "c05de5142edc582d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6f5e0f642d0185444e56fdff",
+      "source": "Occurrences",
+      "context": "visual interface copy",
+      "sourceRevision": "6c58d39cec6d77d2",
       "placeholders": [
 
       ],
@@ -39152,6 +39394,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.4736dc24f87bfcdc71ee4009",
+      "source": "Open diagnostics",
+      "context": "visual interface copy",
+      "sourceRevision": "957dd8792d4ec086",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8b18f474a851f0208a5da0de",
       "source": "Open evaluation",
       "context": "visual interface copy",
@@ -39343,6 +39596,17 @@
       "source": "Open reports requiring a recorded decision.",
       "context": "visual interface copy",
       "sourceRevision": "aebab76a2a731e53",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.efe3115214bdf83cfd28c3f8",
+      "source": "Open sanitized repair context",
+      "context": "visual interface copy",
+      "sourceRevision": "26586a30bb354ea0",
       "placeholders": [
 
       ],
@@ -43816,6 +44080,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ce53e0c794267c2e8766ff18",
+      "source": "Publish batch",
+      "context": "visual interface copy",
+      "sourceRevision": "7e1a91e9efca759f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.c01cd72301ff8ef0589fd379",
       "source": "Published {content} will appear here.",
       "context": "visual interface copy",
@@ -44630,6 +44905,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d477a490c3f89a925e6601e8",
+      "source": "Read-only observations. Successful deployment is not verified by this status refresh.",
+      "context": "visual interface copy",
+      "sourceRevision": "4a07cf6b1b58528d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.d353a14ae212f27736c5dd65",
       "source": "Read-only visibility into bridge coverage, dispatcher execution, and authority outcomes using the existing analytics and Meta Signal records.",
       "context": "visual interface copy",
@@ -45136,6 +45422,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9bb596ab2d852ef29969f41d",
+      "source": "Records expire after 30 days without another observation. Offline, startup, and fatal crashes may be missing.",
+      "context": "visual interface copy",
+      "sourceRevision": "5911d5f0a4e091b2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ecabcea33bf0eed669a13c6a",
       "source": "Recovered",
       "context": "visual interface copy",
@@ -45305,6 +45602,17 @@
       "source": "Refresh profile",
       "context": "visual interface copy",
       "sourceRevision": "b32b3b55f102ef96",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5fbfd862c6f3835af8b68892",
+      "source": "Refresh remote batch status",
+      "context": "visual interface copy",
+      "sourceRevision": "b66c9ecacd10d1d0",
       "placeholders": [
 
       ],
@@ -45536,6 +45844,17 @@
       "source": "Relay service management",
       "context": "visual interface copy",
       "sourceRevision": "d1721de572faf1a9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9f1ab4ada7f52cb647e233ca",
+      "source": "Release correlation",
+      "context": "visual interface copy",
+      "sourceRevision": "82cabb24d8d15edf",
       "placeholders": [
 
       ],
@@ -47193,6 +47512,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.bca5c90ee0f8bc44dc43cc0f",
+      "source": "Review and stage a prepared repair",
+      "context": "visual interface copy",
+      "sourceRevision": "64523edab1678697",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8b3501f8dc84433daab07bcb",
       "source": "Review authorized connection invitations.",
       "context": "visual interface copy",
@@ -47567,6 +47897,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.387a53d4909ed8065f23bb8d",
+      "source": "Route pattern",
+      "context": "visual interface copy",
+      "sourceRevision": "0667c980621af016",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.4f59f100ee37214450e2fc5c",
       "source": "Route to Hub and clarify the real objection.",
       "context": "visual interface copy",
@@ -47670,6 +48011,17 @@
       "source": "Run Bulk Update",
       "context": "visual interface copy",
       "sourceRevision": "3e26135a0eac62f6",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e15bb0c528eadb6f85769a65",
+      "source": "Runtime diagnostics",
+      "context": "visual interface copy",
+      "sourceRevision": "892e412d7f3914a7",
       "placeholders": [
 
       ],
@@ -47956,6 +48308,17 @@
       "source": "Same-language bypasses",
       "context": "visual interface copy",
       "sourceRevision": "55a9c0728e8a9d75",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.dc62662cfc34fb705d4f433e",
+      "source": "Sanitized runtime observations for Founder review. An observation does not prove a code defect. Review does not stage, merge, or publish a repair.",
+      "context": "visual interface copy",
+      "sourceRevision": "f0281dcc337883d6",
       "placeholders": [
 
       ],
@@ -48297,6 +48660,17 @@
       "source": "Save reminder",
       "context": "visual interface copy",
       "sourceRevision": "ac7f6759f63ea99e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.58663a60da1fa5eddb4b8bd0",
+      "source": "Save review",
+      "context": "visual interface copy",
+      "sourceRevision": "e5a490bf2c3eb607",
       "placeholders": [
 
       ],
@@ -50229,6 +50603,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.cfc3021d292ce68518c56387",
+      "source": "Server correlation:",
+      "context": "visual interface copy",
+      "sourceRevision": "7c624c048c22a430",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.364d0f119cbbb8eb1bd94b55",
       "source": "Server environment",
       "context": "visual interface copy",
@@ -51814,6 +52199,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7c0abb0d5c98377e01980a2c",
+      "source": "Source head:",
+      "context": "visual interface copy",
+      "sourceRevision": "7c4ef6df561fc6d8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5404fb626183d306e52eb1e1",
       "source": "Source language",
       "context": "visual interface copy",
@@ -51851,6 +52247,17 @@
       "source": "Source training text",
       "context": "visual interface copy",
       "sourceRevision": "dc0c19f12bbe573f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.85e8658263bbf7daa1fd4d3a",
+      "source": "Source:",
+      "context": "visual interface copy",
+      "sourceRevision": "c707ee4ecc240442",
       "placeholders": [
 
       ],
@@ -52192,6 +52599,17 @@
       "source": "Stage-focused CRM workspace — drag to move, reorder by priority, drop to update instantly.",
       "context": "visual interface copy",
       "sourceRevision": "0223ed656fba19ee",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.74cdb5742d99d4c314a43709",
+      "source": "Staging does not deploy. Publication requests the existing protected validation workflow; it does not bypass checks.",
+      "context": "visual interface copy",
+      "sourceRevision": "d08fdf41efa6a566",
       "placeholders": [
 
       ],

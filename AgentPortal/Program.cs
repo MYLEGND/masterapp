@@ -1,3 +1,4 @@
+using Infrastructure.Diagnostics;
 using Infrastructure.DailyScripture;
 using AgentPortal.Hubs;
 using AgentPortal.Middleware;
@@ -689,6 +690,8 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 await app.Services
     .GetRequiredService<MigrationHealthHostedService>()
@@ -776,7 +779,7 @@ else
         browser => browser.UseDeveloperExceptionPage());
 }
 
-app.UseLegendFailureDiagnostics("AgentPortal");
+app.UseLegendFailureDiagnostics();
 app.UseWhen(
     context => MobileApiRoute.IsMobileApi(context.Request),
     mobile => mobile.UseStatusCodePages(statusContext =>

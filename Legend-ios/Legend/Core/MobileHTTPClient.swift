@@ -87,10 +87,12 @@ struct MobileHTTPClient: Sendable {
 
     let baseURL: URL
     let session: URLSession
+    private let runtimeDiagnostics: RuntimeDiagnosticReporter?
 
-    init(baseURL: URL, session: URLSession = .shared) {
+    init(runtimeDiagnostics: RuntimeDiagnosticReporter? = .shared, baseURL: URL, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.session = session
+        self.runtimeDiagnostics = runtimeDiagnostics
     }
 
     /// A protected media location for AVFoundation's byte-range loader.  The
@@ -161,6 +163,7 @@ struct MobileHTTPClient: Sendable {
                         throw MobileAPIError.invalidServerResponse
                     }
                     guard (200 ... 299).contains(http.statusCode) else {
+                        await observeRuntimeResult(request, failure: .http, statusCode: http.statusCode)
                         var body = Data()
                         for try await byte in bytes {
                             try Task.checkCancellation()
@@ -170,6 +173,7 @@ struct MobileHTTPClient: Sendable {
                         throw MobileHTTPStreamFailure(statusCode: http.statusCode, body: body)
                     }
 
+                    await observeRuntimeResult(request)
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
                         continuation.yield(line)
@@ -177,7 +181,15 @@ struct MobileHTTPClient: Sendable {
                     continuation.finish()
                 } catch {
                     if Task.isCancelled { continuation.finish() }
-                    else { continuation.finish(throwing: error) }
+                    else {
+                        if !(error is MobileHTTPStreamFailure), let url = try? endpointURL(path, queryItems: []) {
+                            var observation = URLRequest(url: url)
+                            observation.httpMethod = httpBody == nil ? "GET" : "POST"
+                            observation.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                            await observeRuntimeResult(observation, failure: .transport)
+                        }
+                        continuation.finish(throwing: error)
+                    }
                 }
             }
             continuation.onTermination = { @Sendable _ in task.cancel() }
@@ -222,12 +234,14 @@ struct MobileHTTPClient: Sendable {
         }
 
         guard (200 ... 299).contains(http.statusCode) else {
+            await observeRuntimeResult(request, failure: .http, statusCode: http.statusCode)
             let body = (try? Data(contentsOf: temporaryURL)) ?? Data()
             try? FileManager.default.removeItem(at: temporaryURL)
             _ = try validateResponse(http, body: body)
             throw MobileAPIError.invalidServerResponse
         }
 
+        await observeRuntimeResult(request)
         MobileDebugDiagnostics.record(
             "Mobile media download completed with status \(http.statusCode).",
             correlationID: http.value(forHTTPHeaderField: "X-Correlation-ID"))
@@ -419,18 +433,16 @@ struct MobileHTTPClient: Sendable {
         byteCount: Int?
     ) {
         let method = request.httpMethod ?? "?"
-        let path = request.url?.path ?? "<unknown>"
-        let query = request.url?.query.map { "?\($0)" } ?? ""
+        let path = RuntimeDiagnosticEvent.routeTemplate(request.url?.path ?? "")
         let bytes = byteCount.map { " | \($0) bytes" } ?? ""
 
         print(
             String(
                 format:
-                    "LEGEND_PERF | %@ | %@ %@%@ | %.1f ms%@",
+                    "LEGEND_PERF | %@ | %@ %@ | %.1f ms%@",
                 phase,
                 method,
                 path,
-                query,
                 milliseconds,
                 bytes))
     }
@@ -502,6 +514,7 @@ struct MobileHTTPClient: Sendable {
                 byteCount: data.count)
             #endif
 
+            await observeRuntimeResult(request, failure: .decoding)
             throw MobileAPIError.decodingFailed(correlationID: correlationID)
         }
     }
@@ -544,6 +557,9 @@ struct MobileHTTPClient: Sendable {
                 byteCount: data.count)
             #endif
 
+            if !(200...299).contains(http.statusCode) {
+                await observeRuntimeResult(request, failure: .http, statusCode: http.statusCode)
+            } else { await observeRuntimeResult(request) }
             let correlationID = try validateResponse(http, body: data)
             return (data, correlationID)
         } catch {
@@ -558,8 +574,35 @@ struct MobileHTTPClient: Sendable {
                 byteCount: nil)
             #endif
 
+            // HTTP failures were already recorded with their numeric status above.
+            if !Task.isCancelled, !(error is CancellationError) {
+                if let apiError = error as? MobileAPIError {
+                    switch apiError {
+                    case .networkUnavailable, .invalidServerResponse:
+                        await observeRuntimeResult(request, failure: .transport)
+                    default: break
+                    }
+                } else { await observeRuntimeResult(request, failure: .transport) }
+            }
             throw error
         }
+    }
+
+    private func observeRuntimeResult(
+        _ request: URLRequest,
+        failure: RuntimeDiagnosticEvent.Failure? = nil,
+        statusCode: Int? = nil
+    ) async {
+        let path = request.url?.path ?? ""
+        guard let runtimeDiagnostics, !path.hasSuffix(RuntimeDiagnosticReporter.endpoint),
+              let authorization = request.value(forHTTPHeaderField: "Authorization"),
+              authorization.hasPrefix("Bearer "), authorization.count > 7 else { return }
+        if let failure {
+            await runtimeDiagnostics.record(RuntimeDiagnosticEvent(
+                path: path, method: request.httpMethod ?? "REQUEST", failure: failure, statusCode: statusCode))
+        }
+        let accessToken = String(authorization.dropFirst(7))
+        Task { await runtimeDiagnostics.flush(client: self, accessToken: accessToken) }
     }
 
     private func performEmpty(_ request: URLRequest) async throws {
@@ -640,6 +683,7 @@ struct MobileHTTPClient: Sendable {
         do {
             return try await session.download(for: request)
         } catch let error as URLError {
+            if error.code != .cancelled { await observeRuntimeResult(request, failure: .transport) }
             switch error.code {
             case .notConnectedToInternet,
                  .networkConnectionLost,

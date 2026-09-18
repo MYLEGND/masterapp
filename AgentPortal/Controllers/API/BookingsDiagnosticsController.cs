@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Graph;
+using AgentPortal.Security;
 
 namespace AgentPortal.Controllers.API;
 
 [Authorize]
+[FounderOnly]
+[ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
 [ApiController]
 [Route("api/bookings-diagnostics")]
 public sealed class BookingsDiagnosticsController : ControllerBase

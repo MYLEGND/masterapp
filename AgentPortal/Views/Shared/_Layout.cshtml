@@ -47,6 +47,7 @@
                              string.Equals(impersonatedDisplay, impersonatedAgentId, StringComparison.OrdinalIgnoreCase);
     }
     var isFounder = AgentPortal.Security.FounderGuard.IsFounder(User);
+    ViewData["RuntimeDiagnosticsFounder"] = isFounder;
     var isOnboardingPublic = string.Equals(currentController, "OnboardingPublic", StringComparison.OrdinalIgnoreCase);
     var isFinancePage = string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase);
     var isMobileEmbeddedClientCreation = ViewData["MobileClientCreationPortalTicket"] is string mobileClientCreationTicket
@@ -791,6 +792,10 @@
                     <span>Legend® Connect</span>
                     <small>Language</small>
                 </a>
+                <a class="explore-item" data-tone="ops" href="/founder/diagnostics">
+                    <span>Diagnostics</span>
+                    <small>System</small>
+                </a>
                 <a class="explore-item" data-tone="ops" asp-controller="AgencyCommand" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                     <span>Agency Command</span>
                     <small>Ops</small>
@@ -826,29 +831,10 @@
                 <small>Utility</small>
             </a>
 
-            <div id="explorePageHealthSlot">
-                <div class="explore-group-label">System</div>
-                <button type="button" class="explore-item" data-tone="utility" id="explorePageHealthTrigger">
-                    <span>Page Health</span>
-                    <small>Diagnostics</small>
-                </button>
-            </div>
-
             @* Add unlimited items here — it auto-scrolls *@
         </div>
     </div>
 </aside>
-
-<script>
-document.getElementById("explorePageHealthTrigger")?.addEventListener("click", () => {
-    document.getElementById("exploreDrawer")?.classList.remove("open");
-    const overlay = document.getElementById("exploreOverlay");
-    overlay?.classList.remove("open", "show");
-    overlay?.setAttribute("aria-hidden", "true");
-    document.getElementById("exploreTrigger")?.setAttribute("aria-expanded", "false");
-    window.LegendPageHealth?.current.open();
-});
-</script>
 
 @await Html.PartialAsync("~/Views/Messaging/_LifeHacModal.cshtml")
 

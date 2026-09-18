@@ -20,6 +20,7 @@
 
     <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
     @RenderSection("Styles", required: false)
+    @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
 </head>
 
 <body class="d-flex flex-column min-vh-100 @bodyClass">
