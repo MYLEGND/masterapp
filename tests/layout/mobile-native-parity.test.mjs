@@ -44,7 +44,7 @@ test('standalone mobile booking uses the shared authority instead of a fourth sh
 
 test('mobile presentation reads the exact cross-platform token source', () => {
   const script = read('SHARED/wwwroot/js/legend-mobile-platform.js');
-  for (const project of ['AgentPortal/AgentPortal.csproj', 'ClientApp/ClientApp.csproj']) {
+  for (const project of ['AgentPortal/AgentPortal.csproj', 'ClientApp/ClientApp.csproj', 'Protect-Website/ProtectWebsite.csproj']) {
     const source = read(project);
     assert.match(source, /Legend-Design[\\/]legend-design\.tokens\.json/);
     assert.match(source, /wwwroot[\\/]design[\\/]legend-design\.tokens\.json/);
