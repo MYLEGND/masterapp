@@ -1,0 +1,51 @@
+{
+  "status": "passed",
+  "environment": "production-select-only",
+  "runId": 35361331762,
+  "jobId": 105653399572,
+  "candidateSha": "5726e019f45708ebe236381c2f7b81b816d51b81",
+  "observedDeployedSha": "fd22853357d4005269a0bf73ae88602c949d8995",
+  "catalogVersion": "application-copy-v1-5d8a94d887c1c3d1",
+  "selectCommands": 101,
+  "saveChangesAttempts": 0,
+  "providerClients": 0,
+  "providerHttpCalls": 0,
+  "sqlFailures": 0,
+  "sqlCanceledCommands": 0,
+  "blockedCommands": 0,
+  "principalVerified": true,
+  "physicalSourcesVerified": true,
+  "releaseProof": false,
+  "counts": [
+    {
+      "LanguageCode": "es",
+      "TotalEntries": 5845,
+      "CompletedEntries": 5169,
+      "RemainingEntries": 676,
+      "FailureCounts": {
+        "translation_pending": 670,
+        "approved_translation_unavailable": 6
+      }
+    },
+    {
+      "LanguageCode": "fr",
+      "TotalEntries": 5845,
+      "CompletedEntries": 5169,
+      "RemainingEntries": 676,
+      "FailureCounts": {
+        "translation_pending": 670,
+        "approved_translation_unavailable": 6
+      }
+    },
+    {
+      "LanguageCode": "ht",
+      "TotalEntries": 5845,
+      "CompletedEntries": 5183,
+      "RemainingEntries": 662,
+      "FailureCounts": {
+        "translation_pending": 656,
+        "approved_translation_unavailable": 6
+      }
+    }
+  ]
+}
