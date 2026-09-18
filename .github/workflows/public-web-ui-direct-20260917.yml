@@ -115,9 +115,6 @@ jobs:
         run: |
           set -euo pipefail
           cp Protect-Website/Program.cs /tmp/protect-program-original.cs
-          mkdir -p Protect-Website/wwwroot/design
-          cp Legend-Design/legend-public-web.css Protect-Website/wwwroot/design/legend-public-web.css
-          cp Legend-Design/legend-public-web.js Protect-Website/wwwroot/design/legend-public-web.js
 
           python3 - <<'PY'
           from pathlib import Path
@@ -129,6 +126,11 @@ jobs:
               raise SystemExit('Expected Key Vault registration not found')
           p.write_text(s.replace(old, '// Local UI smoke only: Key Vault registration bypassed in runner working copy.'))
           PY
+
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore --nologo
+          mkdir -p Protect-Website/wwwroot/design
+          cp Legend-Design/legend-public-web.css Protect-Website/wwwroot/design/legend-public-web.css
+          cp Legend-Design/legend-public-web.js Protect-Website/wwwroot/design/legend-public-web.js
 
           restore() {
             kill "\${pid:-}" 2>/dev/null || true
