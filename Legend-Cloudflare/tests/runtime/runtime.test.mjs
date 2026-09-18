@@ -141,3 +141,24 @@ test('cancelled tool debit is included from settled broker failure receipt', asy
   f.toolBroker = { async execute() { throw Object.assign(new Error(), { name: 'SecurityError', code: 'tool_cancelled', usage: { costMicrousd: 200, costEvidence: 'reserved_upper_bound' } }); } };
   const result = await orchestrate(f); assert.equal(result.error.code, 'tool_cancelled'); assert.equal(result.usage.costMicrousd, 203); assert.equal(result.usage.costEvidence, 'reserved_upper_bound');
 });
+test('over-reservation model settlement failure preserves observed charged usage', async () => {
+  const f = fixture();
+  f.env.AI.run = async () => ({ ...response('42'), usage: { prompt_tokens: 40000, completion_tokens: 5 } });
+  f.budget.settle = async (context, value) => { throw Object.assign(new Error(), { name: 'SecurityError', code: 'provider_cost_exceeded_reservation', usage: { costMicrousd: value.actualCostMicrousd, costEvidence: 'provider_usage' } }); };
+  const result = await orchestrate(f);
+  assert.equal(result.error.code, 'provider_cost_exceeded_reservation'); assert.equal(result.text, '');
+  assert.equal(result.usage.costMicrousd, 2038); assert.equal(result.usage.costEvidence, 'provider_usage'); assert.equal(result.usage.inputTokens, 40000);
+});
+test('lost model settlement acknowledgment retains full reserved debit', async () => {
+  const f = fixture(); f.budget.settle = async () => { throw new Error('transport unavailable'); };
+  const result = await orchestrate(f);
+  assert.equal(result.status, 'failed'); assert.equal(result.usage.costEvidence, 'reserved_upper_bound');
+  assert.equal(result.usage.costMicrousd, [...f.reservations.values()][0].maxCostMicrousd);
+  assert.equal(result.usage.inputTokens, 20); assert.equal(result.usage.outputTokens, 5);
+});
+test('lost settlement reports known actual spend when larger than reservation', async () => {
+  const f = fixture(); f.env.AI.run = async () => ({ ...response('42'), usage: { prompt_tokens: 40000, completion_tokens: 5 } });
+  f.budget.settle = async () => { throw new Error('transport unavailable'); };
+  const result = await orchestrate(f);
+  assert.equal(result.status, 'failed'); assert.equal(result.usage.costEvidence, 'reserved_upper_bound'); assert.equal(result.usage.costMicrousd, 2038);
+});

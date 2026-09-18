@@ -77,15 +77,31 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
       }
       const known = !dispatched || Boolean(output?.usage);
       const actual = output?.usage ? estimateCostMicrousd(model, output.usage.inputTokens, output.usage.outputTokens) : 0;
-      // A provider reporting more than the reservation is an accounting incident,
-      // never a reason to silently cap the observed charge or continue generation.
-      const receipt = await budget.settle(context, { reservationId, actualCostMicrousd: actual, usageKnown: known });
-      result.usage.costMicrousd += receipt.chargedMicrousd;
-      if (!known) result.usage.costEvidence = 'reserved_upper_bound';
       if (output?.usage) {
         result.usage.inputTokens += output.usage.inputTokens;
         result.usage.outputTokens += output.usage.outputTokens;
       }
+      // A provider reporting more than the reservation is an accounting incident,
+      // never a reason to silently cap the observed charge or continue generation.
+      let receipt;
+      try {
+        receipt = await budget.settle(context, { reservationId, actualCostMicrousd: actual, usageKnown: known });
+      } catch (error) {
+        const usage = error?.usage;
+        if (Number.isSafeInteger(usage?.costMicrousd) && usage.costMicrousd >= actual
+          && ['provider_usage', 'reserved_upper_bound'].includes(usage.costEvidence)) {
+          result.usage.costMicrousd += usage.costMicrousd;
+          if (usage.costEvidence === 'reserved_upper_bound') result.usage.costEvidence = 'reserved_upper_bound';
+        } else {
+          // Reservation was already debited. A lost settlement acknowledgment
+          // cannot establish a refund, even for a cancelled pre-dispatch call.
+          result.usage.costMicrousd += Math.max(reserved, actual);
+          result.usage.costEvidence = 'reserved_upper_bound';
+        }
+        throw error;
+      }
+      result.usage.costMicrousd += receipt.chargedMicrousd;
+      if (!known) result.usage.costEvidence = 'reserved_upper_bound';
       if (operationError) throw operationError;
       if (actual > reserved) throw new RuntimeFailure('provider_usage_exceeded_reservation');
       if (!known) throw new RuntimeFailure('provider_usage_unavailable');
