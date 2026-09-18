@@ -33,6 +33,9 @@ public interface IFounderSoftwareRemediationService
     Task<object> InspectRepositoryAsync(string? path, string? gitReference, CancellationToken cancellationToken);
     Task<object> PrepareAsync(string actorMode, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
+    Task<object> GetCandidateValidationReviewAsync(int pullRequestNumber, string headSha, string baseSha, string patchSha256, string trustedWorkflowSha, CancellationToken cancellationToken);
+    Task<object> RequestCandidateValidationAsync(string actorMode, int pullRequestNumber, string headSha, string baseSha, string patchSha256, string trustedWorkflowSha, string approvalActionDigest, CancellationToken cancellationToken);
+    Task<object> GetCandidateValidationAsync(long runId, string headSha, CancellationToken cancellationToken);
     Task<object> RequestReleaseAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> ReleaseApprovedAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken);
