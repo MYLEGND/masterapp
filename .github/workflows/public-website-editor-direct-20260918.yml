@@ -116,6 +116,14 @@ jobs:
           kill $pid
           trap - EXIT
 
+      - name: Package exact deployment artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/protect-publish && zip -qr /tmp/protect-editor.zip .)
+          (cd Legend-Website/dist && zip -qr /tmp/legend-editor.zip .)
+          (cd /tmp/agentportal-publish && zip -qr /tmp/agentportal-editor.zip .)
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -123,12 +131,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy Protect first
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-protect
-          slot-name: Production
-          package: /tmp/protect-publish
+      - name: Submit Protect deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp deploy             --resource-group masterapp-rg             --name masterapp-protect             --src-path /tmp/protect-editor.zip             --type zip             --clean true             --restart true             --async true             --output none
 
       - name: Verify live Protect editor authority
         shell: bash
@@ -161,12 +168,11 @@ jobs:
           verify_host "https://masterapp-protect.azurewebsites.net" "azure"
           verify_host "https://protect.mylegnd.com" "custom"
 
-      - name: Deploy LEGEND public website
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-website
-          slot-name: Production
-          package: Legend-Website/dist
+      - name: Submit LEGEND public website deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp deploy             --resource-group masterapp-rg             --name masterapp-website             --src-path /tmp/legend-editor.zip             --type zip             --clean true             --restart true             --async true             --output none
 
       - name: Verify live LEGEND public website
         shell: bash
@@ -191,12 +197,11 @@ jobs:
           done
           test "$verified" = "1"
 
-      - name: Deploy AgentPortal
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-portal
-          slot-name: Production
-          package: /tmp/agentportal-publish
+      - name: Submit AgentPortal deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp deploy             --resource-group masterapp-rg             --name masterapp-portal             --src-path /tmp/agentportal-editor.zip             --type zip             --clean true             --restart true             --async true             --output none
 
       - name: Verify live AgentPortal editor entrypoint
         shell: bash
