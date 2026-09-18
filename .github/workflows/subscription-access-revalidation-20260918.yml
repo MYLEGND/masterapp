@@ -1,0 +1,26 @@
+name: Revalidate ClientApp subscription access redirects
+
+on:
+  push:
+    branches:
+      - feature/public-website-editor-20260918
+    paths:
+      - '.github/workflows/subscription-access-revalidation-20260918.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/public-website-editor-20260918
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Run downstream access and redirect tests
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release             --filter 'FullyQualifiedName~ClientAppSubscriptionRedirectAndGrandfatheringTests'             --logger 'console;verbosity=minimal'
