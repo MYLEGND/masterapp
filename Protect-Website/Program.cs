@@ -34,8 +34,19 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 }
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector>();
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PublicWebsiteEditor", policy =>
+        policy.WithOrigins(
+                "https://www.mylegnd.com",
+                "https://mylegnd.com",
+                "https://protect.mylegnd.com")
+            .AllowAnyHeader()
+            .WithMethods("GET", "POST"));
+});
 
 // DbContext for tracking resolution
 static bool IsSqlServerConn(string? cs) =>
@@ -192,6 +203,7 @@ app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
 app.UseStaticFiles();
 app.UseRouting();
+app.UseCors("PublicWebsiteEditor");
 app.UseRateLimiter();
 
 // 🔹 Enable session BEFORE MVC
