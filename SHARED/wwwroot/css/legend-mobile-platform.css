@@ -246,7 +246,7 @@
     border: 0;
     border-bottom: 1px solid rgba(255,255,255,.08);
     background: var(--legend-mobile-navy);
-    color: #fff;
+    color: var(--legend-mobile-on-navy);
   }
 
   html[data-legend-mobile="1"] body.legend-web-app .drawer.crm-qv-shell[data-legend-mobile-sheet] > .dbody {
@@ -263,7 +263,7 @@
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
     background: var(--legend-mobile-navy);
-    color: #fff;
+    color: var(--legend-mobile-on-navy);
   }
 
   html[data-legend-mobile="1"] body.legend-web-app .drawer.crm-qv-shell .dtitle {
