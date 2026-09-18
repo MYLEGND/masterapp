@@ -203,3 +203,5 @@ jobs:
             200|302|401) ;;
             *) echo "::error::Unexpected editor entrypoint status $route_code"; exit 1;;
           esac
+
+# Candidate refresh: premium header check aligned with banner removal.
