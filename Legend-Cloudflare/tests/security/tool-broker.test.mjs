@@ -63,6 +63,20 @@ test('action digest binds user, resource, environment, revision and exact argume
     { ...call, arguments: { revision: call.arguments.revision, path: call.arguments.path } }, 'qualification'), digest);
 });
 
+test('caller mutation after invocation cannot change the signed action or transmitted arguments', async () => {
+  let sent;
+  const { broker, input } = await setup(async (_, options) => {
+    sent = JSON.parse(options.body);
+    return responseFor(sent);
+  });
+  input.call = structuredClone(call);
+  const pending = broker.execute(input);
+  input.call.arguments.path = 'unapproved/private/path';
+  await pending;
+  assert.equal(sent.call.arguments.path, call.arguments.path);
+  assert.equal(sent.actionDigest, await toolActionDigest(input.context, call, 'qualification'));
+});
+
 test('model confirmation flags grant nothing: Azure denial is enforced and no retry occurs', async () => {
   let calls = 0;
   const { broker, input } = await setup(async () => { calls++; return Response.json({ reauthorized: false }, { status: 403 }); });

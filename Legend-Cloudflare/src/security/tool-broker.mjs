@@ -55,6 +55,9 @@ export function createToolBroker({ env, context: trustedContext, budget, fetcher
       requireSecurity(call.arguments && typeof call.arguments === 'object' && !Array.isArray(call.arguments),
         'tool_arguments_invalid', 400);
       requireSecurity(encoder.encode(canonicalJson(call.arguments)).length <= 32768, 'tool_arguments_too_large', 413);
+      // Keep the approved digest, transmitted arguments and receipt comparison
+      // identical even if the caller still holds mutable provider objects.
+      call = JSON.parse(canonicalJson({ id: call.id, name: call.name, arguments: call.arguments }));
       requireSecurity(idempotencyKey === await sha256(`${context.requestId}:tool:${call.id}`), 'tool_idempotency_invalid', 400);
       const config = callbackConfiguration(env);
       const actionDigest = await toolActionDigest(context, call, config.environment);
