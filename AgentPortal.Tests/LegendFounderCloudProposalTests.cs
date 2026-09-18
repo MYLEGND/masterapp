@@ -89,6 +89,47 @@ public sealed class LegendFounderCloudProposalTests
     }
 
     [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("\t")]
+    public async Task SourceWhitespaceIsPreservedExactlyInReviewedArguments(string whitespace)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var content = "// first" + whitespace + "// second";
+        var staged = await fixture.StageAsync(Patch with { Changes = [new(Patch.Changes[0].Path, content)] });
+        Assert.True(staged.Succeeded, staged.Error);
+        using var arguments = JsonDocument.Parse(staged.Review!.CanonicalArgumentsJson);
+        Assert.Equal(content, arguments.RootElement.GetProperty("changes")[0].GetProperty("content").GetString());
+        Assert.NotNull(await fixture.Authority().GetCloudActionProposalAsync(fixture.Principal,
+            staged.Review.ProposalId, CancellationToken.None));
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("\0")]
+    [InlineData("\b")]
+    [InlineData("\v")]
+    [InlineData("\u0085")]
+    public async Task OtherControlCharactersInSourceCannotCreateAProposal(string control)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var staged = await fixture.StageAsync(Patch with { Changes = [new(Patch.Changes[0].Path, "source" + control)] });
+        Assert.False(staged.Succeeded);
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task SourceWhitespaceExceptionDoesNotApplyToProposalMetadata()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.False((await fixture.StageAsync(Patch with { Title = "Injected\ntitle" })).Succeeded);
+        Assert.False((await fixture.StageAsync(Patch with { Summary = "Injected\tsummary" })).Succeeded);
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
+    [Theory]
     [InlineData(".github/workflows/untrusted.yml")]
     [InlineData("AgentPortal/Program.cs")]
     [InlineData("AgentPortal/appsettings.json")]

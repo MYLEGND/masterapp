@@ -1591,7 +1591,9 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool IsStrictSchemaInstance(
         JsonElement schema,
-        JsonElement instance)
+        JsonElement instance,
+        bool allowRepairSourceText = false,
+        string path = "")
     {
         if (!schema.TryGetProperty("type", out var declaredTypes) ||
             !MatchesDeclaredSchemaType(declaredTypes, instance))
@@ -1614,11 +1616,12 @@ internal sealed partial class LegendFounderToolAuthority
         return instance.ValueKind switch
         {
             JsonValueKind.Object =>
-                IsStrictObjectSchemaInstance(schema, instance),
+                IsStrictObjectSchemaInstance(schema, instance, allowRepairSourceText, path),
             JsonValueKind.Array =>
-                IsStrictArraySchemaInstance(schema, instance),
+                IsStrictArraySchemaInstance(schema, instance, allowRepairSourceText, path),
             JsonValueKind.String =>
-                IsStrictStringSchemaInstance(schema, instance.GetString() ?? string.Empty),
+                IsStrictStringSchemaInstance(schema, instance.GetString() ?? string.Empty,
+                    allowRepairSourceText && path == "changes[].content"),
             JsonValueKind.Number =>
                 IsStrictNumberSchemaInstance(schema, instance),
             JsonValueKind.True or JsonValueKind.False => true,
@@ -1663,7 +1666,9 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool IsStrictObjectSchemaInstance(
         JsonElement schema,
-        JsonElement instance)
+        JsonElement instance,
+        bool allowRepairSourceText,
+        string path)
     {
         if (HasDuplicateProperties(instance) ||
             !schema.TryGetProperty("properties", out var properties) ||
@@ -1684,7 +1689,8 @@ internal sealed partial class LegendFounderToolAuthority
         foreach (var property in properties.EnumerateObject())
         {
             if (!instance.TryGetProperty(property.Name, out var value) ||
-                !IsStrictSchemaInstance(property.Value, value))
+                !IsStrictSchemaInstance(property.Value, value, allowRepairSourceText,
+                    path.Length == 0 ? property.Name : path + "." + property.Name))
             {
                 return false;
             }
@@ -1694,7 +1700,9 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool IsStrictArraySchemaInstance(
         JsonElement schema,
-        JsonElement instance)
+        JsonElement instance,
+        bool allowRepairSourceText,
+        string path)
     {
         var length = instance.GetArrayLength();
         if (schema.TryGetProperty("minItems", out var minimum) &&
@@ -1709,14 +1717,18 @@ internal sealed partial class LegendFounderToolAuthority
         }
         return schema.TryGetProperty("items", out var items) &&
             items.ValueKind == JsonValueKind.Object &&
-            instance.EnumerateArray().All(item => IsStrictSchemaInstance(items, item));
+            instance.EnumerateArray().All(item => IsStrictSchemaInstance(items, item, allowRepairSourceText, path + "[]"));
     }
 
     private static bool IsStrictStringSchemaInstance(
         JsonElement schema,
-        string instance)
+        string instance,
+        bool allowSourceWhitespace = false)
     {
-        if (instance.Any(char.IsControl))
+        // Only the exact repair changes[].content field permits source-code
+        // whitespace. The original text and its byte/length bounds are retained.
+        if (instance.Any(character => char.IsControl(character) &&
+            !(allowSourceWhitespace && character is '\r' or '\n' or '\t')))
             return false;
         if (schema.TryGetProperty("minLength", out var minimum) &&
             (!minimum.TryGetInt32(out var minimumValue) || instance.Length < minimumValue))

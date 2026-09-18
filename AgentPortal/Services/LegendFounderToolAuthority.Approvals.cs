@@ -293,7 +293,8 @@ internal sealed partial class LegendFounderToolAuthority
         try
         {
             using var document = JsonDocument.Parse(argumentsJson, new JsonDocumentOptions { MaxDepth = 32 });
-            if (document.RootElement.ValueKind != JsonValueKind.Object || !IsStrictSchemaInstance(schema, document.RootElement) ||
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !IsStrictSchemaInstance(schema, document.RootElement, allowRepairSourceText: name == CloudRepairTool) ||
                 !PreservesCloudNumericArguments(document.RootElement))
                 return false;
             canonicalArguments = CanonicalCloudJson(document.RootElement);

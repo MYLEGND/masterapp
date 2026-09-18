@@ -162,7 +162,8 @@ internal sealed partial class LegendFounderToolAuthority
         {
             using var document = JsonDocument.Parse(arguments);
             var root = document.RootElement;
-            if (!TryResolveFounderFunctionParameters(CloudRepairTool, out var schema) || !IsStrictSchemaInstance(schema, root)) return false;
+            if (!TryResolveFounderFunctionParameters(CloudRepairTool, out var schema) ||
+                !IsStrictSchemaInstance(schema, root, allowRepairSourceText: true)) return false;
             proposal = new(root.GetProperty("base_sha").GetString()!, root.GetProperty("title").GetString()!,
                 root.GetProperty("summary").GetString()!, root.GetProperty("changes").EnumerateArray()
                     .Select(change => new FounderSoftwareRepairChange(change.GetProperty("path").GetString()!, change.GetProperty("content").GetString()!)).ToArray());
