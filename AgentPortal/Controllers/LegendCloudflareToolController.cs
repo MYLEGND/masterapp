@@ -109,6 +109,14 @@ public sealed class LegendCloudflareToolController(
                 LegendConnectExternalProviderPolicy.CloudflareFoundation, serverDerivedScope: actionScope);
             if (System.Text.Encoding.UTF8.GetByteCount(result) > 32768) return StatusCode(502);
             using var output = JsonDocument.Parse(result);
+            if (output.RootElement.TryGetProperty("error", out var toolError) && toolError.ValueKind == JsonValueKind.String)
+            {
+                var code = toolError.GetString();
+                if (code == "cloud_action_outcome_unknown")
+                    return StatusCode(503, new { error = code });
+                if (code?.StartsWith("cloud_action_", StringComparison.Ordinal) == true)
+                    return StatusCode(403, new { error = code });
+            }
             return Ok(new
             {
                 version = "legend-tool-receipt.v1", requestId = actionScope.RequestId,
