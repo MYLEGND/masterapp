@@ -868,7 +868,9 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             "billing_orchestrator",
             null,
             correlationId,
-            "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged.");
+            command.FounderAuthorized
+                ? "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged."
+                : "Scoped owning agent updated the monthly amount and billing anchor within the agent pricing floor. Current-period dates and any accepted trial end remain unchanged.");
         QueueNotification(
             subscription,
             ClientBillingNotificationKind.SubscriptionTermsUpdated,
