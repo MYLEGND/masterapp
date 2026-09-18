@@ -183,20 +183,17 @@
 
         const founderOptions = canSetFounderSubscriptionOptions();
         if (founderAnchorOption) founderAnchorOption.hidden = !founderOptions;
-        const preservingScopedCustomAnchor =
-            !founderOptions &&
-            subscriptionSetupMode === "update-live" &&
-            anchor?.value === "SpecificDayOfMonth";
-        if (!founderOptions && !preservingScopedCustomAnchor && anchor?.value === "SpecificDayOfMonth") {
+        const scopedLiveUpdate = !founderOptions && subscriptionSetupMode === "update-live";
+        if (!founderOptions && !scopedLiveUpdate && anchor?.value === "SpecificDayOfMonth") {
             anchor.value = "FirstOfMonth";
         }
         if (anchor) {
-            anchor.disabled = preservingScopedCustomAnchor;
-            anchor.setAttribute("aria-disabled", preservingScopedCustomAnchor ? "true" : "false");
+            anchor.disabled = scopedLiveUpdate;
+            anchor.setAttribute("aria-disabled", scopedLiveUpdate ? "true" : "false");
         }
         if (anchorDay) {
-            anchorDay.readOnly = preservingScopedCustomAnchor;
-            anchorDay.setAttribute("aria-readonly", preservingScopedCustomAnchor ? "true" : "false");
+            anchorDay.readOnly = scopedLiveUpdate;
+            anchorDay.setAttribute("aria-readonly", scopedLiveUpdate ? "true" : "false");
         }
 
         const isCustom = priceType?.value === "Custom";
