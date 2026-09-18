@@ -141,14 +141,37 @@ jobs:
           trap - EXIT
           git diff --exit-code -- Protect-Website/Program.cs Protect-Website/wwwroot
 
+      - name: Wait for prior direct deployment to clear
+        id: prior
+        shell: bash
+        run: |
+          set -euo pipefail
+          conclusion=""
+          for i in {1..90}; do
+            json="$(curl -fsSL https://api.github.com/repos/MYLEGND/masterapp/actions/runs/35313986667)"
+            status="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' <<<"$json")"
+            conclusion="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")' <<<"$json")"
+            if [ "$status" = "completed" ]; then
+              break
+            fi
+            sleep 10
+          done
+          if [ -z "$conclusion" ]; then
+            echo "::error::Prior direct deployment did not clear."
+            exit 1
+          fi
+          echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+
       - name: Login to Azure
+        if: steps.prior.outputs.conclusion != 'success'
         uses: azure/login@v2
         with:
-          client-id: \${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: \${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: \${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy LEGEND website only
+        if: steps.prior.outputs.conclusion != 'success'
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-website
@@ -174,6 +197,7 @@ jobs:
           test "$verified" = "1"
 
       - name: Deploy Protect website only
+        if: steps.prior.outputs.conclusion != 'success'
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-protect
