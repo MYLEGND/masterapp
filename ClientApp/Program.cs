@@ -299,8 +299,10 @@ builder.Services.AddAuthentication(options =>
                 error,
                 description);
 
-            // Only known transient OIDC state failures are retried. All other
-            // remote failures retain the existing fail-closed behavior.
+            // Only known transient OIDC state failures are retried. This includes
+            // stale callbacks whose state cannot be decrypted and callbacks that arrive
+            // without state; both must restart the canonical login instead of returning 500.
+            // All other remote failures retain the existing fail-closed behavior.
             if (!IsExpiredOidcGrant(error, description) && !IsRecoverableOidcStateFailure(description))
                 return;
 
