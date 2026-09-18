@@ -227,6 +227,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.MergedSha).HasMaxLength(40);
             entity.Property(row => row.DeployedTreeSha).HasMaxLength(40);
             entity.Property(row => row.DeploymentEvidenceJson).HasMaxLength(16000);
+            entity.Property(row => row.CandidateValidationEvidenceJson).HasMaxLength(16000);
             entity.HasIndex(row => row.CompletionVerifiedUtc);
         });
         modelBuilder.Entity<RuntimeDiagnosticIncident>(entity =>

@@ -20,4 +20,5 @@ public sealed class FounderSoftwareRepairBatch
     public DateTime? CompletionVerifiedUtc { get; set; }
     public long? DeploymentRunId { get; set; }
     public string? DeploymentEvidenceJson { get; set; }
+    public string? CandidateValidationEvidenceJson { get; set; }
 }
