@@ -1,5 +1,5 @@
 name: Validate subscription activation repair
-# exact-current rerun
+# exact-current rerun after subscription authority alignment
 
 on:
   push:
