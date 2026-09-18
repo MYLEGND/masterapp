@@ -9,9 +9,9 @@
     <title>Book Appointment</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/mobile-client-booking.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
 </head>
-<body class="mobile-client-booking">
+<body class="legend-web-app legend-agent-portal mobile-client-booking">
     <div id="mobileBookingContext" hidden data-ticket="@Model.Ticket" data-profile-id="@Model.ProfileId"
          data-client-user-id="@Model.ClientUserId" data-time-zone="@Model.TimeZone">
         <span id="dName">@Model.DisplayName</span><span id="dEmail">@Model.Email</span><span id="dPhone">@Model.Phone</span>
@@ -26,6 +26,8 @@
         <p id="mobileBookingNotice" role="status" aria-live="polite"></p>
     </section>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
+    <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
     <script src="~/js/scheduling/qv-booking.js" asp-append-version="true"></script>
     <script src="~/js/scheduling/mobile-client-booking.js" asp-append-version="true"></script>
 </body>

@@ -1,6 +1,4 @@
 (() => {
-  const breakpoint = 840;
-
   document.querySelectorAll('[data-legend-global-nav]').forEach(nav => {
     const toggle = nav.querySelector('[data-legend-nav-toggle]');
     const groups = Array.from(nav.querySelectorAll('.navbar-left, .navbar-right'));
@@ -26,9 +24,14 @@
       if (nav.classList.contains('mobile-open') && !nav.contains(event.target)) close();
     });
 
-    window.addEventListener('resize', () => {
-      if (window.innerWidth > breakpoint) close();
-    });
+    const syncForViewport = () => {
+      const mobile = window.LegendMobilePlatform?.isMobile?.()
+        ?? window.matchMedia("(max-width: 840px)").matches;
+      if (!mobile) close();
+    };
+
+    window.addEventListener('resize', syncForViewport, { passive: true });
+    document.documentElement.addEventListener('legend:mobilemodechange', syncForViewport);
 
     close();
   });

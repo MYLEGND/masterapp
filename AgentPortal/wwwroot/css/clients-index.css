@@ -1539,6 +1539,18 @@
     .backdrop.open{ display:block; }
 
 .drawer{
+        background: linear-gradient(135deg,#0f172a,#111827);
+        border:2px solid #a68023;
+        box-shadow: 0 32px 96px rgba(0,0,0,.38);
+        z-index: 90;
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+        color:#0f172a;
+}
+
+@media (min-width: 841px) {
+    .drawer{
         position: fixed;
         inset: auto;
         top: 50%;
@@ -1546,23 +1558,16 @@
         width: clamp(900px, 90vw, 1280px);
         max-height: 92vh;
         transform: translate(-50%, -50%) scale(.97);
-        background: linear-gradient(135deg,#0f172a,#111827);
-        border:2px solid #a68023;
         border-radius: 24px;
-        box-shadow: 0 32px 96px rgba(0,0,0,.38);
         transition: transform .18s ease, opacity .18s ease;
-        z-index: 90;
-        display:flex;
-        flex-direction:column;
-        overflow:hidden;
-        color:#0f172a;
         opacity:0;
         pointer-events:none;
-}
-.drawer.open{
+    }
+    .drawer.open{
         transform: translate(-50%, -50%) scale(1);
         opacity:1;
         pointer-events:auto;
+    }
 }
 
 /* Actions + Commitments hub modal system */
@@ -1571,34 +1576,41 @@
     backdrop-filter: blur(8px);
 }
 
-.actions-hub-modal.modal,
-.quick-entry-shell.modal{
-    left: 0 !important;
-    top: 0 !important;
-    transform: none !important;
-    width: 100vw !important;
-    max-width: none !important;
-    height: 100vh !important;
-    background: rgba(4, 10, 24, .74) !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
+@media (min-width: 841px) {
+    .actions-hub-modal.modal,
+    .quick-entry-shell.modal{
+        left: 0 !important;
+        top: 0 !important;
+        transform: none !important;
+        width: 100vw !important;
+        max-width: none !important;
+        height: 100vh !important;
+        background: rgba(4, 10, 24, .74) !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }
+
+    .actions-hub-modal .modal-dialog{
+        width: min(96vw, 1100px);
+        max-width: min(96vw, 1100px);
+        margin: clamp(18px, 4vh, 42px) auto !important;
+    }
 }
 
-.actions-hub-modal .modal-dialog{
-    width: min(96vw, 1100px);
-    max-width: min(96vw, 1100px);
-    margin: clamp(18px, 4vh, 42px) auto !important;
+@media (min-width: 841px) {
+    .actions-hub-content{
+        max-height: calc(100vh - clamp(42px, 8vh, 88px));
+        border-radius: 28px;
+    }
 }
 
 .actions-hub-content{
-    max-height: calc(100vh - clamp(42px, 8vh, 88px));
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border-radius: 28px;
     border: 1px solid rgba(180, 205, 255, .18) !important;
     background:
         radial-gradient(circle at top right, rgba(104, 146, 235, .16), transparent 28%),
@@ -2081,18 +2093,25 @@
     text-transform: uppercase;
 }
 
-.quick-entry-shell .modal-dialog{
-    margin: clamp(18px, 6vh, 64px) auto !important;
-    max-width: min(92vw, 640px) !important;
-    min-height: 0 !important;
+@media (min-width: 841px) {
+    .quick-entry-shell .modal-dialog{
+        margin: clamp(18px, 6vh, 64px) auto !important;
+        max-width: min(92vw, 640px) !important;
+        min-height: 0 !important;
+    }
+}
+
+@media (min-width: 841px) {
+    .quick-entry-shell .modal-content{
+        max-height: min(86vh, 760px);
+        border-radius: 24px;
+    }
 }
 
 .quick-entry-shell .modal-content{
-    max-height: min(86vh, 760px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border-radius: 24px;
     border: 1px solid rgba(180, 205, 255, .18) !important;
     background:
         radial-gradient(circle at top right, rgba(104, 146, 235, .16), transparent 28%),
@@ -2160,11 +2179,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 }
 
 @media (max-width: 900px){
-    .actions-hub-modal .modal-dialog{
-        width: min(96vw, 1100px);
-        max-width: min(96vw, 1100px);
-    }
-
     .actions-hub-modal .qv-grid-two{
         grid-template-columns: 1fr;
     }
@@ -6336,18 +6350,23 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     --crm-qv-text:#f7fbff;
     --crm-qv-muted:rgba(213,225,247,.74);
     --crm-qv-gold:#ecd184;
-    width:min(1160px, calc(100vw - 56px));
-    max-height:min(90vh, calc(var(--legend-modal-safe-height, 100vh) - 16px));
     background:
         radial-gradient(circle at top right, rgba(95,138,231,.16), transparent 34%),
         linear-gradient(180deg, var(--crm-qv-shell-soft) 0%, var(--crm-qv-shell) 34%, var(--crm-qv-shell-deep) 100%);
     border:1px solid rgba(227,188,91,.44);
-    border-radius:28px;
     color:var(--crm-qv-text);
     box-shadow:0 28px 92px rgba(2,6,23,.46), inset 0 1px 0 rgba(255,255,255,.04);
     display:flex;
     flex-direction:column;
     overflow:hidden;
+}
+
+@media (min-width: 841px) {
+    .drawer.crm-qv-shell{
+        width:min(1160px, calc(100vw - 56px));
+        max-height:min(90vh, calc(var(--legend-modal-safe-height, 100vh) - 16px));
+        border-radius:28px;
+    }
 }
 
 .drawer.crm-qv-shell .dhead,
@@ -7630,12 +7649,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         flex-direction:column;
     }
 
-    .drawer.crm-qv-shell{
-        width:calc(100vw - 20px);
-        max-height:min(92vh, calc(var(--legend-modal-safe-height, 100vh) - 12px));
-        border-radius:22px;
-    }
-
     .drawer.crm-qv-shell .dhead{
         padding:18px 16px 14px;
     }
@@ -8018,14 +8031,19 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     color:rgba(221,232,252,.76);
 }
 
-.production-modal-dialog{
-    max-width:min(680px, calc(100vw - 2rem));
+@media (min-width: 841px) {
+    .production-modal-dialog{
+        max-width:min(680px, calc(100vw - 2rem));
+    }
+
+    .production-modal-shell{
+        border-radius:26px;
+    }
 }
 
 .production-modal-shell{
     overflow:hidden;
     border:1px solid rgba(147,181,255,.22);
-    border-radius:26px;
     background:
         radial-gradient(circle at top right, rgba(125,168,255,.18), transparent 38%),
         linear-gradient(180deg, rgba(19,42,83,.98), rgba(10,24,49,.99));
@@ -8218,15 +8236,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         justify-content:flex-start;
     }
 
-    .modal.crm-command-modal{
-        width:min(96vw, 1040px);
-        max-height:90vh;
-    }
-
-    .modal.crm-command-modal .modal-body{
-        max-height:calc(90vh - 92px);
-    }
-
     .crm-command-modal-queues .myday-grid{
         grid-template-columns:repeat(2, minmax(0, 1fr));
     }
@@ -8245,12 +8254,6 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     .leads-crm .production-rollup,
     .clients-crm .production-rollup{
         grid-template-columns:1fr;
-    }
-
-    .modal.crm-command-modal{
-        top:50%;
-        width:min(96vw, 1040px);
-        border-radius:24px;
     }
 
     .modal.crm-command-modal .modal-head{

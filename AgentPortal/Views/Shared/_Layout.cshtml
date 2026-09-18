@@ -51,7 +51,7 @@
     var isFinancePage = string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase);
     var isMobileEmbeddedClientCreation = ViewData["MobileClientCreationPortalTicket"] is string mobileClientCreationTicket
         && !string.IsNullOrWhiteSpace(mobileClientCreationTicket);
-    var layoutBodyClass = "d-flex flex-column min-vh-100"
+    var layoutBodyClass = "legend-web-app legend-agent-portal d-flex flex-column min-vh-100"
         + (isOnboardingPublic ? " onboarding-public-only" : "")
         + (isFinancePage ? " finance-page" : "");
 }
@@ -381,20 +381,10 @@
         }
 
         @@media (max-width: 576px){
-            .legend-global-nav .navbar-left .nav-item-explore .explore-trigger{
-                width: 40px;
-                height: 40px;
-            }
-
             .mini-tools{
                 width: 100%;
                 max-width: none;
                 margin: 0;
-            }
-
-            .explore-drawer{
-                top: 154px;
-                left: 12px;
             }
         }
 
@@ -438,6 +428,7 @@
     </style>
 <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
 </head>
 
 <body class="@layoutBodyClass">
@@ -1705,6 +1696,7 @@ document.getElementById("explorePageHealthTrigger")?.addEventListener("click", (
 {
     <script src="~/js/live-sync.js" asp-append-version="true"></script>
 }
+<script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/life-hac.js" asp-append-version="true"></script>

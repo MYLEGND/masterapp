@@ -303,7 +303,6 @@ body.note-self-open{
 }
 
 @media (max-width: 900px){
-    .note-self-overlay,
 
 /* ========================================================================
    Term vs Whole special treatment
@@ -371,37 +370,6 @@ body.note-self-open{
 #mpShell #sideNav .nav-item[data-target="#sec-termwhole"] .nav-badge{
     color: #1d4ed8 !important;
 }
-    .uw-overlay,
-    .proposal-overlay{
-        align-items: center;
-        justify-content: center;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
-    }
-    .note-self-modal,
-    .uw-dialog,
-    .proposal-dialog{
-        width: min(98vw, 1400px);
-        max-height: calc(100dvh - 20px);
-    }
-    .note-self-head{
-        position: sticky;
-        top: 0;
-        z-index: 7;
-    }
-    .note-self-close,
-    .uw-close,
-    .proposal-dialog .uw-close{
-        width: 46px;
-        height: 46px;
-        font-size: 2rem;
-    }
-    #captureDecisionModal.legend-popout-modal .modal-dialog{
-        margin: auto;
-        max-width: min(96vw, 760px);
-    }
-    #captureDecisionModal.legend-popout-modal .modal-content{
-        max-height: calc(100dvh - 20px);
-    }
 }
 
 .uw-overlay{
@@ -12295,53 +12263,6 @@ details.section{
 
 /* Mobile popout safety lock */
 @media (max-width: 900px){
-    .note-self-overlay,
-    .uw-overlay,
-    .proposal-overlay,
-    #proposalOverlay.hp-overlay{
-        align-items: center !important;
-        justify-content: center !important;
-        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px !important;
-    }
-    .note-self-modal,
-    .uw-dialog,
-    .proposal-dialog,
-    #proposalDialog.hp-dialog,
-    #captureDecisionModal.legend-popout-modal .modal-content,
-    .zoom-qp-dialog{
-        max-height: calc(100dvh - 20px) !important;
-    }
-    #captureDecisionModal.legend-popout-modal .modal-dialog{
-        margin: auto !important;
-    }
-    .uw-head,
-    .proposal-dialog .uw-head,
-    #proposalDialog .hp-dialog-head,
-    .note-self-head,
-    #captureDecisionModal.legend-popout-modal .modal-header{
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 20 !important;
-    }
-    .note-self-close,
-    .uw-close,
-    .proposal-dialog .uw-close,
-    #proposalDialog .hp-dialog-close,
-    #captureDecisionModal.legend-popout-modal .btn-close,
-    .zoom-qp-close{
-        width: 46px !important;
-        height: 46px !important;
-        font-size: 2rem !important;
-        border: 2px solid rgba(244,216,144,.72) !important;
-        border-radius: 999px !important;
-        background: rgba(8,16,33,.9) !important;
-        color: #f8fafc !important;
-        line-height: 1 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-
     #rbShell #rbNavArrow.nav-rail-arrow{
         display: flex !important;
         position: fixed !important;
@@ -12364,19 +12285,11 @@ details.section{
 @media (max-width: 900px){
     html.lead-bridge-mobile,
     html.lead-bridge-mobile body{
-        height: 100%;
-        overflow: hidden;
-    }
-
-    html.lead-bridge-mobile #rbShell{
-        height: 100dvh;
-        overflow: hidden;
+        min-height: 100%;
+        overflow-x: hidden;
     }
 
     html.lead-bridge-mobile #rbShell .rb-wrap{
-        height: 100%;
-        max-height: 100%;
-        overflow: hidden;
         padding: 6px 7px !important;
         display: flex;
         flex-direction: column;
@@ -12518,15 +12431,7 @@ details.section{
 
 /* Final mobile fit lock: enforce compact banner + 2-card contact row */
 @media (max-width: 900px){
-    #rbShell{
-        height: 100dvh;
-        overflow: hidden;
-    }
-
     #rbShell .rb-wrap{
-        height: 100%;
-        max-height: 100%;
-        overflow: hidden;
         padding: 4px 6px !important;
         gap: 5px !important;
     }
@@ -14579,58 +14484,46 @@ details.section{
     display: block !important;
 }
 
-#drawer.drawer[data-workstation-drawer="1"]{
-    position: fixed !important;
-    inset: auto !important;
-    top: 50% !important;
-    left: 50% !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: clamp(900px, 90vw, 1280px) !important;
-    max-height: 92vh !important;
-    height: auto !important;
-    transform: translate(-50%, -50%) scale(.97) !important;
-    border-radius: 26px !important;
-    transition: transform .18s ease, opacity .18s ease !important;
-    z-index: 90 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
+@media (min-width: 841px) {
+    #drawer.drawer[data-workstation-drawer="1"]{
+        position: fixed !important;
+        inset: auto !important;
+        top: 50% !important;
+        left: 50% !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: clamp(900px, 90vw, 1280px) !important;
+        max-height: 92vh !important;
+        height: auto !important;
+        transform: translate(-50%, -50%) scale(.97) !important;
+        border-radius: 26px !important;
+        transition: transform .18s ease, opacity .18s ease !important;
+        z-index: 90 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
 
-#drawer.drawer[data-workstation-drawer="1"].open{
-    transform: translate(-50%, -50%) scale(1) !important;
-    opacity: 1 !important;
-    pointer-events: auto !important;
-}
+    #drawer.drawer[data-workstation-drawer="1"].open{
+        transform: translate(-50%, -50%) scale(1) !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
 
-#drawer.drawer[data-workstation-drawer="1"] .dbody{
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
+    #drawer.drawer[data-workstation-drawer="1"] .dbody{
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
 }
 
 #drawer.drawer[data-workstation-drawer="1"] #dPortalWrap[hidden]{
     display: none !important;
-}
-
-@media (max-width: 980px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        width: min(94vw, 960px) !important;
-    }
-}
-
-@media (max-width: 700px){
-    #drawer.drawer[data-workstation-drawer="1"]{
-        width: 100vw !important;
-        max-height: 100dvh !important;
-        border-radius: 0 !important;
-    }
 }
 
 /* Re-assert the real Leads Quick View styling inside workstation.
@@ -14645,11 +14538,20 @@ details.section{
     box-shadow: 0 32px 72px rgba(2,6,23,.62), 0 10px 26px rgba(139,92,246,.12), inset 0 1px 0 rgba(255,255,255,.05) !important;
 }
 
+@media (min-width: 841px) {
+    #rbShell #drawer.crm-qv-shell .dhead{
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        padding: 14px 15px 13px !important;
+    }
+
+    #rbShell #drawer.crm-qv-shell .dbody{
+        padding: 14px 15px 20px !important;
+    }
+}
+
 #rbShell #drawer.crm-qv-shell .dhead{
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    padding: 14px 15px 13px !important;
     border-bottom: 1px solid rgba(244,208,121,.2) !important;
     background: linear-gradient(180deg, rgba(8,15,28,.96), rgba(11,19,35,.88)) !important;
     backdrop-filter: blur(18px) saturate(120%);
@@ -14764,7 +14666,6 @@ details.section{
 }
 
 #rbShell #drawer.crm-qv-shell .dbody{
-    padding: 14px 15px 20px !important;
     background:
         radial-gradient(720px 300px at 100% 0%, rgba(56,189,248,.06), transparent 54%),
         radial-gradient(660px 260px at 0% 18%, rgba(168,85,247,.08), transparent 52%),

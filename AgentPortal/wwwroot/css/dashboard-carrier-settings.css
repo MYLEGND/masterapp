@@ -692,10 +692,6 @@
 }
 
 @media (max-width: 720px) {
-    .legend-modal.carrier-settings-modal .modal-dialog {
-        max-width: calc(100vw - 22px);
-    }
-
     .carrier-editor-row {
         grid-template-columns: 1fr;
         gap: 0.68rem;

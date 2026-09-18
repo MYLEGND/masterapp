@@ -50,14 +50,14 @@
     }
     @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
     @RenderSection("Styles", required: false)
-    <link rel="stylesheet" href="~/css/client-mobile.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
 
     <!-- Google Font for Psalms 23 | Proverbs 3:5-6 -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
 
     <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
 </head>
-<body class="client-portal d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
+<body class="client-portal legend-web-app d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-dark legend-global-nav" data-legend-global-nav>
@@ -468,6 +468,7 @@
 </script>
 
 <script src="~/_content/Shared/js/life-hac.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 @await Html.PartialAsync("~/Views/Messaging/_SignalRClient.cshtml")

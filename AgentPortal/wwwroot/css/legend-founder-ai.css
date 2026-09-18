@@ -1087,26 +1087,10 @@
    ========================================================== */
 
 @media (max-width: 820px) {
-    .legend-founder-ai-modal {
-        --legend-ai-viewport-height: 100dvh;
-    }
-
-    .legend-founder-ai-modal .modal-dialog {
-        width: 100vw;
-        max-width: none;
-        height: var(--legend-ai-viewport-height);
-        margin: 0;
-    }
-
-    .legend-founder-ai-modal .modal-content,
     .legend-founder-ai-shell {
         width: 100%;
-        height: var(--legend-ai-viewport-height);
+        height: 100%;
         min-height: 0;
-        border-radius: 0;
-    }
-
-    .legend-founder-ai-shell {
         grid-template-rows:
             max(80px, calc(68px + env(safe-area-inset-top)))
             minmax(0, 1fr);

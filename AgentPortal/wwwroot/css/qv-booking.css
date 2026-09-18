@@ -19,16 +19,21 @@
     z-index:1085;
 }
 
-.qv-booking-modal-shell .modal-dialog{
-    width:min(92vw, 1260px);
-    max-width:1260px;
-    margin:22px auto;
+@media (min-width: 841px) {
+    .qv-booking-modal-shell .modal-dialog{
+        width:min(92vw, 1260px);
+        max-width:1260px;
+        margin:22px auto;
+    }
+
+    .qv-booking-modal-shell .modal-content{
+        max-height:calc(100vh - 44px);
+        overflow:auto;
+        border-radius:24px;
+    }
 }
 
 .qv-booking-modal-shell .modal-content{
-    max-height:calc(100vh - 44px);
-    overflow:auto;
-    border-radius:24px;
     color:var(--qv-text);
     background:
         radial-gradient(circle at 18% -10%, rgba(37,99,235,.52), transparent 34%),
@@ -495,17 +500,6 @@
 }
 
 @media (max-width:760px){
-    .qv-booking-modal-shell .modal-dialog{
-        width:100vw;
-        height:100vh;
-        margin:0;
-    }
-
-    .qv-booking-modal-shell .modal-content{
-        min-height:100vh;
-        border-radius:0;
-    }
-
     .qv-booking-head{
         padding:24px 20px 20px;
         flex-direction:column;
@@ -775,6 +769,7 @@
 }
 
 
+@media (min-width: 841px) {
 /* =========================================================
    VIEWPORT FIT SYSTEM
    Keeps scheduler inside visible modal without scroll.
@@ -935,6 +930,10 @@
     }
 }
 
+
+}
+
+@media (min-width: 841px) {
 /* =========================================================
    AUTO-FIT TIME SLOT GRID
    Handles 20, 24, or more slots evenly without clipping.
@@ -976,6 +975,9 @@
     min-height:0 !important;
     max-height:none !important;
     padding-block:0 !important;
+}
+
+
 }
 
 /* Calendar: make previous/next month days visually distinct */
