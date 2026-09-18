@@ -59,6 +59,7 @@
     setVar("--legend-mobile-surface-elevated", color("surfaceElevated"));
     setVar("--legend-mobile-midnight", color("midnight"));
     setVar("--legend-mobile-navy", color("navy"));
+    setVar("--legend-mobile-on-navy", color("onNavy"));
     setVar("--legend-mobile-gold", color("gold"));
     setVar("--legend-mobile-text-primary", color("textPrimary"));
     setVar("--legend-mobile-text-secondary", color("textSecondary"));
