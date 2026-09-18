@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Domain.Messaging;
 using Microsoft.Extensions.Logging;
 
@@ -113,6 +114,12 @@ internal sealed class EmbeddedApplicationCopyManifestSource : IApplicationCopyMa
 /// </summary>
 internal sealed class ApplicationLocalizationService : IApplicationLocalizationService
 {
+    internal const string ArtifactSchema = "application-copy-admission-v1";
+    internal const string ArtifactProvider = "OpenAI";
+    internal const string ArtifactProvenance = "AssistantGenerated";
+    internal const string ArtifactQuality = "StructurallyValidated";
+    internal const int MaximumArtifactEntries = 250;
+    internal const int MaximumArtifactBytes = 2 * 1024 * 1024;
     private readonly IApplicationCopyManifestSource _manifestSource;
     private readonly IControlledResourceAccessService _preferences;
     private readonly ILegendLanguageRegistry _languages;
@@ -136,19 +143,132 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
         _logger = logger;
     }
 
+    // The Founder adapter authenticates admission. This authority validates public
+    // catalog identity; the artifact cannot nominate arbitrary private source text.
+    public async Task<ApplicationTranslationAdmissionResult> AdmitArtifactAsync(
+        string artifactJson, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(artifactJson) || Encoding.UTF8.GetByteCount(artifactJson) > MaximumArtifactBytes)
+            throw new ArgumentException("Artifact must contain at most 2 MiB of UTF-8 JSON.");
+        ApplicationTranslationArtifact artifact;
+        try
+        {
+            artifact = JsonSerializer.Deserialize<ApplicationTranslationArtifact>(artifactJson,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, MaxDepth = 16,
+                    UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow })
+                ?? throw new ArgumentException("Artifact is empty.");
+        }
+        catch (JsonException) { throw new ArgumentException("Artifact JSON does not match the admission schema."); }
+
+        var manifest = _manifestSource.Manifest;
+        if (artifact.SchemaVersion != ArtifactSchema || artifact.CatalogVersion != manifest.CatalogVersion ||
+            artifact.SourceLanguageCode != manifest.SourceLanguageCode ||
+            string.IsNullOrWhiteSpace(artifact.AuthoringModel) || artifact.AuthoringModel.Length > 120 ||
+            artifact.AuthoringModel.Any(char.IsControl) || artifact.AuthoringContext != "Codex coding session" ||
+            artifact.Entries is null || artifact.Entries.Count is < 1 or > MaximumArtifactEntries)
+            throw new ArgumentException("Artifact schema, current catalog, authoring provenance, or batch size is invalid.");
+
+        var definitions = manifest.Entries.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
+        var identities = new HashSet<(string Id, string Language)>();
+        foreach (var entry in artifact.Entries)
+        {
+            if (entry is null || entry.Id is null || !definitions.TryGetValue(entry.Id, out var canonical) ||
+                !identities.Add((entry.Id, entry.LanguageCode)) ||
+                string.IsNullOrWhiteSpace(entry.LanguageCode) || entry.LanguageCode == artifact.SourceLanguageCode ||
+                entry.Source != canonical.Source || entry.SourceRevision != canonical.SourceRevision ||
+                entry.Context != canonical.Context || entry.TranslationPolicy != canonical.TranslationPolicy ||
+                canonical.TranslationPolicy != ApplicationTranslationPolicies.AzureAllowed ||
+                entry.ReuseScope != TranslationReuseScopes.Global || canonical.ReuseScope != TranslationReuseScopes.Global ||
+                entry.Placeholders is null || !entry.Placeholders.SequenceEqual(canonical.Placeholders, StringComparer.Ordinal) ||
+                !IsValidArtifactText(canonical.Source, entry.Text, string.Join(',', canonical.Placeholders)))
+                throw new ArgumentException($"Artifact entry is not admissible: {entry?.Id ?? "unknown"}.");
+        }
+        foreach (var language in artifact.Entries.Select(entry => entry.LanguageCode)
+                     .Append(artifact.SourceLanguageCode).Distinct(StringComparer.Ordinal))
+            if (await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(language, cancellationToken) != language)
+                throw new ArgumentException("Artifact language is not enabled.");
+
+        // Every entry has been validated before any write. Inspection cannot call a
+        // provider, change preferences, reserve capacity, or mutate usage accounting.
+        var hash = TranslationIdentityHash(artifactJson);
+        var writes = new List<LegendRetainedTranslationWrite>();
+        foreach (var languageGroup in artifact.Entries.GroupBy(entry => entry.LanguageCode))
+        {
+            var entries = languageGroup.ToArray();
+            var requests = entries.Select(entry => new RetainedTranslationRequest(entry.Id, entry.Source,
+                artifact.SourceLanguageCode, entry.LanguageCode, entry.SourceRevision, entry.Context,
+                string.Join(',', entry.Placeholders.Order(StringComparer.Ordinal)), TranslationReuseScopes.Global)).ToArray();
+            var existing = await _translations.TranslateRetainedBatchAsync(requests, cancellationToken, maximumProviderBatches: 0);
+            for (var index = 0; index < entries.Length; index++)
+            {
+                if (existing[index].Succeeded) continue;
+                var entry = entries[index];
+                writes.Add(new LegendRetainedTranslationWrite(
+                    LegendConnectTranslationRouter.ArtifactIdentity(requests[index], artifact.SourceLanguageCode, entry.LanguageCode),
+                    entry.Id, entry.Source, entry.Text, artifact.SourceLanguageCode, entry.LanguageCode,
+                    entry.SourceRevision, entry.Context, TranslationIdentityHash(requests[index].PlaceholderContract),
+                    TranslationReuseScopes.Global, string.Empty, ArtifactProvider, "sha256:" + hash,
+                    artifact.AuthoringModel, ArtifactProvenance, ArtifactQuality));
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var stored = await _intelligence.RetainProviderTranslationsAsync(writes, cancellationToken);
+        var imported = stored.Count(match => match.NewlyRetained);
+        return new(manifest.CatalogVersion, hash, imported, artifact.Entries.Count - imported);
+    }
+
+    internal static bool IsValidArtifactText(string source, string translated, string placeholders)
+    {
+        if (!TranslationOutputValidator.IsValid(source, translated, placeholders)) return false;
+        // Enforce the immutable tokens beyond the ordinary runtime placeholder check.
+        const string pattern = @"https?://[^\s<>{}]+|mailto:[^\s<>]+|\{[^{}\r\n]+\}|%\d*\$?[a-zA-Z]|\d+(?:[.,:/-]\d+)*|[€$£¥%]|\\[nrt]|(?<![A-Za-z0-9])(?:Legend® Ai|Legend AI|OpenAI|LEGEND®|LEGEND|Legend)(?![A-Za-z0-9])";
+        static string[] Tokens(string value) => Regex.Matches(value, pattern, RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100)).Select(match => match.Value).Order(StringComparer.Ordinal).ToArray();
+        static string[] Markup(string value) => Regex.Matches(value, @"</?[A-Za-z][^>]*>", RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100)).Select(match => match.Value).ToArray();
+        return Tokens(source).SequenceEqual(Tokens(translated), StringComparer.Ordinal) &&
+            Markup(source).SequenceEqual(Markup(translated), StringComparer.Ordinal) &&
+            source.Count(character => character == '\r') == translated.Count(character => character == '\r') &&
+            source.Count(character => character == '\t') == translated.Count(character => character == '\t');
+    }
+
     public async Task<ApplicationLocalizationCatalog> GetCatalogAsync(
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
+        var source = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            _manifestSource.Manifest.SourceLanguageCode, cancellationToken) ?? _manifestSource.Manifest.SourceLanguageCode;
+        var preferred = await _preferences.GetCanonicalPreferredLanguageAsync(actor, cancellationToken);
+        var target = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            preferred, cancellationToken) ?? source;
+        return await BuildCatalogAsync(target, maximumProviderBatches: 1, cancellationToken);
+    }
+
+    public Task<ApplicationLocalizationCatalog> InspectCatalogAsync(
+        string targetLanguageCode, CancellationToken cancellationToken = default) =>
+        ExplicitCatalogAsync(targetLanguageCode, maximumProviderBatches: 0, cancellationToken);
+
+    public Task<ApplicationLocalizationCatalog> PrepareCatalogAsync(
+        string targetLanguageCode, CancellationToken cancellationToken = default) =>
+        ExplicitCatalogAsync(targetLanguageCode, maximumProviderBatches: 1, cancellationToken);
+
+    private async Task<ApplicationLocalizationCatalog> ExplicitCatalogAsync(
+        string targetLanguageCode, int maximumProviderBatches, CancellationToken cancellationToken)
+    {
+        var target = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            targetLanguageCode, cancellationToken)
+            ?? throw new ArgumentException("The target language is not enabled for translation.", nameof(targetLanguageCode));
+        return await BuildCatalogAsync(target, maximumProviderBatches, cancellationToken);
+    }
+
+    private async Task<ApplicationLocalizationCatalog> BuildCatalogAsync(
+        string target, int maximumProviderBatches, CancellationToken cancellationToken)
+    {
         var started = Stopwatch.GetTimestamp();
         var manifest = _manifestSource.Manifest;
         var source = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-            manifest.SourceLanguageCode,
-            cancellationToken) ?? manifest.SourceLanguageCode;
-        var preferred = await _preferences.GetCanonicalPreferredLanguageAsync(actor, cancellationToken);
-        var target = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-            preferred,
-            cancellationToken) ?? source;
+            manifest.SourceLanguageCode, cancellationToken) ?? manifest.SourceLanguageCode;
 
         var approvedLookups = manifest.Entries
             .Where(entry => entry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly && source != target)
@@ -210,7 +330,7 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
                 string.Join(',', entry.Placeholders.Order(StringComparer.Ordinal)),
                 TranslationReuseScopes.Global)).ToArray(),
             cancellationToken,
-            maximumProviderBatches: 1);
+            maximumProviderBatches: maximumProviderBatches);
         for (var index = 0; index < providerEntries.Count; index++)
         {
             var entry = providerEntries[index];

@@ -2,6 +2,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -19,7 +20,8 @@ internal sealed record LegendRetainedTranslationMemoryMatch(
     string Provider,
     string Provenance,
     string QualityState,
-    DateTime CreatedUtc);
+    DateTime CreatedUtc,
+    bool NewlyRetained = false);
 
 internal sealed record LegendRetainedTranslationWrite(
     string Identity,
@@ -34,7 +36,10 @@ internal sealed record LegendRetainedTranslationWrite(
     string ReuseScope,
     string ScopeIdentityHash,
     string Provider,
-    string ProviderVersion);
+    string ProviderVersion,
+    string? ProviderModel = null,
+    string Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
+    string QualityState = "Observation");
 
 internal sealed record LegendTrustedTranslationLookup(
     string Key,
@@ -715,7 +720,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             write.TargetLanguageCode,
             targetDefinition.StoragePartition,
             write.TargetText,
-            LegendConnectKnowledgeProvenance.ProviderDerived,
+            write.Provenance,
             cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -728,8 +733,8 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             SourceTextUnitId = source.Id,
             TargetTextUnitId = target.Id,
             Provider = write.Provider,
-            Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
-            ProviderModel = write.ProviderVersion,
+            Provenance = write.Provenance,
+            ProviderModel = write.ProviderModel ?? write.ProviderVersion,
             ProviderVersion = write.ProviderVersion,
             RetainedTranslationIdentity = write.Identity,
             StableSourceContentId = write.StableSourceContentId,
@@ -738,7 +743,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             PlaceholderContractHash = write.PlaceholderContractHash,
             ReuseScope = write.ReuseScope,
             ReuseScopeIdentityHash = write.ScopeIdentityHash,
-            QualityState = "Observation",
+            QualityState = write.QualityState,
             HumanVerified = false,
             Confidence = null,
             ObservationCount = 1,
@@ -763,14 +768,20 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         return new LegendRetainedTranslationMemoryMatch(
             write.TargetText,
             write.Provider,
-            LegendConnectKnowledgeProvenance.ProviderDerived,
-            "Observation",
-            now);
+            write.Provenance,
+            write.QualityState,
+            now, NewlyRetained: true);
     }
 
     public async Task<IReadOnlyList<LegendRetainedTranslationMemoryMatch>> RetainProviderTranslationsAsync(
         IReadOnlyList<LegendRetainedTranslationWrite> writes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await RetainProviderTranslationsAsync(writes, allowCollisionRetry: true, cancellationToken);
+
+    private async Task<IReadOnlyList<LegendRetainedTranslationMemoryMatch>> RetainProviderTranslationsAsync(
+        IReadOnlyList<LegendRetainedTranslationWrite> writes,
+        bool allowCollisionRetry,
+        CancellationToken cancellationToken)
     {
         if (writes.Count == 0)
             return Array.Empty<LegendRetainedTranslationMemoryMatch>();
@@ -779,6 +790,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             .GroupBy(write => write.Identity, StringComparer.Ordinal)
             .Select(group => group.First())
             .ToArray();
+        var artifactBatch = uniqueWrites.All(write => write.Provenance == ApplicationLocalizationService.ArtifactProvenance);
         var identities = uniqueWrites.Select(write => write.Identity).ToArray();
         var existing = await (
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
@@ -804,6 +816,14 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 cancellationToken);
 
         var missing = uniqueWrites.Where(write => !existing.ContainsKey(write.Identity)).ToArray();
+        if (artifactBatch && (existing.Values.Any(match =>
+                match.Provider != ApplicationLocalizationService.ArtifactProvider ||
+                match.Provenance != ApplicationLocalizationService.ArtifactProvenance ||
+                match.QualityState != ApplicationLocalizationService.ArtifactQuality) ||
+            await _db.Set<LegendTranslationAlignment>().AsNoTracking().AnyAsync(alignment =>
+                alignment.RetainedTranslationIdentity != null && identities.Contains(alignment.RetainedTranslationIdentity) &&
+                alignment.SupersededUtc != null, cancellationToken)))
+            throw new ArgumentException("Artifact identity conflicts with a retired or rejected retained translation; existing review authority must resolve it.");
         if (missing.Length > 0)
         {
             var languageCodes = missing
@@ -832,14 +852,48 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 item => (item.LanguageCode, item.NormalizedHash),
                 item => item);
             var now = DateTime.UtcNow;
+            var addedUnits = new List<LegendLanguageTextUnit>();
+            var addedAlignments = new List<LegendTranslationAlignment>();
+            var changedUnits = new Dictionary<Guid, (LegendLanguageTextUnit Unit, PropertyValues Current,
+                PropertyValues Original, EntityState State, string[] Modified)>();
+
+            void RestoreBatchTracking()
+            {
+                foreach (var alignment in addedAlignments) _db.Entry(alignment).State = EntityState.Detached;
+                foreach (var unit in addedUnits) _db.Entry(unit).State = EntityState.Detached;
+                foreach (var snapshot in changedUnits.Values)
+                {
+                    var entry = _db.Entry(snapshot.Unit);
+                    entry.CurrentValues.SetValues(snapshot.Current);
+                    entry.OriginalValues.SetValues(snapshot.Original);
+                    entry.State = snapshot.State;
+                    foreach (var property in entry.Properties)
+                        property.IsModified = snapshot.Modified.Contains(property.Metadata.Name, StringComparer.Ordinal);
+                }
+            }
 
             LegendLanguageTextUnit Unit(string language, string text, string provenance)
             {
                 var key = (language, LegendLanguageIdentity.TextHash(text));
                 if (unitByKey.TryGetValue(key, out var unit))
                 {
+                    // Imported copy must not reformat a unit shared by older alignments.
+                    // Source identity is independently bound to canonical revision/context.
+                    if (artifactBatch)
+                    {
+                        if (provenance != "ApplicationSource" && !string.Equals(unit.Text, text, StringComparison.Ordinal))
+                            throw new ArgumentException("Artifact target conflicts with an existing text unit's formatting.");
+                        return unit;
+                    }
                     if (!string.Equals(unit.Text, text, StringComparison.Ordinal))
                     {
+                        if (!addedUnits.Contains(unit) && !changedUnits.ContainsKey(unit.Id))
+                        {
+                            var entry = _db.Entry(unit);
+                            changedUnits.Add(unit.Id, (unit, entry.CurrentValues.Clone(), entry.OriginalValues.Clone(),
+                                entry.State, entry.Properties.Where(property => property.IsModified)
+                                    .Select(property => property.Metadata.Name).ToArray()));
+                        }
                         unit.Text = text;
                         unit.UpdatedUtc = now;
                     }
@@ -858,64 +912,71 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                     UpdatedUtc = now
                 };
                 _db.Set<LegendLanguageTextUnit>().Add(unit);
+                addedUnits.Add(unit);
                 unitByKey[key] = unit;
                 return unit;
             }
 
-            foreach (var write in missing)
-            {
-                var source = Unit(write.SourceLanguageCode, write.SourceText, "ApplicationSource");
-                var target = Unit(
-                    write.TargetLanguageCode,
-                    write.TargetText,
-                    LegendConnectKnowledgeProvenance.ProviderDerived);
-                _db.Set<LegendTranslationAlignment>().Add(new LegendTranslationAlignment
-                {
-                    Id = Guid.NewGuid(),
-                    PairKey = LegendLanguageIdentity.PairKey(
-                        write.SourceLanguageCode,
-                        write.TargetLanguageCode),
-                    SourceTextUnitId = source.Id,
-                    TargetTextUnitId = target.Id,
-                    Provider = write.Provider,
-                    Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
-                    ProviderModel = write.ProviderVersion,
-                    ProviderVersion = write.ProviderVersion,
-                    RetainedTranslationIdentity = write.Identity,
-                    StableSourceContentId = write.StableSourceContentId,
-                    SourceContentRevision = write.SourceRevision,
-                    TranslationContext = write.TranslationContext,
-                    PlaceholderContractHash = write.PlaceholderContractHash,
-                    ReuseScope = write.ReuseScope,
-                    ReuseScopeIdentityHash = write.ScopeIdentityHash,
-                    QualityState = "Observation",
-                    HumanVerified = false,
-                    Confidence = null,
-                    ObservationCount = 1,
-                    CreatedUtc = now,
-                    UpdatedUtc = now
-                });
-                existing[write.Identity] = new LegendRetainedTranslationMemoryMatch(
-                    write.TargetText,
-                    write.Provider,
-                    LegendConnectKnowledgeProvenance.ProviderDerived,
-                    "Observation",
-                    now);
-            }
-
             try
             {
+                foreach (var write in missing)
+                {
+                    var source = Unit(write.SourceLanguageCode, write.SourceText, "ApplicationSource");
+                    var target = Unit(
+                        write.TargetLanguageCode,
+                        write.TargetText,
+                        write.Provenance);
+                    var alignment = new LegendTranslationAlignment
+                    {
+                        Id = Guid.NewGuid(),
+                        PairKey = LegendLanguageIdentity.PairKey(
+                            write.SourceLanguageCode,
+                            write.TargetLanguageCode),
+                        SourceTextUnitId = source.Id,
+                        TargetTextUnitId = target.Id,
+                        Provider = write.Provider,
+                        Provenance = write.Provenance,
+                        ProviderModel = write.ProviderModel ?? write.ProviderVersion,
+                        ProviderVersion = write.ProviderVersion,
+                        RetainedTranslationIdentity = write.Identity,
+                        StableSourceContentId = write.StableSourceContentId,
+                        SourceContentRevision = write.SourceRevision,
+                        TranslationContext = write.TranslationContext,
+                        PlaceholderContractHash = write.PlaceholderContractHash,
+                        ReuseScope = write.ReuseScope,
+                        ReuseScopeIdentityHash = write.ScopeIdentityHash,
+                        QualityState = write.QualityState,
+                        HumanVerified = false,
+                        Confidence = null,
+                        ObservationCount = 1,
+                        CreatedUtc = now,
+                        UpdatedUtc = now
+                    };
+                    _db.Set<LegendTranslationAlignment>().Add(alignment);
+                    addedAlignments.Add(alignment);
+                    existing[write.Identity] = new LegendRetainedTranslationMemoryMatch(
+                        write.TargetText,
+                        write.Provider,
+                        write.Provenance,
+                        write.QualityState,
+                        now, NewlyRetained: true);
+                }
+
                 await _db.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException)
             {
-                // A different server may have won one of the same unique
-                // identities or text units after our read. Re-read and use the
-                // idempotent single-write path for any remainder.
-                _db.ChangeTracker.Clear();
-                existing.Clear();
-                foreach (var write in uniqueWrites)
-                    existing[write.Identity] = await RetainProviderTranslationAsync(write, cancellationToken);
+                // A competing instance may have won one identity/text unit. Restore only this
+                // batch's changes, then re-read and retry its remaining writes once, without
+                // dropping unrelated scoped work or calling the paid provider again.
+                RestoreBatchTracking();
+                if (!allowCollisionRetry) throw;
+                return await RetainProviderTranslationsAsync(writes, allowCollisionRetry: false, cancellationToken);
+            }
+            catch
+            {
+                RestoreBatchTracking();
+                throw;
             }
         }
 
