@@ -6,18 +6,37 @@
   "workers_dev": true,
   "preview_urls": false,
   "account_id": "84bf137174ac3966d6d24e9806f0c392",
-  "ai": { "binding": "AI" },
-  "limits": { "cpu_ms": 1000 },
-  "observability": { "enabled": false },
-  "durable_objects": {
-    "bindings": [{ "name": "LEGEND_GOVERNANCE", "class_name": "LegendGovernance" }]
+  "ai": {
+    "binding": "AI"
   },
-  "migrations": [{ "tag": "governance-v1", "new_sqlite_classes": ["LegendGovernance"] }],
+  "limits": {
+    "cpu_ms": 1000
+  },
+  "observability": {
+    "enabled": false
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LEGEND_GOVERNANCE",
+        "class_name": "LegendGovernance"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "governance-v1",
+      "new_sqlite_classes": [
+        "LegendGovernance"
+      ]
+    }
+  ],
   "vars": {
     "LEGEND_ACCOUNT_ID": "84bf137174ac3966d6d24e9806f0c392",
     "LEGEND_RUNTIME_MODE": "qualification",
     "LEGEND_DEPLOYMENT_ENVIRONMENT": "qualification",
     "LEGEND_TOOL_CALLBACK_ENABLED": "false",
-    "LEGEND_BUDGET_POLICY_JSON": "{\"period\":\"lifetime\",\"requestMicrousd\":0,\"userMicrousd\":0,\"tenantMicrousd\":0,\"accountMicrousd\":0,\"requestConcurrency\":0,\"userConcurrency\":0,\"tenantConcurrency\":0,\"accountConcurrency\":0,\"retentionMs\":86400000}"
+    "LEGEND_BUDGET_POLICY_JSON": "{\"period\":\"lifetime\",\"requestMicrousd\":150000,\"userMicrousd\":3000000,\"tenantMicrousd\":3000000,\"accountMicrousd\":3000000,\"requestConcurrency\":1,\"userConcurrency\":1,\"tenantConcurrency\":1,\"accountConcurrency\":1,\"retentionMs\":86400000}",
+    "LEGEND_QUALIFICATION_POLICY_JSON": "{\"version\":\"legend-qualification.v1\",\"accountId\":\"84bf137174ac3966d6d24e9806f0c392\",\"modelId\":\"@cf/openai/gpt-oss-120b\",\"tenantId\":\"legend-qualification\",\"allowedUserIds\":[\"qualification-founder\"],\"requiredRole\":\"LegendQualification\",\"serviceKeyId\":\"qualification-v1\",\"suiteSha256\":\"06c694737988758e01bab625204c6268f222942e03a84036a575d559b702d8d9\",\"expiresAt\":1789771352250,\"lifetimeCostMicrousd\":3000000}"
   }
 }
