@@ -6,17 +6,20 @@
     <title>@ViewData["Title"] - Parfait Internal</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700;1,800;1,900&display=swap" rel="stylesheet" />
     @RenderSection("Styles", required: false)
 </head>
-<body class="pf-internal-auth-body">
+<body class="legend-web-app legend-parfait pf-internal-auth-body">
     <main class="pf-auth-stage">
         @RenderBody()
     </main>
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+    <script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
+    <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 </body>
 </html>
