@@ -1,0 +1,23 @@
+{
+  "revision": "3eae1391162084d9481ed02dc16605ae4b15f0f8",
+  "suiteSha256": "06c694737988758e01bab625204c6268f222942e03a84036a575d559b702d8d9",
+  "records": [
+    {
+      "caseId": "code-pagination-boundary",
+      "prompt": "A fictional API sorts events by the tuple (CreatedAt, Id). Its cursor stores both values, but the next-page filter is only event.CreatedAt > cursor.CreatedAt. Explain how this loses data, state the correct strict tuple predicate, and give a regression case. Do not execute code.",
+      "response": null,
+      "Succeeded": false,
+      "ErrorCode": "cloudflare_provider_output_truncated",
+      "ModelVersion": null,
+      "Hosting": null,
+      "CostMicrounits": 825,
+      "InferenceSettings": null,
+      "elapsedMs": 19039,
+      "evidence": "live-cloudflare-via-dotnet-transport",
+      "scope": "synthetic-isolated-qualification-not-production-founder-session"
+    }
+  ],
+  "modelCalls": 1,
+  "localInferenceCalls": 0,
+  "limitation": "Verifies real model and authoritative transport; does not establish authenticated Azure end-to-end, tools, sandbox or production acceptance."
+}

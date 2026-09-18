@@ -24,7 +24,7 @@ public sealed class LegendCloudflareTransportTests
             RequestingActorId: "founder", CloudflareScope: new("request1", "tenant", "founder", "session",
                 "conversation", ["Founder"], "v1"));
 
-    private static LegendConnectModelInferenceTransport Transport(Handler handler, string endpoint = "https://legend.example/v1/legend/respond") =>
+    private static LegendConnectModelInferenceTransport Transport(Handler handler, string endpoint = "https://legend.example/v1/legend/respond", bool callbackEnabled = false) =>
         new(handler, new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["LegendConnect:Foundation:HostKind"] = "Cloudflare",
@@ -34,8 +34,41 @@ public sealed class LegendCloudflareTransportTests
             ["LegendConnect:Foundation:Cloudflare:AccountId"] = "account",
             ["LegendConnect:Foundation:Cloudflare:KeyId"] = "key1",
             ["LegendConnect:Foundation:Cloudflare:SigningKey"] = Convert.ToBase64String(Key),
-            ["LegendConnect:Foundation:Cloudflare:MaxCostMicrousd"] = "10000"
+            ["LegendConnect:Foundation:Cloudflare:MaxCostMicrousd"] = "10000",
+            ["LegendConnect:Foundation:Cloudflare:ToolCallbackEnabled"] = callbackEnabled.ToString()
         }).Build(), NullLogger<LegendConnectModelInferenceTransport>.Instance);
+
+    [Fact]
+    public async Task OptionalToolsRequireExplicitCallbackActivationAndHaveBoundedCloudLoop()
+    {
+        var task = TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation) with
+        {
+            AllowTools = true,
+            Tools = JsonSerializer.SerializeToElement(new[] { new { type = "function", name = "legend_calculate", parameters = new { type = "object" } } })
+        };
+        var handler = new Handler();
+        Assert.False((await Transport(handler).GenerateAsync("cloudflare:registry", task)).Succeeded);
+        Assert.Equal(0, handler.Calls);
+        Assert.True((await Transport(handler, callbackEnabled: true).GenerateAsync("cloudflare:registry", task)).Succeeded);
+        Assert.Equal(1, handler.Payload.GetProperty("task").GetProperty("tools").GetArrayLength());
+        Assert.Equal(3, handler.Payload.GetProperty("limits").GetProperty("maxModelCalls").GetInt32());
+        Assert.Equal(4, handler.Payload.GetProperty("limits").GetProperty("maxToolCalls").GetInt32());
+        Assert.Equal(10000, handler.Payload.GetProperty("limits").GetProperty("maxCostMicrousd").GetInt32());
+    }
+
+    [Fact]
+    public async Task ToolExposureDoesNotSatisfyMandatoryEvidenceGate()
+    {
+        var handler = new Handler();
+        var task = TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation) with
+        {
+            AllowTools = true, RequireToolCall = true,
+            Tools = JsonSerializer.SerializeToElement(new[] { new { type = "function", name = "legend_calculate" } })
+        };
+        var result = await Transport(handler, callbackEnabled: true).GenerateAsync("cloudflare:registry", task);
+        Assert.Equal("cloudflare_required_tool_receipt_not_qualified", result.ErrorCode);
+        Assert.Equal(0, handler.Calls);
+    }
 
     [Fact]
     public async Task ExplicitHostedPermissionSignsScopeAndReportsCloudHosting()
@@ -96,6 +129,7 @@ public sealed class LegendCloudflareTransportTests
     private sealed class Handler : HttpMessageHandler, IHttpClientFactory
     {
         public int Calls;
+        public JsonElement Payload;
         public string ResponseId = "request1";
         public HttpClient CreateClient(string name)
         {
@@ -112,6 +146,7 @@ public sealed class LegendCloudflareTransportTests
             Assert.Equal(Convert.ToHexStringLower(HMACSHA256.HashData(Key, Encoding.UTF8.GetBytes(signing))),
                 request.Headers.GetValues("X-Legend-Signature").Single());
             using var parsed = JsonDocument.Parse(body);
+            Payload = parsed.RootElement.Clone();
             Assert.Equal("founder", parsed.RootElement.GetProperty("scope").GetProperty("userId").GetString());
             return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new
             {

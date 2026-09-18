@@ -1111,10 +1111,14 @@ public sealed class LegendFounderAiConversationService
                 return LegendFounderAiChatResponse.ModeFailure(mode,
                     "The cloud tool connection has not completed qualification. This operation was not executed.",
                     "governed_tool", "cloudflare_tools", "cloudflare_tool_callback_not_qualified");
+            var cloudTools = _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:ToolCallbackEnabled")
+                ? _toolAuthority.GetAvailableCloudTools(request.ConversationId, providerPolicy)
+                : Array.Empty<object>();
             var generated = await _modelInference!.GenerateAsync(model,
                 new LegendModelTaskRequest("conversation", instructions,
                     conversation[^1].Content ?? string.Empty, "governed_response",
                     ConversationInput: JsonSerializer.SerializeToElement(input, JsonOptions),
+                    Tools: JsonSerializer.SerializeToElement(cloudTools, JsonOptions), AllowTools: cloudTools.Count > 0,
                     ProviderPolicy: providerPolicy, RequestingActorId: cloudDelegation.UserId,
                     CloudflareScope: new(operationId.Value.ToString("D"), cloudDelegation.TenantId, cloudDelegation.UserId, cloudDelegation.SessionId,
                         request.ConversationId!, cloudDelegation.Roles, cloudDelegation.AuthorizationVersion, cloudDelegation.ExpiresUtc)), effectiveToken);

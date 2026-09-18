@@ -48,7 +48,8 @@ public sealed class LegendCloudflareToolCallbackTests
         Assert.True(receipt.GetProperty("reauthorized").GetBoolean());
         Assert.Equal("SyntheticReadOnlyStatus", receipt.GetProperty("output").GetProperty("authority").GetString());
         Assert.False(receipt.GetProperty("usage").GetProperty("known").GetBoolean());
-        Assert.Equal(0, receipt.GetProperty("usage").GetProperty("costMicrousd").GetInt32());
+        Assert.Equal(1000, receipt.GetProperty("usage").GetProperty("costMicrousd").GetInt32());
+        Assert.Equal("reserved_upper_bound", receipt.GetProperty("usage").GetProperty("costEvidence").GetString());
         // Replays still reauthorize but reuse the existing durable execution
         // receipt. A read receipt is never Founder consent for a mutation.
         fixture.Remediation.Verify(value => value.GetStatusAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -65,6 +66,21 @@ public sealed class LegendCloudflareToolCallbackTests
         Assert.Equal(receipt.GetProperty("output").GetRawText(), row.ResultJson);
         Assert.Single(await fixture.Db.InternalMessages.ToListAsync());
         Assert.False(fixture.Db.ChangeTracker.HasChanges());
+    }
+
+    [Fact]
+    public async Task MissingOrInvalidCostReservationCannotExecuteTool()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        foreach (var amount in new long?[] { null, 0, -1, 1_000_000_001 })
+        {
+            var envelope = fixture.Envelope();
+            if (amount is null) envelope.Remove("maxCostMicrousd");
+            else envelope["maxCostMicrousd"] = amount.Value;
+            Assert.IsType<BadRequestObjectResult>(await fixture.PostAsync(envelope));
+        }
+        fixture.Remediation.VerifyNoOtherCalls();
+        Assert.Empty(await fixture.Db.FounderAiActionAuthorizations.ToListAsync());
     }
 
     [Fact]
@@ -311,7 +327,7 @@ public sealed class LegendCloudflareToolCallbackTests
             return JsonSerializer.SerializeToNode(new
             {
                 version = "legend-tool-callback.v1", requestId = scope.RequestId, environment = scope.Environment,
-                issuedAt = timestamp, expiresAt = timestamp + 25000, contextDigest = new string('c', 64),
+                issuedAt = timestamp, expiresAt = timestamp + 25000, maxCostMicrousd = 1000, contextDigest = new string('c', 64),
                 scope = new { accountId = scope.AccountId, tenantId = scope.TenantId, userId = scope.UserId,
                     sessionId = scope.SessionId, conversationId = scope.ConversationId, roles = scope.Roles,
                     authorizationVersion = scope.AuthorizationVersion },

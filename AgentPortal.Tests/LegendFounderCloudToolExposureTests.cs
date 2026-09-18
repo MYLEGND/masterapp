@@ -87,6 +87,20 @@ public sealed class LegendFounderCloudToolExposureTests
     }
 
     [Fact]
+    public async Task CloudCapabilitiesReportOnlyTheCurrentlyExposedCatalog()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var response = Assert.IsType<OkObjectResult>(await fixture.CallbackAsync("legend_capabilities", "{}"));
+        var output = JsonSerializer.SerializeToElement(response.Value).GetProperty("output");
+        Assert.Equal(JsonValueKind.Array, output.ValueKind);
+        var names = output.EnumerateArray().Select(item => item.GetProperty("name").GetString()).ToArray();
+        Assert.Contains("legend_calculate", names);
+        Assert.DoesNotContain("legend_metric_detail", names);
+        Assert.DoesNotContain("legend_prepare_software_repair", names);
+        Assert.Equal(7, names.Length);
+    }
+
+    [Fact]
     public async Task AuditedCalculationStillExecutesThroughTheExistingSignedCallbackAndReadLedger()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -172,7 +186,7 @@ public sealed class LegendFounderCloudToolExposureTests
             var bytes = JsonSerializer.SerializeToUtf8Bytes(new
             {
                 version = "legend-tool-callback.v1", requestId = Scope.RequestId, environment = Scope.Environment,
-                issuedAt = timestamp, expiresAt = timestamp + 25000, contextDigest = new string('c', 64),
+                issuedAt = timestamp, expiresAt = timestamp + 25000, maxCostMicrousd = 1000, contextDigest = new string('c', 64),
                 scope = new { accountId = Scope.AccountId, tenantId = Scope.TenantId, userId = Scope.UserId,
                     sessionId = Scope.SessionId, conversationId = Scope.ConversationId, roles = Scope.Roles,
                     authorizationVersion = Scope.AuthorizationVersion },

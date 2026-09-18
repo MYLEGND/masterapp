@@ -424,7 +424,7 @@ internal sealed partial class LegendFounderToolAuthority
 
             case "legend_capabilities":
             {
-                return SerializeUnbounded(DescribeFounderCapabilities());
+                return SerializeUnbounded(DescribeFounderCapabilities(cloudReadExposureOnly: providerPolicy?.AllowCloudflareInference == true));
             }
 
             case "legend_remember_conversation_facts":
@@ -1912,7 +1912,7 @@ internal sealed partial class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
-    private static IReadOnlyList<object> DescribeFounderCapabilities()
+    private static IReadOnlyList<object> DescribeFounderCapabilities(bool cloudReadExposureOnly = false)
     {
         var capabilities = new List<object>();
         foreach (var tool in BuildFounderTools())
@@ -1930,6 +1930,8 @@ internal sealed partial class LegendFounderToolAuthority
                 ? nameElement.GetString()
                 : null;
             if (string.IsNullOrWhiteSpace(name))
+                continue;
+            if (cloudReadExposureOnly && !IsCloudReadableTool(name))
                 continue;
 
             var description = root.TryGetProperty("description", out var descriptionElement)

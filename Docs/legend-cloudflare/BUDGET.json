@@ -7,7 +7,13 @@
     "plannedFixedPlatformReserve": 5,
     "plannedOtherPlatformReserve": 2,
     "maximumModelAndToolSpend": 3,
-    "automaticExtension": false
+    "automaticExtension": false,
+    "userConfirmedFixedPlatformCharge": 5,
+    "knownModelCharges": 0.011414,
+    "unknownUsageReservationRetained": 0.045568,
+    "conservativeModelDebit": 0.056982,
+    "remainingModelAndToolAllowance": 2.943018,
+    "remainingTotalBeforeUnverifiedPlatformUsage": 4.943018
   },
   "production": {
     "totalAuthorized": 30,
@@ -16,8 +22,9 @@
     "plannedOtherPlatformReserve": 5,
     "maximumModelAndToolSpend": 20
   },
-  "activation": "blocked_until_existing_plan_usage_and_billing_terms_verified",
+  "activation": "qualification_worker_only_production_blocked_pending_acceptance_and_total_billing_verification",
   "providerInvoiceHardCap": false,
   "accounting": "Qualification spend in the activation month must also count toward the production monthly authorization. Unused reserves cannot be reassigned automatically. Platform request, storage and abuse-related charges are not bounded by an inference ledger alone.",
-  "provisioned": false
+  "provisioned": true,
+  "billingVerification": "User confirms $5/month Workers subscription. Current unbilled platform charges are not verified; OAuth lacks billing-read permission."
 }

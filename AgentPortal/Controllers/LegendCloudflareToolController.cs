@@ -15,7 +15,8 @@ namespace AgentPortal.Controllers;
 [ApiController]
 public sealed class LegendCloudflareToolController(
     IConfiguration configuration, IMessagingService messaging, FounderLegendConnectService legend,
-    IFounderSoftwareRemediationService remediation, IServiceScopeFactory scopes) : ControllerBase
+    IFounderSoftwareRemediationService remediation, IServiceScopeFactory scopes,
+    AgencyCommandService? agencyCommand = null) : ControllerBase
 {
     public const string CallbackPath = "/api/founder/legend-ai/cloudflare-tools";
 
@@ -60,6 +61,9 @@ public sealed class LegendCloudflareToolController(
         {
             using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 24 });
             var root = document.RootElement;
+            if (!root.TryGetProperty("maxCostMicrousd", out var budgetValue) ||
+                !budgetValue.TryGetInt64(out var reservedCost) || reservedCost is <= 0 or > 1_000_000_000)
+                return BadRequest(new { error = "invalid_cloudflare_tool_budget" });
             now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (root.GetProperty("version").GetString() != "legend-tool-callback.v1" ||
                 root.GetProperty("issuedAt").GetInt64() != timestamp ||
@@ -103,13 +107,14 @@ public sealed class LegendCloudflareToolController(
             var idempotency = LegendFounderToolAuthority.ComputeCloudToolIdempotencyKey(actionScope.RequestId, callId);
             if (root.GetProperty("actionDigest").GetString() != digest || root.GetProperty("idempotencyKey").GetString() != idempotency)
                 return StatusCode(403);
-            var authority = new LegendFounderToolAuthority(legend, remediation, authorizationScopes: scopes);
+            var authority = new LegendFounderToolAuthority(legend, remediation, agencyCommand, authorizationScopes: scopes);
             var result = await authority.ExecuteAsync(principal,
                 new FounderAiToolCall(callId, name, arguments, IdempotencyKey: idempotency), "legend", cancellationToken,
                 LegendConnectExternalProviderPolicy.CloudflareFoundation, serverDerivedScope: actionScope);
             if (System.Text.Encoding.UTF8.GetByteCount(result) > 32768) return StatusCode(502);
             using var output = JsonDocument.Parse(result);
-            if (output.RootElement.TryGetProperty("error", out var toolError) && toolError.ValueKind == JsonValueKind.String)
+            if (output.RootElement.ValueKind == JsonValueKind.Object &&
+                output.RootElement.TryGetProperty("error", out var toolError) && toolError.ValueKind == JsonValueKind.String)
             {
                 var code = toolError.GetString();
                 if (code == "cloud_action_outcome_unknown")
@@ -123,8 +128,9 @@ public sealed class LegendCloudflareToolController(
                 contextDigest = root.GetProperty("contextDigest").GetString(), toolCallId = callId,
                 actionDigest = digest, idempotencyKey = idempotency, authorizationVersion = delegation.AuthorizationVersion,
                 reauthorized = true, output = output.RootElement.Clone(),
-                // Tool/provider charges are not assumed free; the broker retains its explicit reservation.
-                usage = new { known = false, costMicrousd = 0 }
+                // This is a conservative ledger debit, not measured provider
+                // usage or proof of zero infrastructure cost. Never refund it.
+                usage = new { known = false, costMicrousd = reservedCost, costEvidence = "reserved_upper_bound" }
             });
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or ArgumentException)
