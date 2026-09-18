@@ -833,9 +833,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             command.FounderAuthorized
                 ? ClientSubscriptionOfferPricing.FounderCustomMinimumCents
                 : ClientSubscriptionOfferPricing.CustomMinimumCents);
-        var billingAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
-            command.BillingAnchorSelectionMode,
-            command.SelectedBillingAnchorDay);
+        var billingAnchorDay = command.FounderAuthorized
+            ? ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
+                command.BillingAnchorSelectionMode,
+                command.SelectedBillingAnchorDay)
+            : subscription.BillingAnchorDay;
         var nowUtc = DateTime.UtcNow;
         var correlationId = command.CorrelationId ?? BillingIdempotency.CreateDeterministic(
             "update-client-subscription",
@@ -870,7 +872,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             correlationId,
             command.FounderAuthorized
                 ? "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged."
-                : "Scoped owning agent updated the monthly amount and billing anchor within the agent pricing floor. Current-period dates and any accepted trial end remain unchanged.");
+                : "Scoped owning agent updated the monthly amount within the agent pricing floor. The existing billing anchor, current-period dates, and any accepted trial end remain unchanged.");
         QueueNotification(
             subscription,
             ClientBillingNotificationKind.SubscriptionTermsUpdated,
