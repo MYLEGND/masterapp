@@ -42,6 +42,18 @@ public sealed class SubscriptionActivationController : Controller
         }
 
         var activation = await _activationService.ActivateAsync(token, input, HttpContext.RequestAborted);
+        if (!activation.Success &&
+            activation.Context.Subscription?.Status == Domain.Billing.ClientSubscriptionStatus.Active)
+        {
+            return View("Unavailable", new SubscriptionActivationNoticeViewModel
+            {
+                Title = "Membership Active — Sign-In Setup Pending",
+                Message = activation.SanitizedMessage
+                    ?? "Your membership is active. Secure sign-in setup is still completing. Do not submit another payment.",
+                ReturnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl)
+            });
+        }
+
         if (!activation.Success || string.IsNullOrWhiteSpace(activation.ProtectedContinuationState))
         {
             if (activation.Context.Availability == SubscriptionActivationAvailability.Ready)
