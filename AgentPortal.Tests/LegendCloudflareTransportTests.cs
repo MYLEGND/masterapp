@@ -39,6 +39,38 @@ public sealed class LegendCloudflareTransportTests
         }).Build(), NullLogger<LegendConnectModelInferenceTransport>.Instance);
 
     [Fact]
+    public async Task RejectedProviderReceiptsRetainCostWithoutReturningAnswer()
+    {
+        foreach (var replacement in new[]
+        {
+            ("cloudflare-workers-ai", "untrusted-provider"),
+            ("Fixture answer", ""),
+            ("\"modelId\":\"@cf/fixture\"", "\"modelId\":123")
+        })
+        {
+            var handler = new Handler { MutateResponse = json => json.Replace(replacement.Item1, replacement.Item2, StringComparison.Ordinal) };
+            var result = await Transport(handler).GenerateAsync("cloudflare:registry", TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation));
+            Assert.False(result.Succeeded);
+            Assert.Null(result.Text);
+            Assert.Equal(50, result.CostMicrounits);
+            Assert.Contains("provider_usage", result.InferenceSettings);
+        }
+    }
+
+    [Theory]
+    [InlineData("1e100")]
+    [InlineData("\"invalid\"")]
+    public async Task MalformedCostFailsClosedWithoutThrowing(string value)
+    {
+        var handler = new Handler { MutateResponse = json => json.Replace("\"costMicrousd\":50", "\"costMicrousd\":" + value, StringComparison.Ordinal) };
+        var result = await Transport(handler).GenerateAsync("cloudflare:registry", TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation));
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Text);
+        Assert.Null(result.CostMicrounits);
+        Assert.Equal("cloudflare_usage_unverified", result.ErrorCode);
+    }
+
+    [Fact]
     public async Task OptionalToolsRequireExplicitCallbackActivationAndHaveBoundedCloudLoop()
     {
         var task = TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation) with
@@ -130,6 +162,7 @@ public sealed class LegendCloudflareTransportTests
     {
         public int Calls;
         public JsonElement Payload;
+        public Func<string, string>? MutateResponse;
         public string ResponseId = "request1";
         public HttpClient CreateClient(string name)
         {
@@ -148,12 +181,13 @@ public sealed class LegendCloudflareTransportTests
             using var parsed = JsonDocument.Parse(body);
             Payload = parsed.RootElement.Clone();
             Assert.Equal("founder", parsed.RootElement.GetProperty("scope").GetProperty("userId").GetString());
-            return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new
+            var json = JsonSerializer.Serialize(new
             {
                 version = "legend-cloudflare.v1", requestId = ResponseId, status = "completed", text = "Fixture answer",
                 provider = new { name = "cloudflare-workers-ai", modelId = "@cf/fixture", hosting = "cloudflare" },
                 usage = new { costMicrousd = 50, costEvidence = "provider_usage" }
-            })) };
+            });
+            return new(HttpStatusCode.OK) { Content = new StringContent(MutateResponse?.Invoke(json) ?? json) };
         }
     }
 }

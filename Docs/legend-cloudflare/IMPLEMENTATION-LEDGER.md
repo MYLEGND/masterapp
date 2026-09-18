@@ -54,3 +54,14 @@ Remaining work/blockers:
 - Generic exact-action review needs durable non-executable proposals and a NEW operation after approval. Never revive a terminal turn, extend an expired execution lease, or treat FounderCommandConfirmed/model flags as exact action consent. Existing diagnostic review/PR/SHA authorities remain available.
 - Actual Azure-to-Cloudflare-to-Azure tool execution, persisted multi-turn Founder session, multilingual qualitative review, isolated editing/build/test, workload costs and final production canary remain unverified.
 - Current billing totals are not visible through the existing OAuth token. The $5 plan confirmation alone does not verify all-in spending headroom or an invoice hard cap.
+
+
+### Final focused review in this iteration
+
+- 103/103 focused .NET callback, exact approval, transport and cloud disclosure tests passed; zero skips (`/private/tmp/legend-cloudflare-reviewed-final.log`). The test build compiled the backend projects and generated migration.
+- 92/92 integrated Worker runtime/security tests passed; zero skips (`/private/tmp/legend-cloudflare-worker-reviewed-final.log`). These remain local simulations, not live tool execution.
+- Fixed an independently found CRM privacy leak at the existing tool output boundary: cloud portfolio results contain numeric totals only, with omitted breakdown indicated; arbitrary CRM status labels and definitions cannot be forwarded. Existing UI/service results are preserved.
+- Capability metadata now reflects the cloud-exposed catalog. Successful tool receipts with uncertain billing retain the full reservation and explicitly prove execution completion separately, allowing the next bounded model step without inventing known usage or refunding work. Uncertain model calls/timeouts still hold their leases. Wrapped receipts and model output have separate64KiB/32KiB bounds.
+- Failed provider receipts retain observed cost/provenance without releasing the answer; malformed/overflow numeric costs fail closed.
+- Sandbox candidate integrated from1bf7e5ba after independent review. Pinned local image builds and compiler checks passed. Security probes did not execute under Mac amd64 emulation because even the minimal seccomp support probe fails; native Linux/cloud isolation is NOT verified. No private source admitted and no cloud container provisioned.
+- No additional live model calls or production changes during these fixes. Budget values and live qualification result counts above remain unchanged. All four agent slots were used with exclusive file boundaries; each specialist finished its assigned bounded review/implementation work. Generic exact-action proposal review/resume and the end-to-end cloud workspace controller remain implementation work, not claimed complete.

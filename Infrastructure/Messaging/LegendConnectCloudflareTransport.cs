@@ -47,6 +47,8 @@ internal sealed partial class LegendConnectModelInferenceTransport
             CryptographicOperations.ZeroMemory(key);
             return new(false, null, "cloudflare_service_key_invalid");
         }
+        long? observedCost = null;
+        string? observedUsage = null;
         try
         {
             var cost = _configuration.GetValue<long?>(prefix + "Cloudflare:MaxCostMicrousd") ?? 0;
@@ -118,8 +120,11 @@ internal sealed partial class LegendConnectModelInferenceTransport
                 returnedId.GetString() != scope.RequestId)
                 return new(false, null, "cloudflare_execution_failed");
             var usage = root.GetProperty("usage");
-            var charged = usage.GetProperty("costMicrousd").GetInt64();
-            if (charged < 0) return new(false, null, "cloudflare_usage_unverified");
+            if (!usage.TryGetProperty("costMicrousd", out var chargedValue) ||
+                chargedValue.ValueKind != JsonValueKind.Number || !chargedValue.TryGetInt64(out var charged) || charged < 0)
+                return new(false, null, "cloudflare_usage_unverified");
+            observedCost = charged;
+            observedUsage = JsonSerializer.Serialize(new { usage = usage.Clone() });
             if (!response.IsSuccessStatusCode || !root.TryGetProperty("status", out var status) || status.GetString() != "completed")
             {
                 var code = root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
@@ -127,17 +132,17 @@ internal sealed partial class LegendConnectModelInferenceTransport
                         ? codeValue.GetString() : null;
                 if (code is null || code.Length > 100 || code.Any(c => c is not (>= 'a' and <= 'z') and not (>= '0' and <= '9') and not '_'))
                     code = "execution_failed";
-                return new(false, null, "cloudflare_" + code, CostMicrounits: charged);
+                return new(false, null, "cloudflare_" + code, CostMicrounits: charged, InferenceSettings: observedUsage);
             }
             var provider = root.GetProperty("provider");
             var modelId = provider.GetProperty("modelId").GetString();
             if (provider.GetProperty("name").GetString() != "cloudflare-workers-ai" ||
                 provider.GetProperty("hosting").GetString() != "cloudflare" || modelId?.StartsWith("@cf/", StringComparison.Ordinal) != true)
-                return new(false, null, "cloudflare_provider_receipt_invalid");
+                return new(false, null, "cloudflare_provider_receipt_invalid", CostMicrounits: charged, InferenceSettings: observedUsage);
             if (usage.GetProperty("costEvidence").GetString() is not ("provider_usage" or "reserved_upper_bound"))
-                return new(false, null, "cloudflare_usage_unverified");
+                return new(false, null, "cloudflare_usage_unverified", CostMicrounits: charged, InferenceSettings: observedUsage);
             var text = root.GetProperty("text").GetString();
-            if (string.IsNullOrWhiteSpace(text)) return new(false, null, "cloudflare_empty_response");
+            if (string.IsNullOrWhiteSpace(text)) return new(false, null, "cloudflare_empty_response", CostMicrounits: charged, InferenceSettings: observedUsage);
             var output = JsonSerializer.SerializeToElement(new { model = modelId, status = "completed",
                 output = new[] { new { type = "message", role = "assistant", content = new[] { new { type = "output_text", text } } } } });
             return new(true, text, CostMicrounits: charged, Output: output, ModelVersion: modelId, Hosting: "CloudflareHosted",
@@ -151,8 +156,8 @@ internal sealed partial class LegendConnectModelInferenceTransport
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         { return new(false, null, "cloudflare_deadline_exceeded"); }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
-        { return new(false, null, "cloudflare_transport_or_receipt_failed"); }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        { return new(false, null, "cloudflare_transport_or_receipt_failed", CostMicrounits: observedCost, InferenceSettings: observedUsage); }
         finally { CryptographicOperations.ZeroMemory(key); }
     }
 }

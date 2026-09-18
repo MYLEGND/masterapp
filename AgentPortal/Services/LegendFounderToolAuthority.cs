@@ -103,6 +103,16 @@ internal sealed partial class LegendFounderToolAuthority
         // sensitive-path and credential-material checks before returning text.
         "legend_inspect_repository";
 
+    // A read-only status grouping can still contain arbitrary private text.
+    // Cloud disclosure includes aggregate numbers, never editable CRM labels.
+    internal static object ProjectCloudPortfolioCounts(AgencyCommandPortfolioCountsVm counts) => new
+    {
+        counts.ObservedUtc, counts.ActiveClientCount, counts.AgentLinkedClientCount,
+        counts.ActiveLeadCount, counts.WebsiteLeadCount,
+        crmStatusBreakdownOmitted = true,
+        accessClass = "read_only_aggregate_counts"
+    };
+
     internal IReadOnlyList<object> Capabilities =>
         DescribeFounderCapabilities();
 
@@ -637,10 +647,9 @@ internal sealed partial class LegendFounderToolAuthority
                     return """{"error":"client_lead_portfolio_unavailable"}""";
                 }
 
-                return SerializeUnbounded(
-                    await _agencyCommand.GetFounderPortfolioCountsAsync(
-                        founder,
-                        cancellationToken));
+                var counts = await _agencyCommand.GetFounderPortfolioCountsAsync(founder, cancellationToken);
+                return SerializeUnbounded(providerPolicy?.AllowCloudflareInference == true
+                    ? ProjectCloudPortfolioCounts(counts) : counts);
             }
 
             case "legend_provider_capacity":

@@ -87,6 +87,19 @@ public sealed class LegendFounderCloudToolExposureTests
     }
 
     [Fact]
+    public void CloudPortfolioDoesNotDiscloseEditableStatusLabelsOrFreeformDefinitions()
+    {
+        var counts = new AgencyCommandPortfolioCountsVm(DateTime.UtcNow, 11, 7, 3,
+            new[] { new AgencyCommandPortfolioStatusCountVm("PRIVATE_CLIENT_INFORMATION", 3) },
+            5, "PRIVATE_FREEFORM_CONTENT", "read_only");
+        var projection = JsonSerializer.SerializeToElement(LegendFounderToolAuthority.ProjectCloudPortfolioCounts(counts));
+        Assert.DoesNotContain("PRIVATE_", projection.GetRawText());
+        Assert.Equal(11, projection.GetProperty("ActiveClientCount").GetInt32());
+        Assert.Equal(3, projection.GetProperty("ActiveLeadCount").GetInt32());
+        Assert.True(projection.GetProperty("crmStatusBreakdownOmitted").GetBoolean());
+    }
+
+    [Fact]
     public async Task CloudCapabilitiesReportOnlyTheCurrentlyExposedCatalog()
     {
         await using var fixture = await Fixture.CreateAsync();
