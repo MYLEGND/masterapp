@@ -1,0 +1,175 @@
+name: Direct deploy shared mobile authority to all web apps
+
+on:
+  push:
+    branches:
+      - deploy/all-webapps-shared-mobile-20260917
+    paths:
+      - '.github/workflows/all-webapps-shared-mobile-direct-20260917.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: all-webapps-shared-mobile-direct
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_SHA: f8fc5f48a442a2bac06820ac8f2975399b73aac9
+  RESOURCE_GROUP: masterapp-rg
+
+jobs:
+  validate-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact unified front-end candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 2
+
+      - name: Setup .NET and Node
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prove front-end-only scope
+        run: |
+          set -euo pipefail
+          git fetch origin production --depth=1
+          git diff --name-only origin/production...${CANDIDATE_SHA} | tee /tmp/changed.txt
+          if grep -E '^(AgentPortal|ClientApp|Protect-Website|ParfaitApp)/(Controllers|Services|Models)/|^(AgentPortal|ClientApp|Protect-Website|ParfaitApp)/Program\.cs$|^Domain/|^Infrastructure/' /tmp/changed.txt; then
+            echo "::error::Unified mobile candidate contains backend/business logic changes."
+            exit 1
+          fi
+          test -f SHARED/wwwroot/css/legend-mobile-platform.css
+          test -f SHARED/wwwroot/js/legend-mobile-platform.js
+          grep -q 'const tokenUrl = "/design/legend-design.tokens.json"' SHARED/wwwroot/js/legend-mobile-platform.js
+
+      - name: Run shared mobile layout contract
+        run: node --test tests/layout/mobile-native-parity.test.mjs
+
+      - name: Build all .NET web apps Release
+        run: |
+          set -euo pipefail
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --nologo
+          dotnet build ClientApp/ClientApp.csproj -c Release --nologo
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo
+          dotnet build ParfaitApp/ParfaitApp.csproj -c Release --nologo
+
+      - name: Build LEGEND public website
+        working-directory: Legend-Website
+        run: |
+          npm run build
+          npm run check
+          test -f dist/legend-mobile-platform.css
+          test -f dist/legend-mobile-platform.js
+          test -f dist/design/legend-design.tokens.json
+          grep -q 'legend-web-app legend-public-website' dist/index.html
+
+      - name: Publish exact web-app artifacts
+        run: |
+          set -euo pipefail
+          dotnet publish AgentPortal/AgentPortal.csproj -c Release -o /tmp/agent --no-restore
+          dotnet publish ClientApp/ClientApp.csproj -c Release -o /tmp/client --no-restore
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect --no-restore
+          dotnet publish ParfaitApp/ParfaitApp.csproj -c Release -o /tmp/parfait --no-restore
+          for pair in "agent:/tmp/agent" "client:/tmp/client" "protect:/tmp/protect" "parfait:/tmp/parfait"; do
+            dir="${pair#*:}"
+            test -f "$dir/wwwroot/design/legend-design.tokens.json"
+            test -f "$dir/wwwroot/_content/Shared/css/legend-mobile-platform.css"
+            test -f "$dir/wwwroot/_content/Shared/js/legend-mobile-platform.js"
+            printf '%s\n' "${CANDIDATE_SHA}" > "$dir/wwwroot/shared-mobile-authority.txt"
+            (cd "$dir" && zip -qr "/tmp/${pair%%:*}.zip" .)
+          done
+          printf '%s\n' "${CANDIDATE_SHA}" > Legend-Website/dist/shared-mobile-authority.txt
+          (cd Legend-Website/dist && zip -qr /tmp/website.zip .)
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve exact web app hosts
+        id: apps
+        run: |
+          set -euo pipefail
+          names=$(az webapp list --resource-group "$RESOURCE_GROUP" --query '[].name' -o tsv)
+          printf '%s\n' "$names"
+          parfait=$(printf '%s\n' "$names" | grep -i 'parfait' | head -n1 || true)
+          test -n "$parfait" || { echo "::error::Unable to resolve Parfait App Service."; exit 1; }
+          for required in masterapp-portal masterapp-client masterapp-protect masterapp-website; do
+            printf '%s\n' "$names" | grep -Fxq "$required" || { echo "::error::Missing Azure App Service $required"; exit 1; }
+          done
+          echo "parfait=$parfait" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and verify AgentPortal
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group "$RESOURCE_GROUP" --name masterapp-portal --src-path /tmp/agent.zip --type zip --clean true --restart true --async true -o none
+          for i in {1..96}; do
+            v=$(curl -fsS https://masterapp-portal.azurewebsites.net/shared-mobile-authority.txt 2>/dev/null || true)
+            [ "$v" = "$CANDIDATE_SHA" ] && curl -fsS https://masterapp-portal.azurewebsites.net/_content/Shared/css/legend-mobile-platform.css | grep -q 'legend-mobile' && break
+            sleep 5
+          done
+          [ "$v" = "$CANDIDATE_SHA" ]
+
+      - name: Deploy and verify ClientApp
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group "$RESOURCE_GROUP" --name masterapp-client --src-path /tmp/client.zip --type zip --clean true --restart true --async true -o none
+          for i in {1..96}; do
+            v=$(curl -fsS https://masterapp-client.azurewebsites.net/shared-mobile-authority.txt 2>/dev/null || true)
+            [ "$v" = "$CANDIDATE_SHA" ] && curl -fsS https://masterapp-client.azurewebsites.net/_content/Shared/css/legend-mobile-platform.css | grep -q 'legend-mobile' && break
+            sleep 5
+          done
+          [ "$v" = "$CANDIDATE_SHA" ]
+
+      - name: Deploy and verify Protect
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group "$RESOURCE_GROUP" --name masterapp-protect --src-path /tmp/protect.zip --type zip --clean true --restart true --async true -o none
+          for i in {1..96}; do
+            v=$(curl -fsS https://masterapp-protect.azurewebsites.net/shared-mobile-authority.txt 2>/dev/null || true)
+            if [ "$v" = "$CANDIDATE_SHA" ] &&
+               curl -fsS https://masterapp-protect.azurewebsites.net/_content/Shared/css/legend-mobile-platform.css | grep -q 'legend-mobile' &&
+               curl -fsS https://masterapp-protect.azurewebsites.net/js/protect-design.js | grep -q 'function decorate'; then break; fi
+            sleep 5
+          done
+          [ "$v" = "$CANDIDATE_SHA" ]
+
+      - name: Deploy and verify Parfait
+        env:
+          PARFAIT_APP: ${{ steps.apps.outputs.parfait }}
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group "$RESOURCE_GROUP" --name "$PARFAIT_APP" --src-path /tmp/parfait.zip --type zip --clean true --restart true --async true -o none
+          for i in {1..96}; do
+            v=$(curl -fsS "https://$PARFAIT_APP.azurewebsites.net/shared-mobile-authority.txt" 2>/dev/null || true)
+            [ "$v" = "$CANDIDATE_SHA" ] && curl -fsS "https://$PARFAIT_APP.azurewebsites.net/_content/Shared/css/legend-mobile-platform.css" | grep -q 'legend-mobile' && break
+            sleep 5
+          done
+          [ "$v" = "$CANDIDATE_SHA" ]
+
+      - name: Deploy and verify LEGEND website
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group "$RESOURCE_GROUP" --name masterapp-website --src-path /tmp/website.zip --type zip --clean true --restart true --async true -o none
+          for i in {1..96}; do
+            v=$(curl -fsS https://masterapp-website.azurewebsites.net/shared-mobile-authority.txt 2>/dev/null || true)
+            if [ "$v" = "$CANDIDATE_SHA" ] &&
+               curl -fsS https://masterapp-website.azurewebsites.net/legend-mobile-platform.css | grep -q 'legend-mobile' &&
+               curl -fsS https://masterapp-website.azurewebsites.net/design/legend-design.tokens.json | grep -q '"sourceOfTruth"'; then break; fi
+            sleep 5
+          done
+          [ "$v" = "$CANDIDATE_SHA" ]
