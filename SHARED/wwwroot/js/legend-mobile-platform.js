@@ -38,7 +38,19 @@
     setVar("--legend-mobile-control-radius", px(radii.control));
     setVar("--legend-mobile-sheet-radius", px(radii.sheet));
     setVar("--legend-mobile-tap-target", px(sizes.minimumTapTarget));
+    setVar("--legend-mobile-compact-control-height", px(sizes.compactControlHeight));
     setVar("--legend-mobile-control-height", px(sizes.controlHeight));
+    setVar("--legend-mobile-prominent-control-height", px(sizes.prominentControlHeight));
+    setVar("--legend-mobile-card-content", px(spacing.cardContent));
+    setVar("--legend-mobile-micro", px(spacing.micro));
+    setVar("--legend-mobile-tiny", px(spacing.tiny));
+    setVar("--legend-mobile-capsule-radius", px(radii.capsule));
+    setVar("--legend-mobile-display-size", px(next?.typography?.display?.size));
+    setVar("--legend-mobile-title-size", px(next?.typography?.title?.size));
+    setVar("--legend-mobile-section-size", px(next?.typography?.section?.size));
+    setVar("--legend-mobile-body-size", px(next?.typography?.body?.size));
+    setVar("--legend-mobile-supporting-size", px(next?.typography?.supporting?.size));
+    setVar("--legend-mobile-label-size", px(next?.typography?.label?.size));
     setVar("--legend-mobile-motion-quick", seconds(motion.quickSeconds));
     setVar("--legend-mobile-motion-standard", seconds(motion.standardSeconds));
     setVar("--legend-mobile-motion-entrance", seconds(motion.entranceSeconds));
@@ -112,6 +124,15 @@
       ? surface
       : surface.querySelector("[role='dialog'],[role='alertdialog']");
     if (semanticDialog) {
+      if (semanticDialog.matches(".drawer.crm-qv-shell")) {
+        surface.setAttribute("data-legend-mobile-sheet", "");
+        surface.toggleAttribute("data-legend-mobile-sheet-open", surface.getAttribute("aria-hidden") === "false");
+        semanticDialog.setAttribute("data-legend-mobile-sheet-panel", "");
+        semanticDialog.querySelector(":scope > .dhead")?.setAttribute("data-legend-mobile-sheet-header", "");
+        semanticDialog.querySelector(":scope > .dbody")?.setAttribute("data-legend-mobile-sheet-scroll", "");
+        syncBodySheetState();
+        return;
+      }
       const nestedPanel = semanticDialog.querySelector(
         ":scope > .modal-content, :scope > [class*='-panel'], :scope > [class*='-dialog'], :scope > [class*='-card'], :scope > [class*='-window']"
       );
