@@ -1,0 +1,78 @@
+name: Force async deploy Protect design package
+
+on:
+  push:
+    branches:
+      - deploy/protect-design-force-async-20260917
+    paths:
+      - '.github/workflows/protect-force-async-deploy-20260917.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: protect-force-async-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact clean design candidate
+        uses: actions/checkout@v4
+        with:
+          ref: dd4280761669b653815a6f087a2c660a6ebe6c8c
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Publish and prove package contents
+        run: |
+          set -euo pipefail
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect-publish
+          test -f /tmp/protect-publish/wwwroot/css/site.css
+          test -f /tmp/protect-publish/wwwroot/js/protect-design.js
+          grep -q 'CANONICAL PRESENTATION AUTHORITY' /tmp/protect-publish/wwwroot/css/site.css
+          grep -q 'function decorate' /tmp/protect-publish/wwwroot/js/protect-design.js
+          grep -q 'protect-design.js' /tmp/protect-publish/ProtectWebsite.Views.dll || true
+          cd /tmp/protect-publish
+          zip -qr /tmp/protect-design.zip .
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Submit clean deployment without waiting on Kudu status
+        run: |
+          set -euo pipefail
+          az webapp deploy             --resource-group masterapp-rg             --name masterapp-protect             --src-path /tmp/protect-design.zip             --type zip             --clean true             --restart true             --async true             --output json
+
+      - name: Verify exact live design package
+        run: |
+          set -euo pipefail
+          for i in {1..96}; do
+            home_code=$(curl -L -sS -o /tmp/home.html -w '%{http_code}' https://masterapp-protect.azurewebsites.net/ || true)
+            css_code=$(curl -sS -o /tmp/site.css -w '%{http_code}' https://masterapp-protect.azurewebsites.net/css/site.css || true)
+            js_code=$(curl -sS -o /tmp/protect-design.js -w '%{http_code}' https://masterapp-protect.azurewebsites.net/js/protect-design.js || true)
+            if [ "$home_code" = "200" ] && [ "$css_code" = "200" ] && [ "$js_code" = "200" ] &&
+               grep -q 'CANONICAL PRESENTATION AUTHORITY' /tmp/site.css &&
+               grep -q 'function decorate' /tmp/protect-design.js &&
+               grep -q 'protect-design.js' /tmp/home.html; then
+              echo "LIVE_PROTECT_DESIGN_VERIFIED"
+              echo "site_css_bytes=$(wc -c < /tmp/site.css)"
+              echo "protect_design_js_bytes=$(wc -c < /tmp/protect-design.js)"
+              exit 0
+            fi
+            echo "attempt=$i home=$home_code css=$css_code js=$js_code"
+            sleep 5
+          done
+          echo "::error::Protect live host never served the exact new design package."
+          exit 1
