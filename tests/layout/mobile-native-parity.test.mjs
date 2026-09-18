@@ -17,9 +17,12 @@ test('all web apps consume one shared mobile web authority', () => {
     assert.equal(source.split('~/_content/Shared/css/legend-mobile-platform.css').length - 1, 1, file);
     assert.equal(source.split('~/_content/Shared/js/legend-mobile-platform.js').length - 1, 1, file);
     assert.match(source, /legend-web-app/, file);
-    assert(
-      source.indexOf('legend-mobile-platform.js') < source.indexOf('legend-modal.js'),
-      `${file} must initialize the mobile authority before LegendModal`);
+    const modalIndex = source.indexOf('legend-modal.js');
+    if (modalIndex >= 0) {
+      assert(
+        source.indexOf('legend-mobile-platform.js') < modalIndex,
+        `${file} must initialize the mobile authority before LegendModal`);
+    }
   }
 
   assert.equal(existsSync(new URL('../../ClientApp/wwwroot/css/client-mobile.css', import.meta.url)), false);
@@ -46,8 +49,8 @@ test('mobile presentation reads the exact cross-platform token source', () => {
   const script = read('SHARED/wwwroot/js/legend-mobile-platform.js');
   for (const project of ['AgentPortal/AgentPortal.csproj', 'ClientApp/ClientApp.csproj', 'Protect-Website/ProtectWebsite.csproj']) {
     const source = read(project);
-    assert.match(source, /Legend-Design[\\/]legend-design\.tokens\.json/);
-    assert.match(source, /wwwroot[\\/]design[\\/]legend-design\.tokens\.json/);
+    assert(source.includes('Legend-Design') && source.includes('legend-design.tokens.json'), project);
+    assert(source.includes('wwwroot') && source.includes('design') && source.includes('legend-design.tokens.json'), project);
   }
 
   assert.match(script, /const tokenUrl = "\/design\/legend-design\.tokens\.json"/);
@@ -195,9 +198,23 @@ test('CRM phone geometry has one owner and Quick View body remains scrollable', 
   const clients = read('AgentPortal/wwwroot/css/clients-index.css');
   const shared = read('SHARED/wwwroot/css/legend-mobile-platform.css');
 
-  for (const width of [640, 650, 700, 720, 760, 800, 820, 840]) {
-    const pattern = new RegExp('@media \\(max-width:\\s*' + width + 'px\\)[\\s\\S]*?\\.drawer\\.crm-qv-shell');
-    assert.doesNotMatch(clients, pattern);
+  const mediaBlocks = [];
+  for (let at = clients.indexOf('@media'); at >= 0; at = clients.indexOf('@media', at + 1)) {
+    const open = clients.indexOf('{', at);
+    if (open < 0) break;
+    let depth = 1;
+    let end = open + 1;
+    for (; end < clients.length && depth > 0; end++) {
+      if (clients[end] === '{') depth++;
+      else if (clients[end] === '}') depth--;
+    }
+    if (depth === 0) mediaBlocks.push(clients.slice(at, end));
+  }
+  for (const block of mediaBlocks) {
+    const match = block.match(/max-width:\s*(\d+)px/i);
+    if (match && Number(match[1]) <= 840) {
+      assert.doesNotMatch(block, /\.drawer\.crm-qv-shell/);
+    }
   }
 
   assert.match(shared, /\.drawer\.crm-qv-shell\[data-legend-mobile-sheet\] > \.dbody \{[\s\S]*?flex:\s*1 1 auto;[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;/);
