@@ -169,7 +169,7 @@ public sealed record ClientCreationFormDefinition(
                 visibleWhen: new[] { portalCondition, customSubscriptionCondition },
                 placeholder: canSetFounderSubscriptionOptions ? "0.00" : "50.00",
                 minimum: canSetFounderSubscriptionOptions ? 0 : 50,
-                maximum: 2500,
+                maximum: ClientSubscriptionOfferPricing.CustomMaximumCents / 100m,
                 step: 0.01m),
             Choice(
                 "SubscriptionBillingAnchorMode",
