@@ -1,4 +1,4 @@
-import { MODEL_REGISTRY, REGISTRY_VERSION, RuntimeFailure, estimateCostMicrousd, routeModel } from './registry.mjs';
+import { MODEL_REGISTRY, REGISTRY_VERSION, RuntimeFailure, estimateCostMicrousd, routeModel, resolveExecutionPolicy } from './registry.mjs';
 import { generate } from './adapter.mjs';
 import { CircuitBreaker, abortable, requestSignal } from './reliability.mjs';
 
@@ -37,6 +37,9 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
   let deadline;
   try {
     validate(envelope, budget);
+    const executionPolicy = resolveExecutionPolicy(env, envelope, context);
+    result.executionMode = executionPolicy.mode;
+    if (executionPolicy.mode === 'qualification') result.qualificationSuiteSha256 = executionPolicy.suiteSha256;
     deadline = requestSignal(parentSignal, envelope.limits.deadlineUnixMs);
     const { signal } = deadline;
     const emit = event => onEvent ? abortable(() => onEvent(event), signal) : Promise.resolve();
@@ -53,7 +56,7 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
       const inputBound = encoder.encode(JSON.stringify({ messages, tools })).length + 1024;
       const remaining = envelope.limits.maxCostMicrousd - result.usage.costMicrousd;
       const model = routeModel({ task: envelope.task, accountId: envelope.scope.accountId, inputTokens: inputBound, maxOutputTokens: envelope.limits.maxOutputTokens,
-        remainingCostMicrousd: remaining, registry, excluded: circuit.unavailable() });
+        remainingCostMicrousd: remaining, registry, excluded: circuit.unavailable(), executionPolicy });
       const reserved = estimateCostMicrousd(model, model.contextTokens, envelope.limits.maxOutputTokens);
       if (reserved > remaining) throw new RuntimeFailure('request_budget_exhausted');
       result.provider = { name: model.provider, modelId: model.id, hosting: model.hosting };

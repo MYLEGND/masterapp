@@ -22,18 +22,55 @@ export class RuntimeFailure extends Error {
   constructor(code, retryable = false) { super(code); this.name = 'RuntimeFailure'; this.code = code; this.retryable = retryable; }
 }
 
+const identifier = value => typeof value === 'string' && /^[A-Za-z0-9_.:@-]{1,128}$/.test(value);
+const positiveCost = value => Number.isSafeInteger(value) && value > 0 && value <= 1_000_000_000_000;
+
+/** Only deployment bindings and the authenticated session may grant qualification access. */
+export function resolveExecutionPolicy(env, envelope, context, now = Date.now()) {
+  const mode = env.LEGEND_RUNTIME_MODE ?? 'production';
+  // Production does not inspect or honor qualification flags in either env or request.
+  if (mode === 'production') return Object.freeze({ mode });
+  if (mode !== 'qualification' || env.LEGEND_DEPLOYMENT_ENVIRONMENT !== 'qualification') throw new RuntimeFailure('runtime_mode_invalid');
+  let policy; let budget;
+  try {
+    policy = JSON.parse(env.LEGEND_QUALIFICATION_POLICY_JSON);
+    budget = JSON.parse(env.LEGEND_BUDGET_POLICY_JSON);
+  } catch { throw new RuntimeFailure('qualification_configuration_missing'); }
+  if (policy?.version !== 'legend-qualification.v1' || !identifier(policy.accountId) || policy.accountId !== env.LEGEND_ACCOUNT_ID
+    || !MODEL_REGISTRY.some(model => model.id === policy.modelId)
+    || !identifier(policy.tenantId) || !identifier(policy.serviceKeyId) || policy.requiredRole !== 'LegendQualification'
+    || !Array.isArray(policy.allowedUserIds) || !policy.allowedUserIds.length || policy.allowedUserIds.length > 32
+    || !policy.allowedUserIds.every(identifier) || new Set(policy.allowedUserIds).size !== policy.allowedUserIds.length
+    || !/^[a-f0-9]{64}$/.test(policy.suiteSha256 ?? '') || !positiveCost(policy.lifetimeCostMicrousd)
+    || !Number.isSafeInteger(policy.expiresAt) || policy.expiresAt <= now || policy.expiresAt > now + 86400000) throw new RuntimeFailure('qualification_configuration_invalid');
+  // The account-named durable ledger supplies atomic lifetime enforcement. This
+  // deployment cap is the authorized metered remainder after nonmetered charges.
+  if (budget?.period !== 'lifetime' || !positiveCost(budget.accountMicrousd)
+    || budget.accountMicrousd > policy.lifetimeCostMicrousd) throw new RuntimeFailure('qualification_lifetime_budget_required');
+  if (!context || context.accountId !== policy.accountId || context.tenantId !== policy.tenantId
+    || !policy.allowedUserIds.includes(context.userId) || context.keyId !== policy.serviceKeyId
+    || !Array.isArray(context.roles) || !context.roles.includes(policy.requiredRole) || context.requestId !== envelope.requestId
+    || ['accountId', 'tenantId', 'userId', 'sessionId', 'conversationId'].some(key => context[key] !== envelope.scope[key])) throw new RuntimeFailure('qualification_scope_denied');
+  if (envelope.limits.deadlineUnixMs > policy.expiresAt) throw new RuntimeFailure('qualification_deadline_exceeded');
+  if (envelope.task.tools?.length) throw new RuntimeFailure('qualification_tools_disabled');
+  return Object.freeze({ mode, modelId: policy.modelId, accountId: policy.accountId,
+    suiteSha256: policy.suiteSha256, expiresAt: policy.expiresAt });
+}
+
 export function estimateCostMicrousd(model, inputTokens, outputTokens) {
   if (![inputTokens, outputTokens].every(n => Number.isSafeInteger(n) && n >= 0)) throw new RuntimeFailure('invalid_usage');
   // USD / million tokens is numerically equal to micro-USD / token.
   return Math.ceil(inputTokens * model.inputUsdPerMillion + outputTokens * model.outputUsdPerMillion);
 }
 
-export function routeModel({ task, accountId, inputTokens, maxOutputTokens, remainingCostMicrousd, registry = MODEL_REGISTRY, now = Date.now(), excluded = [] }) {
+export function routeModel({ task, accountId, inputTokens, maxOutputTokens, remainingCostMicrousd, registry = MODEL_REGISTRY, now = Date.now(), excluded = [], executionPolicy = { mode: 'production' } }) {
   const capabilities = new Set(['text', ...(task.requiredCapabilities ?? []), ...(task.tools?.length ? ['tools'] : [])]);
-  const eligible = registry.filter(model => model.enabled === true && model.provider === 'cloudflare-workers-ai' && model.hosting === 'cloudflare'
-    && typeof accountId === 'string' && model.qualification?.accountId === accountId
-    && model.qualification?.accountCanaryPassed === true && model.qualification?.heldOutPassed === true
-    && model.qualification?.expiresAt > now && !excluded.includes(model.id)
+  const qualified = model => executionPolicy.mode === 'qualification'
+    ? executionPolicy.accountId === accountId && executionPolicy.expiresAt > now && model.id === executionPolicy.modelId
+    : model.enabled === true && typeof accountId === 'string' && model.qualification?.accountId === accountId
+      && model.qualification?.accountCanaryPassed === true && model.qualification?.heldOutPassed === true && model.qualification?.expiresAt > now;
+  const eligible = registry.filter(model => qualified(model) && model.provider === 'cloudflare-workers-ai' && model.hosting === 'cloudflare'
+    && !excluded.includes(model.id)
     && [...capabilities].every(capability => model.capabilities.includes(capability))
     && inputTokens + maxOutputTokens <= model.contextTokens
     && estimateCostMicrousd(model, inputTokens, maxOutputTokens) <= remainingCostMicrousd);

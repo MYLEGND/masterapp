@@ -18,6 +18,7 @@ The user subsequently approved a **$10 total qualification ceiling and $30/month
 | `tests/runtime/fixtures/held-out.v1.json` | Twelve prepared, unrun cases: four reasoning, four multi-turn and four code diagnosis |
 | `tests/runtime/qualification.mjs` | Offline receipt scoring and cost/latency summary; no network calls or qualification promotion |
 | `tests/runtime/qualification.test.mjs` | Simulation-only evaluator integrity checks |
+| `tests/runtime/qualification-mode.test.mjs` | Qualification admission, scope, expiry, budget and production-isolation simulations |
 
 Run `node --test Legend-Cloudflare/tests/runtime/*.test.mjs` from the repository root. No npm dependencies, local model, .NET build or Cloudflare credentials are needed.
 
@@ -35,7 +36,7 @@ The existing `AgentPortal/Services/LegendFounderAiConversationService.cs` has it
 
 All model attempts reserve the selected model's entire input context capacity plus the configured output cap at uncached rates. This is conservative admission control, not an expected bill. Actual reported tokens settle the charge; missing/malformed usage terminates the request and keeps the reservation. Reasoning consumes the provider completion cap where supported. Billing semantics and cap enforcement require per-model live qualification before enablement.
 
-There are no automatic inference or tool retries (retry limit zero), no pending local queue, and no fallback endpoint. New rounds retain the same scoped request transcript. Model choice requires operator-enabled state, an unexpired passing account canary and held-out qualification, compatible capability/context, budget and circuit health. Circuit hints are per isolate; durable budgets/concurrency are the global guard. Routing is presently role-first then price; measured latency and quality optimization remains blocked on live data.
+There are no automatic inference or tool retries (retry limit zero), no pending local queue, and no fallback endpoint. New rounds retain the same scoped request transcript. Production model choice requires operator-enabled state, an unexpired passing account canary and held-out qualification, compatible capability/context, budget and circuit health. The separately deployed qualification mode below permits initial evaluation without inventing those passing flags. Circuit hints are per isolate; durable budgets/concurrency are the global guard. Production routing is presently role-first then price; measured latency and quality optimization remains blocked on live data.
 
 Cancellation stops awaiting further model output and prevents later tools. The Workers AI binding does not provide a verified backend cancellation guarantee here; the full debit and concurrency lease remain for unknown work. Progress/final SSE uses backpressure and emits exactly one terminal result. Provider tokens are buffered, output shapes are validated, and reasoning items are excluded. This is event streaming, not token streaming or a semantic truth verifier. No disconnected stream is replayed automatically.
 
@@ -70,6 +71,26 @@ Upstream license evidence: [Qwen3 Apache 2.0](https://huggingface.co/Qwen/Qwen3-
 Cloudflare's [data usage policy](https://developers.cloudflare.com/workers-ai/platform/data-usage/) says customer content is not used to train models or improve services without explicit consent, and storage services can retain content when separately used. This code uses no response cache, no Gateway logs, no prompt logging and no canonical storage. Application logging, authorized retrieval/redaction, deployment telemetry retention and region requirements must be verified separately; no residency guarantee is inferred from the word hosted.
 
 ## Qualification and release gates
+
+`LEGEND_RUNTIME_MODE` defaults to `production`. Production ignores qualification fields in requests and the qualification JSON binding; it cannot route a disabled engine. To perform the first real evaluation, the lead must deploy a **separate qualification Worker with a dedicated Azure service-signing key**, set `LEGEND_RUNTIME_MODE=qualification` and `LEGEND_DEPLOYMENT_ENVIRONMENT=qualification`, and supply operator-owned `LEGEND_QUALIFICATION_POLICY_JSON`:
+
+| Required policy field | Enforcement |
+| --- | --- |
+| `version` | Exactly `legend-qualification.v1` |
+| `accountId` | Matches deployment `LEGEND_ACCOUNT_ID` and authenticated scope |
+| `modelId` | Exactly one existing Cloudflare-hosted registry candidate; requests cannot choose it |
+| `tenantId`, `allowedUserIds` | Dedicated test tenant and nonempty allowlist of at most 32 authenticated users |
+| `requiredRole` | Exactly `LegendQualification`, derived by the Azure service and verified in signed context |
+| `serviceKeyId` | Matches the dedicated key ID that authenticated this request |
+| `suiteSha256` | Operator-selected 64-character lowercase SHA-256; request overrides are ignored |
+| `expiresAt` | Millisecond expiry within the next 24 hours; request deadline may not outlive it |
+| `lifetimeCostMicrousd` | Positive authorized **metered remainder** after reserving subscription/platform/other charges |
+
+Qualification additionally requires `LEGEND_BUDGET_POLICY_JSON.period=lifetime` and a positive account cap no greater than `lifetimeCostMicrousd`. The code enforces a generic safe numeric maximum; the lead sets the much smaller user-approved ceiling and all-charge reserves. All qualification candidates, suite revisions and key rotations must share the **same account-named lifetime Durable Object ledger and namespace**. Do not create a fresh namespace or rename its account identity to reset spend. That ledger and ordinary authenticated replay/budget reservations remain mandatory before each provider attempt.
+
+Qualification runs the existing `orchestrate` and Workers AI adapter, locks routing to the operator-selected candidate, returns `executionMode:qualification` plus `qualificationSuiteSha256`, and never mutates registry `enabled` or passing qualification flags. It requires the same hosted identity, context/output bounds, cost reservation, cancellation and circuit checks. Initial qualification rejects nonempty tool catalogs. It therefore does **not** qualify repository editing, build/test sandbox execution, approvals, canonical memory persistence, or the four-language acceptance matrix. Those remain separate release gates, and the twelve-case suite is not full application acceptance.
+
+No qualification Worker has been deployed or called by this specialist. Account billing/remaining all-charge allowance is still a lead release prerequisite. These configuration controls do not make a schema GET or simulated fixture a passing live evaluation.
 
 Before an operator changes any `enabled:false` registry entry, independently capture authenticated account access, exact executed model identity, accepted input/output shape, token/reasoning accounting, configured limits, licensing/processing approval, and a live canary. Store a dated, expiring qualification tied to the deployed registry revision. Never let a request or model mint qualification flags. Fixture qualifications exist only in tests.
 
