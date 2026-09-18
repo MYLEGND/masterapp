@@ -32,12 +32,11 @@ public sealed class LegendFounderCloudActionApprovalTests
     [Fact]
     public void ApprovalDigestsMatchWorkerInteroperabilityVectors()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName,
-                   "Legend-Cloudflare", "tests", "security", "action-digest-vectors.json"))) directory = directory.Parent;
-        Assert.NotNull(directory);
-        using var vectors = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory.FullName,
-            "Legend-Cloudflare", "tests", "security", "action-digest-vectors.json")));
+        // Build outputs may live outside the checkout. The test project copies
+        // this exact shared Worker fixture; never infer a checkout from bin/.
+        var path = Path.Combine(AppContext.BaseDirectory, "legend-cloudflare-action-digest-vectors.json");
+        Assert.True(File.Exists(path), "The shared Worker action-digest fixture must be copied to the test output.");
+        using var vectors = JsonDocument.Parse(File.ReadAllText(path));
         foreach (var vector in vectors.RootElement.GetProperty("vectors").EnumerateArray())
         {
             var action = vector.GetProperty("action");
