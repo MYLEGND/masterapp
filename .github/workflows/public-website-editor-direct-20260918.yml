@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build             --filter 'FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~WebsiteAnalyticsDeleteLeadTests|FullyQualifiedName~WebsiteAnalyticsInitialQualityModeTests'             --logger 'console;verbosity=minimal'
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --filter 'FullyQualifiedName~WebsiteAnalyticsScopeTests|FullyQualifiedName~WebsiteAnalyticsDeleteLeadTests|FullyQualifiedName~WebsiteAnalyticsInitialQualityModeTests' --logger 'console;verbosity=minimal'
 
       - name: Smoke LEGEND artifact locally
         shell: bash
