@@ -1,0 +1,91 @@
+name: Deploy Protect Website to production
+
+on:
+  push:
+    branches:
+      - production
+    paths:
+      - 'Protect-Website/**'
+      - 'Legend-Website/src/site.css'
+      - 'Legend-Design/legend-design.tokens.json'
+      - '.github/workflows/protect-production-deploy.yml'
+
+concurrency:
+  group: protect-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.x'
+  AZURE_WEBAPP_NAME: masterapp-protect
+  PROJECT_PATH: Protect-Website/ProtectWebsite.csproj
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout immutable production commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore Protect only
+        run: dotnet restore "${{ env.PROJECT_PATH }}"
+
+      - name: Build Protect Release
+        run: dotnet build "${{ env.PROJECT_PATH }}" --configuration Release --no-restore
+
+      - name: Publish Protect Release
+        run: dotnet publish "${{ env.PROJECT_PATH }}" --configuration Release --no-build --output ./protect-package
+
+      - name: Verify exact LEGEND website presentation authority is packaged
+        run: |
+          test -f ./protect-package/wwwroot/design/legend-website.css
+          test -f ./protect-package/wwwroot/design/legend-design.tokens.json
+          grep -q 'site-header' ./protect-package/wwwroot/design/legend-website.css
+          if test -f ./protect-package/wwwroot/js/protect-design.js; then
+            echo "::error::Superseded Protect presentation decorator is still packaged."
+            exit 1
+          fi
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Protect only
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          package: ./protect-package
+
+      - name: Verify Protect is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          host=$(az webapp show --name "${{ env.AZURE_WEBAPP_NAME }}" --query defaultHostName -o tsv)
+          test -n "$host"
+          for attempt in {1..30}; do
+            status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 "https://$host/" || true)
+            if [[ "$status" =~ ^(200|301|302)$ ]]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Protect did not become reachable after deployment."
+          exit 1
