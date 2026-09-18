@@ -182,12 +182,13 @@ static bool IsExpiredOidcGrant(string? error, string? description)
            description.Contains("refresh token", StringComparison.OrdinalIgnoreCase) && description.Contains("expired", StringComparison.OrdinalIgnoreCase);
 }
 
-static bool IsCorrelationFailure(string? description)
+static bool IsRecoverableOidcStateFailure(string? description)
 {
     if (string.IsNullOrWhiteSpace(description))
         return false;
 
-    return description.Contains("Correlation failed", StringComparison.OrdinalIgnoreCase);
+    return description.Contains("Correlation failed", StringComparison.OrdinalIgnoreCase) ||
+           description.Contains("Unable to unprotect the message.State", StringComparison.OrdinalIgnoreCase);
 }
 
 builder.Services.AddAuthentication(options =>
@@ -297,7 +298,7 @@ builder.Services.AddAuthentication(options =>
                 error,
                 description);
 
-            if (!IsExpiredOidcGrant(error, description) && !IsCorrelationFailure(description))
+            if (!IsExpiredOidcGrant(error, description) && !IsRecoverableOidcStateFailure(description))
                 return;
 
             var returnUrl = ctx.HttpContext.RequestServices
