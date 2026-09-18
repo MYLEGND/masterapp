@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release             --filter 'FullyQualifiedName~BillingCentralizationTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~ClientSubscriptionAdministrationTests'             --logger 'console;verbosity=minimal'
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release             --filter 'FullyQualifiedName~BillingCentralizationTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~ClientSubscriptionAdministrationTests|FullyQualifiedName~ClientAppSubscriptionRedirectAndGrandfatheringTests'             --logger 'console;verbosity=minimal'
 
       - name: Guard expected subscription authorities
         shell: bash
@@ -50,6 +50,6 @@ jobs:
           grep -q 'ClientSubscriptionOfferPricing' AgentPortal/Controllers/ClientsController.cs
           grep -q 'MasterAppBillingOrchestrator' Infrastructure/Billing/MasterAppBillingOrchestrator.cs
           grep -q 'ClientBillingNotificationDeliveryService' AgentPortal/Services/ClientBillingNotificationDeliveryHostedService.cs
-          grep -q 'data-subscription' AgentPortal/Views/Shared/_QuickViewBillingSection.cshtml
+          grep -q 'btnBillingUpdateSubscription' AgentPortal/Views/Shared/_QuickViewBillingSection.cshtml
 
 # Revalidation refresh: includes post-activation false-alert regression coverage.
