@@ -2635,7 +2635,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
 /// </summary>
 public sealed record LegendConnectExternalProviderPolicy(
     bool AllowExternalProviders,
-    bool AllowExternalAnswering = true)
+    bool AllowExternalAnswering = true,
+    bool AllowCloudflareInference = false)
 {
     /// <summary>
     /// An absolute zero-external-provider request.
@@ -2658,6 +2659,10 @@ public sealed record LegendConnectExternalProviderPolicy(
     /// </summary>
     public static readonly LegendConnectExternalProviderPolicy IndependentAnswering =
         new(AllowExternalProviders: true, AllowExternalAnswering: false);
+
+    /// <summary>Explicit hosted foundation permission; does not permit external teacher calls.</summary>
+    public static readonly LegendConnectExternalProviderPolicy CloudflareFoundation =
+        new(AllowExternalProviders: true, AllowExternalAnswering: false, AllowCloudflareInference: true);
 
     /// <summary>
     /// Resolves an absent policy to the provider-enabled default so existing

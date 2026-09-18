@@ -1,0 +1,10 @@
+{
+  "name": "@legend/cloudflare-foundation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/runtime/*.test.mjs tests/security/*.test.mjs tests/security/application.integration.mjs",
+    "check": "wrangler deploy --dry-run --config wrangler.qualification.jsonc"
+  },
+  "devDependencies": { "wrangler": "4.135.0" }
+}

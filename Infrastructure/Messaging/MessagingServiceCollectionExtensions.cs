@@ -108,6 +108,15 @@ public static class MessagingServiceCollectionExtensions
         {
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        services.AddHttpClient("LegendCloudflareFoundation", client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            UseProxy = false
+        });
         services.AddHttpClient("LegendLocalFoundation", client =>
         {
             // The inference transport owns the linked request deadline.

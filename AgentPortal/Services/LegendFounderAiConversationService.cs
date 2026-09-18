@@ -263,7 +263,9 @@ public sealed class LegendFounderAiConversationService
             ? LegendConnectExternalProviderPolicy.NativeOnly
             : request.ExternalAnsweringBlocked
                 ? LegendConnectExternalProviderPolicy.IndependentAnswering
-                : LegendConnectExternalProviderPolicy.ProviderEnabled;
+                : _configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare" && !IsTeacherMode(mode)
+                    ? LegendConnectExternalProviderPolicy.CloudflareFoundation
+                    : LegendConnectExternalProviderPolicy.ProviderEnabled;
         if (providerPolicy.ForbidsExternalAnswering && IsTeacherMode(mode))
             return LegendFounderAiChatResponse.ModeFailure(mode, "External answering is blocked for this request. Use Legend® Ai mode. OpenAI Teacher was not contacted.",
                 "validation", "native_only_validation", request.NativeOnly ? "native_only_requires_legend_mode" : "external_answering_blocked_requires_legend_mode");
@@ -322,7 +324,7 @@ public sealed class LegendFounderAiConversationService
                 NativeOnly = request.NativeOnly, ExternalAnsweringBlocked = request.ExternalAnsweringBlocked,
                 FounderCommandConfirmed = request.FounderCommandConfirmed
             };
-            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, executionClock, providerPolicy, budget.Token, ObserveProgressAsync));
+            var response = WithWorkEvidence(await ExecuteReplyAsync(founder, effectiveRequest, executionClock, providerPolicy, budget.Token, ObserveProgressAsync, id));
             var terminal = await InHistoryScopeAsync((history, token) => history.CompleteFounderAiTurnAsync(new(
                 actor, conversationId, id, begin.UserMessage!.Id, response.Message ?? response.Error ?? "The response outcome could not be verified.",
                 response.Succeeded ? MessagingAuthorKinds.Assistant : MessagingAuthorKinds.Service, ToHistoryProvenance(response)), token), budget.Token);
@@ -457,7 +459,8 @@ public sealed class LegendFounderAiConversationService
         Func<
             LegendFounderAiProgressEvent,
             CancellationToken,
-            ValueTask>? progress = null)
+            ValueTask>? progress = null,
+        Guid? operationId = null)
     {
         ArgumentNullException.ThrowIfNull(founder);
         ArgumentNullException.ThrowIfNull(request);
@@ -857,7 +860,10 @@ public sealed class LegendFounderAiConversationService
             }
         }
 
-        // Ordinary LEGEND conversation always uses the controlled local model.
+        // The configured foundation owns ordinary conversation; no provider fallback.
+        var usingCloudflare = !IsTeacherMode(mode) &&
+            _configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare";
+        // Existing local deployments remain independently governed during migration.
         // A missing local deployment is a service limitation, never permission
         // to silently replace it with a hosted answering dependency.
         var usingExternalAnswering = IsTeacherMode(mode);
@@ -875,7 +881,7 @@ public sealed class LegendFounderAiConversationService
                 EscalationUsed = false
             };
         }
-        var localModelSelection = !usingExternalAnswering && _activeModelInference is not null
+        var localModelSelection = !usingExternalAnswering && !usingCloudflare && _activeModelInference is not null
             ? await _activeModelInference.ResolveConversationModelAsync(effectiveToken)
             : null;
         if (localModelSelection is { Available: true, ModelVersion: { } selectedModel })
@@ -1064,6 +1070,51 @@ public sealed class LegendFounderAiConversationService
                     ? message.Content + "\n\n" + evidenceContext
                     : message.Content
             });
+        }
+
+        if (usingCloudflare)
+        {
+            // The Worker owns the cloud loop. Never feed it into the Azure provider loop below.
+            if (!providerPolicy.AllowCloudflareInference || providerPolicy.ForbidsExternalProviders)
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "Cloudflare inference is blocked for this request. No external model was called.",
+                    "authorization", "cloudflare_policy", "cloudflare_inference_forbidden_by_policy");
+            var sessionId = founder.FindFirst("sid")?.Value;
+            var tenantId = founder.GetCanonicalTenantId();
+            var userId = founder.GetCanonicalUserId();
+            if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(tenantId) ||
+                string.IsNullOrWhiteSpace(userId) || operationId is null ||
+                !FounderAuthority.Evaluate(founder, AgentPortal.Security.FounderGuard.FounderOid,
+                    isProduction: true, developmentEmailFallback: _ => false))
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "A current authenticated Founder session is required for cloud inference.",
+                    "authorization", "cloudflare_scope", "cloudflare_session_scope_unavailable");
+            if (requiresGovernedInspection || request.FounderCommandConfirmed)
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "The cloud tool connection has not completed qualification. This operation was not executed.",
+                    "governed_tool", "cloudflare_tools", "cloudflare_tool_callback_not_qualified");
+            var roles = _configuration.GetValue<bool>("LegendConnect:Foundation:Cloudflare:QualificationEnabled")
+                ? new[] { "Founder", "LegendQualification" } : new[] { "Founder" };
+            var authorizationVersion = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join("|", tenantId, userId, sessionId, "Founder"))));
+            var generated = await _modelInference!.GenerateAsync(model,
+                new LegendModelTaskRequest("conversation", instructions,
+                    conversation[^1].Content ?? string.Empty, "governed_response",
+                    ConversationInput: JsonSerializer.SerializeToElement(input, JsonOptions),
+                    ProviderPolicy: providerPolicy, RequestingActorId: userId,
+                    CloudflareScope: new(operationId.Value.ToString("D"), tenantId, userId, sessionId,
+                        request.ConversationId!, roles, authorizationVersion)), effectiveToken);
+            if (!generated.Succeeded)
+                return LegendFounderAiChatResponse.ModeFailure(mode,
+                    "LEGEND could not complete the Cloudflare request. No local model or external teacher fallback was used.",
+                    "cloudflare_foundation", "cloudflare_execution", generated.ErrorCode ?? "cloudflare_execution_failed");
+            return new LegendFounderAiChatResponse(true, mode, generated.Text, null,
+                ResponseAuthority: "HostedFoundation", Stage: "foundation_response",
+                FoundationModel: generated.ModelVersion, FoundationHosting: generated.Hosting,
+                ExternalAnsweringUsed: true, EscalationUsed: false,
+                EvidenceOrigin: LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+                ResearchOutcome: completedResearchOutcome,
+                ResearchState: completedResearchOutcome?.State.ToString() ?? "NotRequired");
         }
 
         try
