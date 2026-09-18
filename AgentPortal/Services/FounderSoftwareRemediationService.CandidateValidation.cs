@@ -81,6 +81,8 @@ public sealed partial class FounderSoftwareRemediationService
         {
             using var reader = await CreateCandidateClientAsync(options, dispatch: false, inspectPull: true, deadline.Token);
             await VerifyCandidatePreconditionsAsync(reader, options, batch, evidence, deadline.Token);
+            if (CandidateConfigurationError(pullRequestNumber, headSha, baseSha, patchSha256, trustedWorkflowSha) is not null)
+                throw CandidateFailure("candidate_validation_configuration_changed");
             using var dispatcher = await CreateCandidateClientAsync(options, dispatch: true, inspectPull: false, deadline.Token);
             if (await RequireActiveAuthorityAsync(options, deadline.Token) is not null)
                 return Failure("software_remediation_revoked", "Authority changed before validation; no dispatch was attempted.");
@@ -97,6 +99,8 @@ public sealed partial class FounderSoftwareRemediationService
             await VerifyCandidateRefsAsync(reader, options, batch, evidence, deadline.Token);
             if (await RequireActiveAuthorityAsync(options, deadline.Token) is not null)
                 throw CandidateFailure("software_remediation_revoked");
+            if (CandidateConfigurationError(pullRequestNumber, headSha, baseSha, patchSha256, trustedWorkflowSha) is not null)
+                throw CandidateFailure("candidate_validation_configuration_changed");
             var request = new
             {
                 version = CandidateVersion, repository = evidence.Repository, baseSha, candidateSha = headSha,
@@ -152,6 +156,8 @@ public sealed partial class FounderSoftwareRemediationService
         var options = ReadOptions();
         var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
         if (unavailable is not null) return unavailable;
+        if (_configuration.GetValue<bool?>(CandidateConfig + "Enabled") != true)
+            return Failure("candidate_validation_disabled", "GitHub credential issuance and candidate validation inspection are disabled.");
         if (_db is null) return Failure("batch_storage_unavailable", "Durable batch storage is required.");
         if (runId <= 0 || !CandidateHex(headSha, 40)) return Failure("candidate_run_identity_invalid", "An exact run and candidate identity is required.");
         if (_db.ChangeTracker.HasChanges()) return Failure("batch_context_not_clean", "Pending changes prevent validation reconciliation.");
