@@ -874,7 +874,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         QueueNotification(
             subscription,
             ClientBillingNotificationKind.SubscriptionTermsUpdated,
-            $"subscription-terms-updated:{subscription.Id:N}:{nowUtc.Ticks}",
+            $"subscription-terms-updated:{subscription.Id:N}:{correlationId}",
             amountCents: amountCents,
             currency: subscription.Currency);
         await _db.SaveChangesAsync(cancellationToken);
