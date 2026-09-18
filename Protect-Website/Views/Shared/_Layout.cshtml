@@ -96,6 +96,7 @@
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
 
     <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" />
     <script>
@@ -162,7 +163,7 @@
 
 </head>
 
-<body class="@bodyClasses">
+<body class="legend-web-app legend-protect @bodyClasses">
 @if (!isStandaloneQuoteLanding)
 {
 <header>
@@ -605,6 +606,8 @@
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
     })();
 </script>
+<script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/js/protect-design.js" asp-append-version="true" defer></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
