@@ -51,3 +51,5 @@ jobs:
           grep -q 'MasterAppBillingOrchestrator' Infrastructure/Billing/MasterAppBillingOrchestrator.cs
           grep -q 'ClientBillingNotificationDeliveryService' AgentPortal/Services/ClientBillingNotificationDeliveryHostedService.cs
           grep -q 'data-subscription' AgentPortal/Views/Shared/_QuickViewBillingSection.cshtml
+
+# Revalidation refresh: includes post-activation false-alert regression coverage.
