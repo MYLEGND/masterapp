@@ -1,4 +1,5 @@
 using AgentPortal.Models;
+using Domain.Messaging;
 using AgentPortal.Security;
 using AgentPortal.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +22,48 @@ public sealed class LegendConnectController : Controller
         _service = service;
         _logger = logger;
     }
+
+    [HttpGet("founder/legend-connect/application-languages")]
+    public async Task<IActionResult> ApplicationLanguages(
+        [FromServices] ILegendLanguageRegistry languages, CancellationToken cancellationToken)
+    {
+        await _service.ResolveFounderActorAsync(User, cancellationToken);
+        return Ok(await languages.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken));
+    }
+
+    [HttpGet("founder/legend-connect/application-catalog")]
+    public async Task<IActionResult> InspectApplicationCatalog(
+        [FromQuery] string language, [FromServices] IApplicationLocalizationService localization,
+        CancellationToken cancellationToken)
+    {
+        await _service.ResolveFounderActorAsync(User, cancellationToken);
+        try { return Ok(CatalogStatus(await localization.InspectCatalogAsync(language, cancellationToken))); }
+        catch (ArgumentException exception) when (exception.ParamName == "targetLanguageCode")
+        { return BadRequest(new { error = "unsupported_language" }); }
+    }
+
+    [HttpPost("founder/legend-connect/application-catalog")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PrepareApplicationCatalog(
+        [FromForm] string language, [FromServices] IApplicationLocalizationService localization,
+        CancellationToken cancellationToken)
+    {
+        await _service.ResolveFounderActorAsync(User, cancellationToken);
+        try { return Ok(CatalogStatus(await localization.PrepareCatalogAsync(language, cancellationToken))); }
+        catch (ArgumentException exception) when (exception.ParamName == "targetLanguageCode")
+        { return BadRequest(new { error = "unsupported_language" }); }
+    }
+
+    private static object CatalogStatus(ApplicationLocalizationCatalog catalog) => new
+    {
+        catalog.CatalogVersion, catalog.LanguageCode, catalog.IsComplete,
+        total = catalog.Entries.Count,
+        completed = catalog.Entries.Count(entry => entry.FailureCode is null),
+        failures = catalog.Entries.Where(entry => entry.FailureCode is not null)
+            .GroupBy(entry => entry.FailureCode)
+            .Select(group => new { code = group.Key, count = group.Count() }),
+        catalog.Continuation
+    };
 
     [HttpGet]
     [Route("founder/legend-connect/relay")]

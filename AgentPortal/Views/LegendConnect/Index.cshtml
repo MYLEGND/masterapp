@@ -481,6 +481,15 @@
             </p>
             <p class="lc-copy" data-azure-observed-through>Awaiting Azure observation.</p>
             <p class="lc-copy" data-azure-usage-detail>Awaiting current usage evidence.</p>
+            <section data-application-catalog-preparation>
+                <h3>Shared application languages</h3>
+                <p>Check retained translations for every enabled language. Preparation fills missing entries through the existing Azure allowance and saves them for everyone. Approved-only copy still requires approval.</p>
+                @Html.AntiForgeryToken()
+                <button type="button" class="btn btn-outline-primary" data-catalog-inspect>Check completion</button>
+                <button type="button" class="btn btn-primary" data-catalog-prepare>Prepare missing translations</button>
+                <p role="status" aria-live="polite" data-catalog-status></p>
+                <ul data-catalog-results></ul>
+            </section>
         </div>
         </div>
     </div>

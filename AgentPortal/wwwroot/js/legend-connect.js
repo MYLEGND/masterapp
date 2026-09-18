@@ -13,6 +13,87 @@
         return undefined;
     };
 
+    const applicationCopy = value => value;
+    const catalogPanel = document.querySelector("[data-application-catalog-preparation]");
+    if (catalogPanel) {
+        const status = catalogPanel.querySelector("[data-catalog-status]");
+        const results = catalogPanel.querySelector("[data-catalog-results]");
+        const buttons = [...catalogPanel.querySelectorAll("button")];
+        const run = async (prepare) => {
+            buttons.forEach(button => button.disabled = true);
+            results.replaceChildren();
+            status.textContent = prepare ? applicationCopy("Preparing shared translations within the current allowance…") : applicationCopy("Checking retained translations without calling Azure…");
+            const deadline = Date.now() + 180000;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 180000);
+            let requests = 0;
+            let catalogVersion = null;
+            try {
+                const response = await fetch("/founder/legend-connect/application-languages", {
+                    credentials: "same-origin", cache: "no-store", signal: controller.signal,
+                    headers: { Accept: "application/json" }
+                });
+                if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) throw new Error(applicationCopy("Language inventory could not be loaded."));
+                const languages = await response.json();
+                if (!Array.isArray(languages) || languages.length === 0) throw new Error(applicationCopy("No enabled language inventory was returned; completion is not verified."));
+                const pending = languages.map(language => ({ language, previous: -1, stalled: 0, readyAt: 0, row: document.createElement("li") }));
+                pending.forEach(item => results.append(item.row));
+                let allComplete = true;
+                while (pending.length && Date.now() < deadline && requests < 64) {
+                    const item = pending.shift();
+                    if (item.readyAt > Date.now()) await new Promise(resolve => setTimeout(resolve, Math.min(item.readyAt - Date.now(), Math.max(0, deadline - Date.now()))));
+                    controller.signal.throwIfAborted();
+                    const code = read(item.language, "code", "Code");
+                    const form = new FormData();
+                    form.set("language", code);
+                    form.set("__RequestVerificationToken", catalogPanel.querySelector('[name="__RequestVerificationToken"]').value);
+                    const snapshot = await fetch("/founder/legend-connect/application-catalog" + (prepare ? "" : "?language=" + encodeURIComponent(code)), {
+                        method: prepare ? "POST" : "GET", body: prepare ? form : undefined,
+                        credentials: "same-origin", cache: "no-store", signal: controller.signal,
+                        headers: { Accept: "application/json" }
+                    });
+                    requests++;
+                    if (!snapshot.ok || !snapshot.headers.get("content-type")?.includes("application/json")) throw new Error(applicationCopy("Catalog check failed. Check your session and try again."));
+                    const data = await snapshot.json();
+                    const version = read(data, "catalogVersion", "CatalogVersion");
+                    if (!version || (catalogVersion !== null && catalogVersion !== version)) throw new Error(applicationCopy("The application catalog changed during this pass. Check completion again."));
+                    catalogVersion = version;
+                    const complete = read(data, "isComplete", "IsComplete") === true;
+                    const continuation = read(data, "continuation", "Continuation");
+                    const disposition = read(continuation, "disposition", "Disposition");
+                    const completed = read(data, "completed", "Completed");
+                    const failures = read(data, "failures", "Failures") || [];
+                    const details = document.createElement("span");
+                    details.setAttribute("translate", "no");
+                    details.textContent = code + ": " + completed + "/" + read(data, "total", "Total") + " — ";
+                    const label = document.createElement("span");
+                    label.textContent = complete ? applicationCopy("Complete") : disposition === "Pending" ? applicationCopy("Pending") :
+                        disposition === "AwaitingApproval" ? applicationCopy("Awaiting approval") : applicationCopy("Blocked");
+                    const diagnostics = document.createElement("span");
+                    diagnostics.setAttribute("translate", "no");
+                    diagnostics.textContent = failures.length ? " (" + failures.map(failure => read(failure, "code", "Code") + ": " + read(failure, "count", "Count")).join(", ") + ")" : "";
+                    item.row.replaceChildren(details, label, diagnostics);
+                    item.stalled = completed > item.previous ? 0 : item.stalled + 1;
+                    item.previous = completed;
+                    if (!complete && prepare && disposition === "Pending" && item.stalled < 3) {
+                        item.readyAt = Date.now() + Math.max(1, read(continuation, "retryAfterSeconds", "RetryAfterSeconds") || 1) * 1000;
+                        pending.push(item);
+                    }
+                    else if (!complete) allComplete = false;
+                }
+                status.textContent = pending.length ? applicationCopy("Preparation pass paused at its safety limit. Saved translations are retained; run another pass to continue.") :
+                    allComplete ? applicationCopy("Every enabled application language is complete for this catalog version.") : applicationCopy("Some entries remain blocked or require approval. See each language above; completed translations are retained.");
+            } catch (error) {
+                status.textContent = controller.signal.aborted ? applicationCopy("The bounded pass ended. Saved translations are retained; check completion before continuing.") : error.message;
+            } finally {
+                clearTimeout(timer);
+                buttons.forEach(button => button.disabled = false);
+            }
+        };
+        catalogPanel.querySelector("[data-catalog-inspect]").addEventListener("click", () => run(false));
+        catalogPanel.querySelector("[data-catalog-prepare]").addEventListener("click", () => run(true));
+    }
+
     const formatNumber = (input, fallback = "—") => {
         if (input === null || input === undefined || input === "") {
             return fallback;

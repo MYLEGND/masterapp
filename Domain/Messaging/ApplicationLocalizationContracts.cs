@@ -42,6 +42,14 @@ public interface IApplicationLocalizationService
         MessagingActor actor,
         CancellationToken cancellationToken = default);
 
+    Task<ApplicationLocalizationCatalog> InspectCatalogAsync(
+        string targetLanguageCode,
+        CancellationToken cancellationToken = default);
+
+    Task<ApplicationLocalizationCatalog> PrepareCatalogAsync(
+        string targetLanguageCode,
+        CancellationToken cancellationToken = default);
+
     Task<ApplicationLocalizedCopy> LocalizeAsync(
         MessagingActor actor,
         string source,

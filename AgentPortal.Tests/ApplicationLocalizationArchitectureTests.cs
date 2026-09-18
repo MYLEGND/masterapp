@@ -21,6 +21,169 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplicationLocalizationArchitectureTests
 {
+    [Fact]
+    public async Task CatalogPreparation_InspectsWithoutWritesAndPreparesOnlyOneMissingBatch()
+    {
+        var guard = new InventoryWriteGuard();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(guard).Options;
+        await using var db = new MasterAppDbContext(options);
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        await registry.ListEnabledTranslationLanguagesAsync();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
+        var service = new ApplicationLocalizationService(new PreparationManifest(), preferences.Object,
+            registry, router, new LegendConnectTranslationIntelligence(db, configuration),
+            NullLogger<ApplicationLocalizationService>.Instance);
+
+        guard.Enabled = true;
+        var before = await service.InspectCatalogAsync("fr");
+        Assert.Equal(101, before.Entries.Count(entry => entry.FailureCode == "translation_pending"));
+        Assert.Single(before.Entries, entry => entry.FailureCode == "approved_translation_unavailable");
+        Assert.Equal(0, guard.Attempts);
+        Assert.Equal(0, provider.BatchOperations);
+        Assert.Equal(0, provider.TranslateOperations);
+        Assert.Empty(await db.LegendTranslationAlignments.ToListAsync());
+        preferences.VerifyNoOtherCalls();
+
+        guard.Enabled = false;
+        var first = await service.PrepareCatalogAsync("fr");
+        Assert.Equal(100, first.Entries.Count(entry => entry.FailureCode is null));
+        Assert.Single(first.Entries, entry => entry.FailureCode == "translation_pending");
+        Assert.Equal(1, provider.BatchOperations);
+        guard.Enabled = true;
+        var inspected = await service.InspectCatalogAsync("fr");
+        Assert.Equal(first.Entries.Select(entry => entry.Text), inspected.Entries.Select(entry => entry.Text));
+        Assert.Equal(0, guard.Attempts);
+        Assert.Equal(1, provider.BatchOperations);
+
+        guard.Enabled = false;
+        var second = await service.PrepareCatalogAsync("fr");
+        Assert.Equal("AwaitingApproval", second.Continuation!.Disposition);
+        Assert.False(second.IsComplete);
+        Assert.Single(second.Entries, entry => entry.FailureCode is not null);
+        Assert.Equal(2, provider.BatchOperations);
+        preferences.Setup(item => item.GetCanonicalPreferredLanguageAsync(
+            new MessagingActor("another-owner", "Client"), It.IsAny<CancellationToken>())).ReturnsAsync("fr");
+        var reused = await service.GetCatalogAsync(new MessagingActor("another-owner", "Client"));
+        Assert.Equal(second.Entries.Select(entry => entry.Text), reused.Entries.Select(entry => entry.Text));
+        Assert.Equal(2, provider.BatchOperations);
+        Assert.Equal(0, provider.TranslateOperations);
+        Assert.All(await db.LegendTranslationAlignments.ToListAsync(), row =>
+        {
+            Assert.Equal(TranslationReuseScopes.Global, row.ReuseScope);
+            Assert.Equal(string.Empty, row.ReuseScopeIdentityHash);
+        });
+    }
+
+    [Fact]
+    public async Task CatalogInventory_MixedMalformedUnsupportedAndCorruptRequestsCannotWriteOrDispatch()
+    {
+        var guard = new InventoryWriteGuard();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(guard).Options;
+        await using var db = new MasterAppDbContext(options);
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var valid = Request("fr");
+        await router.TranslateRetainedBatchAsync(new[] { valid });
+        var alignment = await db.LegendTranslationAlignments.SingleAsync();
+        var text = await db.LegendLanguageTextUnits.SingleAsync(row => row.Id == alignment.TargetTextUnitId);
+        text.Text = "Missing required placeholder";
+        await db.SaveChangesAsync();
+        var usageBefore = System.Text.Json.JsonSerializer.Serialize(await db.Set<LegendTranslationSystemUsage>().AsNoTracking().ToListAsync());
+        guard.Enabled = true;
+        var results = await router.TranslateRetainedBatchAsync(new[]
+        {
+            valid,
+            valid with { StableSourceContentId = "" },
+            Request("zz-unregistered"),
+            Request("es"),
+            Request("en")
+        }, maximumProviderBatches: 0);
+        Assert.Equal(new[] { "translation_pending", "translation_identity_invalid", "translation_language_unsupported", "translation_pending", null },
+            results.Select(result => result.ErrorCode));
+        Assert.Null((await db.LegendTranslationAlignments.SingleAsync()).SupersededUtc);
+        Assert.Equal("Missing required placeholder", (await db.LegendLanguageTextUnits.SingleAsync(row => row.Id == text.Id)).Text);
+        Assert.Equal(usageBefore, System.Text.Json.JsonSerializer.Serialize(await db.Set<LegendTranslationSystemUsage>().AsNoTracking().ToListAsync()));
+        Assert.Equal(0, guard.Attempts);
+        Assert.Equal(1, provider.BatchOperations);
+        Assert.Equal(0, provider.TranslateOperations);
+        Assert.False(db.ChangeTracker.HasChanges());
+    }
+
+    [Fact]
+    public async Task ExplicitCatalogTarget_RejectsUnknownLanguageWithoutPreferenceFallbackOrRegistryProvisioning()
+    {
+        var guard = new InventoryWriteGuard { Enabled = true };
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(guard).Options;
+        await using var db = new MasterAppDbContext(options);
+        var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
+        var translations = new Mock<IRetainedTranslationService>(MockBehavior.Strict);
+        var intelligence = new Mock<ILegendConnectTranslationIntelligence>(MockBehavior.Strict);
+        var service = new ApplicationLocalizationService(new PreparationManifest(), preferences.Object,
+            new LegendLanguageRegistry(db, Configuration()), translations.Object, intelligence.Object,
+            NullLogger<ApplicationLocalizationService>.Instance);
+        foreach (var target in new[] { "fr", "zz-unregistered", "" })
+        {
+            Assert.Equal("targetLanguageCode", (await Assert.ThrowsAsync<ArgumentException>(() => service.InspectCatalogAsync(target))).ParamName);
+            Assert.Equal("targetLanguageCode", (await Assert.ThrowsAsync<ArgumentException>(() => service.PrepareCatalogAsync(target))).ParamName);
+        }
+        Assert.Equal(0, guard.Attempts);
+        Assert.Empty(await db.Set<LegendLanguageDefinition>().ToListAsync());
+        preferences.VerifyNoOtherCalls();
+        translations.VerifyNoOtherCalls();
+        intelligence.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task RetainedDefaultContract_ZeroBudgetNeverFallsThroughToSingleProviderPath()
+    {
+        var fallback = new SingleOnlyRetainedTranslator();
+        await Assert.ThrowsAsync<NotSupportedException>(() => ((IRetainedTranslationService)fallback)
+            .TranslateRetainedBatchAsync(new[] { Request("fr") }, maximumProviderBatches: 0));
+        Assert.Equal(0, fallback.Calls);
+    }
+
+    private sealed class SingleOnlyRetainedTranslator : IRetainedTranslationService
+    {
+        public int Calls { get; private set; }
+        public Task<RetainedTranslationResult> TranslateRetainedAsync(RetainedTranslationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new InvalidOperationException("Single provider path must not be invoked by inventory.");
+        }
+    }
+
+    private sealed class PreparationManifest : IApplicationCopyManifestSource
+    {
+        public ApplicationCopyManifest Manifest { get; } = new("preparation-test-v1", "en",
+            Enumerable.Range(0, 102).Select(index => new ApplicationCopyManifestEntry(
+                "preparation.item." + index, "Open item " + index, "visual interface copy", "r1",
+                Array.Empty<string>(), index == 101 ? ApplicationTranslationPolicies.ApprovedOnly : ApplicationTranslationPolicies.AzureAllowed,
+                TranslationReuseScopes.Global)).ToArray());
+    }
+
+    private sealed class InventoryWriteGuard : SaveChangesInterceptor
+    {
+        public bool Enabled { get; set; }
+        public int Attempts { get; private set; }
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (Enabled)
+            {
+                Attempts++;
+                throw new InvalidOperationException("Inventory attempted database persistence.");
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     [Theory]
     [InlineData("translation_capacity_configuration_unavailable")]
     [InlineData("translation_capacity_temporarily_unavailable")]

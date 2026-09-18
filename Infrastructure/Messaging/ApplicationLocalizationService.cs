@@ -140,15 +140,38 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
+        var source = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            _manifestSource.Manifest.SourceLanguageCode, cancellationToken) ?? _manifestSource.Manifest.SourceLanguageCode;
+        var preferred = await _preferences.GetCanonicalPreferredLanguageAsync(actor, cancellationToken);
+        var target = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            preferred, cancellationToken) ?? source;
+        return await BuildCatalogAsync(target, maximumProviderBatches: 1, cancellationToken);
+    }
+
+    public Task<ApplicationLocalizationCatalog> InspectCatalogAsync(
+        string targetLanguageCode, CancellationToken cancellationToken = default) =>
+        ExplicitCatalogAsync(targetLanguageCode, maximumProviderBatches: 0, cancellationToken);
+
+    public Task<ApplicationLocalizationCatalog> PrepareCatalogAsync(
+        string targetLanguageCode, CancellationToken cancellationToken = default) =>
+        ExplicitCatalogAsync(targetLanguageCode, maximumProviderBatches: 1, cancellationToken);
+
+    private async Task<ApplicationLocalizationCatalog> ExplicitCatalogAsync(
+        string targetLanguageCode, int maximumProviderBatches, CancellationToken cancellationToken)
+    {
+        var target = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            targetLanguageCode, cancellationToken)
+            ?? throw new ArgumentException("The target language is not enabled for translation.", nameof(targetLanguageCode));
+        return await BuildCatalogAsync(target, maximumProviderBatches, cancellationToken);
+    }
+
+    private async Task<ApplicationLocalizationCatalog> BuildCatalogAsync(
+        string target, int maximumProviderBatches, CancellationToken cancellationToken)
+    {
         var started = Stopwatch.GetTimestamp();
         var manifest = _manifestSource.Manifest;
         var source = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-            manifest.SourceLanguageCode,
-            cancellationToken) ?? manifest.SourceLanguageCode;
-        var preferred = await _preferences.GetCanonicalPreferredLanguageAsync(actor, cancellationToken);
-        var target = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-            preferred,
-            cancellationToken) ?? source;
+            manifest.SourceLanguageCode, cancellationToken) ?? manifest.SourceLanguageCode;
 
         var approvedLookups = manifest.Entries
             .Where(entry => entry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly && source != target)
@@ -210,7 +233,7 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
                 string.Join(',', entry.Placeholders.Order(StringComparer.Ordinal)),
                 TranslationReuseScopes.Global)).ToArray(),
             cancellationToken,
-            maximumProviderBatches: 1);
+            maximumProviderBatches: maximumProviderBatches);
         for (var index = 0; index < providerEntries.Count; index++)
         {
             var entry = providerEntries[index];
