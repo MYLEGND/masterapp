@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Runtime.ExceptionServices;
 using System.Data.Common;
 
 namespace Infrastructure.Messaging;
@@ -1525,6 +1526,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         var batches = 0;
         foreach (var chunk in BatchChunks(misses, requests))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (batches++ >= maximumProviderBatches)
             {
                 foreach (var miss in chunk)
@@ -1563,6 +1565,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             IReadOnlyList<TranslationProviderResult> providerResults;
             var providerExecuted = false;
             var providerSucceeded = false;
+            Exception? completionFailure = null;
             try
             {
                 providerExecuted = true;
@@ -1577,14 +1580,35 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             }
             finally
             {
-                await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
+                // Paid work may have completed as its HTTP caller disconnected. Await bounded
+                // settlement independently; a settlement failure must not discard valid text.
+                using (var settlement = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+                {
+                    try { await _capacity.CompleteAsync(reservation, providerExecuted, settlement.Token); }
+                    catch (Exception exception)
+                    {
+                        completionFailure = exception;
+                        _logger.LogError("Retained batch capacity settlement failed. ExceptionType={ExceptionType}", exception.GetType().Name);
+                    }
+                }
                 if (providerExecuted)
                 {
                     ApplicationLocalizationTelemetry.ProviderOperation(source, target, characters, providerSucceeded);
                     if (_systemUsage is not null)
-                        await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
-                            ProviderOperations: 1, ProviderBillableCharacters: characters,
-                            ProviderFailures: providerSucceeded ? 0 : 1), cancellationToken);
+                    {
+                        using var accounting = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                        try
+                        {
+                            await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                                ProviderOperations: 1, ProviderBillableCharacters: characters,
+                                ProviderFailures: providerSucceeded ? 0 : 1), accounting.Token);
+                        }
+                        catch (Exception exception)
+                        {
+                            completionFailure ??= exception;
+                            _logger.LogError("Retained batch usage recording failed. ExceptionType={ExceptionType}", exception.GetType().Name);
+                        }
+                    }
                 }
             }
 
@@ -1670,9 +1694,12 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
 
             if (validWrites.Count > 0)
             {
+                // Preserve the already-returned, structurally validated result in the existing
+                // durable identity store before releasing the coalescer or observing disconnect.
+                using var persistence = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var stored = await _intelligence.RetainProviderTranslationsAsync(
                     validWrites.Select(item => item.Write).ToArray(),
-                    cancellationToken);
+                    persistence.Token);
                 for (var index = 0; index < validWrites.Count; index++)
                 {
                     var miss = chunk[validWrites[index].Offset];
@@ -1683,6 +1710,9 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     ApplicationLocalizationTelemetry.ProviderPersisted(source, target);
                 }
             }
+            if (completionFailure is not null)
+                ExceptionDispatchInfo.Capture(completionFailure).Throw();
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         return results.Select((result, index) => result ?? RetainedFailure(

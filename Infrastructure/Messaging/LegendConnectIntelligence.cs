@@ -2,6 +2,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -770,7 +771,13 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
     public async Task<IReadOnlyList<LegendRetainedTranslationMemoryMatch>> RetainProviderTranslationsAsync(
         IReadOnlyList<LegendRetainedTranslationWrite> writes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await RetainProviderTranslationsAsync(writes, allowCollisionRetry: true, cancellationToken);
+
+    private async Task<IReadOnlyList<LegendRetainedTranslationMemoryMatch>> RetainProviderTranslationsAsync(
+        IReadOnlyList<LegendRetainedTranslationWrite> writes,
+        bool allowCollisionRetry,
+        CancellationToken cancellationToken)
     {
         if (writes.Count == 0)
             return Array.Empty<LegendRetainedTranslationMemoryMatch>();
@@ -832,6 +839,25 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 item => (item.LanguageCode, item.NormalizedHash),
                 item => item);
             var now = DateTime.UtcNow;
+            var addedUnits = new List<LegendLanguageTextUnit>();
+            var addedAlignments = new List<LegendTranslationAlignment>();
+            var changedUnits = new Dictionary<Guid, (LegendLanguageTextUnit Unit, PropertyValues Current,
+                PropertyValues Original, EntityState State, string[] Modified)>();
+
+            void RestoreBatchTracking()
+            {
+                foreach (var alignment in addedAlignments) _db.Entry(alignment).State = EntityState.Detached;
+                foreach (var unit in addedUnits) _db.Entry(unit).State = EntityState.Detached;
+                foreach (var snapshot in changedUnits.Values)
+                {
+                    var entry = _db.Entry(snapshot.Unit);
+                    entry.CurrentValues.SetValues(snapshot.Current);
+                    entry.OriginalValues.SetValues(snapshot.Original);
+                    entry.State = snapshot.State;
+                    foreach (var property in entry.Properties)
+                        property.IsModified = snapshot.Modified.Contains(property.Metadata.Name, StringComparer.Ordinal);
+                }
+            }
 
             LegendLanguageTextUnit Unit(string language, string text, string provenance)
             {
@@ -840,6 +866,13 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 {
                     if (!string.Equals(unit.Text, text, StringComparison.Ordinal))
                     {
+                        if (!addedUnits.Contains(unit) && !changedUnits.ContainsKey(unit.Id))
+                        {
+                            var entry = _db.Entry(unit);
+                            changedUnits.Add(unit.Id, (unit, entry.CurrentValues.Clone(), entry.OriginalValues.Clone(),
+                                entry.State, entry.Properties.Where(property => property.IsModified)
+                                    .Select(property => property.Metadata.Name).ToArray()));
+                        }
                         unit.Text = text;
                         unit.UpdatedUtc = now;
                     }
@@ -858,6 +891,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                     UpdatedUtc = now
                 };
                 _db.Set<LegendLanguageTextUnit>().Add(unit);
+                addedUnits.Add(unit);
                 unitByKey[key] = unit;
                 return unit;
             }
@@ -869,7 +903,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                     write.TargetLanguageCode,
                     write.TargetText,
                     LegendConnectKnowledgeProvenance.ProviderDerived);
-                _db.Set<LegendTranslationAlignment>().Add(new LegendTranslationAlignment
+                var alignment = new LegendTranslationAlignment
                 {
                     Id = Guid.NewGuid(),
                     PairKey = LegendLanguageIdentity.PairKey(
@@ -894,7 +928,9 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                     ObservationCount = 1,
                     CreatedUtc = now,
                     UpdatedUtc = now
-                });
+                };
+                _db.Set<LegendTranslationAlignment>().Add(alignment);
+                addedAlignments.Add(alignment);
                 existing[write.Identity] = new LegendRetainedTranslationMemoryMatch(
                     write.TargetText,
                     write.Provider,
@@ -909,13 +945,17 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             }
             catch (DbUpdateException)
             {
-                // A different server may have won one of the same unique
-                // identities or text units after our read. Re-read and use the
-                // idempotent single-write path for any remainder.
-                _db.ChangeTracker.Clear();
-                existing.Clear();
-                foreach (var write in uniqueWrites)
-                    existing[write.Identity] = await RetainProviderTranslationAsync(write, cancellationToken);
+                // A competing instance may have won one identity/text unit. Restore only this
+                // batch's changes, then re-read and retry its remaining writes once, without
+                // dropping unrelated scoped work or calling the paid provider again.
+                RestoreBatchTracking();
+                if (!allowCollisionRetry) throw;
+                return await RetainProviderTranslationsAsync(writes, allowCollisionRetry: false, cancellationToken);
+            }
+            catch
+            {
+                RestoreBatchTracking();
+                throw;
             }
         }
 

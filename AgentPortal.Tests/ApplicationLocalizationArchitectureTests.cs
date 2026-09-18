@@ -9,6 +9,9 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -249,6 +252,181 @@ public sealed class ApplicationLocalizationArchitectureTests
         var usage = Assert.Single(db.Set<LegendTranslationSystemUsage>());
         Assert.Equal(1, usage.ProviderOperationCount);
         Assert.Equal(requests.Sum(request => request.SourceText.Length), usage.ProviderObservationCharactersAvoided);
+    }
+
+    [Theory]
+    [InlineData("es")]
+    [InlineData("fr")]
+    public async Task BatchCatalog_LateCanceledResultIsRetainedAndReusedByAnotherActor(string language)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        using var cancellation = new CancellationTokenSource();
+        var provider = new RecordingTranslationProvider { BatchCompleted = cancellation.Cancel };
+        var capacity = new AlwaysAvailableCapacity();
+        var router = await BuildRouterAsync(db, provider, capacity);
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var intelligence = new LegendConnectTranslationIntelligence(db, Configuration());
+        var preferences = new Mock<IControlledResourceAccessService>(MockBehavior.Strict);
+        preferences.Setup(item => item.GetCanonicalPreferredLanguageAsync(It.IsAny<MessagingActor>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(language);
+        var service = new ApplicationLocalizationService(new BatchManifest(), preferences.Object, registry, router,
+            intelligence, NullLogger<ApplicationLocalizationService>.Instance);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.GetCatalogAsync(
+            new MessagingActor("first-actor", "Client"), cancellation.Token));
+        Assert.Equal(1, provider.BatchOperations);
+        Assert.Equal(1, capacity.Completions);
+        Assert.False(capacity.CompletionTokenWasCanceled);
+        Assert.True(capacity.CompletionTokenWasBounded);
+        Assert.Equal(100, await db.LegendTranslationAlignments.CountAsync(row => row.RetainedTranslationIdentity != null));
+        var reused = await service.GetCatalogAsync(new MessagingActor("second-actor", "Client"));
+        Assert.True(reused.IsComplete);
+        Assert.Equal("Complete", reused.Continuation!.Disposition);
+        Assert.Equal(language, reused.LanguageCode);
+        Assert.All(reused.Entries, entry =>
+        {
+            Assert.True(entry.Reused);
+            Assert.Null(entry.FailureCode);
+            Assert.Equal("[" + language + "] " + entry.Source, entry.Text);
+        });
+        Assert.Equal(1, provider.BatchOperations);
+        Assert.Equal(0, provider.TranslateOperations);
+        Assert.Equal(1, capacity.Completions);
+        Assert.All(await db.LegendTranslationAlignments.ToListAsync(), row =>
+        {
+            Assert.Equal(TranslationReuseScopes.Global, row.ReuseScope);
+            Assert.Equal(string.Empty, row.ReuseScopeIdentityHash);
+            Assert.False(row.HumanVerified);
+        });
+    }
+
+    [Fact]
+    public async Task RetainedBatch_SettlementFailureStillRetainsValidTextAndRemainsAnExplicitFailure()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var capacity = new AlwaysAvailableCapacity { CompletionFailure = new InvalidOperationException("synthetic-settlement-failure") };
+        var router = await BuildRouterAsync(db, provider, capacity);
+        var requests = new[] { Request("fr"), Request("fr") with { StableSourceContentId = "second", SourceText = "Goodbye, {name}." } };
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => router.TranslateRetainedBatchAsync(requests));
+        Assert.Equal("synthetic-settlement-failure", error.Message);
+        Assert.Equal(2, await db.LegendTranslationAlignments.CountAsync(row => row.RetainedTranslationIdentity != null));
+        var retry = await router.TranslateRetainedBatchAsync(requests);
+        Assert.All(retry, value => { Assert.True(value.Succeeded); Assert.True(value.Reused); });
+        Assert.Equal(1, provider.BatchOperations);
+        Assert.Equal(1, capacity.Completions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RetainedBatch_FailedSaveRestoresOnlyItsOwnTracking(bool collision)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var interceptor = new RetainedSaveInterruption { Collision = collision };
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).AddInterceptors(interceptor).Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await new LegendLanguageRegistry(db, Configuration()).ListEnabledTranslationLanguagesAsync();
+        var write = RetentionWrite();
+        var existing = new LegendLanguageTextUnit
+        {
+            Id = Guid.NewGuid(), LanguageCode = "en", StoragePartition = "/en",
+            NormalizedHash = LegendLanguageIdentity.TextHash(write.SourceText), Text = "Open item",
+            Provenance = "ApplicationSource", CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow
+        };
+        var unrelated = new AgentProfile { AgentUserId = "unrelated-owner", ShortBio = "Before", IsActive = true };
+        db.LegendLanguageTextUnits.Add(existing);
+        db.AgentProfiles.Add(unrelated);
+        await db.SaveChangesAsync();
+        unrelated.ShortBio = "Pending unrelated edit";
+        db.ChangeTracker.DetectChanges();
+        interceptor.Enabled = true;
+        var action = () => new LegendConnectTranslationIntelligence(db, Configuration()).RetainProviderTranslationsAsync(new[] { write });
+        if (collision) await Assert.ThrowsAsync<DbUpdateException>(action);
+        else await Assert.ThrowsAnyAsync<OperationCanceledException>(action);
+        Assert.Equal(collision ? 2 : 1, interceptor.Attempts);
+        Assert.Equal("Open item", existing.Text);
+        Assert.Equal(EntityState.Unchanged, db.Entry(existing).State);
+        Assert.Equal("Pending unrelated edit", unrelated.ShortBio);
+        Assert.Equal(EntityState.Modified, db.Entry(unrelated).State);
+        Assert.Empty(db.ChangeTracker.Entries<LegendTranslationAlignment>());
+        Assert.Single(db.ChangeTracker.Entries<LegendLanguageTextUnit>());
+        Assert.Empty(await db.LegendTranslationAlignments.AsNoTracking().ToListAsync());
+        interceptor.Enabled = false;
+        await db.SaveChangesAsync();
+        await using var verification = new MasterAppDbContext(options);
+        Assert.Equal("Pending unrelated edit", (await verification.AgentProfiles.SingleAsync()).ShortBio);
+        Assert.Equal("Open item", (await verification.LegendLanguageTextUnits.SingleAsync()).Text);
+        Assert.Empty(await verification.LegendTranslationAlignments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RetainedBatch_ConcurrentWinnerIsReusedWithoutClearingUnrelatedTracking()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var interceptor = new RetainedSaveInterruption { Collision = true };
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).AddInterceptors(interceptor).Options;
+        var winnerOptions = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await new LegendLanguageRegistry(db, Configuration()).ListEnabledTranslationLanguagesAsync();
+        var unrelated = new AgentProfile { AgentUserId = "unrelated-owner", ShortBio = "Before", IsActive = true };
+        db.AgentProfiles.Add(unrelated);
+        await db.SaveChangesAsync();
+        unrelated.ShortBio = "Still pending";
+        db.ChangeTracker.DetectChanges();
+        var write = RetentionWrite();
+        interceptor.BeforeFailure = async () =>
+        {
+            await using var winner = new MasterAppDbContext(winnerOptions);
+            await new LegendConnectTranslationIntelligence(winner, Configuration()).RetainProviderTranslationsAsync(new[] { write });
+        };
+        interceptor.Enabled = true;
+        var retained = await new LegendConnectTranslationIntelligence(db, Configuration()).RetainProviderTranslationsAsync(new[] { write });
+        Assert.Equal(write.TargetText, Assert.Single(retained).Text);
+        Assert.Equal(1, interceptor.Attempts);
+        Assert.Equal(EntityState.Modified, db.Entry(unrelated).State);
+        Assert.Equal("Still pending", unrelated.ShortBio);
+        Assert.Empty(db.ChangeTracker.Entries<LegendTranslationAlignment>());
+        Assert.Empty(db.ChangeTracker.Entries<LegendLanguageTextUnit>());
+        await using var verification = new MasterAppDbContext(winnerOptions);
+        Assert.Single(await verification.LegendTranslationAlignments.ToListAsync());
+        Assert.Equal("Before", (await verification.AgentProfiles.SingleAsync()).ShortBio);
+    }
+
+    private static LegendRetainedTranslationWrite RetentionWrite() => new(
+        new string('c', 64), "test.open", "Open  item", "Ouvrir élément", "en", "fr", "r1",
+        "visual interface copy", LegendLanguageIdentity.TextHash(string.Empty), TranslationReuseScopes.Global,
+        string.Empty, "AzureTranslator", "test-v1");
+
+    private sealed class RetainedSaveInterruption : SaveChangesInterceptor
+    {
+        public bool Enabled { get; set; }
+        public bool Collision { get; set; }
+        public int Attempts { get; private set; }
+        public Func<Task>? BeforeFailure { get; set; }
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (Enabled && eventData.Context!.ChangeTracker.Entries<LegendTranslationAlignment>().Any(entry => entry.State == EntityState.Added))
+            {
+                Attempts++;
+                if (BeforeFailure is not null) await BeforeFailure();
+                if (Collision) throw new DbUpdateException("synthetic-identity-collision");
+                throw new OperationCanceledException("synthetic-retention-interruption");
+            }
+            return await base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class BatchManifest : IApplicationCopyManifestSource
+    {
+        public ApplicationCopyManifest Manifest { get; } = new("test-batch-v1", "en", Enumerable.Range(0, 100)
+            .Select(index => new ApplicationCopyManifestEntry("test.item." + index, "Open item " + index,
+                "visual interface copy", "r1", Array.Empty<string>(), ApplicationTranslationPolicies.AzureAllowed,
+                TranslationReuseScopes.Global)).ToArray());
     }
 
     [Fact]
@@ -566,7 +744,8 @@ public sealed class ApplicationLocalizationArchitectureTests
 
     private static async Task<LegendConnectTranslationRouter> BuildRouterAsync(
         MasterAppDbContext db,
-        ITranslationProvider provider)
+        ITranslationProvider provider,
+        ITranslationCapacityAuthority? capacity = null)
     {
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
@@ -574,7 +753,7 @@ public sealed class ApplicationLocalizationArchitectureTests
         return new LegendConnectTranslationRouter(
             provider,
             registry,
-            new AlwaysAvailableCapacity(),
+            capacity ?? new AlwaysAvailableCapacity(),
             NullLogger<LegendConnectTranslationRouter>.Instance,
             intelligence: new LegendConnectTranslationIntelligence(db, configuration),
             demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
@@ -591,6 +770,10 @@ public sealed class ApplicationLocalizationArchitectureTests
 
     private sealed class AlwaysAvailableCapacity : ITranslationCapacityAuthority
     {
+        public int Completions { get; private set; }
+        public bool CompletionTokenWasCanceled { get; private set; }
+        public bool CompletionTokenWasBounded { get; private set; }
+        public Exception? CompletionFailure { get; set; }
         public Task<Domain.Messaging.LegendConnectProviderCapacitySnapshot> GetSnapshotAsync(
             string provider,
             CancellationToken cancellationToken = default) =>
@@ -611,7 +794,15 @@ public sealed class ApplicationLocalizationArchitectureTests
         public Task CompleteAsync(
             TranslationCapacityReservation reservation,
             bool providerMayHaveConsumed,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default)
+        {
+            Completions++;
+            CompletionTokenWasCanceled = cancellationToken.IsCancellationRequested;
+            CompletionTokenWasBounded = cancellationToken.CanBeCanceled;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (CompletionFailure is not null) throw CompletionFailure;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingTranslationProvider : ITranslationProvider
@@ -628,6 +819,7 @@ public sealed class ApplicationLocalizationArchitectureTests
         public int TranslateOperations => Volatile.Read(ref _translateOperations);
         public int BatchOperations => Volatile.Read(ref _batchOperations);
         public string? Output { get; set; }
+        public Action? BatchCompleted { get; set; }
         public string LastText { get; private set; } = string.Empty;
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
@@ -659,6 +851,7 @@ public sealed class ApplicationLocalizationArchitectureTests
             CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _batchOperations);
+            BatchCompleted?.Invoke();
             return Task.FromResult<IReadOnlyList<TranslationProviderResult>>(texts
                 .Select(text => new TranslationProviderResult(
                     true,
