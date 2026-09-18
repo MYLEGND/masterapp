@@ -190,11 +190,18 @@ public sealed class SubscriptionActivationService
         }
         catch (Exception)
         {
+            const string pendingMessage =
+                "Your membership is active. Secure sign-in setup is still completing; reopen this activation link to continue. You will not be charged again.";
             return new SubscriptionActivationExecutionResult(
                 false,
                 "ACCOUNT_SIGNIN_SETUP_PENDING",
-                "Your membership is active, but secure sign-in setup could not finish yet. Reopen this activation link to continue without another charge.",
-                context with { Subscription = activationResult.Subscription });
+                pendingMessage,
+                context with
+                {
+                    Availability = SubscriptionActivationAvailability.AlreadyActivated,
+                    Message = pendingMessage,
+                    Subscription = activationResult.Subscription
+                });
         }
 
         var continuation = await _continuationService.CreateProtectedStateAsync(
@@ -206,7 +213,12 @@ public sealed class SubscriptionActivationService
             activationResult.Subscription.Id,
             cancellationToken);
 
-        var completedContext = context with { Subscription = activationResult.Subscription };
+        var completedContext = context with
+        {
+            Availability = SubscriptionActivationAvailability.AlreadyActivated,
+            Message = "Your membership is active.",
+            Subscription = activationResult.Subscription
+        };
         return new SubscriptionActivationExecutionResult(
             true,
             null,
