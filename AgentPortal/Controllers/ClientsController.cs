@@ -4487,12 +4487,39 @@ namespace AgentPortal.Controllers;
         if (profile is null)
             return Forbid();
 
+        var subscription = await _db.ClientSubscriptions
+            .AsNoTracking()
+            .Where(x =>
+                x.ClientProfileId == profile.Id &&
+                x.OwnerAgentUserId == agentOid &&
+                x.Status != ClientSubscriptionStatus.Canceled)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync();
+        if (subscription is null)
+            return BadRequest(new { message = "No live subscription is available to update." });
+
         var isFounder = FounderGuard.IsFounder(User);
+        var preserveScopedSpecificAnchor =
+            !isFounder &&
+            subscription.BillingAnchorDay is not null and not 1 and not 15 &&
+            string.Equals(
+                request.SubscriptionBillingAnchorMode,
+                nameof(BillingAnchorSelectionMode.SpecificDayOfMonth),
+                StringComparison.OrdinalIgnoreCase) &&
+            request.SubscriptionBillingAnchorDay == subscription.BillingAnchorDay;
+
+        var validationAnchorMode = preserveScopedSpecificAnchor
+            ? nameof(BillingAnchorSelectionMode.FirstOfMonth)
+            : request.SubscriptionBillingAnchorMode;
+        var validationAnchorDay = preserveScopedSpecificAnchor
+            ? null
+            : request.SubscriptionBillingAnchorDay;
+
         if (!TryResolveSubscriptionOfferSelection(
                 request.SubscriptionPriceType,
                 request.SubscriptionCustomMonthlyAmount,
-                request.SubscriptionBillingAnchorMode,
-                request.SubscriptionBillingAnchorDay,
+                validationAnchorMode,
+                validationAnchorDay,
                 hasFreeTrial: false,
                 freeTrialDays: null,
                 canSetFounderSubscriptionOptions: isFounder,
@@ -4505,16 +4532,14 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        var subscription = await _db.ClientSubscriptions
-            .AsNoTracking()
-            .Where(x =>
-                x.ClientProfileId == profile.Id &&
-                x.OwnerAgentUserId == agentOid &&
-                x.Status != ClientSubscriptionStatus.Canceled)
-            .OrderByDescending(x => x.UpdatedUtc)
-            .FirstOrDefaultAsync();
-        if (subscription is null)
-            return BadRequest(new { message = "No live subscription is available to update." });
+        if (preserveScopedSpecificAnchor)
+        {
+            selection = selection with
+            {
+                BillingAnchorMode = BillingAnchorSelectionMode.SpecificDayOfMonth,
+                BillingAnchorDay = subscription.BillingAnchorDay
+            };
+        }
 
         var update = await _billingOrchestrator.UpdateClientSubscriptionAsync(
             new UpdateClientSubscriptionCommand(
