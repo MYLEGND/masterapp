@@ -160,7 +160,7 @@ public sealed class SubscriptionActivationController : Controller
                 View("Unavailable", new SubscriptionActivationNoticeViewModel
                 {
                     Title = context.Availability == SubscriptionActivationAvailability.AlreadyActivated
-                        ? "Already Activated"
+                        ? "Membership Active"
                         : "Activation Unavailable",
                     Message = messageOverride ?? context.Message ?? "This activation flow is not available.",
                     ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
