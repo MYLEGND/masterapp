@@ -56,7 +56,11 @@ public sealed class ClientBillingNotificationDeliveryService
 
             try
             {
-                if (await _emailSender.TrySendAsync(recipient, notification.Subject, null, notification.PlainTextBody))
+                var htmlBody = notification.Kind == Domain.Billing.ClientBillingNotificationKind.SubscriptionTermsUpdated
+                    ? BuildSubscriptionTermsUpdatedHtml(notification)
+                    : null;
+
+                if (await _emailSender.TrySendAsync(recipient, notification.Subject, htmlBody, notification.PlainTextBody))
                 {
                     notification.SentUtc = nowUtc;
                     notification.SafeFailureCode = null;
@@ -79,6 +83,35 @@ public sealed class ClientBillingNotificationDeliveryService
             await _db.SaveChangesAsync(cancellationToken);
 
         return new ClientBillingNotificationDeliveryResult(notifications.Count, sent, failed);
+    }
+
+    private static string BuildSubscriptionTermsUpdatedHtml(ClientBillingNotification notification)
+    {
+        var safeSubject = System.Net.WebUtility.HtmlEncode(notification.Subject);
+        var safeBody = System.Net.WebUtility.HtmlEncode(notification.PlainTextBody);
+
+        return $"""
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#ffffff;font-family:Arial,sans-serif;color:#14213a;">
+  <tr>
+    <td align="center" style="padding:28px 14px;background:#ffffff;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #d7e0ee;border-radius:18px;overflow:hidden;">
+        <tr>
+          <td style="padding:24px 28px;background:#0d2145;color:#ffffff;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#cbdcff;">LEGEND® Client Portal</div>
+            <div style="margin-top:8px;font-size:26px;line-height:1.18;font-weight:800;">{safeSubject}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 28px 28px 28px;background:#ffffff;">
+            <div style="font-size:15px;line-height:1.65;color:#506078;">{safeBody}</div>
+            <div style="margin-top:22px;padding-top:16px;border-top:1px solid #dbe5f4;font-size:13px;font-weight:800;color:#0d2145;">LEGEND®</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+""";
     }
 
     private static int ResolveRetryDelayMinutes(int attemptCount) =>
