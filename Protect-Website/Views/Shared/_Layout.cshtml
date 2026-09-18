@@ -56,7 +56,7 @@
     var seoRawTitle = (ViewData["SeoTitle"] as string) ?? (ViewData["Title"] as string) ?? "Life Insurance & Protection Planning";
     var seoTitle = seoRawTitle.Contains("Legend", StringComparison.OrdinalIgnoreCase)
         ? seoRawTitle
-        : seoRawTitle + " | Legend™";
+        : seoRawTitle + " | LEGEND";
 
     var seoDescription = (ViewData["SeoDescription"] as string)
         ?? "Get a personalized protection review for life insurance, mortgage protection, final expense, and family coverage options.";
@@ -210,7 +210,7 @@
 <footer class="site-footer">
     <div class="footer-grid">
         <div>
-            <p class="eyebrow">LEGEND® LEGACY PROTECTION</p>
+            <p class="eyebrow">LEGEND LEGACY PROTECTION</p>
             <p>Insurance planning and protection guidance built around clarity, responsibility, and financial stewardship.</p>
             <a class="email" asp-controller="Contact" asp-action="Index">Talk with us</a>
         </div>
@@ -222,7 +222,7 @@
             <a asp-controller="RiskAssessment" asp-action="Index">Risk Assessment</a>
         </div>
         <div>
-            <h2>LEGEND®</h2>
+            <h2>LEGEND</h2>
             <a href="https://www.mylegnd.com/">Main Website</a>
             <a href="@termsUrl">Terms</a>
             <a href="@privacyUrl">Privacy</a>
