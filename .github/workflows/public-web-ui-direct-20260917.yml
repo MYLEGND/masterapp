@@ -155,7 +155,8 @@ jobs:
 
           grep -q 'legend-public-web.css' /tmp/protect-home.html
           grep -q 'LEGEND® LEGACY PROTECTION' /tmp/protect-home.html
-          curl -fsSL http://127.0.0.1:5099/design/legend-public-web.css | grep -q 'LEGEND® public web presentation authority'
+          curl -fsSL http://127.0.0.1:5099/design/legend-public-web.css -o /tmp/protect-public.css
+          grep -q 'LEGEND® public web presentation authority' /tmp/protect-public.css
 
           for route in /Contact /Privacy /Terms /Quote /RiskAssessment; do
             route_code="$(curl -sS -o /tmp/protect-route.html -w '%{http_code}' "http://127.0.0.1:5099$route" || true)"
