@@ -567,6 +567,162 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task ActivateAsync_PostActivationIdentityFailure_DoesNotReportBillingFailureOrCreateSecondPaymentPath()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        const string token = "post-activation-signin-pending-token";
+        await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            token,
+            SubscriptionActivationInvitationStatus.Pending,
+            DateTime.UtcNow.AddDays(2));
+
+        var activeSubscription = new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = profile.Id,
+            AcceptedOfferId = offer.Id,
+            OwnerAgentUserId = offer.OwnerAgentUserId,
+            MonthlyAmountCents = offer.MonthlyAmountCents,
+            Currency = offer.Currency,
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current
+        };
+
+        var orchestrator = new Mock<IBillingOrchestrator>();
+        orchestrator
+            .Setup(x => x.ActivateClientSubscriptionAsync(
+                It.IsAny<ActivateClientSubscriptionCommand>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivateClientSubscriptionResult(
+                true,
+                null,
+                "Activated.",
+                null,
+                false,
+                activeSubscription,
+                new ClientEntitlement
+                {
+                    ClientProfileId = profile.Id,
+                    EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                    Status = ClientEntitlementStatus.Active,
+                    SourceId = activeSubscription.Id.ToString()
+                },
+                new ClientSubscriptionLifecycleResult(true, "ACTIVE", null, "Activated.", null, false)));
+
+        var entra = new Mock<IClientEntraLifecycleService>();
+        entra.Setup(x => x.EnsureClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("simulated Graph outage"));
+
+        var service = BuildActivationService(
+            db,
+            orchestrator,
+            BuildActivationPolicyService(),
+            entra.Object);
+
+        var result = await service.ActivateAsync(token, BuildPaymentInput());
+
+        Assert.False(result.Success);
+        Assert.Equal("POST_ACTIVATION_SIGNIN_SETUP_PENDING", result.SafeErrorCode);
+        Assert.Equal(ClientSubscriptionStatus.Active, result.Context.Subscription?.Status);
+        Assert.Contains("Do not submit another payment", result.SanitizedMessage);
+        Assert.Null(result.ProtectedContinuationState);
+        Assert.Equal(0, await db.ClientIdentityContinuations.CountAsync());
+    }
+
+    [Fact]
+    public async Task ActivationController_PostActivationSigninPending_RendersMembershipActiveNotice()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        const string token = "post-activation-controller-token";
+        await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            token,
+            SubscriptionActivationInvitationStatus.Pending,
+            DateTime.UtcNow.AddDays(2));
+
+        var activeSubscription = new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = profile.Id,
+            AcceptedOfferId = offer.Id,
+            OwnerAgentUserId = offer.OwnerAgentUserId,
+            MonthlyAmountCents = offer.MonthlyAmountCents,
+            Currency = offer.Currency,
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current
+        };
+
+        var orchestrator = new Mock<IBillingOrchestrator>();
+        orchestrator
+            .Setup(x => x.ActivateClientSubscriptionAsync(
+                It.IsAny<ActivateClientSubscriptionCommand>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivateClientSubscriptionResult(
+                true,
+                null,
+                "Activated.",
+                null,
+                false,
+                activeSubscription,
+                new ClientEntitlement
+                {
+                    ClientProfileId = profile.Id,
+                    EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                    Status = ClientEntitlementStatus.Active,
+                    SourceId = activeSubscription.Id.ToString()
+                },
+                new ClientSubscriptionLifecycleResult(true, "ACTIVE", null, "Activated.", null, false)));
+
+        var entra = new Mock<IClientEntraLifecycleService>();
+        entra.Setup(x => x.EnsureClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("simulated Graph outage"));
+
+        var continuation = BuildContinuationService(db);
+        var service = new SubscriptionActivationService(
+            db,
+            orchestrator.Object,
+            BuildActivationPolicyService().Object,
+            new SquareBillingOptions
+            {
+                ApplicationId = "sq0idp-test",
+                LocationId = "location-1",
+                Environment = BillingProviderEnvironment.Sandbox
+            },
+            continuation,
+            new ClientAppReturnUrlNormalizer(),
+            entra.Object,
+            BuildHouseholdMembershipService());
+
+        var controller = new SubscriptionActivationController(
+            service,
+            continuation,
+            new ClientAppReturnUrlNormalizer())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.PaymentMethod(token, BuildPaymentInput());
+
+        var view = Assert.IsType<ViewResult>(result);
+        Assert.Equal("Unavailable", view.ViewName);
+        var model = Assert.IsType<SubscriptionActivationNoticeViewModel>(view.Model);
+        Assert.Equal("Membership Active — Sign-In Setup Pending", model.Title);
+        Assert.Contains("Do not submit another payment", model.Message);
+    }
+
+    [Fact]
     public async Task ActivateAsync_ZeroDollarOffer_RequiresOnlyAcknowledgement_AndSkipsProviderPlanResolution()
     {
         using var db = BuildDb();
@@ -702,7 +858,9 @@ public class ClientAppSubscriptionActivationTests
     private static SubscriptionActivationService BuildActivationService(
         MasterAppDbContext db,
         Mock<IBillingOrchestrator> orchestrator,
-        Mock<IClientSubscriptionActivationPolicyService> policyService)
+        Mock<IClientSubscriptionActivationPolicyService> policyService,
+        IClientEntraLifecycleService? entraLifecycle = null,
+        IHouseholdMembershipService? households = null)
     {
         return new SubscriptionActivationService(
             db,
@@ -716,8 +874,8 @@ public class ClientAppSubscriptionActivationTests
             },
             BuildContinuationService(db),
             new ClientAppReturnUrlNormalizer(),
-            Mock.Of<IClientEntraLifecycleService>(),
-            BuildHouseholdMembershipService());
+            entraLifecycle ?? Mock.Of<IClientEntraLifecycleService>(),
+            households ?? BuildHouseholdMembershipService());
     }
 
     private static IHouseholdMembershipService BuildHouseholdMembershipService()
