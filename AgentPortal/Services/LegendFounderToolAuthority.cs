@@ -91,14 +91,17 @@ internal sealed partial class LegendFounderToolAuthority
         // Reuse the executable registry's original schemas. Read-only does not
         // imply suitable for cloud disclosure: drilldowns can contain another
         // account's identity, retained private text or unrestricted evidence.
+        var mutationsEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
+        var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
         return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
-            .Concat(Tools.Where(tool => JsonSerializer.SerializeToElement(tool, JsonOptions)
+            .Concat(Tools.Where(tool => mutationsEnabled && JsonSerializer.SerializeToElement(tool, JsonOptions)
                 .GetProperty("name").GetString() == CloudRepairTool))
             .Where(tool => IsCloudExposedTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
-                .GetProperty("name").GetString()!)).ToArray();
+                .GetProperty("name").GetString()!, mutationsEnabled, repositoryEnabled)).ToArray();
     }
 
-    private static bool IsCloudExposedTool(string name) => IsCloudReadableTool(name) || name == CloudRepairTool;
+    private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
+        name == CloudRepairTool ? mutationsEnabled : name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name);
 
     private static bool IsCloudReadableTool(string name) => name is
         "legend_calculate" or "legend_capabilities" or "legend_software_remediation_status" or
@@ -360,6 +363,10 @@ internal sealed partial class LegendFounderToolAuthority
             if (!TryResolveFounderFunctionParameters(call.Name, out _) ||
                 IsReadOnlyFounderTool(call.Name) && !IsCloudReadableTool(call.Name))
                 return CloudActionFailure("cloud_action_tool_not_exposed");
+            if (!IsReadOnlyFounderTool(call.Name) && !CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled"))
+                return CloudActionFailure("cloud_action_mutations_disabled");
+            if (call.Name == "legend_inspect_repository" && !CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled"))
+                return CloudActionFailure("cloud_action_repository_disabled");
             return await ExecuteCloudScopedAsync(founder, serverDerivedScope, call, mode, cancellationToken, providerPolicy);
         }
 
@@ -438,7 +445,10 @@ internal sealed partial class LegendFounderToolAuthority
 
             case "legend_capabilities":
             {
-                return SerializeUnbounded(DescribeFounderCapabilitiesCore(cloudExposureOnly: providerPolicy?.AllowCloudflareInference == true));
+                var cloudExposureOnly = providerPolicy?.AllowCloudflareInference == true;
+                return SerializeUnbounded(DescribeFounderCapabilitiesCore(cloudExposureOnly,
+                    cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled"),
+                    cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled")));
             }
 
             case "legend_remember_conversation_facts":
@@ -1927,7 +1937,8 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static IReadOnlyList<object> DescribeFounderCapabilities() => DescribeFounderCapabilitiesCore(false);
 
-    private static IReadOnlyList<object> DescribeFounderCapabilitiesCore(bool cloudExposureOnly)
+    private static IReadOnlyList<object> DescribeFounderCapabilitiesCore(bool cloudExposureOnly,
+        bool mutationsEnabled = false, bool repositoryEnabled = false)
     {
         var capabilities = new List<object>();
         foreach (var tool in BuildFounderTools())
@@ -1946,7 +1957,7 @@ internal sealed partial class LegendFounderToolAuthority
                 : null;
             if (string.IsNullOrWhiteSpace(name))
                 continue;
-            if (cloudExposureOnly && !IsCloudExposedTool(name))
+            if (cloudExposureOnly && !IsCloudExposedTool(name, mutationsEnabled, repositoryEnabled))
                 continue;
 
             var description = root.TryGetProperty("description", out var descriptionElement)

@@ -13,6 +13,7 @@ using Infrastructure.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
@@ -360,6 +361,7 @@ public sealed class LegendFounderCloudActionApprovalTests
         private readonly SqliteConnection? _keeper;
         private readonly DbContextOptions<MasterAppDbContext> _options;
         private readonly List<MasterAppDbContext> _authorityContexts = new();
+        private readonly ServiceProvider _services;
         public MasterAppDbContext Db { get; }
         public IServiceScopeFactory Scopes { get; }
         public FounderAiActionScope Scope { get; }
@@ -372,7 +374,13 @@ public sealed class LegendFounderCloudActionApprovalTests
             _priorFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
             Environment.SetEnvironmentVariable("FOUNDER_OID", FounderId);
             Db = db; _options = options; _keeper = keeper;
-            Scopes = ControllerTestHelpers.BuildFounderHistoryScopes(db);
+            var services = new ServiceCollection();
+            services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                { ["FounderSoftwareRemediation:CandidateValidation:Enabled"] = "true" }).Build());
+            services.AddScoped(_ => new MasterAppDbContext(options));
+            ControllerTestHelpers.AddFounderHistoryServices(services);
+            _services = services.BuildServiceProvider();
+            Scopes = _services.GetRequiredService<IServiceScopeFactory>();
             Scope = new("account-fixture", "tenant-fixture", FounderId, "session-fixture", Guid.NewGuid().ToString("D"),
                 Guid.NewGuid().ToString("D"), new[] { "Founder", "Agent" }, "revision-1", "qualification", DateTime.UtcNow.AddSeconds(90), new string('a', 64));
             Remediation.Setup(service => service.ReleaseApprovedAsync(42, new string('a', 40), It.IsAny<CancellationToken>()))
@@ -430,6 +438,7 @@ public sealed class LegendFounderCloudActionApprovalTests
         public async ValueTask DisposeAsync()
         {
             foreach (var context in _authorityContexts) await context.DisposeAsync();
+            await _services.DisposeAsync();
             await Db.DisposeAsync();
             if (_keeper is not null) await _keeper.DisposeAsync();
             Environment.SetEnvironmentVariable("FOUNDER_OID", _priorFounder);

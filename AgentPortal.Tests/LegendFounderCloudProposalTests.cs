@@ -117,6 +117,7 @@ public sealed class LegendFounderCloudProposalTests
     [Theory]
     [InlineData("FounderSoftwareRemediation:CandidateValidation:TrustedWorkflowSha")]
     [InlineData("FounderSoftwareRemediation:CandidateValidation:Profile")]
+    [InlineData("FounderSoftwareRemediation:CandidateValidation:Enabled")]
     [InlineData("FounderSoftwareRemediation:RepositoryName")]
     public async Task MissingOperatorBindingCannotStageAProposal(string key)
     {
@@ -151,6 +152,7 @@ public sealed class LegendFounderCloudProposalTests
     [InlineData("repository")]
     [InlineData("account")]
     [InlineData("environment")]
+    [InlineData("disabled")]
     public async Task ChangedReviewOrOperatorPolicyCannotCreateApproval(string changed)
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -166,6 +168,7 @@ public sealed class LegendFounderCloudProposalTests
         if (changed == "repository") fixture.Configuration["FounderSoftwareRemediation:RepositoryName"] = "different-repository";
         if (changed == "account") fixture.Configuration["LegendConnect:Foundation:Cloudflare:AccountId"] = "another-account";
         if (changed == "environment") fixture.Configuration["LegendConnect:Foundation:Cloudflare:Environment"] = "production";
+        if (changed == "disabled") fixture.Configuration["FounderSoftwareRemediation:CandidateValidation:Enabled"] = "false";
         await fixture.Db.SaveChangesAsync();
         var approval = await fixture.Authority().ApproveCloudActionProposalAsync(fixture.Principal, fresh, review.ProposalId,
             changed == "revision" ? new string('0', 32) : review.Revision,
@@ -308,6 +311,7 @@ public sealed class LegendFounderCloudProposalTests
             {
                 ["FounderSoftwareRemediation:RepositoryOwner"] = "fixture",
                 ["FounderSoftwareRemediation:RepositoryName"] = "source",
+                ["FounderSoftwareRemediation:CandidateValidation:Enabled"] = "true",
                 ["FounderSoftwareRemediation:CandidateValidation:TrustedWorkflowSha"] = new string('c', 40),
                 ["FounderSoftwareRemediation:CandidateValidation:Profile"] = "cloudflare-contracts",
                 ["LegendConnect:Foundation:Cloudflare:AccountId"] = "account-fixture",

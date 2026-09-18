@@ -212,6 +212,8 @@ internal sealed partial class LegendFounderToolAuthority
     {
         policy = null!;
         var config = services.GetService<IConfiguration>();
+        if (!bool.TryParse(config?["FounderSoftwareRemediation:CandidateValidation:Enabled"], out var enabled) || !enabled)
+            return false;
         var owner = config?["FounderSoftwareRemediation:RepositoryOwner"]?.Trim();
         var repository = config?["FounderSoftwareRemediation:RepositoryName"]?.Trim();
         var workflow = config?["FounderSoftwareRemediation:CandidateValidation:TrustedWorkflowSha"]?.Trim();
@@ -224,6 +226,13 @@ internal sealed partial class LegendFounderToolAuthority
             !ValidCloudIdentifier(account) || !ValidCloudIdentifier(environment)) return false;
         policy = new(owner + "/" + repository, workflow.ToLowerInvariant(), profile, account!, environment!);
         return true;
+    }
+
+    private bool CloudToolFeatureEnabled(string key)
+    {
+        if (_authorizationScopes is null) return false;
+        using var services = _authorizationScopes.CreateScope();
+        return bool.TryParse(services.ServiceProvider.GetService<IConfiguration>()?[key], out var enabled) && enabled;
     }
 
     private static FounderAiActionProposalReview ProjectCloudProposal(FounderAiActionAuthorization row) => new(
