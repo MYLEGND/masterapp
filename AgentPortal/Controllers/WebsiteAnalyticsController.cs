@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Infrastructure.WebsiteEditing;
 using Shared.Auth;
 
 namespace AgentPortal.Controllers;
@@ -42,8 +43,9 @@ namespace AgentPortal.Controllers;
         private readonly IVisitorTrustScoringService _visitorTrustScoringService;
         private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
         private readonly IAnalyticsIncidentQueryService _incidentMonitor;
+        private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector, WebsiteEditorTicketProtector websiteEditorTickets)
         {
             _analytics = analytics;
             _metaAds = metaAds;
@@ -63,6 +65,7 @@ namespace AgentPortal.Controllers;
             _config = config;
             _effectiveContext = effectiveContext;
             _metaCapiCredentialProtector = metaCapiCredentialProtector;
+            _websiteEditorTickets = websiteEditorTickets;
         }
 
     [HttpGet("")]
@@ -144,6 +147,69 @@ namespace AgentPortal.Controllers;
         }
 
         return View();
+    }
+
+    [HttpGet("edit-website")]
+    public async Task<IActionResult> EditWebsite(
+        [FromQuery] string site = WebsiteEditorSiteKeys.Protect,
+        [FromQuery] Guid? agentProfileId = null)
+    {
+        site = (site ?? string.Empty).Trim().ToLowerInvariant();
+        var isFounder = FounderGuard.IsFounder(User);
+
+        if (site == WebsiteEditorSiteKeys.Legend)
+        {
+            if (!isFounder) return Forbid();
+
+            var ticket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+                WebsiteEditorSiteKeys.Legend,
+                WebsiteEditorSiteKeys.GlobalOwnerKey,
+                null,
+                true,
+                DateTime.UtcNow.AddMinutes(45)));
+
+            var legendBase = (_config["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/');
+            return Redirect($"{legendBase}/?legendEdit={Uri.EscapeDataString(ticket)}");
+        }
+
+        if (site != WebsiteEditorSiteKeys.Protect) return BadRequest();
+
+        AgentTrackingProfile? target;
+        if (isFounder && agentProfileId.HasValue && agentProfileId.Value != Guid.Empty)
+        {
+            target = (await _tracking.GetAllProfilesAsync())
+                .FirstOrDefault(x => x.Id == agentProfileId.Value);
+        }
+        else
+        {
+            target = await GetCallerProfileAsync();
+        }
+
+        if (target is null || string.IsNullOrWhiteSpace(target.AgentUserId))
+            return NotFound();
+
+        if (!isFounder)
+        {
+            var actual = await GetCallerProfileAsync();
+            if (actual is null || actual.Id != target.Id) return Forbid();
+        }
+
+        var editTicket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Protect,
+            target.AgentUserId.Trim().ToLowerInvariant(),
+            target.Slug,
+            isFounder,
+            DateTime.UtcNow.AddMinutes(45)));
+
+        var urls = await _tracking.GetPersonalUrlsAsync(target);
+        var rootBase = _landingRouteDiscovery.GetBaseUrl().TrimEnd('/');
+        var targetUrl = isFounder &&
+                        string.Equals(target.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase)
+            ? rootBase + "/"
+            : urls.PrimaryUrl;
+
+        var separator = targetUrl.Contains('?') ? "&" : "?";
+        return Redirect($"{targetUrl}{separator}legendEdit={Uri.EscapeDataString(editTicket)}");
     }
 
     [Authorize(Policy = "FounderOnly")]
