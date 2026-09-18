@@ -1,6 +1,6 @@
 # Cloudflare runtime — candidate, not deployed
 
-Checked 2026-09-18. Every production registry entry is disabled and unqualified. No authenticated account inspection, paid inference, provisioning, live performance measurement or model enablement was performed. Tests inject simulated provider replies; their success is not a Cloudflare canary or an intelligence evaluation.
+Checked 2026-09-18. Every production registry entry is disabled and unqualified. Authenticated read-only model-schema retrieval succeeded for all five candidates through pinned Wrangler 4.135.0 using the existing account login. No paid inference, provisioning, live performance measurement or model enablement was performed. Tests inject simulated provider replies; their success is not a Cloudflare canary or an intelligence evaluation.
 
 The user subsequently approved a **$10 total qualification ceiling and $30/month production ceiling, including fixed/platform and all other charges**. This resolves the missing numeric decision; account access and enforceable total-cost allocation remain prerequisites for live operation. Do not ask again whether paid service is acceptable.
 
@@ -13,6 +13,11 @@ The user subsequently approved a **$10 total qualification ceiling and $30/month
 | `src/runtime/reliability.mjs` | Deadline/cancellation helpers and isolate-local circuit health hints |
 | `src/runtime/orchestrator.mjs` | One bounded model/tool loop and progress/final SSE stream |
 | `tests/runtime/runtime.test.mjs` | Executable simulations of budgets, cancellation, routing, tools, failures and streaming |
+| `tests/runtime/fixtures/account-schema-snapshot.json` | Read-only authenticated schema evidence, exact raw schema hashes and relevant JSON pointers; no credentials |
+| `tests/runtime/schema.test.mjs` | Adapter field compatibility checks against the captured schema projection |
+| `tests/runtime/fixtures/held-out.v1.json` | Twelve prepared, unrun cases: four reasoning, four multi-turn and four code diagnosis |
+| `tests/runtime/qualification.mjs` | Offline receipt scoring and cost/latency summary; no network calls or qualification promotion |
+| `tests/runtime/qualification.test.mjs` | Simulation-only evaluator integrity checks |
 
 Run `node --test Legend-Cloudflare/tests/runtime/*.test.mjs` from the repository root. No npm dependencies, local model, .NET build or Cloudflare credentials are needed.
 
@@ -36,7 +41,7 @@ Cancellation stops awaiting further model output and prevents later tools. The W
 
 ## Official catalog snapshot and candidate economics
 
-All five exact IDs appear as Cloudflare-hosted in their linked official catalog pages. Gateway availability alone is not used as hosting evidence. Account-specific availability, region/residency, numerical performance, exact wire behavior and service terms remain unqualified. Prices are USD per million uncached input/output tokens; prompt-cache discounts are deliberately excluded from reserves.
+All five exact IDs appear as Cloudflare-hosted in their linked official catalog pages. Gateway availability alone is not used as hosting evidence. Authenticated schemas are available; account-specific inference admission, region/residency, numerical performance, actual generation wire behavior and service terms remain unqualified. Prices are USD per million uncached input/output tokens; prompt-cache discounts are deliberately excluded from reserves.
 
 | Exact engine | Candidate role | Context | Input / output | Example: 8,000 input + 2,000 output |
 | --- | --- | ---: | ---: | ---: |
@@ -46,7 +51,9 @@ All five exact IDs appear as Cloudflare-hosted in their linked official catalog 
 | [`@cf/zai-org/glm-5.3`](https://developers.cloudflare.com/workers-ai/models/glm-5.3/) | Architecture | 1,310,720 | $1.40 / $4.40 | $0.02000 |
 | [`@cf/deepseek-ai/deepseek-v4-pro-0813`](https://developers.cloudflare.com/workers-ai/models/deepseek-v4-pro-0813/) | Difficult reasoning | 1,048,576 | $1.32 / $3.96 | $0.01848 |
 
-Each catalog page documents tools, reasoning and streaming; GLM Flash additionally documents vision. GLM and DeepSeek schemas expose completion-token caps and structured output options. This adapter does not claim schema-constrained structured responses or vision are qualified. GPT OSS documentation has shown both chat and Responses conventions: normalization accepts both, but the exact account binding response must be captured during its canary.
+Each catalog page documents tools, reasoning and streaming; GLM Flash additionally documents vision. Authenticated GLM and DeepSeek schemas expose `max_completion_tokens`, `reasoning_effort`, `store`, tool schemas and structured output options. Qwen/GPT OSS message input declares `max_tokens`; GPT OSS also declares a Responses input variant with an opaque JSON output schema. Qwen declares both chat and text-completion outputs, and the adapter handles `choices[].text` for the latter. Nonterminal Responses states fail closed. This adapter does not claim schema-constrained structured responses or vision are qualified. Exact account binding output and enforcement of billing caps must still be captured during each canary.
+
+Schema evidence was obtained with `wrangler@4.135.0 ai models schema MODEL`, a read-only [Get Model Schema API](https://developers.cloudflare.com/api/resources/ai/subresources/models/subresources/schema/methods/get/) call. Raw CLI JSON SHA-256 values are `051be5c446a13239ca48b4078bc6a993356003fec256ab26e81a11e6205ae4e0` (Qwen), `73c13bd8e6e62cc66721c0a7bed4b5281ebedec5fd8d72f45b37800c2a0c123b` (GPT OSS), and `9ad8d83d3c9729659907a38b9f8c07f814f245a72b20d751c78a611224b4ae40` (the identical common schemas returned independently for GLM, GLM Flash and DeepSeek). The committed projection records retrieval time, hashed account identity and source JSON pointers. It is a compatibility snapshot, not a complete JSON Schema validator or proof that inference is enabled.
 
 The [Workers AI rate limits](https://developers.cloudflare.com/workers-ai/platform/limits/) checked September 18 list default text generation at 300 requests/minute, with paid-only models at 20 requests/minute/account/model under standard billing or 50 using prepaid Gateway credits. The latter billing path is not configured. No dedicated GPU capacity is provisioned.
 
@@ -68,4 +75,6 @@ Before an operator changes any `enabled:false` registry entry, independently cap
 
 Predeclared acceptance: at least 90% held-out task completion; zero fabricated completed actions or citations; zero cross-scope disclosure or unauthorized side effects; every enabled engine passes live account and application canaries with local inference unreachable. Include arithmetic, reasoning, code repair, repository diagnosis, research, tools, durable multi-turn memory and English/Haitian Creole/French/Spanish review. Record failures, token use, total cost per successful task and latency distributions. Inspect cancellation, output truncation, quota exhaustion, request/tenant/account budgets, concurrency, disconnects, idempotency and provider outages. Simulated fixtures cannot count toward these scores. Relative Astra quality is unverified.
 
-Outstanding release blockers include real account access and all-charge budget allocation, live engine qualifications, fresh-authorized Azure tool callback integration, approved cloud execution environment, full application loop cutover, derivative knowledge integration and final cross-platform acceptance. Nothing in this module authorizes deletion of the Mac runtime. Local cleanup requires cloud acceptance first and an exact resource manifest owned by the lead.
+The prepared twelve-case fixture freezes prompts before any live run. Send only `qualificationUserTurns(caseId)` under normal production instructions, preserve each actual assistant reply, and never include fixture IDs, answers or evaluation rubrics in provider input. The offline summary requires the exact suite SHA-256, rejects duplicate/substituted cases and counts missing cases as failures. Objective answers use strict scoring; diagnostic judgments require a named reviewer and notes against the fixed rubric. The summary labels simulated versus reported-live receipts and always returns `releaseQualified:false`: it does not authenticate receipts or replace independent release review. In-context multi-turn evaluation does not prove persisted Azure memory. No prompt tuning or live model evaluation was performed against these cases.
+
+Outstanding release blockers include account billing/allowance verification and all-charge budget allocation, live engine qualifications, fresh-authorized Azure tool callback integration, approved cloud execution environment, full application loop cutover, derivative knowledge integration and final cross-platform acceptance. Nothing in this module authorizes deletion of the Mac runtime. Local cleanup requires cloud acceptance first and an exact resource manifest owned by the lead.
