@@ -1,0 +1,203 @@
+name: Direct deploy validated public website UI
+
+on:
+  push:
+    branches:
+      - fix/public-web-premium-unification-20260917
+    paths:
+      - '.github/workflows/public-web-ui-direct-v2-20260917.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: public-web-ui-direct-v2-20260917
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: fix/public-web-premium-unification-20260917
+          fetch-depth: 0
+
+      - name: Enforce frontend-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin production
+          git diff --name-only origin/production...HEAD | tee /tmp/public-ui-diff.txt
+          if grep -E '^(Protect-Website/(Controllers|Services|Models|Program\.cs)|Infrastructure/|Domain/|AgentPortal/|ClientApp/|ParfaitApp/)' /tmp/public-ui-diff.txt; then
+            echo "::error::Backend or unrelated app file entered the UI candidate."
+            exit 1
+          fi
+          unexpected="$(grep -Ev '^(Legend-Design/legend-public-web\.(css|js)|Legend-Website/.*|Protect-Website/(ProtectWebsite\.csproj|Views/(Home|Contact|Shared)/.*|wwwroot/css/site\.css)|\.github/workflows/public-web-ui-direct(-v2)?-20260917\.yml)$' /tmp/public-ui-diff.txt || true)"
+          if [ -n "$unexpected" ]; then
+            printf '%s\n' "$unexpected"
+            echo "::error::Unexpected file entered candidate."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build exact LEGEND artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd Legend-Website
+          npm run build
+          cp public/web.config dist/web.config
+          npm run check
+          test -f dist/site.css
+          test -f dist/legend-public-web.js
+          grep -q 'LEGEND® public web presentation authority' dist/site.css
+          grep -q 'brand-wordmark' dist/index.html
+          ! grep -q 'footer-logo' dist/index.html
+
+      - name: Build exact Protect artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect-publish --no-restore
+          test -f /tmp/protect-publish/wwwroot/design/legend-public-web.css
+          test -f /tmp/protect-publish/wwwroot/design/legend-public-web.js
+          grep -q 'LEGEND® public web presentation authority' /tmp/protect-publish/wwwroot/design/legend-public-web.css
+
+      - name: Smoke LEGEND artifact locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8087 --directory Legend-Website/dist >/tmp/legend-local.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for route in / /about/ /contact/ /logo/ /privacy-terms/; do
+            curl --retry 8 --retry-delay 1 --retry-all-errors -fsSL "http://127.0.0.1:8087$route" >/tmp/page.html
+            grep -q 'LEGEND®' /tmp/page.html
+          done
+          kill $pid
+          trap - EXIT
+
+      - name: Compile and smoke Protect UI locally
+        shell: bash
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ConnectionStrings__MasterAppDb: Data Source=/tmp/protect-ui-smoke.db
+        run: |
+          set -euo pipefail
+          cp Protect-Website/Program.cs /tmp/protect-program-original.cs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Protect-Website/Program.cs')
+          s=p.read_text()
+          old='''builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential(),
+              new ProtectWebsite.Services.Configuration.ProtectKeyVaultSecretManager(builder.Environment.IsDevelopment()));'''
+          if old not in s:
+              raise SystemExit('Expected Key Vault registration not found')
+          p.write_text(s.replace(old, '// Local UI smoke only: Key Vault registration bypassed in runner working copy.'))
+          PY
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore --nologo
+          mkdir -p Protect-Website/wwwroot/design
+          cp Legend-Design/legend-public-web.css Protect-Website/wwwroot/design/legend-public-web.css
+          cp Legend-Design/legend-public-web.js Protect-Website/wwwroot/design/legend-public-web.js
+          restore() {
+            kill "\${pid:-}" 2>/dev/null || true
+            cp /tmp/protect-program-original.cs Protect-Website/Program.cs
+            rm -f Protect-Website/wwwroot/design/legend-public-web.css Protect-Website/wwwroot/design/legend-public-web.js
+            rmdir Protect-Website/wwwroot/design 2>/dev/null || true
+          }
+          trap restore EXIT
+          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --no-build --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
+          pid=$!
+          code=""
+          for i in {1..45}; do
+            code="$(curl -sS -o /tmp/protect-home.html -w '%{http_code}' http://127.0.0.1:5099/ || true)"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          if [ "$code" != "200" ]; then cat /tmp/protect-local.log; exit 1; fi
+          grep -q 'legend-public-web.css' /tmp/protect-home.html
+          grep -q 'LEGEND® LEGACY PROTECTION' /tmp/protect-home.html
+          curl -fsSL http://127.0.0.1:5099/design/legend-public-web.css -o /tmp/protect-public.css
+          grep -q 'LEGEND® public web presentation authority' /tmp/protect-public.css
+          for route in /Contact /Privacy /Terms /Quote /RiskAssessment; do
+            test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099$route")" = "200"
+          done
+          restore
+          trap - EXIT
+          git diff --exit-code -- Protect-Website/Program.cs Protect-Website/wwwroot
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: \${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: \${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: \${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy LEGEND website only
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-website
+          slot-name: Production
+          package: Legend-Website/dist
+
+      - name: Verify live LEGEND website
+        shell: bash
+        run: |
+          set -euo pipefail
+          verified=0
+          for i in {1..72}; do
+            code="$(curl -sS -L -o /tmp/live-legend.html -w '%{http_code}' "https://www.mylegnd.com/?ui=\${GITHUB_SHA}" || true)"
+            curl -sS "https://www.mylegnd.com/site.css?ui=\${GITHUB_SHA}" -o /tmp/live-legend.css || true
+            if [ "$code" = "200" ] &&
+               grep -q 'brand-wordmark' /tmp/live-legend.html &&
+               grep -q 'LEGEND® public web presentation authority' /tmp/live-legend.css; then
+              verified=1
+              break
+            fi
+            sleep 5
+          done
+          test "$verified" = "1"
+
+      - name: Deploy Protect website only
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-protect
+          slot-name: Production
+          package: /tmp/protect-publish
+
+      - name: Verify live Protect website
+        shell: bash
+        run: |
+          set -euo pipefail
+          verified=0
+          for i in {1..96}; do
+            code="$(curl -sS -L -o /tmp/live-protect.html -w '%{http_code}' "https://protect.mylegnd.com/?ui=\${GITHUB_SHA}" || true)"
+            css_code="$(curl -sS -o /tmp/live-public.css -w '%{http_code}' "https://protect.mylegnd.com/design/legend-public-web.css?ui=\${GITHUB_SHA}" || true)"
+            if [ "$code" = "200" ] && [ "$css_code" = "200" ] &&
+               grep -q 'site-header' /tmp/live-protect.html &&
+               grep -q 'LEGEND® LEGACY PROTECTION' /tmp/live-protect.html &&
+               grep -q 'LEGEND® public web presentation authority' /tmp/live-public.css; then
+              verified=1
+              break
+            fi
+            sleep 5
+          done
+          test "$verified" = "1"
+          for route in /Contact /Privacy /Terms /Quote /RiskAssessment; do
+            test "$(curl -sS -L -o /dev/null -w '%{http_code}' "https://protect.mylegnd.com$route")" = "200"
+          done
