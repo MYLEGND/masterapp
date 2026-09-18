@@ -64,6 +64,27 @@ elif scope=='observation':
  cases[1].update(LanguageCode='en',MinimumRows=1,Rows=1)
  for i in range(3,6):cases[i].update(ExpectedNative=i!=5,NativeSupported=i!=5,ProviderClientCount=0,ProviderHttpCallCount=0,GraphComposed=i!=5,UnknownComponentCount=0,EvidenceCount=1,NativeReason='semantic_transition_governed_composed',AnswerSha256='a'*64)
  record.update(Version='candidate-select-observation-v2',Coverage=categories,CaseResults=cases,ExecutedCases=6,BlockedCommandCount=0,SaveChangesAttempts=0,ObservationTimeoutSeconds=120)
+elif scope=='translation_inventory':
+ categories=['application-copy-inventory','provider-capacity-ledger','system-usage-ledger']
+ cases=[{'Category':cat,'Status':'passed','ElapsedMilliseconds':1} for cat in categories]
+ record.update(Version='candidate-translation-inventory-v1',ReleaseProof=False,PhysicalSourcesVerified=True,PhysicalSources=['dbo.'+name for name in ('AgentProfiles','LegendLanguageDefinitions','LegendLanguageTextUnits','LegendTranslationAlignments','LegendTranslationProviderReservations','LegendTranslationProviderCapacities','LegendTranslationSystemUsages')],Coverage=categories,CaseResults=cases,ExecutedCases=3,BlockedCommandCount=0,SaveChangesAttempts=0,SqlFailureCount=0,SqlCanceledCommandCount=0,SqlSucceededCommandCount=4,SqlDiagnosticsTruncated=False,ObservationTimeoutSeconds=180)
+ record['CatalogInventory']={'CatalogVersion':'simulated-catalog-v1','EnabledLanguageCount':2,'Catalogs':[
+  {'LanguageCode':'en','TotalEntries':5,'CompletedEntries':5,'RemainingEntries':0,'IsComplete':True,'FailureCounts':{},'CompletedProvenanceCounts':[{'Provider':'Source','Provenance':'Canonical','ValidationState':'Valid','Entries':5}]},
+  {'LanguageCode':'fr','TotalEntries':5,'CompletedEntries':3,'RemainingEntries':2,'IsComplete':False,'FailureCounts':{'translation_pending':2},'CompletedProvenanceCounts':[{'Provider':'AzureTranslator','Provenance':'Retained','ValidationState':'Valid','Entries':3}]}]}
+ record['CapacityInventory']={'Provider':'AzureTranslator','ObservedAtUtc':stamp,'MonthlyWindowStartUtc':stamp,'RollingHourWindowStartUtc':stamp,'ReservationGroups':[{'State':'Completed','Purpose':'Live','Rows':1,'Characters':100,'CurrentMonthCompletedCharacters':100,'RollingHourCompletedCharacters':0,'UnexpiredReservedCharacters':0,'ExpiredReservedCharacters':0,'FutureCompletedCharacters':0}], 'StoredSnapshot':None,'AzureObservationStatus':'NOT_QUERIED','AzureReportedMonthlyCharacters':None,'LiveAvailableCapacityCharacters':None}
+ record['SystemUsage']=[]
+ if case=='valid_inventory_unknown':record['CapacityInventory']['ReservationGroups'][0].update(State='Unknown',Purpose='Unknown')
+ if case=='inventory_wrong_sha':record['CandidateSha']='0'*40
+ if case=='inventory_missing_schema':record['PhysicalSourcesVerified']=False
+ if case=='inventory_missing_table':record['PhysicalSources'].pop()
+ if case=='inventory_partial_coverage':record['CatalogInventory']['EnabledLanguageCount']=3
+ if case=='inventory_false_complete':record['CatalogInventory']['Catalogs'][1]['IsComplete']=True
+ if case=='inventory_empty_registry':record['CatalogInventory'].update(EnabledLanguageCount=0,Catalogs=[])
+ if case=='inventory_provider_call':record['ProviderHttpCallCount']=1
+ if case=='inventory_write_attempt':record['SaveChangesAttempts']=1
+ if case=='inventory_fabricated_balance':record['CapacityInventory']['LiveAvailableCapacityCharacters']=67142
+ if case=='inventory_duplicate_language':record['CatalogInventory']['Catalogs'][1]['LanguageCode']='en'
+ if case=='inventory_negative_counts':record['CatalogInventory']['Catalogs'][1]['RemainingEntries']=-2
 else:
  for resource in ('azure','research','openai'):
   receipt={'CandidateSha':record['CandidateSha'],'RunIdentity':record['RunIdentity'],
@@ -117,6 +138,7 @@ if scope!='provider_resources':
   item['FailureDiagnosis']={'ObservedStage':'case_assertions','AuthorityMethod':'ProductionReadOnlyNativeProofMatrix','Classification':'observed_native_response','RootCauseStatus':'no_failure_observed','NextVerification':'Verify authenticated HTTP separately.'}
  if scope=='observation':
   record['DiagnosticWindows']=[item['DiagnosticEvidence'] for item in cases]+[dict(cases[0]['DiagnosticEvidence'],SqlSnapshotReference='observation-preflight/sql')]
+if case=='inventory_sql_failure':record['SqlFailureCount']=1
 if case=='wrong_sha':record['CandidateSha']='0'*40
 if case=='wrong_identity':record['RunIdentity']='old-run'
 if case=='stale_json':record['StartedUtc']=(now-datetime.timedelta(days=1)).isoformat()
@@ -195,6 +217,7 @@ cases += ['valid_resources','resource_wrong_sha','resource_wrong_identity','reso
 cases += ['resource_canonical_claim','resource_openai_catalog_executed','resource_research_no_receipt']
 cases += ['resource_unknown_research_state','resource_no_accepted_http','resource_missing_stages','observation_missing_diagnostics','observation_swallowed_sql_failure','observation_missing_preflight']
 cases += ['configuration_available', 'configuration_preexisting_matching_receipt', 'configuration_missing_sql', 'configuration_whitespace_sql', 'configuration_whitespace_founder', 'configuration_provider_forbidden', 'whitespace_sql', 'whitespace_founder', 'resource_alias_presence', 'resource_pre_http_failure']
+cases += ['valid_inventory','valid_inventory_unknown','inventory_wrong_sha','inventory_missing_schema','inventory_missing_table','inventory_partial_coverage','inventory_false_complete','inventory_empty_registry','inventory_provider_call','inventory_write_attempt','inventory_sql_failure','inventory_fabricated_balance','inventory_duplicate_language','inventory_negative_counts']
 full_case_count = len(cases)
 if args.configuration_only:
  cases = [case for case in cases if case.startswith('configuration_')]
@@ -212,7 +235,7 @@ for case in cases:
 'LEGEND_PRODUCTION_READONLY_CONNECTION':'' if case=='missing_sql' or resource_scope else 'SIMULATED-NOT-A-SQL-CONNECTION',
 'LEGEND_PRODUCTION_READONLY_FOUNDER_OID':'' if case=='missing_founder' or resource_scope else 'SIMULATED-NOT-A-FOUNDER','LEGEND_PRODUCTION_OBSERVATION_REQUIRED':'true',
 'LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED':'' if case=='resource_flag_missing' else 'true',
-'OPENAI_API_KEY':'SIMULATED-KEY' if resource_scope else '', 'OpenAI__ApiKey':'','SIMULATED_CASE':case,'LEGEND_VALIDATION_SCOPE':'provider_resources' if resource_scope else 'observation' if case.startswith('observation_') or case in ('valid_observation','empty_lifecycle','wrong_lifecycle_language') else 'canonical_matrix'}
+'OPENAI_API_KEY':'SIMULATED-KEY' if resource_scope else '', 'OpenAI__ApiKey':'','SIMULATED_CASE':case,'LEGEND_VALIDATION_SCOPE':'translation_inventory' if case.startswith('valid_inventory') or case.startswith('inventory_') else 'provider_resources' if resource_scope else 'observation' if case.startswith('observation_') or case in ('valid_observation','empty_lifecycle','wrong_lifecycle_language') else 'canonical_matrix'}
  if case in ('configuration_missing_sql','configuration_whitespace_sql','whitespace_sql'):
   env['LEGEND_PRODUCTION_READONLY_CONNECTION']='' if case=='configuration_missing_sql' else ' \t\n'
  if case in ('configuration_whitespace_founder','whitespace_founder'):

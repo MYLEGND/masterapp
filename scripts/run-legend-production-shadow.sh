@@ -26,6 +26,10 @@ case "$LEGEND_VALIDATION_SCOPE" in
     readonly test_name='AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyCandidateObservation'
     readonly stage_budget=180
     ;;
+  translation_inventory)
+    readonly test_name='AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyTranslationInventory'
+    readonly stage_budget=240
+    ;;
   provider_resources)
     readonly test_name='AgentPortal.Tests.LegendFounderAiComprehensiveDiagnosticContractTests.ResourceEnabled_AzureBoundary_ReportsActualProviderOutcomeWithoutLearning'
     readonly stage_budget=240
@@ -168,6 +172,8 @@ summary = {
                   'deduction', 'uncertainty', 'diagnosis', 'planning', 'audience_constraints',
                   'language_routing', 'native_only_isolation']
                  if os.environ['LEGEND_VALIDATION_SCOPE'] == 'canonical_matrix' else
+                 ['application-copy-inventory', 'provider-capacity-ledger', 'system-usage-ledger']
+                 if os.environ['LEGEND_VALIDATION_SCOPE'] == 'translation_inventory' else
                  ['learning', 'machine-learning-lifecycle', 'governed_cohort',
                   'held-out-competing-hypotheses', 'held-out-discriminating-check', 'native-only-provider-isolation']),
     'ReleaseProof': False,
@@ -438,6 +444,73 @@ def validate_native_diagnostics(result, diagnostic_cases, extra_windows=()):
         diagnosis = case['FailureDiagnosis']
         assert all(isinstance(diagnosis[key], str) and diagnosis[key] for key in (
             'ObservedStage', 'AuthorityMethod', 'Classification', 'RootCauseStatus', 'NextVerification'))
+
+if os.environ['LEGEND_VALIDATION_SCOPE'] == 'translation_inventory':
+    assert result['Version'] == 'candidate-translation-inventory-v1'
+    assert result['ReleaseProof'] is False and result['PhysicalSourcesVerified'] is True
+    sources = result['PhysicalSources']
+    assert isinstance(sources, list) and len(sources) == len(set(sources)) == 7
+    assert set(sources) == {'dbo.' + name for name in ('AgentProfiles', 'LegendLanguageDefinitions',
+        'LegendLanguageTextUnits', 'LegendTranslationAlignments', 'LegendTranslationProviderReservations',
+        'LegendTranslationProviderCapacities', 'LegendTranslationSystemUsages')}
+    assert result['Coverage'] == ['application-copy-inventory', 'provider-capacity-ledger', 'system-usage-ledger']
+    assert result['ExecutedCases'] == len(cases) == 3
+    assert {case['Category'] for case in cases} == set(result['Coverage'])
+    assert result['BlockedCommandCount'] == result['SaveChangesAttempts'] == 0
+    assert result['SqlFailureCount'] == result['SqlCanceledCommandCount'] == 0
+    assert type(result['SqlSucceededCommandCount']) is int and result['SqlSucceededCommandCount'] > 0
+    assert type(result['SqlDiagnosticsTruncated']) is bool
+    assert result['ObservationTimeoutSeconds'] == 180 and 0 < result['ElapsedMilliseconds'] <= 185000
+    inventory = result['CatalogInventory']
+    assert isinstance(inventory['CatalogVersion'], str) and inventory['CatalogVersion']
+    catalogs = inventory['Catalogs']
+    assert 0 < inventory['EnabledLanguageCount'] == len(catalogs) <= 64
+    assert len({catalog['LanguageCode'] for catalog in catalogs}) == len(catalogs)
+    def count(value):
+        assert type(value) is int and value >= 0
+        return value
+    for catalog in catalogs:
+        assert re.fullmatch(r'[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*', catalog['LanguageCode'])
+        total = count(catalog['TotalEntries'])
+        complete = count(catalog['CompletedEntries'])
+        remaining = count(catalog['RemainingEntries'])
+        assert 0 < total <= 10000 and complete + remaining == total
+        assert catalog['IsComplete'] is (remaining == 0)
+        assert isinstance(catalog['FailureCounts'], dict)
+        assert all((code == 'Unknown' or re.fullmatch(r'[a-z0-9_]+', code)) for code in catalog['FailureCounts'])
+        assert sum(count(value) for value in catalog['FailureCounts'].values()) == remaining
+        provenance = catalog['CompletedProvenanceCounts']
+        assert isinstance(provenance, list)
+        assert sum(count(row['Entries']) for row in provenance) == complete
+        assert all(all(isinstance(row[key], str) for key in ('Provider', 'Provenance', 'ValidationState')) for row in provenance)
+    capacity = result['CapacityInventory']
+    assert capacity['Provider'] == 'AzureTranslator'
+    assert test_start <= timestamp(capacity['ObservedAtUtc']) <= test_finish
+    assert timestamp(capacity['MonthlyWindowStartUtc']) <= timestamp(capacity['ObservedAtUtc'])
+    assert timestamp(capacity['RollingHourWindowStartUtc']) <= timestamp(capacity['ObservedAtUtc'])
+    assert capacity['AzureObservationStatus'] == 'NOT_QUERIED'
+    assert capacity['AzureReportedMonthlyCharacters'] is None and capacity['LiveAvailableCapacityCharacters'] is None
+    assert isinstance(capacity['ReservationGroups'], list) and len(capacity['ReservationGroups']) <= 128
+    for row in capacity['ReservationGroups']:
+        assert row['State'] in ('Reserved', 'Completed', 'Released', 'Unknown')
+        assert isinstance(row['Purpose'], str)
+        for key in ('Rows', 'Characters', 'CurrentMonthCompletedCharacters', 'RollingHourCompletedCharacters', 'UnexpiredReservedCharacters', 'ExpiredReservedCharacters', 'FutureCompletedCharacters'):
+            count(row[key])
+    snapshot = capacity['StoredSnapshot']
+    if snapshot is not None:
+        for key in ('ConfiguredCapacityCharacters', 'ReservedLiveCharacters', 'LiveCharactersConsumed', 'BootstrapCharactersConsumed', 'TrainingCharactersConsumed', 'ReservedLiveCapacityCharacters', 'ProjectedLiveCharacters'):
+            count(snapshot[key])
+        timestamp(snapshot['UpdatedUtc'])
+        datetime.date.fromisoformat(snapshot['BillingPeriodStart'])
+    usage = result['SystemUsage']
+    assert isinstance(usage, list) and len(usage) <= 31
+    assert len({row['UsageDate'] for row in usage}) == len(usage)
+    for row in usage:
+        datetime.date.fromisoformat(row['UsageDate'])
+        for key in ('ProviderOperationCount', 'ProviderBillableCharacters', 'ProviderFailureCount', 'QuotaDeniedRequestCount', 'ProviderObservationCharactersAvoided'):
+            count(row[key])
+    assert int(os.environ['OBSERVATION_EXIT']) == 0, 'Translation inventory test process did not pass'
+    raise SystemExit(0)
 
 if os.environ['LEGEND_VALIDATION_SCOPE'] == 'canonical_matrix':
     assert result['MatrixVersion'] == 'lai-027-029-v1' and result['IsolatedReadOnlyMode'] is True

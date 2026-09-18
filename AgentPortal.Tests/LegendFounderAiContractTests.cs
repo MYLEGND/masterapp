@@ -1568,6 +1568,24 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void TranslationInventoryWorkflow_UsesProtectedSqlWithoutFoundationOrReleaseClaims()
+    {
+        var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
+        Assert.Contains("          - translation_inventory", workflow, StringComparison.Ordinal);
+        var login = workflow[workflow.IndexOf("      - name: Read existing foundation configuration", StringComparison.Ordinal)..
+            workflow.IndexOf("      - name: Run project regression", StringComparison.Ordinal)];
+        Assert.Contains("env.LEGEND_VALIDATION_SCOPE != 'translation_inventory'", login, StringComparison.Ordinal);
+        var regression = workflow[workflow.IndexOf("      - name: Run project regression", StringComparison.Ordinal)..
+            workflow.IndexOf("      - name: Run canonical production", StringComparison.Ordinal)];
+        Assert.Contains("env.LEGEND_VALIDATION_SCOPE != 'translation_inventory'", regression, StringComparison.Ordinal);
+        var gate = workflow[workflow.IndexOf("      - name: Enforce complete diagnostic", StringComparison.Ordinal)..];
+        Assert.Contains("test \"$REGRESSION_OUTCOME\" = 'skipped'", gate, StringComparison.Ordinal);
+        Assert.Contains("test \"$REGRESSION_OUTCOME\" = 'success'", gate, StringComparison.Ordinal);
+        Assert.Contains("for outcome in \"$RESTORE_OUTCOME\" \"$BUILD_OUTCOME\" \"$selected_outcome\"", gate, StringComparison.Ordinal);
+        Assert.Contains("result['ReleaseProof'] is False", gate, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FounderMutationConfirmation_DefaultsToFalse()
     {
         var request = new LegendFounderAiChatRequest();
