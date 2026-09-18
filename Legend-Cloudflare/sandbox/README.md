@@ -1,0 +1,56 @@
+# Bounded offline execution candidate
+
+This is an unqualified Linux executor candidate. It does not enable the Azure tool broker, accept private source, provision a container, or add an inference loop. Cloudflare must pass an independently reviewed real canary before this becomes an authorized execution backend. The user-approved first cloud attempt is at most $0.50 from the existing $2 platform reserve, with no budget increase or automatic retry.
+
+## Boundary and feasibility
+
+The trusted controller calls Cloudflare's existing [`ctx.container.exec`](https://developers.cloudflare.com/containers/guides/execute-commands/) with an argv array, UID 1654, and this immutable image. It never exposes an HTTP command server. Only `/usr/local/bin/legend-offline` starts generated code. Direct exec of a generated executable, shell, or repository script bypasses the boundary and must be forbidden by the controller. The model cannot choose image, user, timeout, environment or execution endpoint.
+
+Linux [seccomp filters](https://docs.kernel.org/userspace-api/seccomp_filter.html) are inherited through fork/exec; [no_new_privs](https://docs.kernel.org/userspace-api/no_new_privs.html) makes unprivileged filter installation possible and prevents exec-based privilege gains. This can close the DNS path left by Cloudflare's network flag because the child cannot create any socket. Cloudflare documentation does not establish that its runtime permits these syscalls. The launcher returns 125 and executes no generated code if installation, identity, capabilities, descriptor closing or limits fail. Never add an unrestricted fallback.
+
+The filter supports Linux amd64 only and kills cross-ABI/x32 syscall attempts. It denies all socket families (including IPv4, IPv6, Unix, netlink and packet), connect/bind/listen/accept/send/receive syscalls, io_uring, descriptor theft, tracing, process-memory syscalls, namespace creation, mount/privilege operations and process-group escape. It also blocks signals and indirect mechanisms aimed at the supervisor. Thread-directed signals are permitted only within the initial child tgid; subprocess tool compatibility needs qualification. `clone3` returns ENOSYS so libc may use the inspected legacy clone path. This is intentionally restrictive and may reject build tools.
+
+The statically linked launcher clears inherited environment and closes all FDs above stderr with `close_range` or complete `/proc/self/fd` enumeration in the single-threaded trusted process; it never guesses an FD ceiling. The trusted parent accepts only pipes/regular files/dev-null or local Unix IPC for its controller stdio; TCP/UDP/PTY descriptors are rejected. Before generated code, it replaces stdin with dev-null and stdout/stderr with new controlled pipes, closes all other descriptors again and verifies that no socket remains in child stdio. User/group must both be 1654 with no other supplementary groups or Linux capabilities. Image tools and launcher are root-owned; generated code is nonroot. The idle PID1 and supervisor set `PR_SET_DUMPABLE=0` to protect `/proc/PID/mem`, not just the ptrace syscall. The actual platform exec helper must be differently privileged or equally protected: an unfiltered same-UID process with accessible memory would break this boundary. A networked same-UID SDK daemon is explicitly outside this design.
+
+The parent enforces a maximum 600-second wall deadline, aggregate 1 MiB stdout/stderr, and kills the entire job process group on completion, timeout or output failure. Descendants cannot detach via setsid/setpgid/new namespaces. Cleanup uses nonblocking waits for at most one additional second and requires the leader reaped plus ECHILD; unresolved cleanup returns 127 and must trigger external destruction, never success. A separately compiled test-only binary injects a missing cleanup acknowledgment; it is absent from production. The image's idle process exits after 630 seconds from startup as a secondary failsafe. The controller must still enforce an external durable absolute deadline, destroy the whole container, confirm stopped state, and prevent automatic restarts. Parent death, OOM, platform restart and lost control channels require conservative unknown-cost settlement and no new work. Idle expiration alone is not proof of shutdown.
+
+[Rlimits](https://man7.org/linux/man-pages/man2/getrlimit.2.html) cap per-process CPU at twice the wall seconds, virtual address space at 32 GiB, FDs/processes at 256, each output file at 1 GiB, locked memory at zero and core dumps at zero. Existing tighter hard limits remain tighter. These are not aggregate memory/disk quotas: the controller must allocate at most one 2-vCPU/8-GiB/16-GB container and bound authorized artifacts to 10 MiB. .NET GC and Node heap defaults are 2 GiB. No shared caches, bucket mounts, credentials, public previews or other tenants' data belong in the image or job.
+
+## Reproducible candidate image
+
+`Dockerfile` pins the GCC builder and Linux amd64 .NET SDK base by OCI digest. The latter contains SDK 10.0.401/runtime 10.0.12. Node 24.21.0 is verified against its official tarball SHA-256. No package-manager install or mutable tag is used for toolchain contents. Build context is only this directory; `.dockerignore` excludes everything except the launcher/probe/test sources and Dockerfile. The final runtime has no test driver or probe. The final composed-image digest must be recorded after a trusted build and pinned in deployment; source pins alone are not that final digest.
+
+```sh
+docker build --platform linux/amd64 --target test -t legend-offline-sandbox-test:20260918 Legend-Cloudflare/sandbox
+docker run --rm --platform linux/amd64 --network none --cap-drop ALL --security-opt no-new-privileges --memory 8g --cpus 2 --pids-limit 300 legend-offline-sandbox-test:20260918
+docker build --platform linux/amd64 --target runtime -t legend-offline-sandbox:20260918 Legend-Cloudflare/sandbox
+```
+
+Local tests compile real C and launch real Linux subprocesses; they are not Cloudflare canary evidence. They test network syscall rejection, inherited filters after exec, descriptor/environment clearing, nonroot execution, resource limits, supervisor protection, orphan cleanup, wall timeout, output flood, Node arithmetic and `dotnet --info`. They do not execute a repository/.NET build, establish private-source isolation in Cloudflare, or prove the full toolchain workload fits the limits. A test platform that cannot install seccomp fails instead of skipping the boundary.
+
+Observed local evidence on 2026-09-18: Docker Desktop 29.1.3 on the ARM Mac compiled all C variants with `-Wall -Wextra -Werror`, verified the Node archive hash, and built both images. The independent one-instruction seccomp availability probe failed with `EINVAL` (errno 22) under amd64 emulation. The full launcher likewise returned 125 `seccomp_unavailable` before any generated executable ran. Consequently the kernel isolation, cleanup, Node-under-filter and .NET-under-filter assertions are **not passed**. No repository/.NET build or Cloudflare execution occurred. Exact test output is `/private/tmp/legend-sandbox-local-test-20260918.log`. The run used the command above: no network, no capabilities, no-new-privileges, 8 GiB/2 CPU/300 PID caps, no mounts, ephemeral writable rootfs and no tmpfs; readonly-rootfs behavior was not tested.
+
+Local production image index: `sha256:bb80ae54e16a30aee82cb464b4869548d11173d6f4dec57b74c85fe95ea9fe43`; its amd64 image manifest: `sha256:f5a999db8b7461c502d4ac29f1ae5e41413e74d62d893cb3e8203b4b74a15026`. Final test image index: `sha256:f828593b0f71571a4478cad478d6ec8aa59dcb19c4edfb7f5e596220bb9cca5a`. Both declare user `1654:1654`; production entrypoint is the protected idle launcher and test entrypoint is the unfiltered trusted test driver. Only the production target is the deployment candidate. These local images have not been pushed; the lead must verify/pin the actual registry digest after any approved build/push and must never deploy the test driver with private source.
+
+The trusted platform invocation is equivalent to:
+
+```js
+ctx.container.exec([
+  '/usr/local/bin/legend-offline', '--wall-seconds', '600', '--',
+  '/usr/share/dotnet/dotnet', 'build',
+  '/workspace/source/AgentPortal.Tests/AgentPortal.Tests.csproj',
+  '--no-restore', '--disable-build-servers', '-m:1', '-nodeReuse:false', '-p:UseSharedCompilation=false'
+], { cwd: '/workspace', user: '1654', env: {} });
+```
+
+This is an example of the controller's fixed allowlisted action, not implemented control-plane code. The root-owned launcher and exact argv must remain mandatory even when a repository script spawns further commands. Tool results are untrusted content; only the external controller signs completion/cost receipts.
+
+## Source preparation and first real canary
+
+1. Reserve the entire attempt in the existing lifetime ledger; authenticate the same Azure job scope and approved action/source/image hashes. A job's start/status/cancel lifecycle persists across the runtime's 120-second requests. Never release the job reserve just because dispatch returned.
+2. Build the pinned image in trusted CI. Networked preparation may restore only a separately verified immutable baseline, never a generated project file, target, task or install script. Resolve packages from reviewed manifests and copy an immutable cache plus the exact matching restore assets. No credentials or `.git` directory enter the execution image/workspace. The current image has an empty package cache and cannot build MasterApp offline until this preparation is supplied.
+3. With public synthetic source only, verify seccomp installation, all socket families/DNS denied, no inherited network FD, no parent/PID1/platform-helper memory access, no privilege gain, timeout/cancellation/output-flood cleanup, stopped-state confirmation, and a fresh job cannot see the previous filesystem sentinel. Probe both direct native syscalls and child exec; an HTTP failure alone is insufficient evidence. Also verify no unfiltered same-UID peer can be controlled through procfs, signals or writable scripts.
+4. Independently review the canary receipts and controls before admitting private MasterApp source. Only then stage the approved archive, apply a hash-bound scoped patch and build/test offline against the baseline cache. Initial qualification rejects changed dependency manifests. Run database-free tests with a nonzero discovered count and relevant Node checks. All project targets/scripts remain untrusted and execute inside the inherited filter.
+5. Capture bounded patch/test receipts, destroy, verify stopped and account for startup/execution/cleanup plus preparation/storage/transfer. A failed compatibility probe is a failure requiring review; do not relax syscall rules, add a live network allowance or retry automatically.
+
+The documented [Containers platform](https://developers.cloudflare.com/containers/faq/) supplies ephemeral disk and process lifecycle controls, but does not promise a fixed maximum runtime. Keep `enableInternet=false` as defense in depth. Actual seccomp support, same-UID helper isolation, SDK subprocess compatibility, immutable source/cache staging and stopped-state/cost receipts remain release gates.
