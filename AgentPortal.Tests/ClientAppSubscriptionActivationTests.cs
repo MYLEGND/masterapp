@@ -647,6 +647,97 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task ActivateAsync_BillingSucceedsButSigninSetupFails_ReturnsCompletedStateWithoutContinuationOrRebilling()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        const string token = "activation-signin-pending-token";
+        await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            token,
+            SubscriptionActivationInvitationStatus.Pending,
+            DateTime.UtcNow.AddDays(2));
+
+        var subscription = new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = profile.Id,
+            AcceptedOfferId = offer.Id,
+            OwnerAgentUserId = offer.OwnerAgentUserId,
+            MonthlyAmountCents = offer.MonthlyAmountCents,
+            Currency = offer.Currency,
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current
+        };
+
+        var orchestrator = new Mock<IBillingOrchestrator>(MockBehavior.Strict);
+        orchestrator
+            .Setup(x => x.ActivateClientSubscriptionAsync(
+                It.IsAny<ActivateClientSubscriptionCommand>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivateClientSubscriptionResult(
+                true,
+                null,
+                "Activated.",
+                null,
+                false,
+                subscription,
+                new ClientEntitlement
+                {
+                    ClientProfileId = profile.Id,
+                    EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                    Status = ClientEntitlementStatus.Active,
+                    SourceId = subscription.Id.ToString()
+                },
+                new ClientSubscriptionLifecycleResult(
+                    true,
+                    ClientSubscriptionStatus.Active.ToString(),
+                    null,
+                    "Activated.",
+                    null,
+                    false)));
+
+        var entra = new Mock<IClientEntraLifecycleService>(MockBehavior.Strict);
+        entra.Setup(x => x.EnsureClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Temporary identity provisioning failure."));
+
+        var continuationService = BuildContinuationService(db);
+        var service = new SubscriptionActivationService(
+            db,
+            orchestrator.Object,
+            BuildActivationPolicyService().Object,
+            new SquareBillingOptions
+            {
+                ApplicationId = "sq0idp-test",
+                LocationId = "location-1",
+                Environment = BillingProviderEnvironment.Sandbox
+            },
+            continuationService,
+            new ClientAppReturnUrlNormalizer(),
+            entra.Object,
+            Mock.Of<IHouseholdMembershipService>());
+
+        var result = await service.ActivateAsync(token, BuildPaymentInput());
+
+        Assert.False(result.Success);
+        Assert.Equal("ACCOUNT_SIGNIN_SETUP_PENDING", result.SafeErrorCode);
+        Assert.Equal(SubscriptionActivationAvailability.AlreadyActivated, result.Context.Availability);
+        Assert.Equal(subscription.Id, result.Context.Subscription?.Id);
+        Assert.Contains("not be charged again", result.SanitizedMessage ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.True(string.IsNullOrWhiteSpace(result.ProtectedContinuationState));
+        Assert.Equal(0, await db.ClientIdentityContinuations.CountAsync());
+        orchestrator.Verify(
+            x => x.ActivateClientSubscriptionAsync(
+                It.IsAny<ActivateClientSubscriptionCommand>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        entra.VerifyAll();
+    }
+
+    [Fact]
     public async Task ActivateAsync_SuccessCreatesContinuationAndUsesAuthoritativeInputs()
     {
         using var db = BuildDb();
