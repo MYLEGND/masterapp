@@ -31,6 +31,7 @@ public partial class AddFounderAiActionAuthorizations : Migration
                 Environment = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                 AuthorizationVersion = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                 ToolName = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
+                AuthorizationKind = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                 CanonicalArgumentsJson = table.Column<string>(type: "nvarchar(max)", maxLength: 32768, nullable: false),
                 ApprovedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 ExpiresUtc = table.Column<DateTime>(type: "datetime2", nullable: false),

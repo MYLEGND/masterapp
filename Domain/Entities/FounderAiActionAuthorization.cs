@@ -18,6 +18,7 @@ public sealed class FounderAiActionAuthorization
     public string Environment { get; set; } = string.Empty;
     public string AuthorizationVersion { get; set; } = string.Empty;
     public string ToolName { get; set; } = string.Empty;
+    public string AuthorizationKind { get; set; } = "FounderApproval";
     public string CanonicalArgumentsJson { get; set; } = string.Empty;
     public DateTime ApprovedUtc { get; set; }
     public DateTime ExpiresUtc { get; set; }

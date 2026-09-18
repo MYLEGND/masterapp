@@ -261,6 +261,71 @@ public sealed class LegendFounderCloudActionApprovalTests
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public async Task ReadCallbackReplayUsesDurableReceiptWithoutAnotherToolInvocation()
+    {
+        await using var fixture = await Fixture.CreateAsync(true);
+        fixture.Remediation.Setup(service => service.GetStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new { available = true, observation = "synthetic" });
+        var call = fixture.Call("read-fixture") with { Name = "legend_software_remediation_status", Arguments = "{}" };
+        var first = await fixture.ExecuteAsync(call);
+        Assert.Equal(first, await fixture.ExecuteAsync(call));
+        Assert.Contains("synthetic", first);
+        var receipt = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync();
+        Assert.Equal("ReadExecution", receipt.AuthorizationKind);
+        Assert.Equal("Completed", receipt.State);
+        Assert.Equal(first, receipt.ResultJson);
+        fixture.Remediation.Verify(service => service.GetStatusAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task UnknownReadOutcomeCannotDispatchAgain()
+    {
+        await using var fixture = await Fixture.CreateAsync(true);
+        fixture.Remediation.Setup(service => service.GetStatusAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Synthetic unknown paid-read outcome."));
+        var call = fixture.Call("read-fixture") with { Name = "legend_software_remediation_status", Arguments = "{}" };
+        Assert.Contains("cloud_action_outcome_unknown", await fixture.ExecuteAsync(call));
+        Assert.Contains("cloud_action_approval_consumed", await fixture.ExecuteAsync(call));
+        var receipt = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync();
+        Assert.Equal("ReadExecution", receipt.AuthorizationKind);
+        Assert.Equal("OutcomeUnknown", receipt.State);
+        fixture.Remediation.Verify(service => service.GetStatusAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReadExecutionRecordCannotBecomeFounderMutationConsent()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.True((await fixture.ApproveAsync()).Succeeded);
+        var receipt = await fixture.Db.FounderAiActionAuthorizations.SingleAsync();
+        receipt.AuthorizationKind = "ReadExecution";
+        await fixture.Db.SaveChangesAsync();
+        Assert.Contains("cloud_action_approval_required", await fixture.ExecuteAsync(fixture.Call()));
+        Assert.False((await fixture.ApproveAsync()).Succeeded);
+        fixture.Remediation.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task RelationalConcurrentReadAdmissionDispatchesOnce()
+    {
+        var barrier = new ClaimBarrier { ReadAdmission = true };
+        await using var fixture = await Fixture.CreateAsync(true, barrier);
+        fixture.Remediation.Setup(service => service.GetStatusAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new { observation = "read-admitted" });
+        barrier.Enabled = true;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var call = fixture.Call("read-fixture") with { Name = "legend_software_remediation_status", Arguments = "{}" };
+        var left = fixture.NewAuthority().ExecuteAsync(fixture.Principal, call, "legend", timeout.Token, serverDerivedScope: fixture.Scope);
+        var right = fixture.NewAuthority().ExecuteAsync(fixture.Principal, call, "legend", timeout.Token, serverDerivedScope: fixture.Scope);
+        var receipts = await Task.WhenAll(left, right);
+        Assert.Single(receipts.Where(value => value.Contains("read-admitted", StringComparison.Ordinal)));
+        Assert.Single(receipts.Where(value => value.Contains("cloud_action_approval_claim_failed", StringComparison.Ordinal)));
+        fixture.Remediation.Verify(service => service.GetStatusAsync(It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("Completed", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync()).State);
+    }
+
     private static ClaimsPrincipal WithSession(string session)
     {
         var principal = ControllerTestHelpers.BuildUser(FounderId);
@@ -273,12 +338,15 @@ public sealed class LegendFounderCloudActionApprovalTests
         private readonly TaskCompletionSource _bothArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _arrivals;
         public bool Enabled { get; set; }
+        public bool ReadAdmission { get; init; }
 
         public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
             InterceptionResult<int> result, CancellationToken cancellationToken = default)
         {
             if (Enabled && eventData.Context!.ChangeTracker.Entries<FounderAiActionAuthorization>()
-                    .Any(entry => entry.State == EntityState.Modified && entry.Entity.State == "Executing"))
+                    .Any(entry => ReadAdmission
+                        ? entry.State == EntityState.Added && entry.Entity.AuthorizationKind == "ReadExecution"
+                        : entry.State == EntityState.Modified && entry.Entity.State == "Executing"))
             {
                 if (Interlocked.Increment(ref _arrivals) == 2) _bothArrived.TrySetResult();
                 await _bothArrived.Task.WaitAsync(cancellationToken);

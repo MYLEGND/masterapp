@@ -41,19 +41,13 @@ internal sealed partial class LegendFounderToolAuthority
         var existing = await db.FounderAiActionAuthorizations.AsNoTracking()
             .SingleOrDefaultAsync(row => row.ActionDigest == digest, cancellationToken);
         if (existing is not null)
-            return MatchesCloudApproval(existing, scope, toolName, arguments) && existing.State == "Approved" &&
+            return MatchesCloudApproval(existing, scope, toolName, arguments) && existing.AuthorizationKind == "FounderApproval" &&
+                   existing.State == "Approved" &&
                    existing.ExpiresUtc > DateTime.UtcNow
                 ? new(true, null, existing.Id, existing.ActionDigest, existing.ExpiresUtc)
                 : new(false, "cloud_action_approval_already_consumed");
 
-        var approval = new FounderAiActionAuthorization
-        {
-            ActionDigest = digest, ScopeDigest = ComputeCloudScopeDigest(scope), AccountId = scope.AccountId,
-            TenantId = scope.TenantId, UserId = scope.UserId, SessionId = scope.SessionId,
-            ConversationId = Guid.Parse(scope.ConversationId), RequestId = Guid.Parse(scope.RequestId),
-            Environment = scope.Environment, AuthorizationVersion = scope.AuthorizationVersion,
-            ToolName = toolName, CanonicalArgumentsJson = arguments, ApprovedUtc = now, ExpiresUtc = expiresUtc
-        };
+        var approval = CreateCloudActionRecord(scope, toolName, arguments, digest, expiresUtc, readOnly: false);
         db.FounderAiActionAuthorizations.Add(approval);
         try
         {
@@ -86,12 +80,7 @@ internal sealed partial class LegendFounderToolAuthority
         if (!await ReauthorizeCloudScopeAsync(founder, scope, cancellationToken))
             return CloudActionFailure("cloud_action_scope_denied");
 
-        // Reads still pass current authorization. Never let a supplied legacy
-        // correlation authorize restricted research from a cloud callback.
-        if (IsReadOnlyFounderTool(call.Name))
-            return await ExecuteAuthorizedCoreAsync(founder,
-                call with { Arguments = arguments, MutationAuthorization = null }, mode, cancellationToken, providerPolicy);
-
+        var readOnly = IsReadOnlyFounderTool(call.Name);
         Guid approvalId;
         string claimRevision;
         DateTime approvalExpiresUtc;
@@ -100,14 +89,24 @@ internal sealed partial class LegendFounderToolAuthority
             var db = services.ServiceProvider.GetRequiredService<MasterAppDbContext>();
             var approval = await db.FounderAiActionAuthorizations.SingleOrDefaultAsync(
                 row => row.ActionDigest == digest, cancellationToken);
+            if (approval is null && readOnly)
+            {
+                // A costly read also needs durable one-dispatch semantics. This
+                // server-authorized execution receipt is never mutation consent.
+                approval = CreateCloudActionRecord(scope, call.Name, arguments, digest, scope.ExpiresUtc, readOnly: true);
+                db.FounderAiActionAuthorizations.Add(approval);
+                try { await db.SaveChangesAsync(cancellationToken); }
+                catch (DbUpdateException) { return CloudActionFailure("cloud_action_approval_claim_failed"); }
+            }
             if (approval is null || !MatchesCloudApproval(approval, scope, call.Name, arguments) ||
+                approval.AuthorizationKind != (readOnly ? "ReadExecution" : "FounderApproval") ||
                 approval.ExpiresUtc <= DateTime.UtcNow)
                 return CloudActionFailure("cloud_action_approval_required");
             if (approval.State == "Completed" &&
                 string.Equals(approval.IdempotencyKey, call.IdempotencyKey, StringComparison.Ordinal) &&
                 approval.ResultJson is not null)
                 return approval.ResultJson;
-            if (approval.State != "Approved")
+            if (approval.State != (readOnly ? "AuthorizedRead" : "Approved"))
                 return CloudActionFailure("cloud_action_approval_consumed");
 
             approval.State = "Executing";
@@ -141,7 +140,10 @@ internal sealed partial class LegendFounderToolAuthority
             var output = await ExecuteAuthorizedCoreAsync(founder, call with
             {
                 Arguments = arguments,
-                MutationAuthorization = new FounderAiMutationAuthorization(approvalId.ToString("N"), scope, digest, call.IdempotencyKey)
+                // Legacy correlation cannot authorize restricted research from
+                // an otherwise read-only cloud callback.
+                MutationAuthorization = readOnly ? null :
+                    new FounderAiMutationAuthorization(approvalId.ToString("N"), scope, digest, call.IdempotencyKey)
             }, mode, cancellationToken, providerPolicy);
             if (Encoding.UTF8.GetByteCount(output) > MaximumCloudActionBytes ||
                 !await RecordCloudActionOutcomeAsync(approvalId, claimRevision, call.IdempotencyKey!, output))
@@ -231,6 +233,17 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool ValidCloudIdentifier(string? value) => value is not null &&
         Regex.IsMatch(value, "\\A[A-Za-z0-9_.:@-]{1,128}\\z", RegexOptions.CultureInvariant);
+
+    private static FounderAiActionAuthorization CreateCloudActionRecord(FounderAiActionScope scope, string name,
+        string arguments, string digest, DateTime expiresUtc, bool readOnly) => new()
+    {
+        ActionDigest = digest, ScopeDigest = ComputeCloudScopeDigest(scope), AccountId = scope.AccountId,
+        TenantId = scope.TenantId, UserId = scope.UserId, SessionId = scope.SessionId,
+        ConversationId = Guid.Parse(scope.ConversationId), RequestId = Guid.Parse(scope.RequestId),
+        Environment = scope.Environment, AuthorizationVersion = scope.AuthorizationVersion,
+        ToolName = name, CanonicalArgumentsJson = arguments, ApprovedUtc = DateTime.UtcNow, ExpiresUtc = expiresUtc,
+        AuthorizationKind = readOnly ? "ReadExecution" : "FounderApproval", State = readOnly ? "AuthorizedRead" : "Approved"
+    };
 
     private static bool MatchesCloudApproval(FounderAiActionAuthorization approval, FounderAiActionScope scope,
         string name, string arguments) => approval.ScopeDigest == ComputeCloudScopeDigest(scope) &&

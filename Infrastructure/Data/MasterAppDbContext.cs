@@ -199,6 +199,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(row => row.Environment).IsRequired().HasMaxLength(128);
             entity.Property(row => row.AuthorizationVersion).IsRequired().HasMaxLength(128);
             entity.Property(row => row.ToolName).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.AuthorizationKind).IsRequired().HasMaxLength(32);
             entity.Property(row => row.CanonicalArgumentsJson).IsRequired().HasMaxLength(32768);
             entity.Property(row => row.State).IsRequired().HasMaxLength(32);
             entity.Property(row => row.IdempotencyKey).HasMaxLength(64);
