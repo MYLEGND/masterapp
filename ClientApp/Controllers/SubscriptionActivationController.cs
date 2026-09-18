@@ -93,9 +93,12 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Status(string token)
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
+        var isActivated = context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
+            context.Subscription?.Status == Domain.Billing.ClientSubscriptionStatus.Active;
         return Json(new
         {
-            ok = context.Availability == SubscriptionActivationAvailability.Ready,
+            ok = context.Availability == SubscriptionActivationAvailability.Ready || isActivated,
+            activated = isActivated,
             state = context.Availability.ToString(),
             message = context.Message,
             subscriptionStatus = context.Subscription?.Status.ToString(),
