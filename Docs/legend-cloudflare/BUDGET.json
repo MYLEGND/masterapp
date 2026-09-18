@@ -1,0 +1,23 @@
+{
+  "currency": "USD",
+  "approvedAt": "2026-09-18",
+  "qualification": {
+    "totalAuthorized": 10,
+    "period": "lifetime",
+    "plannedFixedPlatformReserve": 5,
+    "plannedOtherPlatformReserve": 2,
+    "maximumModelAndToolSpend": 3,
+    "automaticExtension": false
+  },
+  "production": {
+    "totalAuthorized": 30,
+    "period": "calendar-month",
+    "plannedFixedPlatformReserve": 5,
+    "plannedOtherPlatformReserve": 5,
+    "maximumModelAndToolSpend": 20
+  },
+  "activation": "blocked_until_existing_plan_usage_and_billing_terms_verified",
+  "providerInvoiceHardCap": false,
+  "accounting": "Qualification spend in the activation month must also count toward the production monthly authorization. Unused reserves cannot be reassigned automatically. Platform request, storage and abuse-related charges are not bounded by an inference ledger alone.",
+  "provisioned": false
+}

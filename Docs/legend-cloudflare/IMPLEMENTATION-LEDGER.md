@@ -1,6 +1,6 @@
 # Cloudflare migration — authoritative integration ledger
 
-Baseline: approved branch 5c6780bc3cb76e77667584f1fc53914d6afce128. Direct release 35391857902 is still running independently. No local model deletion or paid provisioning is authorized by this ledger. User authorizes paid service in principle; numeric budget and authenticated account access must be established before paid calls/provisioning.
+Baseline: approved branch 5c6780bc3cb76e77667584f1fc53914d6afce128. Direct release 35391857902 completed successfully, including all-target verification, on 2026-09-18. User approved $10 total qualification and $30/month production including all platform charges. Cloudflare OAuth account identity verified as 84bf137174ac3966d6d24e9806f0c392; encrypted credentials remain outside Git. Account plan and live model availability still require verification. No model calls, paid provisioning or Mac deletion performed. Application budgets are not a provider invoice hard cap.
 
 ## Owners and isolation
 
@@ -28,3 +28,7 @@ Zero cross-user/tenant leakage, zero unauthorized side effects, zero local infer
 ## Current verified findings
 
 Current transport accepts FounderMac/Mlx or AzureVm/Vllm receipts and uses a dedicated LegendLocalFoundation HTTP client. Conversation tooling lives in existing Founder conversation/tool authorities. No Cloudflare management credentials found in current environment; available plugin search returned none. Cloudflare official catalog/pricing documents list the proposed @cf engines; account access not verified. Previous specialist quota error exists; requested agent availability must be confirmed, not assumed.
+
+## Integrated evidence
+
+Runtime integrated at 31122cf6 and pricing documentation at 4b8acd20. Lead reran 20 runtime simulations: 20 passed, zero failed. These do not establish live model quality or Cloudflare storage behavior. Worker entry point delegates to one authenticated cloud loop; Azure integration and tool callback remain incomplete.
