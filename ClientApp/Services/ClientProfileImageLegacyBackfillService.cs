@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
@@ -49,6 +50,7 @@ public sealed class ClientProfileImageLegacyBackfillService
         var imported = 0;
         foreach (var profile in profiles)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var image = FindLegacyImage(root, profile.Id);
             if (image is null)
                 continue;
@@ -130,7 +132,7 @@ public sealed class ClientProfileImageLegacyBackfillService
     }
 }
 
-internal sealed class ClientProfileImageLegacyBackfillHostedService : IHostedService
+internal sealed class ClientProfileImageLegacyBackfillHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ClientProfileImageLegacyBackfillHostedService> _logger;
@@ -143,22 +145,30 @@ internal sealed class ClientProfileImageLegacyBackfillHostedService : IHostedSer
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var started = Stopwatch.GetTimestamp();
+        _logger.LogInformation("Client profile image legacy backfill started in the background.");
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var importer = scope.ServiceProvider.GetRequiredService<ClientProfileImageLegacyBackfillService>();
-            await importer.BackfillAsync(cancellationToken);
+            var imported = await importer.BackfillAsync(stoppingToken);
+            _logger.LogInformation(
+                "Client profile image legacy backfill completed. ImportedCount={ImportedCount} ElapsedMilliseconds={ElapsedMilliseconds}",
+                imported, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
+            _logger.LogInformation(
+                "Client profile image legacy backfill stopped during shutdown. ElapsedMilliseconds={ElapsedMilliseconds}",
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Client profile image backfill failed; legacy images remain preserved for the next startup attempt.");
+            _logger.LogError(ex,
+                "Client profile image backfill failed; legacy images remain preserved for the next startup attempt. ElapsedMilliseconds={ElapsedMilliseconds}",
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

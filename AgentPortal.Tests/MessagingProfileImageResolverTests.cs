@@ -2,7 +2,11 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
+using Infrastructure.Data;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using AgentPortal.Services;
 using ClientApp.Services;
 using Domain.Entities;
@@ -436,6 +440,102 @@ public sealed class MessagingProfileImageResolverTests
         Assert.Equal("image/png", firstImage.ContentType);
         Assert.Equal("second agent image"u8.ToArray(), secondImage!.Content);
         Assert.Equal("image/jpeg", secondImage.ContentType);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegacyClientAvatar_BackgroundImportDoesNotBlockStartupAndOwnsItsLifetime(bool cancelAtShutdown)
+    {
+        await UseAvatarRootAsync(async root =>
+        {
+            var database = Guid.NewGuid().ToString();
+            var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(database).Options;
+            var profileId = Guid.NewGuid();
+            await using (var seed = new MasterAppDbContext(options))
+            {
+                seed.ClientProfiles.Add(new ClientProfile
+                {
+                    Id = profileId, ClientUserId = "legacy-background-client",
+                    FirstName = "Legacy", LastName = "Client", Email = "legacy-background@example.test"
+                });
+                await seed.SaveChangesAsync();
+            }
+            await File.WriteAllBytesAsync(Path.Combine(root, $"{profileId:D}.png"), new byte[] { 1 });
+            var writer = new GatedLegacyImageWriter();
+            var environment = new Mock<IWebHostEnvironment>();
+            environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
+            var hostedType = typeof(ClientProfileImageLegacyBackfillService).Assembly.GetType(
+                "ClientApp.Services.ClientProfileImageLegacyBackfillHostedService", throwOnError: true)!;
+            using var host = new HostBuilder().ConfigureServices(services =>
+            {
+                services.AddLogging();
+                services.AddSingleton(environment.Object);
+                services.AddScoped(_ => new MasterAppDbContext(options));
+                services.AddScoped<IProfileImageWriter>(_ => writer);
+                services.AddScoped<ClientProfileImageLegacyBackfillService>();
+                services.AddSingleton(typeof(IHostedService), hostedType);
+            }).Build();
+            try
+            {
+                // A StartAsync implementation awaiting the complete import times out here.
+                await host.StartAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await writer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                var background = Assert.IsAssignableFrom<BackgroundService>(
+                    Assert.Single(host.Services.GetServices<IHostedService>()));
+                Assert.NotNull(background.ExecuteTask);
+                Assert.False(background.ExecuteTask.IsCompleted);
+                Assert.False(writer.Disposed);
+                Assert.Equal(profileId, writer.Participant!.ProfileId);
+                Assert.Equal(MessagingParticipantTypes.Client, writer.Participant.ParticipantType);
+                if (cancelAtShutdown)
+                {
+                    await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                    Assert.True(writer.CancellationObserved);
+                }
+                else
+                {
+                    writer.Release.TrySetResult();
+                    await background.ExecuteTask.WaitAsync(TimeSpan.FromSeconds(5));
+                    Assert.False(writer.CancellationObserved);
+                    await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                Assert.True(background.ExecuteTask.IsCompletedSuccessfully);
+                Assert.True(writer.Disposed);
+                Assert.Equal(1, writer.Calls);
+                Assert.True(File.Exists(Path.Combine(root, $"{profileId:D}.png")));
+            }
+            finally
+            {
+                writer.Release.TrySetResult();
+                await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        });
+    }
+
+    private sealed class GatedLegacyImageWriter : IProfileImageWriter, IDisposable
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public MessagingParticipantIdentity? Participant { get; private set; }
+        public int Calls { get; private set; }
+        public bool CancellationObserved { get; private set; }
+        public bool Disposed { get; private set; }
+        public async Task<ProfileImageUpdateResult> UpdateAsync(MessagingParticipantIdentity participant,
+            byte[] content, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Participant = participant;
+            Entered.TrySetResult();
+            try { await Release.Task.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                CancellationObserved = true;
+                throw;
+            }
+            return new ProfileImageUpdateResult(true, null, null, null);
+        }
+        public void Dispose() => Disposed = true;
     }
 
     [Fact]
