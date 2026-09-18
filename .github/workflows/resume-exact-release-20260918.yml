@@ -21,7 +21,7 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
     environment:
       name: Production
     steps:
@@ -31,7 +31,12 @@ jobs:
           ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 1
 
-      - name: Prepare combined deployment diagnostics
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare complete live verification
         shell: bash
         run: |
           cat > /tmp/verify-release.py <<'PY'
@@ -62,7 +67,7 @@ jobs:
               results = []
               def check(label, passed, detail=""):
                   results.append({"app":app,"host":base,"check":label,"passed":bool(passed),"detail":detail})
-              status, body, _ = fetch(base, "/_deployment-provenance.json")
+              status, body, _ = fetch(base, "/_deployment-provenance.txt" if app == "legend" else "/_deployment-provenance.json")
               try: actual = json.loads(body).get("releaseSha")
               except Exception: actual = None
               check("exact release", status == 200 and actual == SHA, "status=%s actual=%s" % (status, actual))
@@ -71,7 +76,8 @@ jobs:
                   body = html.unescape(body)
                   check("homepage HTTP", status == 200, str(status))
                   brand = "LEGEND" if app == "protect" else "LEGEND®"
-                  check("header wordmark", "<strong>" + brand + "</strong>" in body)
+                  header = re.search(r"<header\b[\s\S]*?</header>", body)
+                  check("header wordmark", bool(header and re.search(r"<strong\b[^>]*>\s*" + re.escape(brand) + r"\s*</strong>", header.group(0))))
                   check("old banner absent", "brand-banner" not in body)
                   check("Instagram link", 'href="https://www.instagram.com/legend.vault/"' in body)
                   check("App Store link and label", bool(re.search(r'<a\b[^>]*href="https://apps.apple.com/us/app/legend/id6798419225"[^>]*>\s*Legend® ios App\s*</a>', body)))
@@ -116,40 +122,18 @@ jobs:
           
           PY
 
-      - name: Capture all current live checks before deployment
-        shell: bash
-        run: python3 /tmp/verify-release.py before
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.x'
-
-      - name: Rebuild exact validated artifacts
+      - name: Build static website with IIS-readable release metadata
         id: build
+        working-directory: Legend-Website
         shell: bash
         run: |
           set -euo pipefail
-          cd Legend-Website
           npm run build
           cp public/web.config dist/web.config
           npm run check
-          cd ..
-
-          dotnet publish AgentPortal/AgentPortal.csproj -c Release -o /tmp/agentportal-publish
-          dotnet publish ClientApp/ClientApp.csproj -c Release -o /tmp/clientapp-publish
-          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect-publish
-
-          mkdir -p /tmp/agentportal-publish/wwwroot /tmp/clientapp-publish/wwwroot /tmp/protect-publish/wwwroot
-          printf '{"releaseSha":"%s","release":"all-intentional-20260918"}\n' "$RELEASE_SHA" > /tmp/agentportal-publish/wwwroot/_deployment-provenance.json
-          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json /tmp/clientapp-publish/wwwroot/_deployment-provenance.json
-          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json /tmp/protect-publish/wwwroot/_deployment-provenance.json
-          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json Legend-Website/dist/_deployment-provenance.json
+          # IIS serves .txt without an additional MIME mapping. This is the
+          # single authoritative release marker for the static website.
+          printf '{"releaseSha":"%s","release":"all-intentional-20260918"}\n' "$RELEASE_SHA" > dist/_deployment-provenance.txt
 
       - name: Login to Azure
         id: azure
@@ -159,37 +143,17 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy LEGEND website
+      - name: Complete LEGEND static website deployment
         id: legend
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.azure.outcome == 'success' }}
-        continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-website
           slot-name: Production
           package: Legend-Website/dist
 
-      - name: Deploy AgentPortal
-        id: portal
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.azure.outcome == 'success' }}
-        continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-portal
-          slot-name: Production
-          package: /tmp/agentportal-publish
-
-      - name: Deploy ClientApp
-        id: client
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.azure.outcome == 'success' }}
-        continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-client
-          slot-name: Production
-          package: /tmp/clientapp-publish
-
-      - name: Verify all live releases and content together
+      # Protect, AgentPortal and ClientApp already completed their exact
+      # package deployments. Verify their live SHA without restarting them.
+      - name: Verify all four live releases and every public website check
         id: verify
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.azure.outcome == 'success' }}
         continue-on-error: true
@@ -210,14 +174,12 @@ jobs:
           BUILD_RESULT: ${{ steps.build.outcome }}
           AZURE_RESULT: ${{ steps.azure.outcome }}
           LEGEND_RESULT: ${{ steps.legend.outcome }}
-          PORTAL_RESULT: ${{ steps.portal.outcome }}
-          CLIENT_RESULT: ${{ steps.client.outcome }}
           VERIFY_RESULT: ${{ steps.verify.outcome }}
         shell: bash
         run: |
           python3 - <<'PY'
           import os, sys
-          results = {k:os.environ[k] for k in ("BUILD_RESULT","AZURE_RESULT","LEGEND_RESULT","PORTAL_RESULT","CLIENT_RESULT","VERIFY_RESULT")}
+          results = {k:os.environ[k] for k in ("BUILD_RESULT","AZURE_RESULT","LEGEND_RESULT","VERIFY_RESULT")}
           for name, result in results.items():
               print(name + "=" + result)
           sys.exit(0 if all(v == "success" for v in results.values()) else 1)
