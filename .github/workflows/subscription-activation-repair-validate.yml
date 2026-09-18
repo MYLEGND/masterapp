@@ -1,4 +1,5 @@
 name: Validate subscription activation repair
+# exact-current rerun
 
 on:
   push:
