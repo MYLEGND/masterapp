@@ -83,6 +83,26 @@ internal sealed partial class LegendFounderToolAuthority
         }).ToArray();
     }
 
+    internal IReadOnlyList<object> GetAvailableCloudTools(
+        string? conversationId, LegendConnectExternalProviderPolicy providerPolicy)
+    {
+        if (!providerPolicy.AllowCloudflareInference || providerPolicy.ForbidsExternalProviders)
+            return Array.Empty<object>();
+        // Reuse the executable registry's original schemas. Read-only does not
+        // imply suitable for cloud disclosure: drilldowns can contain another
+        // account's identity, retained private text or unrestricted evidence.
+        return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
+            .Where(tool => IsCloudReadableTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
+                .GetProperty("name").GetString()!)).ToArray();
+    }
+
+    private static bool IsCloudReadableTool(string name) => name is
+        "legend_calculate" or "legend_capabilities" or "legend_software_remediation_status" or
+        "legend_system_overview" or "legend_provider_capacity" or "legend_client_lead_portfolio" or
+        // Source inspection keeps its own regular-file, immutable-revision,
+        // sensitive-path and credential-material checks before returning text.
+        "legend_inspect_repository";
+
     internal IReadOnlyList<object> Capabilities =>
         DescribeFounderCapabilities();
 
@@ -319,7 +339,15 @@ internal sealed partial class LegendFounderToolAuthority
         cancellationToken.ThrowIfCancellationRequested();
 
         if (serverDerivedScope is not null)
+        {
+            // Enforce the same disclosure boundary even if a signed callback
+            // asks for a tool omitted from its schema catalog. Keep known
+            // mutations on their existing exact Founder-approval path.
+            if (!TryResolveFounderFunctionParameters(call.Name, out _) ||
+                IsReadOnlyFounderTool(call.Name) && !IsCloudReadableTool(call.Name))
+                return CloudActionFailure("cloud_action_tool_not_exposed");
             return await ExecuteCloudScopedAsync(founder, serverDerivedScope, call, mode, cancellationToken, providerPolicy);
+        }
 
         // Transitional existing local/Teacher route only. Cloud callers always
         // provide serverDerivedScope and cannot fall back to this correlation
