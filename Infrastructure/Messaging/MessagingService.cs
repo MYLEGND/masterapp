@@ -648,7 +648,8 @@ internal sealed partial class MessagingService : IMessagingService
         {
             var presented = await ApplyTranslationPresentationAsync(actor, messageSummaries, messages, cancellationToken);
             // Preserve every authorized message and its cursor. A translation
-            // delay presents the original with a notice, never a partial page.
+            // delay presents the original with a notice, never suppresses the message,
+            // and never returns a partial page.
             if (presented.Count != messageSummaries.Count)
                 return MessagingConversationResult.Failure(MessagingTranslationPresentation.UnavailableCode,
                     await LocalizeApplicationCopyAsync(actor, MessagingTranslationPresentation.UnavailableMessage, null, cancellationToken));
