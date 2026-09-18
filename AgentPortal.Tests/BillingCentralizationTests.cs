@@ -223,14 +223,14 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
-    public void OfferPricing_InvalidCustomAmount_IsRejected()
+    public void OfferPricing_HighCustomAmount_IsAllowedWithinTechnicalRange()
     {
-        var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
-                ClientSubscriptionOfferPriceType.Custom,
-                ClientSubscriptionOfferPricing.CustomMaximumCents + 1));
+        var amount = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+            ClientSubscriptionOfferPriceType.Custom,
+            5_000_000,
+            ClientSubscriptionOfferPricing.FounderCustomMinimumCents);
 
-        Assert.Contains("Custom offers must provide a monthly amount", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(5_000_000, amount);
     }
 
     [Fact]
