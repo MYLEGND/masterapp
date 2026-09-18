@@ -224,6 +224,8 @@
         <div>
             <h2>LEGEND</h2>
             <a href="https://www.mylegnd.com/">Main Website</a>
+            <a href="https://www.instagram.com/legend.vault/" rel="me">Instagram</a>
+            <a href="https://apps.apple.com/us/app/legend/id6798419225">Legend® ios App</a>
             <a href="@termsUrl">Terms</a>
             <a href="@privacyUrl">Privacy</a>
         </div>
@@ -554,7 +556,15 @@
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
     })();
 </script>
+<script>
+    window.LEGEND_PUBLIC_CMS_CONTEXT = {
+        siteKey: "protect",
+        apiBase: "",
+        agentSlug: @Html.Raw(JsonSerializer.Serialize(trackingSlug ?? string.Empty))
+    };
+</script>
 <script src="~/design/legend-public-web.js" asp-append-version="true" defer></script>
+<script src="~/design/legend-public-cms.js" asp-append-version="true" defer></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
