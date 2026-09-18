@@ -25,6 +25,9 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
             .OrderByDescending(row => row.LastSeenUtc).ThenBy(row => row.Id)
             .Skip((page - 1) * 50).Take(51).ToListAsync(cancellationToken);
         ViewData["Batch"] = await db.FounderSoftwareRepairBatches.AsNoTracking().SingleOrDefaultAsync(x => x.Id == "active", cancellationToken);
+        ViewData["CompletedBatches"] = await db.FounderSoftwareRepairBatches.AsNoTracking()
+            .Where(row => row.Id != "active" && row.State == "WebDeploymentVerified")
+            .OrderByDescending(row => row.CompletionVerifiedUtc).Take(20).ToArrayAsync(cancellationToken);
         ViewData["Page"] = page;
         ViewData["HasMore"] = rows.Count > 50;
         return View("Index", rows.Take(50).ToArray());
@@ -111,6 +114,19 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
     {
         FounderGuard.EnsureFounderOrThrow(User);
         ViewData["BatchObservation"] = JsonSerializer.Serialize(await repairs.ReconcileBatchAsync(cancellationToken));
+        return await Index(cancellationToken: cancellationToken);
+    }
+
+    [HttpPost("archive-deployed-batch")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ArchiveDeployedBatch([FromForm] int pullRequestNumber, [FromForm] string headSha,
+        [FromForm] string expectedRevision, [FromForm] bool confirmed,
+        [FromServices] IFounderSoftwareRemediationService repairs, CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        if (!confirmed) return BadRequest();
+        ViewData["BatchCompletion"] = JsonSerializer.Serialize(
+            await repairs.ArchiveDeployedBatchAsync(pullRequestNumber, headSha, expectedRevision, cancellationToken));
         return await Index(cancellationToken: cancellationToken);
     }
 

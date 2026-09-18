@@ -37,6 +37,7 @@ public interface IFounderSoftwareRemediationService
     Task<object> ReleaseApprovedAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken);
     Task<object> ReconcileBatchAsync(CancellationToken cancellationToken);
+    Task<object> ArchiveDeployedBatchAsync(int pullRequestNumber, string headSha, string expectedRevision, CancellationToken cancellationToken);
 }
 
 public sealed record FounderSoftwareRepairChange(string Path, string Content);

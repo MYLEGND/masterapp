@@ -104,6 +104,8 @@ public sealed partial class FounderSoftwareRemediationService
         if (batch.State is not ("Empty" or "Staged"))
             return Failure("batch_not_editable", "The batch is publishing or has an uncertain operation. Reconcile its exact GitHub state before further writes.");
         var priorHead = batch.HeadSha;
+        if (!IsPreviewBranch(batch.PreviewBranch))
+            return Failure("batch_identity_changed", "The persisted preview identity is invalid.");
         var priorState = batch.State;
         var priorOperation = batch.OperationId;
         if (priorHead is not null && priorHead != proposal.BaseSha)
@@ -122,7 +124,7 @@ public sealed partial class FounderSoftwareRemediationService
             var production = await ReadBranchShaAsync(client, options, token);
             if (priorHead is null && production != proposal.BaseSha)
                 throw new InvalidOperationException("Production base changed.");
-            var refPath = $"repos/{options.RepositoryIdentity}/git/ref/heads/{BatchBranch}";
+            var refPath = $"repos/{options.RepositoryIdentity}/git/ref/heads/{batch.PreviewBranch}";
             using (var branch = await SendGitHubAsync(client, HttpMethod.Get, refPath, null, token))
             {
                 if (priorHead is null && branch.StatusCode != HttpStatusCode.NotFound)
@@ -160,8 +162,8 @@ public sealed partial class FounderSoftwareRemediationService
             if (!IsCommitSha(sha)) throw new InvalidOperationException("Missing immutable commit.");
             if (await RequireActiveAuthorityAsync(options, token) is not null) throw new InvalidOperationException("Authority changed.");
             using var reference = await SendGitHubAsync(client, priorHead is null ? HttpMethod.Post : HttpMethod.Patch,
-                $"repos/{options.RepositoryIdentity}/git/refs" + (priorHead is null ? "" : "/heads/" + BatchBranch),
-                priorHead is null ? new { @ref = "refs/heads/" + BatchBranch, sha } : (object)new { sha, force = false }, token);
+                $"repos/{options.RepositoryIdentity}/git/refs" + (priorHead is null ? "" : "/heads/" + batch.PreviewBranch),
+                priorHead is null ? new { @ref = "refs/heads/" + batch.PreviewBranch, sha } : (object)new { sha, force = false }, token);
             reference.EnsureSuccessStatusCode();
             batch.BaseSha = priorHead is null ? production : batch.BaseSha;
             batch.HeadSha = sha;
@@ -169,7 +171,7 @@ public sealed partial class FounderSoftwareRemediationService
             {
                 var pr = await GitWriteAsync(client, options, "pulls", new
                 {
-                    title = "Founder reviewed repair batch", head = BatchBranch, @base = options.BaseBranch,
+                    title = "Founder reviewed repair batch", head = batch.PreviewBranch, @base = options.BaseBranch,
                     body = BuildPullRequestBody(proposal, sha!), draft = true
                 }, token);
                 batch.PullRequestNumber = pr.GetProperty("number").GetInt32();
@@ -249,6 +251,7 @@ public sealed partial class FounderSoftwareRemediationService
                 $"repos/{options.RepositoryIdentity}/git/refs/heads/{publicationBranch}", new { sha = publishSha, force = false }, token);
             update.EnsureSuccessStatusCode();
             batch.HeadSha = publishSha;
+            batch.ReviewedHeadSha = headSha;
             batch.PullRequestNumber = publicationNumber;
             batch.State = "ValidationRequested";
             batch.UpdatedUtc = DateTime.UtcNow;
@@ -279,10 +282,10 @@ public sealed partial class FounderSoftwareRemediationService
 
     private static async Task VerifyPreviewAsync(HttpClient client, Options options, FounderSoftwareRepairBatch batch, CancellationToken token)
     {
-        if (!IsCommitSha(batch.HeadSha) || batch.PullRequestNumber is not > 0)
+        if (!IsCommitSha(batch.HeadSha) || batch.PullRequestNumber is not > 0 || !IsPreviewBranch(batch.PreviewBranch))
             throw new InvalidOperationException("Missing preview identity.");
         using var branch = await SendGitHubAsync(client, HttpMethod.Get,
-            $"repos/{options.RepositoryIdentity}/git/ref/heads/{BatchBranch}", null, token);
+            $"repos/{options.RepositoryIdentity}/git/ref/heads/{batch.PreviewBranch}", null, token);
         branch.EnsureSuccessStatusCode();
         using var branchDoc = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(token), cancellationToken: token);
         if (ReadNestedString(branchDoc.RootElement, "object", "sha") != batch.HeadSha)
@@ -291,9 +294,13 @@ public sealed partial class FounderSoftwareRemediationService
             $"repos/{options.RepositoryIdentity}/pulls/{batch.PullRequestNumber}", null, token);
         pr.EnsureSuccessStatusCode();
         using var prDoc = await JsonDocument.ParseAsync(await pr.Content.ReadAsStreamAsync(token), cancellationToken: token);
-        if (!MatchesPullRequest(prDoc.RootElement, options, BatchBranch, batch.HeadSha!, draft: true))
+        if (!MatchesPullRequest(prDoc.RootElement, options, batch.PreviewBranch, batch.HeadSha!, draft: true))
             throw new InvalidOperationException("Only the matching open draft preview is accepted.");
     }
+
+    private static bool IsPreviewBranch(string branch) => branch == BatchBranch ||
+        branch.StartsWith(BatchBranch + "/", StringComparison.Ordinal) &&
+        Guid.TryParseExact(branch[(BatchBranch.Length + 1)..], "N", out _);
 
     private static async Task<IReadOnlyDictionary<string, string>> VerifyDiscoveredPathsAsync(HttpClient client, Options options, string tree,
         IReadOnlyList<FounderSoftwareRepairChange> changes, CancellationToken token)
@@ -340,7 +347,7 @@ public sealed partial class FounderSoftwareRemediationService
     private static object BatchReceipt(FounderSoftwareRepairBatch batch, bool replayed) => new
     {
         capability = "prepare_software_repair", prepared = true, state = "STAGED_UNPUBLISHED",
-        baseSha = batch.BaseSha, repairCommitSha = batch.HeadSha, branch = BatchBranch,
+        baseSha = batch.BaseSha, repairCommitSha = batch.HeadSha, branch = batch.PreviewBranch,
         pullRequestNumber = batch.PullRequestNumber, replayed,
         ci = "Draft batch does not authorize production execution.", deployment = "not_requested"
     };

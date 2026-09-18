@@ -1,28 +1,84 @@
-name: Direct deploy shared application translation repair
+name: Direct build and deploy verified Founder diagnostics
 
 on:
   push:
-    branches: [repair/translation-admission-20260918]
+    branches: [implement/founder-diagnostics-20260918]
     paths: ['.github/workflows/all-intentional-direct-release-20260918.yml']
 permissions:
   contents: read
   id-token: write
 concurrency:
-  group: september-18-direct-release
+  group: agentportal-production
   cancel-in-progress: false
 env:
   RELEASE_SHA: ${{ github.sha }}
-  EXPECTED_BASE_SHA: fd22853357d4005269a0bf73ae88602c949d8995
+  EXPECTED_BASE_SHA: 677b1593dda8b680ed49f063900dca7d3fff3954
 jobs:
-  release:
+  preserve-rollback:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: portal
+            revision: 677b1593dda8b680ed49f063900dca7d3fff3954
+            project: AgentPortal/AgentPortal.csproj
+          - app: client
+            revision: 677b1593dda8b680ed49f063900dca7d3fff3954
+            project: ClientApp/ClientApp.csproj
+          - app: protect
+            revision: fd22853357d4005269a0bf73ae88602c949d8995
+            project: Protect-Website/ProtectWebsite.csproj
+          - app: parfait
+            revision: 6115e7d7398b6a2dd4333f24d3e1b84f4e92dae1
+            project: ParfaitApp/ParfaitApp.csproj
+          - app: website
+            revision: fd22853357d4005269a0bf73ae88602c949d8995
+            project: static
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.revision }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Preserve source-equivalent rollback without production data
+        env:
+          PROJECT: ${{ matrix.project }}
+          REVISION: ${{ matrix.revision }}
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/rollback
+          if [ "$PROJECT" = static ]; then
+            npm --prefix Legend-Website run build
+            cp Legend-Website/public/web.config Legend-Website/dist/web.config
+            printf '%s\n' "$REVISION" > Legend-Website/dist/_deployment-provenance.txt
+            (cd Legend-Website/dist && zip -qr /tmp/rollback/package.zip .)
+          else
+            dotnet publish "$PROJECT" -c Release -o /tmp/rollback-publish -p:SourceRevisionId="$REVISION" --nologo
+            printf '{"releaseSha":"%s"}\n' "$REVISION" > /tmp/rollback-publish/wwwroot/_deployment-provenance.json
+            (cd /tmp/rollback-publish && zip -qr /tmp/rollback/package.zip .)
+          fi
+          printf '%s %s source-equivalent rebuild\n' "$APP" "$REVISION" > /tmp/rollback/manifest.txt
+          sha256sum /tmp/rollback/package.zip > /tmp/rollback/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-rollback-${{ matrix.app }}-${{ github.sha }}
+          path: /tmp/rollback/
+          retention-days: 1
+          if-no-files-found: error
+  release:
+    needs: preserve-rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     environment: Production
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
@@ -40,14 +96,14 @@ jobs:
       - name: Build exact translation candidate
         id: build
         continue-on-error: true
-        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -p:SourceRevisionId="$RELEASE_SHA"
+        run: dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
       - name: Verify localization retention privacy limits and original delivery
         id: tests
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
-            --filter 'FullyQualifiedName~ApplicationLocalization|FullyQualifiedName~ApplicationTranslationAdmission|FullyQualifiedName~LegendConnectTrainingDatasetGroupSplitTests|FullyQualifiedName~LegendConnectEntitlementTests|FullyQualifiedName~AzureTranslatorServiceTests|FullyQualifiedName~AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~MessagingDeferredPresentationTests|FullyQualifiedName~FounderLegendConnectLiveMetricsTests' \
+            --filter 'FullyQualifiedName~ApplicationLocalization|FullyQualifiedName~ApplicationTranslationAdmission|FullyQualifiedName~LegendConnectTrainingDatasetGroupSplitTests|FullyQualifiedName~LegendConnectEntitlementTests|FullyQualifiedName~AzureTranslatorServiceTests|FullyQualifiedName~AzureTranslatorSubscriptionCapacityTests|FullyQualifiedName~MessagingDeferredPresentationTests|FullyQualifiedName~FounderLegendConnectLiveMetricsTests|FullyQualifiedName~RuntimeDiagnostics|FullyQualifiedName~PageHealthContractTests|FullyQualifiedName~WebDiagnosticPrivacyTests|FullyQualifiedName~RuntimeDiagnosticCaptureTests|FullyQualifiedName~FounderSoftwareRepairBatchTests|FullyQualifiedName~FounderSoftwareRepairCompletionTests|FullyQualifiedName~FounderRemediationRevocationTests|FullyQualifiedName~ClientAppDeploymentWorkflowTests|FullyQualifiedName~LegendFounderAiContractTests.SoftwareRemediation' \
             --logger 'trx;LogFileName=translation.trx' --results-directory /tmp/translation-results
           python3 - <<'PYTEST'
           import xml.etree.ElementTree as ET
@@ -60,18 +116,41 @@ jobs:
       - name: Verify shared web catalog contracts
         id: web
         continue-on-error: true
-        run: node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs
+        run: |
+          node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
+          python3 scripts/test-diagnostic-project-impact.py
+          python3 scripts/test-sync-published-checkout.py
+          npm --prefix Legend-Website run build
+          npm --prefix Legend-Website run check
       - name: Publish existing portal and client packages
         id: package
         if: steps.tests.outcome == 'success' && steps.web.outcome == 'success'
         run: |
           set -euo pipefail
-          dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
-          dotnet publish ClientApp/ClientApp.csproj -c Release --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$RELEASE_SHA"
-          for app in agentportal clientapp; do
+          dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
+          dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$RELEASE_SHA"
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-build --no-restore -o /tmp/protect-publish -p:SourceRevisionId="$RELEASE_SHA"
+          dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$RELEASE_SHA"
+          for app in agentportal clientapp protect parfait; do
             mkdir -p "/tmp/$app-publish/wwwroot"
-            printf '{"releaseSha":"%s","release":"translation-admission-20260918"}\n' "$RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
+            printf '{"releaseSha":"%s","release":"founder-diagnostics-20260918"}\n' "$RELEASE_SHA" > "/tmp/$app-publish/wwwroot/_deployment-provenance.json"
           done
+          printf '%s\n' "$RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt
+          cp Legend-Website/public/web.config Legend-Website/dist/web.config
+          mkdir -p /tmp/diagnostics-packages
+          for app in agentportal clientapp protect parfait; do
+            (cd "/tmp/$app-publish" && zip -qr "/tmp/diagnostics-packages/$app.zip" .)
+          done
+          (cd Legend-Website/dist && zip -qr /tmp/diagnostics-packages/website.zip .)
+          sha256sum /tmp/diagnostics-packages/*.zip > /tmp/diagnostics-packages/SHA256SUMS
+      - name: Retain exact deployable candidate packages
+        if: steps.package.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: founder-diagnostics-packages-${{ github.sha }}
+          path: /tmp/diagnostics-packages/
+          retention-days: 1
+          if-no-files-found: error
       - uses: azure/login@v2
         id: azure
         if: steps.package.outcome == 'success'
@@ -79,9 +158,40 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Apply additive diagnostics migrations before restarting apps
+        id: migrate
+        if: steps.package.outcome == 'success' && steps.azure.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet tool restore
+          python3 - <<'PYMIGRATE'
+          import json, os, subprocess
+          def az(*args):
+              return json.loads(subprocess.check_output(['az',*args,'-o','json'],text=True))
+          rows=az('webapp','config','connection-string','list','-g','masterapp-rg','-n','masterapp-portal')
+          connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
+          if not connection:
+              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g','masterapp-rg','-n','masterapp-portal')}
+              connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
+          if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
+              raise SystemExit('Production SQL connection unavailable; no restart authorized.')
+          print('::add-mask::'+connection,flush=True)
+          env=os.environ | {'ConnectionStrings__MasterAppDb':connection,'EF_FORCE_SQLSERVER':'true','DOTNET_ENVIRONMENT':'Development','ASPNETCORE_ENVIRONMENT':'Development'}
+          common=['--project','Infrastructure/Infrastructure.csproj','--startup-project','AgentPortal/AgentPortal.csproj','--context','MasterAppDbContext','--configuration','Release','--no-build']
+          listing=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
+          pending=[x.split()[0] for x in listing.splitlines() if '(Pending)' in x]
+          changed=subprocess.check_output(['git','diff','--name-only',os.environ['EXPECTED_BASE_SHA'],'HEAD','--','Infrastructure/Migrations'],text=True).splitlines()
+          allowed={p.rsplit('/',1)[-1][:-3] for p in changed if p.endswith('.cs') and not p.endswith('.Designer.cs') and 'ModelSnapshot' not in p}
+          if not set(pending)<=allowed: raise SystemExit('Unexpected pending migrations; no restart authorized.')
+          subprocess.run(['dotnet','tool','run','dotnet-ef','database','update',*common],env=env,check=True)
+          after=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
+          if '(Pending)' in after: raise SystemExit('Pending migrations remain; no restart authorized.')
+          print('Schema ready. Applied candidate migrations only; no down migrations.')
+          PYMIGRATE
       - name: Direct deploy AgentPortal
         id: portal
-        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -90,28 +200,57 @@ jobs:
           package: /tmp/agentportal-publish
       - name: Direct deploy ClientApp
         id: client
-        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-client
           slot-name: Production
           package: /tmp/clientapp-publish
+      - name: Direct deploy Protect
+        id: protect
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        continue-on-error: true
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-protect
+          slot-name: Production
+          package: /tmp/protect-publish
+      - name: Direct deploy Parfait
+        id: parfait
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        continue-on-error: true
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-parfait
+          slot-name: Production
+          package: /tmp/parfait-publish
+      - name: Direct deploy Website
+        id: website
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        continue-on-error: true
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-website
+          slot-name: Production
+          package: Legend-Website/dist
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         run: |
           python3 - <<'PYLIVE'
           import concurrent.futures, json, os, time, urllib.request
-          hosts=('portal.mylegnd.com','masterapp-portal.azurewebsites.net','client.mylegnd.com','masterapp-client.azurewebsites.net')
+          hosts=('portal.mylegnd.com','masterapp-portal.azurewebsites.net','client.mylegnd.com','masterapp-client.azurewebsites.net','masterapp-protect.azurewebsites.net','masterapp-parfait.azurewebsites.net','masterapp-website.azurewebsites.net')
           def verify(host):
               end=time.monotonic()+480
               actual=None
               while time.monotonic()<end:
                   try:
-                      request=urllib.request.Request('https://'+host+'/_deployment-provenance.json?release='+os.environ['RELEASE_SHA'],headers={'Cache-Control':'no-cache'})
-                      with urllib.request.urlopen(request,timeout=15) as response: actual=json.load(response).get('releaseSha')
+                      path='/_deployment-provenance.txt' if host=='masterapp-website.azurewebsites.net' else '/api/runtime-provenance'
+                      request=urllib.request.Request('https://'+host+path+'?release='+os.environ['RELEASE_SHA'],headers={'Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(request,timeout=15) as response:
+                          actual=response.read().decode().strip() if host=='masterapp-website.azurewebsites.net' else json.load(response).get('sourceRevision')
                       if actual==os.environ['RELEASE_SHA']: return {'host':host,'passed':True,'actual':actual}
                   except Exception as error: actual=type(error).__name__
                   time.sleep(5)
@@ -140,10 +279,14 @@ jobs:
           PORTAL: ${{ steps.portal.outcome }}
           CLIENT: ${{ steps.client.outcome }}
           LIVE: ${{ steps.live.outcome }}
+          MIGRATE: ${{ steps.migrate.outcome }}
+          PROTECT: ${{ steps.protect.outcome }}
+          PARFAIT: ${{ steps.parfait.outcome }}
+          WEBSITE: ${{ steps.website.outcome }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
-          results={key:os.environ[key] for key in ('BASE','BUILD','TESTS','WEB','PACKAGE','AZURE','PORTAL','CLIENT','LIVE')}
+          results={key:os.environ[key] for key in ('BASE','BUILD','TESTS','WEB','PACKAGE','AZURE','PORTAL','CLIENT','LIVE','MIGRATE','PROTECT','PARFAIT','WEBSITE')}
           print(json.dumps(results,indent=2))
           assert all(value=='success' for value in results.values())
           PYRESULT

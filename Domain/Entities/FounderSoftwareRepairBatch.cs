@@ -6,6 +6,8 @@ public sealed class FounderSoftwareRepairBatch
 {
     public string Id { get; set; } = "active";
     public string BaseSha { get; set; } = string.Empty;
+    public string PreviewBranch { get; set; } = "hotfix/staging-batch";
+    public string? ReviewedHeadSha { get; set; }
     public string? HeadSha { get; set; }
     public int? PullRequestNumber { get; set; }
     public string State { get; set; } = "Empty";
@@ -13,4 +15,9 @@ public sealed class FounderSoftwareRepairBatch
     public DateTime UpdatedUtc { get; set; }
     public DateTime? LeaseUntilUtc { get; set; }
     public string Revision { get; set; } = Guid.NewGuid().ToString("N");
+    public string? MergedSha { get; set; }
+    public string? DeployedTreeSha { get; set; }
+    public DateTime? CompletionVerifiedUtc { get; set; }
+    public long? DeploymentRunId { get; set; }
+    public string? DeploymentEvidenceJson { get; set; }
 }

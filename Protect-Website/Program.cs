@@ -39,13 +39,15 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector>();
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
+var publicWebsiteOrigins = new[]
+{
+    "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com"
+};
+builder.Services.AddRuntimeDiagnosticPublicWebsiteTransport(publicWebsiteOrigins);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("PublicWebsiteEditor", policy =>
-        policy.WithOrigins(
-                "https://www.mylegnd.com",
-                "https://mylegnd.com",
-                "https://protect.mylegnd.com")
+        policy.WithOrigins(publicWebsiteOrigins)
             .AllowAnyHeader()
             .WithMethods("GET", "POST"));
 });
@@ -208,7 +210,10 @@ app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
 app.UseStaticFiles();
 app.UseRouting();
-app.UseCors("PublicWebsiteEditor");
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
+    diagnostics => diagnostics.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
+    editor => editor.UseCors("PublicWebsiteEditor"));
 app.UseRateLimiter();
 
 // 🔹 Enable session BEFORE MVC

@@ -3,6 +3,7 @@
     ViewData["Title"] = "Runtime diagnostics";
     var page = ViewData["Page"] as int? ?? 1;
     var batch = ViewData["Batch"] as Domain.Entities.FounderSoftwareRepairBatch;
+    var completedBatches = ViewData["CompletedBatches"] as Domain.Entities.FounderSoftwareRepairBatch[] ?? [];
     var details = ViewData["Details"] as bool? == true;
 }
 <section class="container py-4">
@@ -25,7 +26,20 @@
                     <button type="submit" class="btn btn-primary">Publish batch</button>
                 </form>
             }
+            else if (batch.State == "Empty") { <p>No patch is staged. A reviewed proposal can start this new batch without changing earlier preview branches.</p> }
             else { <p>Further writes remain locked. Refresh status to inspect remote observations; this does not retry or unlock an uncertain operation.</p> }
+            @if (batch.State == "ValidationRequested")
+            {
+                <form asp-action="ArchiveDeployedBatch" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="pullRequestNumber" value="@batch.PullRequestNumber" />
+                    <input type="hidden" name="headSha" value="@batch.HeadSha" />
+                    <input type="hidden" name="expectedRevision" value="@batch.Revision" />
+                    <p>Archive requires matching merged source, protected workflow success, covered web projects, and the actual running source on every configured host. Native and unconfigured project changes cannot be archived here.</p>
+                    <label><input type="checkbox" name="confirmed" value="true" required /> Verify this web rollout and start a new batch if verification succeeds. This does not confirm that a reported defect is fixed.</label>
+                    <button type="submit" class="btn btn-outline-primary">Verify web deployment and archive batch</button>
+                </form>
+            }
             <form asp-action="RefreshBatchStatus" method="post">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn btn-outline-secondary">Refresh remote batch status</button>
@@ -36,6 +50,22 @@
                 <pre>@observation</pre>
             }
         </div></article>
+    }
+    @if (ViewData["BatchCompletion"] is string completion) { <pre>@completion</pre> }
+    @if (completedBatches.Length > 0)
+    {
+        <section aria-label="Verified web deployment history">
+            <h2 class="h5">Web deployment archive</h2>
+            <p>These records describe source verification at the recorded time. Functional fixes and current running revisions require separate evidence. Diagnostic reviews and recurrence remain unchanged.</p>
+            @foreach (var completed in completedBatches)
+            {
+                <article class="card mb-3"><div class="card-body">
+                    <p>Pull request @completed.PullRequestNumber · verified @completed.CompletionVerifiedUtc?.ToString("u") · workflow run @completed.DeploymentRunId</p>
+                    <p>Merged source: <code>@completed.MergedSha</code> · tree: <code>@completed.DeployedTreeSha</code></p>
+                    <details><summary>Verified host scope</summary><pre>@completed.DeploymentEvidenceJson</pre></details>
+                </div></article>
+            }
+        </section>
     }
     @if (Model.Count == 0)
     {

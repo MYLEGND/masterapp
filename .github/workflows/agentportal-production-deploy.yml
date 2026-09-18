@@ -51,7 +51,7 @@ env:
 jobs:
   # Keep this job name stable: it is the protected production required check.
   security:
-    if: github.event.pull_request.head.ref != 'hotfix/staging-batch' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.ref != 'hotfix/staging-batch' && !startsWith(github.event.pull_request.head.ref, 'hotfix/staging-batch/') && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment:
@@ -430,7 +430,7 @@ jobs:
       - security
       - build
     if: >
-      github.event.pull_request.head.ref != 'hotfix/staging-batch' &&
+      github.event.pull_request.head.ref != 'hotfix/staging-batch' && !startsWith(github.event.pull_request.head.ref, 'hotfix/staging-batch/') &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)

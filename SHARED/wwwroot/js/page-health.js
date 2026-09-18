@@ -3,19 +3,37 @@
 
   // This is the existing observer, not an error classifier or repair authority.
   // Never retain caller messages/details, response bodies, query strings, or IDs.
-  const endpoint = "/api/runtime-diagnostics";
   const metadata = document.currentScript?.dataset || {};
   const originalFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
-  const csrf = typeof metadata.csrf === "string" ? metadata.csrf : "";
-  const appIdentifier = ["AgentPortal", "ClientApp", "ParfaitApp", "Protect-Website", "ProtectWebsite"].includes(metadata.app)
+  const appIdentifier = ["AgentPortal", "ClientApp", "ParfaitApp", "Protect-Website", "ProtectWebsite", "Legend-Website"].includes(metadata.app)
     ? metadata.app : "Web";
-  const route = typeof metadata.route === "string" && /^\/(?:[A-Za-z][A-Za-z0-9_]*\/[A-Za-z][A-Za-z0-9_]*)?$/.test(metadata.route)
-    && metadata.route.length <= 256
-    ? metadata.route : "/";
-  const canManage = metadata.founder === "true";
+  // Endpoint metadata is emitted by the trusted static build from its existing
+  // CMS API base. CORS on that host owns the allowed-origin list.
+  const remoteRequested = metadata.endpoint !== undefined || metadata.bootstrap !== undefined;
+  let publicEndpoint = "";
+  try {
+    const candidate = new URL(metadata.endpoint);
+    if (candidate.protocol === "https:" && !candidate.username && !candidate.password
+        && !candidate.search && !candidate.hash && candidate.pathname === "/api/runtime-diagnostics")
+      publicEndpoint = candidate.href;
+  } catch { }
+  const publicTransport = appIdentifier === "Legend-Website" && publicEndpoint !== ""
+    && metadata.bootstrap === publicEndpoint + "/bootstrap";
+  const endpoint = publicTransport ? publicEndpoint : "/api/runtime-diagnostics";
+  const bootstrap = publicTransport ? publicEndpoint + "/bootstrap" : "";
+  const credentials = publicTransport ? "include" : "same-origin";
+  let csrf = !publicTransport && typeof metadata.csrf === "string" ? metadata.csrf : "";
+  let bootstrapAttempts = 0;
+  const gitCommitHash = typeof metadata.gitCommitHash === "string" && /^[a-f0-9]{40}$/i.test(metadata.gitCommitHash)
+    ? metadata.gitCommitHash.toLowerCase() : "";
+  const route = appIdentifier === "Legend-Website"
+    ? (["/", "/about", "/contact", "/logo", "/privacy-terms"].includes(metadata.route) ? metadata.route : "/")
+    : typeof metadata.route === "string" && /^\/(?:[A-Za-z][A-Za-z0-9_]*\/[A-Za-z][A-Za-z0-9_]*)?$/.test(metadata.route)
+      && metadata.route.length <= 256 ? metadata.route : "/";
+  const canManage = !publicTransport && metadata.founder === "true";
   const observedRequestErrors = new WeakSet();
   const state = { events: [], queue: [], recent: new Map(), timer: null, inFlight: null,
-    generation: 0, retired: false, disabled: !originalFetch || !csrf, submissions: 0 };
+    generation: 0, retired: false, disabled: !originalFetch || (remoteRequested && !publicTransport) || (!csrf && !bootstrap), submissions: 0 };
   const maximumQueue = 24;
   const maximumEvents = 18;
   const maximumAttempts = 3;
@@ -50,7 +68,9 @@
     if (typeof value !== "string" || value.length > 2048) return "";
     try {
       const url = new URL(value, window.location.origin);
-      if (url.origin !== window.location.origin || !/^\/(?:js|_content\/[A-Za-z0-9_.-]+\/js)\/[A-Za-z0-9_./-]+\.m?js$/.test(url.pathname)) return "";
+      const knownPublicScript = appIdentifier === "Legend-Website"
+        && ["/legend-public-web.js", "/legend-public-cms.js", "/js/page-health.js"].includes(url.pathname);
+      if (url.origin !== window.location.origin || (!knownPublicScript && !/^\/(?:js|_content\/[A-Za-z0-9_.-]+\/js)\/[A-Za-z0-9_./-]+\.m?js$/.test(url.pathname))) return "";
       return Array.from(document.scripts || []).slice(0, 128).some(script => {
         try { const known = new URL(script.src, window.location.origin); return known.origin === url.origin && known.pathname === url.pathname; }
         catch { return false; }
@@ -96,7 +116,7 @@
         errorMessage: statusCode ? "An HTTP request returned an unsuccessful status."
           : offline ? "The browser reported an offline network state."
           : scope === "network" ? "A browser request ended without a response." : "A browser script reported an error.",
-        stackTrace: frames.join("\n"), gitCommitHash: "", timestamp: new Date().toISOString(),
+        stackTrace: frames.join("\n"), gitCommitHash, timestamp: new Date().toISOString(),
         operation, correlationId: "",
         category: scope === "network" ? "Network" : "SuspectedDefect", statusCode, appVersion: ""
       };
@@ -144,7 +164,26 @@
     let accepted = false;
     let terminal = false;
     try {
-      const response = await originalFetch(endpoint, { method: "POST", credentials: "same-origin", redirect: "manual",
+      if (!csrf && bootstrap) {
+        bootstrapAttempts += 1;
+        const admission = await originalFetch(bootstrap, { method: "GET", credentials,
+          cache: "no-store", redirect: "error", signal: request.controller.signal });
+        if (request.generation !== state.generation) return;
+        if (admission.status !== 200) {
+          terminal = admission.type === "opaqueredirect" || (admission.status >= 300 && admission.status < 500
+            && admission.status !== 408 && admission.status !== 429) || bootstrapAttempts >= maximumAttempts;
+          if (terminal) { state.disabled = true; state.queue = []; }
+          return;
+        }
+        const admissionData = await admission.json();
+        if (request.generation !== state.generation) return;
+        const token = property(admissionData, "requestToken");
+        if (typeof token !== "string" || token.length < 1 || token.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+          terminal = true; state.disabled = true; state.queue = []; return;
+        }
+        csrf = token;
+      }
+      const response = await originalFetch(endpoint, { method: "POST", credentials, redirect: "manual",
         headers: { "Content-Type": "application/json", "RequestVerificationToken": csrf },
         body: JSON.stringify(item.payload), signal: request.controller.signal });
       if (request.generation !== state.generation) return;
@@ -156,7 +195,12 @@
         const seconds = /^\d{1,6}$/.test(value || "") ? Number(value) : NaN;
         if (Number.isFinite(seconds)) retryDelay = Math.max(retryDelay, seconds * 1000);
       }
-    } catch { /* Bounded retry; never feed an ingestion failure back into this observer. */ }
+    } catch {
+      // Bootstrap/upload failures never feed back into this observer.
+      if (!csrf && bootstrapAttempts >= maximumAttempts && request.generation === state.generation) {
+        terminal = true; state.disabled = true; state.queue = [];
+      }
+    }
     finally {
       window.clearTimeout(timeout);
       if (state.inFlight === request) state.inFlight = null;
@@ -183,7 +227,9 @@
     try {
       const value = typeof input === "string" || input instanceof URL ? String(input) : input?.url;
       const url = new URL(value, window.location.origin);
-      isIngestion = url.origin === window.location.origin && url.pathname.replace(/\/+$/, "") === endpoint;
+      const ingestionURL = new URL(endpoint, window.location.origin);
+      isIngestion = url.origin === ingestionURL.origin && [ingestionURL.pathname, ingestionURL.pathname + "/bootstrap"]
+        .includes(url.pathname.replace(/\/+$/, ""));
       method = String(init?.method || input?.method || "GET").toUpperCase();
       signal = init?.signal ?? input?.signal;
     } catch { }

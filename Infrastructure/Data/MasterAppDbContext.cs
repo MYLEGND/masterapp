@@ -190,10 +190,16 @@ public class MasterAppDbContext : DbContext
             entity.HasKey(row => row.Id);
             entity.Property(row => row.Id).HasMaxLength(32);
             entity.Property(row => row.BaseSha).IsRequired().HasMaxLength(40);
+            entity.Property(row => row.PreviewBranch).IsRequired().HasMaxLength(80).HasDefaultValue("hotfix/staging-batch");
+            entity.Property(row => row.ReviewedHeadSha).HasMaxLength(40);
             entity.Property(row => row.HeadSha).HasMaxLength(40);
             entity.Property(row => row.State).IsRequired().HasMaxLength(32);
             entity.Property(row => row.OperationId).HasMaxLength(64);
             entity.Property(row => row.Revision).IsRequired().HasMaxLength(32).IsConcurrencyToken();
+            entity.Property(row => row.MergedSha).HasMaxLength(40);
+            entity.Property(row => row.DeployedTreeSha).HasMaxLength(40);
+            entity.Property(row => row.DeploymentEvidenceJson).HasMaxLength(16000);
+            entity.HasIndex(row => row.CompletionVerifiedUtc);
         });
         modelBuilder.Entity<RuntimeDiagnosticIncident>(entity =>
         {

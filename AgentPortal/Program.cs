@@ -145,6 +145,8 @@ builder.Services.AddSingleton<ILegendBlindAnswerOrderRandomizer, LegendBlindCryp
 builder.Services.AddScoped<LegendBlindComparativeBenchmarkRunner>();
 builder.Services.AddScoped<LegendFounderAiDiscourseStateService>();
 builder.Services.AddScoped<IFounderSoftwareRemediationService, FounderSoftwareRemediationService>();
+builder.Services.AddHttpClient("FounderRuntimeProvenance", client => client.Timeout = TimeSpan.FromSeconds(8))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendFounderAiConversationService>();
 builder.Services.AddSingleton<LegendFounderAiProgressBroker>();
 builder.Services.AddScoped<FounderImpersonationService>();

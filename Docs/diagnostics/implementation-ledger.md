@@ -39,4 +39,14 @@ Migration 20260918155442 generated; EF pending-model check passed. No production
 - Independent review found and resolved stale revocation reads, stage/publication race, stale replay receipts, loss of executable file modes, telemetry resolution masking original exceptions and handled mobile faults bypassing capture.
 
 ## Not yet release-qualified
-Automatic repair-model execution/sandbox reproduction and verified fix closure are not implemented. The existing GitHub-App publication author's eligibility under the unchanged protected workflow must be established live. Read-only reconciliation does not unlock ambiguous writes. Automatic batch archival/reset is not implemented. Impact discovery now runs inside the existing workflow but does not skip existing build/deploy gates. Static Legend-Website is discovered but lacks a same-origin authenticated/antiforgery ingestion integration; no unsafe cross-origin collector was introduced. Startup/OS/fatal crash coverage remains incomplete. These are explicit gaps, not passed acceptance claims.
+Automatic repair-model execution/sandbox reproduction and verified fix closure are not implemented. The existing GitHub-App publication author's eligibility under the unchanged protected workflow must be established live. Read-only reconciliation does not unlock ambiguous writes. Verified web-deployment archival now preserves lineage and opens a cycle-specific staging branch; it does not mark incidents functionally fixed. Impact discovery now runs inside the existing workflow but does not skip existing build/deploy gates. Static Legend-Website now reuses the shared collector through the existing API origin, exact-origin credentialed CORS and antiforgery bootstrap. Startup/OS/fatal crash coverage remains incomplete. These are explicit gaps, not passed acceptance claims.
+
+## Direct release qualification — 2026-09-18
+- Preserved deployed translation repair 677b1593 via merge before qualification.
+- Final solution build: zero warnings/errors. Affected integrated .NET checks: 281 passed, zero skipped; web checks: 61 passed; discovery: 4 passed; checkout guard: 24 passed; static build/check passed.
+- Production connection targets privately compared across portal/client/protect/parfait: all same database; no connection values retained.
+- Direct workflow builds source-equivalent rollback ZIPs from each observed immutable prior revision in isolated jobs before publication; artifacts retain one day. No production data snapshots.
+- Additive candidate-only migrations precede deployments; unexpected pending migrations stop the release. No schema down migrations on binary rollback.
+- New process provenance endpoint reports loaded entry assembly revision. Static site uses existing text release marker.
+- Independent workflow review: no remaining blocking defect. Deployment and authenticated Founder acceptance still pending at commit.
+- Completion archive remains unavailable until approved app verification hosts and GitHub authority are configured. Automatic repair-model competence and native binary delivery remain separately unqualified.

@@ -8,7 +8,7 @@ const endpoint = '/api/runtime-diagnostics';
 const response = (status, extra = {}) => ({ ok: status >= 200 && status < 300, status, headers: { get: () => null }, ...extra });
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 async function flush() { for (let i = 0; i < 8; i++) await Promise.resolve(); }
-function fixture({ fetch = async () => response(200), ingest = async () => response(202), metadata = {}, online = true } = {}) {
+function fixture({ fetch = async () => response(200), ingest = async () => response(202), metadata = {}, online = true, origin = 'https://portal.example.test', bootstrap = async () => response(200, { json: async () => ({ requestToken: 'bootstrap-token' }) }) } = {}) {
   let now = 1000000, nextTimer = 0;
   const timers = new Map(), listeners = new Map(), calls = [], storage = [], navigation = [];
   class Clock extends Date { constructor(...values) { super(...(values.length ? values : [now])); } static now() { return now; } }
@@ -16,9 +16,9 @@ function fixture({ fetch = async () => response(200), ingest = async () => respo
   const window = {
     fetch: async (input, init) => {
       calls.push({ input, init });
-      return (String(input) === endpoint ? ingest : fetch)(input, init);
+      return (String(input).endsWith(endpoint + '/bootstrap') ? bootstrap : String(input).endsWith(endpoint) ? ingest : fetch)(input, init);
     },
-    location: { pathname: '/client/private-customer', search: '?email=private@example.test', origin: 'https://portal.example.test', assign: value => navigation.push(value) },
+    location: { pathname: '/client/private-customer', search: '?email=private@example.test', origin, assign: value => navigation.push(value) },
     localStorage: { getItem() { throw new Error('Private diagnostics must never be read'); }, setItem() { throw new Error('Private diagnostics must never be stored'); }, removeItem: key => storage.push(key) },
     addEventListener: (name, handler) => listeners.set(name, handler),
     setTimeout: (callback, delay) => { const id = ++nextTimer; timers.set(id, { callback, when: now + delay }); return id; },
@@ -26,7 +26,7 @@ function fixture({ fetch = async () => response(200), ingest = async () => respo
   };
   const document = {
     currentScript: { dataset: { app: 'AgentPortal', route: '/Clients/Index', csrf: 'anti-forgery-fixture', founder: 'false', ...metadata } },
-    scripts: [{ src: 'https://portal.example.test/js/clients-index.js?v=public-build' }, { src: 'https://portal.example.test/_content/Shared/js/page-health.js' }],
+    scripts: [{ src: origin + '/js/clients-index.js?v=public-build' }, { src: origin + '/_content/Shared/js/page-health.js' }, { src: origin + '/legend-public-web.js' }, { src: origin + '/legend-public-cms.js' }],
     title: 'Private customer title',
     createElement() { assert.fail('The collector must not render a diagnostics UI'); }
   };
@@ -37,7 +37,8 @@ function fixture({ fetch = async () => response(200), ingest = async () => respo
     window, listeners, navigator, calls, timers, storage, navigation, state: window.testState,
     api: window.LegendPageHealth.current,
     report: () => JSON.parse(window.LegendPageHealth.current.exportReport()),
-    submissions: () => calls.filter(call => String(call.input) === endpoint),
+    submissions: () => calls.filter(call => String(call.input).endsWith(endpoint)),
+    bootstraps: () => calls.filter(call => String(call.input).endsWith(endpoint + '/bootstrap')),
     reload: () => vm.runInContext(code, context),
     async tick(duration) {
       const until = now + duration;
@@ -218,4 +219,79 @@ test('all web hosts retain one early observer; portal navigation is inside the e
   assert.doesNotMatch(layout, /explorePageHealth|LegendPageHealth\?\.current.open/);
   const partial = readFileSync(new URL('../../SHARED/Views/Diagnostics/_PageHealth.cshtml', import.meta.url), 'utf8');
   assert.match(partial, /GetAndStoreTokens\(Context\)/); assert.doesNotMatch(partial, /AgentPortal\./);
+});
+
+const publicMetadata = {
+  app: 'Legend-Website', route: '/about', csrf: '', gitCommitHash: 'a'.repeat(40),
+  endpoint: 'https://protect.mylegnd.com/api/runtime-diagnostics',
+  bootstrap: 'https://protect.mylegnd.com/api/runtime-diagnostics/bootstrap'
+};
+
+test('static website reuses observer with lazy credentialed bootstrap and safe build identity', async () => {
+  const f = fixture({ origin: 'https://www.mylegnd.com', metadata: { ...publicMetadata, founder: 'true' } });
+  assert.equal(f.calls.length, 0);
+  const error = new TypeError('private customer body');
+  f.listeners.get('error')({ error, filename: 'https://www.mylegnd.com/legend-public-web.js?secret=private', lineno: 7, colno: 4 });
+  await f.tick(1000);
+  assert.equal(f.bootstraps().length, 1);
+  assert.equal(f.submissions().length, 1);
+  const bootstrap = f.bootstraps()[0], submitted = f.submissions()[0];
+  assert.equal(bootstrap.init.credentials, 'include');
+  assert.equal(bootstrap.init.cache, 'no-store');
+  assert.equal(bootstrap.init.redirect, 'error');
+  assert.equal(submitted.init.credentials, 'include');
+  assert.equal(submitted.init.headers.RequestVerificationToken, 'bootstrap-token');
+  const payload = JSON.parse(submitted.init.body);
+  assert.equal(payload.appIdentifier, 'Legend-Website');
+  assert.equal(payload.route, '/about');
+  assert.equal(payload.gitCommitHash, 'a'.repeat(40));
+  assert.equal(payload.sourceFilePath, '/legend-public-web.js');
+  for (const secret of ['bootstrap-token', 'private customer', 'secret=']) assert.ok(!submitted.init.body.includes(secret));
+  f.api.open(); assert.deepEqual(f.navigation, []);
+});
+
+test('static bootstrap failure is bounded and never recursively collected', async () => {
+  const f = fixture({ origin: 'https://www.mylegnd.com', metadata: publicMetadata, bootstrap: async () => { throw new TypeError('private bootstrap failure'); } });
+  f.api.error('discard', new TypeError('discard'));
+  await f.tick(120000);
+  assert.equal(f.bootstraps().length, 3);
+  assert.equal(f.submissions().length, 0);
+  assert.equal(f.state.events.length, 1);
+  assert.equal(f.state.disabled, true);
+  assert.equal(f.state.queue.length, 0);
+  assert.ok(!f.api.exportReport().includes('private bootstrap'));
+});
+
+test('static invalid token and refused origin stop transport without exposing response content', async () => {
+  for (const bootstrap of [async () => response(403), async () => response(200, { json: async () => ({ requestToken: 'token secret=value' }) })]) {
+    const f = fixture({ origin: 'https://www.mylegnd.com', metadata: publicMetadata, bootstrap });
+    f.api.error('discard', new TypeError('discard')); await f.tick(120000);
+    assert.equal(f.bootstraps().length, 1); assert.equal(f.submissions().length, 0); assert.equal(f.state.disabled, true);
+  }
+});
+
+test('static transport rejects insecure or malformed configured destinations', async () => {
+  for (const endpoint of ['http://protect.mylegnd.com/api/runtime-diagnostics', 'https://user:secret@protect.mylegnd.com/api/runtime-diagnostics', 'https://protect.mylegnd.com/api/runtime-diagnostics?token=secret', 'https://protect.mylegnd.com/private']) {
+    const f = fixture({ metadata: { ...publicMetadata, endpoint, bootstrap: endpoint + '/bootstrap' } });
+    f.api.error('discard', new TypeError('discard')); await f.tick(120000);
+    assert.equal(f.calls.length, 0); assert.equal(f.state.disabled, true);
+  }
+});
+
+test('trusted static host metadata is generic and server CORS remains origin authority', async () => {
+  const target = 'https://configured-api.example.test/api/runtime-diagnostics';
+  const f = fixture({ origin: 'https://configured-site.example.test', metadata: { ...publicMetadata, endpoint: target, bootstrap: target + '/bootstrap' } });
+  f.api.error('discard', new TypeError('discard')); await f.tick(1000);
+  assert.equal(f.bootstraps()[0].input, target + '/bootstrap');
+  assert.equal(f.submissions()[0].input, target);
+});
+
+test('late static bootstrap response cannot restart retired page telemetry', async () => {
+  const gate = deferred();
+  const f = fixture({ metadata: publicMetadata, bootstrap: () => gate.promise });
+  f.api.error('discard', new TypeError('discard')); await f.tick(1000);
+  f.listeners.get('pagehide')();
+  gate.resolve(response(200, { json: async () => ({ requestToken: 'late-token' }) }));
+  await flush(); await f.tick(120000);
+  assert.equal(f.submissions().length, 0); assert.equal(f.state.queue.length, 0);
 });
