@@ -37,7 +37,166 @@ jobs:
             echo "::error::Non-public-website application or backend file entered the UI candidate."
             exit 1
           fi
-          if grep -Ev '^(Legend-Design/legend-public-web\.(css|js)|Legend-Website/|Protect-Website/(ProtectWebsite\.csproj|Views/(Home|Contact|Shared)/|wwwroot/css/site\.css)|\.github/workflows/public-web-ui-direct-20260917\.yml)$' /tmp/public-ui-diff.txt; then
+          if grep -Ev '^(Legend-Design/legend-public-web\.(css|js)|Legend-Website/.*|Protect-Website/(ProtectWebsite\.csproj|Views/(Home|Contact|Shared)/.*|wwwroot/css/site\.css)|\.github/workflows/public-web-ui-direct-20260917\.yml)
+            echo "::error::Unexpected file entered the public website candidate."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build and inspect LEGEND website
+        working-directory: Legend-Website
+        run: |
+          set -euo pipefail
+          npm run build
+          cp public/web.config dist/web.config
+          npm run check
+          test -f dist/site.css
+          test -f dist/legend-public-web.js
+          grep -q 'LEGEND® public web presentation authority' dist/site.css
+          grep -q 'brand-wordmark' dist/index.html
+          grep -q 'hero-mark' dist/index.html
+          test ! -f dist/app.js
+          if grep -q 'footer-logo' dist/index.html; then
+            echo "::error::Duplicate footer logo remains in LEGEND."
+            exit 1
+          fi
+
+      - name: Build and publish Protect website
+        run: |
+          set -euo pipefail
+          dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect-publish --no-restore
+          test -f /tmp/protect-publish/wwwroot/design/legend-public-web.css
+          test -f /tmp/protect-publish/wwwroot/design/legend-public-web.js
+          grep -q 'LEGEND® public web presentation authority' /tmp/protect-publish/wwwroot/design/legend-public-web.css
+          test "$(grep -c '<style>' Protect-Website/Views/Shared/_Layout.cshtml || true)" = "0"
+          ! grep -q 'max-width:1160px' Protect-Website/Views/Home/Index.cshtml
+          grep -q 'class="hero"' Protect-Website/Views/Home/Index.cshtml
+          grep -q 'class="site-header"' Protect-Website/Views/Shared/_Layout.cshtml
+          grep -q 'legend-public-web.css' Protect-Website/Views/Shared/_Layout.cshtml
+
+      - name: Smoke LEGEND locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8087 --directory Legend-Website/dist >/tmp/legend-local.log 2>&1 &
+          LEGEND_PID=$!
+          trap 'kill $LEGEND_PID 2>/dev/null || true' EXIT
+          for route in / /about/ /contact/ /logo/ /privacy-terms/; do
+            curl --retry 8 --retry-delay 1 --retry-all-errors -fsSL "http://127.0.0.1:8087$route" >/tmp/legend-page.html
+            grep -q 'LEGEND®' /tmp/legend-page.html
+          done
+          curl -fsSL http://127.0.0.1:8087/site.css | grep -q 'LEGEND® public web presentation authority'
+          kill $LEGEND_PID
+          trap - EXIT
+
+      - name: Login to Azure for Protect local config and direct deploy
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Smoke Protect locally against throwaway SQLite
+        shell: bash
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ConnectionStrings__MasterAppDb: Data Source=/tmp/protect-ui-smoke.db
+        run: |
+          set -euo pipefail
+          dotnet run --project Protect-Website/ProtectWebsite.csproj -c Release --no-build --urls http://127.0.0.1:5099 >/tmp/protect-local.log 2>&1 &
+          PROTECT_PID=$!
+          trap 'kill $PROTECT_PID 2>/dev/null || true' EXIT
+          code=""
+          for i in {1..45}; do
+            code=$(curl -sS -o /tmp/protect-home.html -w '%{http_code}' http://127.0.0.1:5099/ || true)
+            if [ "$code" = "200" ]; then break; fi
+            sleep 2
+          done
+          if [ "$code" != "200" ]; then
+            cat /tmp/protect-local.log
+            exit 1
+          fi
+          grep -q 'legend-public-web.css' /tmp/protect-home.html
+          grep -q 'LEGEND® LEGACY PROTECTION' /tmp/protect-home.html
+          curl -fsSL http://127.0.0.1:5099/design/legend-public-web.css | grep -q 'LEGEND® public web presentation authority'
+          for route in /Contact /Privacy /Terms /Quote /RiskAssessment; do
+            route_code=$(curl -sS -o /tmp/protect-route.html -w '%{http_code}' "http://127.0.0.1:5099$route" || true)
+            if [ "$route_code" != "200" ]; then
+              echo "::error::Local Protect route $route returned $route_code"
+              cat /tmp/protect-local.log
+              exit 1
+            fi
+          done
+          kill $PROTECT_PID
+          trap - EXIT
+
+      - name: Package exact validated artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd Legend-Website/dist && zip -qr /tmp/legend-website-ui.zip .)
+          (cd /tmp/protect-publish && zip -qr /tmp/protect-website-ui.zip .)
+
+      - name: Submit direct LEGEND website deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group masterapp-rg --name masterapp-website --src-path /tmp/legend-website-ui.zip --type zip --clean true --restart true --async true --output none
+
+      - name: Verify live LEGEND website
+        shell: bash
+        run: |
+          set -euo pipefail
+          verified=0
+          for i in {1..72}; do
+            code=$(curl -sS -L -o /tmp/live-legend.html -w '%{http_code}' "https://www.mylegnd.com/?ui=${GITHUB_SHA}" || true)
+            css=$(curl -sS "https://www.mylegnd.com/site.css?ui=${GITHUB_SHA}" || true)
+            if [ "$code" = "200" ] && grep -q 'brand-wordmark' /tmp/live-legend.html && printf '%s' "$css" | grep -q 'LEGEND® public web presentation authority'; then
+              verified=1
+              break
+            fi
+            sleep 5
+          done
+          test "$verified" = "1"
+
+      - name: Submit direct Protect website deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp deploy --resource-group masterapp-rg --name masterapp-protect --src-path /tmp/protect-website-ui.zip --type zip --clean true --restart true --async true --output none
+
+      - name: Verify live Protect website
+        shell: bash
+        run: |
+          set -euo pipefail
+          verified=0
+          for i in {1..96}; do
+            code=$(curl -sS -L -o /tmp/live-protect.html -w '%{http_code}' "https://protect.mylegnd.com/?ui=${GITHUB_SHA}" || true)
+            css_code=$(curl -sS -o /tmp/live-public.css -w '%{http_code}' "https://protect.mylegnd.com/design/legend-public-web.css?ui=${GITHUB_SHA}" || true)
+            if [ "$code" = "200" ] && [ "$css_code" = "200" ] &&
+               grep -q 'site-header' /tmp/live-protect.html &&
+               grep -q 'LEGEND® LEGACY PROTECTION' /tmp/live-protect.html &&
+               grep -q 'LEGEND® public web presentation authority' /tmp/live-public.css; then
+              verified=1
+              break
+            fi
+            sleep 5
+          done
+          test "$verified" = "1"
+          for route in /Contact /Privacy /Terms /Quote /RiskAssessment; do
+            test "$(curl -sS -L -o /dev/null -w '%{http_code}' "https://protect.mylegnd.com$route")" = "200"
+          done
+ /tmp/public-ui-diff.txt; then
             echo "::error::Unexpected file entered the public website candidate."
             exit 1
           fi
