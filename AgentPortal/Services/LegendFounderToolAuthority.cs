@@ -5,6 +5,7 @@ using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AgentPortal.Services;
 
@@ -13,7 +14,7 @@ namespace AgentPortal.Services;
 /// Conversational providers may request a tool, but only this authority
 /// classifies and executes it through the existing governed LEGEND services.
 /// </summary>
-internal sealed class LegendFounderToolAuthority
+internal sealed partial class LegendFounderToolAuthority
 {
     private const int MinimumSemanticFrameDimensions = 1;
     private const int MaximumSemanticFrameDimensions = 12;
@@ -35,6 +36,7 @@ internal sealed class LegendFounderToolAuthority
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly AgencyCommandService? _agencyCommand;
+    private readonly IServiceScopeFactory? _authorizationScopes;
     private readonly HashSet<string> _consumedMutationAuthorizations =
         new(StringComparer.Ordinal);
     private readonly object _mutationAuthorizationLock = new();
@@ -49,11 +51,13 @@ internal sealed class LegendFounderToolAuthority
     internal LegendFounderToolAuthority(
         FounderLegendConnectService legend,
         IFounderSoftwareRemediationService? softwareRemediation,
-        AgencyCommandService? agencyCommand = null)
+        AgencyCommandService? agencyCommand = null,
+        IServiceScopeFactory? authorizationScopes = null)
     {
         _legend = legend;
         _softwareRemediation = softwareRemediation;
         _agencyCommand = agencyCommand;
+        _authorizationScopes = authorizationScopes;
     }
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
@@ -309,9 +313,19 @@ internal sealed class LegendFounderToolAuthority
         FounderAiToolCall call,
         string mode,
         CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        LegendConnectExternalProviderPolicy? providerPolicy = null,
+        FounderAiActionScope? serverDerivedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (serverDerivedScope is not null)
+            return await ExecuteCloudScopedAsync(founder, serverDerivedScope, call, mode, cancellationToken, providerPolicy);
+
+        // Transitional existing local/Teacher route only. Cloud callers always
+        // provide serverDerivedScope and cannot fall back to this correlation
+        // fence. Remove this transition before retiring the local foundation.
+        if (call.MutationAuthorization?.Scope is not null)
+            return MutationFailure("cloud_action_scope_required", "Cloud actions require a current server-derived scope.");
 
         // Pure argument validation preserves the diagnostic contract without
         // reading protected state. All valid requests still require Founder
@@ -339,6 +353,20 @@ internal sealed class LegendFounderToolAuthority
         // result above. Before dispatch, provider tool selection still grants
         // no authority, including read-only services without actor arguments.
         FounderGuard.EnsureFounderOrThrow(founder);
+
+        return await ExecuteAuthorizedCoreAsync(founder, call, mode, cancellationToken, providerPolicy);
+    }
+
+    // One tool registry and dispatcher for both transitional and cloud callers.
+    private async Task<string> ExecuteAuthorizedCoreAsync(
+        ClaimsPrincipal founder, FounderAiToolCall call, string mode, CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
+    {
+        string? diagnosticSection = null;
+        string? diagnosticLanguage = null;
+        if (call.Name == "legend_operational_diagnostics" &&
+            !TryReadOperationalDiagnosticArguments(call.Arguments, out diagnosticSection, out diagnosticLanguage))
+            return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
 
         switch (call.Name)
         {
@@ -1238,6 +1266,9 @@ internal sealed class LegendFounderToolAuthority
         FounderAiMutationAuthorization? authorization,
         CancellationToken cancellationToken)
     {
+        if (authorization?.Scope is not null)
+            return MutationFailure("cloud_restricted_authorization_required",
+                "A cloud authorization cannot enter the transitional correlation-only research path.");
         if (authorization is null)
         {
             return MutationFailure(
@@ -3520,7 +3551,11 @@ internal sealed record FounderAiToolCall(
     string CallId,
     string Name,
     string Arguments,
-    FounderAiMutationAuthorization? MutationAuthorization = null);
+    FounderAiMutationAuthorization? MutationAuthorization = null,
+    string? IdempotencyKey = null);
 
 internal sealed record FounderAiMutationAuthorization(
-    string CorrelationId);
+    string CorrelationId,
+    FounderAiActionScope? Scope = null,
+    string? ActionDigest = null,
+    string? IdempotencyKey = null);

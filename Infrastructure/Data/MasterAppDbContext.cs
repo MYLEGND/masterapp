@@ -59,6 +59,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<AnalyticsDriftAlert> AnalyticsDriftAlerts => Set<AnalyticsDriftAlert>();
     public DbSet<RuntimeDiagnosticIncident> RuntimeDiagnosticIncidents => Set<RuntimeDiagnosticIncident>();
     public DbSet<FounderSoftwareRepairBatch> FounderSoftwareRepairBatches => Set<FounderSoftwareRepairBatch>();
+    public DbSet<FounderAiActionAuthorization> FounderAiActionAuthorizations => Set<FounderAiActionAuthorization>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
@@ -184,6 +185,30 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<FounderAiActionAuthorization>(entity =>
+        {
+            entity.ToTable("FounderAiActionAuthorizations");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.ActionDigest).IsRequired().HasMaxLength(64);
+            entity.HasIndex(row => row.ActionDigest).IsUnique();
+            entity.Property(row => row.ScopeDigest).IsRequired().HasMaxLength(64);
+            entity.Property(row => row.AccountId).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.TenantId).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(row => row.SessionId).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.Environment).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.AuthorizationVersion).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.ToolName).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.CanonicalArgumentsJson).IsRequired().HasMaxLength(32768);
+            entity.Property(row => row.State).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.IdempotencyKey).HasMaxLength(64);
+            entity.Property(row => row.ResultJson).HasMaxLength(32768);
+            entity.Property(row => row.Revision).IsRequired().HasMaxLength(32).IsConcurrencyToken();
+            entity.HasIndex(row => new { row.UserId, row.RequestId });
+            entity.HasIndex(row => row.ExpiresUtc);
+            entity.HasOne<MessageConversation>().WithMany().HasForeignKey(row => row.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<FounderSoftwareRepairBatch>(entity =>
         {
             entity.ToTable("FounderSoftwareRepairBatches");
