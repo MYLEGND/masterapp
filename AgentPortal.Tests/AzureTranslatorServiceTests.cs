@@ -30,9 +30,11 @@ public sealed class AzureTranslatorServiceTests
         var handler = new RecordingHandler(_ => new HttpResponseMessage(status));
         var service = CreateService(handler);
         Assert.Equal(expected, (await service.DetectLanguageAsync("Hello")).ErrorCode);
-        Assert.Equal(expected, (await service.TranslateAsync("Hello", "ht", "en")).ErrorCode);
+        var single = await service.TranslateAsync("Hello", "ht", "en");
+        Assert.Equal(expected, single.ErrorCode);
+        Assert.True(single.ProviderRequestDispatched);
         var batch = await service.TranslateBatchAsync(new[] { "Hello", "Goodbye" }, "ht", "en");
-        Assert.All(batch, result => { Assert.False(result.Succeeded); Assert.Null(result.TranslatedText); Assert.Equal(expected, result.ErrorCode); });
+        Assert.All(batch, result => { Assert.False(result.Succeeded); Assert.Null(result.TranslatedText); Assert.Equal(expected, result.ErrorCode); Assert.True(result.ProviderRequestDispatched); });
         Assert.Equal(3 * attempts, handler.CallCount);
     }
 
@@ -49,6 +51,7 @@ public sealed class AzureTranslatorServiceTests
         var blocked = await service.TranslateAsync("Hello", "ht", "en", CancellationToken.None,
             LegendConnectExternalProviderPolicy.NativeOnly);
         Assert.False(blocked.Succeeded);
+        Assert.False(blocked.ProviderRequestDispatched);
         Assert.Equal(1, handler.CallCount);
     }
 
@@ -99,7 +102,7 @@ public sealed class AzureTranslatorServiceTests
         Assert.Equal("Tit", single.TranslatedText);
         Assert.Equal(5, service.RequestCharacterCount("Title"));
         var batch = await service.TranslateBatchAsync(["Title", "Hello {name}", "Hello"], "ht", "en");
-        Assert.All(batch, result => Assert.True(result.Succeeded));
+        Assert.All(batch, result => { Assert.True(result.Succeeded); Assert.True(result.ProviderRequestDispatched); });
         Assert.Equal(new[] { "Tit", "Bonjou {name}", "Bonjou" }, batch.Select(result => result.TranslatedText));
         Assert.Equal(3, handler.CallCount);
     }
@@ -204,6 +207,12 @@ public sealed class AzureTranslatorServiceTests
         Assert.Equal("translation_provider_unavailable", detection.ErrorCode);
         Assert.False(translation.Succeeded);
         Assert.Equal("translation_provider_unavailable", translation.ErrorCode);
+        Assert.False(translation.ProviderRequestDispatched);
+        Assert.All(await service.TranslateBatchAsync(["Hello", "Goodbye"], "ht", "en"), result =>
+        {
+            Assert.False(result.Succeeded);
+            Assert.False(result.ProviderRequestDispatched);
+        });
         factory.VerifyNoOtherCalls();
     }
 
@@ -327,7 +336,47 @@ public sealed class AzureTranslatorServiceTests
         var batch = Assert.Single(await service.TranslateBatchAsync(["Bonswa"], "en", "not a language!"));
         Assert.Equal("translation_language_unsupported", single.ErrorCode);
         Assert.Equal("translation_language_unsupported", batch.ErrorCode);
+        Assert.False(single.ProviderRequestDispatched);
+        Assert.False(batch.ProviderRequestDispatched);
         Assert.Equal(0, handler.CallCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedAttempt_ConservativelyReportsDispatchForSingleAndBatch(bool timeout)
+    {
+        var handler = new RecordingHandler((_, _) => timeout
+            ? Task.FromException<HttpResponseMessage>(new TaskCanceledException("synthetic transport timeout"))
+            : Task.FromException<HttpResponseMessage>(new HttpRequestException("synthetic lost response")));
+        var service = CreateService(handler);
+        var single = await service.TranslateAsync("Hello", "fr", "en");
+        var batch = await service.TranslateBatchAsync(["Hello", "Goodbye"], "fr", "en");
+        Assert.False(single.Succeeded);
+        Assert.True(single.ProviderRequestDispatched);
+        Assert.All(batch, result => { Assert.False(result.Succeeded); Assert.True(result.ProviderRequestDispatched); });
+        Assert.Equal(6, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task RetryConfigurationFailureCannotEraseAnEarlierDispatch()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var attempts = 0;
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(value => value.CreateClient("AzureTranslator")).Returns(() =>
+            ++attempts == 1 ? new HttpClient(handler) : throw new HttpRequestException("synthetic client failure"));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["AzureTranslator:Endpoint"] = "https://translator.example.test",
+            ["AzureTranslator:Key"] = "unit-test-key"
+        }).Build();
+        var result = await new AzureTranslatorService(factory.Object, configuration, NullLogger<AzureTranslatorService>.Instance)
+            .TranslateAsync("Hello", "fr", "en");
+        Assert.False(result.Succeeded);
+        Assert.True(result.ProviderRequestDispatched);
+        Assert.Equal(1, handler.CallCount);
+        Assert.Equal(3, attempts);
     }
 
     private static AzureTranslatorService CreateService(RecordingHandler handler)

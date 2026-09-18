@@ -254,6 +254,35 @@ public sealed class ApplicationLocalizationArchitectureTests
         Assert.Equal(requests.Sum(request => request.SourceText.Length), usage.ProviderObservationCharactersAvoided);
     }
 
+    [Fact]
+    public async Task RetainedBatch_MissingProviderConfigurationReleasesCapacityWithoutProviderUsage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var factory = new Mock<System.Net.Http.IHttpClientFactory>(MockBehavior.Strict);
+        var azure = new AzureTranslatorService(factory.Object, new ConfigurationBuilder().Build(), NullLogger<AzureTranslatorService>.Instance);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters"] = "100000",
+            ["LegendConnect:Providers:AzureTranslator:LiveReserveCharacters"] = "0"
+        }).Build();
+        var router = await BuildRouterAsync(db, azure, new TranslationCapacityAuthority(db, configuration,
+            NullLogger<TranslationCapacityAuthority>.Instance));
+        var results = await router.TranslateRetainedBatchAsync(new[] { Request("fr"), Request("fr") with { StableSourceContentId = "other" } });
+        Assert.All(results, result =>
+        {
+            Assert.False(result.Succeeded);
+            Assert.Equal("translation_provider_unavailable", result.ErrorCode);
+        });
+        var capacity = await db.Set<LegendTranslationProviderCapacity>().SingleAsync();
+        Assert.Equal(0, capacity.ReservedLiveCharacters);
+        Assert.Equal(0, capacity.LiveCharactersConsumed);
+        Assert.Equal("Released", (await db.Set<LegendTranslationProviderReservation>().SingleAsync()).State);
+        Assert.Equal(0, await db.Set<LegendTranslationSystemUsage>().SumAsync(row => row.ProviderOperationCount));
+        Assert.Equal(0, await db.Set<LegendTranslationSystemUsage>().SumAsync(row => row.ProviderBillableCharacters));
+        Assert.Empty(await db.LegendTranslationAlignments.ToListAsync());
+        factory.VerifyNoOtherCalls();
+    }
+
     [Theory]
     [InlineData("es")]
     [InlineData("fr")]

@@ -158,10 +158,14 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         CancellationToken cancellationToken,
         LegendConnectExternalProviderPolicy? providerPolicy)
     {
+        var dispatched = false;
+        TranslationProviderResult Result(bool succeeded, string? translated, string? detected,
+            string provider, string? error = null) =>
+            new(succeeded, translated, detected, provider, error, ProviderRequestDispatched: dispatched);
         if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
             .ForbidsExternalProviders)
         {
-            return new TranslationProviderResult(
+            return Result(
                 false,
                 null,
                 null,
@@ -171,9 +175,9 @@ internal sealed class AzureTranslatorService : ITranslationProvider
 
         if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget) ||
             (sourceLanguage is not null && CommunicationLanguages.NormalizeOrNull(sourceLanguage) is null))
-            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_language_unsupported");
+            return Result(false, null, null, ProviderIdentifier, "translation_language_unsupported");
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
-            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_unavailable");
+            return Result(false, null, null, ProviderIdentifier, "translation_provider_unavailable");
 
         var protectedText = AzureProtectedText.Create(text);
         var useHtml = protectedText.Literals.Count > 0;
@@ -184,11 +188,11 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         {
             using var response = await SendWithBoundedRetryAsync(
                 () => CreateRequest(endpoint, path, key, region, useHtml ? protectedText.Text : text),
-                cancellationToken);
+                cancellationToken, () => dispatched = true);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Azure Translator translation failed. StatusCode={StatusCode} TargetLanguage={TargetLanguage}", (int)response.StatusCode, normalizedTarget);
-                return new TranslationProviderResult(false, null, null, ProviderIdentifier, HttpFailureCode(response.StatusCode));
+                return Result(false, null, null, ProviderIdentifier, HttpFailureCode(response.StatusCode));
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -197,7 +201,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 translations.ValueKind != JsonValueKind.Array || translations.GetArrayLength() == 0 ||
                 !translations[0].TryGetProperty("text", out var translatedText))
             {
-                return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
+                return Result(false, null, null, ProviderIdentifier, "translation_provider_failed");
             }
 
             var detected = source;
@@ -207,28 +211,28 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                     ? ReadLanguageDetection(detectedLanguage)
                     : new TranslationDetectionResult(false, null, "translation_provider_failed");
                 if (!detection.Succeeded)
-                    return new TranslationProviderResult(false, null, null, ProviderIdentifier, detection.ErrorCode);
+                    return Result(false, null, null, ProviderIdentifier, detection.ErrorCode);
                 detected = detection.Language;
             }
 
             var translated = useHtml ? protectedText.Restore(translatedText.GetString()) : translatedText.GetString();
             return string.IsNullOrWhiteSpace(translated)
-                ? new TranslationProviderResult(false, null, detected, ProviderIdentifier, "translation_provider_failed")
-                : new TranslationProviderResult(true, translated, detected, ProviderIdentifier);
+                ? Result(false, null, detected, ProviderIdentifier, "translation_provider_failed")
+                : Result(true, translated, detected, ProviderIdentifier);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_timeout");
+            return Result(false, null, null, ProviderIdentifier, "translation_provider_timeout");
         }
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(exception, "Azure Translator translation request failed. TargetLanguage={TargetLanguage}", normalizedTarget);
-            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_transient_failure");
+            return Result(false, null, null, ProviderIdentifier, "translation_provider_transient_failure");
         }
         catch (JsonException exception)
         {
             _logger.LogWarning(exception, "Azure Translator translation response was invalid. TargetLanguage={TargetLanguage}", normalizedTarget);
-            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
+            return Result(false, null, null, ProviderIdentifier, "translation_provider_failed");
         }
     }
 
@@ -241,7 +245,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         if (texts.Count == 0)
             return Array.Empty<TranslationProviderResult>();
         if (texts.Count > 100 || texts.Sum(RequestCharacterCount) > 50_000)
-            return BatchFailure(texts.Count, "translation_batch_invalid");
+            return BatchFailure(texts.Count, "translation_batch_invalid", dispatched: false);
 
         // HTML protection is needed only for literals. Keep plain labels in plain
         // mode, preserving the existing ordinary-text transport contract.
@@ -263,12 +267,16 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         IReadOnlyList<string> texts, string targetLanguage, string? sourceLanguage,
         bool useHtml, CancellationToken cancellationToken)
     {
+        var dispatched = false;
+        TranslationProviderResult Result(bool succeeded, string? translated, string? detected,
+            string provider, string? error = null) =>
+            new(succeeded, translated, detected, provider, error, ProviderRequestDispatched: dispatched);
         var protectedTexts = texts.Select(AzureProtectedText.Create).ToArray();
         if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget) ||
             (sourceLanguage is not null && CommunicationLanguages.NormalizeOrNull(sourceLanguage) is null))
-            return BatchFailure(texts.Count, "translation_language_unsupported");
+            return BatchFailure(texts.Count, "translation_language_unsupported", dispatched);
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
-            return BatchFailure(texts.Count, "translation_provider_unavailable");
+            return BatchFailure(texts.Count, "translation_provider_unavailable", dispatched);
 
         var source = CommunicationLanguages.NormalizeOrNull(sourceLanguage);
         var path = $"/translate?api-version=3.0&textType={(useHtml ? "html" : "plain")}&to={Uri.EscapeDataString(normalizedTarget)}" +
@@ -277,7 +285,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         {
             using var response = await SendWithBoundedRetryAsync(
                 () => CreateRequest(endpoint, path, key, region, useHtml ? protectedTexts.Select(text => text.Text).ToArray() : texts),
-                cancellationToken);
+                cancellationToken, () => dispatched = true);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
@@ -285,14 +293,14 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                     (int)response.StatusCode,
                     normalizedTarget,
                     texts.Count);
-                return BatchFailure(texts.Count, HttpFailureCode(response.StatusCode));
+                return BatchFailure(texts.Count, HttpFailureCode(response.StatusCode), dispatched);
             }
 
             using var document = JsonDocument.Parse(
                 await response.Content.ReadAsStreamAsync(cancellationToken));
             if (document.RootElement.ValueKind != JsonValueKind.Array ||
                 document.RootElement.GetArrayLength() != texts.Count)
-                return BatchFailure(texts.Count, "translation_provider_failed");
+                return BatchFailure(texts.Count, "translation_provider_failed", dispatched);
 
             var results = new List<TranslationProviderResult>(texts.Count);
             foreach (var item in document.RootElement.EnumerateArray())
@@ -305,7 +313,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                         : new TranslationDetectionResult(false, null, "translation_provider_failed");
                     if (!detection.Succeeded)
                     {
-                        results.Add(new TranslationProviderResult(false, null, null, ProviderIdentifier, detection.ErrorCode));
+                        results.Add(Result(false, null, null, ProviderIdentifier, detection.ErrorCode));
                         continue;
                     }
                     detected = detection.Language;
@@ -317,7 +325,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                     !translations[0].TryGetProperty("text", out var translatedText) ||
                     string.IsNullOrWhiteSpace(translatedText.GetString()))
                 {
-                    results.Add(new TranslationProviderResult(
+                    results.Add(Result(
                         false,
                         null,
                         detected,
@@ -327,7 +335,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 }
 
                 var restored = useHtml ? protectedTexts[results.Count].Restore(translatedText.GetString()) : translatedText.GetString();
-                results.Add(new TranslationProviderResult(
+                results.Add(Result(
                     restored is not null,
                     restored,
                     detected,
@@ -338,7 +346,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return BatchFailure(texts.Count, "translation_provider_timeout");
+            return BatchFailure(texts.Count, "translation_provider_timeout", dispatched);
         }
         catch (HttpRequestException exception)
         {
@@ -347,7 +355,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 "Azure Translator batch request failed. TargetLanguage={TargetLanguage} ItemCount={ItemCount}",
                 normalizedTarget,
                 texts.Count);
-            return BatchFailure(texts.Count, "translation_provider_transient_failure");
+            return BatchFailure(texts.Count, "translation_provider_transient_failure", dispatched);
         }
         catch (JsonException exception)
         {
@@ -356,7 +364,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 "Azure Translator batch response was invalid. TargetLanguage={TargetLanguage} ItemCount={ItemCount}",
                 normalizedTarget,
                 texts.Count);
-            return BatchFailure(texts.Count, "translation_provider_failed");
+            return BatchFailure(texts.Count, "translation_provider_failed", dispatched);
         }
     }
 
@@ -376,7 +384,8 @@ internal sealed class AzureTranslatorService : ITranslationProvider
 
     private async Task<HttpResponseMessage> SendWithBoundedRetryAsync(
         Func<HttpRequestMessage> createRequest,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action? onDispatched = null)
     {
         Exception? lastFailure = null;
         for (var attempt = 1; attempt <= MaximumAttempts; attempt++)
@@ -384,8 +393,11 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             try
             {
                 using var request = createRequest();
-                var response = await _httpClientFactory.CreateClient("AzureTranslator")
-                    .SendAsync(request, cancellationToken);
+                var client = _httpClientFactory.CreateClient("AzureTranslator");
+                // An attempted SendAsync may have reached Azure even if no response returns.
+                // Keep this true across retries; result/error categories cannot undo dispatch.
+                onDispatched?.Invoke();
+                var response = await client.SendAsync(request, cancellationToken);
                 if (!IsTransient(response.StatusCode) || attempt == MaximumAttempts)
                     return response;
 
@@ -477,13 +489,15 @@ internal sealed class AzureTranslatorService : ITranslationProvider
 
     private static IReadOnlyList<TranslationProviderResult> BatchFailure(
         int count,
-        string errorCode) => Enumerable.Range(0, count)
+        string errorCode,
+        bool dispatched) => Enumerable.Range(0, count)
         .Select(_ => new TranslationProviderResult(
             false,
             null,
             null,
             ProviderIdentifier,
-            errorCode))
+            errorCode,
+            ProviderRequestDispatched: dispatched))
         .ToArray();
 
     private sealed record AzureTextInput(string Text);

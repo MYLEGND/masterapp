@@ -91,7 +91,7 @@ public interface ITranslationService
                 null,
                 null,
                 "none",
-                "native_only_translation_boundary_not_policy_aware"))
+                "native_only_translation_boundary_not_policy_aware", ProviderRequestDispatched: false))
             : TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken);
 }
 
@@ -106,7 +106,10 @@ public sealed record TranslationProviderResult(
     string? TranslatedText,
     string? DetectedLanguage,
     string Provider,
-    string? ErrorCode = null);
+    string? ErrorCode = null,
+    // Provider-owned transport evidence: false proves no HTTP attempt; null is
+    // unknown/legacy and must remain conservative for capacity accounting.
+    bool? ProviderRequestDispatched = null);
 
 public static class MessagingParticipantTypes
 {

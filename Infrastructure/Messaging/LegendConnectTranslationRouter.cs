@@ -1224,7 +1224,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 cancellationToken,
                 allowProviderObservationReuse: false,
                 allowLegacyIntelligence: false);
-            if (string.Equals(result.Provider, _azure.ProviderName, StringComparison.Ordinal))
+            if (string.Equals(result.Provider, _azure.ProviderName, StringComparison.Ordinal) && result.ProviderRequestDispatched != false)
             {
                 ApplicationLocalizationTelemetry.ProviderOperation(
                     source,
@@ -1574,6 +1574,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     target,
                     source,
                     cancellationToken);
+                // Only the provider can prove no dispatch. Empty/malformed/legacy receipts
+                // remain uncertain and retain conservative capacity accounting.
+                providerExecuted = providerResults.Count != chunk.Count ||
+                    providerResults.Any(result => result.ProviderRequestDispatched != false);
                 providerSucceeded = providerResults.Count == chunk.Count &&
                     providerResults.All(result =>
                         result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText));
@@ -1887,14 +1891,14 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         var target = await TraceTranslationStageAsync("translation_language_registry", _languages.GetType().Name + ".NormalizeEnabledTranslationLanguageAsync",
                     () => _languages.NormalizeEnabledTranslationLanguageAsync(targetLanguage, cancellationToken), externalProviderPolicy);
         if (target is null)
-            return Finish(new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported"));
+            return Finish(new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported", ProviderRequestDispatched: false));
 
         var source = sourceLanguage is null
             ? null
             : await TraceTranslationStageAsync("translation_language_registry", _languages.GetType().Name + ".NormalizeEnabledTranslationLanguageAsync",
                     () => _languages.NormalizeEnabledTranslationLanguageAsync(sourceLanguage, cancellationToken), externalProviderPolicy);
         if (sourceLanguage is not null && source is null)
-            return Finish(new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported"));
+            return Finish(new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported", ProviderRequestDispatched: false));
 
         LegendConnectTelemetry.TranslationRequested(source, target);
 
@@ -2199,7 +2203,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 _logger.LogError(
                     "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
                     "TranslationBoundaryFailed", _entitlements.GetType().Name + ".TryReserveAsync", "translation_quota", "failed", "translation_accounting_unavailable", exception.GetType().Name);
-                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_accounting_unavailable"));
+                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_accounting_unavailable", ProviderRequestDispatched: false));
             }
 
             if (!quota.Succeeded)
@@ -2211,7 +2215,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         new TranslationSystemUsageDelta(QuotaDeniedRequests: 1),
                         cancellationToken);
                 }
-                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, quota.ErrorCode ?? "translation_accounting_unavailable"));
+                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, quota.ErrorCode ?? "translation_accounting_unavailable", ProviderRequestDispatched: false));
             }
             quotaReservation = quota.Reservation;
         }
@@ -2245,7 +2249,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         summary: "Live translation capacity could not be reserved.",
                         cancellationToken: cancellationToken);
                 }
-                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, capacityResult.FailureCode ?? "translation_capacity_unavailable"));
+                return Finish(new TranslationProviderResult(false, null, source, _azure.ProviderName, capacityResult.FailureCode ?? "translation_capacity_unavailable", ProviderRequestDispatched: false));
             }
 
             providerExecuted = true;
@@ -2256,9 +2260,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 source,
                 cancellationToken,
                 externalProviderPolicy), externalProviderPolicy);
+            providerExecuted = result.ProviderRequestDispatched != false;
             providerSucceeded = result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText);
             providerFailureCode = providerSucceeded ? null : result.ErrorCode ?? "translation_provider_failed";
-            if (providerSucceeded && source is not null)
+            if (providerExecuted && providerSucceeded && source is not null)
                 LegendConnectTelemetry.ProviderCharactersServed(_azure.ProviderName, reservation.Characters, source, target);
             else if (!providerSucceeded && _operations is not null)
             {

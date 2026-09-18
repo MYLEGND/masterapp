@@ -127,6 +127,71 @@ public sealed class LegendConnectEntitlementTests
         Assert.Equal(1, (await db.LegendTranslationUsagePeriods.SingleAsync()).ProviderOperationCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [InlineData(null)]
+    public async Task ProviderDispatchEvidence_DrivesAccountingWithoutErrorCodeInference(bool? dispatched)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var authority = Authority(db, new TranslationAccessStub(granted: true), allowance: 20);
+        var provider = new DispatchReceiptProvider(dispatched);
+        var response = await Router(db, provider, authority, 20).TranslateForAccountAsync(
+            "failure", "ht", "en", Account, Reference("dispatch-evidence"));
+        Assert.False(response.Succeeded);
+        Assert.Equal("opaque-synthetic-failure", response.ErrorCode);
+        var mayHaveExecuted = dispatched != false;
+        var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
+        Assert.Equal(mayHaveExecuted, ledger.ProviderExecuted);
+        Assert.False(ledger.Succeeded);
+        Assert.Equal(mayHaveExecuted ? "ProviderFailed" : "Released", ledger.State);
+        var usage = await db.LegendTranslationUsagePeriods.SingleAsync();
+        Assert.Equal(0, usage.ReservedCharacters);
+        Assert.Equal(0, usage.ConsumedCharacters);
+        Assert.Equal(mayHaveExecuted ? 1 : 0, usage.ProviderOperationCount);
+        Assert.Equal(mayHaveExecuted ? 1 : 0, usage.ProviderFailureCount);
+        var capacity = await db.Set<LegendTranslationProviderCapacity>().SingleAsync();
+        Assert.Equal(0, capacity.ReservedLiveCharacters);
+        Assert.Equal(mayHaveExecuted ? 7 : 0, capacity.LiveCharactersConsumed);
+        Assert.Equal(1, provider.Calls);
+    }
+
+    [Fact]
+    public async Task MissingAzureConfiguration_ReleasesAdmissionWithoutProviderCharge()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var factory = new Mock<System.Net.Http.IHttpClientFactory>(MockBehavior.Strict);
+        var azure = new AzureTranslatorService(factory.Object, new ConfigurationBuilder().Build(), NullLogger<AzureTranslatorService>.Instance);
+        var authority = Authority(db, new TranslationAccessStub(granted: true), allowance: 20);
+        var response = await Router(db, azure, authority, 20).TranslateForAccountAsync("failure", "fr", "en", Account, Reference("missing-config"));
+        Assert.False(response.Succeeded);
+        Assert.False(response.ProviderRequestDispatched);
+        var ledger = await db.LegendTranslationUsageLedgers.SingleAsync();
+        Assert.Equal("Released", ledger.State);
+        Assert.False(ledger.ProviderExecuted);
+        var period = await db.LegendTranslationUsagePeriods.SingleAsync();
+        Assert.Equal(0, period.ReservedCharacters);
+        Assert.Equal(0, period.ConsumedCharacters);
+        Assert.Equal(0, period.ProviderOperationCount);
+        Assert.Equal(0, (await db.Set<LegendTranslationProviderCapacity>().SingleAsync()).LiveCharactersConsumed);
+        factory.VerifyNoOtherCalls();
+    }
+
+    private sealed class DispatchReceiptProvider(bool? dispatched) : ITranslationProvider
+    {
+        public string ProviderName => "AzureTranslator";
+        public int Calls { get; private set; }
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
+            => Task.FromResult(new TranslationDetectionResult(true, "en"));
+        public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage,
+            string? sourceLanguage = null, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new TranslationProviderResult(false, null, sourceLanguage, ProviderName,
+                "opaque-synthetic-failure", ProviderRequestDispatched: dispatched));
+        }
+    }
+
     [Fact]
     public async Task ProviderFailure_ReleasesReservationAndPreservesQuota()
     {
