@@ -1,5 +1,6 @@
 using ClientApp.Models;
 using ClientApp.Services;
+using Domain.Billing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
