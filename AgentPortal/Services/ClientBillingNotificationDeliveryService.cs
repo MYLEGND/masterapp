@@ -28,6 +28,7 @@ public sealed class ClientBillingNotificationDeliveryService
         var limit = Math.Clamp(maxItems, 1, 100);
         var notifications = await _db.ClientBillingNotifications
             .Include(notification => notification.ClientProfile)
+            .Include(notification => notification.ClientSubscription)
             .Where(notification =>
                 notification.SentUtc == null &&
                 notification.NotBeforeUtc <= nowUtc &&
@@ -89,6 +90,15 @@ public sealed class ClientBillingNotificationDeliveryService
     {
         var safeSubject = System.Net.WebUtility.HtmlEncode(notification.Subject);
         var safeBody = System.Net.WebUtility.HtmlEncode(notification.PlainTextBody);
+        var subscription = notification.ClientSubscription;
+        var amount = subscription is null
+            ? string.Empty
+            : (subscription.MonthlyAmountCents / 100m).ToString("C2", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+        var nextBilling = subscription?.NextBillingDateUtc is DateTime next
+            ? DateTime.SpecifyKind(next, DateTimeKind.Utc).ToLocalTime().ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
+        var safeAmount = System.Net.WebUtility.HtmlEncode(amount);
+        var safeNextBilling = System.Net.WebUtility.HtmlEncode(nextBilling);
 
         return $"""
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#ffffff;font-family:Arial,sans-serif;color:#14213a;">
@@ -104,6 +114,15 @@ public sealed class ClientBillingNotificationDeliveryService
         <tr>
           <td style="padding:24px 28px 28px 28px;background:#ffffff;">
             <div style="font-size:15px;line-height:1.65;color:#506078;">{safeBody}</div>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:18px;border:1px solid #dbe5f4;border-radius:12px;background:#f6f8fc;">
+              <tr>
+                <td style="padding:16px 18px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:#2e5fa9;">Next billing period</div>
+                  <div style="margin-top:8px;font-size:30px;line-height:1;font-weight:800;color:#0d2145;">{safeAmount}<span style="font-size:15px;color:#66758c;"> / month</span></div>
+                  <div style="margin-top:10px;font-size:14px;color:#506078;"><strong>Effective:</strong> {safeNextBilling}</div>
+                </td>
+              </tr>
+            </table>
             <div style="margin-top:22px;padding-top:16px;border-top:1px solid #dbe5f4;font-size:13px;font-weight:800;color:#0d2145;">LEGEND®</div>
           </td>
         </tr>
