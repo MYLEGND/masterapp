@@ -188,7 +188,7 @@ public sealed class SubscriptionActivationService
                 context.Client.Id,
                 cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new SubscriptionActivationExecutionResult(
                 false,
