@@ -4554,14 +4554,14 @@ internal sealed partial class MessagingService : IMessagingService
         {
             var source = ToTranslationSource(message);
             var sourceLanguage = await ResolveRoutingSourceLanguageAsync(source, cancellationToken);
-            if (sourceLanguage is null)
-                return null;
-            if (!string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+            var translated = await GetOrCreateMessageTranslationAsync(
+                source,
+                targetLanguage,
+                recipient,
+                cancellationToken,
+                resolvedSourceLanguage: sourceLanguage);
+            if (translated is not null)
             {
-                var translated = await GetOrCreateMessageTranslationAsync(source, targetLanguage,
-                    recipient, cancellationToken, resolvedSourceLanguage: sourceLanguage);
-                if (translated is null)
-                    return null;
                 detail = translated.Notice is null ? translated.TranslatedText
                     : translated.Notice + "\n\n" + translated.TranslatedText;
             }
@@ -4626,7 +4626,8 @@ internal sealed partial class MessagingService : IMessagingService
                     continue;
                 if (translation.Notice is not null)
                     presentation = presentation with { TranslationNotice = translation.Notice };
-                else if (!string.Equals(translation.OriginalLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+                else if (!string.Equals(translation.Provider, "Original", StringComparison.Ordinal) &&
+                         !string.Equals(translation.OriginalLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
                 {
                     presentation = presentation with
                     {
@@ -4733,7 +4734,13 @@ internal sealed partial class MessagingService : IMessagingService
     {
         var sourceLanguage = resolvedSourceLanguage ?? await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
         if (sourceLanguage is null)
-            return null;
+        {
+            _logger.LogWarning(
+                "Message language detection was unavailable; presenting the durable original. MessageId={MessageId} TargetLanguage={TargetLanguage}",
+                message.Id,
+                targetLanguage);
+            return new CachedMessageTranslation(message.Body, "und", "Original");
+        }
 
         if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
             return new CachedMessageTranslation(message.Body, sourceLanguage, "LegendConnectSameLanguage");
@@ -4791,8 +4798,8 @@ internal sealed partial class MessagingService : IMessagingService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Message translation provider failed. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
-            return null;
+            _logger.LogWarning(ex, "Message translation provider failed; presenting the durable original. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
+            return new CachedMessageTranslation(message.Body, sourceLanguage, "Original");
         }
 
         // Exhausted user allowance is a deliverable original, never a successful
@@ -4809,11 +4816,11 @@ internal sealed partial class MessagingService : IMessagingService
             string.IsNullOrWhiteSpace(providerResult.TranslatedText))
         {
             _logger.LogWarning(
-                "Message translation was unavailable. MessageId={MessageId} TargetLanguage={TargetLanguage} ErrorCode={ErrorCode}",
+                "Message translation was unavailable; presenting the durable original without caching a translation. MessageId={MessageId} TargetLanguage={TargetLanguage} ErrorCode={ErrorCode}",
                 message.Id,
                 targetLanguage,
                 providerResult.ErrorCode ?? "translation_provider_failed");
-            return null;
+            return new CachedMessageTranslation(message.Body, sourceLanguage, "Original");
         }
 
         var created = new MessageTranslation
@@ -4844,7 +4851,7 @@ internal sealed partial class MessagingService : IMessagingService
                     translation.Provider))
                 .SingleOrDefaultAsync(cancellationToken);
             if (concurrent is null)
-                return null;
+                return new CachedMessageTranslation(message.Body, sourceLanguage, "Original");
             return concurrent;
         }
 
