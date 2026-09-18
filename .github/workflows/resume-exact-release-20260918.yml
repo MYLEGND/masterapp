@@ -1,0 +1,190 @@
+name: Resume exact September 18 direct release
+
+on:
+  push:
+    branches:
+      - feature/public-website-editor-20260918
+    paths:
+      - '.github/workflows/resume-exact-release-20260918.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: resume-exact-release-20260918
+  cancel-in-progress: false
+
+env:
+  RELEASE_SHA: fd22853357d4005269a0bf73ae88602c949d8995
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact validated release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Rebuild exact validated artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd Legend-Website
+          npm run build
+          cp public/web.config dist/web.config
+          npm run check
+          cd ..
+
+          dotnet publish AgentPortal/AgentPortal.csproj -c Release -o /tmp/agentportal-publish
+          dotnet publish ClientApp/ClientApp.csproj -c Release -o /tmp/clientapp-publish
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release -o /tmp/protect-publish
+
+          mkdir -p /tmp/agentportal-publish/wwwroot /tmp/clientapp-publish/wwwroot /tmp/protect-publish/wwwroot
+          printf '{"releaseSha":"%s","release":"all-intentional-20260918"}\n' "$RELEASE_SHA" > /tmp/agentportal-publish/wwwroot/_deployment-provenance.json
+          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json /tmp/clientapp-publish/wwwroot/_deployment-provenance.json
+          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json /tmp/protect-publish/wwwroot/_deployment-provenance.json
+          cp /tmp/agentportal-publish/wwwroot/_deployment-provenance.json Legend-Website/dist/_deployment-provenance.json
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restart Protect after successful package deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          az webapp restart --resource-group masterapp-rg --name masterapp-protect
+
+      - name: Verify Protect exact release after restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_host() {
+            base="$1"
+            label="$2"
+            for i in {1..90}; do
+              code="$(curl --connect-timeout 5 --max-time 15 -sS -L -o "/tmp/${label}.json" -w '%{http_code}' "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
+              if [ "$code" = "200" ] && grep -q "$RELEASE_SHA" "/tmp/${label}.json"; then
+                echo "$label exact release verified"
+                return 0
+              fi
+              echo "$label attempt=$i status=$code"
+              sleep 5
+            done
+            return 1
+          }
+          verify_host https://masterapp-protect.azurewebsites.net protect-azure
+          verify_host https://protect.mylegnd.com protect-custom
+
+          curl --connect-timeout 5 --max-time 15 -fsSL https://protect.mylegnd.com/ -o /tmp/protect-home.html
+          grep -q '<strong>LEGEND</strong>' /tmp/protect-home.html
+          ! grep -q 'brand-banner' /tmp/protect-home.html
+          grep -q 'instagram.com/legend.vault' /tmp/protect-home.html
+          grep -q 'Legend® ios App' /tmp/protect-home.html
+          curl --connect-timeout 5 --max-time 15 -fsSL https://protect.mylegnd.com/design/legend-public-cms.js -o /tmp/protect-cms.js
+          grep -q 'Website Editor' /tmp/protect-cms.js
+
+      - name: Deploy LEGEND website
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-website
+          slot-name: Production
+          package: Legend-Website/dist
+
+      - name: Verify LEGEND exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_host() {
+            base="$1"
+            label="$2"
+            for i in {1..90}; do
+              code="$(curl --connect-timeout 5 --max-time 15 -sS -L -o "/tmp/${label}.json" -w '%{http_code}' "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
+              if [ "$code" = "200" ] && grep -q "$RELEASE_SHA" "/tmp/${label}.json"; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+          verify_host https://masterapp-website.azurewebsites.net legend-azure
+          verify_host https://www.mylegnd.com legend-custom
+          curl --connect-timeout 5 --max-time 15 -fsSL https://www.mylegnd.com/ -o /tmp/legend-home.html
+          grep -q '<strong>LEGEND®</strong>' /tmp/legend-home.html
+          ! grep -q 'brand-banner' /tmp/legend-home.html
+          ! grep -q 'Live Legendary' /tmp/legend-home.html
+          grep -q 'instagram.com/legend.vault' /tmp/legend-home.html
+          grep -q 'Legend® ios App' /tmp/legend-home.html
+
+      - name: Deploy AgentPortal
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-portal
+          slot-name: Production
+          package: /tmp/agentportal-publish
+
+      - name: Verify AgentPortal exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_host() {
+            base="$1"
+            label="$2"
+            for i in {1..90}; do
+              code="$(curl --connect-timeout 5 --max-time 15 -sS -L -o "/tmp/${label}.json" -w '%{http_code}' "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
+              if [ "$code" = "200" ] && grep -q "$RELEASE_SHA" "/tmp/${label}.json"; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+          verify_host https://masterapp-portal.azurewebsites.net portal-azure
+          verify_host https://portal.mylegnd.com portal-custom
+          curl --connect-timeout 5 --max-time 15 -fsSL https://portal.mylegnd.com/js/website-analytics.js -o /tmp/analytics.js
+          grep -q 'edit-protect-website' /tmp/analytics.js
+          grep -q 'edit-legend-website' /tmp/analytics.js
+
+      - name: Deploy ClientApp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-client
+          slot-name: Production
+          package: /tmp/clientapp-publish
+
+      - name: Verify ClientApp exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_host() {
+            base="$1"
+            label="$2"
+            for i in {1..90}; do
+              code="$(curl --connect-timeout 5 --max-time 15 -sS -L -o "/tmp/${label}.json" -w '%{http_code}' "$base/_deployment-provenance.json?sha=$RELEASE_SHA" || true)"
+              if [ "$code" = "200" ] && grep -q "$RELEASE_SHA" "/tmp/${label}.json"; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+          verify_host https://masterapp-client.azurewebsites.net client-azure
+          verify_host https://client.mylegnd.com client-custom
