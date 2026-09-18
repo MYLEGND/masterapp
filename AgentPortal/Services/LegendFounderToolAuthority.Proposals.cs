@@ -7,6 +7,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Shared.Auth;
 
 namespace AgentPortal.Services;
 
@@ -30,6 +31,7 @@ internal sealed partial class LegendFounderToolAuthority
         }, JsonOptions);
         if (!TryPrepareCloudAction(sourceScope, CloudRepairTool, json, out var arguments, out _) ||
             !TryReadCloudRepairArguments(arguments, out _) ||
+            founder.GetCanonicalTenantId() != sourceScope.TenantId ||
             !await ReauthorizeCloudScopeAsync(founder, sourceScope, cancellationToken))
             return new(false, "cloud_proposal_scope_denied");
         using var services = _authorizationScopes!.CreateScope();
@@ -75,7 +77,7 @@ internal sealed partial class LegendFounderToolAuthority
         if (row is null || !IsIntactCloudProposal(row) || row.ExpiresUtc <= DateTime.UtcNow ||
             !TryReadCloudReviewPolicy(services.ServiceProvider, out var policy) ||
             row.AccountId != policy.AccountId || row.Environment != policy.Environment ||
-            founder.FindFirst("tid")?.Value != row.TenantId || string.IsNullOrWhiteSpace(founder.FindFirst("sid")?.Value))
+            founder.GetCanonicalTenantId() != row.TenantId || string.IsNullOrWhiteSpace(founder.FindFirst("sid")?.Value))
             return null;
         try
         {
@@ -102,6 +104,7 @@ internal sealed partial class LegendFounderToolAuthority
         cancellationToken.ThrowIfCancellationRequested();
         newScope = newScope with { Roles = newScope.Roles?.ToArray() ?? [] };
         if (proposalId == Guid.Empty || string.IsNullOrWhiteSpace(expectedRevision) || string.IsNullOrWhiteSpace(reviewDigest) ||
+            founder.GetCanonicalTenantId() != newScope.TenantId ||
             !await ReauthorizeCloudScopeAsync(founder, newScope, cancellationToken))
             return new(false, "cloud_proposal_scope_denied");
         using var services = _authorizationScopes!.CreateScope();

@@ -438,7 +438,7 @@ internal sealed partial class LegendFounderToolAuthority
 
             case "legend_capabilities":
             {
-                return SerializeUnbounded(DescribeFounderCapabilities(cloudExposureOnly: providerPolicy?.AllowCloudflareInference == true));
+                return SerializeUnbounded(DescribeFounderCapabilitiesCore(cloudExposureOnly: providerPolicy?.AllowCloudflareInference == true));
             }
 
             case "legend_remember_conversation_facts":
@@ -1925,7 +1925,9 @@ internal sealed partial class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
-    private static IReadOnlyList<object> DescribeFounderCapabilities(bool cloudExposureOnly = false)
+    private static IReadOnlyList<object> DescribeFounderCapabilities() => DescribeFounderCapabilitiesCore(false);
+
+    private static IReadOnlyList<object> DescribeFounderCapabilitiesCore(bool cloudExposureOnly)
     {
         var capabilities = new List<object>();
         foreach (var tool in BuildFounderTools())

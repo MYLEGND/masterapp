@@ -193,6 +193,18 @@ public sealed class LegendFounderCloudProposalTests
     }
 
     [Fact]
+    public async Task MappedTenantClaimUsesTheExistingCanonicalIdentityResolver()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var review = (await fixture.StageAsync()).Review!;
+        var identity = (ClaimsIdentity)fixture.Principal.Identity!;
+        identity.RemoveClaim(identity.FindFirst("tid")!);
+        identity.AddClaim(new("http://schemas.microsoft.com/identity/claims/tenantid", "TENANT-FIXTURE"));
+        Assert.Equal(review, await fixture.Authority().GetCloudActionProposalAsync(fixture.Principal, review.ProposalId, CancellationToken.None));
+        Assert.True((await fixture.StageAsync()).Succeeded);
+    }
+
+    [Fact]
     public async Task CompletedApprovalRechecksPinnedWorkflowBeforeAnyGitHubDispatch()
     {
         await using var fixture = await Fixture.CreateAsync();
