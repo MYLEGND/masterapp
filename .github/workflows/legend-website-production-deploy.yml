@@ -20,7 +20,7 @@ on:
       - '.github/workflows/legend-website-production-deploy.yml'
 
 concurrency:
-  group: legend-website-${{ github.ref }}
+  group: agentportal-production
   cancel-in-progress: false
 
 permissions:

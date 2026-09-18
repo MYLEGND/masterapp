@@ -1,0 +1,861 @@
+[
+  {
+    "branch": "advance/legend-general-reasoning-20260827",
+    "sha": "057144c6416c48a2d5db6a698ba95d80cb0ab318",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "appointment-sync-terminal-fix",
+    "sha": "4a305b3d71c4502aa25cdb6128a50115e56de1a7",
+    "contained": true,
+    "retainReasons": [
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "builder/legend-general-reasoning-20260827",
+    "sha": "8404bf2b9b002536ae770580566699f7c29ccf42",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "chore/repository-hygiene-20260831",
+    "sha": "7680cff83e8f5e7463059274080342862ed4ca11",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "ci/unify-validation-deploy-20260826",
+    "sha": "012ea922d1e173c33b6e1837260b1592788b1bb4",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "cleanup/remove-legacy-security-ci-20260826",
+    "sha": "40e0524fb5c83934a08bd1aca769cd79844c8264",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "codex/rg5-authoritative-exact",
+    "sha": "5c0c179fddf18c7d6198b5a037e90c9cd10e498b",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "codex/rg5-authoritative-repair",
+    "sha": "58843bb58c070d74163829eeac3c06bfa0f0f55e",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "codex/rg5-complete-prerequisite",
+    "sha": "38283e926859caed3af761a2a98f9f618482e2c7",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/codexrg5-complete-prerequisite",
+    "sha": "7c34c2712afe926ff6188dd7c3098713c1d6823c",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/create-website-app-folder",
+    "sha": "5f236cbc0d69ff2198b7e1c4a45056ffa6a2d83f",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "copilot/fix-http-error-500-30",
+    "sha": "5f236cbc0d69ff2198b7e1c4a45056ffa6a2d83f",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "copilot/fixlegend-rg5-discourse-first-option-20260903",
+    "sha": "809cb8714c44dbcab1c6fb5b9c43b7fe56b74ce4",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/masterapp-deployment-issues",
+    "sha": "e3b5304a898280fac9a6da4e2e32243b7ac5e5d0",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/production-merge-automatic-deployment",
+    "sha": "78a59554389e14fce64a8f42f6753484f111c948",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "copilot/restore-legend-ai-operation",
+    "sha": "6759dfedf4c995db1d593b6c183a98c04639df8e",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/restore-legend-system-coherence",
+    "sha": "828d7d4dac786c9d2f534a78b18914f94cb2c4d7",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/rg-5-persist-replacement-identity",
+    "sha": "c08245d792eaf4a4231c5a02b633a39b71de26e6",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/verify-draft-pr-91",
+    "sha": "cd76870b5da7b43846b19d1a999e32a34386e5d2",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/verify-replacement-occurrence-prerequisite",
+    "sha": "022970c00a7d92ebe7550dc482d20f7a43a85559",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "copilot/verify-rg-5-candidate-9eeaf6d",
+    "sha": "2b6cc2e83f020761f901e187378c849394f82533",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "deploy/all-webapps-shared-mobile-20260917",
+    "sha": "d633273aca32bee6b4093be586d6afeb95adfad7",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "deploy/protect-design-force-20260917",
+    "sha": "dd4280761669b653815a6f087a2c660a6ebe6c8c",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "deploy/protect-design-force-async-20260917",
+    "sha": "ba54d1db252b3f84645b772f87f95bd65f91b9d8",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "deploy/public-website-editor-final-20260918",
+    "sha": "e8ef237d7393d6140efc03876317121969f77dc0",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "deploy/subscription-activation-20260917",
+    "sha": "4240d3ae2670f245013b1dbde63de35df8e43409",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "diagnostic/clientapp-startup-20260917",
+    "sha": "3323134d33bbe74f340b96ef7d8726e17faebff2",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "diagnostic/legend-live-conversation-20260827-final",
+    "sha": "03a598751590bcaef0968003ff24f96c3e229969",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "diagnostic/website-domain-cutover-20260917",
+    "sha": "71b15130b84c4ec55c99c8489f054493136f8aeb",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "feature/public-website-editor-20260918",
+    "sha": "c3009bfb346a0b08f718f4a245ec89d7259d5071",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "fix/all-webapps-shared-mobile-authority-20260917",
+    "sha": "b2cbc1ed4255ebd469b80d8911f2aa080200b167",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/android-build-integrity-20260831",
+    "sha": "8f949a522ad4129fd98fe967fb43917d337b86fb",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/clientapp-oidc-state-unprotect-20260917",
+    "sha": "bacdf6fad6ff13c6b38582b041ec0453aa8abe88",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/founder-ai-diagnostic-mobile-20260825",
+    "sha": "a0ccdc3da277feec0f3d95b02743be5fad4db3e7",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/founder-ai-full-diagnostic-access-20260825",
+    "sha": "f23a642884b0760ff1fd52784640934ddb015443",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/founder-governed-remediation-v21",
+    "sha": "1f3270c060da48cbf5caf249456948de37b0e65a",
+    "contained": true,
+    "retainReasons": [
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/founder-production-ready-20260825",
+    "sha": "ff3c1608369a731cce89481adcf1e77eb52eeb73",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "fix/founder-remediation-bounded-large-file-patches",
+    "sha": "bdf7772b2ac4ce7569bca1f420f0a878d30f62c1",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run",
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/founder-teacher-comprehensive-inspection-20260825",
+    "sha": "99afa263c6253f783980e3794d466cbbe4a2cb63",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/ios-mobile-web-authority-20260917",
+    "sha": "e6c8ca82010ba238665045689bf1767803d70228",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-current-evaluator-queue-boundary-20260827",
+    "sha": "45dccc9a45938ad51854381275939c7b2cdf51e0",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "fix/legend-founder-intelligence-20260819",
+    "sha": "7f11600e5db4aa7cbba47741fb62328d7e54adf8",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-founder-live-diagnostics-20260908",
+    "sha": "f8e789a133f5bcbeab992bca6cf12ec816dc3bf8",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-founder-openai-role-learning-20260824",
+    "sha": "46c4a5cbdf7ae88236568bef56c1154f86c643c3",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "fix/legend-founder-openai-role-learning-current-20260825",
+    "sha": "46c4a5cbdf7ae88236568bef56c1154f86c643c3",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "fix/legend-founder-openai-role-learning-validation-20260824",
+    "sha": "cd104f37660cfef2125febd201b8067b653385c6",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-founder-provider-contract-20260819",
+    "sha": "9b14b21c921e156cae8e6c4d801eda727750dd41",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-governed-reasoning-executor-20260827",
+    "sha": "2aedddca2bc66deda134478cf2e57e3f079162b0",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-native-articulation-20260826",
+    "sha": "32c99e451d985c39b31c13e12743f00ce7ab139a",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-native-context-reasoning-20260827",
+    "sha": "9f22e3c255ded69a011efcb47b7f9f76e169a051",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-openai-diagnostic-teacher-retention-20260824",
+    "sha": "71e7a74d42d253b28f2c68c4a7edc027ad7fb3d0",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-production-convergence-20260824",
+    "sha": "f32359341169bf69d9a2531e07dde99da4227f0b",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-production-convergence-validate-20260824",
+    "sha": "ac9340f94b4c042c3b59046692a667ccd2937ddb",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-production-proof-scale-and-native-eligibility-20260829",
+    "sha": "449ce653e4fef783875199e47a63784acd824681",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-ranked-evidence-articulation-20260828",
+    "sha": "a7abc7de5a21b31f56405ae10888db55027f0fff",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/legend-terminal-retirement-reasons-20260824",
+    "sha": "6410adaa9fae627c7d83b077deff6e3688aebc87",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/mobile-web-native-parity-20260917",
+    "sha": "04739acd01bd20e9e4d9c6061a1ceaac5ba4cd0c",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/mobile-web-native-parity-validated-20260917",
+    "sha": "a01e5b826dea9d6e371e3588055bd0e67d01cce3",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/native-general-reasoning-20260903",
+    "sha": "c9365bec5effc14e8ce39a0bde24cedf63645dfc",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/protect-shared-mobile-authority-20260917",
+    "sha": "9c02c7c40e7b253f39416999b91785e835486b49",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/protect-use-legend-website-authority-20260917",
+    "sha": "31e89dd5e4f867f1530e2eaa84353ac33d5035a3",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/protect-website-design-unification-20260917",
+    "sha": "dd4280761669b653815a6f087a2c660a6ebe6c8c",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "fix/public-web-premium-unification-20260917",
+    "sha": "98bcc97bd670424e6f7819d33eabdeeb64b9d1e4",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "fix/recover-github-actions-queues-v2",
+    "sha": "3c641b933a0aade1ecea5625b3d8e37a1fd359b2",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "founder-repair/20260825/445647e240f24f76908fdaab110313d3",
+    "sha": "af44e67e9d84d35c0ab0e8d06c7ff03bcc469c87",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "freeze/legend-native-green-20260827",
+    "sha": "057144c6416c48a2d5db6a698ba95d80cb0ab318",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "freeze/legend-sol-architecture-baseline-20260828",
+    "sha": "bcb1915ee1fa991d3b35e707a4e788800d490260",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "hotfix/messaging-on-latest-diagnostics-20260918",
+    "sha": "326865c41244f3945147a793a01e6fda08248298",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "hotfix/messaging-translation-fail-open-20260918",
+    "sha": "64e651ec59bac430b0068ec19a494a863b73c654",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "hotfix/messaging-translation-failopen-20260918",
+    "sha": "f89aebb42f51f30b2bb5f33bcef8cbf568b70929",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "implement/founder-diagnostics-20260918",
+    "sha": "83b95aaaf7967c83c3c16a4ca0529c502a11b30f",
+    "contained": true,
+    "retainReasons": [
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "implement/legend-pretrained-20260912",
+    "sha": "f79750e6f3da94aed5067ca8257d2482bfee4d1e",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "worktree-reference",
+      "unique-history",
+      "open-pr-or-active-run",
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "main",
+    "sha": "45dccc9a45938ad51854381275939c7b2cdf51e0",
+    "contained": true,
+    "retainReasons": [
+      "authority",
+      "local-config-reference",
+      "executable-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "meta-authority-cleanup",
+    "sha": "bb998d71601316e2af9274296c3aee50e5b300fa",
+    "contained": true,
+    "retainReasons": [
+      "open-pr-or-active-run",
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "ops/website-custom-domain-tls-20260917",
+    "sha": "9af9a0306808381218db0de1278c5e6ab82c2b32",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "production",
+    "sha": "d411d2e2e6195f5d2b28a396433b86fc724f07ee",
+    "contained": true,
+    "retainReasons": [
+      "authority",
+      "open-pr-or-active-run",
+      "local-config-reference",
+      "executable-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "release/subscription-activation-20260917",
+    "sha": "fa2563642064378bf7b4bde6b30bec470da70297",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "release/trigger-android-internal-3-20260903",
+    "sha": "2d004cd0d0217245522aa42c9ab712534a3576be",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "repair-pending-production-migrations",
+    "sha": "d7f7ff10df6bb07f713467392e605a7b1948e946",
+    "contained": true,
+    "retainReasons": [
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "repair/legend-integrated-20260910",
+    "sha": "af2c289db4d11baea9b36f09bf05f76d52deaca2",
+    "contained": true,
+    "retainReasons": [
+      "worktree-reference",
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "repair/translation-admission-20260918",
+    "sha": "a86378791e0e90ea5752be7ea374d21776380e1b",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "repair/translation-completion-20260917",
+    "sha": "35944105f55b282fb5da2755dc625a93e3a27bb8",
+    "contained": false,
+    "retainReasons": [
+      "worktree-reference",
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "stabilization/marketing-platform-health",
+    "sha": "73930edbc679e1eee16da228f52ef25cdf0aef0a",
+    "contained": false,
+    "retainReasons": [
+      "unique-history",
+      "local-config-reference"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "staging/legend-calling-20260913",
+    "sha": "7e8704ce639b0bae9ee1b0315e43af7acd5c1026",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "training/legend-120x120-20260827",
+    "sha": "ab7d1ee003a813b73535901dead7401f0a899507",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "validation/legend-founder-provider-runtime-20260819",
+    "sha": "1c0e89627953e8a2d25336652dd89bb14bf2a4fd",
+    "contained": false,
+    "retainReasons": [
+      "open-pr",
+      "unique-history",
+      "open-pr-or-active-run"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "validation/legend-general-reasoning-20260827",
+    "sha": "057144c6416c48a2d5db6a698ba95d80cb0ab318",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "validation/legend-heldout-conversation-20260827",
+    "sha": "782a2bb55a18dbc8070e0ad992b7302754ea1f81",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "validation/legend-native-learning-e2e-20260829",
+    "sha": "04f8392646ffb2edb98aafad7ce88ba77c0c988b",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "validation/legend-native-pr97-aa696ed",
+    "sha": "cf9a35173fefdbc3d40513fc6c894f3fc24e75a2",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "validation/legend-native-production-blocker-20260829",
+    "sha": "ac1a6c49e8c79754071a42e1a543765b6ffd0ff4",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "validation/legend-native-proof-scale-fix-20260829",
+    "sha": "449ce653e4fef783875199e47a63784acd824681",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "validation/legend-native-rg5-occurrence-exact-20260903",
+    "sha": "0d281af6728828f85d969a3f7cf3194011fc65c8",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  },
+  {
+    "branch": "validation/legend-native-tiered-evidence-20260828",
+    "sha": "e15e861da6224958c66a8a1f01a94825272df57f",
+    "contained": true,
+    "retainReasons": [],
+    "deletionCandidate": true
+  },
+  {
+    "branch": "validation/legend-native-translation-inventory-20260918",
+    "sha": "5726e019f45708ebe236381c2f7b81b816d51b81",
+    "contained": false,
+    "retainReasons": [
+      "unique-history"
+    ],
+    "deletionCandidate": false
+  }
+]

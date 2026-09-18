@@ -67,6 +67,13 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
+      - name: Require candidate to be retained in approved changes
+        env:
+          CANDIDATE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes
+          git merge-base --is-ancestor "$CANDIDATE_HEAD" refs/remotes/origin/legend/approved-changes
+
       - name: Discover candidate project impact without skipping release gates
         env:
           IMPACT_BASE: ${{ github.event.pull_request.base.sha }}
