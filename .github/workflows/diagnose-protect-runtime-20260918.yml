@@ -1,0 +1,50 @@
+name: Diagnose Protect runtime after exact release
+
+on:
+  push:
+    branches:
+      - feature/public-website-editor-20260918
+    paths:
+      - '.github/workflows/diagnose-protect-runtime-20260918.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Inspect Protect runtime health
+        shell: bash
+        run: |
+          set -u
+          az webapp show --resource-group masterapp-rg --name masterapp-protect --query '{state:state,defaultHostName:defaultHostName,httpsOnly:httpsOnly,enabled:enabled}' -o json
+          echo '--- Azure hostname probes ---'
+          for i in {1..12}; do
+            code="$(curl --connect-timeout 5 --max-time 10 -sS -L -o /tmp/azure-home.html -w '%{http_code}' https://masterapp-protect.azurewebsites.net/ || true)"
+            echo "azure attempt=$i status=$code bytes=$(wc -c </tmp/azure-home.html 2>/dev/null || echo 0)"
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          echo '--- Custom hostname probes ---'
+          for i in {1..12}; do
+            code="$(curl --connect-timeout 5 --max-time 10 -sS -L -o /tmp/custom-home.html -w '%{http_code}' https://protect.mylegnd.com/ || true)"
+            echo "custom attempt=$i status=$code bytes=$(wc -c </tmp/custom-home.html 2>/dev/null || echo 0)"
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          echo '--- API probes ---'
+          curl --connect-timeout 5 --max-time 10 -sS -L -o /tmp/api.json -w 'azure_api_status=%{http_code}\n' https://masterapp-protect.azurewebsites.net/api/website-content/public/protect || true
+          curl --connect-timeout 5 --max-time 10 -sS -L -o /tmp/api-custom.json -w 'custom_api_status=%{http_code}\n' https://protect.mylegnd.com/api/website-content/public/protect || true
+          echo '--- recent App Service logs ---'
+          timeout 25s az webapp log tail --resource-group masterapp-rg --name masterapp-protect || true
