@@ -13,6 +13,7 @@
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/legend-mobile-platform.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
 
     <!-- Google Fonts -->
@@ -22,7 +23,7 @@
     @RenderSection("Styles", required: false)
 </head>
 
-<body class="d-flex flex-column min-vh-100 @bodyClass">
+<body class="legend-web-app legend-parfait d-flex flex-column min-vh-100 @bodyClass">
 
 <header class="site-header">
     <nav class="navbar">
@@ -151,5 +152,7 @@
     })();
 </script>
 @await Html.PartialAsync("_ParfaitCommerceTracking")
+    <script src="~/_content/Shared/js/legend-mobile-platform.js" asp-append-version="true"></script>
+    <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
 </body>
 </html>
