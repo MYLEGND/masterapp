@@ -92,7 +92,9 @@ export function createToolBroker({ env, context: trustedContext, budget, fetcher
             },
           });
           requireSecurity(response.ok && response.status === 200, 'tool_authorization_or_execution_failed', 502);
-          const value = parseJsonBytes(await readBoundedBody(response.body, 32768));
+          // Receipt identity and accounting metadata need space beyond the
+          // separately bounded output forwarded to the model.
+          const value = parseJsonBytes(await readBoundedBody(response.body, 65536));
           requireSecurity(value.version === 'legend-tool-receipt.v1' && value.reauthorized === true &&
             value.requestId === context.requestId && value.contextDigest === context.contextDigest &&
             value.toolCallId === call.id && value.actionDigest === actionDigest && value.idempotencyKey === idempotencyKey &&
@@ -103,7 +105,7 @@ export function createToolBroker({ env, context: trustedContext, budget, fetcher
               (value.usage.costEvidence === undefined || value.usage.costEvidence === 'provider_usage')) ||
             (value.usage.known === false && value.usage.costEvidence === 'reserved_upper_bound' &&
               value.usage.costMicrousd === config.cost)), 'tool_usage_invalid', 502);
-          canonicalJson(value.output);
+          requireSecurity(encoder.encode(canonicalJson(value.output)).length <= 32768, 'tool_output_too_large', 502);
           return value;
         }, signal);
       } catch (caught) {

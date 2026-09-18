@@ -49,6 +49,50 @@ test('tool callback uses only configured Azure URL, signs exact scope/action and
   assert.deepEqual(receipt, { output: { content: 'Scoped source.' }, usage: { costMicrousd: 25, costEvidence: 'provider_usage' } });
 });
 
+test('32 KiB UTF-8 output fits its receipt metadata but one additional output byte cannot reach the model', async () => {
+  const overhead = Buffer.byteLength(JSON.stringify({ content: '' }));
+  for (const extra of [0, 1]) {
+    const output = { content: 'é'.repeat((32768 - overhead) / 2) + 'x'.repeat(extra) };
+    assert.equal(Buffer.byteLength(JSON.stringify(output)), 32768 + extra);
+    const { broker, input, h } = await setup(async (_, options) => {
+      const response = responseFor(JSON.parse(options.body), {
+        output, usage: { known: false, costMicrousd: 100, costEvidence: 'reserved_upper_bound' },
+      });
+      const bytes = (await response.clone().arrayBuffer()).byteLength;
+      assert.ok(bytes > 32768 && bytes <= 65536);
+      return response;
+    });
+    if (extra === 0) {
+      assert.deepEqual(await broker.execute(input), { output, usage: { costMicrousd: 100, costEvidence: 'reserved_upper_bound' } });
+    } else {
+      await assert.rejects(broker.execute(input), error => error.code === 'tool_output_too_large' &&
+        error.usage.costMicrousd === 100 && error.usage.costEvidence === 'reserved_upper_bound');
+      assert.equal([...h.storage.data].find(([key]) => key.startsWith('reservation:'))[1].executionCompleted, false);
+    }
+  }
+});
+
+test('wrapped receipt limit is exactly 64 KiB independent of its small output', async () => {
+  for (const size of [65536, 65537]) {
+    const { broker, input, h } = await setup(async (_, options) => {
+      const receipt = await responseFor(JSON.parse(options.body), { padding: '' }).json();
+      receipt.padding = 'x'.repeat(size - Buffer.byteLength(JSON.stringify(receipt)));
+      const serialized = JSON.stringify(receipt);
+      assert.equal(Buffer.byteLength(serialized), size);
+      return new Response(serialized, { headers: { 'Content-Type': 'application/json' } });
+    });
+    if (size === 65536) {
+      assert.deepEqual(await broker.execute(input), {
+        output: { content: 'Scoped source.' }, usage: { costMicrousd: 25, costEvidence: 'provider_usage' },
+      });
+    } else {
+      await assert.rejects(broker.execute(input), error => error.code === 'body_too_large' &&
+        error.usage.costMicrousd === 100 && error.usage.costEvidence === 'reserved_upper_bound');
+      assert.equal([...h.storage.data].find(([key]) => key.startsWith('reservation:'))[1].executionCompleted, false);
+    }
+  }
+});
+
 test('completed tool with explicit operator bound retains its full debit and permits the next model at concurrency one', async () => {
   const { broker, input, session, h } = await setup(async (_, options) => {
     const body = JSON.parse(options.body);
