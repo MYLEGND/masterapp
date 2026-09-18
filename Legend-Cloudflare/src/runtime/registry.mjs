@@ -1,5 +1,5 @@
 // Operator-owned registry. Catalog presence does not qualify an engine for use.
-export const REGISTRY_VERSION = '2026-09-18.2';
+export const REGISTRY_VERSION = '2026-09-18.3';
 
 const candidates = [
   ['@cf/qwen/qwen3-30b-a3b-fp8', 'efficient', 32768, 0.0509, 0.335, false, 'max_tokens'],
@@ -53,11 +53,56 @@ export function resolveModelSettings(env, model) {
     source: configured ? 'operator' : 'registry_default' });
 }
 
-/** Only deployment bindings and the authenticated session may grant qualification access. */
+const MANUAL_TEST_MODEL = '@cf/openai/gpt-oss-120b';
+const MANUAL_TEST_MAX_COST_MICROUSD = 3_000_000;
+
+function resolveFounderManualTestPolicy(env, envelope, context, now) {
+  let policy; let budget;
+  try {
+    policy = JSON.parse(env.LEGEND_MANUAL_TEST_POLICY_JSON);
+    budget = JSON.parse(env.LEGEND_BUDGET_POLICY_JSON);
+  } catch { throw new RuntimeFailure('manual_test_configuration_missing'); }
+  const fields = ['version', 'accountId', 'tenantId', 'founderUserId', 'serviceKeyId',
+    'requiredRole', 'environment', 'modelId', 'expiresAt', 'lifetimeCostMicrousd'];
+  if (!policy || typeof policy !== 'object' || Array.isArray(policy)
+    || Object.keys(policy).length !== fields.length || Object.keys(policy).some(key => !fields.includes(key))
+    || policy.version !== 'legend-founder-manual-test.v1' || policy.modelId !== MANUAL_TEST_MODEL
+    || !['accountId', 'tenantId', 'founderUserId', 'serviceKeyId', 'environment'].every(key => identifier(policy[key]))
+    || policy.accountId !== env.LEGEND_ACCOUNT_ID || policy.environment !== env.LEGEND_DEPLOYMENT_ENVIRONMENT
+    || policy.requiredRole !== 'Founder' || !positiveCost(policy.lifetimeCostMicrousd)
+    || policy.lifetimeCostMicrousd > MANUAL_TEST_MAX_COST_MICROUSD
+    || !Number.isSafeInteger(policy.expiresAt) || policy.expiresAt <= now || policy.expiresAt > now + 86400000)
+    throw new RuntimeFailure('manual_test_configuration_invalid');
+  if (budget?.period !== 'lifetime' || !positiveCost(budget.accountMicrousd)
+    || budget.accountMicrousd > policy.lifetimeCostMicrousd)
+    throw new RuntimeFailure('manual_test_lifetime_budget_required');
+  const scope = envelope.scope;
+  if (!context || !scope || context.accountId !== policy.accountId || context.tenantId !== policy.tenantId
+    || context.userId !== policy.founderUserId || context.keyId !== policy.serviceKeyId
+    || !identifier(context.requestId) || context.requestId !== envelope.requestId
+    || ['accountId', 'tenantId', 'userId', 'sessionId', 'conversationId', 'authorizationVersion']
+      .some(key => !identifier(context[key]) || context[key] !== scope[key])
+    || !Array.isArray(context.roles) || !Array.isArray(scope.roles)
+    || !context.roles.includes('Founder') || !context.roles.every(identifier)
+    || new Set(context.roles).size !== context.roles.length
+    || context.roles.length !== scope.roles.length || context.roles.some(role => !scope.roles.includes(role)))
+    throw new RuntimeFailure('manual_test_scope_denied');
+  if (!Number.isSafeInteger(envelope.limits?.deadlineUnixMs) || envelope.limits.deadlineUnixMs <= now
+    || envelope.limits.deadlineUnixMs > policy.expiresAt) throw new RuntimeFailure('manual_test_deadline_exceeded');
+  // This mode adds no dispatcher or tool authority. The existing signed broker
+  // still reauthorizes every tool on Azure; no model-authored approval is accepted.
+  if (envelope.task.tools?.length && env.LEGEND_TOOL_CALLBACK_ENABLED !== 'true')
+    throw new RuntimeFailure('manual_test_signed_tools_required');
+  return Object.freeze({ mode: 'founder_manual_test', modelId: MANUAL_TEST_MODEL,
+    accountId: policy.accountId, expiresAt: policy.expiresAt });
+}
+
+/** Only deployment bindings and the authenticated session may grant exceptional access. */
 export function resolveExecutionPolicy(env, envelope, context, now = Date.now()) {
   const mode = env.LEGEND_RUNTIME_MODE ?? 'production';
   // Production does not inspect or honor qualification flags in either env or request.
   if (mode === 'production') return Object.freeze({ mode });
+  if (mode === 'founder_manual_test') return resolveFounderManualTestPolicy(env, envelope, context, now);
   if (mode !== 'qualification' || env.LEGEND_DEPLOYMENT_ENVIRONMENT !== 'qualification') throw new RuntimeFailure('runtime_mode_invalid');
   let policy; let budget;
   try {
@@ -93,7 +138,10 @@ export function estimateCostMicrousd(model, inputTokens, outputTokens) {
 
 export function routeModel({ task, accountId, inputTokens, maxOutputTokens, remainingCostMicrousd, registry = MODEL_REGISTRY, now = Date.now(), excluded = [], executionPolicy = { mode: 'production' } }) {
   const capabilities = new Set(['text', ...(task.requiredCapabilities ?? []), ...(task.tools?.length ? ['tools'] : [])]);
-  const qualified = model => executionPolicy.mode === 'qualification'
+  const qualified = model => executionPolicy.mode === 'founder_manual_test'
+    ? executionPolicy.accountId === accountId && executionPolicy.expiresAt > now
+      && executionPolicy.modelId === MANUAL_TEST_MODEL && model.id === MANUAL_TEST_MODEL
+    : executionPolicy.mode === 'qualification'
     ? executionPolicy.accountId === accountId && executionPolicy.expiresAt > now && model.id === executionPolicy.modelId
     : model.enabled === true && typeof accountId === 'string' && model.qualification?.accountId === accountId
       && model.qualification?.accountCanaryPassed === true && model.qualification?.heldOutPassed === true && model.qualification?.expiresAt > now;
