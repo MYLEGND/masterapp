@@ -1,0 +1,53 @@
+name: Revalidate subscription and activation flows
+
+on:
+  push:
+    branches:
+      - feature/public-website-editor-20260918
+    paths:
+      - '.github/workflows/subscription-revalidation-20260918.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: subscription-revalidation-20260918
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: feature/public-website-editor-20260918
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build affected apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --nologo
+          dotnet build ClientApp/ClientApp.csproj -c Release --nologo
+
+      - name: Run subscription activation and management tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release             --filter 'FullyQualifiedName~BillingCentralizationTests|FullyQualifiedName~ClientAppSubscriptionActivationTests|FullyQualifiedName~ClientBillingNotificationAndSchemaTests|FullyQualifiedName~ClientSubscriptionAdministrationTests'             --logger 'console;verbosity=minimal'
+
+      - name: Guard expected subscription authorities
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'SubscriptionActivationService' ClientApp/Controllers/SubscriptionActivationController.cs
+          grep -q 'ClientAppFullAccess' ClientApp/Services/SubscriptionActivationService.cs
+          grep -q 'ClientSubscriptionOfferPricing' AgentPortal/Controllers/ClientsController.cs
+          grep -q 'MasterAppBillingOrchestrator' Infrastructure/Billing/MasterAppBillingOrchestrator.cs
+          grep -q 'ClientBillingNotificationDeliveryService' AgentPortal/Services/ClientBillingNotificationDeliveryHostedService.cs
+          grep -q 'data-subscription' AgentPortal/Views/Shared/_QuickViewBillingSection.cshtml
