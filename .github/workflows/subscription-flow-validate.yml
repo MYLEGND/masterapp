@@ -13,6 +13,7 @@ on:
       - 'AgentPortal/Models/CreateClientViewModel.cs'
       - 'AgentPortal/Models/ClientCreationFormDefinition.cs'
       - 'AgentPortal/Services/ClientBillingNotificationDeliveryService.cs'
+      - 'AgentPortal/Services/ClientBillingNotificationDeliveryHostedService.cs'
       - 'AgentPortal/Views/Clients/Create.cshtml'
       - 'AgentPortal/Views/Shared/_QuickViewBillingSection.cshtml'
       - 'AgentPortal/wwwroot/js/billing/qv-billing-management.js'
