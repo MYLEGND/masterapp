@@ -67,6 +67,34 @@ public sealed class LegendCloudflareToolCallbackTests
         Assert.False(fixture.Db.ChangeTracker.HasChanges());
     }
 
+    [Fact]
+    public async Task SignedCapabilitiesArrayRemainsArray_AndReplaysItsDurableReceipt()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var envelope = fixture.Envelope(tool: "legend_capabilities");
+        var body = Encoding.UTF8.GetBytes(envelope.ToJsonString());
+        var first = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.PostAsync(envelope, exactBody: body)).Value);
+        var replay = JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(
+            await fixture.PostAsync(envelope, exactBody: body)).Value);
+
+        // Valid tools can return arrays. The callback's authorization-error
+        // check must not require every successful payload to be an object.
+        var output = first.GetProperty("output");
+        Assert.Equal(JsonValueKind.Array, output.ValueKind);
+        Assert.True(output.GetArrayLength() > 0);
+        Assert.True(first.GetProperty("reauthorized").GetBoolean());
+        Assert.Equal(first.GetRawText(), replay.GetRawText());
+        var receipt = await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync();
+        Assert.Equal("legend_capabilities", receipt.ToolName);
+        Assert.Equal("ReadExecution", receipt.AuthorizationKind);
+        Assert.Equal("Completed", receipt.State);
+        Assert.Equal(output.GetRawText(), receipt.ResultJson);
+        fixture.Remediation.VerifyNoOtherCalls();
+        Assert.Single(await fixture.Db.InternalMessages.ToListAsync());
+        Assert.False(fixture.Db.ChangeTracker.HasChanges());
+    }
+
     [Theory]
     [InlineData("account")]
     [InlineData("tenant")]
