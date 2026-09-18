@@ -168,3 +168,37 @@ h3{font-size:22px;letter-spacing:-.018em}
   .footer-grid>div:first-child{grid-column:auto}.page-hero{padding-top:68px}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn,.contact-card{transition:none}}
+
+/* Protect outer-shell normalization: preserve form logic; remove isolated boxed-page framing. */
+.legend-public--protect .container-narrow,
+.legend-public--protect .training-page{
+  width:100%!important;max-width:none!important;margin:0!important;
+  padding:clamp(60px,8vw,104px) var(--page-pad)!important;
+}
+.legend-public--protect .pcq-shell,
+.legend-public--protect .ra-shell,
+.legend-public--protect .main-gold-card{
+  width:100%!important;max-width:1280px!important;margin-left:auto!important;margin-right:auto!important;
+  border-radius:var(--radius-lg)!important;
+}
+.legend-public--protect .pcq-hero-entry{
+  border-radius:var(--radius-lg)!important;
+}
+.legend-public--protect .training-page>.text-center{
+  max-width:900px;margin-left:auto!important;margin-right:auto!important;
+}
+.legend-public--protect .packages-grid{
+  max-width:1280px!important;margin-left:auto!important;margin-right:auto!important;
+}
+.legend-public--protect .legal-hero{
+  max-width:1050px;margin:0 auto!important;padding:0 0 30px!important;background:transparent!important;color:var(--ink)!important;
+  border:0!important;border-radius:0!important;box-shadow:none!important;
+}
+.legend-public--protect .legal-kicker{color:var(--gold)!important;font-size:11px!important;font-weight:850!important;letter-spacing:.18em!important}
+.legend-public--protect .legal-title{color:var(--ink)!important;font-size:clamp(42px,6vw,72px)!important;letter-spacing:-.045em!important}
+.legend-public--protect .legal-intro{color:var(--muted)!important;font-size:19px!important}
+.legend-public--protect .legal-card{
+  background:#fff!important;color:var(--ink)!important;border:1px solid var(--border)!important;
+  box-shadow:var(--shadow)!important;padding:clamp(28px,5vw,52px)!important;
+}
+.legend-public--protect .legal-prose p{color:#364958!important;max-width:78ch}
