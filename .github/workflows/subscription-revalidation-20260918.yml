@@ -45,11 +45,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'SubscriptionActivationService' ClientApp/Controllers/SubscriptionActivationController.cs
-          grep -q 'ClientAppFullAccess' ClientApp/Services/SubscriptionActivationService.cs
+          grep -q 'POST_ACTIVATION_SIGNIN_SETUP_PENDING' ClientApp/Services/SubscriptionActivationService.cs
+          grep -q 'Membership Active — Sign-In Setup Pending' ClientApp/Controllers/SubscriptionActivationController.cs
+          grep -q 'activated = isActivated' ClientApp/Controllers/SubscriptionActivationController.cs
           grep -q 'ClientSubscriptionOfferPricing' AgentPortal/Controllers/ClientsController.cs
-          grep -q 'MasterAppBillingOrchestrator' Infrastructure/Billing/MasterAppBillingOrchestrator.cs
-          grep -q 'ClientBillingNotificationDeliveryService' AgentPortal/Services/ClientBillingNotificationDeliveryHostedService.cs
+          grep -q 'ClientAppFullAccess' Infrastructure/Billing/MasterAppBillingOrchestrator.cs
           grep -q 'btnBillingUpdateSubscription' AgentPortal/Views/Shared/_QuickViewBillingSection.cshtml
-
-# Revalidation refresh: includes post-activation false-alert regression coverage.
+          grep -q 'ClientBillingNotificationDeliveryService' AgentPortal/Services/ClientBillingNotificationDeliveryHostedService.cs
