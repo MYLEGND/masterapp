@@ -56,7 +56,7 @@ export function resolveModelSettings(env, model) {
 const MANUAL_TEST_MODEL = '@cf/openai/gpt-oss-120b';
 const MANUAL_TEST_MAX_COST_MICROUSD = 3_000_000;
 
-function resolveFounderManualTestPolicy(env, envelope, context, now) {
+function readFounderManualTestConfiguration(env, now) {
   let policy; let budget;
   try {
     policy = JSON.parse(env.LEGEND_MANUAL_TEST_POLICY_JSON);
@@ -76,6 +76,11 @@ function resolveFounderManualTestPolicy(env, envelope, context, now) {
   if (budget?.period !== 'lifetime' || !positiveCost(budget.accountMicrousd)
     || budget.accountMicrousd > policy.lifetimeCostMicrousd)
     throw new RuntimeFailure('manual_test_lifetime_budget_required');
+  return policy;
+}
+
+function resolveFounderManualTestPolicy(env, envelope, context, now) {
+  const policy = readFounderManualTestConfiguration(env, now);
   const scope = envelope.scope;
   if (!context || !scope || context.accountId !== policy.accountId || context.tenantId !== policy.tenantId
     || context.userId !== policy.founderUserId || context.keyId !== policy.serviceKeyId
@@ -97,37 +102,87 @@ function resolveFounderManualTestPolicy(env, envelope, context, now) {
     accountId: policy.accountId, expiresAt: policy.expiresAt });
 }
 
-/** Only deployment bindings and the authenticated session may grant exceptional access. */
-export function resolveExecutionPolicy(env, envelope, context, now = Date.now()) {
-  const mode = env.LEGEND_RUNTIME_MODE ?? 'production';
-  // Production does not inspect or honor qualification flags in either env or request.
-  if (mode === 'production') return Object.freeze({ mode });
-  if (mode === 'founder_manual_test') return resolveFounderManualTestPolicy(env, envelope, context, now);
-  if (mode !== 'qualification' || env.LEGEND_DEPLOYMENT_ENVIRONMENT !== 'qualification') throw new RuntimeFailure('runtime_mode_invalid');
-  let policy; let budget;
-  try {
-    policy = JSON.parse(env.LEGEND_QUALIFICATION_POLICY_JSON);
-    budget = JSON.parse(env.LEGEND_BUDGET_POLICY_JSON);
-  } catch { throw new RuntimeFailure('qualification_configuration_missing'); }
+function validateQualificationConfiguration(env, policy, budget, now, permitExpired = false) {
   if (policy?.version !== 'legend-qualification.v1' || !identifier(policy.accountId) || policy.accountId !== env.LEGEND_ACCOUNT_ID
     || !MODEL_REGISTRY.some(model => model.id === policy.modelId)
     || !identifier(policy.tenantId) || !identifier(policy.serviceKeyId) || policy.requiredRole !== 'LegendQualification'
     || !Array.isArray(policy.allowedUserIds) || !policy.allowedUserIds.length || policy.allowedUserIds.length > 32
     || !policy.allowedUserIds.every(identifier) || new Set(policy.allowedUserIds).size !== policy.allowedUserIds.length
     || !/^[a-f0-9]{64}$/.test(policy.suiteSha256 ?? '') || !positiveCost(policy.lifetimeCostMicrousd)
-    || !Number.isSafeInteger(policy.expiresAt) || policy.expiresAt <= now || policy.expiresAt > now + 86400000) throw new RuntimeFailure('qualification_configuration_invalid');
-  // The account-named durable ledger supplies atomic lifetime enforcement. This
-  // deployment cap is the authorized metered remainder after nonmetered charges.
+    || !Number.isSafeInteger(policy.expiresAt) || policy.expiresAt <= 0
+    || (!permitExpired && policy.expiresAt <= now) || policy.expiresAt > now + 86400000) throw new RuntimeFailure('qualification_configuration_invalid');
   if (budget?.period !== 'lifetime' || !positiveCost(budget.accountMicrousd)
     || budget.accountMicrousd > policy.lifetimeCostMicrousd) throw new RuntimeFailure('qualification_lifetime_budget_required');
+}
+
+function resolveQualificationPolicy(env, envelope, context, now, policy, budget) {
+  validateQualificationConfiguration(env, policy, budget, now);
   if (!context || context.accountId !== policy.accountId || context.tenantId !== policy.tenantId
     || !policy.allowedUserIds.includes(context.userId) || context.keyId !== policy.serviceKeyId
     || !Array.isArray(context.roles) || !context.roles.includes(policy.requiredRole) || context.requestId !== envelope.requestId
     || ['accountId', 'tenantId', 'userId', 'sessionId', 'conversationId'].some(key => context[key] !== envelope.scope[key])) throw new RuntimeFailure('qualification_scope_denied');
   if (envelope.limits.deadlineUnixMs > policy.expiresAt) throw new RuntimeFailure('qualification_deadline_exceeded');
   if (envelope.task.tools?.length) throw new RuntimeFailure('qualification_tools_disabled');
-  return Object.freeze({ mode, modelId: policy.modelId, accountId: policy.accountId,
+  return Object.freeze({ mode: 'qualification', modelId: policy.modelId, accountId: policy.accountId,
     suiteSha256: policy.suiteSha256, expiresAt: policy.expiresAt });
+}
+
+// Optional operator-only qualification scopes share this Worker's existing
+// authenticated session and account ledger. No request field selects a policy.
+function resolveColocatedQualificationPolicy(env, envelope, context, now) {
+  if (env.LEGEND_QUALIFICATION_POLICIES_JSON === undefined) return null;
+  const manual = readFounderManualTestConfiguration(env, now);
+  let config; let budget;
+  try {
+    config = JSON.parse(env.LEGEND_QUALIFICATION_POLICIES_JSON);
+    budget = JSON.parse(env.LEGEND_BUDGET_POLICY_JSON);
+  } catch { throw new RuntimeFailure('qualification_configuration_invalid'); }
+  if (!config || typeof config !== 'object' || Array.isArray(config)
+    || Object.keys(config).length !== 2 || config.version !== 'legend-qualification-policies.v1'
+    || !Array.isArray(config.policies) || !config.policies.length || config.policies.length > MODEL_REGISTRY.length)
+    throw new RuntimeFailure('qualification_configuration_invalid');
+  const fields = ['version', 'accountId', 'modelId', 'tenantId', 'allowedUserIds', 'requiredRole',
+    'serviceKeyId', 'suiteSha256', 'expiresAt', 'lifetimeCostMicrousd'];
+  const keys = new Set(); const models = new Set();
+  for (const policy of config.policies) {
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy)
+      || Object.keys(policy).length !== fields.length || Object.keys(policy).some(key => !fields.includes(key)))
+      throw new RuntimeFailure('qualification_configuration_invalid');
+    // An expired unrelated grant is inert, not a shutdown of the Founder baseline
+    // or another candidate. The selected grant is checked strictly below.
+    validateQualificationConfiguration(env, policy, budget, now, true);
+    if (keys.has(policy.serviceKeyId) || models.has(policy.modelId)
+      || policy.serviceKeyId === manual.serviceKeyId || policy.tenantId === manual.tenantId
+      || policy.allowedUserIds.includes(manual.founderUserId)
+      || policy.lifetimeCostMicrousd > manual.lifetimeCostMicrousd)
+      throw new RuntimeFailure('qualification_configuration_invalid');
+    keys.add(policy.serviceKeyId); models.add(policy.modelId);
+  }
+  const policy = config.policies.find(item => item.serviceKeyId === context?.keyId);
+  const hasTestRole = Array.isArray(context?.roles) && context.roles.includes('LegendQualification');
+  if (!policy && !hasTestRole) return null;
+  if (!policy || !hasTestRole || context.roles.length !== 1
+    || !Array.isArray(envelope.scope?.roles) || envelope.scope.roles.length !== 1 || envelope.scope.roles[0] !== 'LegendQualification'
+    || ['accountId', 'tenantId', 'userId', 'sessionId', 'conversationId', 'authorizationVersion']
+      .some(key => !identifier(context[key]) || context[key] !== envelope.scope[key]))
+    throw new RuntimeFailure('qualification_scope_denied');
+  return resolveQualificationPolicy(env, envelope, context, now, policy, budget);
+}
+
+/** Only deployment bindings and the authenticated session may grant exceptional access. */
+export function resolveExecutionPolicy(env, envelope, context, now = Date.now()) {
+  const mode = env.LEGEND_RUNTIME_MODE ?? 'production';
+  // Production does not inspect or honor qualification flags in either env or request.
+  if (mode === 'production') return Object.freeze({ mode });
+  if (mode === 'founder_manual_test') return resolveColocatedQualificationPolicy(env, envelope, context, now)
+    ?? resolveFounderManualTestPolicy(env, envelope, context, now);
+  if (mode !== 'qualification' || env.LEGEND_DEPLOYMENT_ENVIRONMENT !== 'qualification') throw new RuntimeFailure('runtime_mode_invalid');
+  let policy; let budget;
+  try {
+    policy = JSON.parse(env.LEGEND_QUALIFICATION_POLICY_JSON);
+    budget = JSON.parse(env.LEGEND_BUDGET_POLICY_JSON);
+  } catch { throw new RuntimeFailure('qualification_configuration_missing'); }
+  return resolveQualificationPolicy(env, envelope, context, now, policy, budget);
 }
 
 export function estimateCostMicrousd(model, inputTokens, outputTokens) {
