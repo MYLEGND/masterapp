@@ -60,12 +60,13 @@ def observe(target):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--automatic', action='store_true', help='Conservatively release every existing web target')
     args = parser.parse_args()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
             raise SystemExit('Only the exact approved branch revision can be released')
-    targets = selected_targets(json.loads(Path('Docs/releases/direct-release-request.json').read_text()))
+    targets = TARGETS if args.automatic else selected_targets(json.loads(Path('Docs/releases/direct-release-request.json').read_text()))
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(observe, targets))
     for row in rows:

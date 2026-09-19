@@ -2,6 +2,11 @@ name: LEGEND approved direct release
 
 on:
   workflow_dispatch:
+    inputs:
+      automatic:
+        description: Release all existing web targets for an automatically integrated change
+        type: boolean
+        default: false
   push:
     branches: [legend/approved-changes]
     paths: ['Docs/releases/direct-release-request.json']
@@ -29,8 +34,12 @@ jobs:
           fetch-depth: 0
       - name: Pin approved source and actual live rollback revisions
         id: live
+        env:
+          AUTOMATIC_RELEASE: ${{ inputs.automatic }}
         run: |
-          python3 scripts/approved-release-baseline.py --output "$GITHUB_OUTPUT"
+          args=()
+          if [ "$AUTOMATIC_RELEASE" = true ]; then args+=(--automatic); fi
+          python3 scripts/approved-release-baseline.py "${args[@]}" --output "$GITHUB_OUTPUT"
   preserve-rollback:
     needs: discover-live
     runs-on: ubuntu-latest

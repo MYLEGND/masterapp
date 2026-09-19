@@ -33,10 +33,9 @@ env:
   AZURE_WEBAPP_NAME: masterapp-website
 
 jobs:
-  # Intentionally named security so the protected production branch receives its
-  # required status from the website-specific fail-closed validation instead of
-  # the unrelated AgentPortal/LEGEND release pipeline.
-  security:
+  # The rigorous workflow owns the protected security check for every PR.
+  # Keep the website gate distinct so it cannot satisfy that check by name.
+  website-security:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -91,7 +90,7 @@ jobs:
 
   deploy:
     if: github.event_name == 'push'
-    needs: security
+    needs: website-security
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

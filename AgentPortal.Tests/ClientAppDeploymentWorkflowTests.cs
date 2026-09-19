@@ -26,7 +26,7 @@ public sealed class ClientAppDeploymentWorkflowTests
         var merge = workflow[workflow.IndexOf("  merge:", StringComparison.Ordinal)..workflow.IndexOf("  migrate:", StringComparison.Ordinal)];
         var migrate = workflow[workflow.IndexOf("  migrate:", StringComparison.Ordinal)..workflow.IndexOf("  deploy:", StringComparison.Ordinal)];
         var proof = workflow[workflow.IndexOf("  verify-legend-native-sql:", StringComparison.Ordinal)..];
-        Assert.Contains("needs: security", build, StringComparison.Ordinal);
+        Assert.Contains("needs: [security, candidate]", build, StringComparison.Ordinal);
         Assert.Contains("- security", merge, StringComparison.Ordinal);
         Assert.Contains("- build", merge, StringComparison.Ordinal);
         Assert.Contains("Prove merged tree equals validated tree", merge, StringComparison.Ordinal);
@@ -81,7 +81,7 @@ public sealed class ClientAppDeploymentWorkflowTests
         var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
         var build = workflow[workflow.IndexOf("  build:", StringComparison.Ordinal)..workflow.IndexOf("  merge:", StringComparison.Ordinal)];
         var deploy = workflow[workflow.IndexOf("  deploy:", StringComparison.Ordinal)..workflow.IndexOf("  verify-legend-native:", StringComparison.Ordinal)];
-        Assert.Contains("needs: security", build, StringComparison.Ordinal);
+        Assert.Contains("needs: [security, candidate]", build, StringComparison.Ordinal);
         Assert.Contains("Publish ClientApp from the same validated checkout", build, StringComparison.Ordinal);
         Assert.Contains("@('Infrastructure.dll', 'Domain.dll')", build, StringComparison.Ordinal);
         Assert.Contains("if ($portalHash -ne $clientHash)", build, StringComparison.Ordinal);
