@@ -16,6 +16,7 @@ test('real local workerd SQLite Durable Object enforces concurrent account cap a
   const env = environment({ accountMicrousd: 100 });
   const securityPath = fileURLToPath(new URL('../../src/security/', import.meta.url));
   const modules = [{ type: 'ESModule', path: fileURLToPath(new URL('./workerd-fixture.mjs', import.meta.url)) },
+    { type: 'ESModule', path: fileURLToPath(new URL('../../src/runtime/registry.mjs', import.meta.url)) },
     ...(await readdir(securityPath)).filter(file => file.endsWith('.mjs')).map(file => ({ type: 'ESModule', path: join(securityPath, file) }))];
   const options = { name: 'legend-security-local-test', modules,
     compatibilityDate: '2026-09-18', bindings: env,

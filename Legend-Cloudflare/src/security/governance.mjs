@@ -1,9 +1,45 @@
 import { canonicalJson, parseJsonBytes, readBoundedBody, sha256 } from './crypto.mjs';
 import { isIdentifier, isNonnegativeInteger, validateScope } from './authenticate.mjs';
 import { requireSecurity, SecurityError, securityErrorResponse } from './errors.mjs';
+import { MODEL_REGISTRY, RuntimeFailure, estimateCostMicrousd, resolveExecutionPolicy } from '../runtime/registry.mjs';
 
 const MAX_REQUEST_MS = 120_000;
 const MAX_RECORDS_PER_REQUEST = 128;
+const QUALIFICATION_OUTPUT_RESERVATION_TOKENS = 1024;
+
+async function requestBudgetFor(context, env, policy, now) {
+  const ordinary = { ceilingMicrousd: policy.requestMicrousd, qualificationDigest: null };
+  // Only the reviewed colocated qualification grants can raise a request's
+  // ceiling. Other modes and missing grants retain the existing operator cap.
+  if (env.LEGEND_RUNTIME_MODE !== 'founder_manual_test' || env.LEGEND_QUALIFICATION_POLICIES_JSON === undefined)
+    return ordinary;
+  requireSecurity(Array.isArray(context.allowedTools) && context.allowedTools.every(isIdentifier), 'governance_context_invalid');
+  // Reuse the runtime's policy authority. Every reconstructed field is already
+  // authenticated; no body flag, client model ID or caller-supplied grant enters.
+  let execution;
+  try {
+    execution = resolveExecutionPolicy(env, {
+      requestId: context.requestId, scope: context,
+      limits: { deadlineUnixMs: context.deadlineUnixMs },
+      task: { tools: context.allowedTools.map(name => ({ name })) },
+    }, context, now);
+  } catch (error) {
+    if (error instanceof RuntimeFailure)
+      throw new SecurityError(error.code, error.code.includes('configuration') || error.code.endsWith('_required') ? 503 : 403);
+    throw error;
+  }
+  if (execution.mode !== 'qualification') return ordinary;
+  const model = MODEL_REGISTRY.find(candidate => candidate.id === execution.modelId);
+  requireSecurity(model, 'qualification_budget_model_invalid', 503);
+  // Registry prices/context remain the one cost source. Larger output reserves
+  // fail the request budget; this does not reclassify a candidate as incapable.
+  const ceilingMicrousd = estimateCostMicrousd(model, model.contextTokens, QUALIFICATION_OUTPUT_RESERVATION_TOKENS);
+  const grant = JSON.parse(env.LEGEND_QUALIFICATION_POLICIES_JSON).policies.find(candidate => candidate.serviceKeyId === context.keyId);
+  requireSecurity(grant && grant.modelId === model.id, 'qualification_budget_policy_changed');
+  return { ceilingMicrousd, qualificationDigest: await sha256(canonicalJson({
+    version: 'legend-qualification-request-budget.v1', grant, ceilingMicrousd,
+  })) };
+}
 
 function policyFrom(env) {
   let policy;
@@ -117,11 +153,13 @@ export class LegendGovernance {
       'context_expired_or_invalid', 401);
     requireSecurity(context.maxCostMicrousd > 0 && policy.requestMicrousd > 0 && policy.accountMicrousd > 0,
       'budget_exhausted', 429);
+    const requestBudget = await requestBudgetFor(context, this.env, policy, now);
     requireSecurity(!(await tx.get(`request:${ids.request}`)) && !(await tx.get(`nonce:${ids.nonce}`)), 'request_replayed', 409);
     const expiresAt = context.deadlineUnixMs + policy.retentionMs;
     await retain(tx, `request:${ids.request}`, {
       owner: ids.owner, contextDigest: context.contextDigest, bodyDigest: context.bodyDigest,
-      deadlineUnixMs: context.deadlineUnixMs, costLimitMicrousd: Math.min(context.maxCostMicrousd, policy.requestMicrousd),
+      deadlineUnixMs: context.deadlineUnixMs, costLimitMicrousd: Math.min(context.maxCostMicrousd, requestBudget.ceilingMicrousd),
+      qualificationBudgetDigest: requestBudget.qualificationDigest,
       chargedMicrousd: 0, reservations: 0, closed: false,
     }, expiresAt);
     await retain(tx, `nonce:${ids.nonce}`, {}, context.expiresAt + 5000);
@@ -137,8 +175,11 @@ export class LegendGovernance {
     const reservationKey = `reservation:${ids.request}:${input.reservationId}`;
     requireSecurity(!(await tx.get(reservationKey)), 'reservation_replayed', 409);
     requireSecurity(record.reservations < MAX_RECORDS_PER_REQUEST, 'reservation_limit_exceeded', 429);
+    const requestBudget = await requestBudgetFor(context, this.env, policy, now);
+    requireSecurity((record.qualificationBudgetDigest ?? null) === requestBudget.qualificationDigest,
+      'qualification_budget_policy_changed');
     const amount = input.maxCostMicrousd;
-    requireSecurity(amount <= Math.min(record.costLimitMicrousd, policy.requestMicrousd) - record.chargedMicrousd,
+    requireSecurity(amount <= Math.min(record.costLimitMicrousd, requestBudget.ceilingMicrousd) - record.chargedMicrousd,
       'request_budget_exhausted', 429);
     const period = accountingPeriod(policy, now);
     const quotaKeys = [];
