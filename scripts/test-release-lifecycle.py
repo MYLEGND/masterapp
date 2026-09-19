@@ -187,6 +187,28 @@ class OrchestrationSafety(unittest.TestCase):
         api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
         self.assertEqual(api.api.call_args.args[0], 'merges')
 
+    def test_schedule_recovers_missed_successful_production_event(self):
+        from unittest.mock import Mock
+        api = Mock()
+        api.ref.side_effect = ['a' * 40, 'b' * 40]
+        with patch.object(m, 'ancestor', return_value=False), \
+             patch.object(m, 'release_proven', return_value=True), patch.object(m, 'git'):
+            result = m.reconcile(api)
+        self.assertTrue(result['directReleaseDispatched'])
+        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
+        self.assertEqual(api.api.call_args.args[0], 'merges')
+
+    def test_schedule_never_synchronizes_failed_production(self):
+        from unittest.mock import Mock
+        api = Mock()
+        api.ref.side_effect = ['a' * 40, 'b' * 40]
+        with patch.object(m, 'ancestor', return_value=False), \
+             patch.object(m, 'release_proven', return_value=False):
+            result = m.reconcile(api)
+        self.assertIn('not bound to successful', result['retained'])
+        api.api.assert_not_called()
+        api.dispatch.assert_not_called()
+
     def test_website_receipt_cannot_certify_portal(self):
         from unittest.mock import Mock
         run = {'id': 1, 'path': '.github/workflows/' + m.WEBSITE, 'created_at': '2026-01-01',
@@ -242,11 +264,11 @@ class OrchestrationSafety(unittest.TestCase):
         api.ref.side_effect = ['a' * 40, 'b' * 40]
         api.api.return_value = {'workflow_runs': []}
         api.pages.return_value = []
-        with patch.object(m, 'ancestor', return_value=False):
+        with patch.object(m, 'ancestor', side_effect=[True, False]):
             result = m.reconcile(api)
         self.assertIn('awaiting successful', result['promotion'])
         api.dispatch.assert_not_called()
-        self.assertIn('head_sha=' + 'a' * 40, api.api.call_args.args[0])
+        self.assertIn('head_sha=' + 'b' * 40, api.api.call_args.args[0])
 
 
 if __name__ == '__main__':

@@ -129,13 +129,26 @@ def pending_updates(api):
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
     pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
+    closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
     for pr in reversed(pulls):
         if ready(pr, api.repo, APPROVED):
             return integrate(api, pr['number'])
+        if (pr['state'] == 'open' and not pr['draft'] and pr['user']['login'] == 'github-actions[bot]'
+            and pr['head']['repo'] and pr['head']['repo']['full_name'] == api.repo
+            and pr['head']['ref'] not in KEEP):
+            prior = [old for old in closed if old.get('merged_at') and
+                old['author_association'] in {'OWNER', 'MEMBER', 'COLLABORATOR'} and
+                old['head']['repo'] and old['head']['repo']['full_name'] == api.repo and
+                old['head']['ref'] == pr['head']['ref']]
+            if any(ancestor(old['head']['sha'], pr['head']['sha']) for old in prior):
+                result = api.api(f"pulls/{pr['number']}/merge", {'merge_method': 'merge', 'sha': pr['head']['sha']}, method='PUT')
+                if not result.get('merged'):
+                    raise RuntimeError('Correction merge remains blocked; source branch retained')
+                api.dispatch(DIRECT, {'automatic': 'true'})
+                return {'correctionPr': pr['number'], 'releaseDispatched': True}
     open_names = {p['head']['ref'] for p in pulls if p['head']['repo'] and p['head']['repo']['full_name'] == api.repo}
     branches = {b['name']: b for b in api.pages('branches')}
     approved = api.ref(APPROVED)
-    closed = api.pages('pulls?state=closed&base=' + urllib.parse.quote(APPROVED, safe=''))
     for pr in closed:
         name = pr['head']['ref']
         if (not pr.get('merged_at') or name in KEEP or name in open_names or name not in branches
@@ -231,22 +244,18 @@ def reconcile(api, trigger=None):
         run = api.api(f'actions/runs/{trigger}')
         if not successful_release(api, run):
             return {'retained': 'No successful applicable release; no promotion or cleanup'}
-        if run['path'].split('@')[0].endswith(RIGOROUS):
-            # A normal merge preserves newer approved changes; conflicts retain both refs.
-            prod, approved = api.ref(PRODUCTION), api.ref(APPROVED)
-            if not release_proven(api, prod, production=True):
-                return {'retained': 'Current production tip is not bound to successful release proof'}
-            if not ancestor(prod, approved):
-                api.api('merges', {'base': APPROVED, 'head': prod,
-                    'commit_message': 'Preserve successfully validated production release in approved changes'})
-                git('fetch', '--no-tags', 'origin')
-                # The synchronized merge commit must be deployed before any later
-                # candidate can claim it as a live ancestor. Dispatch explicitly.
-                api.dispatch(DIRECT, {'automatic': 'true'})
-                return {'synchronizedProduction': prod, 'directReleaseDispatched': True}
-    # Find exact successful direct release for the CURRENT approved head. Never
-    # promote newer unreleased edits based on an older workflow's green result.
-    approved, production = api.ref(APPROVED), api.ref(PRODUCTION)
+    # Recover missed workflow events and transient merge-back failures on every
+    # schedule. A failed production attempt never authorizes this synchronization.
+    production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+    if not ancestor(production, approved):
+        if not release_proven(api, production, production=True):
+            return {'retained': 'Current production tip is not bound to successful release proof'}
+        api.api('merges', {'base': APPROVED, 'head': production,
+            'commit_message': 'Preserve successfully validated production release in approved changes'})
+        git('fetch', '--no-tags', 'origin')
+        api.dispatch(DIRECT, {'automatic': 'true'})
+        return {'synchronizedProduction': production, 'directReleaseDispatched': True}
+    # Never promote newer unreleased edits using an older workflow's green result.
     if ancestor(approved, production):
         return {'promotion': 'already preserved in production'}
     runs = api.api('actions/runs?head_sha=' + approved + '&per_page=100')['workflow_runs']
