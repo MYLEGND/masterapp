@@ -503,9 +503,12 @@ internal sealed partial class LegendFounderToolAuthority
                     return SerializeUnbounded(SoftwareRemediationNotAvailable());
 
                 using var arguments = JsonDocument.Parse(call.Arguments);
-                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha");
-                var title = ReadRequiredString(arguments.RootElement, "title");
-                var summary = ReadRequiredString(arguments.RootElement, "summary");
+                // Durable cloud approval binds the exact strings shown in the
+                // review; source indentation/newlines and metadata must survive
+                // dispatch unchanged. Preserve legacy caller normalization.
+                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha", preserveWhitespace: reviewedCloudRepair);
+                var title = ReadRequiredString(arguments.RootElement, "title", preserveWhitespace: reviewedCloudRepair);
+                var summary = ReadRequiredString(arguments.RootElement, "summary", preserveWhitespace: reviewedCloudRepair);
                 if (string.IsNullOrWhiteSpace(baseSha) ||
                     string.IsNullOrWhiteSpace(title) ||
                     string.IsNullOrWhiteSpace(summary))
@@ -525,8 +528,8 @@ internal sealed partial class LegendFounderToolAuthority
                     if (change.ValueKind != JsonValueKind.Object)
                         return "{\"error\":\"invalid_repair_proposal\"}";
 
-                    var path = ReadRequiredString(change, "path");
-                    var content = ReadRequiredString(change, "content");
+                    var path = ReadRequiredString(change, "path", preserveWhitespace: reviewedCloudRepair);
+                    var content = ReadRequiredString(change, "content", preserveWhitespace: reviewedCloudRepair);
                     if (string.IsNullOrWhiteSpace(path) || content is null)
                         return "{\"error\":\"invalid_repair_proposal\"}";
 
@@ -3394,11 +3397,14 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static string? ReadRequiredString(
         JsonElement root,
-        string propertyName) =>
-        root.TryGetProperty(propertyName, out var property) &&
-        property.ValueKind == JsonValueKind.String
-            ? property.GetString()?.Trim()
-            : null;
+        string propertyName,
+        bool preserveWhitespace = false)
+    {
+        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+            return null;
+        var value = property.GetString();
+        return preserveWhitespace ? value : value?.Trim();
+    }
 
     private static string? ReadOptionalString(
         JsonElement root,

@@ -92,16 +92,27 @@ public sealed class LegendFounderCloudProposalTests
     [InlineData("\n")]
     [InlineData("\r\n")]
     [InlineData("\t")]
-    public async Task SourceWhitespaceIsPreservedExactlyInReviewedArguments(string whitespace)
+    public async Task SourceWhitespaceIsPreservedExactlyInReviewedArgumentsAndExecution(string whitespace)
     {
         await using var fixture = await Fixture.CreateAsync();
-        var content = "// first" + whitespace + "// second";
-        var staged = await fixture.StageAsync(Patch with { Changes = [new(Patch.Changes[0].Path, content)] });
+        var content = "\t  // first" + whitespace + "// second  \r\n";
+        var patch = Patch with { Title = " Exact synthetic repair ", Summary = " Review this fixed replacement. ",
+            Changes = [new(Patch.Changes[0].Path, content)] };
+        var staged = await fixture.StageAsync(patch);
         Assert.True(staged.Succeeded, staged.Error);
         using var arguments = JsonDocument.Parse(staged.Review!.CanonicalArgumentsJson);
         Assert.Equal(content, arguments.RootElement.GetProperty("changes")[0].GetProperty("content").GetString());
         Assert.NotNull(await fixture.Authority().GetCloudActionProposalAsync(fixture.Principal,
             staged.Review.ProposalId, CancellationToken.None));
+        await fixture.CompleteSourceAsync();
+        var fresh = await fixture.BeginApprovalAsync();
+        var approval = await fixture.ApproveAsync(staged.Review, fresh);
+        Assert.True(approval.Succeeded, approval.Error);
+        Assert.Contains("STAGED_UNPUBLISHED", await fixture.ExecuteAsync(fresh, staged.Review.CanonicalArgumentsJson));
+        fixture.Remediation.Verify(service => service.PrepareAsync("founder",
+            It.Is<FounderSoftwareRepairProposal>(actual => actual.BaseSha == patch.BaseSha && actual.Title == patch.Title &&
+                actual.Summary == patch.Summary && actual.Changes.Single().Path == patch.Changes.Single().Path &&
+                actual.Changes.Single().Content == content), It.IsAny<CancellationToken>()), Times.Once);
         fixture.Remediation.VerifyNoOtherCalls();
     }
 
