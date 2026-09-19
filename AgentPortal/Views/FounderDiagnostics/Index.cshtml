@@ -18,6 +18,18 @@
             <p>Staging does not deploy. Publication requests the existing protected validation workflow; it does not bypass checks.</p>
             @if (batch.State == "Staged")
             {
+                <details>
+                    <summary>Review a focused GitHub validation run</summary>
+                    <p>Use the exact patch digest and trusted workflow revision from the prepared validation manifest. This action does not deploy.</p>
+                    <form asp-action="ReviewCandidateValidation" method="get">
+                        <input type="hidden" name="pullRequestNumber" value="@batch.PullRequestNumber" />
+                        <input type="hidden" name="headSha" value="@batch.HeadSha" />
+                        <input type="hidden" name="baseSha" value="@batch.BaseSha" />
+                        <label>Patch SHA-256 <input name="patchSha256" pattern="[0-9a-f]{64}" maxlength="64" required /></label>
+                        <label>Trusted workflow commit <input name="trustedWorkflowSha" pattern="[0-9a-f]{40}" maxlength="40" required /></label>
+                        <button type="submit" class="btn btn-outline-primary">Review exact validation</button>
+                    </form>
+                </details>
                 <form asp-action="PublishBatch" method="post">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="pullRequestNumber" value="@batch.PullRequestNumber" />

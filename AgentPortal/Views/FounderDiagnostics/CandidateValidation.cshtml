@@ -1,0 +1,23 @@
+@model System.Text.Json.JsonElement
+@{
+    ViewData["Title"] = "Review isolated validation";
+    var canRequest = Model.TryGetProperty("canRequest", out var permitted) && permitted.ValueKind == System.Text.Json.JsonValueKind.True;
+}
+<section class="container py-4">
+    <h1>Review isolated validation</h1>
+    <p>This action runs focused tests on GitHub-hosted infrastructure. It does not merge, deploy, or provide production credentials to the candidate.</p>
+    <p>The trusted runner will independently verify the claimed patch digest before executing candidate code. A test receipt is not a deployment or model-quality qualification.</p>
+    <pre>@Model.ToString()</pre>
+    @if (canRequest)
+    {
+        <form method="post" asp-action="RequestCandidateValidation">
+            @Html.AntiForgeryToken()
+            @foreach (var key in new[] { "pullRequestNumber", "headSha", "baseSha", "patchSha256", "trustedWorkflowSha", "approvalActionDigest" })
+            {
+                <input type="hidden" name="@key" value="@Model.GetProperty(key).ToString()" />
+            }
+            <button type="submit" class="btn btn-primary">Approve this exact validation run</button>
+        </form>
+    }
+    <a href="/founder/diagnostics">Return to diagnostics</a>
+</section>

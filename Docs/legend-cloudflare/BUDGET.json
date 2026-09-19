@@ -13,7 +13,14 @@
     "unknownUsageReservationRetained": 0.045568,
     "conservativeModelDebit": 0.056982,
     "remainingModelAndToolAllowance": 2.943018,
-    "remainingTotalBeforeUnverifiedPlatformUsage": 4.943018
+    "remainingTotalBeforeUnverifiedPlatformUsage": 4.943018,
+    "execution": {
+      "provider": "GitHub Actions",
+      "additionalPaidLimit": 0.5,
+      "observedNewPaidSpend": 0,
+      "includedCapacity": "standard GitHub-hosted runners for verified public repository",
+      "billingTotalVerified": false
+    }
   },
   "production": {
     "totalAuthorized": 30,
@@ -22,9 +29,22 @@
     "plannedOtherPlatformReserve": 5,
     "maximumModelAndToolSpend": 20
   },
-  "activation": "qualification_worker_only_production_blocked_pending_acceptance_and_total_billing_verification",
+  "activation": "founder_manual_test_baseline_authorized_pending_release_critical_checks",
   "providerInvoiceHardCap": false,
   "accounting": "Qualification spend in the activation month must also count toward the production monthly authorization. Unused reserves cannot be reassigned automatically. Platform request, storage and abuse-related charges are not bounded by an inference ledger alone.",
   "provisioned": true,
-  "billingVerification": "User confirms $5/month Workers subscription. Current unbilled platform charges are not verified; OAuth lacks billing-read permission."
+  "billingVerification": "User confirms $5/month Workers subscription. Current unbilled platform charges are not verified; OAuth lacks billing-read permission.",
+  "containers": {
+    "provisioning": "paused_by_user",
+    "permissionGranted": false,
+    "requiredForAcceptance": false,
+    "resourcesProvisioned": false
+  },
+  "manualBaseline": {
+    "model": "@cf/openai/gpt-oss-120b",
+    "maximumPolicyDurationHours": 24,
+    "sharedLifetimeModelLedgerCap": 3,
+    "retainsQualificationDebits": true,
+    "invoiceVerification": "Current unbilled platform charges unavailable; no claim of verified total remaining invoice allowance."
+  }
 }

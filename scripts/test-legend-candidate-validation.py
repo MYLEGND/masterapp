@@ -7,6 +7,10 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import io
+import tarfile
+import time
 
 spec = importlib.util.spec_from_file_location('candidate_validation', Path(__file__).with_name('legend-candidate-validation.py'))
 m = importlib.util.module_from_spec(spec)
@@ -145,7 +149,7 @@ class CandidateTests(unittest.TestCase):
     def test_required_tests_cannot_be_deleted(self):
         (self.candidate / m.NODE_TESTS[0]).unlink()
         self.commit()
-        with self.assertRaisesRegex(m.Rejected, 'required_test_missing'):
+        with self.assertRaisesRegex(m.Rejected, 'privileged_review_required'):
             self.verify()
 
     def test_foreign_history_rejected(self):
@@ -168,7 +172,7 @@ class CandidateTests(unittest.TestCase):
 
     def test_commands_are_fixed_and_exclude_live_qualification(self):
         commands = m.commands(self.candidate, self.root / 'results')
-        self.assertEqual([name for name, _ in commands], ['node', 'restore', 'dotnet'])
+        self.assertEqual([name for name, _ in commands], ['restore', 'node', 'dotnet'])
         joined = ' '.join(part for _, command in commands for part in command)
         self.assertNotIn('LiveQualification', joined)
         self.assertNotIn('npm', joined)
@@ -183,6 +187,118 @@ class CandidateTests(unittest.TestCase):
             env = m.clean_environment(self.root)
         for key in ('GITHUB_TOKEN', 'AZURE_CLIENT_SECRET', 'LEGEND_INTEGRATION_ROOT', 'NODE_OPTIONS', 'NUGET_AUTH_TOKEN'):
             self.assertNotIn(key, env)
+
+    def test_test_sources_and_fixture_changes_require_privileged_review(self):
+        for name in (m.NODE_TESTS[0], 'AgentPortal.Tests/' + m.CLASSES[0] + '.cs',
+                     'Legend-Cloudflare/tests/runtime/fixtures/held-out.v1.json'):
+            with self.subTest(path=name):
+                self.assertFalse(m.eligible_path(name))
+        self.write(self.candidate, m.NODE_TESTS[0], '// weakened test')
+        self.commit()
+        with self.assertRaisesRegex(m.Rejected, 'privileged_review_required'):
+            self.verify()
+
+    def test_container_bounds_and_mounts_exclude_credentials_parent_and_socket(self):
+        command = m.container_command('test', self.candidate, 'bounded-volume',
+                                      Path('/setup/node'), ['node', '--version'])
+        joined = ' '.join(command)
+        for flag in ('--network=none', '--read-only', '65532:65532', '--cap-drop=ALL',
+                     '--security-opt=no-new-privileges', '--cpus=2', '--memory=3g',
+                     '--memory-swap=3g', '--pids-limit=256', '--log-driver=none'):
+            self.assertIn(flag, command)
+        self.assertIn(m.SDK_IMAGE, command)
+        self.assertIn('@sha256:', m.SDK_IMAGE)
+        self.assertNotIn('/var/run/docker.sock', joined)
+        self.assertNotIn('GITHUB_TOKEN', joined)
+        self.assertNotIn('target=/host', joined)
+        mounts = [command[i + 1] for i, value in enumerate(command) if value == '--mount']
+        self.assertEqual(len(mounts), 3)
+        self.assertTrue(all('readonly' in value for value in mounts if value.startswith('type=bind')))
+        self.assertNotIn(str(self.trusted), joined)
+
+    @staticmethod
+    def trx_archive(name='contracts.trx', content=b'<TestRun/>', kind=tarfile.REGTYPE):
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode='w') as archive:
+            info = tarfile.TarInfo(name)
+            info.type = kind
+            info.size = len(content) if kind == tarfile.REGTYPE else 0
+            info.linkname = '/private/secret' if kind == tarfile.SYMTYPE else ''
+            archive.addfile(info, io.BytesIO(content) if info.size else None)
+        return stream.getvalue()
+
+    def test_report_copy_rejects_links_and_paths_instead_of_extracting(self):
+        self.assertEqual(m.extract_trx(self.trx_archive()), b'<TestRun/>')
+        for archive in (self.trx_archive('../receipt.json'), self.trx_archive('/receipt.json'),
+                        self.trx_archive(kind=tarfile.SYMTYPE), b'not a tar file'):
+            with self.assertRaises(m.Rejected):
+                m.extract_trx(archive)
+
+    def test_parent_capture_bounds_output_and_deadline(self):
+        import sys
+        with self.assertRaisesRegex(m.Rejected, 'validation_output_limit_exceeded'):
+            m.capture([sys.executable, '-c', 'print("x" * 4096)'], {}, 5, maximum=32)
+        with self.assertRaisesRegex(m.Rejected, 'validation_deadline_exceeded'):
+            m.capture([sys.executable, '-c', 'import time; time.sleep(5)'], {}, 0.05)
+
+    def test_xml_size_checked_before_read_and_symlink_rejected(self):
+        path = self.root / 'large.xml'
+        with path.open('wb') as stream:
+            stream.truncate(m.MAX_REPORT_BYTES + 1)
+        with self.assertRaisesRegex(m.Rejected, 'test_report_invalid'):
+            m.xml_document(path)
+        link = self.root / 'report.xml'
+        link.symlink_to(path)
+        with self.assertRaisesRegex(m.Rejected, 'test_report_invalid'):
+            m.xml_document(link)
+
+    def isolated_mock(self, fail_label=None):
+        node = self.root / 'node'
+        node.write_text('synthetic node binary')
+        operations = []
+        def fake_capture(command, env, remaining, maximum=m.MAX_REPORT_BYTES):
+            operations.append(command)
+            if command[1] == 'run':
+                name = command[command.index('--name') + 1]
+                if name.endswith('-' + str(fail_label)):
+                    raise m.Rejected('synthetic_timeout')
+                if name.endswith('-node-runtime'):
+                    return 0, b'linux:x64:24\n'
+                return 0, b'<testsuites/>'
+            if command[1] == 'cp':
+                return 0, self.trx_archive()
+            return 0, b''
+        with patch.object(m.shutil, 'which', return_value=str(node)), patch.object(m, 'capture', side_effect=fake_capture):
+            if fail_label:
+                with self.assertRaisesRegex(m.Rejected, 'synthetic_timeout'):
+                    m.run_isolated(self.trusted, self.candidate, self.root, {}, time.monotonic() + 20)
+            else:
+                m.run_isolated(self.trusted, self.candidate, self.root, {}, time.monotonic() + 20)
+        return operations
+
+    def test_restore_uses_only_trusted_source_and_candidate_steps_are_offline(self):
+        operations = self.isolated_mock()
+        runs = [command for command in operations if command[1] == 'run']
+        self.assertEqual(len(runs), 4)
+        for command in runs:
+            joined = ' '.join(command)
+            restore = command[command.index('--name') + 1].endswith('-restore')
+            probe = command[command.index('--name') + 1].endswith('-node-runtime')
+            self.assertIn('--network=' + ('bridge' if restore else 'none'), command)
+            self.assertIn('source=' + str(self.trusted if restore or probe else self.candidate) + ',target=/source,readonly', joined)
+            self.assertNotIn('receipt.json', joined)
+        creates = [c for c in operations if c[1:3] == ['volume', 'create']]
+        self.assertEqual(len(creates), 1)
+        self.assertIn('--opt=type=tmpfs', creates[0])
+        self.assertTrue(any('size=2147483648' in v for v in creates[0]))
+        self.assertEqual(len([c for c in operations if c[1:3] == ['rm', '--force']]), 4)
+        self.assertEqual(operations[-1][1:4], ['volume', 'rm', '--force'])
+
+    def test_failure_removes_active_container_and_bounded_state_volume(self):
+        operations = self.isolated_mock(fail_label='node')
+        removals = [c for c in operations if c[1:3] == ['rm', '--force']]
+        self.assertTrue(any(c[-1].endswith('-node') for c in removals))
+        self.assertEqual(operations[-1][1:4], ['volume', 'rm', '--force'])
 
     def reports(self, missing_class=False, failed=False):
         self.write(self.root, 'node.log', '<testsuites><testsuite><testcase name="synthetic"/></testsuite></testsuites>')

@@ -112,16 +112,16 @@ needed; do not infer native coverage from this profile.
 ## Trusted workflow integration
 
 The lead owns workflow YAML and .NET integration. Dependencies are Python 3
-standard library, Git, Node 24, and .NET 10 SDK. No Python/npm install is needed
+standard library, Git, setup-node 24, Docker, and the pinned official .NET 10 SDK image. No Python/npm install is needed
 for this helper. Pin reviewed action revisions and SDK versions in the trusted
 workflow; version changes need privileged review.
 
 The required job properties are:
 
-1. Use a fresh GitHub-hosted `ubuntu` runner for the initial profile. A separate
-   explicitly approved macOS matrix entry may run the same contract tests, but
-   does not establish native application validation. Capacity/cost approval must
-   precede dispatch; this helper performs no capacity check or spend authorization.
+1. Use a fresh standard GitHub-hosted Linux x64 runner for this profile. This
+   Docker profile rejects macOS; a separately reviewed hosted macOS profile is
+   needed for native validation. It must never fall back to the Founder's Mac.
+   Capacity/cost checks precede dispatch; this helper does not authorize spend.
 2. Use job permissions `contents: read` only, no `id-token: write`, production
    environment, secrets inheritance, deployment credentials, caches, or writable
    repository token. Never expose the privileged dispatch credential to the job.
@@ -158,13 +158,23 @@ python3 -B trusted/scripts/legend-candidate-validation.py run \
   --output "$RUNNER_TEMP/legend-validation/receipt.json"
 ```
 
-`run` verifies everything again, requires GitHub-hosted Linux/macOS context and
-run/attempt IDs, then executes fixed argv without a shell. The child environment
-contains only basic executable/locale paths and fresh temporary HOME/NuGet/.NET
-directories. GitHub, Azure, model, Node injection, and other caller environment
-variables are not inherited. This reduces accidental credential exposure; it is
-not an OS isolation boundary against candidate code. No secrets may be present
-anywhere in the job. Candidate code can alter files and reports on its own runner.
+`run` verifies the exact history and paths again and requires GitHub-hosted Linux
+run/attempt identities. It uses the official .NET SDK image pinned by digest in
+the helper and verifies that the setup-node24 binary executes inside it. Restore
+has network access but sees only the trusted source. Candidate tests run in
+non-root containers with no network, read-only source/root filesystems, no host
+credentials/socket/parent-evidence mounts, dropped capabilities, no new
+privileges, and fixed CPU/memory/PID/file/time limits. State uses bounded temporary
+storage; cleanup is awaited on success and failure. Logs and XML are bounded
+before reading; only a regular bounded TRX file is copied out. Test-file and
+fixture edits require privileged review, so a normal candidate cannot delete or
+weaken the trusted baseline tests.
+
+Candidate reports remain untrusted statements about correctness. The protected
+parent receipt and GitHub run identity demonstrate what was executed, not that a
+candidate cannot mislead its own tests. Independent code/test review remains a
+release requirement. Container compatibility and cleanup still need a real
+hosted run; synthetic tests alone do not establish those facts.
 
 ## Evidence and acceptance
 

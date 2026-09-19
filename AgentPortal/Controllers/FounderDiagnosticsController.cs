@@ -130,4 +130,34 @@ public sealed class FounderDiagnosticsController(MasterAppDbContext db) : Contro
         return await Index(cancellationToken: cancellationToken);
     }
 
+    [HttpGet("candidate-validation/review")]
+    public async Task<IActionResult> ReviewCandidateValidation(int pullRequestNumber, string headSha,
+        string baseSha, string patchSha256, string trustedWorkflowSha,
+        [FromServices] IFounderSoftwareRemediationService repairs, CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        var review = await repairs.GetCandidateValidationReviewAsync(pullRequestNumber, headSha, baseSha,
+            patchSha256, trustedWorkflowSha, cancellationToken);
+        return View("CandidateValidation", JsonSerializer.SerializeToElement(review));
+    }
+
+    [HttpPost("candidate-validation/request")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RequestCandidateValidation(int pullRequestNumber, string headSha,
+        string baseSha, string patchSha256, string trustedWorkflowSha, string approvalActionDigest,
+        [FromServices] IFounderSoftwareRemediationService repairs, CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        return Json(await repairs.RequestCandidateValidationAsync("founder", pullRequestNumber, headSha,
+            baseSha, patchSha256, trustedWorkflowSha, approvalActionDigest, cancellationToken));
+    }
+
+    [HttpGet("candidate-validation/{runId:long}")]
+    public async Task<IActionResult> CandidateValidation(long runId, string headSha,
+        [FromServices] IFounderSoftwareRemediationService repairs, CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(User);
+        return Json(await repairs.GetCandidateValidationAsync(runId, headSha, cancellationToken));
+    }
+
 }

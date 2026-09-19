@@ -128,7 +128,7 @@ public sealed class LegendFounderAiConversationRoutingTests
         var method = typeof(LegendFounderAiConversationService)
             .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
-        var instructions = Assert.IsType<string>(method!.Invoke(null, new object?[] { "teacher", null, null }));
+        var instructions = Assert.IsType<string>(method!.Invoke(null, new object?[] { "teacher", null, null, false }));
         Assert.Contains("external OpenAI Teacher speaking directly with the Founder", instructions);
         Assert.Contains("Native LEGEND conversational inference is bypassed in this mode", instructions);
         Assert.Contains("existing governed tools", instructions);
@@ -232,7 +232,7 @@ public sealed class LegendFounderAiConversationRoutingTests
             .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(instructionMethod);
         var instructions = Assert.IsType<string>(instructionMethod!.Invoke(
-            null, new object?[] { "legend", null, null }));
+            null, new object?[] { "legend", null, null, false }));
         Assert.Contains("Organization-specific claims require applicable approved evidence or a successful authorized inspection", instructions);
         Assert.Contains("Retrieve retained knowledge when relevant, not as a prerequisite for ordinary conversation", instructions);
         Assert.Contains("Founder mutations require explicit request-level Founder confirmation", instructions);

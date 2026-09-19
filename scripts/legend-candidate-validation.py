@@ -7,6 +7,11 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import signal
+import selectors
+import shutil
+import io
+import tarfile
+import uuid
 import subprocess
 import sys
 import tempfile
@@ -35,6 +40,10 @@ SOURCE_FILES = {
 DIFF_ARGS = ('diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv',
              '--no-renames', '--src-prefix=a/', '--dst-prefix=b/')
 MAX_SECONDS = 900
+MAX_REPORT_BYTES = 10_000_000
+SDK_IMAGE = 'mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d'
+# Official 10.0-noble manifest digest read from MCR on 2026-09-18.
+# Linux x64 only; no host Docker socket or credential directory enters a container.
 
 
 class Rejected(ValueError):
@@ -79,9 +88,7 @@ def eligible_path(name):
     path = PurePosixPath(name)
     if str(path) != name or '..' in path.parts or any(p.startswith('.') for p in path.parts):
         return False
-    if name in SOURCE_FILES or name in {'AgentPortal.Tests/' + c + '.cs' for c in CLASSES}:
-        return True
-    if name.startswith('Legend-Cloudflare/tests/') and path.suffix in {'.mjs', '.json'}:
+    if name in SOURCE_FILES:
         return True
     return name.startswith('Docs/legend-cloudflare/') and path.suffix == '.md'
 
@@ -133,53 +140,162 @@ def verify(request, trusted, candidate, repository):
         if not (candidate / name).is_file() or (candidate / name).is_symlink():
             raise Rejected('required_test_missing:' + name)
     return {**request, 'changedFiles': paths, 'cumulativeChangedFiles': cumulative_paths, 'deploymentAuthorized': False,
-            'mergeAuthorized': False, 'evidenceKind': 'unprivileged_validation_only'}
+            'mergeAuthorized': False, 'evidenceKind': 'isolated_candidate_reported_validation',
+            'correctnessAuthenticated': False, 'reportTrust': 'candidate-reported-not-proof-of-correctness'}
 
 
-def commands(candidate, output):
-    project = str(candidate / 'AgentPortal.Tests/AgentPortal.Tests.csproj')
-    artifacts = '-p:MasterAppArtifactsRoot=' + str(output / 'dotnet-artifacts')
+def commands(candidate=None, output=None):
+    project = '/source/AgentPortal.Tests/AgentPortal.Tests.csproj'
+    artifacts = '-p:MasterAppArtifactsRoot=/state/artifacts'
     selection = '|'.join('FullyQualifiedName~AgentPortal.Tests.' + name for name in CLASSES)
     return [
-        ('node', ['node', '--test', '--test-concurrency=1', '--test-reporter=junit', *NODE_TESTS]),
         ('restore', ['dotnet', 'restore', project, artifacts, '--verbosity', 'minimal']),
+        ('node', ['/usr/local/bin/node', '--test', '--test-concurrency=1', '--test-reporter=junit', *NODE_TESTS]),
         ('dotnet', ['dotnet', 'test', project, artifacts, '--no-restore', '--filter', selection,
-                    '--logger', 'trx;LogFileName=contracts.trx', '--results-directory', str(output),
+                    '--logger', 'trx;LogFileName=contracts.trx', '--results-directory', '/state/reports',
                     '--verbosity', 'minimal']),
     ]
 
 
 def clean_environment(home):
-    env = {key: os.environ[key] for key in ('PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SYSTEMROOT') if key in os.environ}
-    env.update(HOME=str(home), DOTNET_CLI_HOME=str(home), NUGET_PACKAGES=str(home / 'nuget'),
-               DOTNET_CLI_TELEMETRY_OPTOUT='1', DOTNET_SKIP_FIRST_TIME_EXPERIENCE='1',
-               DOTNET_NOLOGO='1', CI='true', NO_COLOR='1', GIT_TERMINAL_PROMPT='0',
-               GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+    # This is the host Docker CLI environment, never forwarded wholesale to containers.
+    env = {key: os.environ[key] for key in ('PATH', 'LANG', 'LC_ALL') if key in os.environ}
+    env.update(HOME=str(home), DOCKER_CONFIG=str(home / 'docker'),
+               DOTNET_CLI_TELEMETRY_OPTOUT='1', GIT_TERMINAL_PROMPT='0')
     return env
 
 
-def execute(command, candidate, log, env, remaining):
+def capture(command, env, remaining, maximum=MAX_REPORT_BYTES):
+    """Bound output before allocation; kill the CLI on deadline/output overflow."""
     if remaining <= 0:
         raise Rejected('validation_deadline_exceeded')
-    with log.open('wb') as stream:
-        process = subprocess.Popen(command, cwd=candidate, env=env, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        try:
-            code = process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
+    process = subprocess.Popen(command, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, start_new_session=True)
+    deadline = time.monotonic() + remaining
+    data = bytearray()
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                if time.monotonic() >= deadline:
+                    raise Rejected('validation_deadline_exceeded')
+                for key, _ in selector.select(min(0.2, max(0, deadline - time.monotonic()))):
+                    block = os.read(key.fileobj.fileno(), 65536)
+                    if not block:
+                        selector.unregister(key.fileobj)
+                    elif len(data) + len(block) > maximum:
+                        raise Rejected('validation_output_limit_exceeded')
+                    else:
+                        data.extend(block)
+            code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
+        return code, bytes(data)
+    finally:
+        if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired as exc:
-                raise Rejected('cleanup_unverified') from exc
-            raise Rejected('validation_deadline_exceeded')
+            process.wait(timeout=5)
+        process.stdout.close()
+
+
+def docker_checked(arguments, env, deadline, maximum=MAX_REPORT_BYTES):
+    code, data = capture(['docker', *arguments], env, deadline - time.monotonic(), maximum)
     if code:
-        raise Rejected('command_failed:' + command[0] + ':' + str(code))
+        raise Rejected('container_operation_failed:' + arguments[0])
+    return data
+
+
+def container_command(name, source, volume, node, command, network=False):
+    # Only trusted restore may use the network. No candidate code is mounted in that phase.
+    return ['run', '--name', name, '--platform', 'linux/amd64', '--pull=never',
+            '--network=' + ('bridge' if network else 'none'), '--read-only',
+            '--user', '65532:65532', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+            '--cpus=2', '--memory=3g', '--memory-swap=3g', '--pids-limit=256',
+            '--ulimit', 'nofile=2048:2048', '--ulimit', 'fsize=268435456:268435456',
+            '--log-driver=none', '--workdir=/source',
+            '--mount', 'type=bind,source=' + str(source) + ',target=/source,readonly',
+            '--mount', 'type=volume,source=' + volume + ',target=/state',
+            '--mount', 'type=bind,source=' + str(node) + ',target=/usr/local/bin/node,readonly',
+            '--tmpfs', '/tmp:rw,noexec,nosuid,size=134217728,uid=65532,gid=65532,mode=700',
+            '--env', 'HOME=/state/home', '--env', 'DOTNET_CLI_HOME=/state/home',
+            '--env', 'NUGET_PACKAGES=/state/nuget', '--env', 'DOTNET_CLI_TELEMETRY_OPTOUT=1',
+            '--env', 'DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1', '--env', 'DOTNET_NOLOGO=1',
+            '--env', 'CI=true', '--env', 'NO_COLOR=1', SDK_IMAGE, *command]
+
+
+def extract_trx(data):
+    """Never extract candidate tar paths/symlinks into the parent filesystem."""
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:') as archive:
+            members = archive.getmembers()
+            if len(members) != 1 or not members[0].isfile() or members[0].name != 'contracts.trx':
+                raise Rejected('test_report_archive_invalid')
+            if members[0].size > MAX_REPORT_BYTES:
+                raise Rejected('test_report_invalid')
+            return archive.extractfile(members[0]).read(MAX_REPORT_BYTES + 1)
+    except tarfile.TarError as exc:
+        raise Rejected('test_report_archive_invalid') from exc
+
+
+def run_isolated(trusted, candidate, output, env, deadline):
+    node = Path(shutil.which('node') or '/missing-node').resolve()
+    if not node.is_file() or node.is_symlink() or ',' in str(node):
+        raise Rejected('setup_node_binary_missing')
+    for root in (trusted, candidate):
+        if ',' in str(root):
+            raise Rejected('mount_path_invalid')
+    volume = 'legend-validation-' + uuid.uuid4().hex
+    names = []
+    volume_created = False
+    try:
+        docker_checked(['pull', '--platform=linux/amd64', SDK_IMAGE], env, deadline)
+        volume_created = True  # Cleanup also covers an ambiguous create timeout.
+        docker_checked(['volume', 'create', '--driver=local', '--opt=type=tmpfs',
+                        '--opt=device=tmpfs', '--opt=o=size=2147483648,uid=65532,gid=65532,mode=700', volume], env, deadline)
+        # Verify the setup-node 24 ELF actually executes inside the pinned Linux SDK image.
+        for label, command in [('node-runtime', ['/usr/local/bin/node', '-p',
+                "process.platform + ':' + process.arch + ':' + process.versions.node.split('.')[0]"]), *commands()]:
+            name = volume + '-' + label
+            names.append(name)
+            source = trusted if label in ('restore', 'node-runtime') else candidate
+            arguments = container_command(name, source, volume, node, command, network=label == 'restore')
+            code, data = capture(['docker', *arguments], env, deadline - time.monotonic())
+            if label == 'node-runtime':
+                if code or data.strip() != b'linux:x64:24':
+                    raise Rejected('setup_node_container_incompatible')
+            else:
+                (output / (label + '.log')).write_bytes(data)
+                if code:
+                    raise Rejected('command_failed:' + label + ':' + str(code))
+                if label == 'dotnet':
+                    archive = docker_checked(['cp', name + ':/state/reports/contracts.trx', '-'], env,
+                                             deadline, MAX_REPORT_BYTES + 65536)
+                    (output / 'contracts.trx').write_bytes(extract_trx(archive))
+            # Killing/removing each container also kills any orphaned candidate child processes.
+            docker_checked(['rm', '--force', name], env, deadline)
+            names.remove(name)
+    finally:
+        # Cleanup has an independent bounded opportunity even after a validation timeout.
+        cleanup_deadline = time.monotonic() + 30
+        failed = False
+        for name in names:
+            try:
+                docker_checked(['rm', '--force', name], env, cleanup_deadline)
+            except (Rejected, OSError, subprocess.TimeoutExpired):
+                failed = True
+        if volume_created:
+            try:
+                docker_checked(['volume', 'rm', '--force', volume], env, cleanup_deadline)
+            except (Rejected, OSError, subprocess.TimeoutExpired):
+                failed = True
+        if failed:
+            raise Rejected('container_cleanup_unverified')
 
 
 def xml_document(path):
-    data = path.read_bytes()
-    if len(data) > 10_000_000 or b'<!DOCTYPE' in data or b'<!ENTITY' in data:
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_REPORT_BYTES:
+        raise Rejected('test_report_invalid')
+    with path.open('rb') as stream:
+        data = stream.read(MAX_REPORT_BYTES + 1)
+    if len(data) > MAX_REPORT_BYTES or b'<!DOCTYPE' in data or b'<!ENTITY' in data:
         raise Rejected('test_report_invalid')
     try:
         return ET.fromstring(data)
@@ -222,17 +338,17 @@ def main():
         if not re.fullmatch(r'[1-9][0-9]*', os.environ.get('GITHUB_RUN_ID', '')) or not re.fullmatch(
                 r'[1-9][0-9]*', os.environ.get('GITHUB_RUN_ATTEMPT', '')):
             raise Rejected('github_run_identity_required')
-        if os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or os.environ.get('RUNNER_OS') not in ('Linux', 'macOS'):
+        if os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted' or os.environ.get('RUNNER_OS') != 'Linux':
             raise Rejected('github_hosted_runner_required')
         result.update(runId=os.environ['GITHUB_RUN_ID'], runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],
-                      runnerOS=os.environ['RUNNER_OS'], conclusion='failure', testCounts={})
+                      runnerOS=os.environ['RUNNER_OS'], conclusion='failure', testCounts={},
+                      sandboxImage=SDK_IMAGE, testNetwork='none', trustedTestsUnchanged=True)
         deadline = time.monotonic() + MAX_SECONDS
         with tempfile.TemporaryDirectory(prefix='legend-validation-') as folder:
             home = Path(folder)
             try:
-                for label, command in commands(args.candidate_root.resolve(), output.parent):
-                    execute(command, args.candidate_root.resolve(), output.parent / (label + '.log'),
-                            clean_environment(home), deadline - time.monotonic())
+                run_isolated(args.trusted_root.resolve(), args.candidate_root.resolve(),
+                             output.parent, clean_environment(home), deadline)
                 result['testCounts'] = test_counts(output.parent)
                 result['conclusion'] = 'success'
             except (Rejected, OSError) as exc:

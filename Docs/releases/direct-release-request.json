@@ -1,6 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Existing session authorization for relevant website editor fixes through direct deployment after applicable checks",
-  "purpose": "Restore Protect website editor initialization for its existing same-origin API configuration, preserving deployed consolidated changes",
-  "requestId": "protect-editor-origin-20260918-1"
+  "authorization": "Explicit Founder manual-test baseline through existing fast-track deployment; comprehensive model acceptance deferred; mutations and GitHub execution disabled",
+  "purpose": "Activate centralized Cloudflare Founder AI conversations and history on AgentPortal only, preserving all newer unrelated releases",
+  "requestId": "legend-cloudflare-founder-baseline-20260918-1",
+  "targets": [
+    "masterapp-portal"
+  ]
 }

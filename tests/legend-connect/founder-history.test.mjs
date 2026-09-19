@@ -18,7 +18,7 @@ function environment(fetch) {
     busy: false, historyRequest: null, historyTimer: null, historySkip: 0, historyHasMore: false,
     accountGeneration: 0, activeRequest: null, state: { activeConversationId: 'thread', conversations: [conversation] },
     document: { hidden: false }, modalElement: { dataset: { chatUrl: '/chat' }, classList: { contains: () => true } },
-    window: { clearTimeout() {}, setTimeout() { return 1; } },
+    window: { crypto: { randomUUID: () => 'new-id' }, clearTimeout() {}, setTimeout() { return 1; } },
     form: { querySelector: () => ({ value: 'csrf' }) }, input: { value: 'Unsent draft' },
     founderCommandConfirmed: { checked: false }, status: { textContent: '' }, fetch,
     activeConversation: () => c.state.conversations.find(row => row.id === c.state.activeConversationId),
@@ -27,7 +27,7 @@ function environment(fetch) {
     setBusy(value) { c.busy = value; }, renderAll() {}, applyOperationalProgress() {},
   };
   vm.createContext(c);
-  for (const name of ['stopHistoryRefresh', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
+  for (const name of ['createId', 'newConversationRecord', 'stopHistoryRefresh', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
     'loadConversationPage', 'refreshHistory', 'scheduleHistoryRefresh', 'structuredFailureMessage',
     'consumeChatResultStream', 'executeConversationRequest']) vm.runInContext(implementation(name), c);
   return c;
@@ -146,4 +146,32 @@ test('legacy browser transcripts are not read, imported, cleared or sent as auth
   assert.match(source, /expectedLastMessageId: conversation\.lastMessageId/);
   assert.match(source, /messages: \[\{ role: 'user', content: text \}\]/);
   assert.match(source, /metadata\.stage === 'response_partial'/);
+});
+
+
+test('newly discovered canonical history does not invent an external-answering restriction', async () => {
+  const c = environment(async () => ok({ succeeded: true, conversations: [{ id: 'other-device-thread', subject: 'Saved thread' }] }));
+  c.activeConversation().persisted = false;
+  await c.refreshHistory();
+  const discovered = c.state.conversations.find(item => item.id === 'other-device-thread');
+  assert.equal(discovered.mode, 'legend');
+  assert.equal(discovered.nativeOnly, false);
+  assert.equal(discovered.externalAnsweringBlocked, false);
+  assert.equal(discovered.persisted, true);
+  assert.equal(discovered.lastMessageId, null);
+  assert.equal(discovered.messages.length, 0);
+});
+
+test('history refresh preserves explicit existing provider restrictions', async () => {
+  for (const policy of [{ nativeOnly: true, externalAnsweringBlocked: false },
+    { nativeOnly: false, externalAnsweringBlocked: true }]) {
+    const c = environment(async () => ok({ succeeded: true, conversations: [{ id: 'restricted-thread' }] }));
+    c.activeConversation().persisted = false;
+    const restricted = { id: 'restricted-thread', mode: 'legend', messages: [], ...policy };
+    c.state.conversations.push(restricted);
+    await c.refreshHistory();
+    assert.equal(c.state.conversations.find(item => item.id === 'restricted-thread'), restricted);
+    assert.equal(restricted.nativeOnly, policy.nativeOnly);
+    assert.equal(restricted.externalAnsweringBlocked, policy.externalAnsweringBlocked);
+  }
 });
