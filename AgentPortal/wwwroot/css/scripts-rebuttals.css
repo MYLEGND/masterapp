@@ -92,7 +92,7 @@ body{
 }
 
 .rb-wrap, .mp-shell, .scripts-shell{
-    max-width: 1720px;
+    max-width: none;
     margin: 0 auto;
     padding: 18px 24px 64px 24px;
     width: 100%;
@@ -1861,7 +1861,7 @@ details.section{
     }
 
     #mpShell .mp-shell{
-        max-width: 1400px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 12px 56px 12px;
         display:grid;
@@ -2149,14 +2149,6 @@ details.section{
         overflow:auto;
         -webkit-overflow-scrolling:touch;
         flex: 1 1 auto;
-    }
-
-    #mpShell .side-nav::-webkit-scrollbar{ width:10px; }
-    #mpShell .side-nav::-webkit-scrollbar-track{ background: rgba(0,0,0,.03); }
-    #mpShell .side-nav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border:2px solid rgba(255,255,255,.75);
-        border-radius:999px;
     }
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
@@ -2799,7 +2791,7 @@ details.section{
     }
 
     #rbShell .rb-wrap{
-        max-width: 1910px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 10px 56px 10px;
     }
@@ -3948,24 +3940,6 @@ details.section{
         height: auto !important;
         overflow-y: auto !important;
         overflow-x: visible !important;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(166,128,35,.55) rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar{
-        display: block;
-        width: 10px;
-        height: 10px;
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-track{
-        background: rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border: 2px solid rgba(255,255,255,.75);
-        border-radius: 999px;
     }
 
     #rbShell .prosper-nav-card{
@@ -4729,7 +4703,7 @@ details.section{
     }
 
     #mpShell .mp-shell{
-        max-width: 1400px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 12px 56px 12px;
         display:grid;
@@ -4954,14 +4928,6 @@ details.section{
         overflow:auto;
         -webkit-overflow-scrolling:touch;
         flex: 1 1 auto;
-    }
-
-    #mpShell .side-nav::-webkit-scrollbar{ width:10px; }
-    #mpShell .side-nav::-webkit-scrollbar-track{ background: rgba(0,0,0,.03); }
-    #mpShell .side-nav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border:2px solid rgba(255,255,255,.75);
-        border-radius:999px;
     }
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
@@ -5602,7 +5568,7 @@ details.section{
     }
 
     #rbShell .rb-wrap{
-        max-width: 1910px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 10px 56px 10px;
     }
@@ -5872,24 +5838,6 @@ details.section{
         height: auto !important;
         overflow-y: auto !important;
         overflow-x: visible !important;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(166,128,35,.55) rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar{
-        display: block;
-        width: 10px;
-        height: 10px;
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-track{
-        background: rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border: 2px solid rgba(255,255,255,.75);
-        border-radius: 999px;
     }
 
     #rbShell .prosper-nav-card{
@@ -6662,7 +6610,7 @@ details.section{
     }
 
     .scripts-shell{
-        max-width: 1280px;
+        max-width: none;
         width: 100%;
         margin: 0 auto;
         padding: 16px 16px 64px 16px;
@@ -7214,7 +7162,7 @@ details.section{
     }
 
     #mpShell .mp-shell{
-        max-width: 1400px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 12px 56px 12px;
         display:grid;
@@ -7439,14 +7387,6 @@ details.section{
         overflow:auto;
         -webkit-overflow-scrolling:touch;
         flex: 1 1 auto;
-    }
-
-    #mpShell .side-nav::-webkit-scrollbar{ width:10px; }
-    #mpShell .side-nav::-webkit-scrollbar-track{ background: rgba(0,0,0,.03); }
-    #mpShell .side-nav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border:2px solid rgba(255,255,255,.75);
-        border-radius:999px;
     }
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
@@ -8087,7 +8027,7 @@ details.section{
     }
 
     #rbShell .rb-wrap{
-        max-width: 1910px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 10px 56px 10px;
     }
@@ -8376,24 +8316,6 @@ details.section{
         height: auto !important;
         overflow-y: auto !important;
         overflow-x: visible !important;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(166,128,35,.55) rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar{
-        display: block;
-        width: 10px;
-        height: 10px;
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-track{
-        background: rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border: 2px solid rgba(255,255,255,.75);
-        border-radius: 999px;
     }
 
     #rbShell .prosper-nav-card{
@@ -9170,7 +9092,7 @@ details.section{
     }
 
     #mpShell .mp-shell{
-        max-width: 1400px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 12px 56px 12px;
         display:grid;
@@ -9395,14 +9317,6 @@ details.section{
         overflow:auto;
         -webkit-overflow-scrolling:touch;
         flex: 1 1 auto;
-    }
-
-    #mpShell .side-nav::-webkit-scrollbar{ width:10px; }
-    #mpShell .side-nav::-webkit-scrollbar-track{ background: rgba(0,0,0,.03); }
-    #mpShell .side-nav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border:2px solid rgba(255,255,255,.75);
-        border-radius:999px;
     }
 
     /* ===== LEFT NAV — SAME COLOR LOGIC STRUCTURE AS REBUTTALS ===== */
@@ -10043,7 +9957,7 @@ details.section{
     }
 
     #rbShell .rb-wrap{
-        max-width: 1910px;
+        max-width: none;
         margin: 0 auto;
         padding: 12px 10px 56px 10px;
     }
@@ -10332,24 +10246,6 @@ details.section{
         height: auto !important;
         overflow-y: auto !important;
         overflow-x: visible !important;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(166,128,35,.55) rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar{
-        display: block;
-        width: 10px;
-        height: 10px;
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-track{
-        background: rgba(0,0,0,.03);
-    }
-
-    #rbShell #prosperNav::-webkit-scrollbar-thumb{
-        background: rgba(166,128,35,.55);
-        border: 2px solid rgba(255,255,255,.75);
-        border-radius: 999px;
     }
 
     #rbShell .prosper-nav-card{
@@ -11187,7 +11083,6 @@ details.section{
 #rbShell #prosperNav{
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    scrollbar-gutter: stable;
 }
 
 #rbShell .cat-btn{
@@ -17759,7 +17654,6 @@ details.section{
         min-height: 0 !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
-        scrollbar-gutter: stable;
     }
 }
 
@@ -17786,7 +17680,6 @@ details.section{
     }
 
     #rbShell #rbNav{
-        scrollbar-gutter: auto !important;
     }
 
     #rbShell .prosper-nav-card{
@@ -17809,7 +17702,6 @@ details.section{
         max-height: none !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
-        scrollbar-gutter: stable !important;
     }
 
     #mpShell .side-card{

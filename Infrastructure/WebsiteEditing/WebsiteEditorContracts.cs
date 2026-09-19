@@ -39,9 +39,9 @@ public sealed class WebsiteStyleOverride
 {
     public string? TextAlign { get; set; }
     public decimal? FontScale { get; set; }
-    public int? WidthPercent { get; set; }
-    public int? PaddingTop { get; set; }
-    public int? PaddingBottom { get; set; }
+    public decimal? WidthPercent { get; set; }
+    public decimal? PaddingTop { get; set; }
+    public decimal? PaddingBottom { get; set; }
     public string? ObjectPosition { get; set; }
 }
 

@@ -7,79 +7,9 @@
 
 @media (max-width: 767.98px) {
     :root {
-        --client-mobile-gutter: 0.75rem;
-        --client-mobile-section-gap: 0.75rem;
-        --client-mobile-card-radius: 18px;
-    }
-
-    html {
-        overflow-x: clip;
-    }
-
-    body.client-portal {
-        min-width: 320px;
-        overflow-x: clip;
-    }
-
-    .client-portal main,
-    .client-portal .container,
-    .client-portal .container-fluid,
-    .client-portal .dashboard-page-shell,
-    .client-portal .resources-page,
-    .client-portal .training-page,
-    .client-portal .snapshot-page,
-    .client-portal .finance-shell {
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .client-portal .container,
-    .client-portal .container-fluid {
-        padding-inline: var(--client-mobile-gutter);
-    }
-
-    /* Shared navigation — one compact header for every authenticated ClientApp page. */
-    .client-portal .legend-global-nav {
-        min-height: 0;
-        padding: 0.6rem 0.75rem;
-        border-radius: 16px;
-    }
-
-    .client-portal .legend-global-nav .container-fluid {
-        padding-inline: 0;
-        gap: 0.45rem;
-    }
-
-    .client-portal .legend-global-nav .navbar-brand img {
-        max-height: 46px;
-    }
-
-    .client-portal .legend-global-nav .nav-toggle {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
-    }
-
-    .client-portal .header-psalms {
-        min-height: 38px;
-        margin-top: 0.15rem;
-        padding: 0.42rem 0.75rem;
-        border-radius: 13px;
-        font-size: 0.82rem;
-        letter-spacing: 0.06em;
-        line-height: 1.2;
-    }
-
-    .client-portal .legend-global-nav .navbar-left,
-    .client-portal .legend-global-nav .navbar-right {
-        margin-top: 0.35rem;
-        padding: 0.55rem;
-        border-radius: 13px;
-    }
-
-    .client-portal .dashboard-page-shell,
-    .client-portal .client-create-page {
-        padding: 0.75rem var(--client-mobile-gutter) 1.35rem;
+        --client-mobile-gutter: var(--app-gutter);
+        --client-mobile-section-gap: 1rem;
+        --client-mobile-card-radius: var(--web-radius-md);
     }
 
     .client-portal :is(

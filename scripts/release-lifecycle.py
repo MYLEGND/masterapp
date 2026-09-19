@@ -239,6 +239,19 @@ def successful_release(api, run, app=None):
                for step in release_job.get('steps', []))
 
 
+def direct_only_request(sha):
+    # A one-release exception, bound to the commit which changes the request.
+    # A later unrelated commit cannot inherit a stale promotion exemption.
+    path = 'Docs/releases/direct-release-request.json'
+    last = git('log', '-1', '--format=%H', sha, '--', path).stdout.strip()
+    if last != sha:
+        return False
+    result = git('show', sha + ':' + path, check=False)
+    if result.returncode:
+        return False
+    return json.loads(result.stdout).get('releaseMode') == 'approved-only'
+
+
 def reconcile(api, trigger=None):
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
@@ -247,6 +260,8 @@ def reconcile(api, trigger=None):
     # Recover missed workflow events and transient merge-back failures on every
     # schedule. A failed production attempt never authorizes this synchronization.
     production, approved = api.ref(PRODUCTION), api.ref(APPROVED)
+    if direct_only_request(approved):
+        return {'promotion': 'disabled for this exact approved-only release'}
     if not ancestor(production, approved):
         if not release_proven(api, production, production=True):
             return {'retained': 'Current production tip is not bound to successful release proof'}

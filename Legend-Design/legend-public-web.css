@@ -1,33 +1,9 @@
 /* LEGEND® public web presentation authority.
    Shared by www.mylegnd.com and protect.mylegnd.com.
    Brand-specific palettes are variables; layout, rhythm, components and responsive behavior live here. */
-:root{
-  --navy:#102b62;
-  --navy-deep:#081a3a;
-  --navy-royal:#173b7a;
-  --gold:#d4ad45;
-  --gold-strong:#f0cf78;
-  --ink:#101a35;
-  --muted:#5b6680;
-  --surface:#f7f8fb;
-  --white:#fff;
-  --border:rgba(16,43,98,.13);
-  --radius-sm:12px;
-  --radius-md:18px;
-  --radius-lg:28px;
-  --shadow:0 24px 70px rgba(8,26,58,.12);
-  --font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  --page-pad:clamp(20px,6.5vw,108px);
-  --header-height:88px;
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth;scrollbar-width:none;-ms-overflow-style:none}
-html::-webkit-scrollbar,body::-webkit-scrollbar{display:none;width:0;height:0}
-body{scrollbar-width:none;-ms-overflow-style:none}
-body{margin:0;min-width:320px;min-height:100dvh;overflow-x:clip;background:var(--white);color:var(--ink);font-family:var(--font);line-height:1.65}
+body{overflow-x:clip}
 a{color:inherit;text-decoration:none}
-img{display:block;max-width:100%}
-button,input,select,textarea{font:inherit}
+img{display:block}
 .skip{position:fixed;left:12px;top:-90px;z-index:1200;background:var(--gold);color:var(--navy-deep);padding:10px 14px;border-radius:10px;font-weight:800}
 .skip:focus{top:12px}
 .site-header{
@@ -210,4 +186,28 @@ h3{font-size:22px;letter-spacing:-.018em}
   h1{font-size:clamp(42px,13vw,58px);line-height:1.02}
   h2{font-size:clamp(30px,9vw,42px)}
   .section,.cta,.page-hero{padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right))}
+}
+
+/* An editor preview has less space than the browser window. Match the public
+   component breakpoints to that actual space without changing live-page DOM. */
+.legend-cms-preview{container:legend-public-preview / inline-size}
+@container legend-public-preview (max-width:980px){
+ .site-header{--page-pad:clamp(18px,5cqw,34px);min-height:76px;padding:12px 18px}
+ .hero{grid-template-columns:1fr;min-height:auto;gap:34px}
+ .hero-mark{min-height:310px}.hero-mark img{max-height:300px}
+ .card-grid,.steps,.standard-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .nav-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:46px;min-height:46px}
+ .nav{position:absolute;top:100%;left:0;right:0;display:none;flex-direction:column;align-items:stretch;gap:0;padding:16px 24px 24px;background:var(--navy-deep);border-top:1px solid rgba(255,255,255,.1)}
+ .nav[data-open=true]{display:flex}.nav a,.nav button{padding:14px 0;text-align:left}.nav .nav-cta{text-align:center;margin-top:8px}
+ .mark-showcase,.founder{grid-template-columns:1fr}.brand-seal{position:relative;top:0}
+ .footer-grid{grid-template-columns:1fr 1fr}.footer-grid>div:first-child{grid-column:1/-1}
+}
+@container legend-public-preview (max-width:650px){
+ .site-header{min-height:72px;padding:10px 16px}.brand-wordmark strong{font-size:20px;letter-spacing:.14em}
+ .hero{padding:52px 18px 64px}.hero-mark{min-height:245px}.hero-mark img{max-height:235px}
+ h1{font-size:clamp(42px,13cqw,58px);line-height:1.02}h2{font-size:clamp(30px,9cqw,42px)}
+ .card-grid,.split,.contact-grid,.footer-grid,.steps,.standard-grid{grid-template-columns:1fr}
+ .steps span{border-right:0;border-bottom:1px solid rgba(255,255,255,.12)}.steps span:last-child{border-bottom:0}
+ .footer-grid>div:first-child{grid-column:auto}.page-hero{padding-top:68px}
+ .section,.cta,.page-hero{padding-inline:18px}
 }

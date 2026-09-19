@@ -53,7 +53,7 @@
     }
 
     #legendWrap{
-        max-width: 1540px;
+        width: 100%;
         margin: 0 auto;
         padding: 12px 12px 56px 12px;
     }
@@ -1083,20 +1083,6 @@
         margin-top: 6px;
         overflow-x: auto;
         padding: 0 8px 10px 8px;
-        scrollbar-color: #a68023 rgba(0,0,0,.08);
-        scrollbar-width: thin;
-    }
-
-    #tableView::-webkit-scrollbar{
-        height: 10px;
-    }
-    #tableView::-webkit-scrollbar-track{
-        background: rgba(0,0,0,.04);
-        border-radius: 999px;
-    }
-    #tableView::-webkit-scrollbar-thumb{
-        background: linear-gradient(180deg, #a68023, #d1a642);
-        border-radius: 999px;
     }
 
     /* Hybrid mode tweaks: keep both views visible and comfortably spaced */
@@ -8284,7 +8270,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 /* ===== Queue workspace refresh (Clients + Leads My Day redirects) ===== */
 .queue-workspace-page{
-    max-width:1540px;
+    width:100%;
     padding-top:18px !important;
     padding-bottom:64px !important;
 }

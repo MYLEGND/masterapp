@@ -1,10 +1,10 @@
 :root {
-    --dash-gold: #d4aa47;
+    --dash-gold: var(--web-gold, #d4aa47);
     --dash-gold-deep: #8f6a1d;
     --dash-gold-soft: rgba(212, 170, 71, 0.18);
-    --dash-royal-950: #091225;
+    --dash-royal-950: var(--web-navy-deep, #091225);
     --dash-royal-925: #0d1c38;
-    --dash-royal-900: #10254c;
+    --dash-royal-900: var(--web-navy, #10254c);
     --dash-royal-860: #17356d;
     --dash-royal-820: #21448d;
     --dash-line: rgba(150, 182, 255, 0.16);
@@ -51,7 +51,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 }
 
 .dashboard-page-shell {
-    padding: 1.35rem 0.95rem 2.4rem;
+    padding: 0;
     color: var(--dash-text);
     background:
         radial-gradient(circle at top, rgba(49, 89, 191, 0.1), transparent 34%),
@@ -61,7 +61,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .dashboard-command-center-panel,
 .dashboard-analytics-panel,
 .dashboard-page-shell .category-container {
-    width: min(1480px, 100%);
+    width: 100%;
     margin: 0 auto 1.4rem;
 }
 
@@ -1509,7 +1509,6 @@ html[data-legend-modal-region] body .modal .modal-body {
     max-height: min(320px, calc(100vh - 120px));
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
     padding: 0.4rem;
     border: 1px solid rgba(212, 170, 71, 0.3);
     border-radius: 18px;
@@ -1517,23 +1516,6 @@ html[data-legend-modal-region] body .modal .modal-body {
     box-shadow:
         0 26px 46px rgba(5, 11, 28, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(244, 220, 147, 0.52) rgba(9, 19, 38, 0.55);
-}
-
-.search-input-wrap .autocomplete-list::-webkit-scrollbar {
-    width: 10px;
-}
-
-.search-input-wrap .autocomplete-list::-webkit-scrollbar-track {
-    background: rgba(9, 19, 38, 0.62);
-    border-radius: 999px;
-}
-
-.search-input-wrap .autocomplete-list::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, rgba(244, 220, 147, 0.94), rgba(212, 170, 71, 0.8));
-    border-radius: 999px;
-    border: 2px solid rgba(9, 19, 38, 0.62);
 }
 
 .dashboard-page-shell .autocomplete-item {
@@ -3933,9 +3915,9 @@ body.messaging-command-center-open {
  * the account pill follows the AgentPortal design.
  */
 .legend-global-nav {
-    --legend-nav-navy: #0e1b3d;
-    --legend-nav-navy-deep: #0b1530;
-    --legend-nav-gold: #c79931;
+    --legend-nav-navy: var(--web-navy, #10254c);
+    --legend-nav-navy-deep: var(--web-navy-deep, #091225);
+    --legend-nav-gold: var(--web-gold, #d4aa47);
     --legend-nav-line: rgba(166, 128, 35, 0.42);
     --legend-nav-line-strong: rgba(199, 153, 49, 0.95);
     position: relative;
@@ -3943,11 +3925,12 @@ body.messaging-command-center-open {
     display: flex;
     min-height: 110px;
     max-height: none;
-    padding: 0.5rem 1.5rem 2rem;
+    padding: 1rem var(--app-gutter, 24px) 2.4rem;
     overflow: visible;
-    border: 2px solid var(--legend-nav-line-strong) !important;
-    border-radius: 18px;
-    background: linear-gradient(160deg, var(--legend-nav-navy), var(--legend-nav-navy-deep)) !important;
+    border: 0;
+    border-bottom: 1px solid var(--legend-nav-line-strong);
+    border-radius: 0;
+    background: linear-gradient(160deg, var(--legend-nav-navy), var(--legend-nav-navy-deep));
     box-shadow: 0 22px 42px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
@@ -4306,8 +4289,8 @@ header .legend-global-nav .container-fluid {
 @media (max-width: 840px) {
     .legend-global-nav {
         min-height: 0;
-        padding: 10px 12px;
-        border-radius: 16px;
+        padding: 12px var(--app-gutter, 24px);
+        border-radius: 0;
     }
 
     header .legend-global-nav .container-fluid {
@@ -5246,8 +5229,6 @@ header .legend-global-nav .container-fluid {
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(212, 170, 71, 0.42) transparent;
 }
 
 .messaging-journey-profile-form {
@@ -5259,17 +5240,6 @@ header .legend-global-nav .container-fluid {
     align-content: start;
     gap: 0.8rem;
     padding-right: 0.35rem;
-}
-
-.messaging-journey-profile-form::-webkit-scrollbar,
-.messaging-journey-results::-webkit-scrollbar {
-    width: 5px;
-}
-
-.messaging-journey-profile-form::-webkit-scrollbar-thumb,
-.messaging-journey-results::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: rgba(212, 170, 71, 0.42);
 }
 
 .messaging-journey-privacy-source {
@@ -5632,7 +5602,8 @@ header .legend-global-nav .container-fluid {
     .messaging-journey-content {
         grid-template-columns: 1fr;
         overflow: visible;
-    }
+        scrollbar-width: none;
+}
 
     .messaging-journey-profile-form,
     .messaging-journey-results {
@@ -5805,11 +5776,6 @@ header .legend-global-nav .container-fluid {
     overflow-y: auto;
     -ms-overflow-style: none;
     scrollbar-width: none;
-}
-
-.messaging-conversation-list::-webkit-scrollbar,
-.messaging-messages::-webkit-scrollbar {
-    display: none;
 }
 
 .messaging-conversation-item {
@@ -6401,11 +6367,6 @@ header .legend-global-nav .container-fluid {
         grid-template-columns: 1fr;
         overflow-y: auto;
         -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-
-    .messaging-journey-content::-webkit-scrollbar {
-        display: none;
     }
 
     .messaging-journey-profile-form,
@@ -6503,7 +6464,7 @@ header .legend-global-nav .container-fluid {
 .membership-billing-page {
     display: grid;
     gap: 0.85rem;
-    width: min(1180px, 100%);
+    width: 100%;
     margin: 0 auto;
 }
 
@@ -7025,3 +6986,12 @@ header .legend-global-nav .container-fluid {
 .legend-calling-preferences { max-width: min(32rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid var(--dash-line-strong); border-radius: 1rem; color: var(--dash-text); background: var(--dash-royal-950); }
 .legend-calling-preferences form { display: grid; gap: .75rem; }
 .legend-calling-preferences select { padding: .75rem; border-radius: .5rem; color: var(--dash-text); background: var(--dash-royal-860); }
+
+.messaging-conversation-list::-webkit-scrollbar,
+.messaging-messages::-webkit-scrollbar {
+    display: none;
+}
+
+.messaging-journey-content::-webkit-scrollbar {
+        display: none;
+    }

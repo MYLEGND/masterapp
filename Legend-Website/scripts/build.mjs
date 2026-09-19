@@ -20,9 +20,10 @@ for(const file of ['robots.txt','favicon.svg']) await copyFile(resolve(root,'pub
 await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/images/company-icons/legend-protect-transparent.png'),resolve(dist,'assets/legend-logo.png'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-public-web.js'),resolve(dist,'legend-public-web.js'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-public-cms.js'),resolve(dist,'legend-public-cms.js'));
-const c=tokens.colors,s=tokens.spacing,r=tokens.radii;
+const c=tokens.colors;
+const foundationCss=await readFile(resolve(repoRoot,'Legend-Design/legend-web-foundation.css'),'utf8');
 const baseCss=await readFile(resolve(repoRoot,'Legend-Design/legend-public-web.css'),'utf8');
-await writeFile(resolve(dist,'site.css'),`:root{--navy:${c.navy.light};--navy-deep:${c.midnight.light};--gold:${c.gold.light};--gold-dark:${c.gold.light};--ink:${c.textPrimary.light};--muted:${c.textSecondary.light};--white:${c.onNavy.light};--surface:${c.canvasSecondary.light};--border:rgba(16,37,76,.10);--font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--radius-sm:${r.compact}px;--radius-md:${r.control}px;--radius-lg:${r.card}px;--space-xs:${s.xs}px;--space-sm:${s.sm}px;--space-md:${s.md}px;--space-lg:${s.lg}px;--space-xl:${s.xl}px;--space-xxl:${s.xxl}px;--card-shadow:0 20px 60px rgba(10,22,46,.12);}\n${baseCss}`);
+await writeFile(resolve(dist,'site.css'),`${foundationCss}\n${baseCss}`);
 
 const icons={faith:'<path d="M12 2v20M7 7h10"/>',mind:'<path d="M9 4a4 4 0 0 0-4 4v1a4 4 0 0 0-1 7 4 4 0 0 0 5 4M15 4a4 4 0 0 1 4 4v1a4 4 0 0 1 1 7 4 4 0 0 1-5 4M12 4v16"/>',health:'<path d="M3 12h4l2-5 4 10 2-5h6"/>',wealth:'<path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/>',shield:'<path d="M12 3 20 6v6c0 5-3.4 8-8 10-4.6-2-8-5-8-10V6l8-3Z"/>',people:'<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20c0-4 2.4-7 6-7s6 3 6 7M15 14c3 0 5 2 5 5"/>',compass:'<circle cx="12" cy="12" r="9"/><path d="m15 9-2 5-5 2 2-5 5-2Z"/>',spark:'<path d="m12 2 1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8L12 2Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/>'};
 const icon=(name)=>`<span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]||icons.spark}</svg></span>`;

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Adversarial branch lifecycle tests; isolated git repositories, no network writes."""
+import json
 import importlib.util
 import os
 from pathlib import Path
@@ -32,6 +33,29 @@ class BranchSafety(unittest.TestCase):
         self.work = m.git('rev-parse', 'HEAD').stdout.strip()
         self.branch = {'name': 'work', 'commit': {'sha': self.work}, 'protected': False}
         self.live = [{'revision': self.work} for _ in range(5)]
+
+    def test_direct_only_request_is_bound_to_exact_commit(self):
+        path = Path('Docs/releases/direct-release-request.json')
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'releaseMode': 'approved-only'}))
+        m.git('add', '.')
+        m.git('commit', '-m', 'authorized direct-only request')
+        request_sha = m.git('rev-parse', 'HEAD').stdout.strip()
+        self.assertTrue(m.direct_only_request(request_sha))
+        Path('web').write_text('later unrelated change')
+        m.git('add', '.')
+        m.git('commit', '-m', 'later update')
+        self.assertFalse(m.direct_only_request(m.git('rev-parse', 'HEAD').stdout.strip()))
+
+    def test_direct_only_reconcile_never_dispatches_production(self):
+        from unittest.mock import Mock
+        api = Mock()
+        api.ref.side_effect = [self.base, self.work]
+        with patch.object(m, 'direct_only_request', return_value=True):
+            result = m.reconcile(api)
+        self.assertIn('disabled', result['promotion'])
+        api.dispatch.assert_not_called()
+        api.api.assert_not_called()
 
     def tearDown(self):
         os.chdir(self.previous)
@@ -193,7 +217,8 @@ class OrchestrationSafety(unittest.TestCase):
         api.ref.side_effect = ['a' * 40, 'b' * 40]
         with patch.object(m, 'ancestor', return_value=False), \
              patch.object(m, 'release_proven', return_value=True), patch.object(m, 'git'):
-            result = m.reconcile(api)
+            with patch.object(m, 'direct_only_request', return_value=False):
+                result = m.reconcile(api)
         self.assertTrue(result['directReleaseDispatched'])
         api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
         self.assertEqual(api.api.call_args.args[0], 'merges')
@@ -204,7 +229,8 @@ class OrchestrationSafety(unittest.TestCase):
         api.ref.side_effect = ['a' * 40, 'b' * 40]
         with patch.object(m, 'ancestor', return_value=False), \
              patch.object(m, 'release_proven', return_value=False):
-            result = m.reconcile(api)
+            with patch.object(m, 'direct_only_request', return_value=False):
+                result = m.reconcile(api)
         self.assertIn('not bound to successful', result['retained'])
         api.api.assert_not_called()
         api.dispatch.assert_not_called()
@@ -265,7 +291,8 @@ class OrchestrationSafety(unittest.TestCase):
         api.api.return_value = {'workflow_runs': []}
         api.pages.return_value = []
         with patch.object(m, 'ancestor', side_effect=[True, False]):
-            result = m.reconcile(api)
+            with patch.object(m, 'direct_only_request', return_value=False):
+                result = m.reconcile(api)
         self.assertIn('awaiting successful', result['promotion'])
         api.dispatch.assert_not_called()
         self.assertIn('head_sha=' + 'b' * 40, api.api.call_args.args[0])

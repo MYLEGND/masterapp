@@ -30,11 +30,10 @@ def selected_targets(request):
             any(not isinstance(name, str) or name not in inventory for name in names) or
             len(set(names)) != len(names)):
         raise ValueError('Release targets must be unique names from the existing deployment inventory')
-    # Other partial releases need their own reviewed migration/baseline policy.
-    # Absence of targets retains the existing complete-release behavior.
-    if names != ['masterapp-portal']:
-        raise ValueError('Only the approved portal-only target override is supported')
-    return tuple(inventory[name] for name in names)
+    # Portal owns the shared migration baseline; retain it for scoped releases.
+    if set(names) not in ({'masterapp-portal'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}):
+        raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
+    return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
 
 
 def validate_revision(value):

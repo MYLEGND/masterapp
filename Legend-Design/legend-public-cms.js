@@ -19,6 +19,31 @@
   let selected = null;
   let selectedSection = null;
   let dirty = false;
+  const originals = new WeakMap();
+  const scaledElements = new Map();
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition'];
+
+  function rememberOriginal(el) {
+    if (!originals.has(el)) originals.set(el, {
+      text: el.textContent, src: el.getAttribute('src'), hidden: el.hidden,
+      style: Object.fromEntries(styleProperties.map(key => [key, el.style[key] || '']))
+    });
+    return originals.get(el);
+  }
+
+  function positiveNumber(value) { return typeof value === 'number' && Number.isFinite(value) && value > 0; }
+  function spacingNumber(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
+
+  function refreshScale(el, scale) {
+    el.style.fontSize = rememberOriginal(el).style.fontSize;
+    const base = parseFloat(getComputedStyle(el).fontSize);
+    if (Number.isFinite(base)) el.style.fontSize = `${base * scale}px`;
+  }
+
+  function refreshScaledElements() {
+    scaledElements.forEach((scale, el) => refreshScale(el, scale));
+    if (selected) syncEditorControls();
+  }
 
   const lockedSelector = [
     '.brand',
@@ -91,6 +116,7 @@
           const semantic = el.dataset.cta || el.getAttribute('href') || el.textContent || el.tagName;
           el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || counter}.${counter}`;
         }
+        rememberOriginal(el);
         el.dataset.cmsEditable = 'true';
         if ((el.tagName === 'A' || el.tagName === 'BUTTON') && !el.dataset.cmsAction) {
           el.dataset.cmsAction = el.dataset.cta || el.getAttribute('href') || 'action';
@@ -114,18 +140,23 @@
   }
 
   function applyStyle(el, style) {
-    if (!el || !style) return;
-    if (style.textAlign) el.style.textAlign = style.textAlign;
-    if (style.fontScale) el.style.fontSize = `${style.fontScale}em`;
-    if (style.widthPercent) {
+    if (!el) return;
+    const original = rememberOriginal(el);
+    styleProperties.forEach(key => { el.style[key] = original.style[key]; });
+    scaledElements.delete(el);
+    if (!style) return;
+    if (['left', 'center', 'right', 'start', 'end', 'justify'].includes(style.textAlign)) el.style.textAlign = style.textAlign;
+    if (positiveNumber(style.fontScale) && !(el instanceof HTMLImageElement)) {
+      scaledElements.set(el, style.fontScale);
+      refreshScale(el, style.fontScale);
+    }
+    if (positiveNumber(style.widthPercent)) {
       el.style.width = `${style.widthPercent}%`;
-      el.style.maxWidth = `${style.widthPercent}%`;
+      el.style.maxWidth = 'none';
     }
-    if (style.paddingTop != null) el.style.paddingTop = `${style.paddingTop}px`;
-    if (style.paddingBottom != null) el.style.paddingBottom = `${style.paddingBottom}px`;
-    if (style.objectPosition && el instanceof HTMLImageElement) {
-      el.style.objectPosition = style.objectPosition;
-    }
+    if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
+    if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
+    if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
   }
 
   function applyElementOverride(el, override) {
@@ -188,7 +219,7 @@
     });
     parentGroups.forEach(group => group.forEach(section => section.parentElement.appendChild(section)));
 
-    document.querySelectorAll('.cms-extra').forEach(x => x.remove());
+    document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
     documentState.extras.forEach(createExtra);
   }
 
@@ -251,6 +282,7 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
+    document.querySelectorAll('.legend-cms-panel input:not([data-theme-key]),.legend-cms-panel textarea,.legend-cms-panel select').forEach(control => { control.disabled = !selected; });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (textGroup) textGroup.hidden = true;
@@ -263,44 +295,59 @@
     if (textGroup) textGroup.hidden = isImage;
     if (imageGroup) imageGroup.hidden = !isImage;
 
-    const ov = selectedOverride() || { style: {} };
+    const ov = selected.dataset.cmsExtraId
+      ? documentState.extras.find(x => x.id === selected.dataset.cmsExtraId) || {}
+      : documentState.elements[selected.dataset.cmsId] || {};
+    const computed = getComputedStyle(selected);
+    const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
+    const parentWidth = selected.parentElement
+      ? selected.parentElement.clientWidth - (parseFloat(parentStyle.paddingLeft) || 0) - (parseFloat(parentStyle.paddingRight) || 0) : 0;
+    const actualWidth = parentWidth > 0 ? parseFloat(computed.width) / parentWidth * 100 : 100;
+    const displayNumber = value => String(Math.round(value * 1000) / 1000);
     if (text && !isImage) text.value = ov.text ?? selected.textContent ?? '';
     if (scale) scale.value = String(ov.style?.fontScale ?? 1);
-    if (width) width.value = String(ov.style?.widthPercent ?? 100);
-    if (top) top.value = String(ov.style?.paddingTop ?? 0);
-    if (bottom) bottom.value = String(ov.style?.paddingBottom ?? 0);
-    if (align) align.value = ov.style?.textAlign ?? '';
+    if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
+    if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
+    if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
+    if (scale) scale.disabled = isImage;
     if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
   }
 
-  function updateSelectedFromControls() {
+  function updateSelectedFromControls(event) {
     if (!selected) return;
+    const control = event.target;
+    if (control.validity?.badInput) return;
+    const fields = {
+      'legend-cms-scale': 'fontScale', 'legend-cms-width': 'widthPercent',
+      'legend-cms-padding-top': 'paddingTop', 'legend-cms-padding-bottom': 'paddingBottom'
+    };
+    const field = fields[control.id];
+    if (field && control.value !== '') {
+      const value = Number(control.value);
+      const valid = field.startsWith('padding') ? spacingNumber(value) : positiveNumber(value);
+      if (!valid) { control.setCustomValidity('Enter a finite ' + (field.startsWith('padding') ? 'nonnegative' : 'positive') + ' number.'); return; }
+    }
+    control.setCustomValidity('');
     const ov = selectedOverride();
     if (!ov) return;
-    ov.style ||= {};
-
-    if (!(selected instanceof HTMLImageElement)) {
-      const text = document.getElementById('legend-cms-text')?.value ?? '';
-      ov.text = text;
-      selected.textContent = text;
+    if (control.id === 'legend-cms-text' && !(selected instanceof HTMLImageElement)) {
+      ov.text = control.value;
+      selected.textContent = control.value;
+    } else if (control.id === 'legend-cms-hidden') {
+      ov.hidden = control.checked;
+      selected.hidden = control.checked;
+    } else {
+      ov.style ||= {};
+      if (field) {
+        if (control.value === '') delete ov.style[field];
+        else ov.style[field] = Number(control.value);
+      } else if (control.id === 'legend-cms-align') {
+        if (control.value) ov.style.textAlign = control.value;
+        else delete ov.style.textAlign;
+      } else return;
+      applyStyle(selected, ov.style);
     }
-
-    const scale = Number(document.getElementById('legend-cms-scale')?.value || 1);
-    const width = Number(document.getElementById('legend-cms-width')?.value || 100);
-    const top = Number(document.getElementById('legend-cms-padding-top')?.value || 0);
-    const bottom = Number(document.getElementById('legend-cms-padding-bottom')?.value || 0);
-    const align = document.getElementById('legend-cms-align')?.value || '';
-    const hidden = !!document.getElementById('legend-cms-hidden')?.checked;
-
-    ov.style.fontScale = scale;
-    ov.style.widthPercent = width;
-    ov.style.paddingTop = top;
-    ov.style.paddingBottom = bottom;
-    ov.style.textAlign = align || null;
-    ov.hidden = hidden;
-
-    selected.hidden = hidden;
-    applyStyle(selected, ov.style);
     markDirty();
   }
 
@@ -379,13 +426,20 @@
     if (!selected) return;
     if (selected.dataset.cmsExtraId) {
       documentState.extras = documentState.extras.filter(x => x.id !== selected.dataset.cmsExtraId);
+      scaledElements.delete(selected);
       selected.remove();
       setSelected(null);
       markDirty();
       return;
     }
     delete documentState.elements[selected.dataset.cmsId];
-    location.reload();
+    const original = rememberOriginal(selected);
+    selected.hidden = original.hidden;
+    if (selected instanceof HTMLImageElement) selected.src = original.src || '';
+    else selected.textContent = original.text;
+    applyStyle(selected, null);
+    syncEditorControls();
+    markDirty();
   }
 
   async function save() {
@@ -412,48 +466,65 @@
     style.textContent = `
       .legend-cms-selected{outline:3px solid #f0cf78!important;outline-offset:4px!important}
       [data-cms-editable="true"]{cursor:pointer}
-      .legend-cms-editor{position:fixed;z-index:2147483000;font-family:Inter,system-ui,sans-serif}
-      .legend-cms-bar{left:18px;right:18px;bottom:max(16px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;padding:10px 12px;background:#081a3af2;color:#fff;border:1px solid #d4ad45;border-radius:18px;box-shadow:0 20px 70px #0007}
+      body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
+      .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
+      .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
+      .legend-cms-editor *{box-sizing:border-box}
+      .legend-cms-editor [hidden]{display:none}
+      .legend-cms-preview,.legend-cms-panel{scrollbar-width:none}
+      .legend-cms-preview::-webkit-scrollbar,.legend-cms-panel::-webkit-scrollbar{display:none}
+      .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;background:#081a3af2;color:#fff;border:1px solid #d4ad45;border-radius:12px;margin:0 0 18px}
       .legend-cms-bar button{min-height:42px;border-radius:999px;padding:8px 14px;border:1px solid #d4ad45;background:#102b62;color:#fff;font-weight:800}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
-      .legend-cms-panel{top:16px;right:16px;width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - 110px);overflow:auto;background:#fff;color:#101a35;border:1px solid #d4ad45;border-radius:20px;padding:18px;box-shadow:0 24px 80px #0006}
-      .legend-cms-panel h3{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#667085;margin-bottom:14px;word-break:break-all}
+      .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#fff;color:#101a35;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#667085;margin-bottom:14px;word-break:break-all}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#344054}
       .legend-cms-group textarea,.legend-cms-group select,.legend-cms-group input[type="number"]{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:9px}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:720px){.legend-cms-panel{top:auto;bottom:84px;max-height:48dvh}.legend-cms-bar{overflow-x:auto;white-space:nowrap}}
+      @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}.legend-cms-panel{border-top:2px solid #d4ad45}}
     `;
     document.head.appendChild(style);
   }
 
   function buildEditor() {
     injectEditorStyles();
+    const preview = document.createElement('div');
+    preview.className = 'legend-cms-preview';
+    preview.setAttribute('role', 'region');
+    preview.setAttribute('aria-label', 'Website preview');
+    preview.tabIndex = 0;
+    Array.from(document.body.children).forEach(child => {
+      if (!['SCRIPT', 'STYLE'].includes(child.tagName)) preview.appendChild(child);
+    });
+    document.body.appendChild(preview);
+    document.body.classList.add('legend-cms-editing');
 
     const panel = document.createElement('aside');
     panel.className = 'legend-cms-editor legend-cms-panel';
+    panel.setAttribute('aria-labelledby', 'legend-cms-heading');
     panel.innerHTML = `
-      <h3>Website Editor</h3>
+      <h2 id="legend-cms-heading">Website Editor</h2>
       <small id="legend-cms-selected-label">Select content on the page</small>
       <div id="legend-cms-text-group" class="legend-cms-group" hidden>
-        <label>Content</label>
+        <label for="legend-cms-text">Content</label>
         <textarea id="legend-cms-text" rows="5"></textarea>
       </div>
       <div id="legend-cms-image-group" class="legend-cms-group" hidden>
-        <label>Replace image</label>
+        <label for="legend-cms-image">Replace image</label>
         <input id="legend-cms-image" type="file" accept="image/jpeg,image/png,image/webp">
       </div>
       <div class="legend-cms-row">
-        <div class="legend-cms-group"><label>Scale</label><input id="legend-cms-scale" type="number" min=".6" max="2.4" step=".05" value="1"></div>
-        <div class="legend-cms-group"><label>Width %</label><input id="legend-cms-width" type="number" min="20" max="100" step="1" value="100"></div>
+        <div class="legend-cms-group"><label for="legend-cms-scale">Text scale</label><input id="legend-cms-scale" type="number" min="0" step="any" value="1"></div>
+        <div class="legend-cms-group"><label for="legend-cms-width">Width %</label><input id="legend-cms-width" type="number" min="0" step="any" value="100"></div>
       </div>
       <div class="legend-cms-row">
-        <div class="legend-cms-group"><label>Top spacing</label><input id="legend-cms-padding-top" type="number" min="0" max="240" value="0"></div>
-        <div class="legend-cms-group"><label>Bottom spacing</label><input id="legend-cms-padding-bottom" type="number" min="0" max="240" value="0"></div>
+        <div class="legend-cms-group"><label for="legend-cms-padding-top">Top spacing</label><input id="legend-cms-padding-top" type="number" min="0" step="any" value="0"></div>
+        <div class="legend-cms-group"><label for="legend-cms-padding-bottom">Bottom spacing</label><input id="legend-cms-padding-bottom" type="number" min="0" step="any" value="0"></div>
       </div>
-      <div class="legend-cms-group"><label>Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></div>
+      <div class="legend-cms-group"><label for="legend-cms-align">Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="start">Start</option><option value="end">End</option><option value="justify">Justify</option></select></div>
       <div class="legend-cms-group"><label><input id="legend-cms-hidden" type="checkbox"> Hide selected content</label></div>
       <hr>
       <div class="legend-cms-group"><label>Site colors</label>
@@ -480,7 +551,10 @@
       <button id="legend-cms-remove">Reset / Remove</button>
       <button id="legend-cms-exit">Exit</button>
     `;
-    document.body.appendChild(bar);
+    panel.insertBefore(bar, panel.firstChild);
+    refreshScaledElements();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refreshScaledElements).observe(preview);
+    syncEditorControls();
 
     document.addEventListener('click', event => {
       const target = event.target.closest('[data-cms-editable="true"]');
@@ -507,7 +581,10 @@
 
     document.querySelectorAll('[data-theme-key]').forEach(input => {
       const key = input.dataset.themeKey;
-      if (documentState.theme?.[key]) input.value = documentState.theme[key];
+      const themeVariables = { navy: '--navy', navyDeep: '--navy-deep', gold: '--gold', goldStrong: '--gold-strong' };
+      const currentColor = documentState.theme?.[key]
+        || getComputedStyle(document.documentElement).getPropertyValue(themeVariables[key]).trim();
+      if (/^#[0-9a-f]{6}$/i.test(currentColor)) input.value = currentColor;
       input.addEventListener('input', () => {
         documentState.theme[key] = input.value;
         applyTheme(documentState.theme);
@@ -549,5 +626,7 @@
     prepareDom();
     await loadPublic();
     if (editorMode) await loadEditor();
+    window.addEventListener('resize', refreshScaledElements);
+    if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();

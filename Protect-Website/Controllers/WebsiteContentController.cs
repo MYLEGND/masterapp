@@ -262,7 +262,7 @@ public sealed class WebsiteContentController : ControllerBase
     {
         source ??= new WebsiteStyleOverride();
         var align = (source.TextAlign ?? string.Empty).Trim().ToLowerInvariant();
-        if (align is not ("left" or "center" or "right")) align = string.Empty;
+        if (align is not ("left" or "center" or "right" or "start" or "end" or "justify")) align = string.Empty;
         var objectPosition = (source.ObjectPosition ?? string.Empty).Trim().ToLowerInvariant();
         if (objectPosition is not ("left" or "center" or "right" or "top" or "bottom"))
             objectPosition = string.Empty;
@@ -270,10 +270,10 @@ public sealed class WebsiteContentController : ControllerBase
         return new WebsiteStyleOverride
         {
             TextAlign = align.Length == 0 ? null : align,
-            FontScale = source.FontScale is null ? null : Math.Clamp(source.FontScale.Value, 0.6m, 2.4m),
-            WidthPercent = source.WidthPercent is null ? null : Math.Clamp(source.WidthPercent.Value, 20, 100),
-            PaddingTop = source.PaddingTop is null ? null : Math.Clamp(source.PaddingTop.Value, 0, 240),
-            PaddingBottom = source.PaddingBottom is null ? null : Math.Clamp(source.PaddingBottom.Value, 0, 240),
+            FontScale = source.FontScale > 0 ? source.FontScale : null,
+            WidthPercent = source.WidthPercent > 0 ? source.WidthPercent : null,
+            PaddingTop = source.PaddingTop >= 0 ? source.PaddingTop : null,
+            PaddingBottom = source.PaddingBottom >= 0 ? source.PaddingBottom : null,
             ObjectPosition = objectPosition.Length == 0 ? null : objectPosition
         };
     }

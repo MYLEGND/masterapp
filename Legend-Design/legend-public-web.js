@@ -7,6 +7,6 @@
     toggle.addEventListener('click',()=>{const open=nav.dataset.open==='true';nav.dataset.open=open?'false':'true';toggle.setAttribute('aria-expanded',open?'false':'true');});
     nav.addEventListener('click',e=>{if(e.target.closest('a')) close();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape') close();});
-    window.addEventListener('resize',()=>{if(window.innerWidth>980) close();});
+    window.addEventListener('resize',()=>{if((nav.closest('.legend-cms-preview')?.clientWidth??window.innerWidth)>980) close();});
   }
 })();
