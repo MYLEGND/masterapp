@@ -1,11 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Deploy only LEGEND Website and Protect through approved changes; no other apps and no production promotion.",
-  "purpose": "Complete canonical shared website editor deployment and add registered mark to existing Protect banner wordmark",
-  "requestId": "public-websites-editor-brand-20260919-1",
+  "authorization": "Deploy only LEGEND Website through approved changes; no other apps and no production promotion.",
+  "purpose": "Version canonical shared editor and design assets to prevent stale browser reuse",
+  "requestId": "website-shared-editor-version-20260919-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
     "masterapp-website"
   ]
 }
