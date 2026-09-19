@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Deploy affected applications through legend/approved-changes only; do not start rigorous production flow for this release.",
-  "purpose": "Shared website editor and fluid AgentPortal/ClientApp layout",
-  "requestId": "shared-web-editor-layout-20260919-1",
+  "authorization": "Deploy only LEGEND Website and Protect through approved changes; no other apps and no production promotion.",
+  "purpose": "Complete canonical shared website editor deployment and add registered mark to existing Protect banner wordmark",
+  "requestId": "public-websites-editor-brand-20260919-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
     "masterapp-website"
   ]

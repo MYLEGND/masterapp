@@ -28,6 +28,8 @@ jobs:
       portal: ${{ steps.live.outputs.portal }}
       targets: ${{ steps.live.outputs.targets }}
       portal_only: ${{ steps.live.outputs.portal_only }}
+      website_only: ${{ steps.live.outputs.website_only }}
+      public_only: ${{ steps.live.outputs.public_only }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +54,7 @@ jobs:
         with:
           ref: ${{ matrix.revision }}
       - uses: actions/setup-dotnet@v4
+        if: matrix.project != 'static'
         with:
           dotnet-version: '10.x'
       - name: Preserve source-equivalent rollback without production data
@@ -90,39 +93,47 @@ jobs:
       LIVE_BASELINES: ${{ needs.discover-live.outputs.baselines }}
       SELECTED_TARGETS: ${{ needs.discover-live.outputs.targets }}
       PORTAL_ONLY: ${{ needs.discover-live.outputs.portal_only }}
+      WEBSITE_ONLY: ${{ needs.discover-live.outputs.website_only }}
+      PUBLIC_ONLY: ${{ needs.discover-live.outputs.public_only }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-dotnet@v4
+        if: env.WEBSITE_ONLY != 'true'
         with:
           dotnet-version: '10.x'
       - name: Verify current live base before publication
         id: base
         run: |
           python3 - <<'PYBASE'
-          import json, os, urllib.request
+          import json, os, subprocess, urllib.request
           for row in json.loads(os.environ['LIVE_BASELINES']):
               host=row['host']
               with urllib.request.urlopen('https://'+host+row['path'],timeout=30) as response:
                   actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
               print(host,actual)
               assert actual == row['revision'], 'Live revision changed; rebuild the release baseline'
+              if os.environ['PUBLIC_ONLY'] == 'true' and row['app'] == 'protect':
+                  subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
       - name: Build exact selected release candidate
         id: build
+        if: env.WEBSITE_ONLY != 'true'
         continue-on-error: true
         run: |
           set -euo pipefail
-          if [ "$PORTAL_ONLY" = true ]; then
+          if [ "$PUBLIC_ONLY" = true ]; then
+            dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
+          elif [ "$PORTAL_ONLY" = true ]; then
             dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
           else
             dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
           fi
       - name: Verify localization retention privacy limits and original delivery
         id: tests
-        if: steps.build.outcome == 'success'
+        if: env.PUBLIC_ONLY != 'true' && steps.build.outcome == 'success'
         continue-on-error: true
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
@@ -141,6 +152,7 @@ jobs:
           PYTEST
       - name: Verify shared web catalog contracts
         id: web
+        if: env.PUBLIC_ONLY != 'true'
         continue-on-error: true
         run: |
           node --test tests/legend-connect/*.test.mjs tests/messaging/message-presentation.test.mjs tests/layout/page-health.test.mjs
@@ -157,19 +169,27 @@ jobs:
           npm --prefix Legend-Website run check
       - name: Publish exact selected application packages
         id: package
-        if: steps.tests.outcome == 'success' && steps.web.outcome == 'success' && (steps.websitechecks.outcome == 'success' || (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.websitechecks.outcome == 'skipped'))
+        if: (env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (steps.websitechecks.outcome == 'success' || (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.websitechecks.outcome == 'skipped'))
         run: |
           set -euo pipefail
-          dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
-          apps=(agentportal)
-          if [ "$PORTAL_ONLY" != true ]; then
+          apps=()
+          if [[ "$SELECTED_TARGETS" == *'"masterapp-portal"'* ]]; then
+            dotnet publish AgentPortal/AgentPortal.csproj -c Release --no-build --no-restore -o /tmp/agentportal-publish -p:SourceRevisionId="$RELEASE_SHA"
+            apps+=(agentportal)
+          fi
+          if [[ "$SELECTED_TARGETS" == *'"masterapp-client"'* ]]; then
             dotnet publish ClientApp/ClientApp.csproj -c Release --no-build --no-restore -o /tmp/clientapp-publish -p:SourceRevisionId="$RELEASE_SHA"
+            apps+=(clientapp)
+          fi
+          if [[ "$SELECTED_TARGETS" == *'"masterapp-protect"'* ]]; then
             dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-build --no-restore -o /tmp/protect-publish -p:SourceRevisionId="$RELEASE_SHA"
-            apps+=(clientapp protect)
-            if [[ "$SELECTED_TARGETS" == *'"masterapp-parfait"'* ]]; then
-              dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$RELEASE_SHA"
-              apps+=(parfait)
-            fi
+            apps+=(protect)
+          fi
+          if [[ "$SELECTED_TARGETS" == *'"masterapp-parfait"'* ]]; then
+            dotnet publish ParfaitApp/ParfaitApp.csproj -c Release --no-build --no-restore -o /tmp/parfait-publish -p:SourceRevisionId="$RELEASE_SHA"
+            apps+=(parfait)
+          fi
+          if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
             printf '%s\n' "$RELEASE_SHA" > Legend-Website/dist/_deployment-provenance.txt
             cp Legend-Website/public/web.config Legend-Website/dist/web.config
           fi
@@ -202,7 +222,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
-        if: steps.package.outcome == 'success' && steps.azure.outcome == 'success'
+        if: env.PUBLIC_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -233,7 +253,7 @@ jobs:
           PYMIGRATE
       - name: Direct deploy AgentPortal
         id: portal
-        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-portal') && !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -251,7 +271,7 @@ jobs:
           package: /tmp/clientapp-publish
       - name: Direct deploy Protect
         id: protect
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -269,22 +289,22 @@ jobs:
           package: /tmp/parfait-publish
       - name: Direct deploy Website
         id: website
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
           app-name: masterapp-website
           slot-name: Production
-          package: Legend-Website/dist
+          package: /tmp/diagnostics-packages/website.zip
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         run: |
           python3 - <<'PYLIVE'
           import concurrent.futures, json, os, time, urllib.request
           selected=json.loads(os.environ['SELECTED_TARGETS'])
-          inventory={'masterapp-portal':('portal.mylegnd.com','masterapp-portal.azurewebsites.net'),'masterapp-client':('client.mylegnd.com','masterapp-client.azurewebsites.net'),'masterapp-protect':('masterapp-protect.azurewebsites.net',),'masterapp-parfait':('masterapp-parfait.azurewebsites.net',),'masterapp-website':('masterapp-website.azurewebsites.net',)}
+          inventory={'masterapp-portal':('portal.mylegnd.com','masterapp-portal.azurewebsites.net'),'masterapp-client':('client.mylegnd.com','masterapp-client.azurewebsites.net'),'masterapp-protect':('masterapp-protect.azurewebsites.net',),'masterapp-parfait':('masterapp-parfait.azurewebsites.net',),'masterapp-website':('masterapp-website.azurewebsites.net','mylegnd.com','www.mylegnd.com')}
           assert selected and all(app in inventory for app in selected)
           hosts=tuple(host for app in selected for host in inventory[app])
           def verify(host):
@@ -292,10 +312,10 @@ jobs:
               actual=None
               while time.monotonic()<end:
                   try:
-                      path='/_deployment-provenance.txt' if host=='masterapp-website.azurewebsites.net' else '/api/runtime-provenance'
+                      path='/_deployment-provenance.txt' if host in inventory['masterapp-website'] else '/api/runtime-provenance'
                       request=urllib.request.Request('https://'+host+path+'?release='+os.environ['RELEASE_SHA'],headers={'Cache-Control':'no-cache'})
                       with urllib.request.urlopen(request,timeout=15) as response:
-                          actual=response.read().decode().strip() if host=='masterapp-website.azurewebsites.net' else json.load(response).get('sourceRevision')
+                          actual=response.read().decode().strip() if host in inventory['masterapp-website'] else json.load(response).get('sourceRevision')
                       if actual==os.environ['RELEASE_SHA']: return {'host':host,'passed':True,'actual':actual}
                   except Exception as error: actual=type(error).__name__
                   time.sleep(5)
@@ -335,8 +355,10 @@ jobs:
           selected=json.loads(os.environ['SELECTED_TARGETS'])
           apps={'masterapp-portal':'PORTAL','masterapp-client':'CLIENT','masterapp-protect':'PROTECT','masterapp-parfait':'PARFAIT','masterapp-website':'WEBSITE'}
           assert selected and len(selected)==len(set(selected)) and all(app in apps for app in selected)
-          required=['BASE','BUILD','TESTS','WEB','PACKAGE','AZURE','LIVE','MIGRATE']+[apps[app] for app in selected]
+          required=['BASE','PACKAGE','AZURE','LIVE']+[apps[app] for app in selected]
           excluded=[step for app,step in apps.items() if app not in selected]
+          (excluded if selected == ['masterapp-website'] else required).append('BUILD')
+          (excluded if set(selected) <= {'masterapp-protect','masterapp-website'} else required).extend(['TESTS','WEB','MIGRATE'])
           (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
           results={key:os.environ[key] for key in required}
           skipped={key:os.environ[key] for key in excluded}

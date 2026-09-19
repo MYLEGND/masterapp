@@ -30,8 +30,9 @@ def selected_targets(request):
             any(not isinstance(name, str) or name not in inventory for name in names) or
             len(set(names)) != len(names)):
         raise ValueError('Release targets must be unique names from the existing deployment inventory')
-    # Portal owns the shared migration baseline; retain it for scoped releases.
-    if set(names) not in ({'masterapp-portal'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}):
+    # Static-only releases have no database or .NET app changes. Other scoped
+    # releases retain Portal as the shared migration baseline.
+    if set(names) not in ({'masterapp-website'}, {'masterapp-protect', 'masterapp-website'}, {'masterapp-portal'}, {'masterapp-portal', 'masterapp-client', 'masterapp-protect', 'masterapp-website'}):
         raise ValueError('Unsupported scoped release; migration and packaging policy must be reviewed')
     return tuple(row for row in TARGETS if 'masterapp-' + row[0] in names)
 
@@ -78,6 +79,8 @@ def main():
             out.write('baselines=' + json.dumps(rows, separators=(',', ':')) + '\n')
             out.write('portal=' + rows[0]['revision'] + '\n')
             out.write('targets=' + json.dumps(['masterapp-' + row['app'] for row in rows], separators=(',', ':')) + '\n')
+            out.write('public_only=' + str(all(row['app'] in {'protect', 'website'} for row in rows)).lower() + '\n')
+            out.write('website_only=' + str(len(rows) == 1 and rows[0]['app'] == 'website').lower() + '\n')
             out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
 
 
