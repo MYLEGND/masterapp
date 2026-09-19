@@ -54,6 +54,24 @@ review did not refresh that account evidence. Public documentation, earlier
 schema visibility, successful inference, tool compatibility, and independent
 quality acceptance are separate claims.
 
+Subsequent independent security-lane account reads captured the catalog at
+00:24:43 UTC and refreshed all five schemas at 00:26:48 UTC on September 19.
+The reviewer reports that all five raw schema hashes are unchanged from the
+retained snapshot. Catalog evidence is
+`/private/tmp/legend-account-catalog-security-20260919.json`, SHA256
+`7e2c67862e24f81774a8aa5e0842460221894d31f3b2a5d4eec3c5ae9166f33f`.
+These were authenticated metadata reads, not inference acceptance.
+
+The inspected catalog has more specific reasoning metadata than the generic
+input schemas: GPT's provider default is medium; GLM and GLM Flash default to
+max and normalize medium to max; DeepSeek defaults to high and normalizes medium
+to high. High is explicitly supported by all three GLM/DeepSeek entries. Their
+generic schemas nevertheless expose only low/medium/high. Do not equate the
+registry's requested medium with unchanged provider execution, or claim GPT's
+`provider_default` means high. Explicit GPT effort is declared on its Responses
+input branch, not its chat-messages branch; changing formats needs a separate
+review of the output cap and adapter. No settings were changed here.
+
 Safe schema refresh, if separately authorized, uses normal encrypted Wrangler
 OAuth without extracting its token:
 
@@ -142,3 +160,17 @@ inference ledger is not a provider invoice cap.
 The running GPT-only Founder baseline and its live configuration were not
 altered. This evidence supports planning a bounded five-model qualification;
 it does not claim that all five are live, account-accessible, or accepted.
+
+Follow-up source commit `725bb3c9` implements the optional colocated qualification
+policy list described above; it has not been deployed by this lane. Its simulated
+tests preserve the fixed Founder baseline, isolate each qualification key/scope,
+and retain full-context reservations. An expired unrelated qualification entry
+does not disable the Founder baseline. All other qualification and billing limits
+remain applicable.
+
+Later billing information supplied by the user shows $0.00 total/projected and
+no usage data for September 18–October 17. Treat that as incomplete/lagging billing
+visibility, not proof of zero charges. The lead's newer conservative model debit
+is $0.057711, leaving at most $2.942289 under the unchanged $3 model/tool cap;
+the $5 fixed charge and $2 platform reserve remain allocated. This supersedes the
+earlier ledger snapshot above without claiming the provider invoice is verified.
