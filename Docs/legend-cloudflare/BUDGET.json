@@ -11,9 +11,9 @@
     "userConfirmedFixedPlatformCharge": 5,
     "knownModelCharges": 0.011414,
     "unknownUsageReservationRetained": 0.045568,
-    "conservativeModelDebit": 0.056982,
-    "remainingModelAndToolAllowance": 2.943018,
-    "remainingTotalBeforeUnverifiedPlatformUsage": 4.943018,
+    "conservativeModelDebit": 0.057711,
+    "remainingModelAndToolAllowance": 2.942289,
+    "remainingTotalBeforeUnverifiedPlatformUsage": 4.942289,
     "execution": {
       "provider": "GitHub Actions",
       "additionalPaidLimit": 0.5,
@@ -27,13 +27,14 @@
     "period": "calendar-month",
     "plannedFixedPlatformReserve": 5,
     "plannedOtherPlatformReserve": 5,
-    "maximumModelAndToolSpend": 20
+    "maximumModelAndToolSpend": 20,
+    "observedBaselineTestingModelCost": 0.000729
   },
-  "activation": "founder_manual_test_baseline_authorized_pending_release_critical_checks",
+  "activation": "temporary_founder_manual_test_baseline_live_multimodel_qualification_pending_billing_and_evidence",
   "providerInvoiceHardCap": false,
   "accounting": "Qualification spend in the activation month must also count toward the production monthly authorization. Unused reserves cannot be reassigned automatically. Platform request, storage and abuse-related charges are not bounded by an inference ledger alone.",
   "provisioned": true,
-  "billingVerification": "User confirms $5/month Workers subscription. Current unbilled platform charges are not verified; OAuth lacks billing-read permission.",
+  "billingVerification": "Founder reports Billable Usage total/projected $0.00 for Sep18-Oct17 cycle, observed Sep18-Sep19, with No usage data available. Reporting lag retained as uncertainty; fixed $5 fee, $2 platform reserve and all ledger debits remain allocated.",
   "containers": {
     "provisioning": "paused_by_user",
     "permissionGranted": false,

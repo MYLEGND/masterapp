@@ -58,14 +58,14 @@ public sealed class LegendCloudflareLiveQualificationTests
                         "legend", sourceLanguageCode: "en", preferredLanguageCode: "en", cloudflareHosted: true);
                     var instructionsSha256 = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(instructions)));
                     var clock = Stopwatch.StartNew();
-                    var result = await transport.GenerateAsync("cloudflare:registry", new(
+                    var result = await transport.GenerateAsync(config["LegendConnect:Foundation:Model"]!, new(
                         "conversation", instructions,
                         prompt, "governed_response", ConversationInput: JsonSerializer.SerializeToElement(history),
                         ProviderPolicy: LegendConnectExternalProviderPolicy.CloudflareFoundation,
                         RequestingActorId: config["Qualification:UserId"],
                         CloudflareScope: new(Guid.NewGuid().ToString("D"), config["Qualification:TenantId"]!,
                             config["Qualification:UserId"]!, "qualification-session", conversationId,
-                            ["Founder", "LegendQualification"], "qualification-v1")));
+                            ["LegendQualification"], "qualification-v1")));
                     records.Add(new { caseId = scenario.GetProperty("id").GetString(), prompt, response = result.Text,
                         instructions, instructionsSha256,
                         instructionAuthority = "LegendFounderAiConversationService.BuildInstructions:legend:en:en:cloudflareHosted=true",
