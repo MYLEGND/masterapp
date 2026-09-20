@@ -536,6 +536,36 @@ jobs:
             exit 1
           fi
 
+      - name: Fast-forward approved changes to exact production merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        run: |
+          set -euo pipefail
+          approved_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')
+          if [ "$approved_sha" = "$MERGE_SHA" ]; then
+            exit 0
+          fi
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+
+          if ! git merge-base --is-ancestor "$approved_sha" "$MERGE_SHA"; then
+            echo "::error::Approved changes is not an ancestor of the exact production merge. Refusing force-push, reset, rebase, or overwrite."
+            exit 1
+          fi
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/legend/approved-changes" \
+            -f sha="$MERGE_SHA" \
+            -F force=false >/dev/null
+
+          synchronized_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')
+          if [ "$synchronized_sha" != "$MERGE_SHA" ]; then
+            echo "::error::Approved changes did not converge to the exact production merge SHA."
+            exit 1
+          fi
+
   migrate:
     needs:
       - build
