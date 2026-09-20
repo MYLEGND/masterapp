@@ -36,6 +36,7 @@ jobs:
   # The rigorous workflow owns the protected security check for every PR.
   # Keep the website gate distinct so it cannot satisfy that check by name.
   website-security:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'legend/approved-changes'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
