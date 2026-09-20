@@ -1,0 +1,160 @@
+name: LEGEND canonical branch parity
+
+on:
+  push:
+    branches:
+      - production
+      - legend/approved-changes
+  workflow_run:
+    workflows:
+      - Validate, merge, and deploy AgentPortal to production
+    types:
+      - completed
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: legend-canonical-branch-parity
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out canonical history without executing application code
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+
+      - name: Fetch both canonical refs
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+
+      - name: Classify exact branch relationship
+        id: relation
+        shell: bash
+        run: |
+          set -euo pipefail
+          production_sha="$(git rev-parse refs/remotes/origin/production)"
+          approved_sha="$(git rev-parse refs/remotes/origin/legend/approved-changes)"
+
+          echo "production_sha=$production_sha" >> "$GITHUB_OUTPUT"
+          echo "approved_sha=$approved_sha" >> "$GITHUB_OUTPUT"
+
+          if [ "$production_sha" = "$approved_sha" ]; then
+            echo "relation=identical" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor "$production_sha" "$approved_sha"; then
+            echo "relation=approved-ahead" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor "$approved_sha" "$production_sha"; then
+            echo "relation=production-ahead" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "relation=diverged" >> "$GITHUB_OUTPUT"
+          echo "::error::production and legend/approved-changes have diverged. Refusing force-push, reset, rebase, or history replacement."
+          exit 1
+
+      - name: Fast-forward approved changes to production
+        if: steps.relation.outputs.relation == 'production-ahead'
+        env:
+          PRODUCTION_SHA: ${{ steps.relation.outputs.production_sha }}
+        run: |
+          set -euo pipefail
+          # Plain push only. Git rejects a non-fast-forward automatically.
+          git push origin "$PRODUCTION_SHA:refs/heads/legend/approved-changes"
+
+      - name: Ensure protected production synchronization PR exists
+        if: steps.relation.outputs.relation == 'approved-ahead'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SHA: ${{ steps.relation.outputs.approved_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_production="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/production" --jq '.object.sha')"
+          current_approved="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')"
+
+          if [ "$current_production" = "$current_approved" ]; then
+            exit 0
+          fi
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+
+          if ! git merge-base --is-ancestor "$current_production" "$current_approved"; then
+            echo "::error::Production is no longer a strict ancestor of approved changes. Refusing to synthesize or overwrite history."
+            exit 1
+          fi
+
+          pr_number="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base production \
+            --head legend/approved-changes \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -z "$pr_number" ]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base production \
+              --head legend/approved-changes \
+              --title "Synchronize canonical LEGEND branches" \
+              --body "Canonical branch parity synchronization. Production is a strict ancestor of legend/approved-changes. No force-push, reset, squash, rebase, file override, or competing implementation is permitted. Existing protected-branch checks remain authoritative."
+          fi
+
+      - name: Verify or report protected synchronization state
+        if: always() && steps.relation.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          production_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/production" --jq '.object.sha')"
+          approved_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')"
+
+          if [ "$production_sha" = "$approved_sha" ]; then
+            echo "Canonical branches are identical at $production_sha"
+            exit 0
+          fi
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+
+          if git merge-base --is-ancestor "$production_sha" "$approved_sha"; then
+            pr_number="$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --base production \
+              --head legend/approved-changes \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty')"
+            if [ -z "$pr_number" ]; then
+              echo "::error::Protected production remains behind and no synchronization PR exists."
+              exit 1
+            fi
+            echo "Protected production synchronization is pending in PR #$pr_number."
+            exit 0
+          fi
+
+          echo "::error::Canonical branch parity is not in a safe fast-forward state."
+          exit 1
