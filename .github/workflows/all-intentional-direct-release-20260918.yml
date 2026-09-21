@@ -360,15 +360,15 @@ jobs:
           assert selected and len(selected)==len(set(selected)) and all(app in apps for app in selected)
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           if validate_only:
-              required=['BASE','BUILD','TESTS','WEB','PACKAGE']
+              required=['BASE','BUILD','TESTS','WEB']
               if 'masterapp-website' in selected:
                   required.append('WEBSITECHECKS')
-              skipped=['AZURE','MIGRATE','LIVE']+list(apps.values())
+              skipped=['PACKAGE','AZURE','MIGRATE','LIVE']+list(apps.values())
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
-              print(json.dumps({'mode':'validate-only','required':results,'deploymentSteps':skipped_results},indent=2))
+              print(json.dumps({'mode':'validate-only','required':results,'skippedSteps':skipped_results},indent=2))
               assert all(value=='success' for value in results.values())
-              assert all(value=='skipped' for value in skipped_results.values()), 'Validation-only run reached a deployment step'
+              assert all(value=='skipped' for value in skipped_results.values()), 'Validation-only run executed a publish or deployment step'
           else:
               required=['BASE','PACKAGE','AZURE','LIVE']+[apps[app] for app in selected]
               excluded=[step for app,step in apps.items() if app not in selected]
