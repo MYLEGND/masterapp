@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
@@ -25,6 +26,79 @@ public sealed class WebsiteContentController : ControllerBase
         _db = db;
         _tickets = tickets;
         _configuration = configuration;
+    }
+
+    public sealed record WebsiteEditorHandoffRequest(string State);
+
+    [HttpPost("handoff")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ExchangeHandoff(
+        [FromBody] WebsiteEditorHandoffRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var tokenHash = WebsiteEditorHandoffToken.Hash(request?.State ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(tokenHash))
+            return Unauthorized();
+
+        var nowUtc = DateTime.UtcNow;
+        var continuation = await _db.ClientIdentityContinuations
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.TokenHash == tokenHash &&
+                    candidate.Purpose == ClientIdentityContinuationPurpose.WebsiteEditor &&
+                    candidate.ConsumedUtc == null &&
+                    candidate.ExpiresUtc > nowUtc,
+                cancellationToken);
+
+        if (continuation is null ||
+            !continuation.CommerceBusinessId.HasValue ||
+            continuation.CommerceBusinessId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(continuation.ActorUserId))
+            return Unauthorized();
+
+        var actorEmail = string.IsNullOrWhiteSpace(continuation.ActorEmail)
+            ? continuation.IntendedNormalizedEmail
+            : continuation.ActorEmail;
+
+        if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
+                _db,
+                continuation.CommerceBusinessId.Value,
+                continuation.ClientProfileId,
+                continuation.ActorUserId,
+                actorEmail,
+                cancellationToken))
+            return Unauthorized();
+
+        var consumed = await _db.ClientIdentityContinuations
+            .Where(candidate =>
+                candidate.Id == continuation.Id &&
+                candidate.Purpose == ClientIdentityContinuationPurpose.WebsiteEditor &&
+                candidate.ConsumedUtc == null &&
+                candidate.ExpiresUtc > nowUtc)
+            .ExecuteUpdateAsync(
+                updates => updates.SetProperty(candidate => candidate.ConsumedUtc, nowUtc),
+                cancellationToken);
+
+        if (consumed != 1)
+            return Unauthorized();
+
+        var ticket = _tickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Business,
+            WebsiteEditorSiteKeys.BusinessOwnerKey(continuation.CommerceBusinessId.Value),
+            null,
+            false,
+            DateTime.UtcNow.AddMinutes(45),
+            continuation.CommerceBusinessId,
+            ActorUserId: continuation.ActorUserId,
+            ActorEmail: actorEmail,
+            ActorClientProfileId: continuation.ClientProfileId));
+
+        return Ok(new
+        {
+            ticket,
+            apiBase = (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/')
+        });
     }
 
     [HttpGet("public/{siteKey}")]
