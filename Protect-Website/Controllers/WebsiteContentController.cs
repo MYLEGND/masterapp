@@ -42,13 +42,25 @@ public sealed class WebsiteContentController : ControllerBase
         siteKey = NormalizeSiteKey(siteKey);
         if (siteKey.Length == 0) return NotFound();
 
-        string? ownerKey = siteKey switch
+        CommerceBusiness? business = null;
+        string? ownerKey;
+        if (siteKey == WebsiteEditorSiteKeys.Legend)
         {
-            WebsiteEditorSiteKeys.Legend => WebsiteEditorSiteKeys.GlobalOwnerKey,
-            WebsiteEditorSiteKeys.Protect => await ResolveProtectOwnerKeyAsync(agentSlug, cancellationToken),
-            WebsiteEditorSiteKeys.Business => await ResolveBusinessOwnerKeyAsync(businessId, cancellationToken),
-            _ => null
-        };
+            ownerKey = WebsiteEditorSiteKeys.GlobalOwnerKey;
+        }
+        else if (siteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            ownerKey = await ResolveProtectOwnerKeyAsync(agentSlug, cancellationToken);
+        }
+        else if (siteKey == WebsiteEditorSiteKeys.Business)
+        {
+            business = await ResolveBusinessAsync(businessId, cancellationToken);
+            ownerKey = business is null ? null : WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id);
+        }
+        else
+        {
+            ownerKey = null;
+        }
 
         if (string.IsNullOrWhiteSpace(ownerKey))
             return siteKey == WebsiteEditorSiteKeys.Business
@@ -56,7 +68,12 @@ public sealed class WebsiteContentController : ControllerBase
                 : Ok(new { siteKey, document = new WebsiteContentDocument() });
 
         var document = await LoadAsync(ownerKey, siteKey, cancellationToken);
-        return Ok(new { siteKey, document });
+        return Ok(new
+        {
+            siteKey,
+            businessName = business?.DisplayName,
+            document
+        });
     }
 
     [HttpGet("manage")]
@@ -180,24 +197,20 @@ public sealed class WebsiteContentController : ControllerBase
         return profile is null ? null : NormalizeOwner(profile.AgentUserId);
     }
 
-    private async Task<string?> ResolveBusinessOwnerKeyAsync(
+    private async Task<CommerceBusiness?> ResolveBusinessAsync(
         Guid? businessId,
         CancellationToken cancellationToken)
     {
         if (!businessId.HasValue || businessId == Guid.Empty)
             return null;
 
-        var exists = await _db.CommerceBusinesses
+        return await _db.CommerceBusinesses
             .AsNoTracking()
-            .AnyAsync(
+            .SingleOrDefaultAsync(
                 business => business.Id == businessId.Value &&
                             business.IsActive &&
                             business.Status == "Active",
                 cancellationToken);
-
-        return exists
-            ? WebsiteEditorSiteKeys.BusinessOwnerKey(businessId.Value)
-            : null;
     }
 
     private static string NormalizeSiteKey(string? value)

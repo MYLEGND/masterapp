@@ -232,6 +232,11 @@
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) return;
       const payload = await response.json();
+      if (payload.businessName) {
+        document.querySelectorAll('[data-business-name]').forEach(element => {
+          element.textContent = payload.businessName;
+        });
+      }
       applyDocument(payload.document || {});
     } catch {
       // Public content remains fully usable from canonical defaults.
