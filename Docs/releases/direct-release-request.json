@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes direct deployment of only ClientApp and Protect for the Shared Account business website management repair. Do not restart or redeploy AgentPortal, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
-  "purpose": "Allow a linked agent managing a Shared Account Business Client to see the client's existing business website workspace, create it when absent, open the builder, publish, and manage domains through the existing business-owned website authority while Self Managed remains denied.",
-  "requestId": "shared-account-agent-business-website-management-20260921-1",
+  "authorization": "Founder authorizes direct deployment of only ClientApp and Protect for the combined Shared Account business website management and active-client sign-in recovery repair. Do not restart or redeploy AgentPortal, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
+  "purpose": "Fix Shared Account agent access to business-owned website building/domain management and eliminate false Activation Required loops for already-active Client and Business Client accounts, including Lead-to-client conversions, while preserving inactive/self-managed/conflicting identity denials.",
+  "requestId": "shared-business-website-and-active-client-signin-repair-20260921-2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client",
