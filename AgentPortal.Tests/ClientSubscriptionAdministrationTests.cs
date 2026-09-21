@@ -21,8 +21,10 @@ namespace AgentPortal.Tests;
 
 public sealed class ClientSubscriptionAdministrationTests
 {
-    [Fact]
-    public async Task CreateBusinessClient_PersistsAndInvitesWithoutCallingGraphProvisioning()
+    [Theory]
+    [InlineData("Client")]
+    [InlineData("BusinessClient")]
+    public async Task CreatePortalClient_PersistsAndInvitesWithoutCallingGraphProvisioning(string recordType)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var emailSender = BuildEmailSender(sendResult: true);
@@ -36,9 +38,9 @@ public sealed class ClientSubscriptionAdministrationTests
 
         var result = await controller.Create(new CreateClientViewModel
         {
-            RecordType = "BusinessClient",
+            RecordType = recordType,
             AccountManagementMode = "SharedAccount",
-            FirstName = "Business",
+            FirstName = recordType == "BusinessClient" ? "Business" : "Client",
             LastName = "Owner",
             Email = "owner@example.test",
             SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Fixed100),
@@ -49,7 +51,7 @@ public sealed class ClientSubscriptionAdministrationTests
         var profile = await db.ClientProfiles.SingleAsync();
         Assert.True(Guid.TryParse(profile.ClientUserId, out _));
         Assert.Null(profile.ExternalIdentityObjectId);
-        Assert.Equal("BusinessClient", ClientCrmMetaSerializer.Deserialize(profile.CrmNotes).RecordType);
+        Assert.Equal(recordType, ClientCrmMetaSerializer.Deserialize(profile.CrmNotes).RecordType);
         Assert.Single(await db.ClientSubscriptionOffers.ToListAsync());
         Assert.Single(await db.SubscriptionActivationInvitations.ToListAsync());
         emailSender.Verify(
