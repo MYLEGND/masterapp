@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Direct deploy only Protect-Website from legend/approved-changes; do not deploy any other app and do not promote production branch.",
-  "purpose": "Release staged Protect coverage, quote hierarchy, centered modal, and single authorization UI corrections only",
-  "requestId": "protect-ui-direct-20260920-1",
+  "purpose": "Deploy recovered Protect quote UI, surgical CSS cleanup, centered single-authorization modal, and staged Protect-side lead intake corrections",
+  "requestId": "protect-only-direct-20260920-2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
