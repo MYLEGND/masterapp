@@ -30,6 +30,7 @@ jobs:
       portal_only: ${{ steps.live.outputs.portal_only }}
       website_only: ${{ steps.live.outputs.website_only }}
       public_only: ${{ steps.live.outputs.public_only }}
+      client_only: ${{ steps.live.outputs.client_only }}
       validate_only: ${{ steps.live.outputs.validate_only }}
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +97,7 @@ jobs:
       PORTAL_ONLY: ${{ needs.discover-live.outputs.portal_only }}
       WEBSITE_ONLY: ${{ needs.discover-live.outputs.website_only }}
       PUBLIC_ONLY: ${{ needs.discover-live.outputs.public_only }}
+      CLIENT_ONLY: ${{ needs.discover-live.outputs.client_only }}
       VALIDATE_ONLY: ${{ needs.discover-live.outputs.validate_only }}
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +119,8 @@ jobs:
                   actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
               print(host,actual)
               assert actual == row['revision'], 'Live revision changed; rebuild the release baseline'
-              if os.environ['PUBLIC_ONLY'] == 'true' and row['app'] == 'protect':
+              if ((os.environ['PUBLIC_ONLY'] == 'true' and row['app'] == 'protect') or
+                  (os.environ['CLIENT_ONLY'] == 'true' and row['app'] == 'client')):
                   subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
       - name: Build exact selected release candidate
@@ -292,7 +295,7 @@ jobs:
           echo "Protect website editor authority matches the AgentPortal source of truth."
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
-        if: env.PUBLIC_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
+        if: env.PUBLIC_ONLY != 'true' && env.CLIENT_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -332,7 +335,7 @@ jobs:
           package: /tmp/agentportal-publish
       - name: Direct deploy ClientApp
         id: client
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -368,7 +371,7 @@ jobs:
           package: /tmp/diagnostics-packages/website.zip
       - name: Verify every deployed target and collect all failures
         id: live
-        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
         run: |
           python3 - <<'PYLIVE'
@@ -421,6 +424,7 @@ jobs:
           WEBSITE: ${{ steps.website.outcome }}
           WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
+          CLIENT_ONLY: ${{ env.CLIENT_ONLY }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
@@ -443,7 +447,11 @@ jobs:
               excluded=[step for app,step in apps.items() if app not in selected]
               (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
               (excluded if selected == ['masterapp-website'] else required).append('BUILD')
-              (excluded if set(selected) <= {'masterapp-protect','masterapp-website'} else required).extend(['TESTS','WEB','MIGRATE'])
+              if os.environ.get('CLIENT_ONLY') == 'true':
+                  required.extend(['TESTS','WEB'])
+                  excluded.append('MIGRATE')
+              else:
+                  (excluded if set(selected) <= {'masterapp-protect','masterapp-website'} else required).extend(['TESTS','WEB','MIGRATE'])
               (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
               results={key:os.environ[key] for key in required}
               skipped={key:os.environ[key] for key in excluded}
