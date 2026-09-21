@@ -45,6 +45,10 @@
              Link="wwwroot\design\legend-public-web.css"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-protect-quotes.css"
+             Link="wwwroot\design\legend-protect-quotes.css"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\Legend-Design\legend-public-web.js"
              Link="wwwroot\design\legend-public-web.js"
              CopyToOutputDirectory="PreserveNewest"

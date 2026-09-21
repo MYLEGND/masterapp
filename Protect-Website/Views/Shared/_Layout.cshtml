@@ -6,6 +6,9 @@
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @{
     var requestPath = HttpContextAccessor.HttpContext?.Request?.Path.Value ?? string.Empty;
+    var usesProtectQuotePresentation =
+        requestPath.Contains("/Quote", StringComparison.OrdinalIgnoreCase) ||
+        requestPath.Contains("/RiskAssessment", StringComparison.OrdinalIgnoreCase);
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
     var trackingSlug = ViewData["TrackingSlug"]?.ToString();
     var isFounderPath = ViewData["IsFounderPath"] as bool? ?? false;
@@ -98,6 +101,10 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/design/legend-public-web.css" asp-append-version="true" />
+    @if (usesProtectQuotePresentation)
+    {
+        <link rel="stylesheet" href="~/design/legend-protect-quotes.css" asp-append-version="true" />
+    }
 
     <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" />
     <script>

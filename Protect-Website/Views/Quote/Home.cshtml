@@ -30,10 +30,8 @@
 	    var formHeadingTitle = "Build your home protection plan";
 	    var formHeadingCopy = "Share a few home and household details so we can review protection options that fit your property, timing, and coverage needs.";
 	}
-	
-	<partial name="_PropertyCasualtyQuoteStyles" />
-	
-	<div class="container-narrow">
+
+<div class="container-narrow">
 	    <div class="pcq-shell">
 	        <div class="pcq-surface">
 	            <div class="pcq-hero-entry" id="homeHeroEntryPanel" @((showQuoteStartedByDefault ? "hidden" : null))>
@@ -341,13 +339,13 @@
                     <span asp-validation-for="PrimaryYearsAtAddress" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <div class="muted-help" style="margin-top:34px;">
+                    <div class="muted-help quote-top-space">
                         If less than 3 years, we’ll ask for the previous address.
                     </div>
                 </div>
             </div>
 
-            <div id="previousAddressBlock" style="display:none;">
+            <div class="quote-initially-hidden" id="previousAddressBlock">
                 <hr />
                 <h5 class="mb-2">Previous Address</h5>
 
@@ -1046,7 +1044,7 @@
                     </select>
                     <span asp-validation-for="HeatingUpdate" class="text-danger"></span>
                 </div>
-                <div class="col-md-6" id="HeatingYearUpdatedWrap" style="display:none;">
+                <div class="col-md-6 quote-initially-hidden" id="HeatingYearUpdatedWrap">
                     <label>Year Updated</label>
                     <input asp-for="HeatingYearUpdated" class="form-control" id="HeatingYearUpdated" />
                     <span asp-validation-for="HeatingYearUpdated" class="text-danger"></span>
@@ -1064,7 +1062,7 @@
                     </select>
                     <span asp-validation-for="ElectricalUpdate" class="text-danger"></span>
                 </div>
-                <div class="col-md-6" id="ElectricalYearUpdatedWrap" style="display:none;">
+                <div class="col-md-6 quote-initially-hidden" id="ElectricalYearUpdatedWrap">
                     <label>Year Updated</label>
                     <input asp-for="ElectricalYearUpdated" class="form-control" id="ElectricalYearUpdated" />
                     <span asp-validation-for="ElectricalYearUpdated" class="text-danger"></span>
@@ -1082,7 +1080,7 @@
                     </select>
                     <span asp-validation-for="PlumbingUpdate" class="text-danger"></span>
                 </div>
-                <div class="col-md-6" id="PlumbingYearUpdatedWrap" style="display:none;">
+                <div class="col-md-6 quote-initially-hidden" id="PlumbingYearUpdatedWrap">
                     <label>Year Updated</label>
                     <input asp-for="PlumbingYearUpdated" class="form-control" id="PlumbingYearUpdated" />
                     <span asp-validation-for="PlumbingYearUpdated" class="text-danger"></span>
@@ -1100,7 +1098,7 @@
                     </select>
                     <span asp-validation-for="RoofingUpdate" class="text-danger"></span>
                 </div>
-                <div class="col-md-6" id="RoofingYearUpdatedWrap" style="display:none;">
+                <div class="col-md-6 quote-initially-hidden" id="RoofingYearUpdatedWrap">
                     <label>Year Updated</label>
                     <input asp-for="RoofingYearUpdated" class="form-control" id="RoofingYearUpdated" />
                     <span asp-validation-for="RoofingYearUpdated" class="text-danger"></span>
