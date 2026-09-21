@@ -256,6 +256,141 @@ public class ClientProfileControllerTests
         Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessA.Id));
     }
 
+    [Fact]
+    public async Task SharedAccountAgentView_CanSeeEditAndManageLinkedBusinessWebsite()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            ClientUserId = "business-client-shared",
+            ExternalIdentityObjectId = "business-client-shared",
+            FirstName = "Shared",
+            LastName = "Business",
+            Email = "owner-shared@example.com",
+            NormalizedEmail = "owner-shared@example.com",
+            AccountManagementMode = ClientAccountManagementModes.SharedAccount,
+            CrmNotes = "{\"recordType\":\"BusinessClient\",\"pipelineStage\":\"BusinessClient\"}"
+        };
+        var business = new CommerceBusiness
+        {
+            Key = "shared-business",
+            DisplayName = "Shared Business",
+            LegalName = "Shared Business LLC",
+            BusinessType = "BusinessClient",
+            OwnerEmail = client.Email,
+            Status = "Active",
+            IsActive = true
+        };
+        db.ClientProfiles.Add(client);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-oid-shared",
+            AgentUpn = "agent@mylegnd.com",
+            ClientUserId = client.ClientUserId
+        });
+        db.CommerceBusinesses.Add(business);
+        db.CommerceBusinessMembers.Add(new CommerceBusinessMember
+        {
+            CommerceBusiness = business,
+            ClientProfileId = client.Id,
+            Email = client.Email,
+            NormalizedEmail = "OWNER-SHARED@EXAMPLE.COM",
+            Status = "Active",
+            RoleKey = "owner",
+            CanManageStorefront = true
+        });
+        await db.SaveChangesAsync();
+
+        var http = new DefaultHttpContext
+        {
+            User = ControllerTestHelpers.BuildUser("agent-oid-shared", "agent@mylegnd.com")
+        };
+        http.Request.Headers.Cookie = $"impClientProfileId={client.Id:D}";
+
+        var controller = BuildController(
+            db,
+            Mock.Of<IClientEntraLifecycleService>(),
+            Mock.Of<IClientSubscriptionIdentitySyncService>(),
+            BuildActiveLifecycle(),
+            http);
+
+        var profileResult = Assert.IsType<ViewResult>(await controller.MyProfile());
+        Assert.Equal("Index", profileResult.ViewName);
+        Assert.True(Assert.IsType<bool>(controller.ViewData["IsBusinessClient"]));
+        var websites = Assert.IsAssignableFrom<IReadOnlyList<BusinessWebsiteProfileSummary>>(controller.ViewData["BusinessWebsites"]);
+        var website = Assert.Single(websites);
+        Assert.Equal(business.Id, website.BusinessId);
+
+        Assert.IsType<RedirectResult>(await controller.EditBusinessWebsite(business.Id));
+        Assert.IsType<JsonResult>(await controller.BusinessWebsiteSession(business.Id));
+    }
+
+    [Fact]
+    public async Task SharedAccountAgentWebsiteAccess_RevokesWhenClientBecomesSelfManaged()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            ClientUserId = "business-client-private",
+            ExternalIdentityObjectId = "business-client-private",
+            FirstName = "Private",
+            LastName = "Business",
+            Email = "owner-private@example.com",
+            NormalizedEmail = "owner-private@example.com",
+            AccountManagementMode = ClientAccountManagementModes.SharedAccount,
+            CrmNotes = "{\"recordType\":\"BusinessClient\",\"pipelineStage\":\"BusinessClient\"}"
+        };
+        var business = new CommerceBusiness
+        {
+            Key = "private-business",
+            DisplayName = "Private Business",
+            LegalName = "Private Business LLC",
+            BusinessType = "BusinessClient",
+            OwnerEmail = client.Email,
+            Status = "Active",
+            IsActive = true
+        };
+        db.ClientProfiles.Add(client);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-oid-private",
+            AgentUpn = "agent-private@mylegnd.com",
+            ClientUserId = client.ClientUserId
+        });
+        db.CommerceBusinesses.Add(business);
+        db.CommerceBusinessMembers.Add(new CommerceBusinessMember
+        {
+            CommerceBusiness = business,
+            ClientProfileId = client.Id,
+            Email = client.Email,
+            NormalizedEmail = "OWNER-PRIVATE@EXAMPLE.COM",
+            Status = "Active",
+            RoleKey = "owner",
+            CanManageStorefront = true
+        });
+        await db.SaveChangesAsync();
+
+        var http = new DefaultHttpContext
+        {
+            User = ControllerTestHelpers.BuildUser("agent-oid-private", "agent-private@mylegnd.com")
+        };
+        http.Request.Headers.Cookie = $"impClientProfileId={client.Id:D}";
+        var controller = BuildController(
+            db,
+            Mock.Of<IClientEntraLifecycleService>(),
+            Mock.Of<IClientSubscriptionIdentitySyncService>(),
+            BuildActiveLifecycle(),
+            http);
+
+        Assert.IsType<JsonResult>(await controller.BusinessWebsiteSession(business.Id));
+
+        client.AccountManagementMode = ClientAccountManagementModes.SelfManaged;
+        await db.SaveChangesAsync();
+
+        Assert.IsType<ForbidResult>(await controller.BusinessWebsiteSession(business.Id));
+        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(business.Id));
+    }
+
     private static IAccountLifecycleService BuildActiveLifecycle()
     {
         var lifecycle = new Mock<IAccountLifecycleService>();
