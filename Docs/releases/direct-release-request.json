@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes direct deployment of only AgentPortal through legend/approved-changes. Do not start or promote the rigorous production flow.",
-  "purpose": "Prevent Founder and agent client creation from depending on pre-activation Microsoft Graph privileges.",
-  "requestId": "client-creation-activation-boundary-direct-20260921-1",
+  "authorization": "Founder authorizes direct deployment of only Protect through legend/approved-changes. Do not restart or redeploy AgentPortal, ClientApp, Parfait, or the public LEGEND Website. Do not start or promote the rigorous production flow.",
+  "purpose": "Resume the cancelled Protect deployment from approved direct release #23 without repeating completed application deployments.",
+  "requestId": "protect-release-resume-20260921-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-protect"
   ]
 }
