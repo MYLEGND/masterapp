@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder reported the live Business Website workspace 401 and directs correction through the existing approved direct-release authority. Deploy only ClientApp for this shared website-editor authorization parity repair; do not restart or redeploy AgentPortal, Protect, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
-  "purpose": "Synchronize ClientApp's shared website-editor Data Protection settings from the AgentPortal source of truth so Business Website tickets minted by ClientApp can be decrypted and authorized by the existing Protect website-management API. Preserve the existing business ownership, Shared Account agent access, Self Managed denial, and all prior active-client sign-in fixes; introduce no alternate authorization path.",
-  "requestId": "clientapp-business-website-auth-parity-20260921-4",
-  "releaseMode": "approved-only",
+  "authorization": "Founder requested diagnosis of the blank ClientApp browser response on both client.mylegnd.com and masterapp-client.azurewebsites.net. Validate only; do not deploy, restart, migrate, or change Azure resources.",
+  "purpose": "Inspect the live ClientApp root and member sign-in entry routes through both the custom and Azure hostnames so the blank-page regression is diagnosed without another deployment.",
+  "requestId": "clientapp-blank-entry-diagnostic-20260921-1",
+  "releaseMode": "validate-only",
   "targets": [
     "masterapp-client"
   ]
