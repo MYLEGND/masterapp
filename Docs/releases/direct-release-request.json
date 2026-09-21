@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Direct deploy only Protect-Website from legend/approved-changes; do not deploy any other app and do not promote production branch.",
-  "purpose": "Deploy recovered Protect quote UI, surgical CSS cleanup, centered single-authorization modal, and staged Protect-side lead intake corrections",
-  "requestId": "protect-only-direct-20260920-2",
+  "purpose": "Deploy surgical quote landing breathing-room correction across Life family, Disability/DVH, Auto/Home/Commercial and Risk Assessment",
+  "requestId": "protect-quote-spacing-direct-20260920-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
