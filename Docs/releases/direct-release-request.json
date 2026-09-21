@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Direct deploy only Protect-Website from legend/approved-changes; do not deploy any other app and do not promote production branch.",
-  "purpose": "Deploy surgical quote landing breathing-room correction across Life family, Disability/DVH, Auto/Home/Commercial and Risk Assessment",
-  "requestId": "protect-quote-spacing-direct-20260920-1",
+  "purpose": "Deploy corrected Protect white page-frame contract and remove competing shared quote geometry",
+  "requestId": "protect-white-page-frame-direct-20260920-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
