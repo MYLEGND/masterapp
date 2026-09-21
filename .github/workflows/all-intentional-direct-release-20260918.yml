@@ -223,6 +223,73 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Synchronize Protect shared website authorization
+        id: protectauth
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          portal_settings=/tmp/portal-shared-auth.json
+          protect_settings=/tmp/protect-shared-auth.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
+
+          resolve_value() {
+            local file="$1"; shift
+            local key value
+            for key in "$@"; do
+              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
+            done
+            return 1
+          }
+          resolve_key() {
+            local file="$1"; shift
+            local key value
+            for key in "$@"; do
+              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$value" ]; then printf '%s' "$key"; return 0; fi
+            done
+            return 1
+          }
+
+          founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
+          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          [ -n "$founder" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
+
+          echo "::add-mask::$founder"
+          echo "::add-mask::$blob"
+          echo "::add-mask::$keyvault"
+          FOUNDER_OID_VALUE="$founder" python3 - <<'PYAUTH'
+          import os, uuid
+          value=os.environ['FOUNDER_OID_VALUE'].strip()
+          parsed=uuid.UUID(value)
+          if parsed.int == 0:
+              raise SystemExit('Founder identity authority is empty.')
+          PYAUTH
+
+          protect_founder_key="$(resolve_key "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+          protect_blob_key="$(resolve_key "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+          protect_keyvault_key="$(resolve_key "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+          protect_founder="$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+          protect_blob="$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+          protect_keyvault="$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+
+          updates=()
+          if [ "$protect_founder" != "$founder" ]; then updates+=("${protect_founder_key:-FOUNDER_OID}=$founder"); fi
+          if [ "$protect_blob" != "$blob" ]; then updates+=("${protect_blob_key:-DataProtection__BlobUri}=$blob"); fi
+          if [ "$protect_keyvault" != "$keyvault" ]; then updates+=("${protect_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
+
+          if [ "${#updates[@]}" -gt 0 ]; then
+            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${updates[@]}" --output none
+          fi
+
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
+          [ "$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
+          [ "$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
+          [ "$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          echo "Protect website editor authority matches the AgentPortal source of truth."
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
         if: env.PUBLIC_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
@@ -274,7 +341,7 @@ jobs:
           package: /tmp/clientapp-publish
       - name: Direct deploy Protect
         id: protect
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -349,6 +416,7 @@ jobs:
           LIVE: ${{ steps.live.outcome }}
           MIGRATE: ${{ steps.migrate.outcome }}
           PROTECT: ${{ steps.protect.outcome }}
+          PROTECTAUTH: ${{ steps.protectauth.outcome }}
           PARFAIT: ${{ steps.parfait.outcome }}
           WEBSITE: ${{ steps.website.outcome }}
           WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
@@ -364,7 +432,7 @@ jobs:
               required=['BASE','BUILD','TESTS','WEB','PACKAGE']
               if 'masterapp-website' in selected:
                   required.append('WEBSITECHECKS')
-              skipped=['AZURE','MIGRATE','LIVE']+list(apps.values())
+              skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH']+list(apps.values())
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
               print(json.dumps({'mode':'validate-only','required':results,'skippedSteps':skipped_results},indent=2))
@@ -373,6 +441,7 @@ jobs:
           else:
               required=['BASE','PACKAGE','AZURE','LIVE']+[apps[app] for app in selected]
               excluded=[step for app,step in apps.items() if app not in selected]
+              (required if 'masterapp-protect' in selected else excluded).append('PROTECTAUTH')
               (excluded if selected == ['masterapp-website'] else required).append('BUILD')
               (excluded if set(selected) <= {'masterapp-protect','masterapp-website'} else required).extend(['TESTS','WEB','MIGRATE'])
               (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
