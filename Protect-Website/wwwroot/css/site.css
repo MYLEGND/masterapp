@@ -21,18 +21,8 @@ body.no-scroll{overflow:hidden}
 .lead-error,.lead-success{font-weight:800;margin-top:8px;display:none}.lead-error{color:#fca5a5}.lead-success{color:#bbf7d0}.lead-error.show,.lead-success.show{display:block}
 .lead-close,.scripture-close{background:transparent;border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:36px;height:36px;font-size:1.15rem;cursor:pointer}
 .lead-close{position:sticky;top:4px;margin-left:auto;z-index:2}
-.lead-consents{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;margin-top:8px}.lead-consents label{display:flex;gap:8px;align-items:center}.lead-consents input{width:auto}.lead-required{color:#fca5a5}
+.lead-consents{display:block;margin-top:14px}.lead-consent{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:14px;border:1px solid rgba(199,153,49,.28);border-radius:14px;background:rgba(255,255,255,.04)}.lead-consent input{width:20px;height:20px;margin:2px 0 0;accent-color:#c79931}.lead-consent label{display:block;margin:0;color:rgba(245,247,251,.9);font-size:.9rem;font-weight:700;line-height:1.45}.lead-consent a{color:#f0cf78;text-decoration:underline;text-underline-offset:2px}.lead-required{color:#fca5a5}
 .scripture-card-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}.scripture-day{text-transform:uppercase;letter-spacing:1px;font-weight:800;color:#e0bd62;font-size:.82rem}.scripture-reference{font-size:1.25rem;font-weight:900}.scripture-translation{font-size:.9rem;color:rgba(255,255,255,.75)}
 .scripture-streak-row{display:flex;align-items:center;gap:8px;font-size:.92rem;color:rgba(255,255,255,.72);margin-bottom:12px}.scripture-streak-label{font-weight:800;color:#e0bd62}.scripture-streak-value{font-weight:900}.scripture-text{font-size:1.05rem;line-height:1.8;color:#eef2f7}
-.btn-gold,.btn-review-premium,.btn-white-outline{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:800;text-decoration:none;padding:11px 18px}
-.btn-gold{background:#c79931;color:#111b34;border:1px solid #c79931}.btn-white-outline,.btn-review-premium{background:#fff;color:#162b63;border:1px solid rgba(199,153,49,.7)}
-.remove-driver-btn,.remove-vehicle-btn,.remove-accident-btn,.remove-violation-btn,.remove-comploss-btn{background:#b42318;color:#fff;font-weight:800;border:0;padding:7px 12px;border-radius:8px;cursor:pointer}
-.thank-you-message{background:#fff;border:1px solid rgba(199,153,49,.6);border-radius:18px;padding:22px;margin-top:36px;text-align:center;box-shadow:0 18px 44px rgba(13,27,67,.08)}
-@media(max-width:640px){.lead-card,.scripture-card{padding:17px;border-radius:18px}.lead-consents{grid-template-columns:1fr}}
-
-/* Single Home lead authorization control. */
-.lead-consents{display:block;margin-top:14px}
-.lead-consent{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:14px;border:1px solid rgba(199,153,49,.28);border-radius:14px;background:rgba(255,255,255,.04)}
-.lead-consent input{width:20px;height:20px;margin:2px 0 0;accent-color:#c79931}
-.lead-consent label{display:block;margin:0;color:rgba(245,247,251,.9);font-size:.9rem;font-weight:700;line-height:1.45}
-.lead-consent a{color:#f0cf78;text-decoration:underline;text-underline-offset:2px}
+.btn-gold{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:800;text-decoration:none;padding:11px 18px;background:#c79931;color:#111b34;border:1px solid #c79931}
+@media(max-width:640px){.lead-card,.scripture-card{padding:17px;border-radius:18px}}
