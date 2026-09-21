@@ -1,10 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using Infrastructure.WebsiteEditing;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -12,83 +8,46 @@ namespace AgentPortal.Tests;
 public sealed class WebsiteEditorTicketAuthorityIsolationTests
 {
     [Fact]
-    public void Production_DoesNotFallBackToGenericApplicationDataProtectionSettings()
+    public void ClientApp_CannotMintWebsiteEditorTickets()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["DataProtection:BlobUri"] = "https://generic.example.test/container/keys.xml",
-                ["DataProtection:KeyVaultKeyId"] = "https://generic-vault.example.test/keys/generic"
-            })
-            .Build();
+        var clientProgram = File.ReadAllText(Source("ClientApp", "Program.cs"));
+        var clientProfile = File.ReadAllText(Source("ClientApp", "Controllers", "ProfileController.cs"));
 
-        using var root = new TemporaryDirectory();
-        var environment = new TestEnvironment(root.Path, Environments.Production);
-
-        var error = Assert.Throws<InvalidOperationException>(
-            () => WebsiteEditorTicketProtector.CreateShared(configuration, environment));
-
-        Assert.Contains(WebsiteEditorTicketProtector.SharedBlobUriConfigKey, error.Message, StringComparison.Ordinal);
-        Assert.Contains(WebsiteEditorTicketProtector.SharedKeyVaultKeyIdConfigKey, error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("WebsiteEditorTicketProtector.CreateShared", clientProgram, StringComparison.Ordinal);
+        Assert.DoesNotContain("WebsiteEditorTicketProtector", clientProfile, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Protect(new WebsiteEditorTicket", clientProfile, StringComparison.Ordinal);
+        Assert.Contains("CreateWebsiteEditorHandoffAsync", clientProfile, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Development_GenericApplicationDataProtectionSettingsCannotRedirectWebsiteTicketKeys()
+    public void Protect_IsTheBusinessWebsiteTicketMintingAuthority()
     {
-        using var root = new TemporaryDirectory();
-        Directory.CreateDirectory(Path.Combine(root.Path, "ClientApp"));
+        var protect = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsiteContentController.cs"));
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["DataProtection:BlobUri"] = "https://unreachable.example.test/container/keys.xml",
-                ["DataProtection:KeyVaultKeyId"] = "https://unreachable-vault.example.test/keys/generic"
-            })
-            .Build();
-
-        var environment = new TestEnvironment(
-            Path.Combine(root.Path, "ClientApp"),
-            Environments.Development);
-
-        using var protector = WebsiteEditorTicketProtector.CreateShared(configuration, environment);
-        var ticket = new WebsiteEditorTicket(
-            WebsiteEditorSiteKeys.Legend,
-            WebsiteEditorSiteKeys.GlobalOwnerKey,
-            null,
-            true,
-            DateTime.UtcNow.AddMinutes(5),
-            null,
-            ActorUserId: "authority-isolation-test",
-            ActorEmail: "test@example.test");
-
-        var protectedValue = protector.Protect(ticket);
-        var roundTrip = protector.TryUnprotect(protectedValue);
-
-        Assert.NotNull(roundTrip);
-        Assert.Equal(ticket.ActorUserId, roundTrip!.ActorUserId);
-        Assert.True(Directory.Exists(Path.Combine(root.Path, "AgentPortal", "App_Data", "website-editor-keys")));
+        Assert.Contains("[HttpPost(\"handoff\")]", protect, StringComparison.Ordinal);
+        Assert.Contains("WebsiteBusinessAccess.CanManageAsActorAsync", protect, StringComparison.Ordinal);
+        Assert.Contains("ExecuteUpdateAsync", protect, StringComparison.Ordinal);
+        Assert.Contains("_tickets.Protect(new WebsiteEditorTicket", protect, StringComparison.Ordinal);
+        Assert.Contains("ClientIdentityContinuationPurpose.WebsiteEditor", protect, StringComparison.Ordinal);
     }
 
-    private sealed class TestEnvironment(string contentRootPath, string environmentName) : IHostEnvironment
+    [Fact]
+    public void SharedWebsiteManager_ExchangesOpaqueHandoffWithProtect()
     {
-        public string EnvironmentName { get; set; } = environmentName;
-        public string ApplicationName { get; set; } = "WebsiteEditorTicketAuthorityIsolationTests";
-        public string ContentRootPath { get; set; } = contentRootPath;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        var manager = File.ReadAllText(Source("Legend-Design", "legend-website-management.js"));
+
+        Assert.Contains("bootstrap?.handoffUrl", manager, StringComparison.Ordinal);
+        Assert.Contains("method: 'POST'", manager, StringComparison.Ordinal);
+        Assert.Contains("session = await exchange.json()", manager, StringComparison.Ordinal);
     }
 
-    private sealed class TemporaryDirectory : IDisposable
+    private static string Source(params string[] segments)
     {
-        public string Path { get; } = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(),
-            "legend-website-ticket-authority-" + Guid.NewGuid().ToString("N"));
-
-        public TemporaryDirectory() => Directory.CreateDirectory(Path);
-
-        public void Dispose()
-        {
-            try { Directory.Delete(Path, recursive: true); }
-            catch { }
-        }
+        var root = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(CurrentSource())!,
+            ".."));
+        return Path.Combine(new[] { root }.Concat(segments).ToArray());
     }
+
+    private static string CurrentSource([CallerFilePath] string source = "") => source;
 }
