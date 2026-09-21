@@ -1,10 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Direct deploy only Protect-Website from legend/approved-changes; do not deploy any other app and do not promote production branch.",
-  "purpose": "Deploy corrected Protect white page-frame contract and remove competing shared quote geometry",
-  "requestId": "protect-white-page-frame-direct-20260920-1",
-  "releaseMode": "approved-only",
+  "authorization": "Validate the scoped website platform changes only. Do not deploy, migrate, restart, or promote any application.",
+  "purpose": "Compile and test Business Client website profile management, Agent Protect profile management, shared CMS authority, and Legend business preview renderer",
+  "requestId": "website-platform-validation-20260920-1",
+  "releaseMode": "validate-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-website"
   ]
 }
