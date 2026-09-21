@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved the one-source-of-truth Business Website correction. Revalidate the current exact branch head only.",
-  "purpose": "Verify the current tree after replacing ClientApp ticket minting with the one-time continuation handoff to Protect. Protect remains the sole website-ticket authority. No ClientApp website-ticket keys, no override, no duplicate authority, no fallback.",
-  "requestId": "business-website-protect-source-of-truth-revalidate-20260921-5",
-  "releaseMode": "validate-only",
+  "authorization": "Founder approved direct deployment of the validated one-source-of-truth Business Website correction.",
+  "purpose": "Direct release the validated ClientApp + Protect handoff. ClientApp creates only a short-lived one-time continuation; Protect revalidates business authority and exclusively mints the existing LEGEND.PublicWebsiteEditor ticket. Keep the existing Protect/AgentPortal cryptographic authority unchanged. No ClientApp website-ticket keys, no override, no duplicate authority, no fallback, no unrelated app deployment.",
+  "requestId": "business-website-protect-source-of-truth-release-20260921-6",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-client",
     "masterapp-protect"
