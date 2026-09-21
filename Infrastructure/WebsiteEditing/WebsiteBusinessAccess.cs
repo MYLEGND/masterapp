@@ -1,7 +1,9 @@
 using Domain.Entities;
+using Domain.Enums;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 
 namespace Infrastructure.WebsiteEditing;
 
@@ -17,5 +19,45 @@ public static class WebsiteBusinessAccess
         var profile = await db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(p => p.Id == clientProfileId, cancellationToken);
         return profile is not null && (await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db, new Domain.Accounts.AccountLifecycleSubject(profile.ClientUserId, MessagingParticipantTypes.Client, profile.Id), cancellationToken)).AllowsFullAccess && ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes) == ClientRecordClassification.BusinessClient &&
             await QueryManagedBusinesses(db, clientProfileId).AnyAsync(b => b.Id == businessId, cancellationToken);
+    }
+
+    public static async Task<bool> CanManageAsActorAsync(
+        MasterAppDbContext db,
+        Guid businessId,
+        Guid clientProfileId,
+        string? actorUserId,
+        string? actorEmail = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await CanManageAsync(db, businessId, clientProfileId, cancellationToken))
+            return false;
+
+        var profile = await db.ClientProfiles
+            .AsNoTracking()
+            .SingleOrDefaultAsync(p => p.Id == clientProfileId, cancellationToken);
+        if (profile is null)
+            return false;
+
+        var actor = IdentityKey.Normalize(actorUserId);
+        if (string.IsNullOrWhiteSpace(actor))
+            return false;
+
+        var clientIds = IdentityKey.NormalizeSet(new[]
+        {
+            profile.ClientUserId,
+            profile.ExternalIdentityObjectId
+        });
+        if (clientIds.Contains(actor))
+            return true;
+
+        if (!ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode))
+            return false;
+
+        return await db.AgentOwnsClientAsync(
+            actor,
+            profile.ClientUserId,
+            actorEmail,
+            new[] { actor },
+            cancellationToken);
     }
 }
