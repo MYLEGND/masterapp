@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ClientApp.Models;
@@ -239,8 +240,6 @@ public class ClientProfileControllerTests
             BuildActiveLifecycle(),
             http);
 
-        Assert.IsType<RedirectResult>(await controller.EditBusinessWebsite(businessA.Id));
-        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessB.Id));
         Assert.IsType<JsonResult>(await controller.BusinessWebsiteSession(businessA.Id));
         Assert.IsType<ForbidResult>(await controller.BusinessWebsiteSession(businessB.Id));
 
@@ -248,12 +247,9 @@ public class ClientProfileControllerTests
         profile.Email = "owner-b@example.com";
         profile.NormalizedEmail = "owner-b@example.com";
         await db.SaveChangesAsync();
-        Assert.IsType<RedirectResult>(await controller.EditBusinessWebsite(businessA.Id));
-        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessB.Id));
 
         Assert.Single(db.CommerceBusinessMembers).Status = "Inactive";
         await db.SaveChangesAsync();
-        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessA.Id));
     }
 
     [Fact]
@@ -321,7 +317,6 @@ public class ClientProfileControllerTests
         var website = Assert.Single(websites);
         Assert.Equal(business.Id, website.BusinessId);
 
-        Assert.IsType<RedirectResult>(await controller.EditBusinessWebsite(business.Id));
         Assert.IsType<JsonResult>(await controller.BusinessWebsiteSession(business.Id));
     }
 
@@ -388,7 +383,6 @@ public class ClientProfileControllerTests
         await db.SaveChangesAsync();
 
         Assert.IsType<ForbidResult>(await controller.BusinessWebsiteSession(business.Id));
-        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(business.Id));
     }
 
     private static IAccountLifecycleService BuildActiveLifecycle()
@@ -414,13 +408,20 @@ public class ClientProfileControllerTests
             })
             .Build();
 
+        var keyPath = Path.Combine(Path.GetTempPath(), "client-profile-controller-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(keyPath);
+        var continuation = new ClientIdentityContinuationService(
+            db,
+            DataProtectionProvider.Create(new DirectoryInfo(keyPath)),
+            new ClientAppReturnUrlNormalizer());
+
         return new ClientApp.Controllers.ProfileController(
             db,
             new EffectiveClientContextService(db),
             entra,
             subscriptionSync,
             lifecycle,
-            new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()),
+            continuation,
             new CommerceBusinessProvisioningService(db),
             configuration)
         {
