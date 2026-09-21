@@ -201,7 +201,7 @@ jobs:
           for app in "${apps[@]}"; do
             (cd "/tmp/$app-publish" && zip -qr "/tmp/diagnostics-packages/$app.zip" .)
           done
-          if [ "$PORTAL_ONLY" != true ]; then
+          if [[ "$SELECTED_TARGETS" == *'"masterapp-website"'* ]]; then
             (cd Legend-Website/dist && zip -qr /tmp/diagnostics-packages/website.zip .)
           fi
           sha256sum /tmp/diagnostics-packages/*.zip > /tmp/diagnostics-packages/SHA256SUMS

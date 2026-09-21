@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Deploy only LEGEND Website through approved changes; no other apps and no production promotion.",
-  "purpose": "Version canonical shared editor and design assets to prevent stale browser reuse",
-  "requestId": "website-shared-editor-version-20260919-1",
+  "authorization": "Direct deploy only Protect-Website from legend/approved-changes; do not deploy any other app and do not promote production branch.",
+  "purpose": "Release staged Protect coverage, quote hierarchy, centered modal, and single authorization UI corrections only",
+  "requestId": "protect-ui-direct-20260920-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-website"
+    "masterapp-protect"
   ]
 }
