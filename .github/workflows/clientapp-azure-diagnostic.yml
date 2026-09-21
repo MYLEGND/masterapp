@@ -64,6 +64,18 @@ for row in data.get("data",[]):
           echo "Recent App Service configuration writes:"
           az monitor activity-log list -g masterapp-rg --start-time 2026-09-21T14:50:00Z --end-time 2026-09-21T15:30:00Z --status Succeeded --query "[?contains(operationName.value, 'Microsoft.Web/sites/config/write') || contains(operationName.value, 'Microsoft.Web/sites/write')].{time:eventTimestamp,operation:operationName.value,resource:resourceId,caller:caller}" -o json
 
+          echo "Managed identity and RBAC comparison:"
+          client_principal="$(az webapp identity show -g masterapp-rg -n masterapp-client --query principalId -o tsv)"
+          portal_principal="$(az webapp identity show -g masterapp-rg -n masterapp-portal --query principalId -o tsv)"
+          echo "Client principal present: $([ -n "$client_principal" ] && echo yes || echo no)"
+          echo "Portal principal present: $([ -n "$portal_principal" ] && echo yes || echo no)"
+          echo "Client relevant roles:"
+          az role assignment list --assignee "$client_principal" --all --query "[?contains(scope, 'masterappstorage1221') || contains(scope, 'masterapp-kv-1221')].{role:roleDefinitionName,scope:scope}" -o json
+          echo "Portal relevant roles:"
+          az role assignment list --assignee "$portal_principal" --all --query "[?contains(scope, 'masterappstorage1221') || contains(scope, 'masterapp-kv-1221')].{role:roleDefinitionName,scope:scope}" -o json
+          echo "Key Vault authorization mode:"
+          az keyvault show -g masterapp-rg -n masterapp-kv-1221 --query '{rbac:properties.enableRbacAuthorization}' -o json
+
           mkdir -p /tmp/clientlogs
           if az webapp log download -g masterapp-rg -n masterapp-client --log-file /tmp/clientlogs.zip >/tmp/log-download.txt 2>&1; then
             unzip -q /tmp/clientlogs.zip -d /tmp/clientlogs || true
