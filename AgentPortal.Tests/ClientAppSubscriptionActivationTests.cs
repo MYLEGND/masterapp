@@ -341,6 +341,70 @@ public class ClientAppSubscriptionActivationTests
         Assert.Null((await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
     }
 
+    [Theory]
+    [InlineData("Client")]
+    [InlineData("BusinessClient")]
+    public async Task CompleteClientSignIn_WithoutContinuation_B2BGuestActivePortalAccountRecovers(string recordType)
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        profile.CrmStatus = "Active";
+        profile.CrmNotes = $"{{\"recordType\":\"{recordType}\",\"pipelineStage\":\"{recordType}\"}}";
+        await db.SaveChangesAsync();
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer());
+
+        var principal = BuildPrincipalWithEmailClaims(
+            "client-b2b-oid",
+            "client_example.com#EXT#@mylegnd.com",
+            "client@example.com");
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            principal,
+            "/profile");
+
+        Assert.True(result.Success);
+        Assert.Equal("/profile", result.ReturnUrl);
+        Assert.Equal("client-b2b-oid", (await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
+    }
+
+    [Fact]
+    public async Task CompleteClientSignIn_WithoutContinuation_LeadNeverBecomesPortalIdentity()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "lead@example.com");
+        profile.CrmStatus = "Lead";
+        profile.CrmNotes = "{\"recordType\":\"Lead\",\"pipelineStage\":\"NewLead\"}";
+        await db.SaveChangesAsync();
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer());
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            BuildPrincipalWithEmailClaims(
+                "lead-oid",
+                "lead_example.com#EXT#@mylegnd.com",
+                "lead@example.com"),
+            "/profile");
+
+        Assert.False(result.Success);
+        Assert.Equal("CLIENT_NOT_READY", result.SafeErrorCode);
+        Assert.Null((await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
+    }
+
     [Fact]
     public async Task CompleteClientSignIn_WithoutContinuation_BoundActiveClientCanResume()
     {
@@ -1102,6 +1166,8 @@ public class ClientAppSubscriptionActivationTests
             NormalizedEmail = normalizedEmail,
             Phone = "5550001234",
             MaritalStatus = "Single",
+            CrmStatus = "Active",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}",
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
         };
