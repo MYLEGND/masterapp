@@ -1400,29 +1400,6 @@
 
                             <div class="lq-step-panel lq-contact-first-wizard-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
                                 <div class="lq-step-panel-pad">
-                                    <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
-                                        <div class="lq-contact-capture-kicker">Licensed review with @contactFirstTrustLabelName</div>
-                                        <div class="lq-agent-handoff-head">
-                                            <div class="lq-agent-identity">
-                                                <div class="lq-agent-avatar" aria-hidden="true">
-                                                    @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
-                                                    {
-                                                        <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                                    }
-                                                    <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
-                                                <div class="lq-agent-display-name">@agentTrustHeadline</div>
-                                                <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
-                                                @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                                {
-                                                    <div class="lq-agent-license">NPN @agentTrustNpn</div>
-                                                }
-                                            </div>
-                                        </div>
-                                    </div>
                                     <div class="lq-step-progress">One moment</div>
                                     <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
                                     <div class="lq-step-helper">@contactFirstProcessingHelper</div>
@@ -1912,29 +1889,6 @@
 
         <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
             <div class="lq-step-panel-pad">
-                <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
-                    <div class="lq-contact-capture-kicker">Licensed review with @contactFirstTrustLabelName</div>
-                    <div class="lq-agent-handoff-head">
-                        <div class="lq-agent-identity">
-                            <div class="lq-agent-avatar" aria-hidden="true">
-                                @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
-                                {
-                                    <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                }
-                                <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
-                            <div class="lq-agent-display-name">@agentTrustHeadline</div>
-                            <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
-                            @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                            {
-                                <div class="lq-agent-license">NPN @agentTrustNpn</div>
-                            }
-                        </div>
-                    </div>
-                </div>
                 <div class="lq-step-progress">One moment</div>
                 <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
                 <div class="lq-step-helper">@contactFirstProcessingHelper</div>

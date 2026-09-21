@@ -247,7 +247,7 @@
 
 <!-- Lead Capture Modal -->
 <div id="leadModal" class="lead-modal" aria-hidden="true">
-    <div class="lead-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle">
+    <div class="lead-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle" aria-describedby="leadSubtitle" tabindex="-1">
         <button type="button" class="lead-close" id="leadClose" aria-label="Close lead capture dialog">&times;</button>
         <h3 id="leadTitle">Tell us what you’re looking for—we’ll walk you through your options clearly.</h3>
         <p class="sub" id="leadSubtitle">We’ll reply with clear next steps. No pressure.</p>
@@ -298,9 +298,16 @@
                 <textarea name="Notes" placeholder="Share goals or questions (optional)"></textarea>
             </div>
 
-            <div class="lead-consents mt-2">
-                <label><input type="checkbox" name="MarketingEmailConsent" value="true" required /> <span class="lead-required">*</span> I authorize the company to contact me regarding this request.</label>
-                <label><input type="checkbox" name="TermsAccepted" value="true" required /> <span class="lead-required">*</span> I agree to the terms.</label>
+            <div class="lead-consents">
+                <div class="lead-consent">
+                    <input id="leadAuthorization" type="checkbox" name="MarketingEmailConsent" value="true" required />
+                    <label for="leadAuthorization">
+                        <span class="lead-required">*</span>
+                        I authorize LEGEND to contact me regarding this request and agree to the
+                        <a href="@termsUrl" target="_blank" rel="noopener">Terms</a> and
+                        <a href="@privacyUrl" target="_blank" rel="noopener">Privacy Policy</a>.
+                    </label>
+                </div>
             </div>
 
             <div class="lead-actions">

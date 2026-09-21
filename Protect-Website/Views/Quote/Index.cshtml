@@ -218,6 +218,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!lifeTile || !lifeModal) return;
         lifeModal.classList.remove("open");
         lifeModal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("no-scroll");
         lifeTile.classList.remove("open");
         lifeTile.setAttribute("aria-expanded", "false");
         if (restoreFocus && lifeReturnFocus instanceof HTMLElement) lifeReturnFocus.focus();
@@ -228,6 +229,7 @@ document.addEventListener("DOMContentLoaded", function () {
         lifeReturnFocus = document.activeElement;
         lifeModal.classList.add("open");
         lifeModal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("no-scroll");
         lifeTile.classList.add("open");
         lifeTile.setAttribute("aria-expanded", "true");
         lifeDialog?.focus();
@@ -254,8 +256,38 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!lifeTile.contains(e.target) && !lifeModal.contains(e.target)) closeLife();
         });
 
-        window.addEventListener("scroll", () => closeLife(false), { passive: true });
         lifeClose?.addEventListener("click", () => closeLife(true));
+
+        document.addEventListener("keydown", (e) => {
+            if (!lifeModal.classList.contains("open")) return;
+
+            if (e.key === "Escape") {
+                e.preventDefault();
+                closeLife(true);
+                return;
+            }
+
+            if (e.key !== "Tab" || !lifeDialog) return;
+            const focusable = [...lifeDialog.querySelectorAll(
+                'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])'
+            )].filter(el => !el.hasAttribute("hidden") && el.getClientRects().length > 0);
+
+            if (focusable.length === 0) {
+                e.preventDefault();
+                lifeDialog.focus({ preventScroll: true });
+                return;
+            }
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        });
     }
 });
 </script>

@@ -13,6 +13,7 @@
     new URLSearchParams(window.location.search).has('trackingDebug');
 
   const form = document.getElementById('leadForm');
+  const dialog = modal.querySelector('.lead-card');
   const closeBtn = document.getElementById('leadClose');
   const dismissBtn = document.getElementById('leadDismiss');
   const submitBtn = document.getElementById('leadSubmit');
@@ -30,6 +31,7 @@
   let formStarted = false;
   let modalInstanceId = null;
   let modalCloseTracked = false;
+  let returnFocus = null;
 
   const tracking = window.LegendAnalytics?.track || window.legendTrack || (() => {});
   const ids = window.legendTrackingIds || {};
@@ -87,9 +89,11 @@
     formStarted = false;
     modalInstanceId = uuid();
     modalCloseTracked = false;
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
-    form.querySelector('input[name="FirstName"]')?.focus();
+    document.body.classList.add('no-scroll');
+    dialog?.focus({ preventScroll: true });
     sessionStorage.setItem(SOFT_FLAG, '1');
     debug('modal open', {
       pageKey,
@@ -114,6 +118,7 @@
 
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('no-scroll');
     if (!modalCloseTracked) {
       modalCloseTracked = true;
       debug('modal close', {
@@ -138,10 +143,15 @@
     if (redirect && pendingHref) {
       window.location.href = pendingHref;
     }
+    const focusTarget = returnFocus;
     pendingCta = null;
     pendingHref = null;
     formStarted = false;
     modalInstanceId = null;
+    returnFocus = null;
+    if (!redirect && focusTarget?.isConnected) {
+      focusTarget.focus({ preventScroll: true });
+    }
   }
 
   function markFormStart() {
@@ -211,18 +221,6 @@
         return;
       }
     }
-    if (!getField('TermsAccepted')) {
-      errorEl.textContent = 'Please accept the terms.';
-      errorEl.classList.add('show');
-      tracking({
-        EventType: 'lead_form_submit_failure',
-        PageKey: pageKey,
-        ElementKey: pendingCta || resolveElementKey(null),
-        FormKey: 'lead_modal_form'
-      });
-      return;
-    }
-
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
 
@@ -239,7 +237,7 @@
       Notes: getField('Notes'),
       MarketingEmailConsent: !!getField('MarketingEmailConsent'),
       CallTextConsent: !!getField('MarketingEmailConsent'), // align single consent to both flags for compatibility
-      TermsAccepted: !!getField('TermsAccepted'),
+      TermsAccepted: !!getField('MarketingEmailConsent'),
       SourcePageKey: pageKey,
       SourceCtaKey: pendingCta,
       SessionId: (ids.getSessionId && ids.getSessionId()) || null,
@@ -312,6 +310,33 @@
     if (e.target === modal) closeModal(false, 'backdrop');
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.classList.contains('open')) closeModal(false, 'escape_key');
+    if (!modal.classList.contains('open')) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal(false, 'escape_key');
+      return;
+    }
+
+    if (e.key !== 'Tab' || !dialog) return;
+    const focusable = [...dialog.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    )].filter(el => !el.hasAttribute('hidden') && el.getClientRects().length > 0);
+
+    if (focusable.length === 0) {
+      e.preventDefault();
+      dialog.focus({ preventScroll: true });
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   });
 })();
