@@ -1,11 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes direct deployment of only Protect and the public LEGEND Website through legend/approved-changes. Do not restart or redeploy AgentPortal, ClientApp, or Parfait. Do not start or promote the rigorous production flow.",
-  "purpose": "Complete both unfinished website targets from approved direct release #23 after AgentPortal and ClientApp deployed successfully.",
-  "requestId": "protect-and-legend-website-release-resume-20260921-1",
+  "authorization": "Founder authorizes direct deployment of only the public LEGEND Website through legend/approved-changes to retry the failed website target from direct release #27. Do not restart or redeploy Protect, AgentPortal, ClientApp, or Parfait. Do not start or promote the rigorous production flow.",
+  "purpose": "Retry only the failed masterapp-website deployment from approved direct release #27 after masterapp-protect deployed successfully.",
+  "requestId": "legend-website-only-retry-20260921-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
     "masterapp-website"
   ]
 }
