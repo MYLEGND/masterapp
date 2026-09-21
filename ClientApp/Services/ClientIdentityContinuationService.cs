@@ -1,8 +1,7 @@
-using System.Security.Cryptography;
-using System.Text;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
@@ -44,7 +43,7 @@ public sealed class ClientIdentityContinuationService
         var expiresUtc = nowUtc.Add(purpose == ClientIdentityContinuationPurpose.Activation
             ? TimeSpan.FromMinutes(30)
             : TimeSpan.FromMinutes(15));
-        var token = CreateOpaqueToken();
+        var token = WebsiteEditorHandoffToken.Create();
 
         var continuation = new ClientIdentityContinuation
         {
@@ -52,7 +51,7 @@ public sealed class ClientIdentityContinuationService
             SubscriptionActivationInvitationId = invitationId,
             ClientSubscriptionId = subscriptionId,
             Purpose = purpose,
-            TokenHash = Hash(token),
+            TokenHash = WebsiteEditorHandoffToken.Hash(token),
             IntendedNormalizedEmail = NormalizeEmail(intendedNormalizedEmail),
             ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
             ExpiresUtc = expiresUtc,
@@ -63,6 +62,38 @@ public sealed class ClientIdentityContinuationService
         await _db.SaveChangesAsync(cancellationToken);
 
         return (_protector.Protect(token), expiresUtc);
+    }
+
+    public async Task<(string OpaqueState, DateTime ExpiresUtc)> CreateWebsiteEditorHandoffAsync(
+        Guid clientProfileId,
+        Guid commerceBusinessId,
+        string actorUserId,
+        string actorEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientProfileId == Guid.Empty || commerceBusinessId == Guid.Empty || string.IsNullOrWhiteSpace(actorUserId))
+            throw new ArgumentException("A complete website editor handoff authority is required.");
+
+        var nowUtc = DateTime.UtcNow;
+        var expiresUtc = nowUtc.AddMinutes(2);
+        var token = WebsiteEditorHandoffToken.Create();
+
+        _db.ClientIdentityContinuations.Add(new ClientIdentityContinuation
+        {
+            ClientProfileId = clientProfileId,
+            CommerceBusinessId = commerceBusinessId,
+            ActorUserId = actorUserId.Trim(),
+            ActorEmail = NormalizeEmail(actorEmail),
+            Purpose = ClientIdentityContinuationPurpose.WebsiteEditor,
+            TokenHash = WebsiteEditorHandoffToken.Hash(token),
+            IntendedNormalizedEmail = NormalizeEmail(actorEmail),
+            ReturnUrl = "/",
+            ExpiresUtc = expiresUtc,
+            CreatedUtc = nowUtc
+        });
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return (token, expiresUtc);
     }
 
     public async Task<ClientIdentityContinuationValidationResult> ValidateProtectedStateAsync(string protectedState, CancellationToken cancellationToken = default)
@@ -123,7 +154,7 @@ public sealed class ClientIdentityContinuationService
 
     private async Task<ClientIdentityContinuationValidationResult> ValidatePlainTokenAsync(string plainToken, CancellationToken cancellationToken)
     {
-        var tokenHash = Hash(plainToken);
+        var tokenHash = WebsiteEditorHandoffToken.Hash(plainToken);
         var continuation = await _db.ClientIdentityContinuations
             .FirstOrDefaultAsync(x => x.TokenHash == tokenHash, cancellationToken);
 
@@ -157,18 +188,4 @@ public sealed class ClientIdentityContinuationService
     private static string NormalizeEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
-    private static string Hash(string value)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
-
-    private static string CreateOpaqueToken(int byteLength = 32)
-    {
-        var bytes = RandomNumberGenerator.GetBytes(byteLength);
-        return Convert.ToBase64String(bytes)
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
-    }
 }
