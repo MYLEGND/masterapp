@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Domain.Billing;
+using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
@@ -119,7 +120,7 @@ public sealed class ClientIdentityAccessService
                 (x.Email ?? string.Empty).ToLower() == normalizedEmail,
                 cancellationToken);
 
-        if (profile is null)
+        if (profile is null || !IsPortalClientProfile(profile))
         {
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_READY", "We could not find an activated client profile for that email yet.", safeReturnUrl);
         }
@@ -159,7 +160,8 @@ public sealed class ClientIdentityAccessService
         CancellationToken cancellationToken = default)
     {
         var safeReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
-        if (IsAgentPrincipal(principal) && IsSupportReturnUrl(safeReturnUrl))
+        if (IsSupportReturnUrl(safeReturnUrl) &&
+            await IsAgentPrincipalAsync(principal, cancellationToken))
             return new ClientSignInCompletionResult(true, safeReturnUrl);
 
         // Canonical Entra Object ID only (F19). GetCanonicalUserId reads oid /
@@ -178,7 +180,7 @@ public sealed class ClientIdentityAccessService
                 (x.ClientUserId ?? string.Empty).ToLower() == oid,
                 cancellationToken);
 
-        if (profile is null)
+        if (profile is null || !IsPortalClientProfile(profile))
             return new ClientSignInCompletionResult(false, safeReturnUrl, "UNKNOWN_CLIENT", "A valid client subscription is required before opening the portal.");
 
         var entitlement = await _entitlementService.EvaluateAsync(
@@ -237,6 +239,13 @@ public sealed class ClientIdentityAccessService
                 "This email is linked to more than one client profile. Contact your LEGEND guide before signing in.");
 
         var profile = matches[0];
+        if (!IsPortalClientProfile(profile))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "CLIENT_NOT_READY",
+                "This CRM record is not a client portal account.");
+
         var existingObjectId = NormalizeId(profile.ExternalIdentityObjectId);
         if (!string.IsNullOrWhiteSpace(existingObjectId) &&
             !string.Equals(existingObjectId, oid, StringComparison.Ordinal))
@@ -311,7 +320,8 @@ public sealed class ClientIdentityAccessService
                 return existingClientSession;
             }
 
-            if (!IsAgentPrincipal(principal))
+            var isAgent = await IsAgentPrincipalAsync(principal, cancellationToken);
+            if (!isAgent)
             {
                 var recoveredClientSession = await RecoverActiveClientBindingAsync(
                     principal,
@@ -415,9 +425,31 @@ public sealed class ClientIdentityAccessService
         return new ClientSignInCompletionResult(true, continuation.ReturnUrl);
     }
 
-    private static bool IsAgentPrincipal(ClaimsPrincipal principal) =>
-        PrincipalEmailCandidates(principal)
-            .Any(email => email.EndsWith("@mylegnd.com", StringComparison.OrdinalIgnoreCase));
+    private async Task<bool> IsAgentPrincipalAsync(
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        var oid = principal.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(oid))
+            return false;
+
+        return await _db.AgentProfiles
+                   .AsNoTracking()
+                   .AnyAsync(profile => (profile.AgentUserId ?? string.Empty).ToLower() == oid, cancellationToken)
+               || await _db.AgentTrackingProfiles
+                   .AsNoTracking()
+                   .AnyAsync(profile => (profile.AgentUserId ?? string.Empty).ToLower() == oid &&
+                                        (profile.Status ?? string.Empty).ToLower() == "active", cancellationToken)
+               || await _db.AgentClients
+                   .AsNoTracking()
+                   .AnyAsync(link => (link.AgentUserId ?? string.Empty).ToLower() == oid, cancellationToken);
+    }
+
+    private static bool IsPortalClientProfile(ClientProfile profile) =>
+        ClientRecordClassification.IsClientOrBusinessClient(
+            profile.ClientUserId,
+            profile.CrmNotes,
+            profile.CrmStatus);
 
     private static string[] PrincipalEmailCandidates(ClaimsPrincipal principal)
     {
