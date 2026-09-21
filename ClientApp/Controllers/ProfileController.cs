@@ -26,7 +26,7 @@ public class ProfileController : Controller
     private readonly IClientEntraLifecycleService _entraLifecycle;
     private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
     private readonly IAccountLifecycleService _accountLifecycle;
-    private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
+    private readonly ClientIdentityContinuationService _continuations;
     private readonly ICommerceBusinessProvisioningService _businessProvisioning;
     private readonly IConfiguration _configuration;
 
@@ -36,7 +36,7 @@ public class ProfileController : Controller
         IClientEntraLifecycleService entraLifecycle,
         IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
         IAccountLifecycleService accountLifecycle,
-        WebsiteEditorTicketProtector websiteEditorTickets,
+        ClientIdentityContinuationService continuations,
         ICommerceBusinessProvisioningService businessProvisioning,
         IConfiguration configuration)
     {
@@ -45,7 +45,7 @@ public class ProfileController : Controller
         _entraLifecycle = entraLifecycle;
         _subscriptionIdentitySync = subscriptionIdentitySync;
         _accountLifecycle = accountLifecycle;
-        _websiteEditorTickets = websiteEditorTickets;
+        _continuations = continuations;
         _businessProvisioning = businessProvisioning;
         _configuration = configuration;
     }
@@ -503,44 +503,36 @@ public class ProfileController : Controller
         return RedirectToAction(nameof(MyProfile));
     }
 
-    [HttpGet("/profile/business-website/edit/{businessId:guid}")]
-    public async Task<IActionResult> EditBusinessWebsite(Guid businessId)
-    {
-        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        if (context is null)
-            return Forbid();
-
-        var business = await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted);
-        if (business is null)
-            return Forbid();
-
-        var ticket = CreateBusinessWebsiteTicket(context, business.Id);
-
-        var target = $"{LegendWebsiteBaseUrl()}/business-preview/?businessId={business.Id:D}&legendEdit={Uri.EscapeDataString(ticket)}";
-        return Redirect(target);
-    }
-
     [HttpGet("/profile/business-website/session/{businessId:guid}")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> BusinessWebsiteSession(Guid businessId)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
         if (context is null) return Forbid();
+
         var business = await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted);
         if (business is null) return Forbid();
-        var ticket = CreateBusinessWebsiteTicket(context, business.Id);
-        return Json(new { ticket, apiBase = (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') });
-    }
 
-    private string CreateBusinessWebsiteTicket(EffectiveClientContext context, Guid businessId) =>
-        _websiteEditorTickets.Protect(new WebsiteEditorTicket(
-            WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(businessId),
-            null, false, DateTime.UtcNow.AddMinutes(45), businessId,
-            ActorUserId: User.GetCanonicalUserId(),
-            ActorEmail: context.IsAgentView
-                ? context.AgentEmail
-                : context.Profile.NormalizedEmail ?? context.Profile.Email,
-            ActorClientProfileId: context.Profile.Id));
+        var actorUserId = User.GetCanonicalUserId();
+        var actorEmail = context.IsAgentView
+            ? context.AgentEmail
+            : context.Profile.NormalizedEmail ?? context.Profile.Email;
+
+        var handoff = await _continuations.CreateWebsiteEditorHandoffAsync(
+            context.Profile.Id,
+            business.Id,
+            actorUserId,
+            actorEmail ?? string.Empty,
+            HttpContext.RequestAborted);
+
+        var apiBase = (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
+        return Json(new
+        {
+            handoffUrl = $"{apiBase}/api/website-content/handoff",
+            state = handoff.OpaqueState,
+            expiresUtc = handoff.ExpiresUtc
+        });
+    }
 
     [HttpGet("/profile/{clientUserId}")]
     public async Task<IActionResult> ClientProfile(string clientUserId)
