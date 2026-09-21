@@ -1,13 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Validate the scoped website platform changes only. Candidate build/package artifacts are allowed for validation; do not deploy to Azure, migrate, restart, publish live, or promote any application.",
-  "purpose": "Compile and test Business Client website profile management, Agent Protect profile management, shared CMS authority, centralized business provisioning, and Legend business preview renderer",
-  "requestId": "website-platform-validation-20260920-7",
-  "releaseMode": "validate-only",
+  "authorization": "Direct deploy all affected approved web applications from legend/approved-changes; deploy AgentPortal, ClientApp, Protect-Website, Parfait, and Legend-Website. Do not promote production branch.",
+  "purpose": "Release the validated scoped website platform changes, profile-based website management flows, shared business website authority, Protect agent website management, shared CMS updates, centralized business provisioning, and regular LEGEND business preview support.",
+  "requestId": "scoped-website-platform-direct-20260920-1",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
+    "masterapp-parfait",
     "masterapp-website"
   ]
 }
