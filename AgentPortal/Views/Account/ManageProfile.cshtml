@@ -684,6 +684,78 @@
             </div>
         </form>
 
+        @{
+            var protectWebsiteAvailable = ViewBag.ProtectWebsiteAvailable is bool websiteAvailable && websiteAvailable;
+            var protectWebsiteUrl = ViewBag.ProtectWebsiteUrl as string;
+            var protectWebsiteSlug = ViewBag.ProtectWebsiteSlug as string;
+        }
+        <section class="profile-panel profile-section">
+            <div class="profile-section-head">
+                <h2 class="profile-section-title">Protect Website</h2>
+                <p class="profile-section-sub">Your agent-scoped LEGEND Legacy Protection website. This is separate from Business Client websites.</p>
+            </div>
+            <div class="profile-fields">
+                <div class="profile-field profile-field-full">
+                    <div class="profile-inline-note">
+                        @(protectWebsiteAvailable ? "Agent website active" : "Agent website scope unavailable")
+                        @if (!string.IsNullOrWhiteSpace(protectWebsiteSlug))
+                        {
+                            <span>· /a/@protectWebsiteSlug</span>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="profile-actions profile-actions-start">
+                <button type="button"
+                        class="profile-btn profile-btn-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#protectWebsiteModal"
+                        @(protectWebsiteAvailable ? null : "disabled")>
+                    Manage Protect Website
+                </button>
+            </div>
+        </section>
+
+        <div class="modal fade" id="protectWebsiteModal" tabindex="-1" aria-labelledby="protectWebsiteModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <div class="profile-eyebrow">Agent Website</div>
+                            <h2 class="modal-title fs-5" id="protectWebsiteModalLabel">Protect Website Management</h2>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        @if (TempData["ProfileWebsiteError"] is string websiteError)
+                        {
+                            <div class="alert alert-warning">@websiteError</div>
+                        }
+                        <p>This management surface is tied only to your existing agent tracking profile and Protect scope.</p>
+                        @if (protectWebsiteAvailable && !string.IsNullOrWhiteSpace(protectWebsiteUrl))
+                        {
+                            <div class="profile-actions profile-actions-start">
+                                <a class="profile-btn profile-btn-primary"
+                                   asp-controller="Account"
+                                   asp-action="EditProtectWebsite">
+                                    Edit Protect Website
+                                </a>
+                                <a class="profile-btn profile-btn-secondary"
+                                   href="@protectWebsiteUrl"
+                                   target="_blank"
+                                   rel="noopener">
+                                    Open Protect Website
+                                </a>
+                            </div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="profile-btn profile-btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <section class="profile-panel profile-section">
             <div class="profile-section-head">
                 <h2 class="profile-section-title">Account Access</h2>

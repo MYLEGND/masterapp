@@ -8,6 +8,7 @@ using Domain.Enums;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -24,19 +25,25 @@ public class ProfileController : Controller
     private readonly IClientEntraLifecycleService _entraLifecycle;
     private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
     private readonly IAccountLifecycleService _accountLifecycle;
+    private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
+    private readonly IConfiguration _configuration;
 
     public ProfileController(
         MasterAppDbContext db,
         EffectiveClientContextService clientContext,
         IClientEntraLifecycleService entraLifecycle,
         IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
-        IAccountLifecycleService accountLifecycle)
+        IAccountLifecycleService accountLifecycle,
+        WebsiteEditorTicketProtector websiteEditorTickets,
+        IConfiguration configuration)
     {
         _db = db;
         _clientContext = clientContext;
         _entraLifecycle = entraLifecycle;
         _subscriptionIdentitySync = subscriptionIdentitySync;
         _accountLifecycle = accountLifecycle;
+        _websiteEditorTickets = websiteEditorTickets;
+        _configuration = configuration;
     }
 
     private static string Norm(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -161,6 +168,112 @@ public class ProfileController : Controller
         };
     }
 
+    private static bool IsBusinessClient(ClientProfile profile) =>
+        string.Equals(
+            ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes),
+            ClientRecordClassification.BusinessClient,
+            StringComparison.Ordinal);
+
+    private string LegendWebsiteBaseUrl() =>
+        (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/');
+
+    private async Task<List<BusinessWebsiteProfileSummary>> LoadBusinessWebsitesAsync(
+        ClientProfile profile,
+        bool isAgentView,
+        CancellationToken cancellationToken)
+    {
+        if (isAgentView || !IsBusinessClient(profile))
+            return new List<BusinessWebsiteProfileSummary>();
+
+        var email = NormalizeEmail(profile.NormalizedEmail ?? profile.Email);
+        if (string.IsNullOrWhiteSpace(email))
+            return new List<BusinessWebsiteProfileSummary>();
+
+        var normalizedEmail = email.ToUpperInvariant();
+        var businesses = await _db.CommerceBusinessMembers
+            .AsNoTracking()
+            .Include(member => member.CommerceBusiness)
+            .Where(member =>
+                member.NormalizedEmail == normalizedEmail &&
+                member.Status == "Active" &&
+                member.CanManageStorefront &&
+                member.CommerceBusiness != null &&
+                member.CommerceBusiness.IsActive &&
+                member.CommerceBusiness.Status == "Active")
+            .OrderBy(member => member.CommerceBusiness!.DisplayName)
+            .Select(member => member.CommerceBusiness!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var baseUrl = LegendWebsiteBaseUrl();
+        return businesses.Select(business => new BusinessWebsiteProfileSummary(
+            business.Id,
+            business.DisplayName,
+            $"{baseUrl}/business-preview/?businessId={business.Id:D}",
+            string.IsNullOrWhiteSpace(business.PrimaryDomain) ? null : business.PrimaryDomain.Trim()))
+            .ToList();
+    }
+
+    private static string BusinessKeySeed(string value)
+    {
+        var cleaned = new string((value ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
+            .ToArray());
+
+        while (cleaned.Contains("--", StringComparison.Ordinal))
+            cleaned = cleaned.Replace("--", "-", StringComparison.Ordinal);
+
+        return cleaned.Trim('-');
+    }
+
+    private async Task<string> UniqueBusinessKeyAsync(string businessName, CancellationToken cancellationToken)
+    {
+        var seed = BusinessKeySeed(businessName);
+        if (string.IsNullOrWhiteSpace(seed))
+            seed = "business";
+
+        var candidate = seed;
+        var suffix = 2;
+        while (await _db.CommerceBusinesses.AsNoTracking().AnyAsync(
+                   business => business.Key == candidate,
+                   cancellationToken))
+        {
+            candidate = $"{seed}-{suffix++}";
+        }
+
+        return candidate;
+    }
+
+    private async Task<CommerceBusiness?> AuthorizedBusinessAsync(
+        EffectiveClientContext context,
+        Guid businessId,
+        CancellationToken cancellationToken)
+    {
+        if (context.IsAgentView || !IsBusinessClient(context.Profile))
+            return null;
+
+        var email = NormalizeEmail(context.Profile.NormalizedEmail ?? context.Profile.Email);
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var normalizedEmail = email.ToUpperInvariant();
+        return await _db.CommerceBusinessMembers
+            .AsNoTracking()
+            .Where(member =>
+                member.CommerceBusinessId == businessId &&
+                member.NormalizedEmail == normalizedEmail &&
+                member.Status == "Active" &&
+                member.CanManageStorefront)
+            .Select(member => member.CommerceBusiness)
+            .SingleOrDefaultAsync(
+                business => business != null &&
+                            business.IsActive &&
+                            business.Status == "Active",
+                cancellationToken);
+    }
+
     private async Task<ViewResult> ProfileViewAsync(
         EditClientViewModel model,
         EffectiveClientContext context,
@@ -169,8 +282,13 @@ public class ProfileController : Controller
     {
         ViewBag.ViewMode = context.IsAgentView ? "agent" : "client";
         ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
-        ViewBag.ProfileSaveNotice = notice;
-        ViewBag.ProfileSaveWarning = warning;
+        ViewBag.ProfileSaveNotice = notice ?? TempData["BusinessWebsiteNotice"]?.ToString();
+        ViewBag.ProfileSaveWarning = warning ?? TempData["BusinessWebsiteWarning"]?.ToString();
+        ViewBag.IsBusinessClient = !context.IsAgentView && IsBusinessClient(context.Profile);
+        ViewBag.BusinessWebsites = await LoadBusinessWebsitesAsync(
+            context.Profile,
+            context.IsAgentView,
+            HttpContext.RequestAborted);
 
         if (!context.IsAgentView)
         {
@@ -313,6 +431,36 @@ public class ProfileController : Controller
             previousEmail,
             profile.NormalizedEmail,
             HttpContext.RequestAborted);
+
+        if (IsBusinessClient(profile))
+        {
+            var previousNormalized = NormalizeEmail(previousEmail)?.ToUpperInvariant();
+            var currentNormalized = NormalizeEmail(profile.NormalizedEmail)?.ToUpperInvariant();
+            if (!string.IsNullOrWhiteSpace(previousNormalized) &&
+                !string.IsNullOrWhiteSpace(currentNormalized) &&
+                !string.Equals(previousNormalized, currentNormalized, StringComparison.Ordinal))
+            {
+                var memberships = await _db.CommerceBusinessMembers
+                    .Where(member => member.NormalizedEmail == previousNormalized)
+                    .ToListAsync(HttpContext.RequestAborted);
+                foreach (var membership in memberships)
+                {
+                    membership.Email = profile.NormalizedEmail ?? profile.Email ?? membership.Email;
+                    membership.NormalizedEmail = currentNormalized;
+                    membership.UpdatedUtc = DateTime.UtcNow;
+                }
+
+                var ownedBusinesses = await _db.CommerceBusinesses
+                    .Where(business => business.OwnerEmail.ToUpper() == previousNormalized)
+                    .ToListAsync(HttpContext.RequestAborted);
+                foreach (var business in ownedBusinesses)
+                {
+                    business.OwnerEmail = profile.NormalizedEmail ?? profile.Email ?? business.OwnerEmail;
+                    business.UpdatedUtc = DateTime.UtcNow;
+                }
+            }
+        }
+
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
         await transaction.CommitAsync();
@@ -376,6 +524,102 @@ public class ProfileController : Controller
             context,
             result.Succeeded ? result.Message : null,
             result.Succeeded ? null : result.Message);
+    }
+
+    [HttpPost("/profile/business-website/setup")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetupBusinessWebsite(string businessName, string? legalName)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context is null || context.IsAgentView || !IsBusinessClient(context.Profile))
+            return Forbid();
+
+        businessName = (businessName ?? string.Empty).Trim();
+        legalName = string.IsNullOrWhiteSpace(legalName) ? businessName : legalName.Trim();
+        if (businessName.Length is < 2 or > 160 || legalName.Length > 200)
+        {
+            TempData["BusinessWebsiteWarning"] = "Enter a valid business name before setting up the website.";
+            return RedirectToAction(nameof(MyProfile));
+        }
+
+        var email = NormalizeEmail(context.Profile.NormalizedEmail ?? context.Profile.Email);
+        if (string.IsNullOrWhiteSpace(email))
+            return Forbid();
+
+        var normalizedEmail = email.ToUpperInvariant();
+        var existing = await _db.CommerceBusinessMembers
+            .AsNoTracking()
+            .AnyAsync(member =>
+                member.NormalizedEmail == normalizedEmail &&
+                member.Status == "Active" &&
+                member.CanManageStorefront &&
+                member.CommerceBusiness != null &&
+                member.CommerceBusiness.IsActive,
+                HttpContext.RequestAborted);
+
+        if (existing)
+        {
+            TempData["BusinessWebsiteNotice"] = "Your business website scope is already active.";
+            return RedirectToAction(nameof(MyProfile));
+        }
+
+        var now = DateTime.UtcNow;
+        var business = new CommerceBusiness
+        {
+            Key = await UniqueBusinessKeyAsync(businessName, HttpContext.RequestAborted),
+            DisplayName = businessName,
+            LegalName = legalName,
+            BusinessType = "BusinessClient",
+            OwnerEmail = email,
+            Status = "Active",
+            IsActive = true,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+        _db.CommerceBusinesses.Add(business);
+        _db.CommerceBusinessMembers.Add(new CommerceBusinessMember
+        {
+            CommerceBusiness = business,
+            Email = email,
+            NormalizedEmail = normalizedEmail,
+            DisplayName = $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
+            RoleKey = "owner",
+            Status = "Active",
+            CanManageStorefront = true,
+            CanManageCatalog = false,
+            CanManageOrders = false,
+            CanManageAnalytics = true,
+            CanManageTeam = true,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        });
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
+        return RedirectToAction(nameof(MyProfile));
+    }
+
+    [HttpGet("/profile/business-website/edit/{businessId:guid}")]
+    public async Task<IActionResult> EditBusinessWebsite(Guid businessId)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context is null)
+            return Forbid();
+
+        var business = await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted);
+        if (business is null)
+            return Forbid();
+
+        var ticket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Business,
+            WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id),
+            null,
+            false,
+            DateTime.UtcNow.AddMinutes(45),
+            business.Id));
+
+        var target = $"{LegendWebsiteBaseUrl()}/business-preview/?businessId={business.Id:D}&legendEdit={Uri.EscapeDataString(ticket)}";
+        return Redirect(target);
     }
 
     [HttpGet("/profile/{clientUserId}")]

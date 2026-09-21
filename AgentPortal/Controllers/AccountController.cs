@@ -5,11 +5,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using AgentPortal.Services.Tracking;
 using Domain.Accounts;
 using Domain.Entities;
 using Domain.Messaging;
@@ -20,15 +22,37 @@ public class AccountController : Controller
     private readonly MasterAppDbContext _db;
     private readonly AgentProfileAccessResolver _profileAccessResolver;
     private readonly IAccountLifecycleService _accountLifecycle;
+    private readonly IAgentTrackingService _tracking;
+    private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
 
     public AccountController(
         MasterAppDbContext db,
         AgentProfileAccessResolver profileAccessResolver,
-        IAccountLifecycleService accountLifecycle)
+        IAccountLifecycleService accountLifecycle,
+        IAgentTrackingService tracking,
+        WebsiteEditorTicketProtector websiteEditorTickets)
     {
         _db = db;
         _profileAccessResolver = profileAccessResolver;
         _accountLifecycle = accountLifecycle;
+        _tracking = tracking;
+        _websiteEditorTickets = websiteEditorTickets;
+    }
+
+    private async Task PopulateProtectWebsiteAsync(string userId)
+    {
+        var trackingProfile = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        if (trackingProfile is null || !string.Equals(trackingProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            ViewBag.ProtectWebsiteAvailable = false;
+            ViewBag.ProtectWebsiteUrl = null;
+            return;
+        }
+
+        var urls = await _tracking.GetPersonalUrlsAsync(trackingProfile, HttpContext.RequestAborted);
+        ViewBag.ProtectWebsiteAvailable = true;
+        ViewBag.ProtectWebsiteUrl = urls.PrimaryUrl;
+        ViewBag.ProtectWebsiteSlug = trackingProfile.Slug;
     }
 
     private static string? NormalizeEmail(string? email)
@@ -168,6 +192,7 @@ public class AccountController : Controller
         ViewBag.AccountLifecycle = await _accountLifecycle.GetAsync(
             new AccountLifecycleSubject(userId, MessagingParticipantTypes.Agent, profile.Id),
             HttpContext.RequestAborted);
+        await PopulateProtectWebsiteAsync(userId);
 
         return View(vm);
     }
@@ -196,7 +221,10 @@ public class AccountController : Controller
         vm.HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(existingProfile?.MetaCapiAccessToken);
 
         if (!ModelState.IsValid)
+        {
+            await PopulateProtectWebsiteAsync(userId);
             return View(vm);
+        }
 
         var profile = existingProfile;
         if (profile == null)
@@ -241,6 +269,34 @@ public class AccountController : Controller
         _db.SaveChanges();
         TempData["ProfileSaved"] = "Agent profile updated.";
         return RedirectToAction(nameof(ManageProfile));
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> EditProtectWebsite()
+    {
+        var userId = User.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Challenge();
+
+        var trackingProfile = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        if (trackingProfile is null ||
+            !string.Equals(trackingProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["ProfileWebsiteError"] = "Your Protect website scope is not available yet.";
+            return RedirectToAction(nameof(ManageProfile));
+        }
+
+        var urls = await _tracking.GetPersonalUrlsAsync(trackingProfile, HttpContext.RequestAborted);
+        var ticket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Protect,
+            trackingProfile.AgentUserId.Trim().ToLowerInvariant(),
+            trackingProfile.Slug,
+            FounderGuard.IsFounder(User),
+            DateTime.UtcNow.AddMinutes(45)));
+
+        var separator = urls.PrimaryUrl.Contains('?') ? "&" : "?";
+        return Redirect($"{urls.PrimaryUrl}{separator}legendEdit={Uri.EscapeDataString(ticket)}");
     }
 
     [HttpPost]

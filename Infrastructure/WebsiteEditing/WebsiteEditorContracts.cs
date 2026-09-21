@@ -69,3 +69,10 @@ public sealed class WebsiteThemeOverride
     public string? GoldStrong { get; set; }
     public string? Surface { get; set; }
 }
+
+
+public sealed record BusinessWebsiteProfileSummary(
+    Guid BusinessId,
+    string BusinessName,
+    string PreviewUrl,
+    string? PrimaryDomain);

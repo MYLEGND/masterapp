@@ -22,6 +22,9 @@
     var accountLifecycleState = ViewBag.AccountLifecycleState as string ?? "Active";
     var canResumeAccount = ViewBag.CanResumeAccount is bool canResume && canResume;
     var accountIsRestricted = !string.Equals(accountLifecycleState, "Active", StringComparison.OrdinalIgnoreCase);
+    var isBusinessClient = ViewBag.IsBusinessClient is bool businessClient && businessClient;
+    var businessWebsites = ViewBag.BusinessWebsites as IReadOnlyList<Infrastructure.WebsiteEditing.BusinessWebsiteProfileSummary>
+        ?? Array.Empty<Infrastructure.WebsiteEditing.BusinessWebsiteProfileSummary>();
 }
 
 <main class="dashboard-page-shell client-create-page client-edit-page">
@@ -177,6 +180,103 @@
                         <div class="client-edit-divider"></div>
                         <div class="client-create-actions"><button type="submit" class="client-create-button client-create-button-primary">Save Profile</button></div>
                     </form>
+
+                    @if (!isAgentView && isBusinessClient)
+                    {
+                        <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="business-website-heading">
+                            <div class="client-edit-section-head">
+                                <div>
+                                    <div class="client-create-section-title" id="business-website-heading">Business Website</div>
+                                    <p class="client-edit-note">
+                                        @(businessWebsites.Count > 0
+                                            ? $"{businessWebsites.Count} business website scope{(businessWebsites.Count == 1 ? "" : "s")} available."
+                                            : "Set up your business website using the shared LEGEND website engine and editor.")
+                                    </p>
+                                </div>
+                                <span class="client-edit-pill">Business Client</span>
+                            </div>
+                            <button type="button"
+                                    class="client-create-button client-create-button-secondary"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#businessWebsiteModal">
+                                Manage Website
+                            </button>
+                        </section>
+
+                        <div class="modal fade" id="businessWebsiteModal" tabindex="-1" aria-labelledby="businessWebsiteModalLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-centered modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <div>
+                                            <div class="dashboard-eyebrow">Business Website</div>
+                                            <h2 class="modal-title fs-5" id="businessWebsiteModalLabel">Website Management</h2>
+                                        </div>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        @if (businessWebsites.Count == 0)
+                                        {
+                                            <p class="client-edit-note">Create the business scope first. This uses your existing Business Client account and does not create another login or editor.</p>
+                                            <form action="/profile/business-website/setup" method="post">
+                                                @Html.AntiForgeryToken()
+                                                <div class="client-create-grid">
+                                                    <div>
+                                                        <label class="client-create-label is-required" for="businessWebsiteName">Business Name</label>
+                                                        <input class="client-create-input" id="businessWebsiteName" name="businessName" maxlength="160" required />
+                                                    </div>
+                                                    <div>
+                                                        <label class="client-create-label" for="businessWebsiteLegalName">Legal Name</label>
+                                                        <input class="client-create-input" id="businessWebsiteLegalName" name="legalName" maxlength="200" />
+                                                    </div>
+                                                </div>
+                                                <div class="client-create-actions mt-3">
+                                                    <button type="submit" class="client-create-button client-create-button-primary">Set Up Business Website</button>
+                                                </div>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var website in businessWebsites)
+                                            {
+                                                <section class="client-create-section client-create-section-shell mb-3">
+                                                    <div class="client-edit-section-head">
+                                                        <div>
+                                                            <div class="client-create-section-title">@website.BusinessName</div>
+                                                            <p class="client-edit-note">@(website.PrimaryDomain ?? "Custom domain not connected yet")</p>
+                                                        </div>
+                                                    </div>
+                                                    <div class="client-create-actions">
+                                                        <a class="client-create-button client-create-button-primary"
+                                                           href="/profile/business-website/edit/@website.BusinessId">
+                                                            Edit Website
+                                                        </a>
+                                                        <a class="client-create-button client-create-button-secondary"
+                                                           href="@website.PreviewUrl"
+                                                           target="_blank"
+                                                           rel="noopener">
+                                                            Preview Website
+                                                        </a>
+                                                        @if (!string.IsNullOrWhiteSpace(website.PrimaryDomain))
+                                                        {
+                                                            <a class="client-create-button client-create-button-secondary"
+                                                               href="https://@website.PrimaryDomain"
+                                                               target="_blank"
+                                                               rel="noopener">
+                                                                Open Domain
+                                                            </a>
+                                                        }
+                                                    </div>
+                                                </section>
+                                            }
+                                        }
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="client-create-button client-create-button-secondary" data-bs-dismiss="modal">Close</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
 
                     @if (!isAgentView && !accountIsRestricted)
                     {
