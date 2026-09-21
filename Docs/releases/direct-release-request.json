@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes direct deployment of only the public LEGEND Website through legend/approved-changes to retry the failed website target from direct release #27. Do not restart or redeploy Protect, AgentPortal, ClientApp, or Parfait. Do not start or promote the rigorous production flow.",
-  "purpose": "Retry only the failed masterapp-website deployment from approved direct release #27 after masterapp-protect deployed successfully.",
-  "requestId": "legend-website-only-retry-20260921-1",
+  "authorization": "Founder authorizes direct deployment of only Protect to repair the existing LEGEND website workspace authorization path. Do not restart or redeploy AgentPortal, ClientApp, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
+  "purpose": "Synchronize Protect's existing shared website editor authorization settings from the AgentPortal source of truth so Founder-issued LEGEND website tickets validate without 401.",
+  "requestId": "protect-website-editor-auth-repair-20260921-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-website"
+    "masterapp-protect"
   ]
 }
