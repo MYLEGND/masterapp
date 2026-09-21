@@ -11,6 +11,8 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
 {
     private const string Purpose = "LEGEND.PublicWebsiteEditor.Ticket.v1";
     private const string SharedApplicationName = "LEGEND.PublicWebsiteEditor";
+    public const string SharedBlobUriConfigKey = "WebsiteEditorDataProtection:BlobUri";
+    public const string SharedKeyVaultKeyIdConfigKey = "WebsiteEditorDataProtection:KeyVaultKeyId";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly IDataProtector _protector;
     private readonly ServiceProvider? _ownedProvider;
@@ -38,8 +40,26 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
             "App_Data",
             "website-editor-keys"));
 
+        IConfiguration authorityConfiguration = configuration;
+        if (environment.IsProduction())
+        {
+            var blobUri = configuration[SharedBlobUriConfigKey];
+            var keyVaultKeyId = configuration[SharedKeyVaultKeyIdConfigKey];
+            if (string.IsNullOrWhiteSpace(blobUri) || string.IsNullOrWhiteSpace(keyVaultKeyId))
+                throw new InvalidOperationException(
+                    $"Website editor ticket authority is not configured. Set both '{SharedBlobUriConfigKey}' and '{SharedKeyVaultKeyIdConfigKey}'.");
+
+            authorityConfiguration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    [PlatformDataProtection.BlobUriConfigKey] = blobUri,
+                    [PlatformDataProtection.KeyVaultKeyIdConfigKey] = keyVaultKeyId
+                })
+                .Build();
+        }
+
         services.AddPlatformDataProtection(
-            configuration,
+            authorityConfiguration,
             environment,
             SharedApplicationName,
             sharedDevelopmentKeys);
