@@ -226,6 +226,59 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Synchronize ClientApp shared website authorization
+        id: clientauth
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          portal_settings=/tmp/portal-client-website-auth.json
+          client_settings=/tmp/client-website-auth.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-client -o json > "$client_settings"
+
+          resolve_value() {
+            local file="$1"; shift
+            local key value
+            for key in "$@"; do
+              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
+            done
+            return 1
+          }
+          resolve_key() {
+            local file="$1"; shift
+            local key value
+            for key in "$@"; do
+              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$value" ]; then printf '%s' "$key"; return 0; fi
+            done
+            return 1
+          }
+
+          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          [ -n "$blob" ] && [ -n "$keyvault" ]
+          echo "::add-mask::$blob"
+          echo "::add-mask::$keyvault"
+
+          client_blob_key="$(resolve_key "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+          client_keyvault_key="$(resolve_key "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+          client_blob="$(resolve_value "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+          client_keyvault="$(resolve_value "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+
+          updates=()
+          if [ "$client_blob" != "$blob" ]; then updates+=("${client_blob_key:-DataProtection__BlobUri}=$blob"); fi
+          if [ "$client_keyvault" != "$keyvault" ]; then updates+=("${client_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
+
+          if [ "${#updates[@]}" -gt 0 ]; then
+            az webapp config appsettings set -g masterapp-rg -n masterapp-client --settings "${updates[@]}" --output none
+          fi
+
+          az webapp config appsettings list -g masterapp-rg -n masterapp-client -o json > "$client_settings"
+          [ "$(resolve_value "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
+          [ "$(resolve_value "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          echo "ClientApp website editor authority matches the AgentPortal source of truth."
       - name: Synchronize Protect shared website authorization
         id: protectauth
         if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
@@ -335,7 +388,7 @@ jobs:
           package: /tmp/agentportal-publish
       - name: Direct deploy ClientApp
         id: client
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.clientauth.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
