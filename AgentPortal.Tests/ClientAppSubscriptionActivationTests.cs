@@ -236,7 +236,7 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
-    public async Task CompleteClientSignIn_WithoutContinuation_ClientPrincipalIsBlocked()
+    public async Task CompleteClientSignIn_WithoutContinuation_UnknownClientIsBlocked()
     {
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
@@ -248,7 +248,97 @@ public class ClientAppSubscriptionActivationTests
             BuildPrincipal("client-oid", "client@example.com"));
 
         Assert.False(result.Success);
-        Assert.Equal("MISSING_CONTINUATION", result.SafeErrorCode);
+        Assert.Equal("UNKNOWN_CLIENT", result.SafeErrorCode);
+    }
+
+    [Theory]
+    [InlineData("Client", false)]
+    [InlineData("BusinessClient", false)]
+    [InlineData("Client", true)]
+    public async Task CompleteClientSignIn_ActivePortalRecordWithoutContinuation_SelfHealsMissingIdentity(
+        string recordType,
+        bool convertedFromLead)
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        profile.CrmNotes = convertedFromLead
+            ? $"{{\"recordType\":\"{recordType}\",\"pipelineStage\":\"{recordType}\",\"sourceLeadClientUserId\":\"lead-source-1\"}}"
+            : $"{{\"recordType\":\"{recordType}\",\"pipelineStage\":\"{recordType}\"}}";
+        await db.SaveChangesAsync();
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer());
+
+        var principal = BuildPrincipalWithEmailClaims(
+            "client-oid-recovered",
+            "client_example.com#EXT#@legendtenant.onmicrosoft.com",
+            "client@example.com");
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            principal,
+            "/profile");
+
+        Assert.True(result.Success);
+        Assert.Equal("/profile", result.ReturnUrl);
+        Assert.Equal(
+            "client-oid-recovered",
+            (await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
+    }
+
+    [Fact]
+    public async Task CompleteClientSignIn_InactiveLeadWithoutContinuation_DoesNotSelfHealIdentity()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "lead@example.com");
+        profile.CrmNotes = "{\"recordType\":\"Lead\",\"pipelineStage\":\"Lead\"}";
+        await db.SaveChangesAsync();
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.NotGranted);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer());
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            BuildPrincipal("lead-oid", "lead@example.com"),
+            "/profile");
+
+        Assert.False(result.Success);
+        Assert.Equal("INACTIVE_ENTITLEMENT", result.SafeErrorCode);
+        Assert.Null((await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
+    }
+
+    [Fact]
+    public async Task CompleteClientSignIn_ActiveUnboundClientWithWrongEmail_DoesNotSelfHealIdentity()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer());
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            BuildPrincipal("wrong-oid", "wrong@example.com"),
+            "/profile");
+
+        Assert.False(result.Success);
+        Assert.Equal("UNKNOWN_CLIENT", result.SafeErrorCode);
+        Assert.Null((await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
     }
 
     [Fact]
@@ -968,6 +1058,19 @@ public class ClientAppSubscriptionActivationTests
         [
             new Claim("oid", oid),
             new Claim("preferred_username", email)
+        ], "TestAuth"));
+    }
+
+    private static ClaimsPrincipal BuildPrincipalWithEmailClaims(
+        string oid,
+        string preferredUsername,
+        string email)
+    {
+        return new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("oid", oid),
+            new Claim("preferred_username", preferredUsername),
+            new Claim(ClaimTypes.Email, email)
         ], "TestAuth"));
     }
 
