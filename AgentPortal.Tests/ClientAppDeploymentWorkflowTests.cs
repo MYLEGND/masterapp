@@ -10,12 +10,22 @@ public sealed class ClientAppDeploymentWorkflowTests
     public void UnpublishedBatchCannotEnterProductionWorkflowEvenIfPreviewIsMadeReady()
     {
         var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        foreach (var job in new[] { "security", "merge" })
-        {
-            var start = workflow.IndexOf("  " + job + ":", StringComparison.Ordinal);
-            var end = workflow.IndexOf("    runs-on:", start, StringComparison.Ordinal);
-            Assert.Contains("github.event.pull_request.head.ref != 'hotfix/staging-batch'", workflow[start..end], StringComparison.Ordinal);
-        }
+        var releaseSecurityStart = workflow.IndexOf("  release-security:", StringComparison.Ordinal);
+        var securityStart = workflow.IndexOf("  security:", releaseSecurityStart, StringComparison.Ordinal);
+        var mergeStart = workflow.IndexOf("  merge:", securityStart, StringComparison.Ordinal);
+        var migrateStart = workflow.IndexOf("  migrate:", mergeStart, StringComparison.Ordinal);
+
+        Assert.True(releaseSecurityStart >= 0 && securityStart > releaseSecurityStart);
+        Assert.True(mergeStart > securityStart && migrateStart > mergeStart);
+
+        var releaseSecurity = workflow[releaseSecurityStart..securityStart];
+        var security = workflow[securityStart..mergeStart];
+        var merge = workflow[mergeStart..migrateStart];
+
+        Assert.Contains("github.event.pull_request.head.ref != 'hotfix/staging-batch'", releaseSecurity, StringComparison.Ordinal);
+        Assert.Contains("github.event.pull_request.head.ref != 'hotfix/staging-batch'", merge, StringComparison.Ordinal);
+        Assert.Contains("needs: [candidate, release-security]", security, StringComparison.Ordinal);
+        Assert.Contains("needs.release-security.result == 'success'", security, StringComparison.Ordinal);
     }
 
     [Fact]

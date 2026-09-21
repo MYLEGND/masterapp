@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Validate the scoped website platform changes only. Do not deploy, package for release, migrate, restart, or promote any application.",
   "purpose": "Compile and test Business Client website profile management, Agent Protect profile management, shared CMS authority, centralized business provisioning, and Legend business preview renderer",
-  "requestId": "website-platform-validation-20260920-5",
+  "requestId": "website-platform-validation-20260920-6",
   "releaseMode": "validate-only",
   "targets": [
     "masterapp-portal",
