@@ -1314,28 +1314,15 @@ namespace AgentPortal.Controllers;
         var oneTimePassword = GenerateOneTimePassword();
         string? newClientObjectId = null;
         string? loginUpn = null;
-        var createdGraphUser = false;
-        var committed = false;
-
         try
         {
-            (newClientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
-                firstName,
-                lastName,
-                emailNorm,
-                oneTimePassword
-            );
-
-            newClientObjectId = NormLower(newClientObjectId);
-            loginUpn = Norm(loginUpn);
-
-            if (string.IsNullOrWhiteSpace(newClientObjectId))
-                throw new Exception("Provisioning returned an empty client user id.");
-
-            if (string.IsNullOrWhiteSpace(loginUpn))
-                throw new Exception("Provisioning returned an empty login UPN.");
-
-            createdGraphUser = true;
+            // Client creation owns the durable application record. External
+            // identity is provisioned only after the client accepts the
+            // subscription invitation, through ClientEntraLifecycleService.
+            // This keeps CRM creation available even when Graph invitation
+            // permissions or Microsoft Graph are temporarily unavailable.
+            newClientObjectId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+            loginUpn = emailNorm;
 
             await using var tx = await _db.Database.BeginTransactionAsync();
 
@@ -1378,7 +1365,7 @@ namespace AgentPortal.Controllers;
                 SET ClientUserId = {newClientObjectId},
                     CrmNotes = {serializedMeta},
                     CrmStatus = {"Active"},
-                    ExternalIdentityObjectId = {newClientObjectId},
+                    ExternalIdentityObjectId = {(string?)null},
                     UpdatedUtc = {updatedUtc}
                 WHERE Id = {profileId}");
 
@@ -1397,38 +1384,12 @@ namespace AgentPortal.Controllers;
                 await beforeCommitAsync(convertedProfile);
 
             await tx.CommitAsync();
-            committed = true;
-
             var pipelineStage = DefaultPipelineStageForRecordType(recordType);
             var clientPortalBaseUrl = GetClientPortalBaseUrl();
             string? emailWarning = null;
 
             if (sendWelcomeEmail)
-            {
-                try
-                {
-                    await _provisioning.SendClientWelcomeEmailAsync(
-                        emailNorm,
-                        firstName,
-                        loginUpn,
-                        oneTimePassword,
-                        clientPortalBaseUrl,
-                        newClientObjectId,
-                        forceIdLink: true
-                    );
-                }
-                catch (Exception mailEx)
-                {
-                    _logger.LogError(
-                        mailEx,
-                        "Portal access email failed after successful conversion. Email={Email} ClientUserId={ClientUserId}",
-                        emailNorm,
-                        newClientObjectId
-                    );
-
-                    emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
-                }
-            }
+                emailWarning = "Portal record created. Configure its subscription to send the secure activation invitation.";
 
             return new PortalAccessEnableResult(
                 OldClientUserId: oldClientUserId,
@@ -1441,15 +1402,7 @@ namespace AgentPortal.Controllers;
                 EmailSent: string.IsNullOrWhiteSpace(emailWarning),
                 Warning: emailWarning);
         }
-        catch
-        {
-            if (!committed && createdGraphUser && !string.IsNullOrWhiteSpace(newClientObjectId))
-            {
-                try { await _provisioning.DeleteTenantUserAsync(newClientObjectId); } catch { }
-            }
-
-            throw;
-        }
+        catch { throw; }
     }
 
     private static string NormalizeWaitingOn(string? value)
@@ -3569,26 +3522,10 @@ namespace AgentPortal.Controllers;
                 var personalEmail = emailNorm
                     ?? throw new InvalidOperationException("Portal client email is required.");
 
-                // ==========================================================
-                // 1) Create Entra user (Graph provisioning)
-                // ==========================================================
-                (clientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
-                    firstName,
-                    lastName,
-                    personalEmail,
-                    oneTimePassword
-                );
-
-                clientObjectId = NormLower(clientObjectId);
-                loginUpn = (loginUpn ?? "").Trim();
-
-                if (string.IsNullOrWhiteSpace(clientObjectId))
-                    throw new Exception("Provisioning returned an empty client user id.");
-
-                if (string.IsNullOrWhiteSpace(loginUpn))
-                    throw new Exception("Provisioning returned an empty login UPN.");
-
-                createdGraphUser = true;
+                // Persist the scoped client first. Entra invitation and binding
+                // are the activation flow's responsibility after acceptance.
+                clientObjectId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+                loginUpn = personalEmail;
             }
             else
             {
@@ -3644,7 +3581,8 @@ namespace AgentPortal.Controllers;
             createdClientProfile = new ClientProfile
             {
                 ClientUserId = clientObjectId,
-                ExternalIdentityObjectId = isPortalClient ? clientObjectId : null,
+                // Bound by ClientEntraLifecycleService after secure activation.
+                ExternalIdentityObjectId = null,
                 FirstName = firstName,
                 LastName = lastName,
                 Email = emailNorm ?? "",
@@ -3855,7 +3793,7 @@ namespace AgentPortal.Controllers;
             }
 
             var createdMessage = isPortalClient
-                ? $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}"
+                ? $"{RecordTypeLabel(recordType)} created. Secure activation was sent to {emailNorm}."
                 : $"Lead added to pipeline in {StageLabel(pipelineStage)}.";
 
             TempData["Created"] = creationWarnings.Count == 0

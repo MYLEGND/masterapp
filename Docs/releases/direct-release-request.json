@@ -1,13 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes direct deployment of only the selected affected applications through legend/approved-changes. Do not start or promote the rigorous production flow.",
-  "purpose": "Deploy corrected Founder, agent and business website ownership, profile management, shared website builder, publishing, domains and inquiries.",
-  "requestId": "website-platform-builder-direct-20260921-2",
+  "authorization": "Founder authorizes direct deployment of only AgentPortal through legend/approved-changes. Do not start or promote the rigorous production flow.",
+  "purpose": "Prevent Founder and agent client creation from depending on pre-activation Microsoft Graph privileges.",
+  "requestId": "client-creation-activation-boundary-direct-20260921-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-portal"
   ]
 }

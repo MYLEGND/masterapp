@@ -22,6 +22,49 @@ namespace AgentPortal.Tests;
 public sealed class ClientSubscriptionAdministrationTests
 {
     [Fact]
+    public async Task CreateBusinessClient_PersistsAndInvitesWithoutCallingGraphProvisioning()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var emailSender = BuildEmailSender(sendResult: true);
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser("founder-agent", "founder@example.test"),
+            billingOrchestrator: BuildInvitationOnlyOrchestrator(db),
+            emailSender: emailSender.Object);
+
+        var result = await controller.Create(new CreateClientViewModel
+        {
+            RecordType = "BusinessClient",
+            AccountManagementMode = "SharedAccount",
+            FirstName = "Business",
+            LastName = "Owner",
+            Email = "owner@example.test",
+            SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Fixed100),
+            SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth)
+        });
+
+        Assert.IsType<RedirectToActionResult>(result);
+        var profile = await db.ClientProfiles.SingleAsync();
+        Assert.True(Guid.TryParse(profile.ClientUserId, out _));
+        Assert.Null(profile.ExternalIdentityObjectId);
+        Assert.Equal("BusinessClient", ClientCrmMetaSerializer.Deserialize(profile.CrmNotes).RecordType);
+        Assert.Single(await db.ClientSubscriptionOffers.ToListAsync());
+        Assert.Single(await db.SubscriptionActivationInvitations.ToListAsync());
+        emailSender.Verify(
+            x => x.TrySendAsync(
+                "owner@example.test",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ConfigureSubscriptionOffer_ForOwnedExistingClient_CreatesInvitationWithoutChangingClientData()
     {
         await using var db = ControllerTestHelpers.BuildDb();
