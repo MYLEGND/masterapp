@@ -988,10 +988,18 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
             e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
             e.Property(x => x.ReturnUrl).HasMaxLength(2048).IsRequired();
+            e.Property(x => x.ActorUserId).HasMaxLength(450);
+            e.Property(x => x.ActorEmail).HasMaxLength(320);
 
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => new { x.ClientProfileId, x.ExpiresUtc });
             e.HasIndex(x => new { x.ClientProfileId, x.ConsumedUtc });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.Purpose, x.ExpiresUtc });
+
+            e.HasOne<CommerceBusiness>()
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             e.HasOne(x => x.ClientProfile)
                 .WithMany()
