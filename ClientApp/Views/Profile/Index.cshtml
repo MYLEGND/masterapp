@@ -182,7 +182,7 @@
                         <div class="client-create-actions"><button type="submit" class="client-create-button client-create-button-primary">Save Profile</button></div>
                     </form>
 
-                    @if (!isAgentView && isBusinessClient)
+                    @if (isBusinessClient)
                     {
                         @foreach (var website in businessWebsites)
                         {
