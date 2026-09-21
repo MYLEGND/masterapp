@@ -66,7 +66,11 @@ def main():
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
             raise SystemExit('Only the exact approved branch revision can be released')
-    targets = TARGETS if args.automatic else selected_targets(json.loads(Path('Docs/releases/direct-release-request.json').read_text()))
+    request = {} if args.automatic else json.loads(Path('Docs/releases/direct-release-request.json').read_text())
+    release_mode = 'approved-only' if args.automatic else request.get('releaseMode', 'approved-only')
+    if release_mode not in {'approved-only', 'validate-only'}:
+        raise ValueError('releaseMode must be approved-only or validate-only')
+    targets = TARGETS if args.automatic else selected_targets(request)
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(observe, targets))
     for row in rows:
@@ -82,6 +86,7 @@ def main():
             out.write('public_only=' + str(all(row['app'] in {'protect', 'website'} for row in rows)).lower() + '\n')
             out.write('website_only=' + str(len(rows) == 1 and rows[0]['app'] == 'website').lower() + '\n')
             out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
+            out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
 
 
 if __name__ == '__main__':
