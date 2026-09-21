@@ -1,0 +1,50 @@
+name: Generate website handoff EF migration
+
+on:
+  push:
+    branches:
+      - legend/approved-changes
+    paths:
+      - .github/workflows/generate-website-handoff-migration.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Generate canonical EF migration metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f Infrastructure/Migrations/20260921173000_ExtendClientContinuationForWebsiteEditor.cs
+          git show 21a075d10348b70d0933578149738652692c2ca1:Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs > Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs
+          dotnet tool restore
+          dotnet restore Infrastructure/Infrastructure.csproj --nologo
+          dotnet restore AgentPortal/AgentPortal.csproj --nologo
+          ConnectionStrings__MasterAppDb='Server=localhost;Database=MigrationGenerationOnly;User Id=sa;Password=NotUsed-Generation1!;TrustServerCertificate=True'           EF_FORCE_SQLSERVER=true           DOTNET_ENVIRONMENT=Development ASPNETCORE_ENVIRONMENT=Development           dotnet tool run dotnet-ef migrations add ExtendClientContinuationForWebsiteEditor             --project Infrastructure/Infrastructure.csproj             --startup-project AgentPortal/AgentPortal.csproj             --context MasterAppDbContext             --output-dir Migrations             --configuration Release             --no-build
+          generated="$(find Infrastructure/Migrations -maxdepth 1 -type f -name '*_ExtendClientContinuationForWebsiteEditor.cs' ! -name '*.Designer.cs' | head -n1)"
+          designer="${generated%.cs}.Designer.cs"
+          test -s "$generated"
+          test -s "$designer"
+          test -s Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs
+          mkdir -p /tmp/generated-migration
+          cp "$generated" /tmp/generated-migration/migration.cs
+          cp "$designer" /tmp/generated-migration/migration.Designer.cs
+          cp Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs /tmp/generated-migration/MasterAppDbContextModelSnapshot.cs
+          printf '%s\n' "$generated" > /tmp/generated-migration/original-path.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: website-handoff-generated-migration-${{ github.sha }}
+          path: /tmp/generated-migration/
+          retention-days: 1
+          if-no-files-found: error
