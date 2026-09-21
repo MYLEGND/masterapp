@@ -4,22 +4,6 @@
    Scoped agent routes render the same views and consume this exact file.
    Do not add page-local style blocks, copied quote themes, or priority cascades. */
 
-:root{
-  --surface:#0f172a;
-  --surface-soft:#111c32;
-  --surface-deep:#0b1325;
-  --ink-light:#f8fafc;
-  --muted:rgba(248,250,252,.78);
-  --muted-soft:rgba(248,250,252,.62);
-  --gold:#a68023;
-  --gold-strong:#c79931;
-  --gold-bright:#f2cd75;
-  --border:rgba(199,153,49,.86);
-  --border-soft:rgba(199,153,49,.24);
-  --shadow:0 22px 64px rgba(0,0,0,.18);
-  --shadow-soft:0 14px 38px rgba(0,0,0,.16);
-}
-
 .quote-page, .quote-page *{
   color-scheme:dark;
   box-sizing:border-box;
@@ -10106,5 +10090,250 @@ body.quote-thankyou .btn-gold{
 }
 }
 }
+}
+}
+
+:root{
+  --surface:#0f172a;
+  --surface-soft:#111c32;
+  --surface-deep:#0b1325;
+  --ink-light:#f8fafc;
+  --muted:rgba(248,250,252,.78);
+  --muted-soft:rgba(248,250,252,.62);
+  --gold:#a68023;
+  --gold-strong:#c79931;
+  --gold-bright:#f2cd75;
+  --border:rgba(199,153,49,.86);
+  --border-soft:rgba(199,153,49,.24);
+  --shadow:0 22px 64px rgba(0,0,0,.18);
+  --shadow-soft:0 14px 38px rgba(0,0,0,.16);
+  --protect-quote-section-space:clamp(56px,7vw,88px);
+  --protect-quote-entry-gap:clamp(28px,4vw,52px);
+}
+
+@media(min-width:900px){
+#lifeHeroEntryPanel .lq-header{
+  display:grid;
+  grid-template-columns:minmax(0,1.12fr) minmax(340px,.88fr);
+  grid-template-areas:"visual proof"
+      "visual copy"
+      "visual action";
+  column-gap:var(--protect-quote-entry-gap);
+  row-gap:18px;
+  align-items:center;
+  margin:0;
+  text-align:left;
+}
+
+#lifeHeroEntryPanel .lq-hero-banner-wrap{
+  grid-area:visual;
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+
+#lifeHeroEntryPanel .lq-above-fold-proof{
+  grid-area:proof;
+  justify-content:flex-start;
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+
+#lifeHeroEntryPanel .lq-hero-step-copy{
+  grid-area:copy;
+  width:100%;
+  max-width:none;
+  margin:0;
+  text-align:left;
+}
+
+#lifeHeroEntryPanel .lq-hero-step-copy-helper{
+  margin-left:0;
+  margin-right:0;
+  text-align:left;
+}
+
+#lifeHeroEntryPanel .lq-contact-first-hero-actions{
+  grid-area:action;
+  width:100%;
+  max-width:none;
+  margin:0;
+  justify-items:stretch;
+}
+
+#lifeHeroEntryPanel .lq-primary-start-cta{
+  width:100%;
+  min-height:62px;
+}
+
+#lifeHeroEntryPanel .lq-primary-start-note{
+  max-width:36rem;
+  margin:4px 0 0;
+  text-align:left;
+}
+
+.dq-hero-entry{
+  display:grid;
+  grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr);
+  grid-template-areas:"visual proof"
+      "visual copy"
+      "visual action";
+  column-gap:var(--protect-quote-entry-gap);
+  row-gap:18px;
+  align-items:center;
+}
+
+.dq-hero-entry .dq-hero-banner-wrap{
+  grid-area:visual;
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+
+.dq-hero-entry .lq-above-fold-proof{
+  grid-area:proof;
+  justify-content:flex-start;
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+
+.dq-hero-entry .lq-hero-step-copy{
+  grid-area:copy;
+  width:100%;
+  max-width:none;
+  margin:0;
+  text-align:left;
+}
+
+.dq-hero-entry .lq-hero-step-copy-helper{
+  margin-left:0;
+  margin-right:0;
+  text-align:left;
+}
+
+.dq-hero-entry .lq-contact-first-hero-actions{
+  grid-area:action;
+  width:100%;
+  max-width:none;
+  margin:0;
+  justify-items:stretch;
+}
+
+.dq-hero-entry .lq-primary-start-cta{
+  width:100%;
+  min-height:62px;
+}
+
+.dq-hero-entry .lq-primary-start-note{
+  max-width:36rem;
+  margin:4px 0 0;
+  text-align:left;
+}
+
+.pcq-hero-entry{
+  display:grid;
+  grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr);
+  grid-template-areas:"visual proof"
+      "visual copy"
+      "visual action";
+  column-gap:var(--protect-quote-entry-gap);
+  row-gap:18px;
+  align-items:center;
+}
+
+.pcq-hero-entry .pcq-hero-banner-wrap{
+  grid-area:visual;
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+
+.pcq-hero-entry .pcq-proof-row{
+  grid-area:proof;
+  justify-content:flex-start;
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+
+.pcq-hero-entry .pcq-step-copy{
+  grid-area:copy;
+  width:100%;
+  max-width:none;
+  margin:0;
+  text-align:left;
+}
+
+.pcq-hero-entry .pcq-step-copy-helper{
+  text-align:left;
+}
+
+.pcq-hero-entry .pcq-hero-actions{
+  grid-area:action;
+  width:100%;
+  max-width:none;
+  margin:0;
+  align-items:stretch;
+}
+
+.pcq-hero-entry .pcq-primary-start-cta{
+  width:100%;
+  min-height:62px;
+}
+
+.pcq-hero-entry .pcq-start-note{
+  max-width:36rem;
+  margin:4px 0 0;
+  text-align:left;
+}
+}
+
+#lifeHeroEntryPanel .lq-above-fold-proof, .dq-hero-entry .lq-above-fold-proof, .pcq-hero-entry .pcq-proof-row{
+  gap:9px 16px;
+}
+
+#lifeHeroEntryPanel .lq-above-fold-proof span, .dq-hero-entry .lq-above-fold-proof span, .pcq-hero-entry .pcq-proof-pill{
+  min-height:auto;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  font-size:.78rem;
+  line-height:1.4;
+}
+
+#lifeHeroEntryPanel .lq-pill-icon, .dq-hero-entry .lq-pill-icon, .pcq-hero-entry .pcq-proof-icon{
+  width:18px;
+  height:18px;
+  flex-basis:18px;
+}
+
+#lifeHeroEntryPanel .lq-hero-banner-wrap, .dq-hero-entry .dq-hero-banner-wrap, .pcq-hero-entry .pcq-hero-banner-wrap{
+  box-shadow:0 18px 40px rgba(2,12,27,.24);
+  border-radius:20px;
+}
+
+#lifeHeroEntryPanel .lq-hero-banner-image, .dq-hero-entry .dq-hero-banner-image, .pcq-hero-entry .pcq-hero-banner-image{
+  width:100%;
+  height:auto;
+  display:block;
+}
+
+@media(max-width:899px){
+#lifeHeroEntryPanel .lq-header, .dq-hero-entry, .pcq-hero-entry{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:18px;
+}
+
+#lifeHeroEntryPanel .lq-hero-banner-wrap, .dq-hero-entry .dq-hero-banner-wrap, .pcq-hero-entry .pcq-hero-banner-wrap{
+  margin-bottom:0;
+}
+
+#lifeHeroEntryPanel .lq-above-fold-proof, .dq-hero-entry .lq-above-fold-proof, .pcq-hero-entry .pcq-proof-row{
+  justify-content:center;
 }
 }
