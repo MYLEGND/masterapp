@@ -8,6 +8,7 @@
   const API_BASE = (context.apiBase.trim() || location.origin).replace(/\/$/, '');
   const SITE_KEY = String(context.siteKey).toLowerCase();
   const AGENT_SLUG = context.agentSlug || '';
+  const BUSINESS_ID = context.businessId || '';
   const pageKey = document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
     || 'home';
@@ -226,6 +227,7 @@
   async function loadPublic() {
     const url = new URL(`${API_BASE}/api/website-content/public/${encodeURIComponent(SITE_KEY)}`);
     if (AGENT_SLUG) url.searchParams.set('agentSlug', AGENT_SLUG);
+    if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) return;

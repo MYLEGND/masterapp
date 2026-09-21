@@ -36,7 +36,10 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 }
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddSingleton<Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector>();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
 var publicWebsiteOrigins = new[]

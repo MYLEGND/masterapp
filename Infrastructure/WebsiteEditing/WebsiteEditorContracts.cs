@@ -6,8 +6,13 @@ public static class WebsiteEditorSiteKeys
 {
     public const string Protect = "protect";
     public const string Legend = "legend";
+    public const string Business = "business";
     public const string GlobalOwnerKey = "__legend_global__";
+    public const string BusinessOwnerPrefix = "business:";
     public const string ToolPrefix = "PublicWebsiteContent:";
+
+    public static string BusinessOwnerKey(Guid businessId) =>
+        BusinessOwnerPrefix + businessId.ToString("N");
 }
 
 public sealed record WebsiteEditorTicket(
@@ -15,7 +20,8 @@ public sealed record WebsiteEditorTicket(
     string OwnerUserId,
     string? AgentSlug,
     bool IsFounder,
-    DateTime ExpiresUtc);
+    DateTime ExpiresUtc,
+    Guid? CommerceBusinessId = null);
 
 public sealed class WebsiteContentDocument
 {
