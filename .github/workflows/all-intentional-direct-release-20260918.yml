@@ -263,7 +263,7 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Synchronize ClientApp shared website authorization
+      - name: Configure ClientApp shared website ticket authority
         id: clientauth
         if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
@@ -283,40 +283,60 @@ jobs:
             done
             return 1
           }
-          resolve_key() {
-            local file="$1"; shift
-            local key value
-            for key in "$@"; do
-              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
-              if [ -n "$value" ]; then printf '%s' "$key"; return 0; fi
-            done
-            return 1
+
+          website_blob="$(resolve_value "$portal_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' || true)"
+          website_key="$(resolve_value "$portal_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' || true)"
+          if [ -z "$website_blob" ] || [ -z "$website_key" ]; then
+            website_blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+            website_key="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          fi
+          [ -n "$website_blob" ] && [ -n "$website_key" ]
+          echo "::add-mask::$website_blob"
+          echo "::add-mask::$website_key"
+
+          client_principal="$(az webapp identity show -g masterapp-rg -n masterapp-client --query principalId -o tsv)"
+          [ -n "$client_principal" ]
+
+          read -r storage_account container <<<"$(BLOB_URI="$website_blob" python3 - <<'PYBLOB'
+          import os, urllib.parse
+          u=urllib.parse.urlparse(os.environ['BLOB_URI'])
+          parts=[p for p in u.path.split('/') if p]
+          if not u.hostname or not parts: raise SystemExit(1)
+          print(u.hostname.split('.')[0], parts[0])
+          PYBLOB
+          )"
+          read -r vault key_name <<<"$(KEY_URI="$website_key" python3 - <<'PYKEY'
+          import os, urllib.parse
+          u=urllib.parse.urlparse(os.environ['KEY_URI'])
+          parts=[p for p in u.path.split('/') if p]
+          if not u.hostname or len(parts)<2 or parts[0].lower()!='keys': raise SystemExit(1)
+          print(u.hostname.split('.')[0], parts[1])
+          PYKEY
+          )"
+          subscription_id="$(az account show --query id -o tsv)"
+          container_scope="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.Storage/storageAccounts/$storage_account/blobServices/default/containers/$container"
+          key_scope="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.KeyVault/vaults/$vault/keys/$key_name"
+
+          [ "$(az role assignment list --assignee "$client_principal" --scope "$container_scope" --role 'Storage Blob Data Contributor' --query 'length(@)' -o tsv)" != "0" ] || {
+            echo "::error::ClientApp managed identity lacks Storage Blob Data Contributor on the shared website-ticket container. Refusing to change ClientApp global Data Protection or deploy a fallback."
+            exit 1
+          }
+          [ "$(az role assignment list --assignee "$client_principal" --scope "$key_scope" --role 'Key Vault Crypto User' --query 'length(@)' -o tsv)" != "0" ] || {
+            echo "::error::ClientApp managed identity lacks Key Vault Crypto User on the shared website-ticket key. Refusing to change ClientApp global Data Protection or deploy a fallback."
+            exit 1
           }
 
-          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          [ -n "$blob" ] && [ -n "$keyvault" ]
-          echo "::add-mask::$blob"
-          echo "::add-mask::$keyvault"
-
-          client_blob_key="$(resolve_key "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          client_keyvault_key="$(resolve_key "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-          client_blob="$(resolve_value "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          client_keyvault="$(resolve_value "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-
-          updates=()
-          if [ "$client_blob" != "$blob" ]; then updates+=("${client_blob_key:-DataProtection__BlobUri}=$blob"); fi
-          if [ "$client_keyvault" != "$keyvault" ]; then updates+=("${client_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
-
-          if [ "${#updates[@]}" -gt 0 ]; then
-            az webapp config appsettings set -g masterapp-rg -n masterapp-client --settings "${updates[@]}" --output none
-          fi
+          az webapp config appsettings set -g masterapp-rg -n masterapp-client --settings             "WebsiteEditorDataProtection__BlobUri=$website_blob"             "WebsiteEditorDataProtection__KeyVaultKeyId=$website_key" --output none
 
           az webapp config appsettings list -g masterapp-rg -n masterapp-client -o json > "$client_settings"
-          [ "$(resolve_value "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-          [ "$(resolve_value "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          echo "ClientApp website editor authority matches the AgentPortal source of truth."
-      - name: Synchronize Protect shared website authorization
+          [ "$(resolve_value "$client_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$website_blob" ]
+          [ "$(resolve_value "$client_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$website_key" ]
+          if resolve_value "$client_settings" DataProtection__BlobUri 'DataProtection:BlobUri' >/dev/null 2>&1 || resolve_value "$client_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' >/dev/null 2>&1; then
+            echo "::error::ClientApp global Data Protection must remain independent from website-ticket authority."
+            exit 1
+          fi
+          echo "ClientApp website tickets use the dedicated LEGEND.PublicWebsiteEditor authority; ClientApp global Data Protection remains isolated."
+      - name: Configure Protect shared website ticket authority
         id: protectauth
         if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
@@ -336,53 +356,27 @@ jobs:
             done
             return 1
           }
-          resolve_key() {
-            local file="$1"; shift
-            local key value
-            for key in "$@"; do
-              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
-              if [ -n "$value" ]; then printf '%s' "$key"; return 0; fi
-            done
-            return 1
-          }
 
           founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
-          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
-          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
-          [ -n "$founder" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
-
-          echo "::add-mask::$founder"
-          echo "::add-mask::$blob"
-          echo "::add-mask::$keyvault"
-          FOUNDER_OID_VALUE="$founder" python3 - <<'PYAUTH'
-          import os, uuid
-          value=os.environ['FOUNDER_OID_VALUE'].strip()
-          parsed=uuid.UUID(value)
-          if parsed.int == 0:
-              raise SystemExit('Founder identity authority is empty.')
-          PYAUTH
-
-          protect_founder_key="$(resolve_key "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          protect_blob_key="$(resolve_key "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          protect_keyvault_key="$(resolve_key "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-          protect_founder="$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
-          protect_blob="$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
-          protect_keyvault="$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
-
-          updates=()
-          if [ "$protect_founder" != "$founder" ]; then updates+=("${protect_founder_key:-FOUNDER_OID}=$founder"); fi
-          if [ "$protect_blob" != "$blob" ]; then updates+=("${protect_blob_key:-DataProtection__BlobUri}=$blob"); fi
-          if [ "$protect_keyvault" != "$keyvault" ]; then updates+=("${protect_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
-
-          if [ "${#updates[@]}" -gt 0 ]; then
-            az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${updates[@]}" --output none
+          website_blob="$(resolve_value "$portal_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri' || true)"
+          website_key="$(resolve_value "$portal_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId' || true)"
+          if [ -z "$website_blob" ] || [ -z "$website_key" ]; then
+            website_blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+            website_key="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+            az webapp config appsettings set -g masterapp-rg -n masterapp-portal --settings               "WebsiteEditorDataProtection__BlobUri=$website_blob"               "WebsiteEditorDataProtection__KeyVaultKeyId=$website_key" --output none
           fi
+          [ -n "$founder" ] && [ -n "$website_blob" ] && [ -n "$website_key" ]
+          echo "::add-mask::$founder"
+          echo "::add-mask::$website_blob"
+          echo "::add-mask::$website_key"
+
+          az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings             "FOUNDER_OID=$founder"             "WebsiteEditorDataProtection__BlobUri=$website_blob"             "WebsiteEditorDataProtection__KeyVaultKeyId=$website_key" --output none
 
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
           [ "$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
-          [ "$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-          [ "$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-          echo "Protect website editor authority matches the AgentPortal source of truth."
+          [ "$(resolve_value "$protect_settings" WebsiteEditorDataProtection__BlobUri 'WebsiteEditorDataProtection:BlobUri')" = "$website_blob" ]
+          [ "$(resolve_value "$protect_settings" WebsiteEditorDataProtection__KeyVaultKeyId 'WebsiteEditorDataProtection:KeyVaultKeyId')" = "$website_key" ]
+          echo "Protect and AgentPortal share only the dedicated LEGEND.PublicWebsiteEditor ticket authority."
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
         if: env.PUBLIC_ONLY != 'true' && env.CLIENT_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
