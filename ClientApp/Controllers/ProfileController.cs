@@ -183,10 +183,9 @@ public class ProfileController : Controller
 
     private async Task<List<BusinessWebsiteProfileSummary>> LoadBusinessWebsitesAsync(
         ClientProfile profile,
-        bool isAgentView,
         CancellationToken cancellationToken)
     {
-        if (isAgentView || !IsBusinessClient(profile))
+        if (!IsBusinessClient(profile))
             return new List<BusinessWebsiteProfileSummary>();
 
         var businesses = await WebsiteBusinessAccess.QueryManagedBusinesses(_db, profile.Id)
@@ -207,10 +206,18 @@ public class ProfileController : Controller
         Guid businessId,
         CancellationToken cancellationToken)
     {
-        if (context.IsAgentView || !IsBusinessClient(context.Profile))
+        if (!IsBusinessClient(context.Profile))
             return null;
 
-        if (!await WebsiteBusinessAccess.CanManageAsync(_db, businessId, context.Profile.Id, cancellationToken))
+        if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
+                _db,
+                businessId,
+                context.Profile.Id,
+                User.GetCanonicalUserId(),
+                context.IsAgentView
+                    ? context.AgentEmail
+                    : context.Profile.NormalizedEmail ?? context.Profile.Email,
+                cancellationToken))
             return null;
 
         return await _db.CommerceBusinesses
@@ -232,10 +239,9 @@ public class ProfileController : Controller
         ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
         ViewBag.ProfileSaveNotice = notice ?? TempData["BusinessWebsiteNotice"]?.ToString();
         ViewBag.ProfileSaveWarning = warning ?? TempData["BusinessWebsiteWarning"]?.ToString();
-        ViewBag.IsBusinessClient = !context.IsAgentView && IsBusinessClient(context.Profile);
+        ViewBag.IsBusinessClient = IsBusinessClient(context.Profile);
         ViewBag.BusinessWebsites = await LoadBusinessWebsitesAsync(
             context.Profile,
-            context.IsAgentView,
             HttpContext.RequestAborted);
 
         if (!context.IsAgentView)
@@ -450,7 +456,7 @@ public class ProfileController : Controller
     public async Task<IActionResult> SetupBusinessWebsite(string businessName, string? legalName)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        if (context is null || context.IsAgentView || !IsBusinessClient(context.Profile))
+        if (context is null || !IsBusinessClient(context.Profile))
             return Forbid();
 
         businessName = (businessName ?? string.Empty).Trim();
@@ -531,7 +537,9 @@ public class ProfileController : Controller
             WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(businessId),
             null, false, DateTime.UtcNow.AddMinutes(45), businessId,
             ActorUserId: User.GetCanonicalUserId(),
-            ActorEmail: context.Profile.NormalizedEmail ?? context.Profile.Email,
+            ActorEmail: context.IsAgentView
+                ? context.AgentEmail
+                : context.Profile.NormalizedEmail ?? context.Profile.Email,
             ActorClientProfileId: context.Profile.Id));
 
     [HttpGet("/profile/{clientUserId}")]
