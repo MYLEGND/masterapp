@@ -57,8 +57,9 @@ jobs:
           PY
           )"
 
-          storage_id="$(az storage account show -g masterapp-rg -n "$storage_account" --query id -o tsv)"
-          vault_id="$(az keyvault show -g masterapp-rg -n "$vault" --query id -o tsv)"
+          subscription_id="$(az account show --query id -o tsv)"
+          storage_id="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.Storage/storageAccounts/$storage_account"
+          vault_id="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.KeyVault/vaults/$vault"
           container_scope="$storage_id/blobServices/default/containers/$container"
           key_scope="$vault_id/keys/$key_name"
 
