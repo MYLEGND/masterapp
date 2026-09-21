@@ -10,6 +10,7 @@ using ProtectWebsite.Services;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Domain.Entities;
+using Domain.Enums;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.DataProtection;
@@ -143,6 +144,33 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal(originalJson, row.DraftJson);
     }
 
+    [Fact]
+    public async Task BusinessTicket_AllowsLinkedAgentOnlyWhileClientRemainsShared()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var profile = Assert.Single(await fixture.Db.ClientProfiles.ToListAsync());
+        profile.AccountManagementMode = ClientAccountManagementModes.SharedAccount;
+        fixture.Db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-shared-website",
+            AgentUpn = "agent-shared@mylegnd.com",
+            ClientUserId = profile.ClientUserId
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var ticket = fixture.TicketForActor(
+            "agent-shared-website",
+            "agent-shared@mylegnd.com",
+            DateTime.UtcNow.AddMinutes(10));
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Manage(ticket));
+
+        profile.AccountManagementMode = ClientAccountManagementModes.SelfManaged;
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().Manage(ticket));
+    }
+
     private static WebsiteContentDocument ReadDocument(IActionResult result)
     {
         var value = Assert.IsType<OkObjectResult>(result).Value;
@@ -229,13 +257,19 @@ public sealed class WebsiteContentEditorRoundTripTests
         }
 
         public WebsiteContentController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };
-        public string Ticket(DateTime expiresUtc) => _tickets.Protect(new WebsiteEditorTicket(
-            _siteKey,
-            _owner,
-            _siteKey == WebsiteEditorSiteKeys.Protect ? AgentSlug : null,
-            true,
-            expiresUtc,
-            BusinessId, ActorUserId: _actor, ActorEmail: "founder@example.test", ActorClientProfileId: _clientProfileId));
+        public string Ticket(DateTime expiresUtc) => TicketForActor(_actor, "founder@example.test", expiresUtc);
+
+        public string TicketForActor(string actorUserId, string actorEmail, DateTime expiresUtc) =>
+            _tickets.Protect(new WebsiteEditorTicket(
+                _siteKey,
+                _owner,
+                _siteKey == WebsiteEditorSiteKeys.Protect ? AgentSlug : null,
+                true,
+                expiresUtc,
+                BusinessId,
+                ActorUserId: actorUserId,
+                ActorEmail: actorEmail,
+                ActorClientProfileId: _clientProfileId));
         public void Dispose() { _services?.Dispose(); _tickets.Dispose(); Db.Dispose(); }
         private static string SourceDirectory([CallerFilePath] string sourcePath = "") => Path.GetDirectoryName(sourcePath)!;
     }
