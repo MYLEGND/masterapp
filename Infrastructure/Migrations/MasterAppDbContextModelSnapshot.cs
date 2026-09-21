@@ -1618,7 +1618,18 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("ClientProfileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ActorEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("ActorUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<Guid?>("ClientSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommerceBusinessId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("ConsumedUtc")
@@ -1671,6 +1682,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientProfileId", "ConsumedUtc");
 
                     b.HasIndex("ClientProfileId", "ExpiresUtc");
+
+                    b.HasIndex("CommerceBusinessId", "Purpose", "ExpiresUtc");
 
                     b.ToTable("ClientIdentityContinuations", (string)null);
                 });
@@ -12612,6 +12625,11 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("ClientProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Domain.Entities.CommerceBusiness", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Domain.Entities.ClientSubscription", "ClientSubscription")
                         .WithMany()
