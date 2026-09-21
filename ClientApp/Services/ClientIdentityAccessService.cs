@@ -206,13 +206,8 @@ public sealed class ClientIdentityAccessService
                 "MISSING_OBJECT_ID",
                 "A valid client sign-in is required.");
 
-        var principalEmail = NormalizeEmail(
-            principal.FindFirstValue("preferred_username")
-            ?? principal.FindFirstValue(ClaimTypes.Upn)
-            ?? principal.FindFirstValue(ClaimTypes.Email)
-            ?? principal.Identity?.Name);
-
-        if (string.IsNullOrWhiteSpace(principalEmail))
+        var principalEmails = PrincipalEmailCandidates(principal);
+        if (principalEmails.Length == 0)
             return new ClientSignInCompletionResult(
                 false,
                 safeReturnUrl,
@@ -221,8 +216,8 @@ public sealed class ClientIdentityAccessService
 
         var matches = await _db.ClientProfiles
             .Where(profile =>
-                (profile.NormalizedEmail ?? string.Empty).ToLower() == principalEmail ||
-                (profile.Email ?? string.Empty).ToLower() == principalEmail)
+                principalEmails.Contains((profile.NormalizedEmail ?? string.Empty).ToLower()) ||
+                principalEmails.Contains((profile.Email ?? string.Empty).ToLower()))
             .OrderBy(profile => profile.Id)
             .Take(2)
             .ToListAsync(cancellationToken);
@@ -384,14 +379,8 @@ public sealed class ClientIdentityAccessService
         if (string.IsNullOrWhiteSpace(oid))
             return new ClientSignInCompletionResult(false, continuation.ReturnUrl, "MISSING_OBJECT_ID", "The identity provider did not return a stable object ID.");
 
-        var principalEmail = NormalizeEmail(
-            principal.FindFirstValue("preferred_username")
-            ?? principal.FindFirstValue(ClaimTypes.Upn)
-            ?? principal.FindFirstValue(ClaimTypes.Email)
-            ?? principal.Identity?.Name);
-
-        if (string.IsNullOrWhiteSpace(principalEmail) ||
-            !string.Equals(continuation.IntendedNormalizedEmail, principalEmail, StringComparison.Ordinal))
+        var principalEmails = PrincipalEmailCandidates(principal);
+        if (!principalEmails.Contains(continuation.IntendedNormalizedEmail))
         {
             return new ClientSignInCompletionResult(false, continuation.ReturnUrl, "EMAIL_MISMATCH", "The Microsoft account email does not match the invited client email.");
         }
@@ -416,8 +405,8 @@ public sealed class ClientIdentityAccessService
         }
 
         profile.ExternalIdentityObjectId = oid;
-        if (string.IsNullOrWhiteSpace(profile.NormalizedEmail) && !string.IsNullOrWhiteSpace(principalEmail))
-            profile.NormalizedEmail = principalEmail;
+        if (string.IsNullOrWhiteSpace(profile.NormalizedEmail))
+            profile.NormalizedEmail = continuation.IntendedNormalizedEmail;
 
         await _db.SaveChangesAsync(cancellationToken);
         await _continuationService.ConsumeAsync(continuation, cancellationToken);
@@ -426,15 +415,28 @@ public sealed class ClientIdentityAccessService
         return new ClientSignInCompletionResult(true, continuation.ReturnUrl);
     }
 
-    private static bool IsAgentPrincipal(ClaimsPrincipal principal)
-    {
-        var normalizedEmail = NormalizeEmail(
-            principal.FindFirstValue("preferred_username")
-            ?? principal.FindFirstValue(ClaimTypes.Upn)
-            ?? principal.FindFirstValue(ClaimTypes.Email)
-            ?? principal.Identity?.Name);
+    private static bool IsAgentPrincipal(ClaimsPrincipal principal) =>
+        PrincipalEmailCandidates(principal)
+            .Any(email => email.EndsWith("@mylegnd.com", StringComparison.OrdinalIgnoreCase));
 
-        return normalizedEmail.EndsWith("@mylegnd.com", StringComparison.OrdinalIgnoreCase);
+    private static string[] PrincipalEmailCandidates(ClaimsPrincipal principal)
+    {
+        var values = principal.Claims
+            .Where(claim =>
+                claim.Type == "preferred_username" ||
+                claim.Type == ClaimTypes.Email ||
+                claim.Type == "email" ||
+                claim.Type == "emails" ||
+                claim.Type == "upn" ||
+                claim.Type == ClaimTypes.Upn ||
+                claim.Type == "unique_name")
+            .Select(claim => NormalizeEmail(claim.Value))
+            .Append(NormalizeEmail(principal.Identity?.Name))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return values;
     }
 
     private static string NormalizeEmail(string? email) =>
