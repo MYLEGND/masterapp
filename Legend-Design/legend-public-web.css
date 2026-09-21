@@ -108,14 +108,25 @@ h3{font-size:22px;letter-spacing:-.018em}
 .site-footer{background:#051a2a;color:#cbd7df;padding:56px var(--page-pad) 26px}
 .footer-grid{display:grid;grid-template-columns:1.4fr .7fr .9fr;gap:48px}.footer-grid>div{display:flex;flex-direction:column;align-items:flex-start;gap:9px}.footer-grid h2{font-size:13px;color:#fff;letter-spacing:.13em;margin-bottom:10px}.footer-grid a:hover{color:var(--gold-strong)}.footer-grid p{max-width:560px}.email{color:var(--gold-strong)}
 .footer-bottom{display:flex;flex-wrap:wrap;justify-content:space-between;gap:15px;margin-top:42px;padding-top:20px;border-top:1px solid rgba(255,255,255,.11);font-size:12px;color:#91a3af}
-/* Protect-specific public component normalization. Structure stays shared; only product content differs. */
-.legend-public--protect .layout-content,.legend-public--protect .container.layout-content{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;background:#fff!important}
-.legend-public--protect .quote-page,.legend-public--protect .quote-shell{width:100%!important;max-width:none!important;margin:0!important;border:0!important;border-radius:0!important;box-shadow:none!important}
-.legend-public--protect .quote-hero{padding:clamp(70px,8vw,110px) var(--page-pad)!important;background:linear-gradient(135deg,var(--navy-deep) 0%,var(--navy) 58%,var(--navy-royal) 100%)!important;border-radius:0!important}
-.legend-public--protect .quote-picker{max-width:none!important;padding:clamp(62px,8vw,105px) var(--page-pad)!important}
-.legend-public--protect .quote-grid{gap:18px!important}
-.legend-public--protect .quote-tile{background:#fff!important;border:1px solid var(--border)!important;border-radius:var(--radius-lg)!important;padding:26px!important;box-shadow:none!important}
-.legend-public--protect .quote-tile:hover{border-color:color-mix(in srgb,var(--gold) 62%,var(--border))!important;box-shadow:var(--shadow)!important}
+/* Protect public page-frame authority.
+   Quote and assessment components own their own internal geometry.
+   This shared layer owns only the white document canvas and non-quote public surfaces. */
+.legend-public--protect{min-height:100dvh;display:flex;flex-direction:column}
+.legend-public--protect .site-header{flex:0 0 auto}
+.legend-public--protect .layout-content,.legend-public--protect .container.layout-content{
+  width:100%!important;
+  max-width:none!important;
+  margin:0!important;
+  background:#fff!important;
+}
+.legend-public--protect .layout-content{
+  flex:1 0 auto;
+  display:flow-root;
+}
+.legend-public--protect .site-footer{
+  flex:0 0 auto;
+  margin-top:auto;
+}
 .legend-public--protect .legal-page-wrap,.legend-public--protect .contact-clarity{width:100%!important;max-width:none!important;margin:0!important;padding:clamp(72px,8vw,112px) var(--page-pad)!important}
 .legend-public--protect .legal-card{max-width:1050px;margin:20px auto 0!important}
 .legend-public--protect .lead-card{border-radius:var(--radius-lg)!important}
@@ -134,26 +145,22 @@ h3{font-size:22px;letter-spacing:-.018em}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn,.contact-card{transition:none}}
 
-/* Protect outer-shell normalization: preserve form logic; remove isolated boxed-page framing. */
-.legend-public--protect .container-narrow,
+/* Protect non-quote outer-shell normalization. */
 .legend-public--protect .training-page{
-  width:100%!important;max-width:none!important;margin:0!important;
+  width:100%!important;
+  max-width:none!important;
+  margin:0!important;
   padding:clamp(60px,8vw,104px) var(--page-pad)!important;
 }
-.legend-public--protect .pcq-shell,
-.legend-public--protect .ra-shell,
-.legend-public--protect .main-gold-card{
-  width:100%!important;max-width:1280px!important;margin-left:auto!important;margin-right:auto!important;
-  border-radius:var(--radius-lg)!important;
-}
-.legend-public--protect .pcq-hero-entry{
-  border-radius:var(--radius-lg)!important;
-}
 .legend-public--protect .training-page>.text-center{
-  max-width:900px;margin-left:auto!important;margin-right:auto!important;
+  max-width:900px;
+  margin-left:auto!important;
+  margin-right:auto!important;
 }
 .legend-public--protect .packages-grid{
-  max-width:1280px!important;margin-left:auto!important;margin-right:auto!important;
+  max-width:1280px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
 }
 .legend-public--protect .legal-hero{
   max-width:1050px;margin:0 auto!important;padding:0 0 30px!important;background:transparent!important;color:var(--ink)!important;
