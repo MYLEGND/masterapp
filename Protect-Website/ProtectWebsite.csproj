@@ -66,23 +66,26 @@
           Outputs="$(MSBuildProjectDirectory)/../Legend-Website/node_modules/.package-lock.json">
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../Legend-Website" Command="npm ci --omit=dev --ignore-scripts --no-audit --no-fund" />
   </Target>
-  <Target Name="BuildBusinessWebsiteCompiler" BeforeTargets="AssignTargetPaths">
+  <Target Name="BuildBusinessWebsiteCompiler" BeforeTargets="Build;Publish">
     <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../Legend-Website" Command="node scripts/build.mjs" />
     <ItemGroup>
-      <Content Include="../Legend-Website/dist/site.css;../Legend-Website/dist/legend-public-cms.js;../Legend-Website/dist/legend-public-web.js;../Legend-Website/dist/business-inquiry.js">
-        <Link>WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)</Link>
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      </Content>
-      <Content Include="../Legend-Website/dist/business-preview/**/*">
-        <Link>WebsiteCompiler/dist/business-preview/%(RecursiveDir)%(Filename)%(Extension)</Link>
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-      </Content>
-      <Content Include="../Legend-Website/scripts/render-business.mjs" Link="WebsiteCompiler/scripts/render-business.mjs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-      <Content Include="../Legend-Website/src/business-content.mjs" Link="WebsiteCompiler/src/business-content.mjs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-      <Content Include="../Legend-Website/node_modules/**/*" Link="WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <_WebsiteCompilerDist Include="../Legend-Website/dist/**/*" />
+      <_WebsiteCompilerModules Include="../Legend-Website/node_modules/**/*" />
     </ItemGroup>
+  </Target>
+
+  <Target Name="CopyBusinessWebsiteCompilerToOutput" AfterTargets="Build" DependsOnTargets="BuildBusinessWebsiteCompiler">
+    <Copy SourceFiles="@(_WebsiteCompilerDist)" DestinationFiles="@(_WebsiteCompilerDist->'$(TargetDir)WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WebsiteCompilerModules)" DestinationFiles="@(_WebsiteCompilerModules->'$(TargetDir)WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/src/business-content.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/src" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyBusinessWebsiteCompilerToPublish" AfterTargets="Publish" DependsOnTargets="BuildBusinessWebsiteCompiler">
+    <Copy SourceFiles="@(_WebsiteCompilerDist)" DestinationFiles="@(_WebsiteCompilerDist->'$(PublishDir)WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WebsiteCompilerModules)" DestinationFiles="@(_WebsiteCompilerModules->'$(PublishDir)WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/src/business-content.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/src" SkipUnchangedFiles="true" />
   </Target>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />

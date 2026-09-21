@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder authorizes direct deployment of only the selected affected applications through legend/approved-changes. Do not start or promote the rigorous production flow.",
   "purpose": "Deploy corrected Founder, agent and business website ownership, profile management, shared website builder, publishing, domains and inquiries.",
-  "requestId": "website-platform-builder-direct-20260921-1",
+  "requestId": "website-platform-builder-direct-20260921-2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
