@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Businesses;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 using ParfaitApp.Security;
@@ -17,10 +18,14 @@ public interface IParfaitBusinessPlatformService
 public sealed class ParfaitBusinessPlatformService : IParfaitBusinessPlatformService
 {
     private readonly MasterAppDbContext _db;
+    private readonly ICommerceBusinessProvisioningService _businessProvisioning;
 
-    public ParfaitBusinessPlatformService(MasterAppDbContext db)
+    public ParfaitBusinessPlatformService(
+        MasterAppDbContext db,
+        ICommerceBusinessProvisioningService businessProvisioning)
     {
         _db = db;
+        _businessProvisioning = businessProvisioning;
     }
 
     public async Task<ParfaitBusinessPlatformConsoleViewModel> GetConsoleAsync(ClaimsPrincipal user, CancellationToken ct = default)
@@ -93,31 +98,28 @@ public sealed class ParfaitBusinessPlatformService : IParfaitBusinessPlatformSer
     {
         EnsurePlatformOwner(user);
 
-        var key = NormalizeKey(input.Key);
-        var ownerEmail = NormalizeEmail(input.OwnerEmail);
-
-        if (await _db.CommerceBusinesses.AnyAsync(x => x.Key == key, ct))
-            throw new InvalidOperationException("A business with that key already exists.");
-
-        var business = new CommerceBusiness
-        {
-            Key = key,
-            DisplayName = CleanRequired(input.DisplayName, key),
-            LegalName = CleanRequired(input.LegalName, input.DisplayName),
-            BusinessType = CleanRequired(input.BusinessType, "Ecommerce"),
-            OwnerEmail = ownerEmail,
-            PrimaryDomain = CleanOptional(input.PrimaryDomain),
-            Status = "Active",
-            IsActive = true,
-            CreatedUtc = DateTime.UtcNow,
-            UpdatedUtc = DateTime.UtcNow
-        };
-
-        _db.CommerceBusinesses.Add(business);
-        await _db.SaveChangesAsync(ct);
-
-        AddDefaultRecords(business, ownerEmail, input.PlanKey);
-        await _db.SaveChangesAsync(ct);
+        var normalizedPlan = NormalizePlan(input.PlanKey);
+        await _businessProvisioning.CreateAsync(
+            new CommerceBusinessProvisioningRequest(
+                DisplayName: input.DisplayName,
+                LegalName: input.LegalName,
+                BusinessType: input.BusinessType,
+                OwnerEmail: input.OwnerEmail,
+                Key: input.Key,
+                PrimaryDomain: input.PrimaryDomain,
+                OwnerDisplayName: input.OwnerEmail,
+                Subscription: new CommerceBusinessSubscriptionProvisioning(
+                    normalizedPlan.Key,
+                    normalizedPlan.Name,
+                    "Trial",
+                    normalizedPlan.MonthlyPriceCents,
+                    "Manual",
+                    DateTime.UtcNow.AddDays(14)),
+                Storefront: new CommerceBusinessStorefrontProvisioning(
+                    input.DisplayName,
+                    $"{input.DisplayName.Trim()} storefront.",
+                    "Draft")),
+            ct);
     }
 
     public async Task EnsureParfaitPlatformRecordsAsync(CancellationToken ct = default)
@@ -185,40 +187,6 @@ public sealed class ParfaitBusinessPlatformService : IParfaitBusinessPlatformSer
             await _db.SaveChangesAsync(ct);
     }
 
-    private void AddDefaultRecords(CommerceBusiness business, string ownerEmail, string planKey)
-    {
-        var normalizedPlan = NormalizePlan(planKey);
-
-        _db.CommerceBusinessMembers.Add(new CommerceBusinessMember
-        {
-            CommerceBusinessId = business.Id,
-            Email = ownerEmail,
-            NormalizedEmail = ownerEmail.ToUpperInvariant(),
-            DisplayName = ownerEmail,
-            RoleKey = "owner",
-            Status = "Active"
-        });
-
-        _db.CommerceBusinessSubscriptions.Add(new CommerceBusinessSubscription
-        {
-            CommerceBusinessId = business.Id,
-            PlanKey = normalizedPlan.Key,
-            PlanName = normalizedPlan.Name,
-            Status = "Trial",
-            MonthlyPriceCents = normalizedPlan.MonthlyPriceCents,
-            BillingProvider = "Manual",
-            TrialEndsUtc = DateTime.UtcNow.AddDays(14)
-        });
-
-        _db.CommerceBusinessStorefrontSettings.Add(new CommerceBusinessStorefrontSettings
-        {
-            CommerceBusinessId = business.Id,
-            BrandHeadline = business.DisplayName,
-            BrandSubheadline = $"{business.DisplayName} storefront.",
-            StorefrontStatus = "Draft"
-        });
-    }
-
     private static void EnsurePlatformOwner(ClaimsPrincipal user)
     {
         if (!ParfaitFounderGuard.IsFounder(user))
@@ -235,29 +203,9 @@ public sealed class ParfaitBusinessPlatformService : IParfaitBusinessPlatformSer
         };
     }
 
-    private static string NormalizeKey(string? value)
-    {
-        var cleaned = (value ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(cleaned))
-            throw new InvalidOperationException("Business key is required.");
-
-        return cleaned;
-    }
-
     private static string NormalizeEmail(string? value)
     {
         return (value ?? "").Trim().ToLowerInvariant();
     }
 
-    private static string CleanRequired(string? value, string fallback)
-    {
-        var cleaned = (value ?? "").Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? fallback.Trim() : cleaned;
-    }
-
-    private static string? CleanOptional(string? value)
-    {
-        var cleaned = (value ?? "").Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
-    }
 }

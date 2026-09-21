@@ -7,6 +7,7 @@ using Domain.Accounts;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Identity;
+using Infrastructure.Businesses;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -174,6 +175,10 @@ public class ClientProfileControllerTests
         Assert.True(membership.CanManageStorefront);
         Assert.False(membership.CanManageCatalog);
         Assert.False(membership.CanManageOrders);
+        var storefront = Assert.Single(db.CommerceBusinessStorefrontSettings);
+        Assert.Equal(business.Id, storefront.CommerceBusinessId);
+        Assert.Equal("Smith Plumbing", storefront.BrandHeadline);
+        Assert.Equal("Draft", storefront.StorefrontStatus);
     }
 
     [Fact]
@@ -265,6 +270,7 @@ public class ClientProfileControllerTests
             subscriptionSync,
             lifecycle,
             new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()),
+            new CommerceBusinessProvisioningService(db),
             configuration)
         {
             ControllerContext = new ControllerContext { HttpContext = http },

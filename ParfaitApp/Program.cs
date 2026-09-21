@@ -12,6 +12,7 @@ using Infrastructure.FinancialIntelligence;
 using Infrastructure.Analytics;
 using ParfaitApp.Services;
 using Infrastructure.Data;
+using Infrastructure.Businesses;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -124,6 +125,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
         options.UseSqlServer(configuredDb);
 });
 
+builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();

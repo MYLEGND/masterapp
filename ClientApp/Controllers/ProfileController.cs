@@ -8,6 +8,7 @@ using Domain.Enums;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.Businesses;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,7 @@ public class ProfileController : Controller
     private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
     private readonly IAccountLifecycleService _accountLifecycle;
     private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
+    private readonly ICommerceBusinessProvisioningService _businessProvisioning;
     private readonly IConfiguration _configuration;
 
     public ProfileController(
@@ -35,6 +37,7 @@ public class ProfileController : Controller
         IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
         IAccountLifecycleService accountLifecycle,
         WebsiteEditorTicketProtector websiteEditorTickets,
+        ICommerceBusinessProvisioningService businessProvisioning,
         IConfiguration configuration)
     {
         _db = db;
@@ -43,6 +46,7 @@ public class ProfileController : Controller
         _subscriptionIdentitySync = subscriptionIdentitySync;
         _accountLifecycle = accountLifecycle;
         _websiteEditorTickets = websiteEditorTickets;
+        _businessProvisioning = businessProvisioning;
         _configuration = configuration;
     }
 
@@ -216,38 +220,6 @@ public class ProfileController : Controller
             $"{baseUrl}/business-preview/?businessId={business.Id:D}",
             string.IsNullOrWhiteSpace(business.PrimaryDomain) ? null : business.PrimaryDomain.Trim()))
             .ToList();
-    }
-
-    private static string BusinessKeySeed(string value)
-    {
-        var cleaned = new string((value ?? string.Empty)
-            .Trim()
-            .ToLowerInvariant()
-            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
-            .ToArray());
-
-        while (cleaned.Contains("--", StringComparison.Ordinal))
-            cleaned = cleaned.Replace("--", "-", StringComparison.Ordinal);
-
-        return cleaned.Trim('-');
-    }
-
-    private async Task<string> UniqueBusinessKeyAsync(string businessName, CancellationToken cancellationToken)
-    {
-        var seed = BusinessKeySeed(businessName);
-        if (string.IsNullOrWhiteSpace(seed))
-            seed = "business";
-
-        var candidate = seed;
-        var suffix = 2;
-        while (await _db.CommerceBusinesses.AsNoTracking().AnyAsync(
-                   business => business.Key == candidate,
-                   cancellationToken))
-        {
-            candidate = $"{seed}-{suffix++}";
-        }
-
-        return candidate;
     }
 
     private async Task<CommerceBusiness?> AuthorizedBusinessAsync(
@@ -573,37 +545,23 @@ public class ProfileController : Controller
             return RedirectToAction(nameof(MyProfile));
         }
 
-        var now = DateTime.UtcNow;
-        var business = new CommerceBusiness
-        {
-            Key = await UniqueBusinessKeyAsync(businessName, HttpContext.RequestAborted),
-            DisplayName = businessName,
-            LegalName = legalName,
-            BusinessType = "BusinessClient",
-            OwnerEmail = email,
-            Status = "Active",
-            IsActive = true,
-            CreatedUtc = now,
-            UpdatedUtc = now
-        };
-        _db.CommerceBusinesses.Add(business);
-        _db.CommerceBusinessMembers.Add(new CommerceBusinessMember
-        {
-            CommerceBusiness = business,
-            Email = email,
-            NormalizedEmail = normalizedEmail,
-            DisplayName = $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
-            RoleKey = "owner",
-            Status = "Active",
-            CanManageStorefront = true,
-            CanManageCatalog = false,
-            CanManageOrders = false,
-            CanManageAnalytics = true,
-            CanManageTeam = true,
-            CreatedUtc = now,
-            UpdatedUtc = now
-        });
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await _businessProvisioning.CreateAsync(
+            new CommerceBusinessProvisioningRequest(
+                DisplayName: businessName,
+                LegalName: legalName,
+                BusinessType: "BusinessClient",
+                OwnerEmail: email,
+                OwnerDisplayName: $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
+                CanManageStorefront: true,
+                CanManageCatalog: false,
+                CanManageOrders: false,
+                CanManageAnalytics: true,
+                CanManageTeam: true,
+                Storefront: new CommerceBusinessStorefrontProvisioning(
+                    businessName,
+                    $"{businessName} business website.",
+                    "Draft")),
+            HttpContext.RequestAborted);
 
         TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
         return RedirectToAction(nameof(MyProfile));
