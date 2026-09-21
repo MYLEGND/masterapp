@@ -209,7 +209,13 @@
     const overview = () => {
       panel.replaceChildren(); status.textContent = `Draft revision ${state.revision ?? 0} · Published revision ${state.publishedRevision ?? 'Not published'}`;
       const links = el('div', null, { class: 'wm-row' });
-      links.append(el('a', 'Open editor', { href: trigger.dataset.edit, class: 'wm-primary' }), el('a', 'View website ↗', { href: trigger.dataset.live, target: '_blank', rel: 'noopener' })); panel.append(links);
+      let editorHref = trigger.dataset.edit;
+      if (trigger.dataset.scope === 'business' && session?.ticket) {
+        const editorUrl = new URL(trigger.dataset.edit, location.origin);
+        editorUrl.searchParams.set('legendEdit', session.ticket);
+        editorHref = editorUrl.toString();
+      }
+      links.append(el('a', 'Open editor', { href: editorHref, class: 'wm-primary' }), el('a', 'View website ↗', { href: trigger.dataset.live, target: '_blank', rel: 'noopener' })); panel.append(links);
       const grid = el('div', null, { class: 'wm-grid' });
       const tile = (name, caption, action) => { const node = button(name, action); node.append(el('small', caption)); grid.append(node); };
       if (state.capabilities?.canPublish === true) tile('Publish draft', 'Review and make your saved draft live', () => confirmAction('Publish draft', 'Publish the complete saved draft as a new website version.', async () => { await request('/publish', {}); await reload(); overview(); status.textContent = 'Your website is published.'; }));
@@ -225,7 +231,21 @@
     await run(async () => {
       const response = await fetch(trigger.dataset.session, { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error('Your website permissions could not be verified. Please sign in again.');
-      session = await response.json(); await reload(); overview();
+      const bootstrap = await response.json();
+      if (bootstrap?.handoffUrl && bootstrap?.state) {
+        const exchange = await fetch(bootstrap.handoffUrl, {
+          method: 'POST',
+          cache: 'no-store',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: bootstrap.state })
+        });
+        if (!exchange.ok) throw new Error('Your website permissions could not be verified. Please sign in again.');
+        session = await exchange.json();
+      } else {
+        session = bootstrap;
+      }
+      await reload(); overview();
     });
   }));
 })();
