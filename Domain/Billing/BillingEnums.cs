@@ -152,5 +152,6 @@ public enum ClientBillingNotificationKind
 public enum ClientIdentityContinuationPurpose
 {
     Activation = 0,
-    SignIn = 1
+    SignIn = 1,
+    WebsiteEditor = 2
 }
