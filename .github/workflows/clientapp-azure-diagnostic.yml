@@ -50,6 +50,17 @@ jobs:
           PY
 
           az webapp show -g masterapp-rg -n masterapp-client --query '{state:state,defaultHostName:defaultHostName,httpsOnly:httpsOnly,clientAffinityEnabled:clientAffinityEnabled,identity:identity.principalId,hostNames:hostNames,hostNameSslStates:hostNameSslStates[].{name:name,sslState:sslState}}' -o json
+          echo "Resource Change Analysis for ClientApp configuration:"
+          az extension add --name resource-graph --only-show-errors >/dev/null 2>&1 || true
+          az graph query -q "resourcechanges
+          | extend changeTime=todatetime(properties.changeAttributes.timestamp), target=tostring(properties.targetResourceId)
+          | where changeTime between (datetime(2026-09-21T15:00:00Z) .. datetime(2026-09-21T15:15:00Z))
+          | where target contains '/Microsoft.Web/sites/masterapp-client'
+          | project changeTime, target, changeType=properties.changeType, operation=properties.changeAttributes.operation, changes=properties.changes
+          | order by changeTime asc" -o json | python3 -c 'import json,sys; data=json.load(sys.stdin); 
+for row in data.get("data",[]):
+ print(json.dumps(row, default=str))' || true
+
           echo "Recent App Service configuration writes:"
           az monitor activity-log list -g masterapp-rg --start-time 2026-09-21T14:50:00Z --end-time 2026-09-21T15:30:00Z --status Succeeded --query "[?contains(operationName.value, 'Microsoft.Web/sites/config/write') || contains(operationName.value, 'Microsoft.Web/sites/write')].{time:eventTimestamp,operation:operationName.value,resource:resourceId,caller:caller}" -o json
 
