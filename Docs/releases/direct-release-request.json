@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved the no-override Business Website ticket authority correction. Final exact-SHA validation only; do not deploy.",
-  "purpose": "Verify the final clean approved tree: LEGEND.PublicWebsiteEditor reads only WebsiteEditorDataProtection settings, ClientApp MasterApp.ClientApp Data Protection remains isolated, business ownership and Shared Account authorization remain intact, temporary recovery workflows are removed, and no duplicate or fallback authorization path exists.",
-  "requestId": "business-website-dedicated-ticket-authority-final-20260921-2",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly approved deployment of the no-override Business Website ticket authority correction after exact-SHA validation.",
+  "purpose": "Direct release the dedicated LEGEND.PublicWebsiteEditor ticket authority only. Preserve ClientApp MasterApp.ClientApp Data Protection unchanged. Fail closed unless ClientApp managed identity already has the exact shared website-ticket Blob container and Key Vault key access. No fallback, duplicate authority, override, migration, or unrelated deployment.",
+  "requestId": "business-website-dedicated-ticket-authority-release-20260921-3",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
   ]
