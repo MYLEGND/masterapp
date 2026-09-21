@@ -77,10 +77,20 @@ public sealed class TrackingProxyController : ControllerBase
     public async Task<IActionResult> SubmitLead([FromBody] LeadSubmitRequest req, CancellationToken ct)
     {
         var correlationId = Guid.NewGuid();
+        EnsureLeadContextFallback(req);
+
+        var attribution = await EnsureLeadAttributionAsync(req, ct);
+        if (!attribution.Succeeded)
+        {
+            _logger.LogWarning(
+                "LeadProxy [{CorrelationId}]: attribution rejected reason={Reason} SourcePath={SourcePath} PayloadSlug={Slug} PayloadProfileId={ProfileId}",
+                correlationId, attribution.Error, req.SourcePath, req.AgentSlug, req.AgentTrackingProfileId);
+            return BadRequest(new { error = attribution.Error ?? "lead_attribution_invalid", correlationId });
+        }
 
         _logger.LogInformation(
-            "LeadProxy [{CorrelationId}]: request received InterestType={InterestType} SourcePageKey={SourcePageKey} AgentSlug={Slug} Host={Host}",
-            correlationId, req.InterestType, req.SourcePageKey, req.AgentSlug, req.Host);
+            "LeadProxy [{CorrelationId}]: request received InterestType={InterestType} SourcePageKey={SourcePageKey} AgentSlug={Slug} ProfileId={ProfileId} Host={Host}",
+            correlationId, req.InterestType, req.SourcePageKey, req.AgentSlug, req.AgentTrackingProfileId, req.Host);
 
         var response = await ForwardAsync("/api/lead/submit", req, ct, correlationId);
 
@@ -89,7 +99,13 @@ public sealed class TrackingProxyController : ControllerBase
             _logger.LogError(
                 "LeadProxy [{CorrelationId}]: forward failed — no response from AgentPortal (proxy configuration or connectivity issue)",
                 correlationId);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "lead_forward_failed", correlationId });
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "lead_forward_failed",
+                captured = false,
+                notificationSent = false,
+                correlationId
+            });
         }
 
         _logger.LogInformation(
@@ -104,6 +120,109 @@ public sealed class TrackingProxyController : ControllerBase
         }
 
         return await BuildPassThroughResultAsync(response, ct);
+    }
+
+    private void EnsureLeadContextFallback(LeadSubmitRequest req)
+    {
+        req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+        req.SourcePath = FirstNonBlank(req.SourcePath, ResolveLeadSourcePathFromReferrer());
+
+        if (string.IsNullOrWhiteSpace(req.Environment))
+        {
+            req.Environment = _config["ASPNETCORE_ENVIRONMENT"]
+                ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                ?? "Production";
+        }
+    }
+
+    private async Task<(bool Succeeded, string? Error)> EnsureLeadAttributionAsync(LeadSubmitRequest req, CancellationToken ct)
+    {
+        // The browser POST goes to /api/lead/submit, so scoped route middleware no longer
+        // has /a/{slug}. Recover that scope from the same-origin referrer/source path and
+        // validate it against the existing tracking-profile authority before forwarding.
+        var sourceSlug = ExtractAgentSlug(req.SourcePath);
+        if (!string.IsNullOrWhiteSpace(sourceSlug))
+        {
+            var bySourcePath = await _resolver.ResolveBySlugAsync(sourceSlug, ct);
+            if (!bySourcePath.Found || bySourcePath.Profile == null)
+            {
+                return (false, "invalid_agent_scope");
+            }
+
+            req.AgentTrackingProfileId = bySourcePath.Profile.Id;
+            req.AgentSlug = bySourcePath.CanonicalSlug ?? bySourcePath.Profile.Slug;
+            return (true, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(req.AgentSlug))
+        {
+            var bySlug = await _resolver.ResolveBySlugAsync(req.AgentSlug.Trim(), ct);
+            if (!bySlug.Found || bySlug.Profile == null)
+            {
+                return (false, "invalid_agent_slug");
+            }
+
+            req.AgentTrackingProfileId = bySlug.Profile.Id;
+            req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
+            return (true, null);
+        }
+
+        if (req.AgentTrackingProfileId.HasValue)
+        {
+            var byId = await _resolver.ResolveByIdAsync(req.AgentTrackingProfileId.Value, ct);
+            if (!byId.Found || byId.Profile == null)
+            {
+                return (false, "invalid_agent_profile");
+            }
+
+            req.AgentTrackingProfileId = byId.Profile.Id;
+            req.AgentSlug = byId.CanonicalSlug ?? byId.Profile.Slug;
+            return (true, null);
+        }
+
+        // Root-domain Home belongs to Founder. Preserve the existing founder fallback,
+        // but resolve it here so the central lead endpoint receives explicit attribution.
+        var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
+        if (founder.Found && founder.Profile != null)
+        {
+            req.AgentTrackingProfileId = founder.Profile.Id;
+            req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
+        }
+
+        return (true, null);
+    }
+
+    private string? ResolveLeadSourcePathFromReferrer()
+    {
+        var raw = Request.Headers.Referer.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+        {
+            return uri.AbsolutePath;
+        }
+
+        return raw.Trim();
+    }
+
+    private static string? ExtractAgentSlug(string? sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath)) return null;
+
+        var path = sourcePath.Trim();
+        if (Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+        {
+            path = absolute.AbsolutePath;
+        }
+
+        path = path.Split('?', '#')[0];
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 2 || !string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Uri.UnescapeDataString(segments[1]);
     }
 
     private void EnsureClientContextFallback(AnalyticsEventRequest req)
@@ -531,6 +650,7 @@ public sealed class TrackingProxyController : ControllerBase
         public string? Notes { get; set; }
         public string? SourcePageKey { get; set; }
         public string? SourceCtaKey { get; set; }
+        public string? SourcePath { get; set; }
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }

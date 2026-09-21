@@ -240,6 +240,12 @@
       TermsAccepted: !!getField('MarketingEmailConsent'),
       SourcePageKey: pageKey,
       SourceCtaKey: pendingCta,
+      SourcePath: window.location.pathname,
+      MetadataJson: JSON.stringify({
+        flow: 'lead_modal',
+        modalInstanceId,
+        sourcePath: window.location.pathname
+      }),
       SessionId: (ids.getSessionId && ids.getSessionId()) || null,
       VisitorId: (ids.getVisitorId && ids.getVisitorId()) || null,
       UtmSource: attribution.utmSource || query.get('utm_source'),
@@ -265,7 +271,19 @@
         },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Submit failed');
+
+      const responseBody = await res.json().catch(() => null);
+      if (!res.ok || responseBody?.emailSent !== true) {
+        const captured = responseBody?.captured === true;
+        const message = captured
+          ? 'Your inquiry was saved, but the agent notification did not complete. Please try Send again.'
+          : 'We could not send this right now. Please try again.';
+        const error = new Error(message);
+        error.captured = captured;
+        error.details = responseBody;
+        throw error;
+      }
+
       successEl.classList.add('show');
       tracking({
         EventType: 'lead_form_submit_success',
@@ -283,14 +301,19 @@
         }
       }, 1400);
     } catch (err) {
-      errorEl.textContent = 'We could not send this right now. Please try again.';
+      errorEl.textContent = err?.message || 'We could not send this right now. Please try again.';
       errorEl.classList.add('show');
       tracking({
         EventType: 'lead_form_submit_failure',
         PageKey: pageKey,
         ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form',
-        SubmitOutcome: 'error'
+        SubmitOutcome: 'error',
+        MetadataJson: JSON.stringify({
+          modalInstanceId,
+          captured: err?.captured === true,
+          error: err?.details?.error || null
+        })
       });
     } finally {
       submitBtn.disabled = false;
