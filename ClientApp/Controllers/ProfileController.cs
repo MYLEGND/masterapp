@@ -476,7 +476,7 @@ public class ProfileController : Controller
         await transaction.CommitAsync();
 
         model.DOB = profile.DOB;
-        model.Email = profile.Email;
+        model.Email = profile.Email ?? string.Empty;
         model.FirstName = profile.FirstName;
         model.LastName = profile.LastName;
         model.Phone = profile.Phone;
