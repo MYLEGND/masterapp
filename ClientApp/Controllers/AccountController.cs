@@ -135,6 +135,10 @@ public class AccountController : Controller
         }
 
         _identityAccessService.StoreChallengeContinuationCookie(Response, signInPreparation.ProtectedState, signInPreparation.ExpiresUtc.Value);
+
+        if (!string.IsNullOrWhiteSpace(signInPreparation.RedemptionUrl))
+            return Redirect(signInPreparation.RedemptionUrl);
+
         return await StartChallengeAsync(signInPreparation.ReturnUrl, signInPreparation.LoginHint);
     }
 

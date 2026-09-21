@@ -14,12 +14,16 @@ public sealed record ClientEntraIdentityResult(
     string ObjectId,
     string LoginEmail,
     bool Created,
-    bool ApplicationAssignmentCreated);
+    bool ApplicationAssignmentCreated,
+    string? RedemptionUrl = null,
+    bool RequiresRedemption = false);
 
 public sealed record ClientEntraIdentitySynchronizationResult(
     string ObjectId,
     string LoginEmail,
-    bool RedemptionReset);
+    bool RedemptionReset,
+    string? RedemptionUrl = null,
+    bool RequiresRedemption = false);
 
 public interface IClientEntraLifecycleService
 {
@@ -215,6 +219,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             cancellationToken);
 
         var created = false;
+        string? redemptionUrl = null;
 
         if (existing?.Id is null)
         {
@@ -237,6 +242,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                 cancellationToken: cancellationToken);
 
             existing = invited?.InvitedUser;
+            redemptionUrl = ValidateRedemptionUrl(invited?.InviteRedeemUrl);
             created = true;
         }
 
@@ -254,22 +260,45 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             normalizedEmail,
             cancellationToken);
 
+        var verifiedUser = await GetVerifiedExternalUserAsync(
+            objectId,
+            normalizedEmail,
+            cancellationToken);
+
         var assignmentCreated = await EnsureApplicationAssignmentAsync(
             objectId,
             cancellationToken);
 
+        var requiresRedemption = IsPendingAcceptance(verifiedUser);
+        if (requiresRedemption && string.IsNullOrWhiteSpace(redemptionUrl))
+        {
+            redemptionUrl = await CreateRedemptionInvitationAsync(
+                objectId,
+                normalizedEmail,
+                cancellationToken);
+        }
+
+        if (requiresRedemption && string.IsNullOrWhiteSpace(redemptionUrl))
+        {
+            throw new InvalidOperationException(
+                "Microsoft Entra requires guest redemption but did not return a redemption URL.");
+        }
+
         _logger.LogInformation(
-            "Client Entra identity ensured. ObjectId={ObjectId} Email={Email} Created={Created} AssignmentCreated={AssignmentCreated}",
+            "Client Entra identity ensured. ObjectId={ObjectId} Email={Email} Created={Created} AssignmentCreated={AssignmentCreated} RequiresRedemption={RequiresRedemption}",
             objectId,
             normalizedEmail,
             created,
-            assignmentCreated);
+            assignmentCreated,
+            requiresRedemption);
 
         return new ClientEntraIdentityResult(
             objectId,
             normalizedEmail,
             created,
-            assignmentCreated);
+            assignmentCreated,
+            redemptionUrl,
+            requiresRedemption);
     }
 
     public async Task<ClientEntraIdentitySynchronizationResult> SynchronizeClientIdentityAsync(
@@ -297,7 +326,9 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             return new ClientEntraIdentitySynchronizationResult(
                 ensured.ObjectId,
                 ensured.LoginEmail,
-                RedemptionReset: false);
+                RedemptionReset: false,
+                ensured.RedemptionUrl,
+                ensured.RequiresRedemption);
         }
 
         User? user;
@@ -308,7 +339,8 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                 {
                     request.QueryParameters.Select = new[]
                     {
-                        "id", "mail", "otherMails", "userPrincipalName", "userType"
+                        "id", "displayName", "mail", "otherMails", "userPrincipalName",
+                        "userType", "externalUserState"
                     };
                 },
                 cancellationToken: cancellationToken);
@@ -319,13 +351,19 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             return new ClientEntraIdentitySynchronizationResult(
                 ensured.ObjectId,
                 ensured.LoginEmail,
-                RedemptionReset: false);
+                RedemptionReset: false,
+                ensured.RedemptionUrl,
+                ensured.RequiresRedemption);
         }
 
         if (user?.Id is null)
             throw new InvalidOperationException("Microsoft Graph did not return the client identity.");
 
-        var currentMail = NormalizeEmail(user.Mail);
+        if (!IsGuestUser(user))
+            throw new InvalidOperationException("The client identity is not a Microsoft Entra external guest.");
+
+        var previousEmailMatches = UserMatchesEmail(user, email);
+
         await SynchronizeUserAsync(
             objectId,
             profile.FirstName,
@@ -333,20 +371,23 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             email,
             cancellationToken);
 
-        var redemptionReset = IsGuestUser(user) &&
-                             !string.Equals(currentMail, email, StringComparison.Ordinal);
-        if (redemptionReset)
+        var verifiedUser = await GetVerifiedExternalUserAsync(
+            objectId,
+            email,
+            cancellationToken);
+
+        var requiresRedemption = IsPendingAcceptance(verifiedUser);
+        var redemptionReset = false;
+        string? redemptionUrl = null;
+
+        if (requiresRedemption || !previousEmailMatches)
         {
-            await _graph.Invitations.PostAsync(
-                new Invitation
-                {
-                    InvitedUserEmailAddress = email,
-                    InviteRedirectUrl = _inviteRedirectUrl,
-                    SendInvitationMessage = false,
-                    ResetRedemption = true,
-                    InvitedUser = new User { Id = objectId }
-                },
-                cancellationToken: cancellationToken);
+            redemptionUrl = await CreateRedemptionInvitationAsync(
+                objectId,
+                email,
+                cancellationToken);
+            redemptionReset = true;
+            requiresRedemption = true;
         }
 
         await EnsureApplicationAssignmentAsync(objectId, cancellationToken);
@@ -359,12 +400,18 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         }
 
         _logger.LogInformation(
-            "Client Entra identity synchronized. ObjectId={ObjectId} Email={Email} RedemptionReset={RedemptionReset}",
+            "Client Entra identity synchronized. ObjectId={ObjectId} Email={Email} RedemptionReset={RedemptionReset} RequiresRedemption={RequiresRedemption}",
             objectId,
             email,
-            redemptionReset);
+            redemptionReset,
+            requiresRedemption);
 
-        return new ClientEntraIdentitySynchronizationResult(objectId, email, redemptionReset);
+        return new ClientEntraIdentitySynchronizationResult(
+            objectId,
+            email,
+            redemptionReset,
+            redemptionUrl,
+            requiresRedemption);
     }
 
     public async Task DeleteClientIdentityAsync(
@@ -489,7 +536,8 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                     "mail",
                     "otherMails",
                     "userPrincipalName",
-                    "userType"
+                    "userType",
+                    "externalUserState"
                 };
                 request.QueryParameters.Top = 1;
                 request.Headers.Add("ConsistencyLevel", "eventual");
@@ -621,6 +669,113 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
         return servicePrincipals?.Value?.FirstOrDefault()?.Id;
     }
+
+    private async Task<User> GetVerifiedExternalUserAsync(
+        string objectId,
+        string expectedEmail,
+        CancellationToken cancellationToken)
+    {
+        var user = await _graph.Users[objectId].GetAsync(
+            request =>
+            {
+                request.QueryParameters.Select = new[]
+                {
+                    "id", "displayName", "mail", "otherMails", "userPrincipalName",
+                    "userType", "externalUserState"
+                };
+            },
+            cancellationToken: cancellationToken);
+
+        if (user?.Id is null ||
+            !string.Equals(NormalizeToken(user.Id), NormalizeToken(objectId), StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Microsoft Graph did not return the expected client identity.");
+        }
+
+        if (!IsGuestUser(user))
+        {
+            throw new InvalidOperationException(
+                "The client identity is not a Microsoft Entra external guest.");
+        }
+
+        if (!UserMatchesEmail(user, expectedEmail))
+        {
+            throw new InvalidOperationException(
+                "The Microsoft Entra guest email does not match the client profile email.");
+        }
+
+        var state = NormalizeToken(user.ExternalUserState);
+        if (!string.Equals(state, "pendingacceptance", StringComparison.Ordinal) &&
+            !string.Equals(state, "accepted", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The Microsoft Entra guest is not in a valid invitation state.");
+        }
+
+        return user;
+    }
+
+    private async Task<string> CreateRedemptionInvitationAsync(
+        string objectId,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var invitation = await _graph.Invitations.PostAsync(
+            new Invitation
+            {
+                InvitedUserEmailAddress = email,
+                InviteRedirectUrl = _inviteRedirectUrl,
+                SendInvitationMessage = false,
+                ResetRedemption = true,
+                InvitedUser = new User { Id = objectId }
+            },
+            cancellationToken: cancellationToken);
+
+        var invitedObjectId = NormalizeToken(invitation?.InvitedUser?.Id);
+        if (!string.IsNullOrWhiteSpace(invitedObjectId) &&
+            !string.Equals(invitedObjectId, NormalizeToken(objectId), StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Microsoft Entra returned a different guest while resetting redemption.");
+        }
+
+        return ValidateRedemptionUrl(invitation?.InviteRedeemUrl)
+            ?? throw new InvalidOperationException(
+                "Microsoft Entra did not return a guest redemption URL.");
+    }
+
+    private static string? ValidateRedemptionUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(uri.Host, "login.microsoftonline.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return uri.AbsoluteUri;
+    }
+
+    private static bool UserMatchesEmail(User user, string email)
+    {
+        var normalizedEmail = NormalizeEmail(email);
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+            return false;
+
+        if (string.Equals(NormalizeEmail(user.Mail), normalizedEmail, StringComparison.Ordinal))
+            return true;
+
+        return user.OtherMails?.Any(candidate =>
+            string.Equals(NormalizeEmail(candidate), normalizedEmail, StringComparison.Ordinal)) == true;
+    }
+
+    private static bool IsPendingAcceptance(User user) =>
+        string.Equals(
+            NormalizeToken(user.ExternalUserState),
+            "pendingacceptance",
+            StringComparison.Ordinal);
 
     private static bool IsGuestUser(User user)
     {

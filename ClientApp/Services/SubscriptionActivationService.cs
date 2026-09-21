@@ -32,7 +32,8 @@ public sealed record SubscriptionActivationExecutionResult(
     string? SanitizedMessage,
     SubscriptionActivationContextResult Context,
     string? ProtectedContinuationState = null,
-    DateTime? ContinuationExpiresUtc = null);
+    DateTime? ContinuationExpiresUtc = null,
+    string? IdentityRedemptionUrl = null);
 
 public sealed class SubscriptionActivationService
 {
@@ -181,7 +182,7 @@ public sealed class SubscriptionActivationService
 
         try
         {
-            await _entraLifecycle.EnsureClientIdentityAsync(
+            var identity = await _entraLifecycle.EnsureClientIdentityAsync(
                 context.Client.Id,
                 cancellationToken);
             await _households.EnsurePrimaryHouseholdActiveAsync(
@@ -204,7 +205,8 @@ public sealed class SubscriptionActivationService
                 "Subscription activated successfully.",
                 completedContext,
                 continuation.ProtectedState,
-                continuation.ExpiresUtc);
+                continuation.ExpiresUtc,
+                identity.RequiresRedemption ? identity.RedemptionUrl : null);
         }
         catch (Exception)
         {

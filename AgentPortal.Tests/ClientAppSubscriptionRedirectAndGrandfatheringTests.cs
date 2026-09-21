@@ -13,6 +13,7 @@ using Domain.Entities;
 using Infrastructure.Billing;
 using Infrastructure.Billing.Square;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -416,7 +417,7 @@ public sealed class ClientAppSubscriptionRedirectTests
             db,
             Mock.Of<IBillingEntitlementService>(),
             continuation,
-            normalizer);
+            normalizer, Mock.Of<IClientEntraLifecycleService>());
 
         var controller = new ClientAccountController(identityAccess, normalizer)
         {

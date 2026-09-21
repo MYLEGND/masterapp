@@ -76,7 +76,7 @@ public class ClientAppSubscriptionActivationTests
         var profile = await AddProfileAsync(db, "client@example.com");
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
             profile.Id,
@@ -102,7 +102,7 @@ public class ClientAppSubscriptionActivationTests
         await AddProfileAsync(db, "client@example.com");
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
         var controller = BuildAccountController(identityAccessService, new DefaultHttpContext());
 
         var result = await controller.LoginSubmit(new ClientLoginViewModel
@@ -123,7 +123,7 @@ public class ClientAppSubscriptionActivationTests
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
         var controller = BuildAccountController(identityAccessService, new DefaultHttpContext());
 
         var result = await controller.AzureLogin("/profile");
@@ -141,7 +141,7 @@ public class ClientAppSubscriptionActivationTests
         var profile = await AddProfileAsync(db, "client@example.com");
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.NotGranted);
-        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
             profile.Id,
@@ -166,7 +166,7 @@ public class ClientAppSubscriptionActivationTests
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
         var controller = BuildAccountController(identityAccessService, new DefaultHttpContext());
 
         var result = await controller.Login("/Account/LoggedOut");
@@ -184,7 +184,7 @@ public class ClientAppSubscriptionActivationTests
 
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.NotGranted);
-        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
         var httpContext = new DefaultHttpContext
         {
             User = BuildPrincipal("client-oid", "client@example.com")
@@ -199,6 +199,81 @@ public class ClientAppSubscriptionActivationTests
         Assert.Contains("subscription", model.Message ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("Client")]
+    [InlineData("BusinessClient")]
+    public async Task PrepareClientSignIn_PendingGuest_UsesMicrosoftRedemptionBeforeOidc(string recordType)
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        profile.CrmStatus = "Active";
+        profile.CrmNotes = $"{{\"recordType\":\"{recordType}\",\"pipelineStage\":\"{recordType}\"}}";
+        await db.SaveChangesAsync();
+
+        const string redeemUrl = "https://login.microsoftonline.com/redeem?rd=legend-test";
+        var lifecycle = new Mock<IClientEntraLifecycleService>();
+        lifecycle
+            .Setup(x => x.SynchronizeClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientEntraIdentitySynchronizationResult(
+                "client-guest-oid",
+                "client@example.com",
+                true,
+                redeemUrl,
+                true));
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer(),
+            lifecycle.Object);
+
+        var result = await service.PrepareClientSignInAsync("client@example.com", "/profile");
+
+        Assert.True(result.Success);
+        Assert.Equal(redeemUrl, result.RedemptionUrl);
+        Assert.False(string.IsNullOrWhiteSpace(result.ProtectedState));
+    }
+
+    [Fact]
+    public async Task AccountController_LoginSubmit_PendingGuest_RedirectsToMicrosoftRedemption()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        const string redeemUrl = "https://login.microsoftonline.com/redeem?rd=legend-test";
+
+        var lifecycle = new Mock<IClientEntraLifecycleService>();
+        lifecycle
+            .Setup(x => x.SynchronizeClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientEntraIdentitySynchronizationResult(
+                "client-guest-oid",
+                "client@example.com",
+                true,
+                redeemUrl,
+                true));
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var identityAccessService = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer(),
+            lifecycle.Object);
+        var controller = BuildAccountController(identityAccessService, new DefaultHttpContext());
+
+        var result = await controller.LoginSubmit(new ClientLoginViewModel
+        {
+            Email = "client@example.com",
+            ReturnUrl = "/profile"
+        });
+
+        var redirect = Assert.IsType<RedirectResult>(result);
+        Assert.Equal(redeemUrl, redirect.Url);
+    }
+
     [Fact]
     public async Task PrepareClientSignIn_InactiveEntitlement_BlocksChallenge()
     {
@@ -207,7 +282,7 @@ public class ClientAppSubscriptionActivationTests
 
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.NotGranted);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.PrepareClientSignInAsync("client@example.com", "/profile");
 
@@ -224,7 +299,7 @@ public class ClientAppSubscriptionActivationTests
 
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.PrepareClientSignInAsync("client@example.com", "/profile");
 
@@ -241,7 +316,7 @@ public class ClientAppSubscriptionActivationTests
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -272,7 +347,7 @@ public class ClientAppSubscriptionActivationTests
             db,
             entitlementService.Object,
             continuationService,
-            new ClientAppReturnUrlNormalizer());
+            new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var principal = BuildPrincipalWithEmailClaims(
             "client-oid-recovered",
@@ -305,7 +380,7 @@ public class ClientAppSubscriptionActivationTests
             db,
             entitlementService.Object,
             continuationService,
-            new ClientAppReturnUrlNormalizer());
+            new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -329,7 +404,7 @@ public class ClientAppSubscriptionActivationTests
             db,
             entitlementService.Object,
             continuationService,
-            new ClientAppReturnUrlNormalizer());
+            new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -358,7 +433,7 @@ public class ClientAppSubscriptionActivationTests
             db,
             entitlementService.Object,
             continuationService,
-            new ClientAppReturnUrlNormalizer());
+            new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var principal = BuildPrincipalWithEmailClaims(
             "client-b2b-oid",
@@ -390,7 +465,7 @@ public class ClientAppSubscriptionActivationTests
             db,
             entitlementService.Object,
             continuationService,
-            new ClientAppReturnUrlNormalizer());
+            new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -412,7 +487,7 @@ public class ClientAppSubscriptionActivationTests
         await AddProfileAsync(db, "client@example.com", "client-oid");
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -437,7 +512,7 @@ public class ClientAppSubscriptionActivationTests
         await db.SaveChangesAsync();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -462,7 +537,7 @@ public class ClientAppSubscriptionActivationTests
         await db.SaveChangesAsync();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var result = await service.CompleteClientSignInAsync(
             new DefaultHttpContext(),
@@ -482,7 +557,7 @@ public class ClientAppSubscriptionActivationTests
 
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
             targetProfile.Id,
@@ -512,7 +587,7 @@ public class ClientAppSubscriptionActivationTests
 
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
             profile.Id,
@@ -544,7 +619,7 @@ public class ClientAppSubscriptionActivationTests
         var profile = await AddProfileAsync(db, "client@example.com");
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
-        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer(), BuildIdentityLifecycle());
 
         var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
             profile.Id,
@@ -895,7 +970,8 @@ public class ClientAppSubscriptionActivationTests
         var controller = new SubscriptionActivationController(
             service,
             continuation,
-            new ClientAppReturnUrlNormalizer())
+            new ClientAppReturnUrlNormalizer(),
+            entra.Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -950,7 +1026,8 @@ public class ClientAppSubscriptionActivationTests
         var controller = new SubscriptionActivationController(
             service,
             continuation,
-            new ClientAppReturnUrlNormalizer())
+            new ClientAppReturnUrlNormalizer(),
+            BuildIdentityLifecycle())
         {
             ControllerContext = new ControllerContext
             {
@@ -1036,6 +1113,29 @@ public class ClientAppSubscriptionActivationTests
 
     private static MasterAppDbContext BuildDb() => ControllerTestHelpers.BuildDb();
 
+    private static IClientEntraLifecycleService BuildIdentityLifecycle()
+    {
+        var lifecycle = new Mock<IClientEntraLifecycleService>();
+        lifecycle
+            .Setup(x => x.EnsureClientIdentityAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientEntraIdentityResult(
+                "client-entra-id",
+                "client@example.com",
+                false,
+                false));
+        lifecycle
+            .Setup(x => x.SynchronizeClientIdentityAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientEntraIdentitySynchronizationResult(
+                "client-entra-id",
+                "client@example.com",
+                false));
+        return lifecycle.Object;
+    }
+
     private static ClientIdentityContinuationService BuildContinuationService(MasterAppDbContext db)
     {
         var keyPath = Path.Combine(Path.GetTempPath(), "clientapp-tests", Guid.NewGuid().ToString("N"));
@@ -1119,7 +1219,7 @@ public class ClientAppSubscriptionActivationTests
             },
             BuildContinuationService(db),
             new ClientAppReturnUrlNormalizer(),
-            entraLifecycle ?? Mock.Of<IClientEntraLifecycleService>(),
+            entraLifecycle ?? BuildIdentityLifecycle(),
             households ?? BuildHouseholdMembershipService());
     }
 

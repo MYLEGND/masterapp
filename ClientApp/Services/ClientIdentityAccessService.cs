@@ -14,7 +14,8 @@ public sealed record ClientSignInPreparationResult(
     string ReturnUrl,
     string? ProtectedState = null,
     DateTime? ExpiresUtc = null,
-    string? LoginHint = null);
+    string? LoginHint = null,
+    string? RedemptionUrl = null);
 
 public sealed record ClientSignInCompletionResult(
     bool Success,
@@ -29,17 +30,20 @@ public sealed class ClientIdentityAccessService
     private readonly IBillingEntitlementService _entitlementService;
     private readonly ClientIdentityContinuationService _continuationService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
+    private readonly global::Infrastructure.Identity.IClientEntraLifecycleService _entraLifecycle;
 
     public ClientIdentityAccessService(
         MasterAppDbContext db,
         IBillingEntitlementService entitlementService,
         ClientIdentityContinuationService continuationService,
-        ClientAppReturnUrlNormalizer returnUrlNormalizer)
+        ClientAppReturnUrlNormalizer returnUrlNormalizer,
+        global::Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle)
     {
         _db = db;
         _entitlementService = entitlementService;
         _continuationService = continuationService;
         _returnUrlNormalizer = returnUrlNormalizer;
+        _entraLifecycle = entraLifecycle;
     }
 
     public static bool IsSupportReturnUrl(string? returnUrl)
@@ -137,6 +141,41 @@ public sealed class ClientIdentityAccessService
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_ACTIVE", "This client account is not active for sign-in yet. Use the activation link or contact your agent for help.", safeReturnUrl);
         }
 
+        global::Infrastructure.Identity.ClientEntraIdentitySynchronizationResult identity;
+        try
+        {
+            identity = await _entraLifecycle.SynchronizeClientIdentityAsync(
+                profile.Id,
+                cancellationToken);
+        }
+        catch
+        {
+            return new ClientSignInPreparationResult(
+                false,
+                "CLIENT_IDENTITY_SETUP_PENDING",
+                "Your membership is active, but Microsoft sign-in setup is still completing. Try again shortly or contact your LEGEND guide if access remains unavailable.",
+                safeReturnUrl);
+        }
+
+        if (string.IsNullOrWhiteSpace(identity.ObjectId) ||
+            !string.Equals(NormalizeEmail(identity.LoginEmail), normalizedEmail, StringComparison.Ordinal))
+        {
+            return new ClientSignInPreparationResult(
+                false,
+                "CLIENT_IDENTITY_MISMATCH",
+                "The Microsoft sign-in identity does not match this client account.",
+                safeReturnUrl);
+        }
+
+        if (identity.RequiresRedemption && string.IsNullOrWhiteSpace(identity.RedemptionUrl))
+        {
+            return new ClientSignInPreparationResult(
+                false,
+                "CLIENT_IDENTITY_SETUP_PENDING",
+                "Your membership is active, but Microsoft sign-in setup is still completing. Try again shortly or contact your LEGEND guide if access remains unavailable.",
+                safeReturnUrl);
+        }
+
         var protectedState = await _continuationService.CreateProtectedStateAsync(
             profile.Id,
             normalizedEmail,
@@ -151,7 +190,8 @@ public sealed class ClientIdentityAccessService
             safeReturnUrl,
             protectedState.ProtectedState,
             protectedState.ExpiresUtc,
-            normalizedEmail);
+            normalizedEmail,
+            identity.RequiresRedemption ? identity.RedemptionUrl : null);
     }
 
     public async Task<ClientSignInCompletionResult> ValidateAuthenticatedClientSessionAsync(
