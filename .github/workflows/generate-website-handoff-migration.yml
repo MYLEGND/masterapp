@@ -8,7 +8,7 @@ on:
       - .github/workflows/generate-website-handoff-migration.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
@@ -43,6 +43,13 @@ jobs:
           cp "$designer" /tmp/generated-migration/migration.Designer.cs
           cp Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs /tmp/generated-migration/MasterAppDbContextModelSnapshot.cs
           printf '%s\n' "$generated" > /tmp/generated-migration/original-path.txt
+          git rm -f Infrastructure/Migrations/20260921173000_ExtendClientContinuationForWebsiteEditor.cs
+          git rm -f .github/workflows/generate-website-handoff-migration.yml
+          git add "$generated" "$designer" Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs
+          git config user.name "LEGEND release automation"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "Use generated EF metadata for website handoff"
+          git push origin HEAD:legend/approved-changes
       - uses: actions/upload-artifact@v4
         with:
           name: website-handoff-generated-migration-${{ github.sha }}
