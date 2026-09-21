@@ -11,10 +11,6 @@ namespace ProtectWebsite.Controllers;
 [Route("api/website-content")]
 public sealed class WebsiteContentController : ControllerBase
 {
-    private const int MaxElements = 600;
-    private const int MaxExtras = 120;
-    private const int MaxTextLength = 12000;
-    private const int MaxImageDataUrlLength = 3_500_000;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly MasterAppDbContext _db;
@@ -68,9 +64,16 @@ public sealed class WebsiteContentController : ControllerBase
                 : Ok(new { siteKey, document = new WebsiteContentDocument() });
 
         var document = await LoadAsync(ownerKey, siteKey, cancellationToken);
+        if (document is null)
+        {
+            if (siteKey == WebsiteEditorSiteKeys.Business)
+                return NotFound(new { error = "website_not_published" });
+            document = new WebsiteContentDocument();
+        }
         return Ok(new
         {
             siteKey,
+            business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
             businessName = business?.DisplayName,
             document
         });
@@ -78,95 +81,341 @@ public sealed class WebsiteContentController : ControllerBase
 
     [HttpGet("manage")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    public async Task<IActionResult> Manage(
-        [FromQuery] string ticket,
-        CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Manage([FromQuery] string ticket, CancellationToken cancellationToken = default)
     {
-        var resolved = _tickets.TryUnprotect(ticket);
-        if (resolved is null) return Unauthorized();
-
-        var document = await LoadAsync(resolved.OwnerUserId, resolved.SiteKey, cancellationToken);
-        return Ok(new
-        {
-            siteKey = resolved.SiteKey,
-            ownerUserId = resolved.OwnerUserId,
-            agentSlug = resolved.AgentSlug,
-            isFounder = resolved.IsFounder,
-            commerceBusinessId = resolved.CommerceBusinessId,
-            document
-        });
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var history = await _db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => v.StateId == state.Id)
+            .OrderByDescending(v => v.Revision).Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
+        var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
+        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, commerceBusinessId = actor.CommerceBusinessId, document = Read(state.DraftJson),
+            revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
+            facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken),
+            usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
+            importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
+            history, capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken) },
+            schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
+            readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
 
-    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document);
+    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null);
+    public sealed record PublishRequest(string Ticket, long ExpectedRevision);
+    public sealed record RollbackRequest(string Ticket, long ExpectedRevision, Guid VersionId);
 
     [HttpPost("manage")]
     [RequestSizeLimit(4_500_000)]
-    public async Task<IActionResult> Save(
-        [FromBody] SaveRequest request,
-        CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Save([FromBody] SaveRequest request, CancellationToken cancellationToken = default)
     {
-        if (request is null || request.Document is null) return BadRequest();
-        var resolved = _tickets.TryUnprotect(request.Ticket);
-        if (resolved is null) return Unauthorized();
-
-        var sanitized = Sanitize(request.Document);
-        sanitized.UpdatedUtc = DateTime.UtcNow;
-        var toolId = ToolId(resolved.SiteKey);
-        var ownerKey = NormalizeOwner(resolved.OwnerUserId);
-        if (ownerKey.Length == 0) return BadRequest();
-
-        var row = await _db.AgentFinanceToolStates
-            .SingleOrDefaultAsync(
-                x => x.AgentUserId == ownerKey && x.ToolId == toolId,
-                cancellationToken);
-
-        var json = JsonSerializer.Serialize(sanitized, JsonOptions);
-        if (row is null)
-        {
-            row = new AgentFinanceToolState
-            {
-                AgentUserId = ownerKey,
-                ToolId = toolId,
-                JsonState = json,
-                CreatedUtc = DateTime.UtcNow,
-                UpdatedUtc = DateTime.UtcNow
-            };
-            _db.AgentFinanceToolStates.Add(row);
-        }
-        else
-        {
-            row.JsonState = json;
-            row.UpdatedUtc = DateTime.UtcNow;
-        }
-
-        await _db.SaveChangesAsync(cancellationToken);
-        return Ok(new { success = true, document = sanitized, savedUtc = row.UpdatedUtc });
+        if (request?.Document is null) return BadRequest();
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict", revision = state.Revision });
+        var document = WebsiteContentSanitizer.Sanitize(request.Document);
+        document.UpdatedUtc = DateTime.UtcNow;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc });
     }
 
-    private async Task<WebsiteContentDocument> LoadAsync(
-        string ownerUserId,
-        string siteKey,
-        CancellationToken cancellationToken)
+    [HttpPost("manage/publish")]
+    public async Task<IActionResult> Publish([FromBody] PublishRequest request, CancellationToken cancellationToken = default)
     {
-        var ownerKey = NormalizeOwner(ownerUserId);
-        var toolId = ToolId(siteKey);
-        var json = await _db.AgentFinanceToolStates
-            .AsNoTracking()
-            .Where(x => x.AgentUserId == ownerKey && x.ToolId == toolId)
-            .Select(x => x.JsonState)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(json)) return new WebsiteContentDocument();
-
-        try
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var state = await StateAsync(actor, cancellationToken);
+        if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict" });
+        var version = new WebsiteContentVersion { StateId = state.Id, Revision = state.Revision + 1,
+            DocumentJson = state.DraftJson, ImportReportJson = state.ImportReportJson, ActorUserId = actor.ActorUserId! };
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business)
         {
-            return Sanitize(JsonSerializer.Deserialize<WebsiteContentDocument>(json, JsonOptions)
-                ?? new WebsiteContentDocument());
+            var business = await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken);
+            var compiler = HttpContext.RequestServices.GetRequiredService<ProtectWebsite.Services.WebsitePageCompiler>();
+            version.CompiledPagesJson = await compiler.CompileAsync(Read(state.DraftJson), business, await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken), cancellationToken);
         }
-        catch (JsonException)
+        _db.Set<WebsiteContentVersion>().Add(version);
+        state.PublishedVersionId = version.Id;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { revision = state.Revision, publishedRevision = version.Revision, versionId = version.Id });
+    }
+
+    [HttpPost("manage/rollback")]
+    public async Task<IActionResult> Rollback([FromBody] RollbackRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+        var previous = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(v => v.Id == request.VersionId && v.StateId == state.Id, cancellationToken);
+        if (previous is null) return NotFound();
+        var restored = new WebsiteContentVersion { StateId = state.Id, Revision = state.Revision + 1,
+            DocumentJson = previous.DocumentJson, CompiledPagesJson = previous.CompiledPagesJson, ImportReportJson = previous.ImportReportJson, ActorUserId = actor.ActorUserId! };
+        _db.Set<WebsiteContentVersion>().Add(restored);
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.PublishedVersionId = restored.Id;
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { revision = state.Revision, publishedRevision = restored.Revision, document = Read(state.DraftJson) });
+    }
+
+    [HttpGet("manage/export")]
+    public async Task<IActionResult> Export([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        var package = await HttpContext.RequestServices.GetRequiredService<WebsiteImportService>().PreparePortableExportAsync(actor.OwnerUserId, Read(state.DraftJson), cancellationToken);
+        return File(package, "application/zip", "website-export.zip");
+    }
+
+    public sealed record ImportRequest(string Ticket, long ExpectedRevision, string? SourceUrl, bool Authorized, WebsiteContentDocument? Document = null);
+    public sealed record DomainRequest(string Ticket, string Hostname);
+    public sealed record DomainActionRequest(string Ticket, Guid BindingId);
+
+    [HttpPost("manage/import")]
+    [RequestSizeLimit(4_500_000)]
+    public async Task<IActionResult> Import([FromBody] ImportRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        if (!request.Authorized) return BadRequest(new { error = "import_authorization_required" });
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+        var importer = HttpContext.RequestServices.GetRequiredService<WebsiteImportService>();
+        WebsiteImportResult result;
+        if (request.Document is not null)
         {
-            return new WebsiteContentDocument();
+            using var input = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(request.Document, JsonOptions));
+            result = await importer.PrepareExportAsync(input, false, Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
         }
+        else result = await importer.PrepareAsync(request.SourceUrl ?? "", Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ImportReportJson = JsonSerializer.Serialize(result.Report, JsonOptions);
+        state.DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(result.Document), JsonOptions);
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
+    }
+
+    [HttpGet("manage/domains")]
+    public async Task<IActionResult> Domains([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        var domains = await _db.Set<WebsiteDomainBinding>().AsNoTracking().Where(d => d.CommerceBusinessId == actor.CommerceBusinessId).ToListAsync(cancellationToken);
+        return Ok(new { domains, cnameTarget = DomainService().CnameTarget });
+    }
+
+    [HttpPost("manage/domains")]
+    public async Task<IActionResult> AddDomain([FromBody] DomainRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        return Ok(await DomainService().RegisterAsync(actor.CommerceBusinessId!.Value, request.Hostname, cancellationToken));
+    }
+
+    [HttpPost("manage/domains/refresh")]
+    public async Task<IActionResult> RefreshDomain([FromBody] DomainActionRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        return Ok(await DomainService().RefreshAsync(actor.CommerceBusinessId!.Value, request.BindingId, cancellationToken));
+    }
+
+    [HttpPost("manage/domains/remove")]
+    public async Task<IActionResult> RemoveDomain([FromBody] DomainActionRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        await DomainService().RemoveAsync(actor.CommerceBusinessId!.Value, request.BindingId, cancellationToken);
+        return Ok(new { success = true });
+    }
+
+    [HttpGet("public/resolve")]
+    public async Task<IActionResult> ResolveDomain([FromQuery] string host, CancellationToken cancellationToken = default)
+    {
+        var domain = await DomainService().ResolveAsync(host, cancellationToken);
+        return domain is null ? NotFound() : await Public(WebsiteEditorSiteKeys.Business, businessId: domain.Value, cancellationToken: cancellationToken);
+    }
+
+    [HttpGet("media/{id:guid}")]
+    public async Task<IActionResult> Media(Guid id, [FromQuery] string? ticket = null, CancellationToken cancellationToken = default)
+    {
+        var asset = await _db.Set<WebsiteMediaAsset>().AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (asset is null) return NotFound();
+        var actor = string.IsNullOrWhiteSpace(ticket) ? null : await AuthorizeAsync(ticket, cancellationToken);
+        if (actor?.OwnerUserId != asset.OwnerKey)
+        {
+            var versions = await (from state in _db.Set<WebsiteContentState>().AsNoTracking()
+                                  join version in _db.Set<WebsiteContentVersion>().AsNoTracking() on state.PublishedVersionId equals version.Id
+                                  where state.OwnerKey == asset.OwnerKey select version.DocumentJson).ToListAsync(cancellationToken);
+            if (!versions.Any(json => json.Contains("/api/website-content/media/" + id, StringComparison.OrdinalIgnoreCase))) return NotFound();
+        }
+        var media = await HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>().OpenAsync(asset.OwnerKey, id, cancellationToken);
+        return media is null ? NotFound() : File(media.Value.Content, media.Value.Asset.ContentType, enableRangeProcessing: true);
+    }
+
+    public sealed record BusinessDetailsRequest(string Ticket, long ExpectedRevision, WebsiteBusinessFacts Details);
+    [HttpGet("manage/business-details")]
+    public async Task<IActionResult> BusinessDetails([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        return Ok(new { details = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId!.Value, cancellationToken), revision = state.Revision });
+    }
+    [HttpPost("manage/business-details")]
+    public async Task<IActionResult> SaveBusinessDetails([FromBody] BusinessDetailsRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+        var settings = await _db.CommerceBusinessStorefrontSettings.SingleOrDefaultAsync(s => s.CommerceBusinessId == actor.CommerceBusinessId, cancellationToken);
+        if (settings is null) { settings = new CommerceBusinessStorefrontSettings { CommerceBusinessId = actor.CommerceBusinessId!.Value }; _db.Add(settings); }
+        var details = WebsiteBusinessFacts.Sanitize(request.Details);
+        settings.PublicFactsJson = JsonSerializer.Serialize(details, JsonOptions);
+        settings.UpdatedUtc = DateTime.UtcNow;
+        state.Revision++;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { details, revision = state.Revision });
+    }
+    [HttpPost("manage/media")]
+    [RequestSizeLimit(26_000_000)]
+    public async Task<IActionResult> UploadMedia([FromForm] string ticket, [FromForm] IFormFile file, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (file is null || file.Length <= 0 || file.Length > 25_000_000) return BadRequest();
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer, cancellationToken);
+        var media = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
+        var asset = await media.StoreAsync(actor.OwnerUserId, "", file.FileName, buffer.ToArray(), cancellationToken);
+        return Ok(new { url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id, sizeBytes = asset.SizeBytes });
+    }
+    [HttpPost("manage/import-file")]
+    [RequestSizeLimit(52_000_000)]
+    public async Task<IActionResult> ImportFile([FromForm] string ticket, [FromForm] long expectedRevision, [FromForm] bool authorized, [FromForm] IFormFile file, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
+        if (!authorized || file is null || file.Length > 50_000_000) return BadRequest();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != expectedRevision) return Conflict(new { error = "revision_conflict" });
+        await using var input = file.OpenReadStream();
+        var result = await HttpContext.RequestServices.GetRequiredService<WebsiteImportService>().PrepareExportAsync(input, Path.GetExtension(file.FileName).Equals(".zip", StringComparison.OrdinalIgnoreCase), Read(state.DraftJson), true, actor.OwnerUserId, MediaBaseUrl(), cancellationToken);
+        state.ImportReportJson = JsonSerializer.Serialize(result.Report, JsonOptions);
+        state.DraftJson = JsonSerializer.Serialize(WebsiteContentSanitizer.Sanitize(result.Document), JsonOptions);
+        state.Revision++;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
+    }
+    private string MediaBaseUrl() => (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
+    private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
+
+    private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
+        actor.SiteKey != WebsiteEditorSiteKeys.Business || await _db.CommerceBusinessMembers.AnyAsync(m => m.CommerceBusinessId == actor.CommerceBusinessId && m.ClientProfileId == actor.ActorClientProfileId && m.Status == "Active" && m.CanManageStorefront && m.RoleKey == "owner", cancellationToken);
+
+    public sealed record ScheduleRequest(string Ticket, long ExpectedRevision, DateTime? PublishUtc);
+    [HttpPost("manage/schedule")]
+    public async Task<IActionResult> Schedule([FromBody] ScheduleRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        if (request.PublishUtc.HasValue && (request.PublishUtc.Value.Kind != DateTimeKind.Utc || request.PublishUtc <= DateTime.UtcNow)) return BadRequest(new { error = "future_utc_required" });
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+        state.Revision++;
+        state.ScheduledRevision = state.Revision;
+        state.ScheduledPublishUtc = request.PublishUtc;
+        state.ScheduledActorJson = request.PublishUtc.HasValue ? JsonSerializer.Serialize(actor, JsonOptions) : null;
+        state.ScheduleError = null;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { revision = state.Revision, schedule = new { publishUtc = state.ScheduledPublishUtc } });
+    }
+
+    [HttpGet("/.well-known/legend-website")]
+    public async Task<IActionResult> DomainProof(CancellationToken cancellationToken = default)
+    {
+        var host = Request.Host.Host.ToLowerInvariant();
+        var binding = await _db.Set<WebsiteDomainBinding>().AsNoTracking().SingleOrDefaultAsync(d => d.Hostname == host && d.Status != "removing", cancellationToken);
+        if (binding is null || !await _db.CommerceBusinesses.AnyAsync(b => b.Id == binding.CommerceBusinessId && b.IsActive && b.Status == "Active", cancellationToken)) return NotFound();
+        return Ok(new { businessId = binding.CommerceBusinessId, bindingId = binding.Id });
+    }
+
+    private Task<WebsiteEditorTicket?> AuthorizeAsync(string token, CancellationToken cancellationToken) =>
+        WebsiteTicketAuthorization.ResolveAsync(_db, _tickets, _configuration, token, cancellationToken);
+
+    private async Task<WebsiteContentState> StateAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken)
+    {
+        var state = await _db.Set<WebsiteContentState>().SingleOrDefaultAsync(s => s.OwnerKey == actor.OwnerUserId && s.SiteKey == actor.SiteKey, cancellationToken);
+        if (state is not null) return state;
+        // Legacy content remains the initial published snapshot, never a second write authority.
+        var legacy = await _db.AgentFinanceToolStates.AsNoTracking().SingleOrDefaultAsync(s => s.AgentUserId == actor.OwnerUserId && s.ToolId == ToolId(actor.SiteKey), cancellationToken);
+        state = new WebsiteContentState { OwnerKey = actor.OwnerUserId, SiteKey = actor.SiteKey, DraftJson = legacy?.JsonState ?? "{}" };
+        _db.Set<WebsiteContentState>().Add(state);
+        if (legacy is not null)
+        {
+            var version = new WebsiteContentVersion { StateId = state.Id, Revision = 0, DocumentJson = legacy.JsonState, ActorUserId = actor.ActorUserId! };
+            _db.Set<WebsiteContentVersion>().Add(version);
+            state.PublishedVersionId = version.Id;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        return state;
+    }
+
+    private static WebsiteContentDocument Read(string json) => WebsiteContentSanitizer.Sanitize(
+        JsonSerializer.Deserialize<WebsiteContentDocument>(json, JsonOptions) ?? new());
+
+    private async Task<WebsiteContentDocument?> LoadAsync(string ownerUserId, string siteKey, CancellationToken cancellationToken)
+    {
+        var state = await _db.Set<WebsiteContentState>().AsNoTracking().SingleOrDefaultAsync(s => s.OwnerKey == ownerUserId && s.SiteKey == siteKey, cancellationToken);
+        if (state is not null)
+        {
+            if (!state.PublishedVersionId.HasValue) return null;
+            var version = await _db.Set<WebsiteContentVersion>().AsNoTracking().SingleAsync(v => v.Id == state.PublishedVersionId && v.StateId == state.Id, cancellationToken);
+            return Read(version.DocumentJson);
+        }
+        var legacy = await _db.AgentFinanceToolStates.AsNoTracking().SingleOrDefaultAsync(s => s.AgentUserId == ownerUserId && s.ToolId == ToolId(siteKey), cancellationToken);
+        return legacy is null ? (siteKey == WebsiteEditorSiteKeys.Business ? null : new WebsiteContentDocument()) : Read(legacy.JsonState);
     }
 
     private async Task<string?> ResolveProtectOwnerKeyAsync(
@@ -230,130 +479,5 @@ public sealed class WebsiteContentController : ControllerBase
     private static string ToolId(string siteKey)
         => WebsiteEditorSiteKeys.ToolPrefix + siteKey;
 
-    private static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
-    {
-        var clean = new WebsiteContentDocument { Version = 1 };
 
-        foreach (var pair in source.Elements.Take(MaxElements))
-        {
-            var id = SanitizeId(pair.Key);
-            if (id.Length == 0 || pair.Value is null) continue;
-            clean.Elements[id] = SanitizeElement(pair.Value);
-        }
-
-        foreach (var pair in source.SectionOrder.Take(MaxElements))
-        {
-            var id = SanitizeId(pair.Key);
-            if (id.Length == 0) continue;
-            clean.SectionOrder[id] = Math.Clamp(pair.Value, 0, MaxElements);
-        }
-
-        foreach (var extra in source.Extras.Take(MaxExtras))
-        {
-            if (extra is null) continue;
-            var id = SanitizeId(extra.Id);
-            var sectionId = SanitizeId(extra.SectionId);
-            var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image")) continue;
-            clean.Extras.Add(new WebsiteExtraComponent
-            {
-                Id = id,
-                SectionId = sectionId,
-                Type = type,
-                Text = type == "text" ? ClampText(extra.Text) : null,
-                ImageDataUrl = type == "image" ? SanitizeImage(extra.ImageDataUrl) : null,
-                Style = SanitizeStyle(extra.Style)
-            });
-        }
-
-        clean.Theme = SanitizeTheme(source.Theme);
-        clean.UpdatedUtc = source.UpdatedUtc;
-        return clean;
-    }
-
-    private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source) => new()
-    {
-        Text = ClampText(source.Text),
-        ImageDataUrl = SanitizeImage(source.ImageDataUrl),
-        Hidden = source.Hidden,
-        Style = SanitizeStyle(source.Style)
-    };
-
-    private static WebsiteThemeOverride SanitizeTheme(WebsiteThemeOverride? source)
-    {
-        source ??= new WebsiteThemeOverride();
-        return new WebsiteThemeOverride
-        {
-            Navy = SanitizeHex(source.Navy),
-            NavyDeep = SanitizeHex(source.NavyDeep),
-            Gold = SanitizeHex(source.Gold),
-            GoldStrong = SanitizeHex(source.GoldStrong),
-            Surface = SanitizeHex(source.Surface)
-        };
-    }
-
-    private static string? SanitizeHex(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var candidate = value.Trim();
-        if (candidate.Length != 7 || candidate[0] != '#') return null;
-        for (var i = 1; i < candidate.Length; i++)
-        {
-            if (!Uri.IsHexDigit(candidate[i])) return null;
-        }
-        return candidate.ToLowerInvariant();
-    }
-
-    private static WebsiteStyleOverride SanitizeStyle(WebsiteStyleOverride? source)
-    {
-        source ??= new WebsiteStyleOverride();
-        var align = (source.TextAlign ?? string.Empty).Trim().ToLowerInvariant();
-        if (align is not ("left" or "center" or "right" or "start" or "end" or "justify")) align = string.Empty;
-        var objectPosition = (source.ObjectPosition ?? string.Empty).Trim().ToLowerInvariant();
-        if (objectPosition is not ("left" or "center" or "right" or "top" or "bottom"))
-            objectPosition = string.Empty;
-
-        return new WebsiteStyleOverride
-        {
-            TextAlign = align.Length == 0 ? null : align,
-            FontScale = source.FontScale > 0 ? source.FontScale : null,
-            WidthPercent = source.WidthPercent > 0 ? source.WidthPercent : null,
-            PaddingTop = source.PaddingTop >= 0 ? source.PaddingTop : null,
-            PaddingBottom = source.PaddingBottom >= 0 ? source.PaddingBottom : null,
-            ObjectPosition = objectPosition.Length == 0 ? null : objectPosition
-        };
-    }
-
-    private static string? ClampText(string? value)
-    {
-        if (value is null) return null;
-        var normalized = value.Replace("\0", string.Empty).Trim();
-        return normalized.Length <= MaxTextLength
-            ? normalized
-            : normalized[..MaxTextLength];
-    }
-
-    private static string? SanitizeImage(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var normalized = value.Trim();
-        if (normalized.Length > MaxImageDataUrlLength) return null;
-        if (normalized.StartsWith("data:image/jpeg;base64,", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("data:image/png;base64,", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("data:image/webp;base64,", StringComparison.OrdinalIgnoreCase))
-            return normalized;
-        if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri) &&
-            uri.Scheme == Uri.UriSchemeHttps)
-            return normalized;
-        return null;
-    }
-
-    private static string SanitizeId(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-        var chars = value.Trim().Take(160)
-            .Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' or ':')
-            .ToArray();
-        return new string(chars);
-    }
 }

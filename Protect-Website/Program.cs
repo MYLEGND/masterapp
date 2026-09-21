@@ -42,9 +42,17 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
+Infrastructure.Social.SocialServiceCollectionExtensions.AddMasterAppMediaStorage(builder.Services);
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
+builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
+builder.Services.AddSingleton<ProtectWebsite.Services.WebsitePageCompiler>();
+builder.Services.AddHostedService<ProtectWebsite.Services.WebsitePublishWorker>();
 var publicWebsiteOrigins = new[]
 {
-    "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com"
+    "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com",
+    "https://portal.mylegnd.com", "https://client.mylegnd.com"
 };
 builder.Services.AddRuntimeDiagnosticPublicWebsiteTransport(publicWebsiteOrigins);
 builder.Services.AddCors(options =>
@@ -54,6 +62,8 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .WithMethods("GET", "POST"));
 });
+
+builder.Services.AddScoped<Microsoft.AspNetCore.Cors.Infrastructure.ICorsPolicyProvider, Infrastructure.WebsiteEditing.WebsiteCorsPolicyProvider>();
 
 // DbContext for tracking resolution
 static bool IsSqlServerConn(string? cs) =>
@@ -211,6 +221,7 @@ app.UseHttpsRedirection();
 // Agent slug routing / context must run before routing so rewritten paths are routed correctly
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
+app.UseMiddleware<ProtectWebsite.Services.BusinessWebsiteMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),

@@ -1,0 +1,56 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parseHTML} from 'linkedom';
+import {compileBusiness} from './render-business.mjs';
+const business={id:'b72b8796-2b35-4eed-8d6d-7260976084ea',displayName:'Sample & Business',legalName:'Sample LLC'};
+const document=()=>({elements:{},sectionOrder:{},extras:[],theme:{},pages:{}});
+
+test('all normal business pages use canonical components, actual scoped name and public navigation without LEGEND facts',async()=>{
+  const result=await compileBusiness({business,document:document()});
+  assert.deepEqual(Object.keys(result.pages),['/','/about','/services','/contact']);
+  for(const page of Object.values(result.pages)){
+    const dom=parseHTML(page.html).document;
+    assert.equal(dom.querySelector('.brand strong').textContent,business.displayName);
+    assert.equal(dom.querySelector('meta[property="og:site_name"]').content,business.displayName);
+    assert.ok(!/Berthony|MyLegnd, LLC|Christ-centered|Faith Fuels|connect@mylegnd/.test(page.html));
+    assert.ok(!page.html.includes('legendEdit'));
+    assert.equal(dom.querySelector('meta[name="robots"]'),null);
+    assert.equal(dom.querySelector('link[rel="canonical"]').href,'__LEGEND_CANONICAL_URL__');
+    for(const link of dom.querySelectorAll('.nav a'))assert.match(link.getAttribute('href'),/^\/(?:about|contact|services)?\/?$/);
+    assert.ok(dom.querySelector('#legend-cms-published-document'));
+    assert.ok(dom.querySelector('script[src^="/legend-public-cms.js"]'));
+  }
+  assert.ok(parseHTML(result.pages['/'].html).document.querySelector('.hero .hero-copy'));
+  assert.ok(parseHTML(result.pages['/about'].html).document.querySelector('.story .story-rail'));
+  assert.equal(parseHTML(result.pages['/contact'].html).document.querySelector('fieldset').hasAttribute('disabled'),false);
+});
+
+test('published text, URLs, section color and imported page are rendered before browser hydration',async()=>{
+  const initial=await compileBusiness({business,document:document()});
+  const dom=parseHTML(initial.pages['/'].html).document;
+  const heading=dom.querySelector('h1').dataset.cmsId;
+  const link=dom.querySelector('.hero .actions a').dataset.cmsId;
+  const value=document();
+  value.pages['/']={title:'Custom title',description:'Verified description',elements:{[heading]:{text:'Actual business headline'},[link]:{text:'Book an appointment',href:'https://example.com/book'},'section:home.section.1':{style:{backgroundColor:'#123456'}}},sectionOrder:{},extras:[]};
+  value.pages['/team/history']={title:'Our history',description:'Our actual story',elements:{},sectionOrder:{},extras:[{id:'imported-section',type:'section',sectionId:'',style:{}},{id:'imported-text',type:'text',sectionId:'extra:imported-section',text:'Verified imported information',style:{}}]};
+  const result=await compileBusiness({business,document:value});
+  const page=parseHTML(result.pages['/'].html).document;
+  assert.equal(page.title,'Custom title');
+  assert.equal(page.querySelector('h1').textContent,'Actual business headline');
+  assert.equal(page.querySelector('.hero .actions a').href,'https://example.com/book');
+  assert.equal(page.querySelector('.hero').style.backgroundColor,'#123456');
+  assert.match(result.pages['/team/history'].html,/Verified imported information/);
+  assert.ok(!parseHTML(result.pages['/team/history'].html).document.querySelector('main .hero'));
+});
+
+test('untrusted business facts remain text and unsafe page routes reject publication',async()=>{
+  const result=await compileBusiness({business:{...business,displayName:'</script><script>alert(1)</script>'},document:document()});
+  const dom=parseHTML(result.pages['/'].html).document;
+  assert.equal(dom.querySelector('.brand strong').textContent,'</script><script>alert(1)</script>');
+  assert.equal(dom.querySelectorAll('script:not([src]):not([type="application/json"])').length,0);
+  for(const route of ['/../private','//other.example','/x?legendEdit=secret']){
+    const value=document();value.pages[route]={};
+    await assert.rejects(compileBusiness({business,document:value}),/Invalid website page route/);
+  }
+  await assert.rejects(compileBusiness({business:{},document:document()}),/business and document/);
+});

@@ -33,6 +33,15 @@ jobs:
           ref: legend/approved-changes
           fetch-depth: 0
 
+      - name: Read shared release authorization
+        id: policy
+        run: |
+          set -euo pipefail
+          staging="$(python3 scripts/release_policy.py --sha HEAD)"
+          production_disabled="$(python3 scripts/release_policy.py --sha HEAD --production-disabled)"
+          echo "staging=$staging" >> "$GITHUB_OUTPUT"
+          echo "production_disabled=$production_disabled" >> "$GITHUB_OUTPUT"
+
       - name: Fetch both canonical refs
         run: |
           set -euo pipefail
@@ -71,7 +80,7 @@ jobs:
           exit 1
 
       - name: Fast-forward approved changes to production
-        if: steps.relation.outputs.relation == 'production-ahead'
+        if: steps.policy.outputs.production_disabled == 'false' && steps.relation.outputs.relation == 'production-ahead'
         env:
           PRODUCTION_SHA: ${{ steps.relation.outputs.production_sha }}
         run: |
@@ -80,7 +89,7 @@ jobs:
           git push origin "$PRODUCTION_SHA:refs/heads/legend/approved-changes"
 
       - name: Ensure protected production synchronization PR exists
-        if: steps.relation.outputs.relation == 'approved-ahead'
+        if: steps.policy.outputs.production_disabled == 'false' && steps.relation.outputs.relation == 'approved-ahead'
         env:
           GH_TOKEN: ${{ github.token }}
           APPROVED_SHA: ${{ steps.relation.outputs.approved_sha }}
@@ -122,7 +131,7 @@ jobs:
           fi
 
       - name: Verify or report protected synchronization state
-        if: always() && steps.relation.outcome == 'success'
+        if: always() && steps.policy.outputs.production_disabled == 'false' && steps.relation.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

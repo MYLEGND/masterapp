@@ -14,6 +14,16 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 
+# These legacy orchestration cases exercise release mode; staging has dedicated cases below.
+def setUpModule():
+    global release_policy_patch
+    release_policy_patch = patch.object(m, 'staging_only', return_value=False)
+    release_policy_patch.start()
+
+def tearDownModule():
+    release_policy_patch.stop()
+
+
 class BranchSafety(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -146,6 +156,12 @@ class ReleaseTruth(unittest.TestCase):
 
     def test_approved_release_requires_real_successful_jobs(self):
         self.api.pages = lambda *args: [{'name': name, 'conclusion': 'success'} for name in ('discover-live', 'release')]
+        self.assertFalse(m.successful_release(self.api, self.run))
+        self.api.pages = lambda *args: [
+            {'name': 'discover-live', 'conclusion': 'success'},
+            {'name': 'release', 'conclusion': 'success', 'steps': [
+                {'name': 'Direct deploy Website', 'conclusion': 'success'},
+                {'name': 'Verify every deployed target and collect all failures', 'conclusion': 'success'}]}]
         self.assertTrue(m.successful_release(self.api, self.run))
 
     def test_rigorous_release_requires_every_existing_gate(self):
@@ -278,7 +294,8 @@ class OrchestrationSafety(unittest.TestCase):
             {'name': 'discover-live', 'conclusion': 'success'},
             {'name': 'release', 'conclusion': 'success', 'steps': [
                 {'name': 'Direct deploy AgentPortal', 'conclusion': 'success'},
-                {'name': 'Direct deploy ClientApp', 'conclusion': 'skipped'}]}]})()
+                {'name': 'Direct deploy ClientApp', 'conclusion': 'skipped'},
+                {'name': 'Verify every deployed target and collect all failures', 'conclusion': 'success'}]}]})()
         run = {'id': 1, 'path': '.github/workflows/' + m.DIRECT, 'status': 'completed',
                'conclusion': 'success', 'head_branch': m.APPROVED, 'head_repository': {'full_name': 'owner/repo'}}
         self.assertTrue(m.successful_release(api, run, app='portal'))
@@ -296,6 +313,26 @@ class OrchestrationSafety(unittest.TestCase):
         self.assertIn('awaiting successful', result['promotion'])
         api.dispatch.assert_not_called()
         self.assertIn('head_sha=' + 'b' * 40, api.api.call_args.args[0])
+
+
+class StagingSafety(unittest.TestCase):
+    def test_hold_blocks_all_automatic_mutations(self):
+        from unittest.mock import Mock
+        for action in [lambda api: m.integrate(api, 1), m.pending_updates,
+                       m.reconcile, lambda api: m.cleanup(api, True)]:
+            api = Mock()
+            with patch.object(m, 'staging_only', return_value=True):
+                result = action(api)
+            self.assertTrue(result)
+            self.assertEqual(api.mock_calls, [])
+
+    def test_hold_blocks_production_resolution(self):
+        from unittest.mock import Mock
+        api = Mock()
+        with patch.object(m, 'staging_only', return_value=True):
+            with self.assertRaises(RuntimeError):
+                m.resolve_production(api, 1, 'a' * 40)
+        self.assertEqual(api.mock_calls, [])
 
 
 if __name__ == '__main__':

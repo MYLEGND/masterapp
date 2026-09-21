@@ -1,4 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.CompilerServices;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using ProtectWebsite.Services;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -35,7 +43,7 @@ public sealed class WebsiteContentEditorRoundTripTests
               "paddingTop":500.5,"paddingBottom":800.125,"textAlign":"start"}}}}
             """, JsonOptions)!;
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document)));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         AssertLargeStyle(saved.Elements[ElementId].Style);
 
         fixture.Db.ChangeTracker.Clear();
@@ -43,12 +51,27 @@ public sealed class WebsiteContentEditorRoundTripTests
         // from standing in for a persisted JSON round trip.
         var reloaded = fixture.CreateController();
         AssertLargeStyle(ReadDocument(await reloaded.Manage(ticket)).Elements[ElementId].Style);
-        AssertLargeStyle(ReadDocument(await reloaded.Public(
+        var unpublished = await reloaded.Public(siteKey, siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null, fixture.BusinessId);
+        if (siteKey == WebsiteEditorSiteKeys.Business) Assert.IsType<NotFoundObjectResult>(unpublished);
+        else Assert.IsType<OkObjectResult>(unpublished);
+        Assert.IsType<OkObjectResult>(await reloaded.Publish(new(ticket, 1)));
+        fixture.Db.ChangeTracker.Clear();
+        AssertLargeStyle(ReadDocument(await fixture.CreateController().Public(
             siteKey,
             siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null,
             fixture.BusinessId)).Elements[ElementId].Style);
-        var row = Assert.Single(await fixture.Db.AgentFinanceToolStates.ToListAsync());
-        Assert.Equal(WebsiteEditorSiteKeys.ToolPrefix + siteKey, row.ToolId);
+        var row = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(siteKey, row.SiteKey);
+        Assert.NotNull(row.PublishedVersionId);
+        Assert.Single(await fixture.Db.Set<WebsiteContentVersion>().ToListAsync());
+        Assert.Empty(await fixture.Db.AgentFinanceToolStates.ToListAsync());
+        document.Elements[ElementId].Text = "Unpublished revision";
+        ReadDocument(await fixture.CreateController().Save(new(ticket, document, 2)));
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().Save(new(ticket, new WebsiteContentDocument(), 2)));
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal("Updated title", ReadDocument(await fixture.CreateController().Public(
+            siteKey, siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null, fixture.BusinessId)).Elements[ElementId].Text);
+        Assert.Equal("Unpublished revision", ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId].Text);
     }
 
     [Fact]
@@ -64,7 +87,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             }
         };
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        ReadDocument(await fixture.Controller.Save(new(ticket, document)));
+        ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
         AssertNoAdjustments(ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId].Style);
 
@@ -74,7 +97,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         {
             FontScale = 0.05m, WidthPercent = 0.25m, PaddingTop = 0, PaddingBottom = 0
         };
-        var accepted = ReadDocument(await fixture.Controller.Save(new(ticket, document))).Elements[ElementId].Style;
+        var accepted = ReadDocument(await fixture.Controller.Save(new(ticket, document, 1))).Elements[ElementId].Style;
         Assert.Equal(0.05m, accepted.FontScale);
         Assert.Equal(0.25m, accepted.WidthPercent);
         Assert.Equal(0m, accepted.PaddingTop);
@@ -89,7 +112,7 @@ public sealed class WebsiteContentEditorRoundTripTests
             {"elements":{"home.h1.title":{"text":"New heading without resizing"}}}
             """, JsonOptions)!;
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        ReadDocument(await fixture.Controller.Save(new(ticket, document)));
+        ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         fixture.Db.ChangeTracker.Clear();
         var element = ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId];
         Assert.Equal("New heading without resizing", element.Text);
@@ -108,16 +131,16 @@ public sealed class WebsiteContentEditorRoundTripTests
         var initial = new WebsiteContentDocument();
         initial.Elements[ElementId] = new WebsiteElementOverride { Text = "Preserved content" };
         var validTicket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
-        ReadDocument(await fixture.Controller.Save(new(validTicket, initial)));
-        var originalJson = (await fixture.Db.AgentFinanceToolStates.SingleAsync()).JsonState;
+        ReadDocument(await fixture.Controller.Save(new(validTicket, initial, 0)));
+        var originalJson = (await fixture.Db.Set<WebsiteContentState>().SingleAsync()).DraftJson;
         initial.Elements[ElementId].Text = "Unauthorized replacement";
         var rejectedTicket = expired ? fixture.Ticket(DateTime.UtcNow.AddMinutes(-1)) : "not-a-protected-ticket";
 
         Assert.IsType<UnauthorizedResult>(await fixture.Controller.Manage(rejectedTicket));
-        Assert.IsType<UnauthorizedResult>(await fixture.Controller.Save(new(rejectedTicket, initial)));
+        Assert.IsType<UnauthorizedResult>(await fixture.Controller.Save(new(rejectedTicket, initial, 1)));
         fixture.Db.ChangeTracker.Clear();
-        var row = Assert.Single(await fixture.Db.AgentFinanceToolStates.ToListAsync());
-        Assert.Equal(originalJson, row.JsonState);
+        var row = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        Assert.Equal(originalJson, row.DraftJson);
     }
 
     private static WebsiteContentDocument ReadDocument(IActionResult result)
@@ -151,21 +174,30 @@ public sealed class WebsiteContentEditorRoundTripTests
         private readonly string _siteKey;
         private readonly string _owner;
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
-        private readonly IConfiguration _configuration = new ConfigurationBuilder().Build();
+        private readonly IConfiguration _configuration;
+        private readonly string _actor = Guid.NewGuid().ToString();
+        private Guid? _clientProfileId;
+        private ServiceProvider? _services;
         public MasterAppDbContext Db { get; }
         public WebsiteContentController Controller { get; }
 
         public Fixture(string siteKey)
         {
+            _configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
+            {
+                ["Founder:Oid"] = _actor,
+                ["WebsitePublishing:CompilerRoot"] = Path.GetFullPath(Path.Combine(SourceDirectory(), "..", "Legend-Website"))
+            }).Build();
             _siteKey = siteKey;
             _owner = siteKey == WebsiteEditorSiteKeys.Legend ? WebsiteEditorSiteKeys.GlobalOwnerKey : "editor-test-owner";
             Db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
-            if (siteKey == WebsiteEditorSiteKeys.Protect)
+            if (siteKey == WebsiteEditorSiteKeys.Protect) _owner = _actor;
+            if (siteKey != WebsiteEditorSiteKeys.Business)
             {
                 Db.AgentTrackingProfiles.Add(new AgentTrackingProfile
                 {
-                    AgentUserId = _owner, AgentUpn = "editor-test@example.invalid", Slug = AgentSlug
+                    AgentUserId = _actor, AgentUpn = "founder@example.test", Slug = AgentSlug, Status = "Active"
                 });
                 Db.SaveChanges();
             }
@@ -185,19 +217,26 @@ public sealed class WebsiteContentEditorRoundTripTests
                     Status = "Active",
                     IsActive = true
                 });
+                var profile = new ClientProfile { ClientUserId = _actor, CrmNotes = "{\"recordType\":\"BusinessClient\"}" };
+                _clientProfileId = profile.Id;
+                Db.ClientProfiles.Add(profile);
+                Db.CommerceBusinessMembers.Add(new CommerceBusinessMember { CommerceBusinessId = businessId, ClientProfileId = profile.Id, RoleKey = "owner" });
                 Db.SaveChanges();
             }
+            var environment = Mock.Of<IWebHostEnvironment>(e => e.ContentRootPath == AppContext.BaseDirectory);
+            _services = new ServiceCollection().AddSingleton(new WebsitePageCompiler(environment, _configuration)).BuildServiceProvider();
             Controller = CreateController();
         }
 
-        public WebsiteContentController CreateController() => new(Db, _tickets, _configuration);
+        public WebsiteContentController CreateController() => new(Db, _tickets, _configuration) { ControllerContext = new() { HttpContext = new DefaultHttpContext { RequestServices = _services! } } };
         public string Ticket(DateTime expiresUtc) => _tickets.Protect(new WebsiteEditorTicket(
             _siteKey,
             _owner,
             _siteKey == WebsiteEditorSiteKeys.Protect ? AgentSlug : null,
             true,
             expiresUtc,
-            BusinessId));
-        public void Dispose() => Db.Dispose();
+            BusinessId, ActorUserId: _actor, ActorEmail: "founder@example.test", ActorClientProfileId: _clientProfileId));
+        public void Dispose() { _services?.Dispose(); _tickets.Dispose(); Db.Dispose(); }
+        private static string SourceDirectory([CallerFilePath] string sourcePath = "") => Path.GetDirectoryName(sourcePath)!;
     }
 }

@@ -116,6 +116,14 @@ jobs:
           cp public/web.config dist/web.config
           npm run check
 
+      - name: Verify current approved release authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin legend/approved-changes
+          git show FETCH_HEAD:scripts/release_policy.py > "$RUNNER_TEMP/website-release-policy.py"
+          python3 "$RUNNER_TEMP/website-release-policy.py" --sha FETCH_HEAD --require-release
+
       - name: Login to existing Azure configuration authority
         uses: azure/login@v2
         with:

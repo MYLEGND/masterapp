@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import urllib.request
+from release_policy import read_request
 
 # Existing deployment topology, not application-discovery or diagnostics policy.
 TARGETS = (
@@ -66,8 +67,8 @@ def main():
     if os.environ.get('GITHUB_ACTIONS') == 'true':
         if os.environ.get('GITHUB_REF') != 'refs/heads/legend/approved-changes' or head != os.environ.get('GITHUB_SHA'):
             raise SystemExit('Only the exact approved branch revision can be released')
-    request = {} if args.automatic else json.loads(Path('Docs/releases/direct-release-request.json').read_text())
-    release_mode = 'approved-only' if args.automatic else request.get('releaseMode', 'approved-only')
+    request = read_request()
+    release_mode = request['releaseMode']
     if release_mode not in {'approved-only', 'validate-only'}:
         raise ValueError('releaseMode must be approved-only or validate-only')
     targets = TARGETS if args.automatic else selected_targets(request)

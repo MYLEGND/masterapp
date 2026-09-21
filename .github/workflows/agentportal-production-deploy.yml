@@ -74,6 +74,7 @@ jobs:
           PROMOTION_ONLY: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
+          python3 scripts/release_policy.py --require-release
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.ref }}" = "legend/approved-changes" ]; then
             pr_json="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
             state="$(printf '%s' "$pr_json" | jq -r '.state')"
@@ -452,6 +453,7 @@ jobs:
             '+refs/heads/production:refs/remotes/origin/production' \
             '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
           git merge-base --is-ancestor "$EXPECTED_BASE" "$EXPECTED_HEAD"
+          python3 scripts/release_policy.py --sha "$EXPECTED_HEAD" --require-release
 
       - name: Merge history-only synchronization PR
         id: merge

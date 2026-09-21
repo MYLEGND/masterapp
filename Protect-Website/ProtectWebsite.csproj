@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -58,6 +58,32 @@
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- The publication compiler packages the exact shared website build and DOM
+       dependencies. No independently maintained business HTML is checked in. -->
+  <Target Name="RestoreBusinessWebsiteCompiler" BeforeTargets="BuildBusinessWebsiteCompiler"
+          Inputs="$(MSBuildProjectDirectory)/../Legend-Website/package-lock.json"
+          Outputs="$(MSBuildProjectDirectory)/../Legend-Website/node_modules/.package-lock.json">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../Legend-Website" Command="npm ci --omit=dev --ignore-scripts --no-audit --no-fund" />
+  </Target>
+  <Target Name="BuildBusinessWebsiteCompiler" BeforeTargets="AssignTargetPaths">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../Legend-Website" Command="node scripts/build.mjs" />
+    <ItemGroup>
+      <Content Include="../Legend-Website/dist/site.css;../Legend-Website/dist/legend-public-cms.js;../Legend-Website/dist/legend-public-web.js;../Legend-Website/dist/business-inquiry.js">
+        <Link>WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </Content>
+      <Content Include="../Legend-Website/dist/business-preview/**/*">
+        <Link>WebsiteCompiler/dist/business-preview/%(RecursiveDir)%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </Content>
+      <Content Include="../Legend-Website/scripts/render-business.mjs" Link="WebsiteCompiler/scripts/render-business.mjs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <Content Include="../Legend-Website/src/business-content.mjs" Link="WebsiteCompiler/src/business-content.mjs" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <Content Include="../Legend-Website/node_modules/**/*" Link="WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
 </Project>

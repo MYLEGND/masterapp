@@ -2201,6 +2201,9 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("CanManageTeam")
                         .HasColumnType("bit");
 
+                    b.Property<Guid?>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("CommerceBusinessId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2238,6 +2241,8 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail");
+
+                    b.HasIndex("ClientProfileId", "CommerceBusinessId");
 
                     b.HasIndex("CommerceBusinessId", "NormalizedEmail")
                         .IsUnique();
@@ -2317,6 +2322,10 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("PublicFactsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("StorefrontStatus")
                         .IsRequired()
@@ -2831,6 +2840,61 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("CommerceProductInventoryItems");
+                });
+
+            modelBuilder.Entity("Domain.Entities.CommerceWebsiteInquiry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(12000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("PublishedVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublishedVersionId");
+
+                    b.HasIndex("CommerceBusinessId", "CreatedUtc");
+
+                    b.HasIndex("CommerceBusinessId", "SubmissionId")
+                        .IsUnique();
+
+                    b.ToTable("CommerceWebsiteInquiry");
                 });
 
             modelBuilder.Entity("Domain.Entities.Commitment", b =>
@@ -11799,6 +11863,150 @@ namespace Infrastructure.Migrations
                     b.ToTable("VerificationReviewRequests", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.WebsiteContentState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImportReportJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OwnerKey")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid?>("PublishedVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ScheduleError")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ScheduledActorJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ScheduledPublishUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("ScheduledRevision")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SiteKey")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerKey", "SiteKey")
+                        .IsUnique();
+
+                    b.ToTable("WebsiteContentState");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteContentVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CompiledPagesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DocumentJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImportReportJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("StateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StateId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("WebsiteContentVersion");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteDomainBinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CertificateStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("CommerceBusinessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Hostname")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<DateTime?>("LastCheckedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderHostnameId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("VerificationJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommerceBusinessId");
+
+                    b.HasIndex("Hostname")
+                        .IsUnique();
+
+                    b.ToTable("WebsiteDomainBinding");
+                });
+
             modelBuilder.Entity("Domain.Entities.WebsiteLead", b =>
                 {
                     b.Property<long>("Id")
@@ -12158,6 +12366,51 @@ namespace Infrastructure.Migrations
                     b.HasIndex("WorkstationLeadId", "SubmittedUtc");
 
                     b.ToTable("WebsiteLeadIntakeLinks");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteMediaAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OwnerKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerKey", "Sha256")
+                        .IsUnique();
+
+                    b.ToTable("WebsiteMediaAsset");
                 });
 
             modelBuilder.Entity("Domain.Entities.WorkstationLeadProfile", b =>
@@ -12577,6 +12830,23 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("CommerceProduct");
+                });
+
+            modelBuilder.Entity("Domain.Entities.CommerceWebsiteInquiry", b =>
+                {
+                    b.HasOne("Domain.Entities.CommerceBusiness", "CommerceBusiness")
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.WebsiteContentVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CommerceBusiness");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinanceToolState", b =>
@@ -13540,6 +13810,24 @@ namespace Infrastructure.Migrations
                     b.Navigation("ClientSubscription");
 
                     b.Navigation("CommerceOrder");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteContentVersion", b =>
+                {
+                    b.HasOne("Domain.Entities.WebsiteContentState", null)
+                        .WithMany()
+                        .HasForeignKey("StateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteDomainBinding", b =>
+                {
+                    b.HasOne("Domain.Entities.CommerceBusiness", null)
+                        .WithMany()
+                        .HasForeignKey("CommerceBusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Domain.Entities.WebsiteLeadIntakeLink", b =>

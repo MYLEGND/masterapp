@@ -2347,6 +2347,58 @@ public class MasterAppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<WebsiteMediaAsset>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(200).IsRequired();
+            e.Property(x => x.SourceUrl).HasMaxLength(2000);
+            e.Property(x => x.Sha256).HasMaxLength(64).IsRequired();
+            e.Property(x => x.StorageKey).HasMaxLength(512).IsRequired();
+            e.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+            e.HasIndex(x => new { x.OwnerKey, x.Sha256 }).IsUnique();
+        });
+        modelBuilder.Entity<WebsiteContentState>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(450).IsRequired();
+            e.Property(x => x.SiteKey).HasMaxLength(40).IsRequired();
+            e.Property(x => x.DraftJson).IsRequired();
+            e.Property(x => x.Revision).IsConcurrencyToken();
+            e.HasIndex(x => new { x.OwnerKey, x.SiteKey }).IsUnique();
+        });
+        modelBuilder.Entity<WebsiteContentVersion>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ActorUserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(x => new { x.StateId, x.Revision }).IsUnique();
+            e.HasOne<WebsiteContentState>().WithMany().HasForeignKey(x => x.StateId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<WebsiteDomainBinding>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Hostname).HasMaxLength(253).IsRequired();
+            e.Property(x => x.ProviderHostnameId).HasMaxLength(64);
+            e.Property(x => x.Status).HasMaxLength(40);
+            e.Property(x => x.CertificateStatus).HasMaxLength(40);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => x.Hostname).IsUnique();
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CommerceWebsiteInquiry>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.Message).HasMaxLength(12000);
+            e.Property(x => x.SourcePath).HasMaxLength(2048);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.SubmissionId }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasOne(x => x.CommerceBusiness).WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WebsiteContentVersion>().WithMany().HasForeignKey(x => x.PublishedVersionId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CommerceBusinessMember>().HasIndex(x => new { x.ClientProfileId, x.CommerceBusinessId });
+
         modelBuilder.Entity<AgentFinanceToolState>(e =>
         {
             e.HasKey(x => x.Id);

@@ -172,6 +172,7 @@ public class ClientProfileControllerTests
         var membership = Assert.Single(db.CommerceBusinessMembers);
         Assert.Equal(business.Id, membership.CommerceBusinessId);
         Assert.Equal("OWNER@EXAMPLE.COM", membership.NormalizedEmail);
+        Assert.Equal(Assert.Single(db.ClientProfiles).Id, membership.ClientProfileId);
         Assert.True(membership.CanManageStorefront);
         Assert.False(membership.CanManageCatalog);
         Assert.False(membership.CanManageOrders);
@@ -219,6 +220,7 @@ public class ClientProfileControllerTests
         db.CommerceBusinessMembers.Add(new CommerceBusinessMember
         {
             CommerceBusiness = businessA,
+            ClientProfileId = Assert.Single(db.ClientProfiles.Local).Id,
             Email = "owner-a@example.com",
             NormalizedEmail = "OWNER-A@EXAMPLE.COM",
             Status = "Active",
@@ -237,7 +239,21 @@ public class ClientProfileControllerTests
             BuildActiveLifecycle(),
             http);
 
+        Assert.IsType<RedirectResult>(await controller.EditBusinessWebsite(businessA.Id));
         Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessB.Id));
+        Assert.IsType<JsonResult>(await controller.BusinessWebsiteSession(businessA.Id));
+        Assert.IsType<ForbidResult>(await controller.BusinessWebsiteSession(businessB.Id));
+
+        var profile = Assert.Single(db.ClientProfiles);
+        profile.Email = "owner-b@example.com";
+        profile.NormalizedEmail = "owner-b@example.com";
+        await db.SaveChangesAsync();
+        Assert.IsType<RedirectResult>(await controller.EditBusinessWebsite(businessA.Id));
+        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessB.Id));
+
+        Assert.Single(db.CommerceBusinessMembers).Status = "Inactive";
+        await db.SaveChangesAsync();
+        Assert.IsType<ForbidResult>(await controller.EditBusinessWebsite(businessA.Id));
     }
 
     private static IAccountLifecycleService BuildActiveLifecycle()

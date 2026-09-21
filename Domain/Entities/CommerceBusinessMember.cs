@@ -7,6 +7,8 @@ public sealed class CommerceBusinessMember
     public Guid CommerceBusinessId { get; set; }
     public CommerceBusiness? CommerceBusiness { get; set; }
 
+    public Guid? ClientProfileId { get; set; }
+
     public string Email { get; set; } = string.Empty;
     public string NormalizedEmail { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;

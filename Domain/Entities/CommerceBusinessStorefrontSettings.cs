@@ -13,5 +13,7 @@ public sealed class CommerceBusinessStorefrontSettings
     public string LogoUrl { get; set; } = string.Empty;
     public string StorefrontStatus { get; set; } = "Draft";
 
+    public string PublicFactsJson { get; set; } = "{}";
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

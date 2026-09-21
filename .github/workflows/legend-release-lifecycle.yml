@@ -45,7 +45,9 @@ jobs:
           ref: legend/approved-changes
           fetch-depth: 0
       - name: Check lifecycle safety contracts
-        run: python3 scripts/test-release-lifecycle.py
+        run: |
+          python3 scripts/test-release-policy.py
+          python3 scripts/test-release-lifecycle.py
       - name: Integrate ready approved change and start direct release
         if: github.event_name == 'pull_request_target'
         env:

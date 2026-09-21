@@ -33,7 +33,8 @@ public sealed record CommerceBusinessProvisioningRequest(
     bool CanManageAnalytics = true,
     bool CanManageTeam = true,
     CommerceBusinessSubscriptionProvisioning? Subscription = null,
-    CommerceBusinessStorefrontProvisioning? Storefront = null);
+    CommerceBusinessStorefrontProvisioning? Storefront = null,
+    Guid? OwnerClientProfileId = null);
 
 public sealed record CommerceBusinessSubscriptionProvisioning(
     string PlanKey,
@@ -106,6 +107,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         _db.CommerceBusinesses.Add(business);
         _db.CommerceBusinessMembers.Add(new CommerceBusinessMember
         {
+            ClientProfileId = request.OwnerClientProfileId,
             CommerceBusiness = business,
             Email = ownerEmail,
             NormalizedEmail = ownerEmail.ToUpperInvariant(),

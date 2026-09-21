@@ -293,10 +293,55 @@ public class AccountController : Controller
             trackingProfile.AgentUserId.Trim().ToLowerInvariant(),
             trackingProfile.Slug,
             FounderGuard.IsFounder(User),
-            DateTime.UtcNow.AddMinutes(45)));
+            DateTime.UtcNow.AddMinutes(45),
+            ActorUserId: userId,
+            ActorEmail: User.FindFirstValue(ClaimTypes.Email)));
 
         var separator = urls.PrimaryUrl.Contains('?') ? "&" : "?";
         return Redirect($"{urls.PrimaryUrl}{separator}legendEdit={Uri.EscapeDataString(ticket)}");
+    }
+
+    [HttpGet]
+    [Authorize]
+    public IActionResult EditLegendWebsite()
+    {
+        if (!FounderGuard.IsFounder(User)) return Forbid();
+        var ticket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Legend, WebsiteEditorSiteKeys.GlobalOwnerKey, null,
+            true, DateTime.UtcNow.AddMinutes(45), ActorUserId: User.GetCanonicalUserId(),
+            ActorEmail: User.FindFirstValue(ClaimTypes.Email)));
+        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var baseUrl = (configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/');
+        return Redirect($"{baseUrl}/?legendEdit={Uri.EscapeDataString(ticket)}");
+    }
+
+    [HttpGet]
+    [Authorize]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> WebsiteSession(string site = "protect")
+    {
+        var userId = User.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(userId)) return Challenge();
+        WebsiteEditorTicket scope;
+        if (site == WebsiteEditorSiteKeys.Legend)
+        {
+            if (!FounderGuard.IsFounder(User)) return Forbid();
+            scope = new WebsiteEditorTicket(site, WebsiteEditorSiteKeys.GlobalOwnerKey, null,
+                true, DateTime.UtcNow.AddMinutes(45), ActorUserId: userId,
+                ActorEmail: User.FindFirstValue(ClaimTypes.Email));
+        }
+        else if (site == WebsiteEditorSiteKeys.Protect)
+        {
+            var profile = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+            if (profile is null || !string.Equals(profile.Status, "active", StringComparison.OrdinalIgnoreCase)) return Forbid();
+            scope = new WebsiteEditorTicket(site, profile.AgentUserId.Trim().ToLowerInvariant(), profile.Slug,
+                FounderGuard.IsFounder(User), DateTime.UtcNow.AddMinutes(45), ActorUserId: userId,
+                ActorEmail: User.FindFirstValue(ClaimTypes.Email));
+        }
+        else return BadRequest();
+        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        return Json(new { ticket = _websiteEditorTickets.Protect(scope),
+            apiBase = (configuration["LandingRoutes:BaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') });
     }
 
     [HttpPost]

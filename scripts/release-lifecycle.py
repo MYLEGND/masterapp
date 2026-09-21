@@ -14,6 +14,9 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from release_policy import staging_only
 
 APPROVED = 'legend/approved-changes'
 PRODUCTION = 'production'
@@ -112,6 +115,8 @@ def ready(pr, repo, base):
 
 
 def integrate(api, number):
+    if staging_only():
+        return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     pr = api.api(f'pulls/{number}')
     if not ready(pr, api.repo, APPROVED):
         raise RuntimeError('Only ready, same-repository collaborator PRs into approved changes can be integrated')
@@ -126,6 +131,8 @@ def integrate(api, number):
 
 
 def pending_updates(api):
+    if staging_only():
+        return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     # Scheduled reconciliation also covers bot-created PR events and corrections
     # pushed to a retained branch after its previous approved PR was merged.
     pulls = api.pages('pulls?state=open&base=' + urllib.parse.quote(APPROVED, safe=''))
@@ -176,6 +183,8 @@ def pending_updates(api):
 
 
 def resolve_production(api, number, expected_head, dispatch=False):
+    if staging_only():
+        raise RuntimeError('Validation-only staging hold blocks production publication')
     pr = api.api(f'pulls/{number}')
     if (pr['state'] != 'open' or pr['draft'] or pr['base']['ref'] != PRODUCTION
         or not pr['head']['repo'] or pr['head']['repo']['full_name'] != api.repo):
@@ -225,6 +234,13 @@ def successful_release(api, run, app=None):
     passed = {job['name'] for job in jobs if job['conclusion'] == 'success'}
     if not required <= passed:
         return False
+    if path.endswith(DIRECT):
+        release_job = next(job for job in jobs if job['name'] == 'release')
+        steps = release_job.get('steps', [])
+        if not any(step['name'] == 'Verify every deployed target and collect all failures' and step['conclusion'] == 'success' for step in steps):
+            return False
+        if not any(step['name'].startswith('Direct deploy ') and step['conclusion'] == 'success' for step in steps):
+            return False
     if app is None:
         return True
     if path.endswith(RIGOROUS):
@@ -253,6 +269,8 @@ def direct_only_request(sha):
 
 
 def reconcile(api, trigger=None):
+    if staging_only():
+        return {'promotion': 'disabled while validation-only staging hold is active'}
     if trigger:
         run = api.api(f'actions/runs/{trigger}')
         if not successful_release(api, run):
@@ -368,6 +386,8 @@ def release_proven(api, revision, production=False, app=None):
 
 
 def cleanup(api, apply=False):
+    if staging_only():
+        return {'retained': 'Validation-only staging hold; no integration, dispatch or cleanup'}
     branches = api.pages('branches')
     approved, production = api.ref(APPROVED), api.ref(PRODUCTION)
     live = live_revisions()

@@ -1,15 +1,17 @@
 (() => {
   'use strict';
 
-  const context = window.LEGEND_PUBLIC_CMS_CONTEXT || null;
+  const publishedData = document.getElementById('legend-cms-published-document');
+  const renderInput = window.LEGEND_PUBLIC_CMS_RENDER_INPUT || (publishedData ? JSON.parse(publishedData.textContent) : null);
+  const context = window.LEGEND_PUBLIC_CMS_CONTEXT || (renderInput?.business ? { siteKey: 'business', apiBase: '', businessId: renderInput.business.id } : null);
   if (!context || !context.siteKey || typeof context.apiBase !== 'string') return;
 
   // Protect deliberately uses an empty base for its same-origin CMS authority.
   const API_BASE = (context.apiBase.trim() || location.origin).replace(/\/$/, '');
-  const SITE_KEY = String(context.siteKey).toLowerCase();
+  let SITE_KEY = String(context.siteKey).toLowerCase();
   const AGENT_SLUG = context.agentSlug || '';
-  const BUSINESS_ID = context.businessId || '';
-  const pageKey = document.body?.dataset?.pageKey
+  let BUSINESS_ID = context.businessId || '';
+  const pageKey = renderInput?.pageKey || document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
     || 'home';
 
@@ -22,11 +24,11 @@
   let dirty = false;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
-      text: el.textContent, src: el.getAttribute('src'), hidden: el.hidden,
+      text: el.textContent, markup: el.innerHTML, src: el.getAttribute('src'), href: el.getAttribute('href'), alt: el.getAttribute('alt'), hidden: el.hidden,
       style: Object.fromEntries(styleProperties.map(key => [key, el.style[key] || '']))
     });
     return originals.get(el);
@@ -36,6 +38,7 @@
   function spacingNumber(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
 
   function refreshScale(el, scale) {
+    if (renderInput?.server) return;
     el.style.fontSize = rememberOriginal(el).style.fontSize;
     const base = parseFloat(getComputedStyle(el).fontSize);
     if (Number.isFinite(base)) el.style.fontSize = `${base * scale}px`;
@@ -47,8 +50,6 @@
   }
 
   const lockedSelector = [
-    '.brand',
-    '.brand-wordmark',
     '[data-cms-locked="true"]',
     'script',
     'style',
@@ -69,8 +70,27 @@
       elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
       sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
       extras: Array.isArray(input?.extras) ? input.extras : [],
-      theme: input?.theme && typeof input.theme === 'object' ? input.theme : {}
+      theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
+      pages: input?.pages && typeof input.pages === 'object' ? input.pages : {}
     };
+  }
+
+  function pageState() {
+    documentState.pages ||= {};
+    const pathname = location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    const routeKey = Object.prototype.hasOwnProperty.call(documentState.pages, pathname) ? pathname : Object.prototype.hasOwnProperty.call(documentState.pages, pathname.slice(1)) ? pathname.slice(1) : pageKey;
+    if (!documentState.pages[routeKey]) {
+      const belongs = id => id.startsWith(`${pageKey}.`) || id.startsWith(`section:${pageKey}.`);
+      const elements = Object.fromEntries(Object.entries(documentState.elements).filter(([id]) => belongs(id)));
+      const sectionOrder = Object.fromEntries(Object.entries(documentState.sectionOrder).filter(([id]) => belongs(id)));
+      const extras = documentState.extras.filter(extra => belongs(extra.sectionId || ''));
+      documentState.pages[routeKey] = { elements, sectionOrder, extras };
+      Object.keys(elements).forEach(id => delete documentState.elements[id]);
+      Object.keys(sectionOrder).forEach(id => delete documentState.sectionOrder[id]);
+      documentState.extras = documentState.extras.filter(extra => !extras.includes(extra));
+    }
+    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= [];
+    return page;
   }
 
   function safeId(value) {
@@ -84,11 +104,11 @@
   function canEditElement(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.closest('.legend-cms-editor')) return false;
-    if (el.matches(lockedSelector) || el.closest('.brand,[data-cms-locked="true"]')) return false;
-    if (el.tagName === 'IMG') return true;
+    if (el.matches(lockedSelector) || el.closest('[data-cms-locked="true"]')) return false;
+    if (['IMG','VIDEO','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) return true;
     if (editableTextTags.has(el.tagName)) return true;
     if (editableInteractiveTags.has(el.tagName)) {
-      return el.children.length === 0;
+      return true;
     }
     return false;
   }
@@ -105,17 +125,23 @@
       if (!section.dataset.cmsSection) {
         section.dataset.cmsSection = `${pageKey}.section.${index + 1}`;
       }
+      section.dataset.cmsId = `section:${section.dataset.cmsSection}`;
+      section.dataset.cmsEditable = 'true';
+      rememberOriginal(section);
     });
 
-    let counter = 0;
+    let counter = 0, addedCounter = 0;
     roots.forEach(root => {
-      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img').forEach(el => {
+      root.querySelectorAll('h1,h2,h3,h4,h5,p,li,a,button,label,small,strong,span,img,video,div,article,header,footer').forEach(el => {
         if (!canEditElement(el)) return;
-        if (el.tagName !== 'IMG' && el.children.length > 0) return;
+        if (!['IMG','VIDEO','A','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && el.children.length > 0) return;
         if (!el.dataset.cmsId) {
-          counter += 1;
-          const semantic = el.dataset.cta || el.getAttribute('href') || el.textContent || el.tagName;
-          el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || counter}.${counter}`;
+          const legacy = !el.closest('.brand,.brand-wordmark') && !['VIDEO','DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) && (el.tagName === 'IMG' || el.children.length === 0);
+          const index = legacy ? ++counter : `node${++addedCounter}`;
+          const href = el.getAttribute('href');
+          const route = href ? new URL(href, location.origin).pathname : '';
+          const semantic = SITE_KEY !== 'business' && legacy ? el.dataset.cta || href || el.textContent || el.tagName : el.dataset.businessField || (el.hasAttribute?.('data-business-name') ? 'business-name' : '') || el.dataset.businessRoute || el.dataset.cta || route || (['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName) ? el.className || el.tagName : '') || el.textContent || el.tagName;
+          el.dataset.cmsId = `${pageKey}.${safeId(el.tagName)}.${safeId(semantic).slice(0,50) || index}.${index}`;
         }
         rememberOriginal(el);
         el.dataset.cmsEditable = 'true';
@@ -129,14 +155,15 @@
   function applyTheme(theme) {
     const root = document.documentElement;
     const map = {
-      navy: '--navy',
-      navyDeep: '--navy-deep',
-      gold: '--gold',
-      goldStrong: '--gold-strong',
-      surface: '--surface'
+      navy: '--web-navy',
+      navyDeep: '--web-navy-deep',
+      gold: '--web-gold',
+      goldStrong: '--web-gold-strong',
+      surface: '--web-surface', text: '--web-ink', muted: '--web-muted', fontFamily: '--web-font'
     };
     Object.entries(map).forEach(([key, cssVar]) => {
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
+      else root.style.removeProperty(cssVar);
     });
   }
 
@@ -147,17 +174,34 @@
     scaledElements.delete(el);
     if (!style) return;
     if (['left', 'center', 'right', 'start', 'end', 'justify'].includes(style.textAlign)) el.style.textAlign = style.textAlign;
-    if (positiveNumber(style.fontScale) && !(el instanceof HTMLImageElement)) {
+    if (positiveNumber(style.fontScale) && !(el instanceof HTMLImageElement) && !spacingNumber(style.fontSize)) {
       scaledElements.set(el, style.fontScale);
       refreshScale(el, style.fontScale);
     }
     if (positiveNumber(style.widthPercent)) {
       el.style.width = `${style.widthPercent}%`;
-      el.style.maxWidth = 'none';
+      el.style.maxWidth = '100%';
     }
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
+    ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
+    ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
+    if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
     if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
+  }
+
+  function setContentText(el, text) {
+    if (el.tagName !== 'A' || !el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
+    const walker = document.createTreeWalker(el, 4); const nodes = []; let node;
+    while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('svg,i,[aria-hidden="true"]')) nodes.push(node);
+    if (nodes.length) { nodes[0].textContent = text; nodes.slice(1).forEach(node => { node.textContent = ''; }); }
+    else el.appendChild(document.createTextNode(text));
+  }
+
+  function mediaUrl(value) {
+    if (!editorMode || !value) return value;
+    try { const url = new URL(value, API_BASE); const authority = new URL(API_BASE); if (url.origin === authority.origin && /^\/api\/website-content\/media\/[a-f0-9-]+$/i.test(url.pathname)) { url.searchParams.set('ticket', editorTicket); return url.toString(); } } catch {}
+    return value;
   }
 
   function applyElementOverride(el, override) {
@@ -166,23 +210,32 @@
     else if (override.hidden === false) el.hidden = false;
 
     if (el instanceof HTMLImageElement) {
-      if (override.imageDataUrl) el.src = override.imageDataUrl;
-    } else if (override.text != null) {
-      el.textContent = override.text;
+      if (override.imageDataUrl) el.src = mediaUrl(override.imageDataUrl);
+    } else if (override.text != null && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) {
+      setContentText(el, override.text);
     }
 
+    if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
+    if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
+    if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
     applyStyle(el, override.style);
   }
 
   function createExtra(extra) {
-    const section = document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
+    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
     if (!section) return null;
     let el;
     if (extra.type === 'image') {
       el = document.createElement('img');
-      el.src = extra.imageDataUrl || '';
+      el.src = mediaUrl(extra.imageDataUrl || '');
       el.alt = '';
       el.className = 'cms-extra cms-extra-image';
+    } else if (extra.type === 'section') {
+      el = document.createElement('section'); el.dataset.cmsSection = `extra:${extra.id}`; el.className = 'cms-extra cms-extra-section';
+    } else if (extra.type === 'video') {
+      el = document.createElement('video'); el.controls = true; el.preload = 'metadata'; if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+    } else if (extra.type === 'button') {
+      el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn';
     } else {
       el = document.createElement('p');
       el.textContent = extra.text || '';
@@ -192,7 +245,7 @@
     el.dataset.cmsId = `extra:${extra.id}`;
     el.dataset.cmsEditable = 'true';
     section.appendChild(el);
-    applyStyle(el, extra.style);
+    applyElementOverride(el, extra);
     return el;
   }
 
@@ -200,15 +253,15 @@
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
 
-    Object.entries(documentState.elements).forEach(([id, override]) => {
+    Object.entries(pageState().elements).forEach(([id, override]) => {
       const el = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
       applyElementOverride(el, override);
     });
 
     const sections = Array.from(document.querySelectorAll('[data-cms-section]'));
     sections.sort((a,b) => {
-      const ai = documentState.sectionOrder[a.dataset.cmsSection] ?? sections.indexOf(a);
-      const bi = documentState.sectionOrder[b.dataset.cmsSection] ?? sections.indexOf(b);
+      const ai = pageState().sectionOrder[a.dataset.cmsSection] ?? sections.indexOf(a);
+      const bi = pageState().sectionOrder[b.dataset.cmsSection] ?? sections.indexOf(b);
       return ai - bi;
     });
     const parentGroups = new Map();
@@ -221,24 +274,54 @@
     parentGroups.forEach(group => group.forEach(section => section.parentElement.appendChild(section)));
 
     document.querySelectorAll('.cms-extra').forEach(x => { scaledElements.delete(x); x.remove(); });
-    documentState.extras.forEach(createExtra);
+    pageState().extras.filter(x => x.type === 'section').forEach(createExtra);
+    pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
+    Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), ov.placement));
+    pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
   }
 
+  function bindBusiness(payload) {
+    const business = payload.business;
+    if (SITE_KEY !== 'business') return;
+    if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
+    BUSINESS_ID = business.id;
+    document.querySelectorAll('[data-business-name]').forEach(el => { el.textContent = business.displayName; });
+    document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
+
+  }
+  function preservePreviewNavigation() {
+    if (renderInput || SITE_KEY !== 'business') return;
+    document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
+  }
+  function unavailable(error) {
+    if (SITE_KEY === 'business') { document.body.replaceChildren(); const main = document.createElement('main'); main.textContent = error.message || 'This website is unavailable.'; document.body.appendChild(main); document.documentElement.hidden = false; }
+  }
   async function loadPublic() {
+    if (SITE_KEY === 'business' && !BUSINESS_ID) {
+      const resolved = await fetch(`${API_BASE}/api/website-content/public/resolve?host=${encodeURIComponent(location.hostname)}`, { cache: 'no-store' });
+      if (!resolved.ok) throw new Error('This domain is not connected to a published business website.');
+      const resolvedPayload = await resolved.json(); BUSINESS_ID = resolvedPayload.businessId || resolvedPayload.business?.id;
+      if (!BUSINESS_ID) throw new Error('This domain is not connected to a business.');
+    }
     const url = new URL(`${API_BASE}/api/website-content/public/${encodeURIComponent(SITE_KEY)}`);
     if (AGENT_SLUG) url.searchParams.set('agentSlug', AGENT_SLUG);
     if (BUSINESS_ID) url.searchParams.set('businessId', BUSINESS_ID);
     try {
       const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) return;
+      if (!response.ok) { if (SITE_KEY === 'business') throw new Error('This business website is unavailable.'); return; }
       const payload = await response.json();
       if (payload.businessName) {
         document.querySelectorAll('[data-business-name]').forEach(element => {
           element.textContent = payload.businessName;
         });
       }
+      bindBusiness(payload);
+      prepareDom();
       applyDocument(payload.document || {});
-    } catch {
+      preservePreviewNavigation();
+      document.documentElement.hidden = false;
+    } catch (error) {
+      unavailable(error);
       // Public content remains fully usable from canonical defaults.
     }
   }
@@ -248,11 +331,11 @@
   }
 
   function ensureOverride(id) {
-    if (!documentState.elements[id]) {
-      documentState.elements[id] = { style: {} };
+    if (!pageState().elements[id]) {
+      pageState().elements[id] = { style: {} };
     }
-    if (!documentState.elements[id].style) documentState.elements[id].style = {};
-    return documentState.elements[id];
+    if (!pageState().elements[id].style) pageState().elements[id].style = {};
+    return pageState().elements[id];
   }
 
   function markDirty() {
@@ -265,14 +348,15 @@
     document.querySelectorAll('.legend-cms-selected').forEach(x => x.classList.remove('legend-cms-selected'));
     selected = el;
     selectedSection = currentSectionFor(el);
-    if (selected) selected.classList.add('legend-cms-selected');
+    if (selected) { selected.classList.add('legend-cms-selected'); selected.draggable = !selected.dataset.cmsSection; }
     syncEditorControls();
+    showPanel('content');
   }
 
   function selectedOverride() {
     if (!selected?.dataset?.cmsId) return null;
     if (selected.dataset.cmsExtraId) {
-      return documentState.extras.find(x => x.id === selected.dataset.cmsExtraId) || null;
+      return pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) || null;
     }
     return ensureOverride(selected.dataset.cmsId);
   }
@@ -289,7 +373,7 @@
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
-    document.querySelectorAll('.legend-cms-panel input:not([data-theme-key]),.legend-cms-panel textarea,.legend-cms-panel select').forEach(control => { control.disabled = !selected; });
+    document.querySelectorAll('.legend-cms-panel input:not([data-theme-key]):not(#legend-cms-extra-image),.legend-cms-panel textarea,.legend-cms-panel select').forEach(control => { control.disabled = !selected; });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
       if (textGroup) textGroup.hidden = true;
@@ -299,18 +383,19 @@
 
     if (title) title.textContent = selected.dataset.cmsId || selected.tagName;
     const isImage = selected instanceof HTMLImageElement;
-    if (textGroup) textGroup.hidden = isImage;
+    if (textGroup) textGroup.hidden = isImage || !!selected.dataset.cmsSection || ['VIDEO','DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName);
     if (imageGroup) imageGroup.hidden = !isImage;
 
     const ov = selected.dataset.cmsExtraId
-      ? documentState.extras.find(x => x.id === selected.dataset.cmsExtraId) || {}
-      : documentState.elements[selected.dataset.cmsId] || {};
+      ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) || {}
+      : pageState().elements[selected.dataset.cmsId] || {};
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
       ? selected.parentElement.clientWidth - (parseFloat(parentStyle.paddingLeft) || 0) - (parseFloat(parentStyle.paddingRight) || 0) : 0;
     const actualWidth = parentWidth > 0 ? parseFloat(computed.width) / parentWidth * 100 : 100;
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
+    const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
     if (text && !isImage) text.value = ov.text ?? selected.textContent ?? '';
     if (scale) scale.value = String(ov.style?.fontScale ?? 1);
     if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
@@ -318,6 +403,11 @@
     if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
     if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
     if (scale) scale.disabled = isImage;
+    const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
+    Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
+    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
+    const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
+    const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
   }
 
@@ -336,11 +426,12 @@
       if (!valid) { control.setCustomValidity('Enter a finite ' + (field.startsWith('padding') ? 'nonnegative' : 'positive') + ' number.'); return; }
     }
     control.setCustomValidity('');
+    checkpoint();
     const ov = selectedOverride();
     if (!ov) return;
-    if (control.id === 'legend-cms-text' && !(selected instanceof HTMLImageElement)) {
+    if (control.id === 'legend-cms-text' && !(selected instanceof HTMLImageElement) && !selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) {
       ov.text = control.value;
-      selected.textContent = control.value;
+      setContentText(selected, control.value);
     } else if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
       selected.hidden = control.checked;
@@ -358,23 +449,28 @@
     markDirty();
   }
 
-  function readImage(file, callback) {
+  async function uploadMedia(file) {
+    if (!file) return null;
+    const status = document.getElementById('legend-cms-status');
+    if (status) status.textContent = 'Uploading media…';
+    try {
+      const body = new FormData(); body.append('ticket', editorTicket); body.append('file', file);
+      const response = await fetch(`${API_BASE}/api/website-content/manage/media`, { method: 'POST', body });
+      const result = await response.json();
+      if (!response.ok || !result.url) throw new Error(result.message || result.error || 'Upload failed.');
+      if (status) status.textContent = 'Media uploaded; save your draft to retain placement';
+      return result.url;
+    } catch (error) { if (status) status.textContent = error.message; return null; }
+  }
+  async function readImage(file, callback) {
     if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
-      alert('Use a JPEG, PNG, or WebP image.');
-      return;
-    }
-    if (file.size > 2_500_000) {
-      alert('Use an image smaller than 2.5 MB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => callback(String(reader.result || ''));
-    reader.readAsDataURL(file);
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) { alert('Use a JPEG, PNG, or WebP image.'); return; }
+    const url = await uploadMedia(file); if (url) callback(url);
   }
 
   function moveSelectedSection(delta) {
     if (!selectedSection) return;
+    checkpoint();
     const parent = selectedSection.parentElement;
     if (!parent) return;
     const sections = Array.from(parent.children).filter(x => x.dataset?.cmsSection);
@@ -386,7 +482,7 @@
     Array.from(parent.children)
       .filter(x => x.dataset?.cmsSection)
       .forEach((section, i) => {
-        documentState.sectionOrder[section.dataset.cmsSection] = i;
+        pageState().sectionOrder[section.dataset.cmsSection] = i;
       });
     markDirty();
   }
@@ -396,6 +492,7 @@
       alert('Select content inside the section where you want the new text.');
       return;
     }
+    checkpoint();
     const extra = {
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
       sectionId: selectedSection.dataset.cmsSection,
@@ -403,7 +500,7 @@
       text: 'New text block',
       style: { fontScale: 1, widthPercent: 100, paddingTop: 12, paddingBottom: 12 }
     };
-    documentState.extras.push(extra);
+    pageState().extras.push(extra);
     const el = createExtra(extra);
     setSelected(el);
     markDirty();
@@ -415,6 +512,7 @@
       return;
     }
     readImage(file, dataUrl => {
+      checkpoint();
       const extra = {
         id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
         sectionId: selectedSection.dataset.cmsSection,
@@ -422,7 +520,7 @@
         imageDataUrl: dataUrl,
         style: { widthPercent: 70, paddingTop: 16, paddingBottom: 16 }
       };
-      documentState.extras.push(extra);
+      pageState().extras.push(extra);
       const el = createExtra(extra);
       setSelected(el);
       markDirty();
@@ -431,47 +529,138 @@
 
   function removeSelected() {
     if (!selected) return;
+    checkpoint();
     if (selected.dataset.cmsExtraId) {
-      documentState.extras = documentState.extras.filter(x => x.id !== selected.dataset.cmsExtraId);
+      pageState().extras = pageState().extras.filter(x => x.id !== selected.dataset.cmsExtraId);
       scaledElements.delete(selected);
       selected.remove();
       setSelected(null);
       markDirty();
       return;
     }
-    delete documentState.elements[selected.dataset.cmsId];
+    delete pageState().elements[selected.dataset.cmsId];
     const original = rememberOriginal(selected);
     selected.hidden = original.hidden;
     if (selected instanceof HTMLImageElement) selected.src = original.src || '';
-    else selected.textContent = original.text;
+    else if (!selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) { setContentText(selected, original.text); }
     applyStyle(selected, null);
     syncEditorControls();
     markDirty();
   }
 
-  async function save() {
+  let saving = false;
+  async function save(publish = false) {
+    if (saving) return;
     const status = document.getElementById('legend-cms-status');
-    if (status) status.textContent = 'Saving…';
+    if (publish && dirty) { await save(false); if (dirty) return; }
+    if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
+    saving = true;
+    const submitted = JSON.stringify(documentState);
     try {
-      const response = await fetch(`${API_BASE}/api/website-content/manage`, {
+      const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: documentState })
+        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision })
       });
-      if (!response.ok) throw new Error(`Save failed (${response.status})`);
+      if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
       const payload = await response.json();
-      documentState = normalizeDocument(payload.document || documentState);
-      dirty = false;
-      if (status) status.textContent = 'Saved live';
+      const changedDuringSave = JSON.stringify(documentState) !== submitted;
+      if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
+      revision = payload.revision ?? revision;
+      dirty = changedDuringSave;
+      if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
     } catch (error) {
       if (status) status.textContent = error?.message || 'Save failed';
-    }
+    } finally { saving = false; }
   }
+
+  let revision = null;
+  const undoStack = [], redoStack = [];
+  const baselineNodes = new Map();
+  function checkpoint() { undoStack.push(JSON.stringify(documentState)); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0; }
+  function restoreHistory(from, to) {
+    if (!from.length) return;
+    to.push(JSON.stringify(documentState));
+    baselineNodes.forEach(({ el, parent, next }) => { if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
+    applyDocument(JSON.parse(from.pop())); setSelected(null); markDirty();
+  }
+  function safeUrl(value, media = false) {
+    if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value)) return false;
+    try { const url = new URL(value, location.origin); return media ? url.protocol === 'https:' : ['https:','http:','mailto:','tel:'].includes(url.protocol); } catch { return false; }
+  }
+  function applyPlacement(el, placement) {
+    if (!el || !placement || el.dataset.cmsSection) return;
+    const section = document.querySelector(`[data-cms-section="${CSS.escape(placement.sectionId || '')}"]`);
+    if (!section || el.contains?.(section)) return;
+    let frame = Array.from(section.children).find(x => x.classList.contains('cms-layout-frame'));
+    if (!frame) { frame = document.createElement('div'); frame.className = 'cms-layout-frame'; section.appendChild(frame); }
+    const before = placement.beforeId ? document.querySelector(`[data-cms-id="${CSS.escape(placement.beforeId)}"]`) : null;
+    frame.insertBefore(el, before?.parentElement === frame && before !== el ? before : null);
+    const column = Math.min(12, Math.max(1, Number(placement.column) || 1));
+    const span = Math.min(13 - column, Math.max(1, Number(placement.span) || 12));
+    el.style.setProperty('--cms-column', String(column)); el.style.setProperty('--cms-span', String(span)); el.style.minWidth = '0'; el.style.maxWidth = '100%'; el.style.overflowWrap = 'anywhere';
+  }
+  function showPanel(name) {
+    document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
+    const back = document.getElementById('legend-cms-back'); if (back) back.hidden = name === 'home';
+  }
+  function addBlock(type) {
+    const section = selectedSection || document.querySelector('[data-cms-section]');
+    if (!section && type !== 'section') return;
+    checkpoint();
+    const extra = { id: crypto.randomUUID(), type, sectionId: section?.dataset.cmsSection || '', text: type === 'button' ? 'Your button' : type === 'text' ? 'Your text' : '', style: {} };
+    if (type === 'button') extra.href = '#';
+    pageState().extras.push(extra); const el = createExtra(extra); setSelected(el); markDirty();
+  }
+  function enhanceEditor(panel, preview) {
+    document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
+    const content = document.createElement('div'); content.dataset.cmsView = 'content';
+    Array.from(panel.children).filter(el => !el.classList.contains('legend-cms-bar')).forEach(el => content.appendChild(el));
+    panel.appendChild(content);
+    const navigation = document.createElement('div'); navigation.innerHTML = `<button id="legend-cms-back" hidden>← All controls</button><div data-cms-view="home" class="legend-cms-menu"><h2>Build your website</h2><p>Select anything in the preview, or choose a tool.</p><button data-open="content">Content & links</button><button data-open="add">Add blocks</button><button data-open="appearance">Appearance & spacing</button><button data-open="theme">Global theme</button><button data-open="layout">Arrange & layers</button></div>`;
+    panel.insertBefore(navigation, content);
+    const tools = document.createElement('div'); tools.innerHTML = `
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Added to your selected section.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="appearance" hidden><h2>Appearance</h2>${['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit'].map(key => `<label class="legend-cms-group">${key.replace(/([A-Z])/g,' $1')}<input data-style-key="${key}" type="${['fontSize','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius'].includes(key) ? 'number' : 'text'}" step="any"></label>`).join('')}<button id="legend-cms-container">Select section container</button></section>
+      <section data-cms-view="layout" hidden><h2>Arrange</h2><p>Drag a selected block onto a section. The 12-column guide snaps placement and keeps blocks in the page. On narrow screens blocks stack.</p><button id="legend-cms-drag">Enable drag</button><label class="legend-cms-group">Destination section<select id="legend-cms-destination"></select></label><label class="legend-cms-group">Column<input id="legend-cms-column" type="number" min="1" max="12" value="1"></label><label class="legend-cms-group">Column span<input id="legend-cms-span" type="number" min="1" max="12" value="12"></label><button id="legend-cms-place">Place block</button><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Global theme</h2></section>`;
+    panel.appendChild(tools);
+
+    const layoutView = tools.querySelector('[data-cms-view="layout"]');
+    ['legend-cms-add-text','legend-cms-add-image'].forEach(id => document.getElementById(id)?.remove());
+    ['legend-cms-up','legend-cms-down','legend-cms-reset','legend-cms-remove'].forEach(id => { const button = document.getElementById(id); if (button && layoutView) layoutView.appendChild(button); });
+    const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-href">Link destination</label><input id="legend-cms-href" type="url"><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label><small>Edit the displayed label in Content above.</small></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    content.appendChild(links);
+    panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => { showPanel(button.dataset.open); if (button.dataset.open === 'layout') { const select = document.getElementById('legend-cms-destination'); select.replaceChildren(); document.querySelectorAll('[data-cms-section]').forEach(section => { const option = document.createElement('option'); option.value = section.dataset.cmsSection; option.textContent = section.querySelector('h1,h2,h3')?.textContent || section.dataset.cmsSection; select.appendChild(option); }); } }));
+    document.getElementById('legend-cms-back').addEventListener('click', () => showPanel('home'));
+    panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
+    document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
+    document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' ? Number(input.value) : input.value; if (input.type === 'number' && !spacingNumber(value)) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; applyElementOverride(selected, ov); markDirty(); }));
+    document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
+    document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
+    document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
+    document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
+    function place(sectionId, column, span, beforeId) { if (!selected || selected.dataset.cmsSection) return; checkpoint(); const ov = selectedOverride(); column = Math.max(1, Math.min(12, Math.round(column) || 1)); span = Math.max(1, Math.min(13-column, Math.round(span) || 12)); ov.placement = { sectionId, column, span, beforeId };  applyPlacement(selected, ov.placement); selectedSection = currentSectionFor(selected); markDirty(); }
+    document.getElementById('legend-cms-place').addEventListener('click', () => place(document.getElementById('legend-cms-destination').value, Number(document.getElementById('legend-cms-column').value), Number(document.getElementById('legend-cms-span').value)));
+    document.getElementById('legend-cms-drag').addEventListener('click', () => { if (selected && !selected.dataset.cmsSection) { selected.draggable = true; document.getElementById('legend-cms-status').textContent = 'Drag the selected block onto a section'; } });
+    preview.addEventListener('dragstart', event => { const el = event.target.closest('[data-cms-editable="true"]'); if (!el || el.dataset.cmsSection) { event.preventDefault(); return; } setSelected(el); event.dataTransfer.setData('text/plain', el.dataset.cmsId); preview.classList.add('legend-cms-dragging'); });
+    preview.addEventListener('dragover', event => { const section = event.target.closest('[data-cms-section]'); if (selected && section && !selected.contains(section)) { event.preventDefault(); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); section.classList.add('legend-cms-drop'); } });
+    preview.addEventListener('drop', event => { event.preventDefault(); const section = event.target.closest('[data-cms-section]'); if (section && selected) { const rect = section.getBoundingClientRect(); const column = Math.max(1, Math.min(12, Math.floor((event.clientX - rect.left) / rect.width * 12) + 1)); const before = event.target.closest('[data-cms-id]'); place(section.dataset.cmsSection, column, Math.min(6, 13-column), before?.dataset.cmsId); } clearDrag(); });
+    function clearDrag() { preview.classList.remove('legend-cms-dragging'); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); }
+    preview.addEventListener('dragend', clearDrag);
+    showPanel('home');
+  }
+
+  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
+`; document.head.appendChild(style); }
 
   function injectEditorStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      .legend-cms-selected{outline:3px solid #f0cf78!important;outline-offset:4px!important}
+      .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
       [data-cms-editable="true"]{cursor:pointer}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
@@ -483,13 +672,14 @@
       .legend-cms-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;background:#081a3af2;color:#fff;border:1px solid #d4ad45;border-radius:12px;margin:0 0 18px}
       .legend-cms-bar button{min-height:42px;border-radius:999px;padding:8px 14px;border:1px solid #d4ad45;background:#102b62;color:#fff;font-weight:800}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
-      .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#fff;color:#101a35;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
-      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#667085;margin-bottom:14px;word-break:break-all}
-      .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#344054}
+      .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;word-break:break-all}
+      .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-group textarea,.legend-cms-group select,.legend-cms-group input[type="number"]{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:9px}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
+      .legend-cms-panel button{cursor:pointer}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button,#legend-cms-back{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}.legend-cms-drop{outline:2px dashed #d4ad45;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(8.333% - 1px),#d4ad4560 calc(8.333% - 1px),#d4ad4560 8.333%)}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}.legend-cms-panel{border-top:2px solid #d4ad45}}
     `;
@@ -533,13 +723,12 @@
       </div>
       <div class="legend-cms-group"><label for="legend-cms-align">Alignment</label><select id="legend-cms-align"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="start">Start</option><option value="end">End</option><option value="justify">Justify</option></select></div>
       <div class="legend-cms-group"><label><input id="legend-cms-hidden" type="checkbox"> Hide selected content</label></div>
-      <hr>
       <div class="legend-cms-group"><label>Site colors</label>
         <div class="legend-cms-theme">
           <label>Navy<input data-theme-key="navy" type="color" value="#102b62"></label>
           <label>Deep navy<input data-theme-key="navyDeep" type="color" value="#081a3a"></label>
           <label>Gold<input data-theme-key="gold" type="color" value="#d4ad45"></label>
-          <label>Bright gold<input data-theme-key="goldStrong" type="color" value="#f0cf78"></label>
+          <label>Bright gold<input data-theme-key="goldStrong" type="color" value="#f0cf78"></label><label>Surface<input data-theme-key="surface" type="color" value="#ffffff"></label><label>Text<input data-theme-key="text" type="color" value="#101a35"></label><label>Muted<input data-theme-key="muted" type="color" value="#667085"></label><label>Font family<input data-theme-key="fontFamily" type="text" value=""></label>
         </div>
       </div>
     `;
@@ -548,23 +737,24 @@
     const bar = document.createElement('div');
     bar.className = 'legend-cms-editor legend-cms-bar';
     bar.innerHTML = `
-      <button class="primary" id="legend-cms-save">Save Live</button>
-      <span id="legend-cms-status">Live editor</span>
+      <button id="legend-cms-save">Save draft</button><button class="primary" id="legend-cms-publish">Publish</button>
+      <span id="legend-cms-status">Draft editor</span>
       <button id="legend-cms-add-text">Add Text</button>
       <button id="legend-cms-add-image">Add Image</button>
       <input id="legend-cms-extra-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
       <button id="legend-cms-up">Section ↑</button>
       <button id="legend-cms-down">Section ↓</button>
-      <button id="legend-cms-remove">Reset / Remove</button>
+      <button id="legend-cms-reset">Reset selected</button><button id="legend-cms-remove">Delete selected</button>
       <button id="legend-cms-exit">Exit</button>
     `;
     panel.insertBefore(bar, panel.firstChild);
+    enhanceEditor(panel, preview);
     refreshScaledElements();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refreshScaledElements).observe(preview);
     syncEditorControls();
 
     document.addEventListener('click', event => {
-      const target = event.target.closest('[data-cms-editable="true"]');
+      const target = (event.target.tagName === 'IMG' ? event.target.closest('[data-cms-editable="true"]') : event.target.closest('a[data-cms-editable="true"]')) || event.target.closest('[data-cms-editable="true"]');
       if (!target || target.closest('.legend-cms-editor')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -577,35 +767,41 @@
     document.getElementById('legend-cms-image')?.addEventListener('change', e => {
       const file = e.target.files?.[0];
       if (!selected || !(selected instanceof HTMLImageElement)) return;
+      const imageTarget = selected;
       readImage(file, dataUrl => {
+        if (selected !== imageTarget) return;
+        checkpoint();
         const ov = selectedOverride();
         if (!ov) return;
         ov.imageDataUrl = dataUrl;
-        selected.src = dataUrl;
+        selected.src = mediaUrl(dataUrl);
         markDirty();
       });
     });
 
     document.querySelectorAll('[data-theme-key]').forEach(input => {
       const key = input.dataset.themeKey;
-      const themeVariables = { navy: '--navy', navyDeep: '--navy-deep', gold: '--gold', goldStrong: '--gold-strong' };
+      const themeVariables = { navy: '--web-navy', navyDeep: '--web-navy-deep', gold: '--web-gold', goldStrong: '--web-gold-strong',surface:'--web-surface',text:'--web-ink',muted:'--web-muted',fontFamily:'--web-font' };
       const currentColor = documentState.theme?.[key]
         || getComputedStyle(document.documentElement).getPropertyValue(themeVariables[key]).trim();
-      if (/^#[0-9a-f]{6}$/i.test(currentColor)) input.value = currentColor;
+      if (input.type !== 'color' || /^#[0-9a-f]{6}$/i.test(currentColor)) input.value = currentColor;
       input.addEventListener('input', () => {
+        checkpoint();
         documentState.theme[key] = input.value;
         applyTheme(documentState.theme);
         markDirty();
       });
     });
 
-    document.getElementById('legend-cms-save')?.addEventListener('click', save);
+    document.getElementById('legend-cms-save')?.addEventListener('click', () => save(false));
+    document.getElementById('legend-cms-publish')?.addEventListener('click', () => save(true));
     document.getElementById('legend-cms-add-text')?.addEventListener('click', addText);
     document.getElementById('legend-cms-add-image')?.addEventListener('click', () => document.getElementById('legend-cms-extra-image')?.click());
     document.getElementById('legend-cms-extra-image')?.addEventListener('change', e => addImage(e.target.files?.[0]));
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
-    document.getElementById('legend-cms-remove')?.addEventListener('click', removeSelected);
+    document.getElementById('legend-cms-remove')?.addEventListener('click', () => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty(); });
+    document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
       if (dirty && !confirm('Exit with unsaved changes?')) return;
       const url = new URL(location.href);
@@ -621,18 +817,37 @@
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) throw new Error('This edit session has expired.');
       const payload = await response.json();
+      if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
+      bindBusiness(payload);
+      prepareDom();
+      revision = payload.revision;
       applyDocument(payload.document || {});
+      preservePreviewNavigation();
       buildEditor();
+      const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
+      document.documentElement.hidden = false;
     } catch (error) {
+      unavailable(error);
       console.error('[legend-cms]', error);
       alert(error?.message || 'Unable to open website editor.');
     }
   }
 
-  document.addEventListener('DOMContentLoaded', async () => {
+  if (renderInput) {
+    bindBusiness(renderInput);
     prepareDom();
-    await loadPublic();
+    injectContentStyles();
+    applyDocument(renderInput.document || {});
+    document.documentElement.hidden = false;
+    window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
+    if (!renderInput.server) { window.addEventListener('resize', refreshScaledElements); if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements); }
+    return;
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    injectContentStyles();
     if (editorMode) await loadEditor();
+    else { try { await loadPublic(); } catch (error) { unavailable(error); } }
     window.addEventListener('resize', refreshScaledElements);
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });

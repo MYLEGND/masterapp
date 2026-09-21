@@ -35,7 +35,12 @@ public sealed class AccountLifecycleService : IAccountLifecycleService
 
     public async Task<AccountLifecycleSnapshot> GetAsync(AccountLifecycleSubject subject, CancellationToken cancellationToken = default)
     {
-        var record = await FindAsync(subject, tracking: false, cancellationToken);
+        return await ReadAsync(_db, subject, cancellationToken);
+    }
+
+    public static async Task<AccountLifecycleSnapshot> ReadAsync(MasterAppDbContext db, AccountLifecycleSubject subject, CancellationToken cancellationToken = default)
+    {
+        var record = await FindAsync(db, subject, false, cancellationToken);
         return ToSnapshot(record);
     }
 
@@ -134,10 +139,12 @@ public sealed class AccountLifecycleService : IAccountLifecycleService
             ToSnapshot(record));
     }
 
-    private async Task<AccountLifecycleRecord?> FindAsync(AccountLifecycleSubject subject, bool tracking, CancellationToken cancellationToken)
+    private Task<AccountLifecycleRecord?> FindAsync(AccountLifecycleSubject subject, bool tracking, CancellationToken cancellationToken) => FindAsync(_db, subject, tracking, cancellationToken);
+
+    private static async Task<AccountLifecycleRecord?> FindAsync(MasterAppDbContext db, AccountLifecycleSubject subject, bool tracking, CancellationToken cancellationToken)
     {
         var normalized = Normalize(subject);
-        IQueryable<AccountLifecycleRecord> query = _db.AccountLifecycleRecords;
+        IQueryable<AccountLifecycleRecord> query = db.AccountLifecycleRecords;
         if (!tracking)
             query = query.AsNoTracking();
 

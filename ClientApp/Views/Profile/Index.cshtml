@@ -1,3 +1,4 @@
+<link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 @model ClientApp.Models.EditClientViewModel
 
 @{
@@ -183,40 +184,25 @@
 
                     @if (!isAgentView && isBusinessClient)
                     {
-                        <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="business-website-heading">
-                            <div class="client-edit-section-head">
-                                <div>
-                                    <div class="client-create-section-title" id="business-website-heading">Business Website</div>
-                                    <p class="client-edit-note">
-                                        @(businessWebsites.Count > 0
-                                            ? $"{businessWebsites.Count} business website scope{(businessWebsites.Count == 1 ? "" : "s")} available."
-                                            : "Set up your business website using the shared LEGEND website engine and editor.")
-                                    </p>
-                                </div>
-                                <span class="client-edit-pill">Business Client</span>
-                            </div>
-                            <button type="button"
-                                    class="client-create-button client-create-button-secondary"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#businessWebsiteModal">
-                                Manage Website
-                            </button>
-                        </section>
-
-                        <div class="modal fade" id="businessWebsiteModal" tabindex="-1" aria-labelledby="businessWebsiteModalLabel" aria-hidden="true">
-                            <div class="modal-dialog modal-dialog-centered modal-lg">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <div>
-                                            <div class="dashboard-eyebrow">Business Website</div>
-                                            <h2 class="modal-title fs-5" id="businessWebsiteModalLabel">Website Management</h2>
-                                        </div>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                    </div>
-                                    <div class="modal-body">
-                                        @if (businessWebsites.Count == 0)
-                                        {
-                                            <p class="client-edit-note">Create the business scope first. This uses your existing Business Client account and does not create another login or editor.</p>
+                        @foreach (var website in businessWebsites)
+                        {
+                            <section class="legend-website-summary">
+                                <div><span class="legend-website-eyebrow">Business website</span><h3>@website.BusinessName</h3><p>@(website.PrimaryDomain ?? "Domain not connected")</p></div>
+                                <button type="button" data-website-manage data-session="/profile/business-website/session/@website.BusinessId" data-edit="/profile/business-website/edit/@website.BusinessId" data-live="@website.PreviewUrl" data-title="@website.BusinessName" data-scope="business">Manage website →</button>
+                            </section>
+                        }
+                        @if (businessWebsites.Count == 0)
+                        {
+                            <section class="legend-website-summary">
+                                <div><span class="legend-website-eyebrow">Business Client</span><h3>Your business website</h3><p>Create your business scope, then customize and publish your website.</p></div>
+                                <button type="button" data-bs-toggle="modal" data-bs-target="#businessWebsiteModal">Set up website →</button>
+                            </section>
+                            <div class="modal fade" id="businessWebsiteModal" tabindex="-1" aria-labelledby="businessWebsiteModalLabel" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered modal-lg">
+                                    <div class="modal-content legend-website-onboarding">
+                                        <div class="modal-header"><h2 class="modal-title fs-5" id="businessWebsiteModalLabel">Set up your business website</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                                        <div class="modal-body">
+                                            <p>Your business permanently owns its website, content and connected domains.</p>
                                             <form action="/profile/business-website/setup" method="post">
                                                 @Html.AntiForgeryToken()
                                                 <div class="client-create-grid">
@@ -233,49 +219,11 @@
                                                     <button type="submit" class="client-create-button client-create-button-primary">Set Up Business Website</button>
                                                 </div>
                                             </form>
-                                        }
-                                        else
-                                        {
-                                            @foreach (var website in businessWebsites)
-                                            {
-                                                <section class="client-create-section client-create-section-shell mb-3">
-                                                    <div class="client-edit-section-head">
-                                                        <div>
-                                                            <div class="client-create-section-title">@website.BusinessName</div>
-                                                            <p class="client-edit-note">@(website.PrimaryDomain ?? "Custom domain not connected yet")</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="client-create-actions">
-                                                        <a class="client-create-button client-create-button-primary"
-                                                           href="/profile/business-website/edit/@website.BusinessId">
-                                                            Edit Website
-                                                        </a>
-                                                        <a class="client-create-button client-create-button-secondary"
-                                                           href="@website.PreviewUrl"
-                                                           target="_blank"
-                                                           rel="noopener">
-                                                            Preview Website
-                                                        </a>
-                                                        @if (!string.IsNullOrWhiteSpace(website.PrimaryDomain))
-                                                        {
-                                                            <a class="client-create-button client-create-button-secondary"
-                                                               href="https://@website.PrimaryDomain"
-                                                               target="_blank"
-                                                               rel="noopener">
-                                                                Open Domain
-                                                            </a>
-                                                        }
-                                                    </div>
-                                                </section>
-                                            }
-                                        }
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="client-create-button client-create-button-secondary" data-bs-dismiss="modal">Close</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        }
                     }
 
                     @if (!isAgentView && !accountIsRestricted)
@@ -354,6 +302,7 @@
 </main>
 
 @section Scripts {
+    <script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
         @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
         <script>
             (() => {
