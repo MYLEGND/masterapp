@@ -33,6 +33,38 @@ jobs:
           ref: legend/approved-changes
           fetch-depth: 0
 
+      - name: Diagnose live ClientApp browser entry when requested
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -q '"requestId": "clientapp-blank-entry-diagnostic-20260921-1"' Docs/releases/direct-release-request.json; then
+            echo "ClientApp entry diagnostic not requested."
+            exit 0
+          fi
+          python3 - <<'PYENTRY'
+          import http.client, json, ssl
+          context=ssl.create_default_context()
+          for host in ('client.mylegnd.com','masterapp-client.azurewebsites.net'):
+              for path in ('/','/Account/Login'):
+                  conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+                  try:
+                      conn.request('GET',path,headers={'User-Agent':'LEGEND-live-entry-diagnostic/1.0','Cache-Control':'no-cache','Accept':'text/html'})
+                      response=conn.getresponse()
+                      body=response.read(65537)
+                      print(json.dumps({
+                          'host':host,
+                          'path':path,
+                          'status':response.status,
+                          'location':response.getheader('Location'),
+                          'contentType':response.getheader('Content-Type'),
+                          'contentLength':response.getheader('Content-Length'),
+                          'bytes':len(body),
+                          'startsWith':body[:120].decode('utf-8','replace')
+                      }))
+                  finally:
+                      conn.close()
+          PYENTRY
+
       - name: Read shared release authorization
         id: policy
         run: |
