@@ -192,12 +192,26 @@ public class ProfileController : Controller
             .OrderBy(business => business.DisplayName)
             .ToListAsync(cancellationToken);
 
+        var businessIds = businesses.Select(business => business.Id).ToArray();
+        var activeDomains = await _db.Set<WebsiteDomainBinding>()
+            .AsNoTracking()
+            .Where(binding =>
+                businessIds.Contains(binding.CommerceBusinessId) &&
+                binding.Status.ToLower() == "active" &&
+                binding.CertificateStatus.ToLower() == "active")
+            .OrderBy(binding => binding.CreatedUtc)
+            .ToListAsync(cancellationToken);
+
+        var primaryDomainByBusiness = activeDomains
+            .GroupBy(binding => binding.CommerceBusinessId)
+            .ToDictionary(group => group.Key, group => group.First().Hostname);
+
         var baseUrl = LegendWebsiteBaseUrl();
         return businesses.Select(business => new BusinessWebsiteProfileSummary(
             business.Id,
             business.DisplayName,
             $"{baseUrl}/business-preview/?businessId={business.Id:D}",
-            string.IsNullOrWhiteSpace(business.PrimaryDomain) ? null : business.PrimaryDomain.Trim()))
+            primaryDomainByBusiness.TryGetValue(business.Id, out var hostname) ? hostname : null))
             .ToList();
     }
 

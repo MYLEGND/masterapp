@@ -18,12 +18,22 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
             await next(context);
             return;
         }
+        var path = context.Request.Path.Value ?? "/";
+
+        // Domain activation proof must be reachable while the binding is still pending.
+        // The controller verifies the exact binding/business pair; all other custom-host
+        // traffic still requires active provider evidence and a published website.
+        if (string.Equals(path, "/.well-known/legend-website", StringComparison.Ordinal))
+        {
+            await next(context);
+            return;
+        }
+
         var binding = await domains.ResolveAsync(host, context.RequestAborted);
         if (binding is null) { await Unavailable(context); return; }
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context); return; }
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
-        var path = context.Request.Path.Value ?? "/";
         if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) || path == "/api/website-inquiries/public")
         {
             await next(context);

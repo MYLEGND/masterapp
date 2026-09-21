@@ -88,7 +88,7 @@ public sealed class WebsiteContentController : ControllerBase
             WebsiteEditorSiteKeys.BusinessOwnerKey(continuation.CommerceBusinessId.Value),
             null,
             false,
-            DateTime.UtcNow.AddMinutes(45),
+            DateTime.UtcNow.AddHours(4),
             continuation.CommerceBusinessId,
             ActorUserId: continuation.ActorUserId,
             ActorEmail: actorEmail,
@@ -246,6 +246,8 @@ public sealed class WebsiteContentController : ControllerBase
         state.ScheduledActorJson = null;
         state.ScheduledRevision = null;
         state.PublishedVersionId = restored.Id;
+        state.DraftJson = previous.DocumentJson;
+        state.ImportReportJson = previous.ImportReportJson;
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
@@ -311,7 +313,8 @@ public sealed class WebsiteContentController : ControllerBase
         var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
-        return Ok(await DomainService().RegisterAsync(actor.CommerceBusinessId!.Value, request.Hostname, cancellationToken));
+        var binding = await DomainService().RegisterAsync(actor.CommerceBusinessId!.Value, request.Hostname, cancellationToken);
+        return Ok(new { binding, cnameTarget = DomainService().CnameTarget });
     }
 
     [HttpPost("manage/domains/refresh")]
@@ -424,7 +427,14 @@ public sealed class WebsiteContentController : ControllerBase
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
 
     private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
-        actor.SiteKey != WebsiteEditorSiteKeys.Business || await _db.CommerceBusinessMembers.AnyAsync(m => m.CommerceBusinessId == actor.CommerceBusinessId && m.ClientProfileId == actor.ActorClientProfileId && m.Status == "Active" && m.CanManageStorefront && m.RoleKey == "owner", cancellationToken);
+        actor.SiteKey != WebsiteEditorSiteKeys.Business ||
+        actor.CommerceBusinessId.HasValue &&
+        actor.ActorClientProfileId.HasValue &&
+        await WebsiteBusinessAccess.CanPublishAsync(
+            _db,
+            actor.CommerceBusinessId.Value,
+            actor.ActorClientProfileId.Value,
+            cancellationToken);
 
     public sealed record ScheduleRequest(string Ticket, long ExpectedRevision, DateTime? PublishUtc);
     [HttpPost("manage/schedule")]

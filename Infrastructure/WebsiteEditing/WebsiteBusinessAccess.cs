@@ -10,9 +10,28 @@ namespace Infrastructure.WebsiteEditing;
 public static class WebsiteBusinessAccess
 {
     public static IQueryable<CommerceBusiness> QueryManagedBusinesses(MasterAppDbContext db, Guid clientProfileId) =>
-        db.CommerceBusinesses.Where(b => b.IsActive && b.Status == "Active" &&
+        db.CommerceBusinesses.Where(b => b.IsActive && b.Status.ToLower() == "active" &&
             db.CommerceBusinessMembers.Any(m => m.CommerceBusinessId == b.Id &&
-                m.ClientProfileId == clientProfileId && m.Status == "Active" && m.CanManageStorefront));
+                m.ClientProfileId == clientProfileId && m.Status.ToLower() == "active" && m.CanManageStorefront));
+
+    public static async Task<bool> CanPublishAsync(
+        MasterAppDbContext db,
+        Guid businessId,
+        Guid clientProfileId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await CanManageAsync(db, businessId, clientProfileId, cancellationToken))
+            return false;
+
+        return await db.CommerceBusinessMembers.AsNoTracking().AnyAsync(
+            member =>
+                member.CommerceBusinessId == businessId &&
+                member.ClientProfileId == clientProfileId &&
+                member.Status.ToLower() == "active" &&
+                member.CanManageStorefront &&
+                member.RoleKey.ToLower() == "owner",
+            cancellationToken);
+    }
 
     public static async Task<bool> CanManageAsync(MasterAppDbContext db, Guid businessId, Guid clientProfileId, CancellationToken cancellationToken = default)
     {
