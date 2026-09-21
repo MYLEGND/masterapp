@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved direct deployment of the current approved ClientApp identity repair and the exact Business Website replacement fix.",
+  "authorization": "Founder approved retry of the same scoped ClientApp + Protect direct release after correcting the compile-only test import.",
   "purpose": "Direct release only ClientApp + Protect from legend/approved-changes. Preserve the single Client/BusinessClient identity authority and the single Protect website-ticket authority. Fix verified business-domain activation, active-domain presentation/live routing, first-request DNS guidance, owner publication authority, rollback consistency, and editor-session duration. No overrides, duplicate auth/domain/content systems, fallback authorities, or unrelated app deployment.",
-  "requestId": "client-business-identity-domain-publish-release-20260921-8",
+  "requestId": "client-business-identity-domain-publish-release-20260921-9",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client",
