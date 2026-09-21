@@ -58,6 +58,15 @@ public class AccountController : Controller
         if (challenge.Success)
             return await StartChallengeAsync(challenge.ReturnUrl, challenge.LoginHint);
 
+        // Existing clients may already have a stable Microsoft object-ID binding
+        // and an active entitlement, so they do not need a one-time activation
+        // continuation to begin a new OIDC session. The callback remains the
+        // authority: it permits continuation-free access only after resolving
+        // that object ID to an entitled client profile. First-time binding still
+        // requires the protected continuation created by the member sign-in form.
+        if (string.Equals(challenge.SafeErrorCode, "MISSING_CONTINUATION", StringComparison.Ordinal))
+            return await StartChallengeAsync(target);
+
         _identityAccessService.ClearChallengeContinuationCookie(Response);
 
         return RedirectToAction(nameof(ActivationRequired), new
