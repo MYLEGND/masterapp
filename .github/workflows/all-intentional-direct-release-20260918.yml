@@ -360,10 +360,10 @@ jobs:
           assert selected and len(selected)==len(set(selected)) and all(app in apps for app in selected)
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
           if validate_only:
-              required=['BASE','BUILD','TESTS','WEB']
+              required=['BASE','BUILD','TESTS','WEB','PACKAGE']
               if 'masterapp-website' in selected:
                   required.append('WEBSITECHECKS')
-              skipped=['PACKAGE','AZURE','MIGRATE','LIVE']+list(apps.values())
+              skipped=['AZURE','MIGRATE','LIVE']+list(apps.values())
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
               print(json.dumps({'mode':'validate-only','required':results,'skippedSteps':skipped_results},indent=2))
