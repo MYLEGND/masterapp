@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorizes direct deployment of only ClientApp for the final active-client sign-in continuation repair. Do not restart or redeploy AgentPortal, Protect, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
-  "purpose": "Eliminate false Activation Required loops for already-active Client and Business Client accounts, including B2B guest identities and Lead-to-client conversions, while keeping Lead records CRM-only and preserving inactive, conflicting-identity, and agent-route denials. Retry after correcting the ClientApp-only package gate; no other app is authorized.",
-  "requestId": "clientapp-active-signin-final-20260921-2",
+  "purpose": "Eliminate false Activation Required loops for already-active Client and Business Client accounts, including B2B guest identities and Lead-to-client conversions, while keeping Lead records CRM-only and preserving inactive, conflicting-identity, and agent-route denials. Retry after aligning the regression fixtures with the hardened DB-backed identity authority; no other app is authorized.",
+  "requestId": "clientapp-active-signin-final-20260921-3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
