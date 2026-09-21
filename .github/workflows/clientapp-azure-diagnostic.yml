@@ -38,3 +38,5 @@ jobs:
           az keyvault show -g masterapp-rg -n masterapp-kv-1221 --query '{rbac:properties.enableRbacAuthorization}' -o json
           echo "Current ClientApp host state:"
           az webapp show -g masterapp-rg -n masterapp-client --query '{state:state,hostNames:hostNames,identity:identity.principalId}' -o json
+
+# Re-probe after ClientApp Data Protection rollback settled.
