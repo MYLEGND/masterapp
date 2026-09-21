@@ -31,6 +31,7 @@ jobs:
           dotnet tool restore
           dotnet restore Infrastructure/Infrastructure.csproj --nologo
           dotnet restore AgentPortal/AgentPortal.csproj --nologo
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --no-restore --nologo
           ConnectionStrings__MasterAppDb='Server=localhost;Database=MigrationGenerationOnly;User Id=sa;Password=NotUsed-Generation1!;TrustServerCertificate=True'           EF_FORCE_SQLSERVER=true           DOTNET_ENVIRONMENT=Development ASPNETCORE_ENVIRONMENT=Development           dotnet tool run dotnet-ef migrations add ExtendClientContinuationForWebsiteEditor             --project Infrastructure/Infrastructure.csproj             --startup-project AgentPortal/AgentPortal.csproj             --context MasterAppDbContext             --output-dir Migrations             --configuration Release             --no-build
           generated="$(find Infrastructure/Migrations -maxdepth 1 -type f -name '*_ExtendClientContinuationForWebsiteEditor.cs' ! -name '*.Designer.cs' | head -n1)"
           designer="${generated%.cs}.Designer.cs"
