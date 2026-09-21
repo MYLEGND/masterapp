@@ -131,7 +131,7 @@ public class ClientAppSubscriptionActivationTests
         var challenge = Assert.IsType<ChallengeResult>(result);
         Assert.Contains("OpenIdConnect", challenge.AuthenticationSchemes);
         Assert.Equal("/profile", challenge.Properties?.RedirectUri);
-        Assert.Null(challenge.Properties?.Parameters["login_hint"]);
+        Assert.False(challenge.Properties?.Parameters.ContainsKey("login_hint") == true);
     }
 
     [Fact]
@@ -313,7 +313,7 @@ public class ClientAppSubscriptionActivationTests
             "/profile");
 
         Assert.False(result.Success);
-        Assert.Equal("INACTIVE_ENTITLEMENT", result.SafeErrorCode);
+        Assert.Equal("CLIENT_NOT_READY", result.SafeErrorCode);
         Assert.Null((await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id)).ExternalIdentityObjectId);
     }
 
@@ -427,6 +427,14 @@ public class ClientAppSubscriptionActivationTests
     public async Task CompleteClientSignIn_WithoutContinuation_AgentPrincipalCanBypass()
     {
         using var db = BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-oid",
+            AgentUpn = "agent@mylegnd.com",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
         var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
@@ -444,6 +452,14 @@ public class ClientAppSubscriptionActivationTests
     public async Task CompleteClientSignIn_WithoutContinuation_AgentCannotBypassIntoClientRoute()
     {
         using var db = BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-oid",
+            AgentUpn = "agent@mylegnd.com",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
         var continuationService = BuildContinuationService(db);
         var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
         var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
