@@ -13,9 +13,15 @@ public static class WebsiteTicketAuthorization
         if (ticket.SiteKey == WebsiteEditorSiteKeys.Business)
         {
             if (!ticket.ActorClientProfileId.HasValue || !ticket.CommerceBusinessId.HasValue ||
-                !await WebsiteBusinessAccess.CanManageAsync(db, ticket.CommerceBusinessId.Value, ticket.ActorClientProfileId.Value, cancellationToken)) return null;
-            var profile = await db.ClientProfiles.AsNoTracking().SingleAsync(p => p.Id == ticket.ActorClientProfileId.Value, cancellationToken);
-            return string.Equals(profile.ClientUserId, ticket.ActorUserId, StringComparison.OrdinalIgnoreCase) ? ticket : null;
+                !await WebsiteBusinessAccess.CanManageAsActorAsync(
+                    db,
+                    ticket.CommerceBusinessId.Value,
+                    ticket.ActorClientProfileId.Value,
+                    ticket.ActorUserId,
+                    ticket.ActorEmail,
+                    cancellationToken))
+                return null;
+            return ticket;
         }
         var actor = ticket.ActorUserId.Trim().ToLowerInvariant();
         if (ticket.SiteKey == WebsiteEditorSiteKeys.Legend)
