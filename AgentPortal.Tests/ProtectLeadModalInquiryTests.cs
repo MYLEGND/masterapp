@@ -73,7 +73,8 @@ public sealed class ProtectLeadModalInquiryTests
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
-        controller.Request.Headers.Referer = "https://protect.mylegnd.com/a/agent-one/";
+        controller.Request.Host = new HostString("protect.mylegnd.com");
+        controller.Request.Headers["Referer"] = "https://protect.mylegnd.com/a/agent-one/";
 
         var result = await controller.SubmitLead(new TrackingProxyController.LeadSubmitRequest
         {
@@ -158,11 +159,52 @@ public sealed class ProtectLeadModalInquiryTests
         var lead = Assert.Single(db.WebsiteLeads);
         Assert.Equal("NotificationFailed", lead.Status);
         Assert.Equal(profile.Id, lead.AgentTrackingProfileId);
+        sender.Verify(x => x.TrySendAsync(
+            profile.AgentUpn,
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>()), Times.Exactly(3));
 
         var captured = unavailable.Value?.GetType().GetProperty("captured")?.GetValue(unavailable.Value);
         var notificationSent = unavailable.Value?.GetType().GetProperty("notificationSent")?.GetValue(unavailable.Value);
         Assert.Equal(true, captured);
         Assert.Equal(false, notificationSent);
+    }
+
+    [Fact]
+    public async Task CentralLeadSubmit_RetriesTransientAgentNotificationFailure()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedAgent(db);
+        var sender = new Mock<IEmailSender>(MockBehavior.Strict);
+        sender.SetupSequence(x => x.TrySendAsync(
+                profile.AgentUpn,
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>()))
+            .ReturnsAsync(false)
+            .ReturnsAsync(true);
+
+        var controller = BuildCentralController(db, sender.Object);
+        var result = await controller.Submit(Request(profile));
+
+        Assert.IsType<OkObjectResult>(result);
+        var lead = Assert.Single(db.WebsiteLeads);
+        Assert.Equal("New", lead.Status);
+        sender.Verify(x => x.TrySendAsync(
+            profile.AgentUpn,
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>()), Times.Exactly(2));
     }
 
     private static AgentTrackingProfile SeedAgent(Infrastructure.Data.MasterAppDbContext db)

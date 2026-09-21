@@ -276,7 +276,7 @@
       if (!res.ok || responseBody?.emailSent !== true) {
         const captured = responseBody?.captured === true;
         const message = captured
-          ? 'Your inquiry was saved, but the agent notification did not complete. Please try Send again.'
+          ? 'Your inquiry was saved, but we could not confirm the agent notification. Please use Contact if you need immediate help.'
           : 'We could not send this right now. Please try again.';
         const error = new Error(message);
         error.captured = captured;

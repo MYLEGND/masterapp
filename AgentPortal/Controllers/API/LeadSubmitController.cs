@@ -319,24 +319,33 @@ Notes: {lead.Notes}";
 
 
         var emailSent = false;
-        try
+        const int notificationAttempts = 3;
+        for (var attempt = 1; attempt <= notificationAttempts && !emailSent; attempt++)
         {
-            emailSent = await _emailSender.TrySendAsync(
-                recipient,
-                subject,
-                htmlBody,
-                textBody);
+            try
+            {
+                emailSent = await _emailSender.TrySendAsync(
+                    recipient,
+                    subject,
+                    htmlBody,
+                    textBody);
 
-            _logger.LogInformation(
-                "LeadSubmit [{CorrelationId}]: agent notification sent={EmailSent} for lead {LeadId} to {Recipient} attributedId={AttributedId}",
-                correlationId, emailSent, lead.LeadId, recipient, lead.AgentTrackingProfileId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "LeadSubmit [{CorrelationId}]: agent notification threw for lead {LeadId} to {Recipient}",
-                correlationId, lead.LeadId, recipient);
+                _logger.LogInformation(
+                    "LeadSubmit [{CorrelationId}]: agent notification attempt {Attempt}/{MaxAttempts} sent={EmailSent} for lead {LeadId} to {Recipient} attributedId={AttributedId}",
+                    correlationId, attempt, notificationAttempts, emailSent, lead.LeadId, recipient, lead.AgentTrackingProfileId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "LeadSubmit [{CorrelationId}]: agent notification attempt {Attempt}/{MaxAttempts} threw for lead {LeadId} to {Recipient}",
+                    correlationId, attempt, notificationAttempts, lead.LeadId, recipient);
+            }
+
+            if (!emailSent && attempt < notificationAttempts)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt), HttpContext.RequestAborted);
+            }
         }
 
         if (!emailSent)
