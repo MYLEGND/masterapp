@@ -54,5 +54,6 @@ for(const file of ['legend-public-cms.js','legend-public-web.js','site.css']){
   const version=createHash('sha256').update(bytes).digest('hex');
   if(!businessPreview.includes(`/${file}?v=${version}`))throw new Error('Business preview missing exact shared asset version: '+file);
 }
-if(businessPreview.includes('https://www.mylegnd.com/business-preview/</loc>'))throw new Error('Business preview must not enter the public sitemap.');
+const sitemap=await readFile(resolve(root,'dist','sitemap.xml'),'utf8');
+if(sitemap.includes('/business-preview'))throw new Error('Business preview must not enter the public sitemap.');
 console.log('Business preview consumes the same shared renderer assets without entering the public sitemap.');

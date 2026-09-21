@@ -190,19 +190,23 @@ public class ProfileController : Controller
             return new List<BusinessWebsiteProfileSummary>();
 
         var normalizedEmail = email.ToUpperInvariant();
-        var businesses = await _db.CommerceBusinessMembers
+        var businessIds = await _db.CommerceBusinessMembers
             .AsNoTracking()
-            .Include(member => member.CommerceBusiness)
             .Where(member =>
                 member.NormalizedEmail == normalizedEmail &&
                 member.Status == "Active" &&
-                member.CanManageStorefront &&
-                member.CommerceBusiness != null &&
-                member.CommerceBusiness.IsActive &&
-                member.CommerceBusiness.Status == "Active")
-            .OrderBy(member => member.CommerceBusiness!.DisplayName)
-            .Select(member => member.CommerceBusiness!)
+                member.CanManageStorefront)
+            .Select(member => member.CommerceBusinessId)
             .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var businesses = await _db.CommerceBusinesses
+            .AsNoTracking()
+            .Where(business =>
+                businessIds.Contains(business.Id) &&
+                business.IsActive &&
+                business.Status == "Active")
+            .OrderBy(business => business.DisplayName)
             .ToListAsync(cancellationToken);
 
         var baseUrl = LegendWebsiteBaseUrl();
@@ -259,16 +263,22 @@ public class ProfileController : Controller
             return null;
 
         var normalizedEmail = email.ToUpperInvariant();
-        return await _db.CommerceBusinessMembers
+        var authorized = await _db.CommerceBusinessMembers
             .AsNoTracking()
-            .Where(member =>
+            .AnyAsync(member =>
                 member.CommerceBusinessId == businessId &&
                 member.NormalizedEmail == normalizedEmail &&
                 member.Status == "Active" &&
-                member.CanManageStorefront)
-            .Select(member => member.CommerceBusiness)
+                member.CanManageStorefront,
+                cancellationToken);
+
+        if (!authorized)
+            return null;
+
+        return await _db.CommerceBusinesses
+            .AsNoTracking()
             .SingleOrDefaultAsync(
-                business => business != null &&
+                business => business.Id == businessId &&
                             business.IsActive &&
                             business.Status == "Active",
                 cancellationToken);

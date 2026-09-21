@@ -7,7 +7,6 @@ using AgentPortal.Services;
 using AgentPortal.Services.Analytics;
 using AgentPortal.Services.Tracking;
 using Infrastructure.Data;
-using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -181,8 +180,7 @@ public class WebsiteAnalyticsDeleteLeadTests
             db,
             config,
             effective,
-            protector,
-            new WebsiteEditorTicketProtector(DataProtectionProvider.Create("AgentPortal.Tests.WebsiteEditor")))
+            protector)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };

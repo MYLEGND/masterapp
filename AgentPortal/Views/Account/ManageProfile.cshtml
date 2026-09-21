@@ -706,13 +706,24 @@
                 </div>
             </div>
             <div class="profile-actions profile-actions-start">
-                <button type="button"
-                        class="profile-btn profile-btn-secondary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#protectWebsiteModal"
-                        @(protectWebsiteAvailable ? null : "disabled")>
-                    Manage Protect Website
-                </button>
+                @if (protectWebsiteAvailable)
+                {
+                    <button type="button"
+                            class="profile-btn profile-btn-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#protectWebsiteModal">
+                        Manage Protect Website
+                    </button>
+                }
+                else
+                {
+                    <button type="button"
+                            class="profile-btn profile-btn-secondary"
+                            disabled
+                            aria-disabled="true">
+                        Manage Protect Website
+                    </button>
+                }
             </div>
         </section>
 

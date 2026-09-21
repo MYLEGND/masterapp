@@ -231,3 +231,15 @@ test('public pages retain responsive baseline-relative scale after viewport chan
   assert.equal(f.heading.style.fontSize, '72px');
   assert.equal(f.ids.has('legend-cms-save'), false);
 });
+
+
+test('business CMS sends the authoritative business id through the existing public endpoint', async () => {
+  const businessId = '5b01f1d0-12f6-4d4c-a263-2ddf11c81318';
+  const f = fixture({
+    context: { siteKey: 'business', apiBase: 'https://protect.example.test', businessId },
+    origin: 'https://www.example.test'
+  });
+  await f.ready();
+  assert.equal(f.calls[0].url.pathname, '/api/website-content/public/business');
+  assert.equal(f.calls[0].url.searchParams.get('businessId'), businessId);
+});

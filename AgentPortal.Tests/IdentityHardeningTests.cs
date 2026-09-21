@@ -238,7 +238,11 @@ public class IdentityHardeningTests
             new Claim("name", "Directory Display Name")
         }, "TestAuth"));
         var http = new DefaultHttpContext { User = user };
-        var controller = new AccountController(db, new AgentProfileAccessResolver(db), BuildActiveAccountLifecycle())
+        var controller = new AccountController(db,
+            new AgentProfileAccessResolver(db),
+            BuildActiveAccountLifecycle(),
+            Mock.Of<IAgentTrackingService>(),
+            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
@@ -344,7 +348,11 @@ public class IdentityHardeningTests
     public async Task AccountController_ManageProfileCreatesNormalizedEmail()
     {
         using var db = BuildDb();
-        var controller = new AccountController(db, new AgentProfileAccessResolver(db), BuildActiveAccountLifecycle())
+        var controller = new AccountController(db,
+            new AgentProfileAccessResolver(db),
+            BuildActiveAccountLifecycle(),
+            Mock.Of<IAgentTrackingService>(),
+            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
         {
             ControllerContext = new ControllerContext
             {
@@ -377,7 +385,11 @@ public class IdentityHardeningTests
         });
         await db.SaveChangesAsync();
 
-        var controller = new AccountController(db, new AgentProfileAccessResolver(db), BuildActiveAccountLifecycle())
+        var controller = new AccountController(db,
+            new AgentProfileAccessResolver(db),
+            BuildActiveAccountLifecycle(),
+            Mock.Of<IAgentTrackingService>(),
+            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
         {
             ControllerContext = new ControllerContext
             {
