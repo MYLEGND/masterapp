@@ -40,7 +40,7 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
             "App_Data",
             "website-editor-keys"));
 
-        IConfiguration authorityConfiguration = configuration;
+        var authorityValues = new Dictionary<string, string?>();
         if (environment.IsProduction())
         {
             var blobUri = configuration[SharedBlobUriConfigKey];
@@ -49,14 +49,13 @@ public sealed class WebsiteEditorTicketProtector : IDisposable
                 throw new InvalidOperationException(
                     $"Website editor ticket authority is not configured. Set both '{SharedBlobUriConfigKey}' and '{SharedKeyVaultKeyIdConfigKey}'.");
 
-            authorityConfiguration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    [PlatformDataProtection.BlobUriConfigKey] = blobUri,
-                    [PlatformDataProtection.KeyVaultKeyIdConfigKey] = keyVaultKeyId
-                })
-                .Build();
+            authorityValues[PlatformDataProtection.BlobUriConfigKey] = blobUri;
+            authorityValues[PlatformDataProtection.KeyVaultKeyIdConfigKey] = keyVaultKeyId;
         }
+
+        var authorityConfiguration = new ConfigurationBuilder()
+            .AddInMemoryCollection(authorityValues)
+            .Build();
 
         services.AddPlatformDataProtection(
             authorityConfiguration,
