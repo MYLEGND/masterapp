@@ -118,7 +118,7 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
-    public async Task AccountController_AzureLogin_WithoutContinuation_RedirectsToActivationRequired()
+    public async Task AccountController_AzureLogin_WithoutContinuation_ChallengesForExistingClientResolution()
     {
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
@@ -128,9 +128,10 @@ public class ClientAppSubscriptionActivationTests
 
         var result = await controller.AzureLogin("/profile");
 
-        var redirect = Assert.IsType<RedirectToActionResult>(result);
-        Assert.Equal("ActivationRequired", redirect.ActionName);
-        Assert.Equal("/profile", redirect.RouteValues?["returnUrl"]);
+        var challenge = Assert.IsType<ChallengeResult>(result);
+        Assert.Contains("OpenIdConnect", challenge.AuthenticationSchemes);
+        Assert.Equal("/profile", challenge.Properties?.RedirectUri);
+        Assert.Null(challenge.Properties?.Parameters["login_hint"]);
     }
 
     [Fact]
@@ -248,6 +249,24 @@ public class ClientAppSubscriptionActivationTests
 
         Assert.False(result.Success);
         Assert.Equal("MISSING_CONTINUATION", result.SafeErrorCode);
+    }
+
+    [Fact]
+    public async Task CompleteClientSignIn_WithoutContinuation_BoundActiveClientCanResume()
+    {
+        using var db = BuildDb();
+        await AddProfileAsync(db, "client@example.com", "client-oid");
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            BuildPrincipal("client-oid", "client@example.com"),
+            "/profile");
+
+        Assert.True(result.Success);
+        Assert.Equal("/profile", result.ReturnUrl);
     }
 
     [Fact]
