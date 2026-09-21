@@ -1,20 +1,16 @@
 @model string
 
 <div id="lifeModal" class="life-modal" aria-hidden="true">
-    <div class="life-modal-card" role="dialog" aria-modal="true" aria-labelledby="lifeModalTitle" aria-describedby="lifeModalIntro" tabindex="-1">
-        <button type="button" class="life-modal-close" aria-label="Close life coverage options">&times;</button>
-        <div class="life-modal-header">
-            <p class="life-modal-kicker">Life protection</p>
-            <h3 id="lifeModalTitle">Choose the path that matches what you want protected.</h3>
-            <p id="lifeModalIntro" class="life-modal-intro">Start broad or choose a more focused life-insurance review. You can refine the details before anything moves forward.</p>
-        </div>
+    <div class="life-modal-card" role="dialog" aria-modal="true" aria-labelledby="lifeModalTitle" tabindex="-1">
+        <button type="button" class="life-modal-close" aria-label="Close life options">&times;</button>
+        <h3 id="lifeModalTitle">Choose a Life Quote</h3>
         <div class="life-modal-grid">
-            <a href="@Model/Quote/Life" class="life-option"><span class="life-option-title">General Life</span><span class="life-option-copy">Start with your family, goals, and coverage range.</span></a>
-            <a href="@Model/Quote/Term-Life" class="life-option"><span class="life-option-title">Term Life</span><span class="life-option-copy">Protect key earning years, debts, and family responsibilities.</span></a>
-            <a href="@Model/Quote/Whole-Life" class="life-option"><span class="life-option-title">Whole Life</span><span class="life-option-copy">Explore permanent protection designed to remain in place.</span></a>
-            <a href="@Model/Quote/Final-Expense" class="life-option"><span class="life-option-title">Final Expense</span><span class="life-option-copy">Plan around final costs and reducing the burden on loved ones.</span></a>
-            <a href="@Model/Quote/Mortgage-Protection" class="life-option"><span class="life-option-title">Mortgage Protection</span><span class="life-option-copy">Keep the home and household obligation at the center of the review.</span></a>
-            <a href="@Model/Quote/IUL" class="life-option"><span class="life-option-title">Indexed Universal Life</span><span class="life-option-copy">Explore long-term protection with flexible policy structure.</span></a>
+            <a href="@Model/Quote/Life" class="life-option">General Life</a>
+            <a href="@Model/Quote/Term-Life" class="life-option">Term Life</a>
+            <a href="@Model/Quote/Whole-Life" class="life-option">Whole Life</a>
+            <a href="@Model/Quote/Final-Expense" class="life-option">Final Expense</a>
+            <a href="@Model/Quote/Mortgage-Protection" class="life-option">Mortgage Protection</a>
+            <a href="@Model/Quote/IUL" class="life-option">Indexed Universal Life (IUL)</a>
         </div>
     </div>
 </div>

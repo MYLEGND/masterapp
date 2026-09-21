@@ -15,7 +15,7 @@ both native applications.
 
 `legend-web-foundation.css` owns the existing public web palette, typography,
 base page behavior, and scrollbar presentation across all four web experiences.
-`legend-public-web.css` composes public content; `legend-protect-quotes.css` is the single presentation authority for Protect coverage, quote, modal, and risk-assessment surfaces across Founder and every scoped agent route; `legend-app-shell.css` composes
+`legend-public-web.css` composes public content; `legend-app-shell.css` composes
 full-width authenticated layouts, Explore and footers. Both consume that one
 foundation. Existing `SHARED/wwwroot/css/dashboard-home-shared.css` remains the
 single owner of application navigation, dashboard, messaging and modal components.

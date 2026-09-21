@@ -39,8 +39,10 @@
 	    var formHeadingTitle = "Build your auto protection plan";
 	    var formHeadingCopy = "Answer a few quick questions so we can match your drivers, vehicles, and coverage needs with protection options that fit.";
 	}
-
-<div class="container-narrow">
+	
+	<partial name="_PropertyCasualtyQuoteStyles" />
+	
+	<div class="container-narrow">
 	    <div class="pcq-shell">
 	        <div class="pcq-surface">
 	            <div class="pcq-hero-entry" id="autoHeroEntryPanel" @((showQuoteStartedByDefault ? "hidden" : null))>
@@ -341,7 +343,7 @@
                 </div>
             </div>
 
-            <div class="quote-initially-hidden" id="previousAddressBlock">
+            <div id="previousAddressBlock" style="display:none;">
                 <hr />
                 <h5 class="mb-2">Previous Address</h5>
 
