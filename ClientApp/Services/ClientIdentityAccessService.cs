@@ -193,6 +193,105 @@ public sealed class ClientIdentityAccessService
             : new ClientSignInCompletionResult(false, safeReturnUrl, "INACTIVE_ENTITLEMENT", "This client subscription is not active for access.");
     }
 
+    private async Task<ClientSignInCompletionResult> RecoverActiveClientBindingAsync(
+        ClaimsPrincipal principal,
+        string safeReturnUrl,
+        CancellationToken cancellationToken)
+    {
+        var oid = principal.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(oid))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "MISSING_OBJECT_ID",
+                "A valid client sign-in is required.");
+
+        var principalEmail = NormalizeEmail(
+            principal.FindFirstValue("preferred_username")
+            ?? principal.FindFirstValue(ClaimTypes.Upn)
+            ?? principal.FindFirstValue(ClaimTypes.Email)
+            ?? principal.Identity?.Name);
+
+        if (string.IsNullOrWhiteSpace(principalEmail))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "MISSING_EMAIL",
+                "The Microsoft account did not provide the client email required to recover access.");
+
+        var matches = await _db.ClientProfiles
+            .Where(profile =>
+                (profile.NormalizedEmail ?? string.Empty).ToLower() == principalEmail ||
+                (profile.Email ?? string.Empty).ToLower() == principalEmail)
+            .OrderBy(profile => profile.Id)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+
+        if (matches.Count == 0)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "UNKNOWN_CLIENT",
+                "A valid client subscription is required before opening the portal.");
+
+        if (matches.Count != 1)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "AMBIGUOUS_CLIENT_IDENTITY",
+                "This email is linked to more than one client profile. Contact your LEGEND guide before signing in.");
+
+        var profile = matches[0];
+        var existingObjectId = NormalizeId(profile.ExternalIdentityObjectId);
+        if (!string.IsNullOrWhiteSpace(existingObjectId) &&
+            !string.Equals(existingObjectId, oid, StringComparison.Ordinal))
+        {
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "CLIENT_ALREADY_LINKED",
+                "This client profile is already linked to a different Microsoft account.");
+        }
+
+        var conflictingProfile = await _db.ClientProfiles
+            .AsNoTracking()
+            .AnyAsync(other =>
+                other.Id != profile.Id &&
+                other.ExternalIdentityObjectId != null &&
+                other.ExternalIdentityObjectId.ToLower() == oid,
+                cancellationToken);
+
+        if (conflictingProfile)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "IDENTITY_CONFLICT",
+                "This Microsoft account is already linked to a different client profile.");
+
+        var entitlement = await _entitlementService.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                profile.Id,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            cancellationToken);
+
+        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "INACTIVE_ENTITLEMENT",
+                "This client subscription is not active for access.");
+
+        if (string.IsNullOrWhiteSpace(existingObjectId))
+        {
+            profile.ExternalIdentityObjectId = oid;
+            profile.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return new ClientSignInCompletionResult(true, safeReturnUrl);
+    }
+
     public async Task<ClientSignInCompletionResult> CompleteClientSignInAsync(HttpContext httpContext, ClaimsPrincipal principal, string? fallbackReturnUrl = null, CancellationToken cancellationToken = default)
     {
         var safeFallbackReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
@@ -217,7 +316,23 @@ public sealed class ClientIdentityAccessService
                 return existingClientSession;
             }
 
-            return IsAgentPrincipal(principal) && IsSupportReturnUrl(safeFallbackReturnUrl)
+            if (!IsAgentPrincipal(principal))
+            {
+                var recoveredClientSession = await RecoverActiveClientBindingAsync(
+                    principal,
+                    safeFallbackReturnUrl,
+                    cancellationToken);
+
+                if (recoveredClientSession.Success)
+                {
+                    _continuationService.ClearCookie(httpContext.Response);
+                    return recoveredClientSession;
+                }
+
+                return recoveredClientSession;
+            }
+
+            return IsSupportReturnUrl(safeFallbackReturnUrl)
                 ? new ClientSignInCompletionResult(true, safeFallbackReturnUrl)
                 : new ClientSignInCompletionResult(
                     false,
