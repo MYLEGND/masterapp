@@ -188,7 +188,7 @@
                         {
                             <section class="legend-website-summary">
                                 <div><span class="legend-website-eyebrow">Business website</span><h3>@website.BusinessName</h3><p>@(website.PrimaryDomain ?? "Domain not connected")</p></div>
-                                <button type="button" data-website-manage data-session="/profile/business-website/session/@website.BusinessId" data-edit="/profile/business-website/edit/@website.BusinessId" data-live="@website.PreviewUrl" data-title="@website.BusinessName" data-scope="business">Manage website →</button>
+                                <button type="button" data-website-manage data-session="/profile/business-website/session/@website.BusinessId" data-edit="@website.PreviewUrl" data-live="@website.PreviewUrl" data-title="@website.BusinessName" data-scope="business">Manage website →</button>
                             </section>
                         }
                         @if (businessWebsites.Count == 0)
