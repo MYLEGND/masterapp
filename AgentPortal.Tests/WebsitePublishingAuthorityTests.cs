@@ -41,7 +41,7 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
-    public async Task RollbackRestoresPublishedSnapshot_AndPreservesUnpublishedDraft()
+    public async Task RollbackRestoresPublishedSnapshot_AndMakesItCurrentDraft()
     {
         using var f = new Fixture(); var token = f.Token;
         Body(await f.Controller.Save(new(token, Document("first"), 0)));
@@ -51,7 +51,7 @@ public sealed class WebsitePublishingAuthorityTests
         Body(await f.Controller.Save(new(token, Document("unfinished"), 4)));
         Body(await f.Controller.Rollback(new(token, 5, first)));
         Assert.Equal("first", Body(await f.Controller.Public("legend")).GetProperty("document").GetProperty("elements").GetProperty("title").GetProperty("text").GetString());
-        Assert.Equal("unfinished", Body(await f.Controller.Manage(token)).GetProperty("document").GetProperty("elements").GetProperty("title").GetProperty("text").GetString());
+        Assert.Equal("first", Body(await f.Controller.Manage(token)).GetProperty("document").GetProperty("elements").GetProperty("title").GetProperty("text").GetString());
     }
 
     [Fact]

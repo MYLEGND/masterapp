@@ -5,8 +5,15 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Domain.Entities;
+using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 using Infrastructure.Security.UploadValidation;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Moq;
+using ProtectWebsite.Services;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -25,6 +32,37 @@ public sealed class WebsiteDomainImportTests
 
     [Fact]
     public void DomainNormalizesCaseAndTrailingDot() => Assert.Equal("example.com", WebsiteDomainService.NormalizeHostname(" EXAMPLE.COM. "));
+
+    [Fact]
+    public async Task PendingDomainProofBypassesActiveRoutingGate()
+    {
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var configuration = new ConfigurationBuilder().Build();
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(value => value.EnvironmentName).Returns("Production");
+        var nextCalled = false;
+        var middleware = new BusinessWebsiteMiddleware(
+            next: context =>
+            {
+                nextCalled = true;
+                context.Response.StatusCode = StatusCodes.Status204NoContent;
+                return Task.CompletedTask;
+            },
+            environment.Object,
+            configuration);
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString("example.com");
+        context.Request.Path = "/.well-known/legend-website";
+        var domains = new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), configuration);
+
+        await middleware.InvokeAsync(context, db, domains);
+
+        Assert.True(nextCalled);
+        Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
+    }
 
     [Fact]
     public void ProviderActiveWithoutActiveCertificateNeverActivates()

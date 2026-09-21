@@ -22,7 +22,9 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
     if (parsed.pathname.endsWith('/export')) value = { format: 'legend-website-v1', draft: { version: 1, elements: { a: { text: 'Owned content' } } } };
     if (parsed.pathname.endsWith('/import')) value = { report: { sourceUrl: body.sourceUrl, addedComponents: 2, preservedComponents: 4, warnings: ['Booking requires integration'], pages: [{ title: 'Services', url: 'https://old.test/services', forms: ['booking'], warnings: ['Review links'] }] } };
     if (parsed.pathname.endsWith('/business-details')) value = { revision: 7, details: { contactEmail: 'contact@business.test', phone: '123', hours: '9–5', services: 'Repairs', locations: 'Main street' } };
-    if (parsed.pathname.endsWith('/domains')) value = { cnameTarget: 'sites.example.test', domains: [{ id: 'binding-a', hostname: 'business.test', status: 'pending', certificateStatus: 'pending', verificationJson: JSON.stringify({ ownership: { type: 'TXT', name: '_verify.business.test', value: 'proof-value' } }) }] };
+    if (parsed.pathname.endsWith('/domains')) value = options.method === 'POST'
+      ? { cnameTarget: 'sites.example.test', binding: { id: 'binding-new', hostname: body.hostname, status: 'pending', certificateStatus: 'pending', verificationJson: JSON.stringify({ ownership: { type: 'TXT', name: '_verify.' + body.hostname, value: 'proof-new' } }) } }
+      : { cnameTarget: 'sites.example.test', domains: [{ id: 'binding-a', hostname: 'business.test', status: 'pending', certificateStatus: 'pending', verificationJson: JSON.stringify({ ownership: { type: 'TXT', name: '_verify.business.test', value: 'proof-value' } }) }] };
     if (parsed.pathname === '/api/website-inquiries/manage') value = { inquiries: [{ id: 'inquiry-a', name: '<img src=x onerror=alert(1)>', email: 'a@example.test', message: 'Please call', status: 'New' }] };
     return { ok: true, status: 200, json: async () => value };
   };
@@ -72,6 +74,18 @@ test('domain guidance renders record controls and verified binding action', asyn
   assert.ok([...f.document.querySelectorAll('input')].some(n => n.value === 'proof-value'));
   assert.equal(f.document.querySelector('pre'), null); await f.click('Verify status');
   assert.equal(f.calls.find(c => c.path.endsWith('/domains/refresh')).body.bindingId, 'binding-a'); f.dom.window.close();
+});
+
+test('connect domain uses returned binding and exposes routing target on the first request', async () => {
+  const f = await fixture(); await f.click('Domains');
+  const domainInput = [...f.document.querySelectorAll('input')].find(input => !input.readOnly && input.type === 'text');
+  domainInput.value = 'example.com';
+  await f.click('Connect domain');
+  const request = f.calls.find(call => call.path.endsWith('/domains') && call.options.method === 'POST');
+  assert.equal(request.body.hostname, 'example.com');
+  assert.ok([...f.document.querySelectorAll('input')].some(input => input.value === 'sites.example.test'));
+  assert.match(f.document.body.textContent, /ALIAS, ANAME, or CNAME-flattening/);
+  f.dom.window.close();
 });
 
 test('schedule sends ISO time and current draft revision', async () => {

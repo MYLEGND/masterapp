@@ -254,6 +254,69 @@ public class ClientProfileControllerTests
     }
 
     [Fact]
+    public async Task BusinessWebsiteProfile_UsesVerifiedDomainBindingAsDomainSource()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            ClientUserId = "business-domain-owner",
+            ExternalIdentityObjectId = "business-domain-owner",
+            FirstName = "Domain",
+            LastName = "Owner",
+            Email = "owner@domain.example",
+            NormalizedEmail = "owner@domain.example",
+            CrmNotes = "{\"recordType\":\"BusinessClient\",\"pipelineStage\":\"BusinessClient\"}"
+        };
+        var business = new CommerceBusiness
+        {
+            Key = "domain-business",
+            DisplayName = "Domain Business",
+            LegalName = "Domain Business LLC",
+            BusinessType = "BusinessClient",
+            OwnerEmail = client.Email,
+            PrimaryDomain = "legacy.example",
+            Status = "Active",
+            IsActive = true
+        };
+        db.ClientProfiles.Add(client);
+        db.CommerceBusinesses.Add(business);
+        db.CommerceBusinessMembers.Add(new CommerceBusinessMember
+        {
+            CommerceBusiness = business,
+            ClientProfileId = client.Id,
+            Email = client.Email,
+            NormalizedEmail = client.Email.ToUpperInvariant(),
+            Status = "Active",
+            RoleKey = "owner",
+            CanManageStorefront = true
+        });
+        db.Set<WebsiteDomainBinding>().Add(new WebsiteDomainBinding
+        {
+            CommerceBusinessId = business.Id,
+            Hostname = "www.domain.example",
+            Status = "active",
+            CertificateStatus = "active",
+            LastCheckedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var http = new DefaultHttpContext
+        {
+            User = ControllerTestHelpers.BuildUser(client.ExternalIdentityObjectId, client.Email)
+        };
+        var controller = BuildController(
+            db,
+            Mock.Of<IClientEntraLifecycleService>(),
+            Mock.Of<IClientSubscriptionIdentitySyncService>(),
+            BuildActiveLifecycle(),
+            http);
+
+        Assert.IsType<ViewResult>(await controller.MyProfile());
+        var websites = Assert.IsAssignableFrom<IReadOnlyList<BusinessWebsiteProfileSummary>>(controller.ViewData["BusinessWebsites"]);
+        Assert.Equal("www.domain.example", Assert.Single(websites).PrimaryDomain);
+    }
+
+    [Fact]
     public async Task SharedAccountAgentView_CanSeeEditAndManageLinkedBusinessWebsite()
     {
         using var db = ControllerTestHelpers.BuildDb();
