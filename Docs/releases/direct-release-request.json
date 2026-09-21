@@ -1,7 +1,7 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder approved the one-source-of-truth Business Website correction. Validate only before deployment.",
-  "purpose": "Verify the exact final ClientApp-to-Protect one-time handoff. ClientApp must not mint or hold website-editor tickets. Protect must revalidate business authority and exclusively mint the existing LEGEND.PublicWebsiteEditor ticket. Existing Protect/AgentPortal cryptographic source of truth remains unchanged. No override, duplicate authority, fallback, or ClientApp website-ticket keys.",
+  "purpose": "Revalidate the exact current head after fixing the remaining test compile import. ClientApp only creates a short-lived one-time continuation handoff; Protect revalidates business authority and exclusively mints the existing LEGEND.PublicWebsiteEditor ticket. No ClientApp website-ticket keys, no override, no duplicate authority, no fallback.",
   "requestId": "business-website-protect-source-of-truth-validate-20260921-5",
   "releaseMode": "validate-only",
   "targets": [
