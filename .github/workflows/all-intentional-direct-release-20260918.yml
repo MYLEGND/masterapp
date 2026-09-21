@@ -123,6 +123,43 @@ jobs:
                   (os.environ['CLIENT_ONLY'] == 'true' and row['app'] == 'client')):
                   subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
+      - name: Verify ClientApp browser entry routes
+        id: cliententry
+        if: contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client')
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCLIENTENTRY'
+          import http.client, json, ssl, urllib.parse
+          hosts=('client.mylegnd.com','masterapp-client.azurewebsites.net')
+          paths=('/', '/Account/Login')
+          rows=[]
+          context=ssl.create_default_context()
+          for host in hosts:
+              for path in paths:
+                  conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+                  try:
+                      conn.request('GET',path,headers={'User-Agent':'LEGEND-release-entry-probe/1.0','Cache-Control':'no-cache','Accept':'text/html'})
+                      response=conn.getresponse()
+                      body=response.read(65537)
+                      row={'host':host,'path':path,'status':response.status,'location':response.getheader('Location'),'contentType':response.getheader('Content-Type'),'bytes':len(body)}
+                      rows.append(row)
+                      print(json.dumps(row))
+                      if len(body)>65536: raise SystemExit(f'Oversized entry response: {host}{path}')
+                  finally:
+                      conn.close()
+          by={(r['host'],r['path']):r for r in rows}
+          for host in hosts:
+              root=by[(host,'/')]
+              login=by[(host,'/Account/Login')]
+              if root['status'] not in (200,301,302,303,307,308):
+                  raise SystemExit(f'Client root unhealthy: {host} status={root["status"]}')
+              if root['status']==200 and root['bytes']<256:
+                  raise SystemExit(f'Client root returned a blank document: {host} bytes={root["bytes"]}')
+              if login['status']!=200 or login['bytes']<512 or not (login['contentType'] or '').lower().startswith('text/html'):
+                  raise SystemExit(f'Client login page unhealthy: {host} status={login["status"]} bytes={login["bytes"]} type={login["contentType"]}')
+          PYCLIENTENTRY
       - name: Build exact selected release candidate
         id: build
         if: env.WEBSITE_ONLY != 'true'
