@@ -1,0 +1,64 @@
+name: Temporary ClientApp Azure diagnosis
+
+on:
+  push:
+    branches: [legend/approved-changes]
+    paths:
+      - '.github/workflows/clientapp-azure-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: Production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Read ClientApp Azure runtime state
+        shell: bash
+        run: |
+          set -euo pipefail
+          client=/tmp/client-settings.json
+          portal=/tmp/portal-settings.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-client -o json > "$client"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal"
+
+          python3 - <<'PY'
+          import hashlib,json
+          c={x['name']:x.get('value') or '' for x in json.load(open('/tmp/client-settings.json'))}
+          p={x['name']:x.get('value') or '' for x in json.load(open('/tmp/portal-settings.json'))}
+          aliases=[('DataProtection__BlobUri','DataProtection:BlobUri'),('DataProtection__KeyVaultKeyId','DataProtection:KeyVaultKeyId')]
+          def pick(d,names):
+              for n in names:
+                  if d.get(n): return n,d[n]
+              return None,''
+          for names in aliases:
+              ck,cv=pick(c,names); pk,pv=pick(p,names)
+              print(json.dumps({'kind':names[0],'clientKey':ck,'clientPresent':bool(cv),'portalKey':pk,'portalPresent':bool(pv),'valuesEqual':bool(cv and pv and cv==pv),'clientHash':hashlib.sha256(cv.encode()).hexdigest()[:12] if cv else None,'portalHash':hashlib.sha256(pv.encode()).hexdigest()[:12] if pv else None}))
+          for names in [('WebsiteEditorDataProtection__BlobUri','WebsiteEditorDataProtection:BlobUri'),('WebsiteEditorDataProtection__KeyVaultKeyId','WebsiteEditorDataProtection:KeyVaultKeyId')]:
+              ck,cv=pick(c,names)
+              print(json.dumps({'kind':names[0],'clientKey':ck,'clientPresent':bool(cv),'clientHash':hashlib.sha256(cv.encode()).hexdigest()[:12] if cv else None}))
+          PY
+
+          az webapp show -g masterapp-rg -n masterapp-client --query '{state:state,defaultHostName:defaultHostName,httpsOnly:httpsOnly,clientAffinityEnabled:clientAffinityEnabled,identity:identity.principalId,hostNames:hostNames,hostNameSslStates:hostNameSslStates[].{name:name,sslState:sslState}}' -o json
+          echo "Recent App Service configuration writes:"
+          az monitor activity-log list -g masterapp-rg --start-time 2026-09-21T14:50:00Z --end-time 2026-09-21T15:30:00Z --status Succeeded --query "[?contains(operationName.value, 'Microsoft.Web/sites/config/write') || contains(operationName.value, 'Microsoft.Web/sites/write')].{time:eventTimestamp,operation:operationName.value,resource:resourceId,caller:caller}" -o json
+
+          mkdir -p /tmp/clientlogs
+          if az webapp log download -g masterapp-rg -n masterapp-client --log-file /tmp/clientlogs.zip >/tmp/log-download.txt 2>&1; then
+            unzip -q /tmp/clientlogs.zip -d /tmp/clientlogs || true
+            echo "Recent sanitized exception/error lines:"
+            grep -R -i -E 'DataProtection|KeyVault|Azure.RequestFailed|Cryptographic|antiforgery|exception|error|forbidden|403' /tmp/clientlogs 2>/dev/null | tail -n 120 | sed -E 's/(https:\/\/[^ ]+|[A-Za-z0-9+\/_=-]{40,})/[redacted]/g' || true
+          else
+            echo "App Service log download unavailable:"
+            cat /tmp/log-download.txt
+          fi
