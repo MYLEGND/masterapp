@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorizes direct deployment of only ClientApp for the final active-client sign-in continuation repair. Do not restart or redeploy AgentPortal, Protect, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
-  "purpose": "Eliminate false Activation Required loops for already-active Client and Business Client accounts, including B2B guest identities and Lead-to-client conversions, while keeping Lead records CRM-only and preserving inactive, conflicting-identity, and agent-route denials. Retry after aligning the regression fixtures with the hardened DB-backed identity authority; no other app is authorized.",
-  "requestId": "clientapp-active-signin-final-20260921-3",
+  "authorization": "Founder reported the live Business Website workspace 401 and directs correction through the existing approved direct-release authority. Deploy only ClientApp for this shared website-editor authorization parity repair; do not restart or redeploy AgentPortal, Protect, the public LEGEND Website, or Parfait. Do not start or promote the rigorous production flow.",
+  "purpose": "Synchronize ClientApp's shared website-editor Data Protection settings from the AgentPortal source of truth so Business Website tickets minted by ClientApp can be decrypted and authorized by the existing Protect website-management API. Preserve the existing business ownership, Shared Account agent access, Self Managed denial, and all prior active-client sign-in fixes; introduce no alternate authorization path.",
+  "requestId": "clientapp-business-website-auth-parity-20260921-4",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
