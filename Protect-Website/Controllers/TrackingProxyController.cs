@@ -125,7 +125,7 @@ public sealed class TrackingProxyController : ControllerBase
     private void EnsureLeadContextFallback(LeadSubmitRequest req)
     {
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
-        req.SourcePath = FirstNonBlank(req.SourcePath, ResolveLeadSourcePathFromReferrer());
+        req.SourcePath = FirstNonBlank(ResolveLeadSourcePathFromReferrer(), req.SourcePath);
 
         if (string.IsNullOrWhiteSpace(req.Environment))
         {
@@ -194,11 +194,16 @@ public sealed class TrackingProxyController : ControllerBase
 
     private string? ResolveLeadSourcePathFromReferrer()
     {
-        var raw = Request.Headers.Referer.FirstOrDefault();
+        var raw = Request.Headers["Referer"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(raw)) return null;
 
         if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
         {
+            if (!string.Equals(uri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
             return uri.AbsolutePath;
         }
 
