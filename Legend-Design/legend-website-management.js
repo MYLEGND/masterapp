@@ -95,7 +95,7 @@
       const records = [];
       if (instructions?.ownership) records.push(instructions.ownership);
       if (Array.isArray(instructions?.certificate)) records.push(...instructions.certificate);
-      if (cnameTarget) records.push({ type: 'CNAME', name: hostname, value: cnameTarget });
+      if (cnameTarget) records.push({ type: 'CNAME / ALIAS target', name: hostname, value: cnameTarget });
       if (!records.length) { panel.append(el('p', 'Verification instructions are not available yet. Refresh the domain status.')); return; }
       for (const record of records) {
         const type = record.type ?? record.recordType ?? 'TXT';
@@ -141,11 +141,16 @@
         dnsInstructions(domain.verificationJson, result.cnameTarget, domain.hostname);
       }
       if (result.cnameTarget) panel.append(el('p', `Website CNAME target: ${result.cnameTarget}`));
-      panel.append(el('p', 'Verify ownership before routing visitors. Keep your registrar and email records unchanged.'));
+      panel.append(
+        el('p', 'Verify ownership before routing visitors. Keep your registrar and email records unchanged.'),
+        el('p', 'If your registrar does not allow a CNAME at the root/apex domain, use its ALIAS, ANAME, or CNAME-flattening option with the same target, or connect a subdomain such as www.')
+      );
       const domain = field('Domain name');
       panel.append(button('Connect domain', () => run(async () => {
         const result = await request('/domains', { hostname: domain.value.trim() });
-        dnsInstructions(result.instructions ?? result.verificationJson ?? result.binding?.verificationJson, result.cnameTarget, domain.value.trim()); status.textContent = 'Add these records at your domain registrar, then refresh verification.';
+        const binding = result.binding ?? result;
+        dnsInstructions(binding.verificationJson, result.cnameTarget, binding.hostname ?? domain.value.trim());
+        status.textContent = 'Add these records at your domain registrar, then refresh verification.';
       }), true)); status.textContent = '';
     });
     const inquiries = () => run(async () => {
