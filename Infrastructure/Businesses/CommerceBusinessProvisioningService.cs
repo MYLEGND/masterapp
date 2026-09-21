@@ -191,7 +191,11 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
     private static string Slugify(string value)
     {
         var chars = value.Trim().ToLowerInvariant()
-            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
+            .Select(character =>
+                (character >= 'a' && character <= 'z') ||
+                (character >= '0' && character <= '9')
+                    ? character
+                    : '-')
             .ToArray();
         var slug = new string(chars);
         while (slug.Contains("--", StringComparison.Ordinal))
@@ -219,7 +223,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
     private static string Email(string? value)
     {
         var email = (value ?? string.Empty).Trim().ToLowerInvariant();
-        if (email.Length == 0 || email.Length > 320 || !email.Contains('@', StringComparison.Ordinal))
+        if (email.Length == 0 || email.Length > 320 || !email.Contains('@'))
             throw new InvalidOperationException("A valid owner email is required.");
         return email;
     }
