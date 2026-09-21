@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested diagnosis of the blank ClientApp browser response on both client.mylegnd.com and masterapp-client.azurewebsites.net. Validate only; do not deploy, restart, migrate, or change Azure resources.",
-  "purpose": "Inspect the live ClientApp root and member sign-in entry routes through both the custom and Azure hostnames so the blank-page regression is diagnosed without another deployment.",
-  "requestId": "clientapp-blank-entry-diagnostic-20260921-1",
+  "authorization": "Founder approved the no-override Business Website ticket authority correction. Validate only before any deployment.",
+  "purpose": "Verify that LEGEND.PublicWebsiteEditor uses only WebsiteEditorDataProtection settings, ClientApp global MasterApp.ClientApp Data Protection remains isolated, existing business ownership and Shared Account authorization remain intact, and no duplicate or fallback authorization path exists.",
+  "requestId": "business-website-dedicated-ticket-authority-validate-20260921-1",
   "releaseMode": "validate-only",
   "targets": [
     "masterapp-client"
