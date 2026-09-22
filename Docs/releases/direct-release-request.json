@@ -1,10 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requires all currently approved AgentPortal mobile UI fixes to be directly deployed.",
-  "purpose": "Direct release only AgentPortal from the current approved head. Include the centralized mobile header/nav density fix, the centralized two-column Home/Dashboard tool-grid correction, removal of AgentPortal page-local mobile Home grid ownership, compact mobile spacing/full-width shell work, archive UI fixes already present in approved history, and the shared Finance scrolling repair. No unrelated backend, schema, auth, payment, subscription, Protect, Parfait, or LEGEND Website deployment.",
-  "requestId": "agentportal-all-current-mobile-ui-fixes-20260922-1",
+  "authorization": "Founder approved one combined direct release for AgentPortal and ClientApp from legend/approved-changes so all current shared mobile UI fixes publish together.",
+  "purpose": "Direct release AgentPortal + ClientApp together from the exact current approved head. Include all currently approved mobile UI work: shared full-width/compact shell, centralized mobile header/navigation density, two-column Home/Dashboard tool grids, removal of competing AgentPortal mobile Home grid ownership, Archive UI fixes, and shared Finance scrolling repair. Do not deploy Protect, Parfait, LEGEND Website, or unrelated backend/schema/payment/subscription changes.",
+  "requestId": "portal-client-combined-current-mobile-ui-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-portal",
+    "masterapp-client"
   ]
 }
