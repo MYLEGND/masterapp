@@ -118,7 +118,7 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
-    public async Task AccountController_AzureLogin_WithoutContinuation_ChallengesForExistingClientResolution()
+    public async Task AccountController_AzureLogin_WithoutContinuation_ReturnsToMemberPreflight()
     {
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
