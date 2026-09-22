@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved direct AgentPortal deployment of the final centralized mobile navigation compaction.",
-  "purpose": "Direct release only AgentPortal. Deploy the shared global mobile navigation owner so common primary actions fit one compact row, utility actions fit the second row, and the agent profile/photo pill occupies a third row by itself. Preserve the permanent logo/LIFE HAC/hamburger top row. No page-specific CSS, duplicate navigation system, backend, database, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "agentportal-final-mobile-nav-three-row-20260922-1",
+  "authorization": "Founder approved direct ClientApp deployment of the final centralized mobile navigation compaction.",
+  "purpose": "Direct release only ClientApp. Deploy the same shared global mobile navigation owner so common primary actions fit one compact row, utility actions fit the second row, and the member/agent profile-photo pill occupies a third row by itself. Preserve the permanent logo/LIFE HAC/hamburger top row. No page-specific CSS, duplicate navigation system, backend, database, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "clientapp-final-mobile-nav-three-row-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-client"
   ]
 }
