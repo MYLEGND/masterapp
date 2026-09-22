@@ -28,8 +28,7 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
     if (parsed.pathname === '/api/website-inquiries/manage') value = { inquiries: [{ id: 'inquiry-a', name: '<img src=x onerror=alert(1)>', email: 'a@example.test', message: 'Please call', status: 'New' }] };
     return { ok: true, status: 200, json: async () => value };
   };
-  window.eval(source); window.document.querySelector('[data-website-manage]').click();
-  for (let attempt = 0; attempt < 25 && !window.document.querySelector('a[href="/profile/edit"]'); attempt++) await flush();
+  window.eval(source); window.document.querySelector('[data-website-manage]').click(); await flush();
   const click = async text => { const found = [...window.document.querySelectorAll('button')].find(node => node.textContent.startsWith(text)); assert.ok(found, `button ${text}`); found.click(); await flush(); };
   return { dom, window, document: window.document, calls, click, state };
 }
@@ -48,7 +47,9 @@ test('profile session authorizes scope; publish requires confirmation and carrie
 
 test('editor permissions hide owner-only operations while keeping draft editor', async () => {
   const f = await fixture({ caps: { canPublish: false, canImport: false, canManageDomains: false, canSchedule: false } });
-  assert.ok(f.document.querySelector('a[href="/profile/edit"]'));
+  const editorLink = [...f.document.querySelectorAll('a')].find(a => new URL(a.href, f.window.location.href).pathname === '/profile/edit');
+  assert.ok(editorLink);
+  assert.equal(new URL(editorLink.href, f.window.location.href).searchParams.get('legendEdit'), 'signed-scope-a');
   for (const text of ['Publish draft', 'Domains', 'Schedule publication', 'Import content']) assert.equal([...f.document.querySelectorAll('button')].some(n => n.textContent.startsWith(text)), false);
   await f.click('Version history'); assert.equal([...f.document.querySelectorAll('button')].some(n => n.textContent === 'Restore'), false); f.dom.window.close();
 });
