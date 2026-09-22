@@ -4537,7 +4537,7 @@ function closeDrawer(){
   renderIntakeSnapshot(null);
   renderAppointmentSnapshot(null);
   refreshLeadOverviewSummary();
-  unwindow.LegendModal?.lockPageScroll("crm-quick-view");
+  window.LegendModal?.unlockPageScroll("crm-quick-view");
 }
 function openLeadActionsHub(){
   const requestedClientId = (activeClientId || drawer?.dataset?.clientId || "").toString().trim();

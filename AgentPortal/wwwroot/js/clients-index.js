@@ -4263,7 +4263,7 @@ function closeDrawer(){
   drawerBackdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
   closeNoteModal();
-  unwindow.LegendModal?.lockPageScroll("crm-quick-view");
+  window.LegendModal?.unlockPageScroll("crm-quick-view");
 }
 function openClientActionsHub(){
   const requestedClientId = (activeClientId || drawer?.dataset?.clientId || "").toString().trim();
