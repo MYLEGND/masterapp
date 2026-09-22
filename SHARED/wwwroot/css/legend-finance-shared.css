@@ -2015,6 +2015,10 @@ body {
     display: grid;
     place-items: center;
     padding: 2rem 1rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .finance-support-overlay--dense {
@@ -2031,8 +2035,11 @@ body {
 .finance-support-modal {
     position: relative;
     width: min(1750px, 96vw);
-    max-height: 90vh;
+    max-height: min(90dvh, 90vh);
     overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     border: 2px solid var(--line-dark);
     border-radius: 18px;
     background: var(--navy-panel);
@@ -2093,10 +2100,6 @@ body {
     gap: 12px;
 }
 
-body.finance-support-open {
-    overflow: hidden;
-}
-
 .finance-side-card {
     position: relative;
     display: flex;
@@ -2137,7 +2140,10 @@ body.finance-support-open {
     width: min(97vw, 1540px);
     max-width: 1540px;
     max-height: calc(100dvh - 2rem);
-    overflow: hidden;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     padding: 12px;
 }
 
@@ -3278,10 +3284,6 @@ body.finance-support-open {
 #budget-embed .row {
     display: flex;
     flex-wrap: wrap;
-}
-
-body.finance-dual-tools-open {
-    overflow: hidden;
 }
 
 body.finance-dual-tools-open .layout-content,
