@@ -46,6 +46,9 @@
   /* Outer viewport gutter is independent from component/card spacing. */
   --app-shell-gutter:var(--app-gutter);
   --app-section-gap:clamp(24px,3vw,48px);
+  --app-mobile-block-gap:.72rem;
+  --app-mobile-control-gap:.5rem;
+  --app-mobile-card-pad:.78rem;
 }
 html{font-size:16px}
 body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
@@ -423,7 +426,35 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
  .explore-drawer{top:12px;bottom:12px;left:12px;width:calc(100vw - 24px);max-width:360px}
 }
 @media(max-width:768px){
- :root{--app-shell-gutter:0px}
+ :root{
+  --app-shell-gutter:0px;
+  --app-section-gap:.78rem;
+ }
+ .legend-app-content :where(.legend-mobile-compact){
+  margin-block:0;
+  gap:var(--app-mobile-block-gap);
+ }
+ .legend-app-content :where(.legend-mobile-card-grid){
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:var(--app-mobile-block-gap);
+ }
+ .legend-app-content :where(.legend-mobile-action-grid){
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:var(--app-mobile-control-gap);
+  align-items:stretch;
+ }
+ .legend-app-content :where(.legend-mobile-action-grid) > :where(.btn,button,a){
+  min-width:0;
+  width:100%;
+  margin:0;
+  white-space:normal;
+ }
+ .legend-app-content :where(.legend-mobile-action-grid) > :only-child{
+  width:auto;
+  justify-self:start;
+ }
  .footer-shell{grid-template-columns:1fr;justify-items:center}
  .footer-left,.footer-center,.footer-right{justify-self:center;text-align:center}
  .footer-support{flex-direction:column;justify-content:center;gap:.45rem}
