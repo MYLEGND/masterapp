@@ -1,10 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved surgical direct ClientApp release to stop AADSTS50020 caused by entering Microsoft OIDC without the canonical client identity preflight.",
-  "purpose": "Direct release only ClientApp. Require the existing member sign-in preflight before any non-support Microsoft OIDC challenge when no protected continuation exists, so the canonical ClientIdentityAccessService provisions/synchronizes the external Entra guest and uses redemption when required. The previously failing regression assertion has been corrected to match the intended redirect-to-preflight behavior. The experimental package-gate change was removed; the previously proven package authority is restored. Do not modify subscription activation, Square payments, billing orchestration, subscription management, database schema, AgentPortal, Protect, Parfait, or LEGEND Website.",
-  "requestId": "clientapp-aadsts50020-preflight-repair-20260922-3",
+  "authorization": "Founder approved surgical direct AgentPortal + ClientApp frontend mobile viewport release after repository-wide CSS ownership audit.",
+  "purpose": "Direct release only AgentPortal and ClientApp. The shared authenticated app shell is the single viewport-width authority for both apps. On mobile, remove only the outer shell horizontal gutter while preserving safe-area insets and existing component/card gutters. No page-specific width hacks, no duplicate responsive system, no backend, database, authentication, subscription, payment, billing, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "portal-client-shared-mobile-full-viewport-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-client"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-parfait"
   ]
 }
