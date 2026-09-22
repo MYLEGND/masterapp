@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved direct AgentPortal deployment of the corrected centralized mobile navigation density.",
-  "purpose": "Direct release only AgentPortal. Deploy the current shared global mobile navigation source so the permanent logo/LIFE HAC/hamburger top row remains unchanged while AgentPortal primary navigation actions use two shared columns and utility/account controls stay compact, limiting the opened mobile header to 2-3 action rows instead of one row per action. Reuse the existing shared navigation owner only; no page-specific CSS, no duplicate navigation implementation, and no unrelated backend, database, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "agentportal-global-mobile-nav-density-20260922-1",
+  "authorization": "Founder approved direct AgentPortal deployment of the final centralized mobile navigation compaction.",
+  "purpose": "Direct release only AgentPortal. Deploy the shared global mobile navigation owner so common primary actions fit one compact row, utility actions fit the second row, and the agent profile/photo pill occupies a third row by itself. Preserve the permanent logo/LIFE HAC/hamburger top row. No page-specific CSS, duplicate navigation system, backend, database, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "agentportal-final-mobile-nav-three-row-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
