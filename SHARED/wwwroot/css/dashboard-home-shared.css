@@ -2717,10 +2717,6 @@ textarea.client-create-notes {
         padding-right: 0.55rem;
     }
 
-    .home-command-page .home-tools-grid {
-        grid-template-columns: 1fr;
-    }
-
     .client-create-panel,
     .client-create-section-shell {
         border-radius: 18px;
@@ -3695,6 +3691,13 @@ textarea.client-create-notes {
         padding: 1rem 0.75rem 2rem;
     }
 
+    /* Shared mobile/tablet tool-grid authority for AgentPortal + ClientApp. */
+    .dashboard-page-shell .centered-tools,
+    .home-command-page .home-tools-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.72rem;
+    }
+
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
@@ -3847,13 +3850,23 @@ textarea.client-create-notes {
         grid-column: auto;
     }
 
-    .dashboard-page-shell .centered-tools {
-        grid-template-columns: 1fr;
+    .dashboard-page-shell .dashboard-tool {
+        min-height: 108px;
+        height: 108px;
+        padding: 0.62rem 0.5rem;
     }
 
-    .dashboard-page-shell .dashboard-tool {
-        min-height: 122px;
-        height: 122px;
+    .dashboard-page-shell .dashboard-tool img {
+        width: 78px;
+        height: 48px;
+        min-width: 78px;
+        min-height: 48px;
+        padding: 0.32rem 0.48rem;
+    }
+
+    .dashboard-page-shell .dashboard-tool .tool-name {
+        font-size: 0.78rem;
+        line-height: 1.12;
     }
 
     .legend-connect-page .legend-connect-metrics--three,
