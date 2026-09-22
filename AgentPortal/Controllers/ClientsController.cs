@@ -6327,9 +6327,17 @@ namespace AgentPortal.Controllers;
             _db.AccountLifecycleRecords.Any(r => r.ProfileId == p.Id && r.ParticipantType == MessagingParticipantTypes.Client &&
                 (r.State == Domain.Accounts.AccountLifecycleStates.Closed || r.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested)))
             .OrderBy(p => p.LastName).ThenBy(p => p.FirstName).ToListAsync(ct);
-        ViewData["RestorableClientIds"] = (await _db.AccountLifecycleRecords.AsNoTracking()
-            .Where(r => r.RetainClientContact && r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
-            .Select(r => r.ProfileId).ToListAsync(ct)).ToHashSet();
+        var closedClientLifecycle = await _db.AccountLifecycleRecords.AsNoTracking()
+            .Where(r => r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(r => new { r.ProfileId, r.RetainClientContact })
+            .ToListAsync(ct);
+        ViewData["RestorableClientIds"] = closedClientLifecycle
+            .Where(r => r.RetainClientContact)
+            .Select(r => r.ProfileId)
+            .ToHashSet();
+        ViewData["PurgeableClientIds"] = closedClientLifecycle
+            .Select(r => r.ProfileId)
+            .ToHashSet();
         return View(profiles);
     }
 
@@ -6345,6 +6353,108 @@ namespace AgentPortal.Controllers;
                 User.FindFirstValue("oid") ?? owner, HttpContext.TraceIdentifier), ct)
             : await service.RestoreAssignedClientAsync(profileId, owner, ct);
         TempData["Created"] = result.Message;
+        return RedirectToAction(nameof(Archive));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RestoreSelected(List<Guid>? selectedProfileIds, CancellationToken ct)
+    {
+        var selected = (selectedProfileIds ?? new List<Guid>())
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(26)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            TempData["Created"] = "Choose at least one archived client account to restore.";
+            return RedirectToAction(nameof(Archive));
+        }
+        if (selected.Length > 25)
+        {
+            TempData["Created"] = "Choose no more than 25 archived client accounts at once.";
+            return RedirectToAction(nameof(Archive));
+        }
+
+        string owner;
+        try { owner = GetAgentOidOrThrow(); } catch { return Challenge(); }
+
+        var service = HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>();
+        var founder = FounderGuard.IsFounder(User);
+        var actorId = User.FindFirstValue("oid") ?? owner;
+        var restored = 0;
+        var failed = 0;
+        foreach (var profileId in selected)
+        {
+            ct.ThrowIfCancellationRequested();
+            var result = founder
+                ? await service.RestoreAsync(
+                    new FounderAccountRemovalCommand(
+                        profileId,
+                        MessagingParticipantTypes.Client,
+                        actorId,
+                        HttpContext.TraceIdentifier),
+                    ct)
+                : await service.RestoreAssignedClientAsync(profileId, owner, ct);
+            if (result.Succeeded) restored++;
+            else failed++;
+        }
+
+        TempData["Created"] = failed == 0
+            ? $"{restored} archived client account(s) restored."
+            : $"{restored} archived client account(s) restored; {failed} could not be restored.";
+        return RedirectToAction(nameof(Archive));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PurgeSelected(
+        List<Guid>? selectedProfileIds,
+        string? confirmation,
+        CancellationToken ct)
+    {
+        if (!FounderGuard.IsFounder(User))
+            return Forbid();
+
+        if (!string.Equals(confirmation?.Trim(), "ERASE", StringComparison.Ordinal))
+        {
+            TempData["Created"] = "Type ERASE to permanently remove selected archived accounts.";
+            return RedirectToAction(nameof(Archive));
+        }
+
+        var selected = (selectedProfileIds ?? new List<Guid>())
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(26)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            TempData["Created"] = "Choose at least one archived client account to erase.";
+            return RedirectToAction(nameof(Archive));
+        }
+        if (selected.Length > 25)
+        {
+            TempData["Created"] = "Choose no more than 25 archived client accounts at once.";
+            return RedirectToAction(nameof(Archive));
+        }
+
+        string owner;
+        try { owner = GetAgentOidOrThrow(); } catch { return Challenge(); }
+
+        var actorId = User.FindFirstValue("oid") ?? owner;
+        var service = HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>();
+        var result = await service.PurgeArchivedManyAsync(
+            new FounderAccountRemovalBatchCommand(
+                selected
+                    .Select(id => new FounderAccountTarget(id, MessagingParticipantTypes.Client))
+                    .ToArray(),
+                actorId,
+                HttpContext.TraceIdentifier),
+            ct);
+
+        TempData["Created"] = result.FailedCount == 0
+            ? $"{result.CompletedCount} archived client account(s) permanently erased."
+            : $"{result.CompletedCount} archived client account(s) permanently erased; {result.FailedCount} could not be erased.";
         return RedirectToAction(nameof(Archive));
     }
 
