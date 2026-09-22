@@ -5346,10 +5346,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     filter:brightness(1.04);
 }
 
-.pipeline-command-dock .btn:disabled{
-    opacity:.48 !important;
-    box-shadow:none !important;
-}
+
 
 @media (max-width: 980px){
     .pipeline-head-actions{
