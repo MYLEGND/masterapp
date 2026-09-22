@@ -6327,15 +6327,21 @@ namespace AgentPortal.Controllers;
             _db.AccountLifecycleRecords.Any(r => r.ProfileId == p.Id && r.ParticipantType == MessagingParticipantTypes.Client &&
                 (r.State == Domain.Accounts.AccountLifecycleStates.Closed || r.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested)))
             .OrderBy(p => p.LastName).ThenBy(p => p.FirstName).ToListAsync(ct);
+        var nowUtc = DateTime.UtcNow;
         var closedClientLifecycle = await _db.AccountLifecycleRecords.AsNoTracking()
             .Where(r => r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
-            .Select(r => new { r.ProfileId, r.RetainClientContact })
+            .Select(r => new { r.ProfileId, r.RetainClientContact, r.ClosureLeaseExpiresUtc })
             .ToListAsync(ct);
         ViewData["RestorableClientIds"] = closedClientLifecycle
             .Where(r => r.RetainClientContact)
             .Select(r => r.ProfileId)
             .ToHashSet();
         ViewData["PurgeableClientIds"] = closedClientLifecycle
+            .Where(r => r.ClosureLeaseExpiresUtc == null || r.ClosureLeaseExpiresUtc <= nowUtc)
+            .Select(r => r.ProfileId)
+            .ToHashSet();
+        ViewData["BusyClientIds"] = closedClientLifecycle
+            .Where(r => r.ClosureLeaseExpiresUtc > nowUtc)
             .Select(r => r.ProfileId)
             .ToHashSet();
         return View(profiles);
@@ -6452,9 +6458,23 @@ namespace AgentPortal.Controllers;
                 HttpContext.TraceIdentifier),
             ct);
 
-        TempData["Created"] = result.FailedCount == 0
-            ? $"{result.CompletedCount} archived client account(s) permanently erased."
-            : $"{result.CompletedCount} archived client account(s) permanently erased; {result.FailedCount} could not be erased.";
+        if (result.FailedCount == 0)
+        {
+            TempData["Created"] = $"{result.CompletedCount} archived client account(s) permanently erased.";
+        }
+        else
+        {
+            var failureMessages = result.Results
+                .Where(item => !item.Succeeded)
+                .Select(item => item.Message)
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .Distinct(StringComparer.Ordinal)
+                .Take(3)
+                .ToArray();
+            TempData["Created"] = failureMessages.Length == 0
+                ? $"{result.CompletedCount} archived client account(s) permanently erased; {result.FailedCount} could not be erased."
+                : $"{result.CompletedCount} archived client account(s) permanently erased. {string.Join(" ", failureMessages)}";
+        }
         return RedirectToAction(nameof(Archive));
     }
 
