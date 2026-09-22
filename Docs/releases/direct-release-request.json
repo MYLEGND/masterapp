@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved surgical direct ClientApp release for the centralized compact mobile layout correction.",
-  "purpose": "Direct release only ClientApp. Publish the shared authenticated-shell mobile density/full-width correction and the existing ClientApp mobile owner change that replaces one-column action-button stacking with compact two-up mobile action rows. No backend, database, authentication, subscription, payment, billing, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "clientapp-central-mobile-compact-actions-20260922-1",
+  "authorization": "Founder approved surgical direct AgentPortal release for the centralized mobile global header/navigation correction.",
+  "purpose": "Direct release only AgentPortal. Publish the single shared global navigation owner that keeps Logo | LIFE HAC | GOD ABOVE ALL | hamburger on one permanent mobile top row and compacts opened navigation actions into dynamic shared rows instead of one full-width row per action. No page-specific header CSS, no duplicate navigation system, no backend, database, authentication, subscription, payment, billing, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "agentportal-shared-mobile-header-compact-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-client"
+    "masterapp-portal"
   ]
 }
