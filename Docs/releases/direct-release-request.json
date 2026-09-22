@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved surgical direct ClientApp release to repair the active-member sign-in false Activation Required path without changing subscription billing or payment flows.",
-  "purpose": "Direct release only ClientApp. Preserve the existing subscription activation, Square payment, subscription management, and billing orchestration authorities unchanged. Publish only the ClientIdentityAccessService repair that allows an already-bound active member to continue to OIDC when Microsoft Graph synchronization is temporarily unavailable, while keeping unbound identities, inactive entitlements, identity mismatches, and redemption requirements fail-closed. Release workflow ClientApp-only gating was corrected so skipped migrations do not suppress the already-authorized ClientApp deployment; no migration is required for this code-only repair.",
-  "requestId": "clientapp-active-member-signin-repair-20260922-2",
+  "authorization": "Founder approved surgical direct ClientApp release to stop AADSTS50020 caused by entering Microsoft OIDC without the canonical client identity preflight.",
+  "purpose": "Direct release only ClientApp. Require the existing member sign-in preflight to run before any non-support Microsoft OIDC challenge when no protected continuation exists. This reuses the existing ClientIdentityAccessService and Entra lifecycle authority so active clients are synchronized/provisioned and sent through guest redemption when required. Do not modify subscription activation, Square payments, billing orchestration, subscription management, database schema, AgentPortal, Protect, Parfait, or LEGEND Website.",
+  "requestId": "clientapp-aadsts50020-preflight-repair-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
