@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder approved surgical direct ClientApp release to stop AADSTS50020 caused by entering Microsoft OIDC without the canonical client identity preflight.",
-  "purpose": "Direct release only ClientApp. Require the existing member sign-in preflight to run before any non-support Microsoft OIDC challenge when no protected continuation exists. This reuses the existing ClientIdentityAccessService and Entra lifecycle authority so active clients are synchronized/provisioned and sent through guest redemption when required. Do not modify subscription activation, Square payments, billing orchestration, subscription management, database schema, AgentPortal, Protect, Parfait, or LEGEND Website. ClientApp-only package gating is corrected to key directly from the selected target set after successful build/tests/web checks so a validated ClientApp candidate cannot be skipped before Azure deployment.",
-  "requestId": "clientapp-aadsts50020-preflight-repair-20260922-2",
+  "purpose": "Direct release only ClientApp. Require the existing member sign-in preflight before any non-support Microsoft OIDC challenge when no protected continuation exists, so the canonical ClientIdentityAccessService provisions/synchronizes the external Entra guest and uses redemption when required. The previously failing regression assertion has been corrected to match the intended redirect-to-preflight behavior. The experimental package-gate change was removed; the previously proven package authority is restored. Do not modify subscription activation, Square payments, billing orchestration, subscription management, database schema, AgentPortal, Protect, Parfait, or LEGEND Website.",
+  "requestId": "clientapp-aadsts50020-preflight-repair-20260922-3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
