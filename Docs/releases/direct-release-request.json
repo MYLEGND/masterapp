@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved direct ClientApp deployment of the final centralized mobile navigation compaction.",
-  "purpose": "Direct release only ClientApp. Deploy the same shared global mobile navigation owner so common primary actions fit one compact row, utility actions fit the second row, and the member/agent profile-photo pill occupies a third row by itself. Preserve the permanent logo/LIFE HAC/hamburger top row. No page-specific CSS, duplicate navigation system, backend, database, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "clientapp-final-mobile-nav-three-row-20260922-1",
+  "authorization": "Founder requested surgical mobile frontend repair for AgentPortal Home/Dashboard grid density and shared Finance scrolling.",
+  "purpose": "Direct release only AgentPortal. Publish the centralized shared dashboard/mobile tool-grid correction (two columns on phones; no <=520 single-column collapse), remove AgentPortal page-local mobile Home grid ownership, and publish the shared Finance scroll-container repair that removes body-level scroll freezing while keeping finance overlays/dialogs independently touch-scrollable. No backend, schema, auth, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "agentportal-mobile-grid-finance-scroll-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-client"
+    "masterapp-portal"
   ]
 }
