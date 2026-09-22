@@ -141,12 +141,22 @@ public sealed class ClientIdentityAccessService
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_ACTIVE", "This client account is not active for sign-in yet. Use the activation link or contact your agent for help.", safeReturnUrl);
         }
 
-        global::Infrastructure.Identity.ClientEntraIdentitySynchronizationResult identity;
+        global::Infrastructure.Identity.ClientEntraIdentitySynchronizationResult? identity = null;
         try
         {
             identity = await _entraLifecycle.SynchronizeClientIdentityAsync(
                 profile.Id,
                 cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch when (HasPersistedMicrosoftIdentityBinding(profile))
+        {
+            // Graph synchronization is a repair/redemption aid, not a second availability
+            // gate for an already-bound active member. The OIDC callback still validates
+            // the stable object ID against the live profile and re-checks entitlement.
         }
         catch
         {
@@ -157,8 +167,9 @@ public sealed class ClientIdentityAccessService
                 safeReturnUrl);
         }
 
-        if (string.IsNullOrWhiteSpace(identity.ObjectId) ||
-            !string.Equals(NormalizeEmail(identity.LoginEmail), normalizedEmail, StringComparison.Ordinal))
+        if (identity is not null &&
+            (string.IsNullOrWhiteSpace(identity.ObjectId) ||
+             !string.Equals(NormalizeEmail(identity.LoginEmail), normalizedEmail, StringComparison.Ordinal)))
         {
             return new ClientSignInPreparationResult(
                 false,
@@ -167,7 +178,9 @@ public sealed class ClientIdentityAccessService
                 safeReturnUrl);
         }
 
-        if (identity.RequiresRedemption && string.IsNullOrWhiteSpace(identity.RedemptionUrl))
+        if (identity is not null &&
+            identity.RequiresRedemption &&
+            string.IsNullOrWhiteSpace(identity.RedemptionUrl))
         {
             return new ClientSignInPreparationResult(
                 false,
@@ -191,7 +204,7 @@ public sealed class ClientIdentityAccessService
             protectedState.ProtectedState,
             protectedState.ExpiresUtc,
             normalizedEmail,
-            identity.RequiresRedemption ? identity.RedemptionUrl : null);
+            identity?.RequiresRedemption == true ? identity.RedemptionUrl : null);
     }
 
     public async Task<ClientSignInCompletionResult> ValidateAuthenticatedClientSessionAsync(
@@ -509,6 +522,17 @@ public sealed class ClientIdentityAccessService
             .ToArray();
 
         return values;
+    }
+
+    private static bool HasPersistedMicrosoftIdentityBinding(ClientProfile profile)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId))
+            return true;
+
+        // Some legacy records stored the Entra object ID in ClientUserId before the
+        // dedicated external-identity column became authoritative. Internal client IDs
+        // use the "client-" prefix, so only a GUID-shaped legacy value is accepted here.
+        return Guid.TryParse(profile.ClientUserId, out _);
     }
 
     private static string NormalizeEmail(string? email) =>
