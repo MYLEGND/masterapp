@@ -4448,22 +4448,22 @@ header .legend-global-nav .container-fluid {
 
     /*
      * Mobile navigation density is owned here globally.
-     * Primary actions always share two columns, which keeps four actions to two
-     * rows and five actions to three rows. Account/utility actions share one
-     * compact row so opening the menu does not create a tall vertical stack.
+     * The primary row is four compact equal tracks so the common four actions
+     * occupy one row. Utility actions share the second row. The profile control
+     * is forced onto its own third row.
      */
     .legend-global-nav .navbar-left .nav-row {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         align-items: stretch;
-        gap: 0.45rem;
+        gap: 0.4rem;
         width: 100%;
     }
 
     .legend-global-nav .navbar-right {
-        grid-template-columns: minmax(88px, 1fr) auto minmax(132px, 1.35fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         align-items: stretch;
-        gap: 0.45rem;
+        gap: 0.4rem;
     }
 
     .legend-global-nav .navbar-left .nav-item,
@@ -4479,18 +4479,20 @@ header .legend-global-nav .container-fluid {
     .legend-global-nav .navbar-left .explore-trigger {
         width: 100%;
         min-width: 0;
-        min-height: 42px;
+        min-height: 40px;
         margin: 0;
-        padding: 0.48rem 0.62rem;
-        border-radius: 12px;
+        padding: 0.4rem 0.28rem;
+        border-radius: 11px;
         justify-content: center;
         text-align: center;
-        line-height: 1.15;
+        font-size: clamp(0.76rem, 3.4vw, 0.92rem);
+        line-height: 1.08;
         white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     .legend-global-nav .navbar-left .explore-trigger {
-        height: 42px;
+        height: 40px;
     }
 
     .legend-global-nav .nav-context-row {
@@ -4513,16 +4515,19 @@ header .legend-global-nav .container-fluid {
         max-width: 100%;
     }
 
-    .legend-global-nav .navbar-right > :nth-child(2) {
-        justify-self: center;
+    .legend-global-nav .navbar-right > .dropdown:last-child {
+        grid-column: 1 / -1;
+        justify-self: start;
+        width: auto;
+        max-width: 100%;
     }
 
     .legend-global-nav .profile-chip {
-        width: 100%;
+        width: auto;
         max-width: 100%;
         min-width: 0;
-        min-height: 42px;
-        padding: 0.35rem 0.5rem;
+        min-height: 40px;
+        padding: 0.32rem 0.52rem;
     }
 
     .legend-global-nav .profile-avatar {
