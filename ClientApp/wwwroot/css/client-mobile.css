@@ -139,13 +139,20 @@
     .client-portal .client-create-actions,
     .client-portal .subscription-activation-actions {
         display: grid;
-        grid-template-columns: 1fr;
-        gap: 0.55rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--app-mobile-control-gap);
     }
 
     .client-portal .client-create-actions .client-create-button,
     .client-portal .subscription-activation-actions .client-create-button {
         width: 100%;
+        min-width: 0;
+        margin: 0;
+    }
+
+    .client-portal :is(.client-create-actions, .subscription-activation-actions) > :only-child {
+        width: auto;
+        justify-self: start;
     }
 
     /* Resource and training pages share the same compact, readable rhythm. */
@@ -169,9 +176,14 @@
 
     .client-portal .preview-actions {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         width: 100%;
-        gap: 0.5rem;
+        gap: var(--app-mobile-control-gap);
+    }
+
+    .client-portal .preview-actions > :only-child {
+        width: auto;
+        justify-self: start;
     }
 
     .client-portal .preview-actions .preview-open {
