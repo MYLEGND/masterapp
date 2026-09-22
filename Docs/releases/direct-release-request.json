@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested surgical mobile frontend repair for ClientApp shared tool-grid density and Finance scrolling.",
-  "purpose": "Direct release only ClientApp. Publish the centralized shared dashboard/mobile tool-grid correction (two columns on phones; no <=520 single-column collapse) and the shared Finance scroll-container repair that removes body-level scroll freezing while keeping finance overlays/dialogs independently touch-scrollable. Preserve ClientApp's existing centralized mobile owner; no page-specific workaround, backend, schema, auth, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "clientapp-mobile-grid-finance-scroll-20260922-1",
+  "authorization": "Founder requires all currently approved AgentPortal mobile UI fixes to be directly deployed.",
+  "purpose": "Direct release only AgentPortal from the current approved head. Include the centralized mobile header/nav density fix, the centralized two-column Home/Dashboard tool-grid correction, removal of AgentPortal page-local mobile Home grid ownership, compact mobile spacing/full-width shell work, archive UI fixes already present in approved history, and the shared Finance scrolling repair. No unrelated backend, schema, auth, payment, subscription, Protect, Parfait, or LEGEND Website deployment.",
+  "requestId": "agentportal-all-current-mobile-ui-fixes-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-client"
+    "masterapp-portal"
   ]
 }
