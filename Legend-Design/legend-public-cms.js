@@ -763,7 +763,8 @@
       panelToggle.textContent = hidden ? 'Open editor' : 'Preview full page';
       panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
       if (hidden) setSelected(null);
-      requestAnimationFrame(refreshScaledElements);
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refreshScaledElements);
+      else refreshScaledElements();
     });
     document.body.appendChild(panelToggle);
     window.addEventListener('beforeunload', event => {

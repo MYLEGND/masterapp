@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../../Legend-Design/legend-website-management.js', import.meta.url), 'utf8');
-const flush = () => new Promise(resolve => setTimeout(resolve, 15));
+const flush = () => new Promise(resolve => setTimeout(resolve, 40));
 async function fixture({ caps = {}, failPublish = false, scope = 'business' } = {}) {
   const dom = new JSDOM(`<button data-website-manage data-session="/profile/session" data-edit="/profile/edit" data-live="https://business.test" data-title="Business A" data-scope="${scope}">Manage</button>`, { url: 'https://client.mylegnd.com/profile', runScripts: 'outside-only' });
   const { window } = dom, calls = [];
