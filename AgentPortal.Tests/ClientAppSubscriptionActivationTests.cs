@@ -128,10 +128,9 @@ public class ClientAppSubscriptionActivationTests
 
         var result = await controller.AzureLogin("/profile");
 
-        var challenge = Assert.IsType<ChallengeResult>(result);
-        Assert.Contains("OpenIdConnect", challenge.AuthenticationSchemes);
-        Assert.Equal("/profile", challenge.Properties?.RedirectUri);
-        Assert.False(challenge.Properties?.Parameters.ContainsKey("login_hint") == true);
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("Login", redirect.ActionName);
+        Assert.Equal("/profile", redirect.RouteValues?["returnUrl"]?.ToString());
     }
 
     [Fact]
