@@ -12,7 +12,12 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
       this.tagName = tag.toUpperCase(); this.dataset = {}; this.children = [];
       this.textContent = ''; this.listeners = new Map(); this.attributes = {}; this.clientWidth = 1000; this.className = ''; this.baseFontSize = 64;
       this.style = { removeProperty: key => { delete this.style[key]; }, setProperty: (key, value) => { this.style[key] = value; } };
-      this.classList = { add() {}, remove() {}, contains: name => this.className.split(' ').includes(name) };
+      this.classList = {
+        add: name => { if (!this.className.split(' ').includes(name)) this.className = (this.className + ' ' + name).trim(); },
+        remove: name => { this.className = this.className.split(' ').filter(value => value && value !== name).join(' '); },
+        contains: name => this.className.split(' ').includes(name),
+        toggle: name => { const has = this.className.split(' ').includes(name); if (has) this.classList.remove(name); else this.classList.add(name); return !has; }
+      };
     }
     appendChild(child) { if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(x => x !== child); this.children.push(child); child.parentElement = this; return child; }
     insertBefore(child, before) { if (!before) return this.appendChild(child); this.children.splice(this.children.indexOf(before), 0, child); child.parentElement = this; return child; }
@@ -59,7 +64,8 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
       paddingTop: el.style.paddingTop || '24px', paddingBottom: el.style.paddingBottom || '32px', paddingLeft: '0px', paddingRight: '0px', textAlign: el.style.textAlign || 'center' }),
     location: { origin, pathname: '/', search, href: origin + '/' + search },
     URL, URLSearchParams, HTMLElement: Element, HTMLImageElement: class extends Element {},
-    CSS: { escape: value => value }, alert: value => alerts.push(value), console: { error: (...values) => errors.push(values) }
+    CSS: { escape: value => value }, alert: value => alerts.push(value), console: { error: (...values) => errors.push(values) },
+    setTimeout, clearTimeout, requestAnimationFrame: callback => { callback(); return 1; }
   });
   vm.runInContext(source, environment);
   return { calls, alerts, errors, document, heading, ids, events, windowEvents,
@@ -276,6 +282,24 @@ for(const siteKey of ['legend','protect']) {
     } finally {f.close();}
   });
 }
+test('autosave persists edits before domain connection and panel can collapse to a full-page preview', async()=>{
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'}});
+  try {
+    f.click('main h1');
+    f.input('#legend-cms-text','Persisted before domain');
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
+    assert.ok(saveCall);
+    assert.equal(JSON.parse(saveCall.body).document.pages.home.elements[Object.keys(JSON.parse(saveCall.body).document.pages.home.elements)[0]].text,'Persisted before domain');
+    const toggle=f.w.document.querySelector('#legend-cms-panel-toggle');
+    assert.ok(toggle);
+    f.click('#legend-cms-panel-toggle');
+    assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),true);
+    assert.equal(toggle.textContent,'Open editor');
+    f.click('#legend-cms-panel-toggle');
+    assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),false);
+  } finally { f.close(); }
+});
 test('section deletion preserves child structure, reset restores, global theme remains separate',async()=>{
   const f=await domFixture();try {f.click('main h1');f.click('#legend-cms-container'); f.click('#legend-cms-remove');
     assert.equal(f.w.document.querySelector('main section').hidden,true);assert.ok(f.w.document.querySelector('main section h1'));

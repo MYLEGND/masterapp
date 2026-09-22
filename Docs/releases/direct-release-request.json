@@ -1,11 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved retry of the same scoped ClientApp + Protect direct release after correcting the compile-only test import.",
-  "purpose": "Direct release only ClientApp + Protect from legend/approved-changes. Preserve the single Client/BusinessClient identity authority and the single Protect website-ticket authority. Fix verified business-domain activation, active-domain presentation/live routing, first-request DNS guidance, owner publication authority, rollback consistency, and editor-session duration. No overrides, duplicate auth/domain/content systems, fallback authorities, or unrelated app deployment.",
-  "requestId": "client-business-identity-domain-publish-release-20260921-9",
+  "authorization": "Founder approved surgical direct deployment of the centralized website-management UI, registrar routing, durable draft autosave, full-page preview control, and existing domain/identity corrections.",
+  "purpose": "Direct release only affected web surfaces from legend/approved-changes: AgentPortal, ClientApp, Protect, and LEGEND Website. Preserve the single Protect content/domain authority and shared Legend-Design editor. Show customers only the exact registrar routing record while keeping Cloudflare verification internal; autosave draft edits through the existing manage endpoint before any domain is connected; allow the shared editor side panel to close/reopen for full-page preview. No overrides, duplicate CSS, duplicate editors, mirrored persistence, fallback authorities, or unrelated app deployment.",
+  "requestId": "central-website-editor-domain-routing-release-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
     "masterapp-client",
-    "masterapp-protect"
+    "masterapp-protect",
+    "masterapp-website"
   ]
 }

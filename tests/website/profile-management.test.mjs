@@ -69,22 +69,31 @@ test('authorized import accepts own export draft and displays actionable migrati
   assert.match(f.document.body.textContent, /Booking requires integration/); assert.match(f.document.body.textContent, /4 existing components preserved/); assert.match(f.document.body.textContent, /Review links/); f.dom.window.close();
 });
 
-test('domain guidance renders record controls and verified binding action', async () => {
+test('domain guidance shows only the registrar routing record and keeps provider validation internal', async () => {
   const f = await fixture(); await f.click('Domains');
-  assert.ok([...f.document.querySelectorAll('input')].some(n => n.value === 'proof-value'));
-  assert.equal(f.document.querySelector('pre'), null); await f.click('Verify status');
+  const values = [...f.document.querySelectorAll('input')].map(input => input.value);
+  assert.ok(values.includes('CNAME'));
+  assert.ok(values.includes('@'));
+  assert.ok(values.includes('sites.example.test'));
+  assert.equal(values.includes('proof-value'), false);
+  assert.equal(f.document.querySelector('pre'), null);
+  await f.click('Verify status');
   assert.equal(f.calls.find(c => c.path.endsWith('/domains/refresh')).body.bindingId, 'binding-a'); f.dom.window.close();
 });
 
-test('connect domain uses returned binding and exposes routing target on the first request', async () => {
+test('connect domain returns one registrar-ready routing record on the first request', async () => {
   const f = await fixture(); await f.click('Domains');
   const domainInput = [...f.document.querySelectorAll('input')].find(input => !input.readOnly && input.type === 'text');
   domainInput.value = 'example.com';
   await f.click('Connect domain');
   const request = f.calls.find(call => call.path.endsWith('/domains') && call.options.method === 'POST');
   assert.equal(request.body.hostname, 'example.com');
-  assert.ok([...f.document.querySelectorAll('input')].some(input => input.value === 'sites.example.test'));
-  assert.match(f.document.body.textContent, /ALIAS, ANAME, or CNAME-flattening/);
+  const values = [...f.document.querySelectorAll('input')].map(input => input.value);
+  assert.ok(values.includes('CNAME'));
+  assert.ok(values.includes('@'));
+  assert.ok(values.includes('sites.example.test'));
+  assert.match(f.document.body.textContent, /add exactly this record/i);
+  assert.equal(/ALIAS|ANAME|flattening/i.test(f.document.body.textContent), false);
   f.dom.window.close();
 });
 
