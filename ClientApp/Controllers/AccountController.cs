@@ -65,7 +65,10 @@ public class AccountController : Controller
         // that object ID to an entitled client profile. First-time binding still
         // requires the protected continuation created by the member sign-in form.
         if (string.Equals(challenge.SafeErrorCode, "MISSING_CONTINUATION", StringComparison.Ordinal))
-            return await StartChallengeAsync(target);
+        {
+            _identityAccessService.ClearChallengeContinuationCookie(Response);
+            return RedirectToAction(nameof(Login), new { returnUrl = target });
+        }
 
         _identityAccessService.ClearChallengeContinuationCookie(Response);
 
