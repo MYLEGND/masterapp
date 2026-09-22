@@ -43,11 +43,13 @@
   --client-inset:var(--legend-inset);
   --client-ring:var(--legend-ring);
   --app-gutter:clamp(18px,2.5vw,48px);
+  /* Outer viewport gutter is independent from component/card spacing. */
+  --app-shell-gutter:var(--app-gutter);
   --app-section-gap:clamp(24px,3vw,48px);
 }
 html{font-size:16px}
 body.legend-app{display:flex;flex-direction:column;overflow-x:clip}
-.legend-app-content{width:100%;min-width:0;flex:1;padding:var(--app-section-gap) max(var(--app-gutter),env(safe-area-inset-right)) var(--app-section-gap) max(var(--app-gutter),env(safe-area-inset-left))}
+.legend-app-content{width:100%;min-width:0;flex:1;padding:var(--app-section-gap) max(var(--app-shell-gutter),env(safe-area-inset-right)) var(--app-section-gap) max(var(--app-shell-gutter),env(safe-area-inset-left))}
 .legend-app-content>main{min-width:0;width:100%}
 .legend-app-content :where(h1,h2,h3,p){overflow-wrap:anywhere}
 .legend-app-content :where(.card){border-color:var(--web-border);border-radius:var(--web-radius-md);box-shadow:var(--web-shadow)}
@@ -421,6 +423,7 @@ footer.footer{flex-shrink:0;width:100%;padding:24px 0;background:linear-gradient
  .explore-drawer{top:12px;bottom:12px;left:12px;width:calc(100vw - 24px);max-width:360px}
 }
 @media(max-width:768px){
+ :root{--app-shell-gutter:0px}
  .footer-shell{grid-template-columns:1fr;justify-items:center}
  .footer-left,.footer-center,.footer-right{justify-self:center;text-align:center}
  .footer-support{flex-direction:column;justify-content:center;gap:.45rem}
