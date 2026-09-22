@@ -74,6 +74,34 @@ test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom p
   assert.match(script,/document.addEventListener\('show.bs.modal'/);
 });
 
+
+test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(css,/@media \\(max-width: 900px\\)[\\s\\S]*\\[data-legend-mobile-sheet\\]/);
+  assert.match(css,/bottom: var\\(--legend-modal-area-end\\)/);
+  assert.match(css,/data-legend-sheet-snap="half"[\\s\\S]*46%/);
+  assert.match(script,/function registerMobileSheet\\(/);
+  assert.match(script,/addEventListener\\("pointerdown"/);
+  assert.match(script,/function lockPageScroll\\(/);
+});
+test('lead and client quick views share the mobile sheet contract',()=>{
+  for (const file of ['AgentPortal/Views/Leads/_LeadQuickView.cshtml','AgentPortal/Views/Clients/_ClientsQuickView.cshtml']) {
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,/data-legend-mobile-sheet/);
+    assert.match(source,/data-legend-sheet-scroll/);
+    assert.match(source,/data-legend-sheet-close/);
+  }
+});
+test('CRM scripts delegate page scroll locking to shared modal owner',()=>{
+  for (const file of ['AgentPortal/wwwroot/js/leads-index.js','AgentPortal/wwwroot/js/clients-index.js']) {
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,/LegendModal\\?\\.lockPageScroll\\("crm-quick-view"\\)/);
+    assert.match(source,/LegendModal\\?\\.unlockPageScroll\\("crm-quick-view"\\)/);
+    assert.doesNotMatch(source,/function lockPageScrollForQuickView/);
+    assert.doesNotMatch(source,/quickViewScrollY/);
+  }
+});
+
 function dialogFixture() {
   const body={};
   const context={surfaces:new WeakSet(),document:{body},window:{getComputedStyle:node=>({position:node.position||'static'})}};

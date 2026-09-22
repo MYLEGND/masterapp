@@ -1927,32 +1927,6 @@ async function ensureDialPeriodsFresh(){
   }
 }
 let meetingSuggestTimer = null;
-let quickViewScrollY = 0;
-
-function lockPageScrollForQuickView(){
-  if (document.body.dataset.quickViewLocked === "true") return;
-  quickViewScrollY = window.scrollY || window.pageYOffset || 0;
-  document.body.dataset.quickViewLocked = "true";
-  document.body.style.position = "fixed";
-  document.body.style.top = `-${quickViewScrollY}px`;
-  document.body.style.left = "0";
-  document.body.style.right = "0";
-  document.body.style.width = "100%";
-  document.body.style.overflow = "hidden";
-}
-
-function unlockPageScrollForQuickView(){
-  if (document.body.dataset.quickViewLocked !== "true") return;
-  const restoreY = quickViewScrollY;
-  delete document.body.dataset.quickViewLocked;
-  document.body.style.position = "";
-  document.body.style.top = "";
-  document.body.style.left = "";
-  document.body.style.right = "";
-  document.body.style.width = "";
-  document.body.style.overflow = "";
-  window.scrollTo(0, restoreY);
-}
 
 const dName = $("#dName");
 const dEmail = $("#dEmail");
@@ -4192,7 +4166,7 @@ async function openDrawerForRow(row){
     drawer.classList.add("open");
     drawerBackdrop.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
-    lockPageScrollForQuickView();
+    window.LegendModal?.lockPageScroll("crm-quick-view");
     updateZoomControls();
     syncQuickViewDisclosures();
 
@@ -4563,7 +4537,7 @@ function closeDrawer(){
   renderIntakeSnapshot(null);
   renderAppointmentSnapshot(null);
   refreshLeadOverviewSummary();
-  unlockPageScrollForQuickView();
+  unwindow.LegendModal?.lockPageScroll("crm-quick-view");
 }
 function openLeadActionsHub(){
   const requestedClientId = (activeClientId || drawer?.dataset?.clientId || "").toString().trim();

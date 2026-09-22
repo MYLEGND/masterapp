@@ -7607,19 +7607,9 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .drawer.crm-qv-shell .drawer-top-actions{
-        grid-template-columns:1fr;
-    }
-
     .drawer.crm-qv-shell .qv-billing-header{
         align-items:stretch;
         flex-direction:column;
-    }
-
-    .drawer.crm-qv-shell{
-        width:calc(100vw - 20px);
-        max-height:min(92vh, calc(var(--legend-modal-safe-height, 100vh) - 12px));
-        border-radius:22px;
     }
 
     .drawer.crm-qv-shell .dhead{
