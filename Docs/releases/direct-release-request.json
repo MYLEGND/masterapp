@@ -1,13 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved retry of the same surgical affected-app direct release after aligning the existing browser assertion with the ticketed editor URL actually emitted by the shared management flow.",
-  "purpose": "Direct release only affected web surfaces from legend/approved-changes: AgentPortal, ClientApp, Protect, and LEGEND Website. Preserve the single Protect content/domain authority and shared Legend-Design editor. Show customers only the exact registrar routing record while keeping Cloudflare verification internal; autosave draft edits through the existing manage endpoint before any domain is connected; allow the shared editor side panel to close/reopen for full-page preview. No overrides, duplicate CSS, duplicate editors, mirrored persistence, fallback authorities, or unrelated app deployment.",
-  "requestId": "central-website-editor-domain-routing-release-20260922-4",
+  "authorization": "Founder approved direct affected-app release for the repository-wide CSS hygiene cleanup and shared mobile UI authority alignment.",
+  "purpose": "Direct release only the affected applications: AgentPortal, ClientApp, and Parfait. Publish the centralized shared LEGEND web styling/mobile modal authority already retained on legend/approved-changes, remove provably duplicate same-context CSS rules and the unused ClientApp legend-forms mirror, preserve desktop behavior, and leave Protect and LEGEND Website untouched.",
+  "requestId": "css-hygiene-shared-mobile-ui-release-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-parfait"
   ]
 }
