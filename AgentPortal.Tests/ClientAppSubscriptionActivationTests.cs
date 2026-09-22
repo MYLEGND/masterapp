@@ -292,6 +292,61 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task PrepareClientSignIn_BoundActiveClient_GraphFailureStillContinuesToOidc()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com", "11111111-2222-3333-4444-555555555555");
+
+        var lifecycle = new Mock<IClientEntraLifecycleService>();
+        lifecycle
+            .Setup(x => x.SynchronizeClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Graph temporarily unavailable"));
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer(),
+            lifecycle.Object);
+
+        var result = await service.PrepareClientSignInAsync("client@example.com", "/profile");
+
+        Assert.True(result.Success);
+        Assert.Null(result.RedemptionUrl);
+        Assert.False(string.IsNullOrWhiteSpace(result.ProtectedState));
+        Assert.Equal("client@example.com", result.LoginHint);
+    }
+
+    [Fact]
+    public async Task PrepareClientSignIn_UnboundActiveClient_GraphFailureRemainsBlocked()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+
+        var lifecycle = new Mock<IClientEntraLifecycleService>();
+        lifecycle
+            .Setup(x => x.SynchronizeClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Graph temporarily unavailable"));
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(
+            db,
+            entitlementService.Object,
+            continuationService,
+            new ClientAppReturnUrlNormalizer(),
+            lifecycle.Object);
+
+        var result = await service.PrepareClientSignInAsync("client@example.com", "/profile");
+
+        Assert.False(result.Success);
+        Assert.Equal("CLIENT_IDENTITY_SETUP_PENDING", result.SafeErrorCode);
+        Assert.Null(result.ProtectedState);
+    }
+
+    [Fact]
     public async Task PrepareClientSignIn_ActiveEntitlement_ReturnsProtectedState()
     {
         using var db = BuildDb();
