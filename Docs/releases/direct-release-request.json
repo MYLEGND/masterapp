@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder approved surgical direct ClientApp release to repair the active-member sign-in false Activation Required path without changing subscription billing or payment flows.",
-  "purpose": "Direct release only ClientApp. Preserve the existing subscription activation, Square payment, subscription management, and billing orchestration authorities unchanged. Publish only the ClientIdentityAccessService repair that allows an already-bound active member to continue to OIDC when Microsoft Graph synchronization is temporarily unavailable, while keeping unbound identities, inactive entitlements, identity mismatches, and redemption requirements fail-closed.",
-  "requestId": "clientapp-active-member-signin-repair-20260922-1",
+  "purpose": "Direct release only ClientApp. Preserve the existing subscription activation, Square payment, subscription management, and billing orchestration authorities unchanged. Publish only the ClientIdentityAccessService repair that allows an already-bound active member to continue to OIDC when Microsoft Graph synchronization is temporarily unavailable, while keeping unbound identities, inactive entitlements, identity mismatches, and redemption requirements fail-closed. Release workflow ClientApp-only gating was corrected so skipped migrations do not suppress the already-authorized ClientApp deployment; no migration is required for this code-only repair.",
+  "requestId": "clientapp-active-member-signin-repair-20260922-2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
