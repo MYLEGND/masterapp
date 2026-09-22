@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved surgical direct AgentPortal release for the centralized mobile global header/navigation correction.",
-  "purpose": "Direct release only AgentPortal. Publish the single shared global navigation owner that keeps Logo | LIFE HAC | GOD ABOVE ALL | hamburger on one permanent mobile top row and compacts opened navigation actions into dynamic shared rows instead of one full-width row per action. No page-specific header CSS, no duplicate navigation system, no backend, database, authentication, subscription, payment, billing, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "agentportal-shared-mobile-header-compact-20260922-2",
+  "authorization": "Founder approved direct AgentPortal deployment of the completed shared mobile header/navigation repair.",
+  "purpose": "Direct release only AgentPortal. Deploy the current approved shared global mobile navigation source so the logo, LIFE HAC | GOD ABOVE ALL control, and hamburger remain on one permanent top row, while opened navigation actions dynamically share compact rows. Preserve the already-staged compact mobile viewport/archive work. No unrelated backend, database, payment, subscription, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "agentportal-global-mobile-header-direct-20260922-2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal"
