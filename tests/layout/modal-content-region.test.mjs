@@ -55,6 +55,15 @@ test('layout notifications coalesce into one scheduled geometry update',()=>{
   const context={viewportSyncFrame:0,window:{requestAnimationFrame:callback=>{frames++;scheduled=callback;return 1;}},syncViewportOffsets:()=>updates++};vm.createContext(context);vm.runInContext(implementation('scheduleViewportOffsets'),context);
   context.scheduleViewportOffsets();context.scheduleViewportOffsets();context.scheduleViewportOffsets();assert.equal(frames,1);scheduled();assert.equal(updates,1);assert.equal(context.viewportSyncFrame,0);
 });
+test('shared mobile navigation keeps the motto in the permanent top row and compacts menu actions',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"left left left"[\s\S]*"right right right"/);
+  assert.match(css,/\.legend-global-nav \.header-psalms \{[\s\S]*grid-area: motto/);
+  assert.match(css,/\.legend-global-nav \.nav-toggle \{[\s\S]*grid-area: toggle/);
+  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(min\(125px, 100%\), 1fr\)\)/);
+  assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
+});
+
 test('AgentPortal and ClientApp consume the same authenticated CSS authorities exactly once',()=>{
   const files=['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml'];
   for(const file of files){
