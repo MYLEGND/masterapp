@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved surgical direct AgentPortal + ClientApp frontend mobile viewport release after repository-wide CSS ownership audit.",
-  "purpose": "Direct release only AgentPortal and ClientApp. The shared authenticated app shell is the single viewport-width authority for both apps. On mobile, remove only the outer shell horizontal gutter while preserving safe-area insets and existing component/card gutters. No page-specific width hacks, no duplicate responsive system, no backend, database, authentication, subscription, payment, billing, Protect, Parfait, or LEGEND Website changes.",
-  "requestId": "portal-client-shared-mobile-full-viewport-20260922-1",
+  "authorization": "Founder approved surgical direct AgentPortal release for the compact mobile archive and centralized mobile layout correction.",
+  "purpose": "Direct release only AgentPortal. Publish the shared authenticated-shell mobile density/full-width correction plus the Client Archive UI that renders only populated fields, compact selectable cards, multi-select restore, and Founder-only permanent erase wired to the existing canonical account-removal authority. No new deletion system, no schema change, no payment/subscription/authentication/business-logic changes, and no unrelated app deployment.",
+  "requestId": "agentportal-mobile-archive-compact-bulk-ui-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-parfait"
+    "masterapp-portal"
   ]
 }
