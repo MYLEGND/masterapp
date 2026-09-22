@@ -28,7 +28,8 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
     if (parsed.pathname === '/api/website-inquiries/manage') value = { inquiries: [{ id: 'inquiry-a', name: '<img src=x onerror=alert(1)>', email: 'a@example.test', message: 'Please call', status: 'New' }] };
     return { ok: true, status: 200, json: async () => value };
   };
-  window.eval(source); window.document.querySelector('[data-website-manage]').click(); await flush();
+  window.eval(source); window.document.querySelector('[data-website-manage]').click();
+  for (let attempt = 0; attempt < 25 && !window.document.querySelector('a[href="/profile/edit"]'); attempt++) await flush();
   const click = async text => { const found = [...window.document.querySelectorAll('button')].find(node => node.textContent.startsWith(text)); assert.ok(found, `button ${text}`); found.click(); await flush(); };
   return { dom, window, document: window.document, calls, click, state };
 }
