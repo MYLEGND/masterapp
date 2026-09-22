@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved direct affected-app release for the repository-wide CSS hygiene cleanup and shared mobile UI authority alignment.",
-  "purpose": "Direct release only the affected applications: AgentPortal, ClientApp, and Parfait. Publish the centralized shared LEGEND web styling/mobile modal authority already retained on legend/approved-changes, remove provably duplicate same-context CSS rules and the unused ClientApp legend-forms mirror, preserve desktop behavior, and leave Protect and LEGEND Website untouched.",
-  "requestId": "css-hygiene-shared-mobile-ui-release-20260922-1",
+  "authorization": "Founder approved surgical direct ClientApp release to repair the active-member sign-in false Activation Required path without changing subscription billing or payment flows.",
+  "purpose": "Direct release only ClientApp. Preserve the existing subscription activation, Square payment, subscription management, and billing orchestration authorities unchanged. Publish only the ClientIdentityAccessService repair that allows an already-bound active member to continue to OIDC when Microsoft Graph synchronization is temporarily unavailable, while keeping unbound identities, inactive entitlements, identity mismatches, and redemption requirements fail-closed.",
+  "requestId": "clientapp-active-member-signin-repair-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-parfait"
+    "masterapp-client"
   ]
 }
