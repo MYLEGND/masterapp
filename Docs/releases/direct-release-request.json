@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved surgical direct AgentPortal release for the compact mobile archive and centralized mobile layout correction.",
-  "purpose": "Direct release only AgentPortal. Publish the shared authenticated-shell mobile density/full-width correction plus the Client Archive UI that renders only populated fields, compact selectable cards, multi-select restore, and Founder-only permanent erase wired to the existing canonical account-removal authority. No new deletion system, no schema change, no payment/subscription/authentication/business-logic changes, and no unrelated app deployment.",
-  "requestId": "agentportal-mobile-archive-compact-bulk-ui-20260922-1",
+  "authorization": "Founder approved surgical direct ClientApp release for the centralized compact mobile layout correction.",
+  "purpose": "Direct release only ClientApp. Publish the shared authenticated-shell mobile density/full-width correction and the existing ClientApp mobile owner change that replaces one-column action-button stacking with compact two-up mobile action rows. No backend, database, authentication, subscription, payment, billing, Protect, Parfait, or LEGEND Website changes.",
+  "requestId": "clientapp-central-mobile-compact-actions-20260922-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-client"
   ]
 }
