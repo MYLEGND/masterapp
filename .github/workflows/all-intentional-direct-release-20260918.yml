@@ -212,7 +212,7 @@ jobs:
           npm --prefix Legend-Website run check
       - name: Publish exact selected application packages
         id: package
-        if: (env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (steps.websitechecks.outcome == 'success' || (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.websitechecks.outcome == 'skipped')))
+        if: (contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && fromJSON(env.SELECTED_TARGETS).length == 1 && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (steps.websitechecks.outcome == 'success' || (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.websitechecks.outcome == 'skipped')))
         run: |
           set -euo pipefail
           apps=()
