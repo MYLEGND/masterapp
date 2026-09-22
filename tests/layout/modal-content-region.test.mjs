@@ -60,7 +60,7 @@ test('AgentPortal and ClientApp consume the same authenticated CSS authorities e
   for(const file of files){
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
     for(const href of ['~/design/legend-web-foundation.css','~/design/legend-app-shell.css','~/_content/Shared/css/dashboard-home-shared.css']){
-      assert.equal(source.split(href).length-1,1,\`${file}: ${href}\`);
+      assert.equal(source.split(href).length-1,1,file+': '+href);
     }
   }
   assert.equal(existsSync(new URL('../../ClientApp/wwwroot/css/legend-forms.css',import.meta.url)),false);
