@@ -4447,19 +4447,23 @@ header .legend-global-nav .container-fluid {
     }
 
     /*
-     * Navigation actions share each row dynamically. Shorter labels can form
-     * three columns on wider phones; longer labels naturally settle into two.
+     * Mobile navigation density is owned here globally.
+     * Primary actions always share two columns, which keeps four actions to two
+     * rows and five actions to three rows. Account/utility actions share one
+     * compact row so opening the menu does not create a tall vertical stack.
      */
-    .legend-global-nav .navbar-left .nav-row,
-    .legend-global-nav .navbar-right {
-        grid-template-columns: repeat(auto-fit, minmax(min(125px, 100%), 1fr));
-        align-items: stretch;
-        gap: 0.45rem;
-    }
-
     .legend-global-nav .navbar-left .nav-row {
         display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 0.45rem;
         width: 100%;
+    }
+
+    .legend-global-nav .navbar-right {
+        grid-template-columns: minmax(88px, 1fr) auto minmax(132px, 1.35fr);
+        align-items: stretch;
+        gap: 0.45rem;
     }
 
     .legend-global-nav .navbar-left .nav-item,
@@ -4509,12 +4513,16 @@ header .legend-global-nav .container-fluid {
         max-width: 100%;
     }
 
+    .legend-global-nav .navbar-right > :nth-child(2) {
+        justify-self: center;
+    }
+
     .legend-global-nav .profile-chip {
         width: 100%;
         max-width: 100%;
         min-width: 0;
         min-height: 42px;
-        padding: 0.35rem 0.55rem;
+        padding: 0.35rem 0.5rem;
     }
 
     .legend-global-nav .profile-avatar {
