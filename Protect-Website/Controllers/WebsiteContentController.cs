@@ -97,7 +97,7 @@ public sealed class WebsiteContentController : ControllerBase
         return Ok(new
         {
             ticket,
-            apiBase = (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/')
+            apiBase = WebsiteContentApiBaseUrl()
         });
     }
 
@@ -423,7 +423,8 @@ public sealed class WebsiteContentController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
     }
-    private string MediaBaseUrl() => (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
+    private string WebsiteContentApiBaseUrl() => (_configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');
+    private string MediaBaseUrl() => WebsiteContentApiBaseUrl();
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
 
     private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>

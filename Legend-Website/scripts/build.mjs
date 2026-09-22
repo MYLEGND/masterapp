@@ -8,7 +8,7 @@ import { businessHome, businessPages } from '../src/business-content.mjs';
 const root=resolve(import.meta.dirname,'..');
 const repoRoot=resolve(root,'..');
 const dist=resolve(root,'dist');
-const publicApiBase='https://protect.mylegnd.com';
+const publicApiBase='https://masterapp-protect.azurewebsites.net';
 const buildRevision=execFileSync('git',['-C',repoRoot,'rev-parse','--verify','HEAD^{commit}'],{encoding:'utf8'}).trim();
 if(!/^[a-f0-9]{40}$/.test(buildRevision))throw new Error('Static website build requires a valid checkout revision.');
 const tokens=JSON.parse(await readFile(resolve(repoRoot,'Legend-Design/legend-design.tokens.json'),'utf8'));

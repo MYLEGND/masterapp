@@ -89,22 +89,26 @@
         panel.append(details);
       }
     };
-    const dnsInstructions = (value, cnameTarget, hostname) => {
-      let instructions = value;
-      if (typeof value === 'string') { try { instructions = JSON.parse(value); } catch { instructions = {}; } }
-      const records = [];
-      if (instructions?.ownership) records.push(instructions.ownership);
-      if (Array.isArray(instructions?.certificate)) records.push(...instructions.certificate);
-      if (cnameTarget) records.push({ type: 'CNAME / ALIAS target', name: hostname, value: cnameTarget });
-      if (!records.length) { panel.append(el('p', 'Verification instructions are not available yet. Refresh the domain status.')); return; }
-      for (const record of records) {
-        const type = record.type ?? record.recordType ?? 'TXT';
-        const name = record.name ?? record.txt_name ?? record.hostname ?? '';
-        const value = record.value ?? record.txt_value ?? record.target ?? '';
-        const row = el('div', null, { class: 'wm-row' }); row.append(el('span', `${type} record · ${name}`));
-        const input = el('input', null, { readonly: '', 'aria-label': `${type} record value` }); input.value = value; row.append(input);
-        row.append(button('Copy value', async () => { try { await navigator.clipboard.writeText(value); status.textContent = 'DNS value copied.'; } catch { input.select(); status.textContent = 'Select and copy the DNS value.'; } })); panel.append(row);
+    const routingHost = hostname => {
+      const labels = String(hostname || '').split('.').filter(Boolean);
+      return labels.length <= 2 ? '@' : labels.slice(0, -2).join('.');
+    };
+    const dnsInstructions = (cnameTarget, hostname) => {
+      if (!cnameTarget) { panel.append(el('p', 'The website routing target is not available yet.')); return; }
+      panel.append(el('p', `At the DNS provider for ${hostname}, add exactly this record:`));
+      const values = [
+        ['Type', 'CNAME'],
+        ['Host / Name', routingHost(hostname)],
+        ['Points to / Value', cnameTarget]
+      ];
+      for (const [label, value] of values) {
+        const row = el('div', null, { class: 'wm-row' });
+        row.append(el('span', label));
+        const input = el('input', null, { readonly: '', 'aria-label': label }); input.value = value; row.append(input);
+        row.append(button('Copy', async () => { try { await navigator.clipboard.writeText(value); status.textContent = `${label} copied.`; } catch { input.select(); status.textContent = 'Select and copy the value.'; } }));
+        panel.append(row);
       }
+      panel.append(el('p', 'Save this DNS record at the registrar, then return here and choose Verify status. LEGEND handles the Cloudflare hostname and certificate checks automatically.'));
     };
     const importDraft = () => {
       section('Import into draft'); panel.append(el('p', 'Import an existing public website or authorized structured export. Review the imported draft before publishing. Your live website stays unchanged.'));
@@ -138,19 +142,16 @@
           await request('/domains/remove', { bindingId: domain.id }); overview(); status.textContent = 'Domain disconnected.';
         })));
         panel.append(row);
-        dnsInstructions(domain.verificationJson, result.cnameTarget, domain.hostname);
+        dnsInstructions(result.cnameTarget, domain.hostname);
       }
       if (result.cnameTarget) panel.append(el('p', `Website CNAME target: ${result.cnameTarget}`));
-      panel.append(
-        el('p', 'Verify ownership before routing visitors. Keep your registrar and email records unchanged.'),
-        el('p', 'If your registrar does not allow a CNAME at the root/apex domain, use its ALIAS, ANAME, or CNAME-flattening option with the same target, or connect a subdomain such as www.')
-      );
+      panel.append(el('p', 'Only change the website routing record shown above. Leave email and other DNS records unchanged.'));
       const domain = field('Domain name');
       panel.append(button('Connect domain', () => run(async () => {
         const result = await request('/domains', { hostname: domain.value.trim() });
         const binding = result.binding ?? result;
-        dnsInstructions(binding.verificationJson, result.cnameTarget, binding.hostname ?? domain.value.trim());
-        status.textContent = 'Add these records at your domain registrar, then refresh verification.';
+        dnsInstructions(result.cnameTarget, binding.hostname ?? domain.value.trim());
+        status.textContent = 'Add the routing record shown below at your registrar, then verify status.';
       }), true)); status.textContent = '';
     });
     const inquiries = () => run(async () => {

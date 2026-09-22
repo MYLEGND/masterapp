@@ -22,6 +22,7 @@
   let selected = null;
   let selectedSection = null;
   let dirty = false;
+  let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
   const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
@@ -341,7 +342,11 @@
   function markDirty() {
     dirty = true;
     const status = document.getElementById('legend-cms-status');
-    if (status) status.textContent = 'Unsaved changes';
+    if (status) status.textContent = 'Saving changes…';
+    if (editorMode) {
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
+    }
   }
 
   function setSelected(el) {
@@ -551,11 +556,13 @@
   let saving = false;
   async function save(publish = false) {
     if (saving) return;
+    clearTimeout(autoSaveTimer);
     const status = document.getElementById('legend-cms-status');
     if (publish && dirty) { await save(false); if (dirty) return; }
     if (status) status.textContent = publish ? 'Publishing…' : 'Saving draft…';
     saving = true;
     const submitted = JSON.stringify(documentState);
+    let saved = false;
     try {
       const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
@@ -568,10 +575,17 @@
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
       dirty = changedDuringSave;
+      saved = true;
       if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
     } catch (error) {
       if (status) status.textContent = error?.message || 'Save failed';
-    } finally { saving = false; }
+    } finally {
+      saving = false;
+      if (saved && dirty) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
+      }
+    }
   }
 
   let revision = null;
@@ -663,6 +677,7 @@
       .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
       [data-cms-editable="true"]{cursor:pointer}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
+      body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
       .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
@@ -673,6 +688,8 @@
       .legend-cms-bar button{min-height:42px;border-radius:999px;padding:8px 14px;border:1px solid #d4ad45;background:#102b62;color:#fff;font-weight:800}
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
       .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+      body.legend-cms-panel-hidden .legend-cms-panel{display:none}
+      .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
       .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;word-break:break-all}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-group textarea,.legend-cms-group select,.legend-cms-group input[type="number"]{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:9px}
@@ -681,7 +698,7 @@
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .legend-cms-panel button{cursor:pointer}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button,#legend-cms-back{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}.legend-cms-drop{outline:2px dashed #d4ad45;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(8.333% - 1px),#d4ad4560 calc(8.333% - 1px),#d4ad4560 8.333%)}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}.legend-cms-panel{border-top:2px solid #d4ad45}}
+      @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
   }
@@ -733,6 +750,27 @@
       </div>
     `;
     document.body.appendChild(panel);
+
+    const panelToggle = document.createElement('button');
+    panelToggle.type = 'button';
+    panelToggle.id = 'legend-cms-panel-toggle';
+    panelToggle.className = 'legend-cms-editor legend-cms-panel-toggle';
+    panelToggle.textContent = 'Preview full page';
+    panelToggle.setAttribute('aria-controls', 'legend-cms-heading');
+    panelToggle.setAttribute('aria-expanded', 'true');
+    panelToggle.addEventListener('click', () => {
+      const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
+      panelToggle.textContent = hidden ? 'Open editor' : 'Preview full page';
+      panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+      if (hidden) setSelected(null);
+      requestAnimationFrame(refreshScaledElements);
+    });
+    document.body.appendChild(panelToggle);
+    window.addEventListener('beforeunload', event => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
 
     const bar = document.createElement('div');
     bar.className = 'legend-cms-editor legend-cms-bar';
