@@ -29,7 +29,7 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         return items.GroupBy(x => x.BusinessId).Select(group =>
         {
             var first = group.First();
-            return first with { CanCrm = group.Any(x => x.CanCrm), CanAnalytics = group.Any(x => x.CanAnalytics), CanCustomize = group.Any(x => x.CanCustomize) };
+            return first with { CanCrm = group.Any(x => x.CanCrm), CanAnalytics = group.Any(x => x.CanAnalytics), CanCustomize = group.Any(x => x.CanCustomize), CanWebsite = group.Any(x => x.CanWebsite) };
         }).OrderBy(x => x.BusinessName).ToList();
     }
 
@@ -43,11 +43,16 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
             var crm = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "crm", ct);
             var analyticsBusiness = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "analytics", ct);
             var settings = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "settings", ct);
-            var business = crm ?? analyticsBusiness ?? settings;
+            var website = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "website", ct);
+            var business = crm ?? analyticsBusiness ?? settings ?? website;
             if (business is null) continue;
             var preferences = (await SettingsAsync(id, ct)).Preferences;
+            var cutoff = DateTime.UtcNow.AddHours(-24);
+            var liveDomain = await db.Set<WebsiteDomainBinding>().AsNoTracking().Where(x => x.CommerceBusinessId == id &&
+                x.Status == "active" && x.CertificateStatus == "active" && x.LastCheckedUtc >= cutoff)
+                .OrderBy(x => x.CreatedUtc).Select(x => x.Hostname).FirstOrDefaultAsync(ct);
             result.Add(new(id, business.DisplayName, preferences.LeadLabel, preferences.ClientLabel,
-                crm is not null, analyticsBusiness is not null, settings is not null));
+                crm is not null, analyticsBusiness is not null, settings is not null, website is not null, liveDomain is null ? null : "https://" + liveDomain));
         }
         return result;
     }
@@ -92,7 +97,7 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         if (search.Length > 0) query = query.Where(x => x.FirstName.Contains(search) || x.LastName.Contains(search) || x.Email.Contains(search) || x.Phone.Contains(search));
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Kind = kind, Search = search, Page = page, Total = await query.CountAsync(ct) };
         model.Preferences = (await SettingsAsync(business.Id, ct)).Preferences;
-        var rows = await query.OrderByDescending(x => x.UpdatedUtc).ThenBy(x => x.LeadId).Skip((page - 1) * 30).Take(30).ToListAsync(ct);
+        var rows = await query.OrderBy(x => x.CrmOrder).ThenBy(x => x.LeadId).ToListAsync(ct);
         model.Contacts = rows.Select(x => Project(x, model.Preferences)).ToList();
         model.CanonicalContacts = rows.Select(x => ProjectCanonical(x, model.Preferences)).ToList();
         if (!string.IsNullOrEmpty(contactId))

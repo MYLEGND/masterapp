@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
+
 @model ClientApp.Models.EditClientViewModel
 
 @{
@@ -240,7 +240,6 @@
                         {
                             <section class="legend-website-summary">
                                 <div><span class="legend-website-eyebrow">Business website</span><h3>@website.BusinessName</h3><a href="/profile/business/@website.BusinessId/owners">Entity name and owners</a><p>@(website.PrimaryDomain ?? "Domain not connected")</p></div>
-                                <button type="button" data-website-manage data-session="/profile/business-website/session/@website.BusinessId" data-edit="@website.PreviewUrl" data-live="@(string.IsNullOrWhiteSpace(website.PrimaryDomain) ? website.PreviewUrl : $"https://{website.PrimaryDomain}")" data-title="@website.BusinessName" data-scope="business">Manage website →</button>
                             </section>
                         }
 
@@ -322,7 +321,7 @@
 </main>
 
 @section Scripts {
-    <script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
+
         @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
         <script>
             (() => {

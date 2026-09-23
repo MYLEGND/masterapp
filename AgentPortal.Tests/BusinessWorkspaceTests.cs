@@ -20,6 +20,68 @@ namespace AgentPortal.Tests;
 public sealed class BusinessWorkspaceTests
 {
     [Fact]
+    public async Task CanonicalBoardReceivesAllScopedContactsForItsOwnPagination()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "full-board" };
+        db.AddRange(business, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
+        for (var index = 0; index < 41; index++) db.Add(new WorkstationLeadProfile
+        {
+            LeadId = "contact-" + index, CommerceBusinessId = business.Id, AgentUserId = "", CrmStatus = "Lead", CrmOrder = index
+        });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var board = await service.CrmAsync(business, "Lead", null, 1, null, default);
+        Assert.Equal(41, board.Total);
+        Assert.Equal(41, board.CanonicalContacts.Count);
+    }
+
+    [Fact]
+    public async Task QuickFindWebsitePermissionTracksAuthorizedMembershipAndRevocation()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "navigation" };
+        var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = "owner@example.org" };
+        var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id };
+        db.AddRange(business, profile, member, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var own = await service.NavigationAsync(profile.Id, profile.ClientUserId, profile.Email, default);
+        Assert.True(Assert.Single(own).CanWebsite);
+        Assert.Empty(await service.NavigationAsync(profile.Id, "unrelated-actor", "stranger@example.org", default));
+        member.CanManageStorefront = false;
+        member.RoleKey = "member";
+        await db.SaveChangesAsync();
+        var crmOnly = Assert.Single(await service.NavigationAsync(profile.Id, profile.ClientUserId, profile.Email, default));
+        Assert.True(crmOnly.CanCrm);
+        Assert.False(crmOnly.CanWebsite);
+        Assert.False(await Infrastructure.WebsiteEditing.WebsiteBusinessAccess.CanManageAsActorAsync(db, business.Id,
+            profile.Id, profile.ClientUserId, profile.Email));
+        member.Status = "Inactive";
+        await db.SaveChangesAsync();
+        Assert.Empty(await service.NavigationAsync(profile.Id, profile.ClientUserId, profile.Email, default));
+    }
+
+    [Fact]
+    public async Task SharedWebsiteHandoffStoresOnlyHashAndExactActorBusinessScope()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = Guid.NewGuid();
+        var business = Guid.NewGuid();
+        var handoff = await Infrastructure.WebsiteEditing.WebsiteEditorHandoffService.CreateAsync(
+            db, profile, business, "actor", "ACTOR@example.org");
+        var saved = await db.ClientIdentityContinuations.SingleAsync();
+        Assert.Equal(business, saved.CommerceBusinessId);
+        Assert.Equal(profile, saved.ClientProfileId);
+        Assert.Equal("actor", saved.ActorUserId);
+        Assert.Equal("actor@example.org", saved.ActorEmail);
+        Assert.Equal(Infrastructure.WebsiteEditing.WebsiteEditorHandoffToken.Hash(handoff.OpaqueState), saved.TokenHash);
+        Assert.NotEqual(handoff.OpaqueState, saved.TokenHash);
+        Assert.Null(saved.ConsumedUtc);
+        Assert.InRange(handoff.ExpiresUtc - saved.CreatedUtc, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2));
+    }
+
+    [Fact]
     public async Task SeparatePagesUseCanonicalViewsAndRejectOtherBusinessAndRelationshipContacts()
     {
         using var db = ControllerTestHelpers.BuildDb();

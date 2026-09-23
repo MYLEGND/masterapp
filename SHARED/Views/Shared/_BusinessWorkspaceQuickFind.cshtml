@@ -1,7 +1,14 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @model IReadOnlyList<Shared.Crm.BusinessWorkspaceNavigationItem>
 @foreach (var business in Model)
 {
     var root = $"/business/{business.BusinessId}";
+    if (business.CanWebsite)
+    {
+        var preview = (WebsiteConfiguration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/') + "/business-preview/?businessId=" + business.BusinessId;
+        @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
+            "Edit website", business.BusinessName, root + "/website-session", preview, business.WebsiteLiveUrl ?? preview, "business"))
+    }
     if (business.CanCrm)
     {
         <a class="explore-item" data-tone="ops" href="@root/leads"><span>@business.LeadLabel CRM</span><small>@business.BusinessName</small></a>

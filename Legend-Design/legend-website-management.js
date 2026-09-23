@@ -22,6 +22,11 @@
     const panel = el('div', null); body.append(status, panel); dialog.append(header, body); document.body.append(dialog);
     dialog.addEventListener('close', () => { dialog.remove(); if (parentInstance) parentInstance.show(); else trigger.focus(); }); dialog.showModal();
     let session, state, busy = false;
+    const editorHref = () => {
+      const url = new URL(trigger.dataset.edit, location.origin);
+      if (trigger.dataset.scope === 'business' && session?.ticket) url.searchParams.set('legendEdit', session.ticket);
+      return url.href;
+    };
     const request = async (path, payload) => {
       const url = new URL(`/api/website-content/manage${path}`, session.apiBase);
       const options = { cache: 'no-store', credentials: 'omit', headers: {} };
@@ -55,7 +60,7 @@
         row.append(el('span', `${draft.name} · ${new Date(draft.updatedUtc).toLocaleString()}`));
         row.append(button('Load for editing', () => confirmAction('Load draft', `Replace the working draft with “${draft.name}”? Save your current changes as a named draft first if you want to keep them.`, async () => {
           await request('/drafts/load', { draftId: draft.id }); await reload();
-          section('Draft loaded'); panel.append(el('a', 'Edit this draft', { href: trigger.dataset.edit, class: 'wm-primary' }));
+          section('Draft loaded'); panel.append(el('a', 'Edit this draft', { href: editorHref(), class: 'wm-primary' }));
         })));
         row.append(button('Delete', () => confirmAction('Delete draft', `Delete “${draft.name}”? The current working draft and published website will stay as they are.`, async () => {
           await request('/drafts/delete', { draftId: draft.id }); await reload(); drafts(); status.textContent = 'Draft deleted.';
@@ -83,7 +88,7 @@
       for (const check of checks) {
         const row = el('div', null, { class: 'wm-row' });
         row.append(el('span', typeof check === 'string' ? check : `${check.passed ? '✓' : 'Needs attention:'} ${check.message ?? check.name ?? check.code}`));
-        if (typeof check !== 'string' && !check.passed) row.append(el('a', 'Review in editor', { href: trigger.dataset.edit }));
+        if (typeof check !== 'string' && !check.passed) row.append(el('a', 'Review in editor', { href: editorHref() }));
         panel.append(row);
       }
     };
@@ -91,7 +96,7 @@
       section('Import review');
       const report = result.report ?? result;
       panel.append(el('p', 'Content is saved as a draft. Review the migration findings before publishing.'),
-        el('a', 'Review imported draft', { href: trigger.dataset.edit, class: 'wm-primary' }));
+        el('a', 'Review imported draft', { href: editorHref(), class: 'wm-primary' }));
       if (report.sourceUrl) panel.append(el('p', `Original source: ${report.sourceUrl}`));
       if (report.createdUtc) panel.append(el('p', `Imported: ${new Date(report.createdUtc).toLocaleString()}`));
       panel.append(el('p', `${report.addedComponents ?? 0} components added · ${report.preservedComponents ?? 0} existing components preserved`));
@@ -263,13 +268,7 @@
     const overview = () => {
       panel.replaceChildren(); status.textContent = `Draft revision ${state.revision ?? 0} · Published revision ${state.publishedRevision ?? 'Not published'}`;
       const links = el('div', null, { class: 'wm-row' });
-      let editorHref = trigger.dataset.edit;
-      if (trigger.dataset.scope === 'business' && session?.ticket) {
-        const editorUrl = new URL(trigger.dataset.edit, location.origin);
-        editorUrl.searchParams.set('legendEdit', session.ticket);
-        editorHref = editorUrl.toString();
-      }
-      links.append(el('a', 'Open editor', { href: editorHref, class: 'wm-primary' }), el('a', 'View website ↗', { href: trigger.dataset.live, target: '_blank', rel: 'noopener' })); panel.append(links);
+      links.append(el('a', 'Open editor', { href: editorHref(), class: 'wm-primary' }), el('a', 'View website ↗', { href: trigger.dataset.live, target: '_blank', rel: 'noopener' })); panel.append(links);
       const grid = el('div', null, { class: 'wm-grid' });
       const tile = (name, caption, action) => { const node = button(name, action); node.append(el('small', caption)); grid.append(node); };
       tile('Saved drafts', 'Choose, edit, or delete named website variations', drafts);

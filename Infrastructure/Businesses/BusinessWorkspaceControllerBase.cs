@@ -17,6 +17,16 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
 {
     protected abstract Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct);
 
+    [HttpGet("website-session")]
+    public async Task<IActionResult> WebsiteSession(Guid businessId, CancellationToken cancellationToken)
+    {
+        if (await ResolveBusinessAsync(businessId, "website", cancellationToken) is null) return Forbid();
+        return await CreateWebsiteSessionAsync(businessId, cancellationToken);
+    }
+
+    protected virtual Task<IActionResult> CreateWebsiteSessionAsync(Guid businessId, CancellationToken ct) =>
+        Task.FromResult<IActionResult>(Forbid());
+
     [HttpGet("clients")]
     [HttpGet("clients/{contactId}")]
     public Task<IActionResult> Clients(Guid businessId, string? contactId, string? search = null, int page = 1,

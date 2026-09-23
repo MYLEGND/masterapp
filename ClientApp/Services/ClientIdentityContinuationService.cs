@@ -64,37 +64,10 @@ public sealed class ClientIdentityContinuationService
         return (_protector.Protect(token), expiresUtc);
     }
 
-    public async Task<(string OpaqueState, DateTime ExpiresUtc)> CreateWebsiteEditorHandoffAsync(
-        Guid clientProfileId,
-        Guid commerceBusinessId,
-        string actorUserId,
-        string actorEmail,
-        CancellationToken cancellationToken = default)
-    {
-        if (clientProfileId == Guid.Empty || commerceBusinessId == Guid.Empty || string.IsNullOrWhiteSpace(actorUserId))
-            throw new ArgumentException("A complete website editor handoff authority is required.");
-
-        var nowUtc = DateTime.UtcNow;
-        var expiresUtc = nowUtc.AddMinutes(2);
-        var token = WebsiteEditorHandoffToken.Create();
-
-        _db.ClientIdentityContinuations.Add(new ClientIdentityContinuation
-        {
-            ClientProfileId = clientProfileId,
-            CommerceBusinessId = commerceBusinessId,
-            ActorUserId = actorUserId.Trim(),
-            ActorEmail = NormalizeEmail(actorEmail),
-            Purpose = ClientIdentityContinuationPurpose.WebsiteEditor,
-            TokenHash = WebsiteEditorHandoffToken.Hash(token),
-            IntendedNormalizedEmail = NormalizeEmail(actorEmail),
-            ReturnUrl = "/",
-            ExpiresUtc = expiresUtc,
-            CreatedUtc = nowUtc
-        });
-
-        await _db.SaveChangesAsync(cancellationToken);
-        return (token, expiresUtc);
-    }
+    public Task<(string OpaqueState, DateTime ExpiresUtc)> CreateWebsiteEditorHandoffAsync(
+        Guid clientProfileId, Guid commerceBusinessId, string actorUserId, string actorEmail,
+        CancellationToken cancellationToken = default) =>
+        WebsiteEditorHandoffService.CreateAsync(_db, clientProfileId, commerceBusinessId, actorUserId, actorEmail, cancellationToken);
 
     public async Task<ClientIdentityContinuationValidationResult> ValidateProtectedStateAsync(string protectedState, CancellationToken cancellationToken = default)
     {

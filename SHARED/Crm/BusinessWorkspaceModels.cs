@@ -59,4 +59,4 @@ public sealed class BusinessCrmEdit
 }
 
 public sealed record BusinessWorkspaceNavigationItem(Guid BusinessId, string BusinessName, string LeadLabel,
-    string ClientLabel, bool CanCrm, bool CanAnalytics, bool CanCustomize);
+    string ClientLabel, bool CanCrm, bool CanAnalytics, bool CanCustomize, bool CanWebsite = false, string? WebsiteLiveUrl = null);
