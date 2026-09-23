@@ -1036,6 +1036,9 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(emailNorm))
             return new PortalEmailSyncResult("Portal-enabled clients must have a real email address.", false);
 
+        if (!AccountEmailChange.IsChanged(previousEmail, emailNorm))
+            return new PortalEmailSyncResult(null, false);
+
         try
         {
             await _entraLifecycle.SynchronizeClientIdentityAsync(profile.Id, cancellationToken);
@@ -2295,6 +2298,7 @@ namespace AgentPortal.Controllers;
 
             ViewBag.ClientPortalBaseUrl = GetClientPortalBaseUrl();
             ViewBag.Search = search ?? "";
+            ViewData["CanSetFounderSubscriptionOptions"] = FounderGuard.IsFounder(User);
             ViewData["ProductionTotals"] = await _production.GetAgentTotalsAsync(agentOid, ProductionSide.Client);
 
             _logger.LogInformation("Clients/Index loaded {Count} records for agent {AgentOid}.", vm?.Count ?? 0, agentOid);

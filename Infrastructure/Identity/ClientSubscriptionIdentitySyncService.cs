@@ -49,7 +49,7 @@ public sealed class ClientSubscriptionIdentitySyncService : IClientSubscriptionI
         var currentNormalizedEmail = NormalizeEmail(currentEmail);
         if (clientProfileId == Guid.Empty ||
             string.IsNullOrWhiteSpace(currentNormalizedEmail) ||
-            string.Equals(previousNormalizedEmail, currentNormalizedEmail, StringComparison.Ordinal))
+            !AccountEmailChange.IsChanged(previousNormalizedEmail, currentNormalizedEmail))
         {
             return new ClientSubscriptionIdentitySyncResult(false, 0, 0);
         }

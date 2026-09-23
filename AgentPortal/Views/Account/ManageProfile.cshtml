@@ -1,5 +1,5 @@
 @model AgentPortal.Models.ManageAgentProfileViewModel
-<link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
+
 @{
     ViewData["Title"] = "Manage Profile";
 
@@ -690,21 +690,6 @@
         {
             <p role="alert">@websiteError</p>
         }
-        @if (ViewBag.ProtectWebsiteAvailable is bool websiteAvailable && websiteAvailable)
-        {
-            <section class="legend-website-summary">
-                <div><span class="legend-website-eyebrow">Agent · LEGEND® Protect</span><h2>Your Protect website</h2><p>Your personal agent website within the LEGEND® brand.</p></div>
-                <button type="button" data-website-manage data-session="/Account/WebsiteSession?site=protect" data-edit="/Account/EditProtectWebsite" data-live="@ViewBag.ProtectWebsiteUrl" data-title="Protect website" data-scope="agent">Manage website →</button>
-            </section>
-        }
-        @if (AgentPortal.Security.FounderGuard.IsFounder(User))
-        {
-            <section class="legend-website-summary">
-                <div><span class="legend-website-eyebrow">Founder · Global website</span><h2>LEGEND® website</h2><p>Manage the main LEGEND® website, its draft and published history.</p></div>
-                <button type="button" data-website-manage data-session="/Account/WebsiteSession?site=legend" data-edit="/Account/EditLegendWebsite" data-live="https://www.mylegnd.com" data-title="LEGEND® website" data-scope="founder">Manage website →</button>
-            </section>
-        }
-
         <section class="profile-panel profile-section">
             <div class="profile-section-head">
                 <h2 class="profile-section-title">Account Access</h2>
@@ -752,6 +737,6 @@
 </div>
 
 @section Scripts {
-    <script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
+
     <partial name="_ValidationScriptsPartial" />
 }

@@ -216,19 +216,13 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     private async Task<MetaConversionsApiResult> SendEventCoreAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken)
     {
-        var pixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId);
         var pixelOwnerType = Normalize(request.PixelOwnerType);
-        var requestAccessToken = Normalize(request.AccessToken);
-        var isAgentPixel =
-            string.Equals(pixelOwnerType, MetaPixelOwnerTypes.Agent, StringComparison.OrdinalIgnoreCase);
-
-        // Do not allow an agent-scoped pixel to fall back to the global/agency CAPI token.
-        // Agent pixels must use the agent's own stored Meta CAPI token.
-        var accessToken = isAgentPixel
-            ? requestAccessToken
-            : requestAccessToken ?? Normalize(_options.Value.AccessToken);
-
-        var testEventCode = Normalize(request.TestEventCode) ?? Normalize(_options.Value.TestEventCode);
+        var tenantOwned = string.Equals(pixelOwnerType, MetaPixelOwnerTypes.Agent, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(pixelOwnerType, MetaPixelOwnerTypes.Business, StringComparison.OrdinalIgnoreCase);
+        // Tenant-owned events must never inherit the agency pixel, token, or test destination.
+        var pixelId = Normalize(request.PixelId) ?? (tenantOwned ? null : Normalize(_options.Value.PixelId));
+        var accessToken = Normalize(request.AccessToken) ?? (tenantOwned ? null : Normalize(_options.Value.AccessToken));
+        var testEventCode = Normalize(request.TestEventCode) ?? (tenantOwned ? null : Normalize(_options.Value.TestEventCode));
         var normalizedEventName = Normalize(request.EventName) ?? "CustomEvent";
         var outboundEventName = MapToMetaStandardEventName(normalizedEventName);
 

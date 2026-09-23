@@ -6,6 +6,8 @@
 @using System.IO
 @using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
+@using Shared.Auth
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @{
@@ -57,6 +59,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
 
     <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
 <body class="legend-app client-portal d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
 
@@ -299,6 +302,13 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            @if (messagingClientContext is not null)
+            {
+                var businessLinks = await BusinessWorkspace.NavigationAsync(messagingClientContext.Profile.Id,
+                    User.GetCanonicalUserId(), messagingClientContext.IsAgentView ? messagingClientContext.AgentEmail : messagingClientContext.Profile.Email,
+                    Context.RequestAborted);
+                @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", businessLinks)
+            }
             <a class="explore-item" data-tone="protection" asp-controller="ProtectionSnapshot" asp-action="Index">
                 <span>Protection Snapshot</span>
                 <small>Planning</small>
@@ -479,6 +489,7 @@
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required:false)
 <script src="~/_content/Shared/js/application-localization.js" asp-append-version="true" defer></script>
+<script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
 </body>
 </html>
 

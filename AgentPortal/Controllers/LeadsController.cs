@@ -382,6 +382,7 @@ public class LeadsController : Controller
 
             var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
             var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(leadIds, HttpContext.RequestAborted);
+            ViewData["CanSetFounderSubscriptionOptions"] = AgentPortal.Security.FounderGuard.IsFounder(User);
             ViewData["ProductionTotals"] = await _production.GetAgentTotalsAsync(agentId, ProductionSide.Lead);
 
             var vm = leads.Select(l =>

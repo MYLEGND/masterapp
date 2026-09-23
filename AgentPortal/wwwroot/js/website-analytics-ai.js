@@ -5,8 +5,9 @@
   'use strict';
 
   // ── Constants ─────────────────────────────────────────────────────────────
-  var REVIEW_ENDPOINT = '/website-analytics/ai/review';
-  var FOLLOWUP_ENDPOINT = '/website-analytics/ai/followup';
+  var analyticsBase = document.querySelector('.fa-shell')?.dataset.analyticsBase || '/website-analytics';
+  var REVIEW_ENDPOINT = analyticsBase + '/ai/review';
+  var FOLLOWUP_ENDPOINT = analyticsBase + '/ai/followup';
   var DRAWER_ID = 'aiInsightsDrawer';
   var BACKDROP_ID = 'aiInsightsBackdrop';
 

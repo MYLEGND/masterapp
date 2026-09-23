@@ -1,3 +1,33 @@
+const crmWorkspace = document.getElementById('legendWrap');
+const crmBusinessId = crmWorkspace?.dataset.businessId || '';
+function crmRoute(path) {
+  const base = crmWorkspace?.dataset.crmApiBase;
+  return base ? base + path : path;
+}
+// Business writes carry the revision displayed to the user, never a fresh
+// pre-save read that would conceal conflicting edits from another session.
+function businessWritePayload(payload) {
+  if (!crmBusinessId || !payload || Array.isArray(payload)) return payload;
+  const contactRows = Array.from(document.querySelectorAll('.client-row[data-client-id]'));
+  const find = id => contactRows.find(row => row.dataset.clientId === id);
+  const result = { ...payload };
+  if (payload.clientUserId) result.revision = find(payload.clientUserId)?.dataset.businessRevision || '';
+  const ids = payload.ids || payload.clientUserIds;
+  if (ids) result.revisions = Object.fromEntries(ids.map(id => [id, find(id)?.dataset.businessRevision || '']));
+  return result;
+}
+function rememberBusinessRevisions(data) {
+  if (!crmBusinessId || !data) return data;
+  const payload = data.payload || data;
+  const revisions = payload.revisions || (payload.clientUserId && payload.revision ? { [payload.clientUserId]: payload.revision } : {});
+  document.querySelectorAll('.client-row[data-client-id]').forEach(row => {
+    if (revisions[row.dataset.clientId]) row.dataset.businessRevision = revisions[row.dataset.clientId];
+  });
+  return data;
+}
+
+function crmStorageKey(key) { return crmBusinessId ? `${key}:business:${crmBusinessId}` : key; }
+
 /* ==========================================================
    LEGEND CLIENTS — OPTIMIZED + COLOR-CODED + NO WASTED WORK
    ==========================================================
@@ -5,15 +35,15 @@
 */
 
 /* ========= UTIL ========= */
-const LS_COLS  = "legend_crm_cols_v1";
-const LS_PREFS = "legend_crm_prefs_v2";
-const LS_NOTIF = "legend_crm_notif_v1";
-const LS_ZOOM  = "legend_agent_zoom_v1";
-const LS_VIEWS = "legend_saved_views_v1";
-const LS_PIPELINE_ORDER = "legend_pipeline_order_v1";
-const REORDER_URL = "/Clients/Reorder";
-const LS_PROD_DRAFT_CLIENT = "legend_prod_draft_client_v1";
-const LS_ADVANCED_MARKETS_DRAFTS = "legend_adv_markets_drafts_v1";
+const LS_COLS  = crmStorageKey("legend_crm_cols_v1");
+const LS_PREFS = crmStorageKey("legend_crm_prefs_v2");
+const LS_NOTIF = crmStorageKey("legend_crm_notif_v1");
+const LS_ZOOM  = crmStorageKey("legend_agent_zoom_v1");
+const LS_VIEWS = crmStorageKey("legend_saved_views_v1");
+const LS_PIPELINE_ORDER = crmStorageKey("legend_pipeline_order_v1");
+const REORDER_URL = crmRoute("/Clients/Reorder");
+const LS_PROD_DRAFT_CLIENT = crmStorageKey("legend_prod_draft_client_v1");
+const LS_ADVANCED_MARKETS_DRAFTS = crmStorageKey("legend_adv_markets_drafts_v1");
 const liveSync = window.liveSync;
 
 const $  = (sel, root=document) => root.querySelector(sel);
@@ -803,7 +833,7 @@ async function deleteClientRecord(clientUserId){
   formData.append("__RequestVerificationToken", token);
   formData.append("clientUserId", clientUserId);
 
-  const res = await fetch("/Clients/Delete", {
+  const res = await fetch(crmRoute("/Clients/Delete"), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -822,10 +852,11 @@ async function deleteClientRecord(clientUserId){
   }
 
   toast(payload?.message || "Client deleted. Reloading…");
-  window.location.href = payload?.redirectUrl || "/Clients";
+  window.location.href = payload?.redirectUrl || crmRoute("/Clients");
 }
 
 async function postJson(url, payload){
+  payload = businessWritePayload(payload);
   const token = getAntiForgeryToken();
   const res = await fetch(url, {
     method: "POST",
@@ -842,11 +873,11 @@ async function postJson(url, payload){
     throw new Error(text || `Request failed: ${res.status}`);
   }
 
-  return await res.json();
+  return rememberBusinessRevisions(await res.json());
 }
 
 async function loadQuickView(clientId){
-  const url = `/Clients/QuickView?clientUserId=${encodeURIComponent(clientId)}`;
+  const url = crmRoute(`/Clients/QuickView?clientUserId=${encodeURIComponent(clientId)}`);
   console.info("Quick View request", { clientUserId: clientId, url });
   const res = await fetch(url, {
     credentials: "include"
@@ -865,7 +896,7 @@ async function loadQuickView(clientId){
   }
 
   try{
-    return JSON.parse(text);
+    return rememberBusinessRevisions(JSON.parse(text));
   }catch(parseErr){
     const err = new Error("Quick View JSON parse failed");
     err.body = text;
@@ -882,7 +913,7 @@ async function loadAdvancedMarketsInputs(clientUserId, clientProfileId){
 
   // Primary fetch
   try{
-    const res = await fetch(`/Clients/AdvancedMarketsInputs?${query.toString()}`, {
+    const res = await fetch(crmRoute(`/Clients/AdvancedMarketsInputs?${query.toString()}`), {
       credentials: "include"
     });
 
@@ -1307,7 +1338,7 @@ function wireClientActionForm(){
     }
     actionsContainer.innerHTML = '<div class="text-muted">Saving...</div>';
     try{
-      const res = await fetch("/Clients/CreateAction", {
+      const res = await fetch(crmRoute("/Clients/CreateAction"), {
         method: "POST",
         headers: { "RequestVerificationToken": getAntiForgeryToken() },
         body: data,
@@ -1361,7 +1392,7 @@ function wireClientActionListControls(){
 
     btn.disabled = true;
     try{
-      const res = await fetch("/Dashboard/CompleteAction", {
+      const res = await fetch(crmRoute("/Dashboard/CompleteAction"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1414,7 +1445,7 @@ function loadClientActionsPanel(){
 
   disposeModalById('clientQuickCreateActionModal');
   actionsContainer.innerHTML = '<div class="text-muted">Loading actions...</div>';
-  clientActionsLoadPromise = fetch(`/Clients/Actions?id=${encodeURIComponent(requestedClientId)}`)
+  clientActionsLoadPromise = fetch(crmRoute(`/Clients/Actions?id=${encodeURIComponent(requestedClientId)}`))
     .then(async (r) => {
       const text = await r.text();
       if (!r.ok) throw new Error(text || `Failed to load actions (HTTP ${r.status})`);
@@ -1446,7 +1477,7 @@ function loadClientCommitmentsPanel(){
   if (!activeClientId) activeClientId = requestedClientId;
 
   commitmentsContainer.innerHTML = '<div class="text-muted">Loading commitments...</div>';
-  return fetch(`/Clients/Commitments?id=${encodeURIComponent(requestedClientId)}`)
+  return fetch(crmRoute(`/Clients/Commitments?id=${encodeURIComponent(requestedClientId)}`))
     .then(async (r) => {
       const text = await r.text();
       if (!r.ok) throw new Error(text || `Failed to load commitments (HTTP ${r.status})`);
@@ -1502,7 +1533,7 @@ function wireClientCommitmentForm(){
 
     container.innerHTML = '<div class="text-muted">Saving...</div>';
     try{
-      const res = await fetch(form.getAttribute('action') || "/Clients/CreateCommitment", {
+      const res = await fetch(form.getAttribute('action') || crmRoute("/Clients/CreateCommitment"), {
         method: "POST",
         headers: { "RequestVerificationToken": getAntiForgeryToken() },
         body: data,
@@ -1539,8 +1570,8 @@ function wireClientCommitmentActions(){
       if (container) container.innerHTML = '<div class="text-muted">Updating...</div>';
 
       const url = action === "fulfill"
-        ? `/Clients/FulfillCommitment?id=${encodeURIComponent(id)}`
-        : `/Clients/BreakCommitment?id=${encodeURIComponent(id)}`;
+        ? crmRoute(`/Clients/FulfillCommitment?id=${encodeURIComponent(id)}`)
+        : crmRoute(`/Clients/BreakCommitment?id=${encodeURIComponent(id)}`);
       try{
         const res = await fetch(url, {
           method: "POST",
@@ -1736,7 +1767,7 @@ async function persistAdvancedMarketsInputs(options = {}){
   }
 
   try{
-    const response = await postJson("/Clients/SaveAdvancedMarketsInputs", payload);
+    const response = await postJson(crmRoute("/Clients/SaveAdvancedMarketsInputs"), payload);
     const isSameClient = activeAdvancedMarketsClient?.clientProfileId === requestedClientProfileId;
     const isStaleResponse = advancedMarketsEditVersion !== requestEditVersion;
     const isStaleSession = sessionId !== advancedMarketsCurrentSession;
@@ -1882,10 +1913,10 @@ const statusLabels = {
 };
 
 function crmStatusLabel(status){
-  return statusLabels[status] || "Lead";
+  return crmBusinessId ? (status === "Client" ? "Client" : "Lead") : (statusLabels[status] || "Lead");
 }
 
-const pipelineStages = [
+const pipelineStages = crmBusinessId ? JSON.parse(crmWorkspace.dataset.pipelineStages || "[]").map((label, index) => ({ key: label, label, tone: "info", className: "stage-contacted", note: "", order: index })) : [
   { key: "Client", label: "Clients", tone: "good", className: "stage-client", note: "Portal-enabled clients with active access to the shared client workspace." },
   { key: "BusinessClient", label: "Business Clients", tone: "good", className: "stage-businessclient", note: "Business clients with expanded finance workspace access." },
   { key: "Opportunities", label: "Opportunities", tone: "warn", className: "stage-opportunities", note: "Qualified opportunities that need pressure and movement before becoming full clients." },
@@ -1952,7 +1983,7 @@ function laneOrderFromDom(stageKey){
 }
 
 function pipelineLabel(stage){
-  return pipelineLabels[stage] || "Lead";
+  return crmBusinessId ? (pipelineStages.find(x => x.key === stage)?.label || stage) : (pipelineLabels[stage] || "Lead");
 }
 
 function pipelineMeta(stage){
@@ -2191,7 +2222,7 @@ let activeClientDetail = null;
 let pipelineFocusStage = "";
 let activeMyDayQueue = "";
 const MYDAY_QUEUE_KEYS = ["callsnow", "today", "overdue", "meetings", "waitingclient", "waitingcarrier"];
-const MYDAY_SNAPSHOT_URL = "/Clients/MyDaySnapshot";
+const MYDAY_SNAPSHOT_URL = crmRoute("/Clients/MyDaySnapshot");
 const MYDAY_SNAPSHOT_TTL_MS = 15 * 1000;
 let myDaySnapshot = { counts: {}, idsByQueue: {}, loadedAt: 0, isLoading: false };
 let pipelineNavSelectedStage = "";
@@ -3098,7 +3129,7 @@ document.addEventListener("click", (e) => {
   if (queueBtn){
     const queue = queueBtn.getAttribute("data-queue");
     if (queue){
-      window.location.href = `/Clients/Queue?queue=${encodeURIComponent(queue)}`;
+      window.location.href = crmRoute(`/Clients/Queue?queue=${encodeURIComponent(queue)}`);
     }
     return;
   }
@@ -3802,7 +3833,7 @@ async function openDrawerForRow(row){
       } else if (row.dataset.isguid === "true" && row.dataset.clientId){
         btnOpenProfile.href = `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`;
       }else{
-        btnOpenProfile.href = row.dataset.clientId ? `/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}` : "#";
+        btnOpenProfile.href = row.dataset.clientId ? crmRoute(`/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`) : "#";
       }
       btnOpenProfile.textContent = "View / Edit Profile";
     }
@@ -4119,7 +4150,7 @@ function renderSharedAgentList(items){
 async function loadSharedAgentAccess(clientId){
   if (!clientId || !dSharedAgentList) return;
   try{
-    const res = await fetch(`/Clients/ClientAccessCollaborators?clientUserId=${encodeURIComponent(clientId)}`, {
+    const res = await fetch(crmRoute(`/Clients/ClientAccessCollaborators?clientUserId=${encodeURIComponent(clientId)}`), {
       credentials: "include"
     });
     if (!res.ok){
@@ -4143,7 +4174,7 @@ async function searchShareAgents(query){
   }
 
   try{
-    const res = await fetch(`/Clients/CollaboratorLookup?clientUserId=${encodeURIComponent(activeClientId)}&q=${encodeURIComponent(q)}`, {
+    const res = await fetch(crmRoute(`/Clients/CollaboratorLookup?clientUserId=${encodeURIComponent(activeClientId)}&q=${encodeURIComponent(q)}`), {
       credentials: "include"
     });
     if (!res.ok){
@@ -4161,7 +4192,7 @@ async function grantSelectedAgentAccess(){
   if (!activeClientId || !selectedShareAgent?.agentUserId) return;
 
   try{
-    const response = await postJson("/Clients/GrantClientAccess", {
+    const response = await postJson(crmRoute("/Clients/GrantClientAccess"), {
       clientUserId: activeClientId,
       agentUserId: selectedShareAgent.agentUserId,
       agentUpn: selectedShareAgent.agentUpn,
@@ -4198,7 +4229,7 @@ async function resendClientInvite(){
   if (dResendInviteStatus) dResendInviteStatus.textContent = "Sending…";
 
   try {
-    const response = await postJson("/Clients/ResendClientInvite", {
+    const response = await postJson(crmRoute("/Clients/ResendClientInvite"), {
       clientUserId: activeClientId,
       newEmail: newEmail
     });
@@ -4220,7 +4251,7 @@ async function revokeSharedAgentAccess(agentUserId){
   if (!confirm("Revoke this agent's access to the current client?")) return;
 
   try{
-    const response = await postJson("/Clients/RevokeClientAccess", {
+    const response = await postJson(crmRoute("/Clients/RevokeClientAccess"), {
       clientUserId: activeClientId,
       agentUserId
     });
@@ -4650,7 +4681,7 @@ function renderPortalActions(row, detail){
         recordType,
         returnUrl: `${window.location.pathname}${window.location.search}`
       });
-      window.location.assign(`/Clients/Create?${query.toString()}`);
+      window.location.assign(crmRoute(`/Clients/Create?${query.toString()}`));
     };
 
     btn?.addEventListener("click", () => runConvert("Client"));
@@ -5038,7 +5069,7 @@ btnAddActivity?.addEventListener("click", () => {
     note: norm(dActNote.value) || ""
   };
   if (!ev.note) return toast("Add an outcome note.");
-  postJson("/Clients/AddActivity", {
+  postJson(crmRoute("/Clients/AddActivity"), {
     clientUserId: activeClientId,
     type: ev.type,
     date: ev.date,
@@ -5083,7 +5114,7 @@ btnClearTimeline?.addEventListener("click", () => {
   if (!activeClientId) return;
   if (!confirm("Clear this client activity timeline?")) return;
 
-  postJson("/Clients/ClearActivities", { clientUserId: activeClientId })
+  postJson(crmRoute("/Clients/ClearActivities"), { clientUserId: activeClientId })
     .then((data) => {
       const row = rows.find(r => r.dataset.clientId === activeClientId);
       if (row){
@@ -5164,7 +5195,7 @@ btnRunBulk?.addEventListener("click", async () => {
   const selected = getCheckedRows();
   if (!selected.length) return toast("Select at least one contact.");
   try{
-    const result = await postJson("/Clients/BulkUpdate", {
+    const result = await postJson(crmRoute("/Clients/BulkUpdate"), {
       clientUserIds: selected.map(r => r.dataset.clientId),
       pipelineStage: norm(bStage.value) || null,
       crmNextDate: norm(bNextDate.value) || null,
@@ -5213,7 +5244,7 @@ btnImportSubmit?.addEventListener("click", async () => {
   btnImportSubmit.textContent = "Importing...";
 
   try{
-    const res = await fetch("/Clients/ImportLeadsCsv", {
+    const res = await fetch(crmRoute("/Clients/ImportLeadsCsv"), {
       method: "POST",
       body: form,
       credentials: "include"
@@ -5302,7 +5333,7 @@ $$(".outcome-btn").forEach(btn => {
   btn.addEventListener("click", async () => {
     if (!activeClientId) return;
     try{
-      const response = await postJson("/Clients/ApplyOutcome", {
+      const response = await postJson(crmRoute("/Clients/ApplyOutcome"), {
         clientUserId: activeClientId,
         outcomeCode: btn.getAttribute("data-outcome"),
         customNote: norm(dActNote.value),
@@ -5528,7 +5559,7 @@ function renderCards(filteredRows){
   pipelineBoard.innerHTML = lanes.map(stage => {
     const stageRows = orderedStageRows(stage.key, filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key));
     return `
-      <section class="pipeline-lane ${stage.className}" data-dropstage="${stage.key}">
+      <section class="pipeline-lane ${stage.className}" data-dropstage="${safeHtml(stage.key)}">
         <div class="pipeline-lane-head">
           <div>
             <h3 class="pipeline-lane-title">${safeHtml(stage.label)}</h3>
@@ -5536,10 +5567,10 @@ function renderCards(filteredRows){
           </div>
           <div class="pipeline-lane-meta">
             <span class="pipeline-lane-count">${stageRows.length} contact${stageRows.length === 1 ? "" : "s"}</span>
-            <button type="button" class="btn btn-ghost" data-pipeline-nav="${stage.key}">${focusMeta ? "Refresh" : "Review"}</button>
+            <button type="button" class="btn btn-ghost" data-pipeline-nav="${safeHtml(stage.key)}">${focusMeta ? "Refresh" : "Review"}</button>
           </div>
         </div>
-        <div class="pipeline-lane-body" data-dropzone="${stage.key}">
+        <div class="pipeline-lane-body" data-dropzone="${safeHtml(stage.key)}">
           ${renderLaneCards(stageRows)}
         </div>
       </section>
@@ -5595,7 +5626,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     mentionNote: overrides?.mentionNote ?? ""
   };
 
-  const response = await postJson("/Clients/SaveQuickView", payload);
+  const response = await postJson(crmRoute("/Clients/SaveQuickView"), payload);
   const data = response.payload || response;
   row.dataset.sStatus = data.crmStatus || "Lead";
   row.dataset.sPriority = data.crmPriority || "Normal";
@@ -6078,7 +6109,7 @@ document.addEventListener("click", (e) => {
     const f = document.getElementById("__af");
     if (!f) return toast("Missing antiforgery form.");
 
-    f.setAttribute("action", "/Clients/Delete");
+    f.setAttribute("action", crmRoute("/Clients/Delete"));
     f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
 
     const inp = document.createElement("input");
@@ -6297,7 +6328,7 @@ btnPipelineCallTask?.addEventListener("click", () => {
 
 btnPipelineNew?.addEventListener("click", (e) => {
   e.preventDefault();
-  window.location.href = "/Clients/Create";
+  window.location.href = crmRoute("/Clients/Create");
 });
 
 $$("[data-stagejump]").forEach(btn => {
@@ -6778,11 +6809,11 @@ window.getQuickViewBillingContext = () => ({
   recordType: activeClientDetail?.recordType || "",
   pageKey: "clients",
   actionUrls: {
-    configureSubscription: "/Clients/ConfigureSubscriptionOffer",
-    updateSubscription: "/Clients/UpdateClientSubscription",
-    resendInvitation: "/Clients/ResendSubscriptionInvitation",
-    revokeInvitation: "/Clients/RevokeSubscriptionInvitation",
-    cancelSubscription: "/Clients/CancelClientSubscriptionAtPeriodEnd"
+    configureSubscription: crmRoute("/Clients/ConfigureSubscriptionOffer"),
+    updateSubscription: crmRoute("/Clients/UpdateClientSubscription"),
+    resendInvitation: crmRoute("/Clients/ResendSubscriptionInvitation"),
+    revokeInvitation: crmRoute("/Clients/RevokeSubscriptionInvitation"),
+    cancelSubscription: crmRoute("/Clients/CancelClientSubscriptionAtPeriodEnd")
   }
 });
 

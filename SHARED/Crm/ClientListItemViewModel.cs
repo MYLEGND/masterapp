@@ -1,7 +1,9 @@
+using Shared.Crm;
 namespace AgentPortal.Models;
 
 public sealed class ClientListItemViewModel
 {
+    public string? BusinessRevision { get; set; }
     public Guid Id { get; set; }
     public string ClientUserId { get; set; } = "";
     public string? EntityName { get; set; }

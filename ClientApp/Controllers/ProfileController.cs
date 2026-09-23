@@ -29,6 +29,7 @@ public class ProfileController : Controller
     private readonly ClientIdentityContinuationService _continuations;
     private readonly ICommerceBusinessProvisioningService _businessProvisioning;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<ProfileController>? _logger;
 
     public ProfileController(
         MasterAppDbContext db,
@@ -38,7 +39,8 @@ public class ProfileController : Controller
         IAccountLifecycleService accountLifecycle,
         ClientIdentityContinuationService continuations,
         ICommerceBusinessProvisioningService businessProvisioning,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<ProfileController>? logger = null)
     {
         _db = db;
         _clientContext = clientContext;
@@ -48,6 +50,7 @@ public class ProfileController : Controller
         _continuations = continuations;
         _businessProvisioning = businessProvisioning;
         _configuration = configuration;
+        _logger = logger;
     }
 
     private static string Norm(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -382,13 +385,17 @@ public class ProfileController : Controller
 
         try
         {
-            await _entraLifecycle.SynchronizeClientIdentityAsync(
-                profile.Id,
-                HttpContext.RequestAborted);
+            // Ordinary profile edits must not depend on an external login mutation.
+            if (AccountEmailChange.IsChanged(previousEmail, profile.NormalizedEmail))
+                await _entraLifecycle.SynchronizeClientIdentityAsync(
+                    profile.Id,
+                    HttpContext.RequestAborted);
         }
-        catch
+        catch (Exception ex)
         {
             await transaction.RollbackAsync();
+            _logger?.LogError(ex, "Profile login-address synchronization failed. ClientProfileId={ClientProfileId} TraceId={TraceId}",
+                profile.Id, HttpContext.TraceIdentifier);
             ModelState.AddModelError(
                 string.Empty,
                 "We couldn't update your sign-in email. No changes were saved. Please try again.");

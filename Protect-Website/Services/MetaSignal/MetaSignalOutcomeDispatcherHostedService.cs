@@ -72,6 +72,14 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var rows = new List<MetaSignalEvent>();
         await foreach (var row in candidates.WithCancellation(cancellationToken))
         {
+            if (row.CommerceBusinessId.HasValue && (row.CommerceBusinessId == Guid.Empty || row.AgentTrackingProfileId.HasValue || !string.IsNullOrWhiteSpace(row.AgentSlug)))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Status = "skipped_owner_conflict", Note = "business_and_agent_owner_conflict"
+                });
+                continue;
+            }
             if (IsBlockedAutomatedTraffic(row) ||
                 !(string.Equals(row.TrafficType, "crm", StringComparison.OrdinalIgnoreCase) ||
                   MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson) ||
@@ -203,6 +211,16 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 }
             }
 
+            if (websiteLead is not null && websiteLead.CommerceBusinessId != row.CommerceBusinessId)
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Status = "skipped_owner_conflict", Note = "website_lead_owner_mismatch"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+
             var crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
 
             var metadataEmail = ReadNestedMetadataString(row.MetadataJson, "customer", "email");
@@ -264,7 +282,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 continue;
             }
 
-            var pixelContext = await metaPixelResolutionService.ResolveForLeadAsync(
+            var pixelContext = row.CommerceBusinessId is { } businessId
+                ? await metaPixelResolutionService.ResolveForBusinessAsync(businessId, cancellationToken)
+                : await metaPixelResolutionService.ResolveForLeadAsync(
                 row.AgentTrackingProfileId ?? websiteLead?.AgentTrackingProfileId,
                 row.AgentSlug ?? websiteLead?.AgentSlug,
                 isFounderPath: false,
@@ -412,7 +432,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var leadId = ReadMetadataString(row.MetadataJson, "leadId");
         var clientUserId = ReadMetadataString(row.MetadataJson, "clientUserId");
 
-        if (string.Equals(side, "Client", StringComparison.OrdinalIgnoreCase) &&
+        if (!row.CommerceBusinessId.HasValue && string.Equals(side, "Client", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(clientUserId))
         {
             var client = await db.ClientProfiles
@@ -449,7 +469,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             var lead = await db.WorkstationLeadProfiles
                 .AsNoTracking()
-                .Where(x => x.LeadId == leadId)
+                .Where(x => x.LeadId == leadId && x.CommerceBusinessId == row.CommerceBusinessId)
                 .Select(x => new CrmContactIdentity(
                     x.Email,
                     x.Phone,
@@ -470,7 +490,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             var convertedLead = await db.WorkstationLeadProfiles
                 .AsNoTracking()
-                .Where(x => x.LeadId == clientUserId)
+                .Where(x => x.LeadId == clientUserId && x.CommerceBusinessId == row.CommerceBusinessId)
                 .Select(x => new CrmContactIdentity(
                     x.Email,
                     x.Phone,

@@ -1,28 +1,21 @@
+using Shared.Workspaces;
+
 namespace Shared.Analytics;
 
 /// <summary>Server-resolved ownership. This value is not a browser authorization credential.</summary>
 public sealed record MarketingOwnerScope
 {
-    public string OwnerType { get; }
-    public Guid? AgentTrackingProfileId { get; }
-    public Guid? CommerceBusinessId { get; }
-    public string Key => OwnerType switch
-    {
-        "agent" => $"agent:{AgentTrackingProfileId:N}",
-        "business" => $"business:{CommerceBusinessId:N}",
-        _ => "founder"
-    };
+    public WorkspaceKey Workspace { get; }
+    public string OwnerType => Workspace.Kind;
+    public Guid? AgentTrackingProfileId => OwnerType == "agent" ? Workspace.OwnerId : null;
+    public Guid? CommerceBusinessId => OwnerType == "business" ? Workspace.OwnerId : null;
+    public string Key => Workspace.Value;
 
-    private MarketingOwnerScope(string type, Guid? agent = null, Guid? business = null)
-    {
-        OwnerType = type;
-        AgentTrackingProfileId = agent;
-        CommerceBusinessId = business;
-    }
+    private MarketingOwnerScope(WorkspaceKey workspace) => Workspace = workspace;
 
-    public static MarketingOwnerScope Founder { get; } = new("founder");
+    public static MarketingOwnerScope Founder { get; } = new(WorkspaceKey.Founder);
     public static MarketingOwnerScope Agent(Guid id) => id != Guid.Empty
-        ? new("agent", agent: id) : throw new ArgumentException("An agent owner is required.", nameof(id));
+        ? new(WorkspaceKey.ForAgentTrackingProfile(id)) : throw new ArgumentException("An agent owner is required.", nameof(id));
     public static MarketingOwnerScope Business(Guid id) => id != Guid.Empty
-        ? new("business", business: id) : throw new ArgumentException("A business owner is required.", nameof(id));
+        ? new(WorkspaceKey.ForBusiness(id)) : throw new ArgumentException("A business owner is required.", nameof(id));
 }

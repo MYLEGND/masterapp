@@ -333,7 +333,7 @@
         activeFetchController = new AbortController();
 
         const qs = buildParams(metric);
-        const res = await fetch(`/website-analytics/kpi-detail?${qs}`, {
+        const res = await fetch(`${document.querySelector(".fa-shell")?.dataset.analyticsBase || "/website-analytics"}/kpi-detail?${qs}`, {
             signal: activeFetchController.signal
         });
 
@@ -497,7 +497,7 @@
 
 
         const response = await fetch(
-            `/WebsiteAnalytics/visitor-timeline?${params.toString()}`
+            `${document.querySelector(".fa-shell")?.dataset.analyticsBase || "/WebsiteAnalytics"}/visitor-timeline?${params.toString()}`
         );
 
         if (!response.ok)

@@ -21,6 +21,53 @@ namespace AgentPortal.Tests;
 
 public sealed class WebsiteDomainImportTests
 {
+    [Fact]
+    public async Task SitemapUsesOnlyVerifiedHostsPublishedPagesIncludingUnlinkedCustomRoutes()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var config = new ConfigurationBuilder().Build();
+        var business = new CommerceBusiness { Key = "sitemap-owner" };
+        var other = new CommerceBusiness { Key = "other-owner" };
+        var state = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id), DraftJson = "{\"pages\":{\"/draft-only\":{}}}" };
+        var version = new WebsiteContentVersion { StateId = state.Id,
+            CompiledPagesJson = "{\"pages\":{\"/\":{},\"/services/custom\":{}}}" };
+        state.PublishedVersionId = version.Id;
+        var otherState = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(other.Id) };
+        var otherVersion = new WebsiteContentVersion { StateId = otherState.Id,
+            CompiledPagesJson = "{\"pages\":{\"/other-private-route\":{}}}" };
+        otherState.PublishedVersionId = otherVersion.Id;
+        var binding = new WebsiteDomainBinding { CommerceBusinessId = business.Id, Hostname = "business.example.com",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow };
+        db.AddRange(business, other, state, version, otherState, otherVersion, binding);
+        await db.SaveChangesAsync();
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(x => x.EnvironmentName).Returns("Production");
+        var middleware = new BusinessWebsiteMiddleware(_ => throw new InvalidOperationException("Must not fall through to another site."), environment.Object, config);
+        var domains = new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), config);
+        async Task<DefaultHttpContext> Request(string host)
+        {
+            var context = new DefaultHttpContext();
+            context.Request.Host = new HostString(host);
+            context.Request.Method = "GET";
+            context.Request.Path = "/sitemap.xml";
+            context.Response.Body = new MemoryStream();
+            await middleware.InvokeAsync(context, db, domains);
+            return context;
+        }
+        var response = await Request(binding.Hostname);
+        response.Response.Body.Position = 0;
+        var xml = System.Xml.Linq.XDocument.Parse(await new StreamReader(response.Response.Body).ReadToEndAsync());
+        System.Xml.Linq.XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
+        Assert.Equal(new[] { "https://business.example.com/", "https://business.example.com/services/custom" },
+            System.Linq.Enumerable.Select(xml.Descendants(ns + "loc"), x => x.Value));
+        Assert.Equal(404, (await Request("unknown.example.com")).Response.StatusCode);
+        binding.LastCheckedUtc = DateTime.UtcNow.AddDays(-2);
+        await db.SaveChangesAsync();
+        Assert.Equal(404, (await Request(binding.Hostname)).Response.StatusCode);
+    }
+
     [Theory]
     [InlineData("https://example.com")]
     [InlineData("example.com/path")]

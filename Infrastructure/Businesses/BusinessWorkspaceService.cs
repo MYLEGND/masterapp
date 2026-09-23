@@ -11,8 +11,93 @@ using Shared.Crm;
 
 namespace Infrastructure.Businesses;
 
-public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients)
+public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients)
 {
+    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForActorAsync(string actor, string? email, CancellationToken ct)
+    {
+        var key = Shared.Auth.IdentityKey.Normalize(actor);
+        if (string.IsNullOrWhiteSpace(key)) return new();
+        var mail = Shared.Auth.IdentityKey.Normalize(email);
+        var profileIds = await db.ClientProfiles.AsNoTracking().Where(p =>
+            p.ClientUserId.ToLower() == key || (p.ExternalIdentityObjectId ?? "").ToLower() == key ||
+            db.AgentClients.Any(link => (link.ClientUserId ?? "").ToLower() == p.ClientUserId.ToLower() &&
+                ((link.AgentUserId ?? "").ToLower() == key || (mail != "" && (link.AgentUpn ?? "").ToLower() == mail))))
+            .Where(p => db.CommerceBusinessMembers.Any(m => m.ClientProfileId == p.Id && m.Status == "Active"))
+            .Select(p => p.Id).ToListAsync(ct);
+        var items = new List<BusinessWorkspaceNavigationItem>();
+        foreach (var id in profileIds) items.AddRange(await NavigationAsync(id, actor, email, ct));
+        return items.GroupBy(x => x.BusinessId).Select(group =>
+        {
+            var first = group.First();
+            return first with { CanCrm = group.Any(x => x.CanCrm), CanAnalytics = group.Any(x => x.CanAnalytics), CanCustomize = group.Any(x => x.CanCustomize), CanWebsite = group.Any(x => x.CanWebsite) };
+        }).OrderBy(x => x.BusinessName).ToList();
+    }
+
+    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationAsync(Guid profileId, string actor, string? email, CancellationToken ct)
+    {
+        var ids = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId && x.Status == "Active")
+            .Select(x => x.CommerceBusinessId).Distinct().ToListAsync(ct);
+        var result = new List<BusinessWorkspaceNavigationItem>();
+        foreach (var id in ids)
+        {
+            var crm = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "crm", ct);
+            var analyticsBusiness = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "analytics", ct);
+            var settings = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "settings", ct);
+            var website = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "website", ct);
+            var business = crm ?? analyticsBusiness ?? settings ?? website;
+            if (business is null) continue;
+            var preferences = (await SettingsAsync(id, ct)).Preferences;
+            var cutoff = DateTime.UtcNow.AddHours(-24);
+            var liveDomain = await db.Set<WebsiteDomainBinding>().AsNoTracking().Where(x => x.CommerceBusinessId == id &&
+                x.Status == "active" && x.CertificateStatus == "active" && x.LastCheckedUtc >= cutoff)
+                .OrderBy(x => x.CreatedUtc).Select(x => x.Hostname).FirstOrDefaultAsync(ct);
+            result.Add(new(id, business.DisplayName, preferences.LeadLabel, preferences.ClientLabel,
+                crm is not null, analyticsBusiness is not null, settings is not null, website is not null, liveDomain is null ? null : "https://" + liveDomain));
+        }
+        return result;
+    }
+
+    public async Task<object?> AnalyticsDataAsync(Guid businessId, string section, TimeRangeRequest range, TrafficType trafficType,
+        string? metric = null, string? visitorId = null, string? sessionId = null, CancellationToken ct = default)
+    {
+        var scope = ScopeContext.ForBusiness(businessId);
+        if (section is "kpi-detail" or "visitor-timeline")
+        {
+            var trust = new AgentPortal.Services.Analytics.VisitorTrustScoringService();
+            var projection = new AnalyticsDetailProjection(analytics, new AgentPortal.Services.Analytics.KpiDetailBreakdownService());
+            if (section == "kpi-detail")
+            {
+                if (string.IsNullOrWhiteSpace(metric)) throw new ArgumentException("Choose a metric.");
+                var concentration = new AgentPortal.Services.Analytics.VisitorConcentrationService(db, trust, analytics);
+                return await projection.KpiAsync(metric, range, scope, trafficType, concentration.GetVisitorConcentrationAsync, ct);
+            }
+            if (string.IsNullOrWhiteSpace(visitorId) && string.IsNullOrWhiteSpace(sessionId))
+                throw new ArgumentException("Choose a visitor or session.");
+            return await projection.VisitorTimelineAsync(visitorId?.Trim(), sessionId?.Trim(), range, scope, trafficType, trust, ct);
+        }
+        return section switch
+        {
+            "meta-signal" => await new MetaSignalAnalyticsService(db, analytics).GetDashboardAsync(range, scope, trafficType),
+            "meta-signal-health" => await new MetaSignalAnalyticsService(db, analytics).GetHealthDashboardAsync(range, scope),
+            "summary" => await analytics.GetSummaryAsync(range, scope, trafficType),
+            "traffic" => await analytics.GetTrafficAsync(range, scope, trafficType),
+            "page-performance" => await analytics.GetPagePerformanceAsync(range, scope, trafficType),
+            "cta-performance" => await analytics.GetCtaPerformanceAsync(range, scope, trafficType),
+            "quote-funnel" => await analytics.GetQuoteFunnelAsync(range, scope, trafficType),
+            "marketing-health" => await MarketingHealthProjection.LoadAsync(analytics, new MetaSignalAnalyticsService(db, analytics), range, scope, trafficType, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance),
+            "conversions" => await analytics.GetConversionsAsync(range, scope, trafficType),
+            "leads" => await analytics.GetLeadsAsync(range, scope, trafficType),
+            "behavior/summary" => await analytics.GetEngagementSummaryAsync(range, scope, trafficType),
+            "behavior/time-on-page" => await analytics.GetTimeOnPageAsync(range, scope, trafficType),
+            "behavior/exit-analysis" => await analytics.GetExitAnalysisAsync(range, scope, trafficType),
+            "behavior/journey" => await analytics.GetJourneyAnalysisAsync(range, scope, trafficType),
+            "behavior/source-performance" => await analytics.GetSourcePerformanceAsync(range, scope, trafficType),
+            "quote-funnel/abandonment" => await analytics.GetFormAbandonmentAsync(range, scope, trafficType),
+            "DeviceIntelligence" => await analytics.GetDeviceIntelligenceAsync(range, scope, trafficType),
+            _ => null
+        };
+    }
+
     private IQueryable<WorkstationLeadProfile> Contacts(Guid id) => id != Guid.Empty
         ? db.WorkstationLeadProfiles.Where(x => x.CommerceBusinessId == id && x.AgentUserId == "")
         : db.WorkstationLeadProfiles.Where(x => false);
@@ -27,10 +112,12 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         if (search.Length > 0) query = query.Where(x => x.FirstName.Contains(search) || x.LastName.Contains(search) || x.Email.Contains(search) || x.Phone.Contains(search));
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Kind = kind, Search = search, Page = page, Total = await query.CountAsync(ct) };
         model.Preferences = (await SettingsAsync(business.Id, ct)).Preferences;
-        model.Contacts = (await query.OrderByDescending(x => x.UpdatedUtc).ThenBy(x => x.LeadId).Skip((page - 1) * 30).Take(30).ToListAsync(ct)).Select(x => Project(x, model.Preferences)).ToList();
+        var rows = await query.OrderBy(x => x.CrmOrder).ThenBy(x => x.LeadId).ToListAsync(ct);
+        model.Contacts = rows.Select(x => Project(x, model.Preferences)).ToList();
+        model.CanonicalContacts = rows.Select(x => ProjectCanonical(x, model.Preferences)).ToList();
         if (!string.IsNullOrEmpty(contactId))
         {
-            var contact = await Contacts(business.Id).AsNoTracking().SingleOrDefaultAsync(x => x.LeadId == contactId, ct);
+            var contact = await Contacts(business.Id).AsNoTracking().SingleOrDefaultAsync(x => x.LeadId == contactId && x.CrmStatus == kind, ct);
             if (contact is not null)
             {
                 model.Selected = Project(contact, model.Preferences);
@@ -131,6 +218,27 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         settings.Row.Revision = Guid.NewGuid();
         settings.Row.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+    }
+
+    private static AgentPortal.Models.ClientListItemViewModel ProjectCanonical(WorkstationLeadProfile row, BusinessWorkspacePreferences preferences)
+    {
+        var meta = ClientCrmMetaSerializer.Deserialize(row.CrmNotes, preferences.Stages);
+        return new()
+        {
+            ClientUserId = row.LeadId, SourceWorkstationLeadId = row.LeadId, BusinessRevision = ContactRevision(row),
+            FirstName = row.FirstName, LastName = row.LastName, Email = row.Email, Phone = row.Phone,
+            RecordType = row.CrmStatus, AccountManagementMode = "BusinessContact", CrmStatus = row.CrmStatus,
+            PipelineStage = row.CrmStage, PipelineOrder = row.CrmOrder, CrmPriority = meta.CrmPriority ?? "Normal",
+            CrmNextDate = meta.CrmNextDate, CrmNextText = meta.CrmNextText, CrmTags = meta.CrmTags,
+            AgentNotes = meta.AgentNotes, StageEnteredUtc = meta.StageEnteredUtc,
+            StageAgeDays = Math.Max(0, (DateTime.UtcNow - meta.StageEnteredUtc).Days),
+            AddressLine = row.AddressLine, City = row.City, State = row.State, County = row.County, ZipCode = row.ZipCode,
+            Phone2 = row.Phone2, WaitingOn = meta.WaitingOn, PinnedBrief = meta.PinnedBrief,
+            AttemptsToday = row.CallsToday, AttemptsThisWeek = row.CallsWeek, AttemptsThisMonth = row.CallsMonth,
+            AttemptsYear = row.CallsYear, AttemptsLifetime = row.CallCount, LastContactChannel = meta.LastContactChannel,
+            MeetingLocation = meta.MeetingLocation, MeetingTime = meta.MeetingTime, MeetingDurationMinutes = meta.MeetingDurationMinutes,
+            LeadOriginLabel = "Website inquiry", LeadOriginTone = "info"
+        };
     }
 
     private static BusinessCrmContact Project(WorkstationLeadProfile row, BusinessWorkspacePreferences preferences)

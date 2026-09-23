@@ -1,3 +1,5 @@
+using Shared.Workspaces;
+
 namespace Shared.Analytics;
 
 public enum ScopeType
@@ -14,6 +16,17 @@ public sealed class ScopeContext
     public Guid? CommerceBusinessId { get; init; }
     public string? SiteKey { get; init; }
     public string? ReportingOwner { get; init; }
+
+    // Invalid/empty scopes intentionally have no owner key. Site/global reports can
+    // aggregate owners and must never be treated as a single marketing destination.
+    public WorkspaceKey? Workspace => ScopeType switch
+    {
+        ScopeType.Agent when AgentTrackingProfileId is { } id && id != Guid.Empty && CommerceBusinessId is null
+            => WorkspaceKey.ForAgentTrackingProfile(id),
+        ScopeType.Business when CommerceBusinessId is { } id && id != Guid.Empty && AgentTrackingProfileId is null
+            => WorkspaceKey.ForBusiness(id),
+        _ => null
+    };
 
     public bool HasSiteScope =>
         !string.IsNullOrWhiteSpace(SiteKey) ||

@@ -115,30 +115,32 @@
   let summaryRequestId = 0;
   let openModalRefreshTimer = null;
 
+  const analyticsBase = shell?.dataset.analyticsBase || '/WebsiteAnalytics';
+  const analyticsEndpoint = path => analyticsBase + path;
   const endpoints = {
-    summary: '/WebsiteAnalytics/summary',
-    traffic: '/WebsiteAnalytics/traffic',
-    pagePerf: '/WebsiteAnalytics/page-performance',
-    ctaPerf: '/WebsiteAnalytics/cta-performance',
-    quote: '/WebsiteAnalytics/quote-funnel',
-    marketingHealth: '/WebsiteAnalytics/marketing-health',
-    conversions: '/WebsiteAnalytics/conversions',
-    leads: '/WebsiteAnalytics/leads',
-    metaSignal: '/WebsiteAnalytics/meta-signal',
-    metaSignalHealth: '/WebsiteAnalytics/meta-signal-health',
-    deleteLead: '/WebsiteAnalytics/DeleteLead',
-    agentPerf: '/WebsiteAnalytics/agent-performance',
-    metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
-    metaConnect: '/WebsiteAnalytics/meta-connect',
-    metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
-    metaDisconnect: '/WebsiteAnalytics/meta-disconnect',
-    behaviorSummary: '/WebsiteAnalytics/behavior/summary',
-    behaviorTime: '/WebsiteAnalytics/behavior/time-on-page',
-    behaviorExit: '/WebsiteAnalytics/behavior/exit-analysis',
-    behaviorJourney: '/WebsiteAnalytics/behavior/journey',
-    behaviorSources: '/WebsiteAnalytics/behavior/source-performance',
-    quoteFunnelAbandonment: '/WebsiteAnalytics/quote-funnel/abandonment',
-    aiReviewSnapshot: '/WebsiteAnalytics/ai-review-snapshot'
+    summary: analyticsEndpoint('/summary'),
+    traffic: analyticsEndpoint('/traffic'),
+    pagePerf: analyticsEndpoint('/page-performance'),
+    ctaPerf: analyticsEndpoint('/cta-performance'),
+    quote: analyticsEndpoint('/quote-funnel'),
+    marketingHealth: analyticsEndpoint('/marketing-health'),
+    conversions: analyticsEndpoint('/conversions'),
+    leads: analyticsEndpoint('/leads'),
+    metaSignal: analyticsEndpoint('/meta-signal'),
+    metaSignalHealth: analyticsEndpoint('/meta-signal-health'),
+    deleteLead: analyticsEndpoint('/DeleteLead'),
+    agentPerf: analyticsEndpoint('/agent-performance'),
+    metaCampaigns: analyticsEndpoint('/meta-campaigns'),
+    metaConnect: analyticsEndpoint('/meta-connect'),
+    metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
+    metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    behaviorSummary: analyticsEndpoint('/behavior/summary'),
+    behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
+    behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
+    behaviorJourney: analyticsEndpoint('/behavior/journey'),
+    behaviorSources: analyticsEndpoint('/behavior/source-performance'),
+    quoteFunnelAbandonment: analyticsEndpoint('/quote-funnel/abandonment'),
+    aiReviewSnapshot: analyticsEndpoint('/ai-review-snapshot')
   };
 
   function normalizeQualityModeKey(value) {
@@ -5011,7 +5013,7 @@ function escapeHtml(value) {
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `/WebsiteAnalytics/DeviceIntelligence?${currentRangeParams().toString()}`;
+    const deviceUrl = `${analyticsEndpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));

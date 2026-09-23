@@ -5,5 +5,6 @@ public enum ActionOwnerType
     Agent = 0,
     Assistant = 1,
     Client = 2,
-    System = 3
+    System = 3,
+    Business = 4
 }

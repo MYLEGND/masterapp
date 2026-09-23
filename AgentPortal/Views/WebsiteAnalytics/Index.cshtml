@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "Website Analytics";
+    var analyticsBase = ViewData["AnalyticsBase"] as string ?? "/WebsiteAnalytics";
     var initialPreset = ViewData["InitialRangePreset"] as string ?? "today";
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Today";
     var initialRangeFrom = ViewData["InitialRangeFrom"] as string ?? string.Empty;
@@ -24,7 +25,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="legend-workspace-page mb-4 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -268,7 +269,7 @@
                         </button>
                         <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
                            id="meta-connect-btn"
-                           href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
+                           href="@(analyticsBase + "/meta-connect?returnUrl=" + Uri.EscapeDataString(Context.Request.Path))">
                             Connect Meta Ads
                         </a>
                         <button type="button"

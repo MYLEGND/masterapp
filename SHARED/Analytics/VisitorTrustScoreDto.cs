@@ -1,3 +1,4 @@
+using Shared.Analytics;
 namespace AgentPortal.Models.Analytics;
 
 public sealed class VisitorTrustScoreDto

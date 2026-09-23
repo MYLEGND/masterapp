@@ -221,39 +221,9 @@ public sealed class WebsiteAnalyticsAiController : Controller
 
     // ── Scope resolution (mirrors WebsiteAnalyticsController exactly) ─────────
 
-    private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
-    {
-        var isFounder = FounderGuard.IsFounder(User);
-
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        var effectiveProfileId = effectiveProfile?.Id;
-
-        if (team && !isFounder)
-        {
-            _logger.LogWarning("WebsiteAnalyticsAi denied team scope elevation for non-founder caller.");
-        }
-        else if (team && isFounder)
-        {
-            return ScopeContext.Global;
-        }
-
-        if (isFounder)
-        {
-            if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
-            if (_effectiveContext.IsViewingAsAgent)
-                return await ResolveEffectiveImpersonatedAgentScopeAsync();
-            return ScopeContext.Global;
-        }
-
-        if (_effectiveContext.IsViewingAsAgent)
-            return await ResolveEffectiveImpersonatedAgentScopeAsync();
-
-        if (effectiveProfileId.HasValue)
-            return ScopeContext.ForAgent(effectiveProfileId.Value);
-
-        _logger.LogWarning("WebsiteAnalyticsAi scope: no agent profile for caller; returning empty scope.");
-        return ScopeContext.ForAgent(Guid.Empty);
-    }
+    private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false) =>
+        new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
+            .ResolveAsync(HttpContext, requestedAgentId, team);
 
     private async Task<string> ResolveScopeLabelAsync(ScopeContext scope, bool team)
     {
@@ -282,45 +252,6 @@ public sealed class WebsiteAnalyticsAiController : Controller
         var name = profile.DisplayName ?? profile.AgentUpn ?? profile.Slug;
         return string.IsNullOrWhiteSpace(name) ? "Agent Scope" : $"Agent: {name}";
     }
-
-    private async Task<ScopeContext> ResolveEffectiveImpersonatedAgentScopeAsync()
-    {
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        var effectiveProfileId = effectiveProfile?.Id;
-        if (effectiveProfileId.HasValue)
-            return ScopeContext.ForAgent(effectiveProfileId.Value);
-
-        var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
-        if (!string.IsNullOrWhiteSpace(effectiveOid))
-        {
-            var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
-            if (byOid != null)
-                return ScopeContext.ForAgent(byOid.Id);
-
-            var oidLower = effectiveOid.ToLowerInvariant();
-            var agentProfile = await _db.AgentProfiles.AsNoTracking()
-                .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
-                .OrderByDescending(a => a.UpdatedUtc)
-                .FirstOrDefaultAsync();
-
-            var upn = agentProfile?.AgentUpn
-                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
-            var displayName = agentProfile?.FullName
-                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
-
-            if (!string.IsNullOrWhiteSpace(upn))
-            {
-                var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
-                return ScopeContext.ForAgent(ensured.Id);
-            }
-        }
-
-        _logger.LogWarning(
-            "WebsiteAnalyticsAi scope resolution failed for impersonated agent. effectiveOid={Oid}.",
-            _effectiveContext.EffectiveAgentOid ?? "(null)");
-        return ScopeContext.ForAgent(Guid.Empty);
-    }
-
 
     private static TrafficQualityMode ParseQualityMode(string? value)
     {

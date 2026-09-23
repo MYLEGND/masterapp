@@ -23,6 +23,7 @@ public sealed class MetaAdsService : IMetaAdsService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMetaAdsConnectionStore _connectionStore;
     private readonly ILogger<MetaAdsService> _logger;
+    private readonly MarketingConnectionStore? _marketingConnections;
 
     public MetaAdsService(
         IConfiguration config,
@@ -30,7 +31,8 @@ public sealed class MetaAdsService : IMetaAdsService
         IHttpClientFactory httpClientFactory,
         IMetaAdsConnectionStore connectionStore,
         IAnalyticsQueryService analytics,
-        ILogger<MetaAdsService> logger)
+        ILogger<MetaAdsService> logger,
+        MarketingConnectionStore? marketingConnections = null)
     {
         _config = config;
         _db = db;
@@ -38,6 +40,7 @@ public sealed class MetaAdsService : IMetaAdsService
         _connectionStore = connectionStore;
         _analytics = analytics;
         _logger = logger;
+        _marketingConnections = marketingConnections;
     }
 
     public async Task<MetaCampaignsDto> GetCampaignsAsync(TimeRangeRequest range, ScopeContext scope, CancellationToken ct = default)
@@ -387,6 +390,13 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.ScopeType == ScopeType.Business)
+        {
+            if (scope.CommerceBusinessId is not { } businessId || businessId == Guid.Empty || scope.AgentTrackingProfileId.HasValue || scope.HasSiteScope)
+                return l => false;
+            return l => l.CommerceBusinessId == businessId && l.AgentTrackingProfileId == null;
+        }
+
         if (scope.HasSiteScope)
             return l => false;
 
@@ -491,6 +501,16 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private async Task<(string Token, string AccountId)> ResolveCredentialsAsync(ScopeContext scope, CancellationToken ct)
     {
+        if (scope.ScopeType == ScopeType.Business)
+        {
+            if (scope.CommerceBusinessId is not { } businessId || businessId == Guid.Empty || scope.AgentTrackingProfileId.HasValue || scope.HasSiteScope)
+                throw new InvalidOperationException("A single business marketing owner is required.");
+            if (_marketingConnections is null || !await _db.CommerceBusinesses.AsNoTracking()
+                .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", ct)) return ("", "");
+            var connection = await _marketingConnections.GetAdsAsync(MarketingOwnerScope.Business(businessId), ct);
+            return (connection?.AccessToken?.Trim() ?? "", NormalizeAccountId(connection?.AccountId) ?? "");
+        }
+
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
         {
             var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);

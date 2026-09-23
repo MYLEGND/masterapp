@@ -41,20 +41,24 @@ public static class WebsiteBusinessAccess
     }
 
     public static async Task<bool> CanManageAsActorAsync(
-        MasterAppDbContext db,
-        Guid businessId,
-        Guid clientProfileId,
-        string? actorUserId,
-        string? actorEmail = null,
-        CancellationToken cancellationToken = default)
-    {
-        if (!await CanManageAsync(db, businessId, clientProfileId, cancellationToken))
-            return false;
+        MasterAppDbContext db, Guid businessId, Guid clientProfileId, string? actorUserId,
+        string? actorEmail = null, CancellationToken cancellationToken = default) =>
+        await CanManageAsync(db, businessId, clientProfileId, cancellationToken) &&
+        await CanAccessBusinessAsActorAsync(db, businessId, clientProfileId, actorUserId, actorEmail, cancellationToken);
 
+    public static async Task<bool> CanAccessBusinessAsActorAsync(
+        MasterAppDbContext db, Guid businessId, Guid clientProfileId, string? actorUserId,
+        string? actorEmail = null, CancellationToken cancellationToken = default)
+    {
+        if (!await db.CommerceBusinesses.AnyAsync(b => b.Id == businessId && b.IsActive && b.Status.ToLower() == "active" &&
+            db.CommerceBusinessMembers.Any(m => m.CommerceBusinessId == businessId && m.ClientProfileId == clientProfileId && m.Status.ToLower() == "active"), cancellationToken)) return false;
         var profile = await db.ClientProfiles
             .AsNoTracking()
             .SingleOrDefaultAsync(p => p.Id == clientProfileId, cancellationToken);
         if (profile is null)
+            return false;
+        if (!(await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db,
+            new Domain.Accounts.AccountLifecycleSubject(profile.ClientUserId, MessagingParticipantTypes.Client, profile.Id), cancellationToken)).AllowsFullAccess)
             return false;
 
         var actor = IdentityKey.Normalize(actorUserId);

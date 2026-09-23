@@ -5,6 +5,9 @@
 @using Microsoft.EntityFrameworkCore
 @using Infrastructure.Data
 @using Shared.Messaging
+@using Shared.Auth
+@inject AgentPortal.Services.Tracking.IAgentTrackingService WebsiteTracking
+@inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject MasterAppDbContext _db
@@ -106,6 +109,7 @@
     </style>
 <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
 
 <body class="@layoutBodyClass">
@@ -411,6 +415,22 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                var websiteProfile = await WebsiteTracking.GetByUserIdAsync(User.GetCanonicalUserId(), Context.RequestAborted);
+                if (websiteProfile is not null && string.Equals(websiteProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
+                {
+                    var websiteUrls = await WebsiteTracking.GetPersonalUrlsAsync(websiteProfile, Context.RequestAborted);
+                    @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
+                        "Edit Protect website", websiteProfile.DisplayName ?? "Your agent website", "/Account/WebsiteSession?site=protect", "/Account/EditProtectWebsite", websiteUrls.PrimaryUrl, "agent"))
+                }
+                if (isFounder)
+                {
+                    @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
+                        "Edit LEGEND® website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", "https://www.mylegnd.com", "founder"))
+                }
+            }
+            @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForActorAsync(User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
             <div class="explore-group-label">Pages</div>
             <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Agent Documents</span>
@@ -1485,5 +1505,6 @@
 }
 
 <script src="~/_content/Shared/js/application-localization.js" asp-append-version="true" defer></script>
+<script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
 </body>
 </html>

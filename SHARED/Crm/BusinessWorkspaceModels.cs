@@ -17,6 +17,7 @@ public sealed class BusinessWorkspaceModel
     public Guid SettingsRevision { get; set; }
     public List<BusinessIntakeRecipient> Recipients { get; set; } = [];
     public bool CanCustomize { get; set; }
+    public List<AgentPortal.Models.ClientListItemViewModel> CanonicalContacts { get; set; } = new();
     public List<BusinessCrmContact> Contacts { get; set; } = new();
     public BusinessCrmContact? Selected { get; set; }
     public SummaryKpiDto? Summary { get; set; }
@@ -56,3 +57,6 @@ public sealed class BusinessCrmEdit
     [Required, MaxLength(80)] public string Stage { get; set; } = "NewLead";
     [MaxLength(12000)] public string? Notes { get; set; }
 }
+
+public sealed record BusinessWorkspaceNavigationItem(Guid BusinessId, string BusinessName, string LeadLabel,
+    string ClientLabel, bool CanCrm, bool CanAnalytics, bool CanCustomize, bool CanWebsite = false, string? WebsiteLiveUrl = null);

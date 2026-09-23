@@ -93,6 +93,17 @@
             <div class="f">
                 <label>Stage</label>
                 <select id="bStage">
+                                @if (ViewData["BusinessWorkspace"] is Shared.Crm.BusinessWorkspaceModel businessScope)
+                                {
+<option value="">No change</option>
+                                    @foreach (var stage in businessScope.Preferences.Stages)
+                                    {
+                                        <option value="@stage">@stage</option>
+                                    }
+                                }
+                                else
+                                {
+
                     <option value="">No change</option>
                     <option value="NewLead">Lead</option>
                     <option value="Opportunities">Opportunities</option>
@@ -106,7 +117,8 @@
                     <option value="Submitted">Submitted</option>
                     <option value="ClosedLost">Not Moving Forward</option>
                     <option value="Nurture">Nurture</option>
-                </select>
+                                                }
+</select>
             </div>
             <div class="f">
                 <label>Waiting On</label>

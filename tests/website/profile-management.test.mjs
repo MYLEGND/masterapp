@@ -132,3 +132,19 @@ test('usage displays measured storage and counts without inferred pricing', asyn
   const f = await fixture(); f.state.usage = { mediaBytes: 1048576, mediaCount: 2, publishedVersions: 3, importedPages: 4 };
   await f.click('Website usage'); assert.match(f.document.body.textContent, /1.00 MB/); assert.match(f.document.body.textContent, /Published versions/); f.dom.window.close();
 });
+
+
+test('named business draft opens the editor with the same authorized scope', async () => {
+  const f = await fixture();
+  f.state.drafts = [{ id: 'draft-a', name: 'Variant A', updatedUtc: '2026-09-23T10:00:00Z' }];
+  await f.click('Saved drafts');
+  await f.click('Load for editing');
+  await f.click('Load draft');
+  const link = [...f.document.querySelectorAll('a')].find(a => a.textContent === 'Edit this draft');
+  assert.ok(link);
+  assert.equal(new URL(link.href).searchParams.get('legendEdit'), 'signed-scope-a');
+  const load = f.calls.find(call => call.path.endsWith('/drafts/load'));
+  assert.equal(load.body.draftId, 'draft-a');
+  assert.equal(load.body.ticket, 'signed-scope-a');
+  f.dom.window.close();
+});

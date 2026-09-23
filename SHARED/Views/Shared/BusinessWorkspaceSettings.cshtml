@@ -1,0 +1,38 @@
+@model Shared.Crm.BusinessWorkspaceModel
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = Model.BusinessName + " workspace";
+    var root = $"/business/{Model.BusinessId}";
+    var preferences = Model.Preferences;
+}
+<section class="legend-workspace-page">
+    <h1>@Model.BusinessName</h1>
+        <h2>Personalize your workspace</h2>
+        <form action="@root/settings" method="post" class="d-grid gap-3">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Revision" value="@Model.SettingsRevision" />
+            <label>Lead label<input class="form-control" name="LeadLabel" value="@preferences.LeadLabel" maxlength="40" required /></label>
+            <label>Customer label<input class="form-control" name="ClientLabel" value="@preferences.ClientLabel" maxlength="40" required /></label>
+            <label>Pipeline stages, one per line<textarea class="form-control" name="Stages" rows="8" maxlength="1240" required>@string.Join("\n", preferences.Stages)</textarea></label>
+            <fieldset><legend>Analytics metrics</legend>
+                @foreach (var metric in Shared.Crm.BusinessWorkspacePreferences.AvailableMetrics)
+                { <label class="me-3"><input type="checkbox" name="Metrics" value="@metric" checked="@preferences.Metrics.Contains(metric)" /> @metric</label> }
+            </fieldset>
+            <label>Website inquiry recipient<select class="form-select" name="Recipient">
+                @{
+                    var currentRecipient = preferences.NotificationMemberId is { } memberId ? "member:" + memberId.ToString("D") : preferences.NotificationAgentTrackingProfileId is { } agentId ? "agent:" + agentId.ToString("D") : "";
+                }
+                @if (currentRecipient.Length > 0 && !Model.Recipients.Any(x => x.Key == currentRecipient)) { <option value="@currentRecipient" selected>Assigned recipient unavailable — choose an active recipient</option> }
+                <option value="" selected="@(currentRecipient.Length == 0)">Business owner</option>
+                @foreach (var recipient in Model.Recipients)
+                {
+                    var selected = recipient.Key == "member:" + preferences.NotificationMemberId?.ToString("D") || recipient.Key == "agent:" + preferences.NotificationAgentTrackingProfileId?.ToString("D");
+                    <option value="@recipient.Key" selected="@selected">@recipient.Label — @recipient.Email</option>
+                }
+            </select></label>
+            <p>Only active team members and assigned agents are eligible. If an assignment is removed, delivery waits until an eligible recipient is selected.</p>
+            <button class="btn btn-primary" type="submit">Save preferences</button>
+        </form>
+
+</section>
