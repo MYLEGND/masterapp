@@ -13,19 +13,16 @@ namespace Infrastructure.Businesses;
 
 public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients)
 {
-    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForActorAsync(string actor, string? email, CancellationToken ct)
+    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForBusinessAsync(Guid? businessId, string actor, string? email, CancellationToken ct)
     {
-        var key = Shared.Auth.IdentityKey.Normalize(actor);
-        if (string.IsNullOrWhiteSpace(key)) return new();
-        var mail = Shared.Auth.IdentityKey.Normalize(email);
-        var profileIds = await db.ClientProfiles.AsNoTracking().Where(p =>
-            p.ClientUserId.ToLower() == key || (p.ExternalIdentityObjectId ?? "").ToLower() == key ||
-            db.AgentClients.Any(link => (link.ClientUserId ?? "").ToLower() == p.ClientUserId.ToLower() &&
-                ((link.AgentUserId ?? "").ToLower() == key || (mail != "" && (link.AgentUpn ?? "").ToLower() == mail))))
-            .Where(p => db.CommerceBusinessMembers.Any(m => m.ClientProfileId == p.Id && m.Status == "Active"))
-            .Select(p => p.Id).ToListAsync(ct);
+        // Management permission is not navigation context. Never enumerate the
+        // agent's client book to populate their personal application navigation.
+        if (!businessId.HasValue || businessId == Guid.Empty || string.IsNullOrWhiteSpace(actor)) return new();
+        var profileIds = await db.CommerceBusinessMembers.AsNoTracking()
+            .Where(m => m.CommerceBusinessId == businessId && m.Status == "Active" && m.ClientProfileId.HasValue)
+            .Select(m => m.ClientProfileId!.Value).Distinct().ToListAsync(ct);
         var items = new List<BusinessWorkspaceNavigationItem>();
-        foreach (var id in profileIds) items.AddRange(await NavigationAsync(id, actor, email, ct));
+        foreach (var id in profileIds) items.AddRange(await NavigationAsync(id, actor, email, ct, businessId));
         return items.GroupBy(x => x.BusinessId).Select(group =>
         {
             var first = group.First();
@@ -33,9 +30,10 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         }).OrderBy(x => x.BusinessName).ToList();
     }
 
-    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationAsync(Guid profileId, string actor, string? email, CancellationToken ct)
+    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationAsync(Guid profileId, string actor, string? email, CancellationToken ct, Guid? selectedBusinessId = null)
     {
-        var ids = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId && x.Status == "Active")
+        var ids = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId && x.Status == "Active" &&
+                (!selectedBusinessId.HasValue || x.CommerceBusinessId == selectedBusinessId))
             .Select(x => x.CommerceBusinessId).Distinct().ToListAsync(ct);
         var result = new List<BusinessWorkspaceNavigationItem>();
         foreach (var id in ids)
