@@ -1,10 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested exact replacement of agent-wide business Quick Find links with selected client/business context and direct deployment only to affected apps.",
-  "purpose": "Scope AgentPortal business Quick Find to the currently selected business. Preserve agent and Founder personal navigation and existing ClientApp selected-profile navigation. Remove the client-book enumeration. No CSS or schema changes.",
-  "requestId": "agent-quickfind-selected-business-20260923",
+  "authorization": "Founder explicitly requested separation of the Business Profile Email from linked personal owners, canonical owner-name resolution from existing client accounts, save validation, and direct deployment only to affected apps.",
+  "purpose": "Separate the business account identity from personal owner memberships. Resolve owner first and last names from exact linked client emails as read-only outputs, revalidate owner identity and agent scope on save, preserve account management/publish authority, and release only AgentPortal and ClientApp. No CSS overrides, duplicate ownership system, schema migration, or unrelated app deployment.",
+  "requestId": "business-profile-owner-separation-20260923",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-portal",
+    "masterapp-client"
   ]
 }
