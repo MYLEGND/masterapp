@@ -258,7 +258,7 @@ else
                 var sAppointmentConfirmationLabel = (c.LatestAppointmentConfirmationStateLabel ?? "").Trim();
                 var sAppointmentStart = c.LatestAppointmentScheduledStartUtc?.ToString("O") ?? "";
                 var sAppointmentEnd = c.LatestAppointmentScheduledEndUtc?.ToString("O") ?? "";
-                var sWaitingOn = (c.WaitingOn ?? AgentPortal.Models.ClientCrmMeta.DefaultWaitingOn).Trim();
+                var sWaitingOn = (c.WaitingOn ?? Shared.Crm.ClientCrmMeta.DefaultWaitingOn).Trim();
                 var sContactStatus = (c.ContactStatus ?? "NotSet").Trim();
                 var sPinnedBrief = (c.PinnedBrief ?? "").Trim();
                 var sStageEntered = c.StageEnteredUtc.ToString("yyyy-MM-dd");

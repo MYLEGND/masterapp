@@ -816,6 +816,12 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .Where(x => !x.IsDeleted)
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
 
+        if (scope.ScopeType == ScopeType.Business)
+            return query.Where(x => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
+                scope.AgentTrackingProfileId == null && x.CommerceBusinessId == scope.CommerceBusinessId && x.AgentTrackingProfileId == null);
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return query.Where(x => false);
         if (scope.HasSiteScope)
             return query.Where(x => false);
 

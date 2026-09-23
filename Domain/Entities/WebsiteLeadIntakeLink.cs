@@ -11,6 +11,7 @@ public class WebsiteLeadIntakeLink
 
     public string WorkstationLeadId { get; set; } = "";
     public string AgentUserId { get; set; } = "";
+    public Guid? CommerceBusinessId { get; set; }
     public string Bucket { get; set; } = "";
 
     public DateTime SubmittedUtc { get; set; }

@@ -39,6 +39,7 @@ public sealed class WebsiteContentDocument
 
 public sealed class WebsiteElementOverride
 {
+    public List<WebsiteSignalBinding> Signals { get; set; } = new();
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public bool? Hidden { get; set; }
@@ -82,6 +83,7 @@ public sealed class WebsitePlacement
 
 public sealed class WebsiteExtraComponent
 {
+    public List<WebsiteSignalBinding> Signals { get; set; } = new();
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";

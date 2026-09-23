@@ -168,12 +168,47 @@ public sealed class WebsiteContentController : ControllerBase
             facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken),
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
-            history, capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken) },
+            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken) },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
 
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null);
+    public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
+    private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
+
+    [HttpGet("manage/signal-catalog")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> SignalCatalog([FromQuery] string ticket, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeAsync(ticket, cancellationToken) is null) return Unauthorized();
+        return Ok(SignalCatalogPayload());
+    }
+
+    [HttpGet("manage/profile")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> BusinessProfile([FromQuery] string ticket, CancellationToken cancellationToken)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business || !actor.CommerceBusinessId.HasValue) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var service = new BusinessWebsiteProfileService(_db, HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>());
+        return Ok(await service.GetAsync(actor.CommerceBusinessId.Value, cancellationToken));
+    }
+
+    [HttpPost("manage/profile")]
+    public async Task<IActionResult> SaveBusinessProfile([FromBody] ProfileRequest request, CancellationToken cancellationToken)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor?.SiteKey != WebsiteEditorSiteKeys.Business || !actor.CommerceBusinessId.HasValue) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+        var service = new BusinessWebsiteProfileService(_db, HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>());
+        try { await service.SaveAsync(actor.CommerceBusinessId.Value, request.Settings, cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "profile_revision_conflict", message = "Settings changed in another session. Reload and try again." }); }
+        catch (Exception ex) when (ex is ArgumentException or System.ComponentModel.DataAnnotations.ValidationException)
+        { return BadRequest(new { error = "invalid_profile_settings", message = ex.Message }); }
+        return Ok(await service.GetAsync(actor.CommerceBusinessId.Value, cancellationToken));
+    }
     public sealed record PublishRequest(string Ticket, long ExpectedRevision);
     public sealed record RollbackRequest(string Ticket, long ExpectedRevision, Guid VersionId);
 
@@ -186,7 +221,9 @@ public sealed class WebsiteContentController : ControllerBase
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
         if (request.ExpectedRevision != state.Revision) return Conflict(new { error = "revision_conflict", revision = state.Revision });
-        var document = WebsiteContentSanitizer.Sanitize(request.Document);
+        WebsiteContentDocument document;
+        try { document = WebsiteContentSanitizer.Sanitize(request.Document); }
+        catch (ArgumentException ex) { return BadRequest(new { error = "invalid_signal_binding", message = ex.Message }); }
         document.UpdatedUtc = DateTime.UtcNow;
         state.ScheduledPublishUtc = null;
         state.ScheduledActorJson = null;

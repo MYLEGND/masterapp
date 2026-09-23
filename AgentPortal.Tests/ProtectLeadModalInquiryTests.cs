@@ -28,6 +28,24 @@ namespace AgentPortal.Tests;
 public sealed class ProtectLeadModalInquiryTests
 {
     [Fact]
+    public async Task CentralLeadSubmit_RejectsUnknownOrInactiveOwnerWithoutFounderFallback()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = SeedAgent(db);
+        var sender = new Mock<IEmailSender>(MockBehavior.Strict);
+        var controller = BuildCentralController(db, sender.Object);
+        var request = Request(profile);
+        request.AgentTrackingProfileId = Guid.NewGuid();
+        request.AgentSlug = "unknown-agent";
+        Assert.IsType<BadRequestObjectResult>(await controller.Submit(request));
+        profile.Status = "inactive";
+        await db.SaveChangesAsync();
+        Assert.IsType<BadRequestObjectResult>(await controller.Submit(Request(profile)));
+        Assert.Empty(db.WebsiteLeads);
+        sender.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task Proxy_UsesScopedReferrerAsServerVerifiedAgentAttribution()
     {
         using var db = ControllerTestHelpers.BuildDb();

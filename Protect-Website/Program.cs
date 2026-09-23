@@ -14,6 +14,7 @@ using System.IO;
 using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 // Enable app-level logs in Azure log stream so Meta CAPI send/skip/fail results are visible.
 builder.Logging.AddConsole();
@@ -100,6 +101,8 @@ else
 }
 
 builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
+builder.Services.AddScoped<BusinessInquiryNotificationService>();
+builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();

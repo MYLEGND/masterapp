@@ -1,5 +1,10 @@
 using System.Text.Json;
+using Domain.Entities;
+using Infrastructure.Analytics;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
+using Shared.Analytics;
 
 namespace ParfaitApp.Services;
 
@@ -15,272 +20,148 @@ public interface IParfaitBusinessProfileService
     Task DisconnectMetaAsync(CancellationToken ct = default);
 }
 
-public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileService
+public sealed class ParfaitBusinessProfileService(
+    ParfaitStoragePaths storagePaths,
+    ParfaitMetaCapiCredentialProtector legacyProtector,
+    ParfaitBusinessScopeService businessScope,
+    MasterAppDbContext db,
+    MarketingConnectionStore connections) : IParfaitBusinessProfileService
 {
-    private readonly ParfaitStoragePaths _storagePaths;
-    private readonly ParfaitMetaCapiCredentialProtector _metaCredentialProtector;
-    private readonly ParfaitBusinessScopeService _businessScope;
-    private readonly object _lock = new();
-    private ParfaitBusinessProfileStore? _cachedStore;
-    private bool _storeLoaded;
-
-    public ParfaitBusinessProfileService(
-        ParfaitStoragePaths storagePaths,
-        ParfaitMetaCapiCredentialProtector metaCredentialProtector,
-        ParfaitBusinessScopeService businessScope)
+    private async Task<(CommerceBusiness Business, CommerceBusinessStorefrontSettings Settings)> LoadAsync(CancellationToken ct)
     {
-        _storagePaths = storagePaths;
-        _metaCredentialProtector = metaCredentialProtector;
-        _businessScope = businessScope;
-    }
+        var business = await businessScope.GetParfaitAsync(ct);
+        var owner = MarketingOwnerScope.Business(business.Id);
+        var settings = await db.CommerceBusinessStorefrontSettings.SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
+        if (settings?.LegacyProfileImportedUtc is not null) return (business, settings);
 
-    private string DataPath => _storagePaths.BusinessProfilePath;
+        // Explicit one-time import. Once committed, the local file is never an active read/write authority.
+        var legacy = File.Exists(storagePaths.BusinessProfilePath)
+            ? JsonSerializer.Deserialize<ParfaitBusinessProfileStore>(await File.ReadAllTextAsync(storagePaths.BusinessProfilePath, ct))
+                ?? throw new InvalidOperationException("The legacy business profile cannot be read.")
+            : new ParfaitBusinessProfileStore();
+        var token = legacyProtector.Unprotect(legacy.MetaCapiAccessTokenCiphertext);
+        if (!string.IsNullOrEmpty(legacy.MetaCapiAccessTokenCiphertext) && string.IsNullOrEmpty(token))
+            throw new InvalidOperationException("The legacy Meta credential must be recovered before migration.");
+        MetaAdsConnectionRecord? record = string.IsNullOrEmpty(token) ? null : new()
+        {
+            AccessToken = token, AccessTokenExpiresUtc = legacy.MetaAccessTokenExpiresUtc,
+            AccountId = legacy.MetaAccountId, AccountName = legacy.MetaAccountName,
+            BusinessId = legacy.MetaBusinessId, BusinessName = legacy.MetaBusinessName,
+            MetaUserId = legacy.MetaUserId, MetaUserName = legacy.MetaUserName,
+            ConnectedUtc = legacy.MetaConnectedUtc ?? DateTime.UtcNow
+        };
+        await connections.ImportAsync(owner, record, legacy.MetaPixelId, null, legacy.MetaTestEventCode, ct);
+        if (settings is null)
+        {
+            settings = new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id };
+            db.CommerceBusinessStorefrontSettings.Add(settings);
+        }
+        settings.GlobalStoreCheckoutUrl = legacy.GlobalStoreCheckoutUrl;
+        settings.LegacyProfileImportedUtc = DateTime.UtcNow;
+        settings.Revision = Guid.NewGuid();
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            db.Entry(settings).State = EntityState.Detached;
+            settings = await db.CommerceBusinessStorefrontSettings.SingleOrDefaultAsync(x => x.CommerceBusinessId == business.Id, ct);
+            if (settings?.LegacyProfileImportedUtc is null) throw;
+        }
+        return (business, settings);
+    }
 
     public async Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default)
     {
-        var store = LoadStore();
-        var business = await _businessScope.GetParfaitAsync(ct);
-
-        return new ParfaitBusinessProfileViewModel
+        var (business, settings) = await LoadAsync(ct);
+        return new()
         {
-            StoreName = business.DisplayName,
-            BusinessType = business.BusinessType,
-            GlobalStoreCheckoutUrl = store.GlobalStoreCheckoutUrl,
-            DomainStatus = "Parfait production profile active",
-            AnalyticsStatus = "Managed in Analytics",
-            TrustStatus = "Managed in Analytics"
+            StoreName = business.DisplayName, BusinessType = business.BusinessType,
+            GlobalStoreCheckoutUrl = settings.GlobalStoreCheckoutUrl,
+            DomainStatus = "Parfait production profile active", AnalyticsStatus = "Managed in Analytics", TrustStatus = "Managed in Analytics"
         };
     }
 
     public async Task SaveProfileAsync(ParfaitBusinessProfileViewModel model, CancellationToken ct = default)
     {
-        var store = LoadStore();
-
-        await _businessScope.UpdateParfaitIdentityAsync(
-            CleanRequired(model.StoreName, "Parfait"),
-            CleanRequired(model.BusinessType, "Apparel / Ecommerce"),
-            ct);
-
-        store.GlobalStoreCheckoutUrl = CleanOptional(model.GlobalStoreCheckoutUrl);
-        store.UpdatedUtc = DateTime.UtcNow;
-
-        SaveStore(store);
+        var (_, settings) = await LoadAsync(ct);
+        await businessScope.UpdateParfaitIdentityAsync(model.StoreName.Trim(), model.BusinessType.Trim(), ct);
+        settings.GlobalStoreCheckoutUrl = model.GlobalStoreCheckoutUrl?.Trim();
+        settings.UpdatedUtc = DateTime.UtcNow;
+        settings.Revision = Guid.NewGuid();
+        await db.SaveChangesAsync(ct);
     }
 
-    public Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default)
+    public async Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default)
     {
-        var store = LoadStore();
-        var connection = BuildConnectionStatus(store);
-
-        return Task.FromResult(new ParfaitMetaAnalyticsSettingsViewModel
+        var (business, _) = await LoadAsync(ct);
+        var row = (await connections.GetStatusAsync(MarketingOwnerScope.Business(business.Id), ct))!;
+        var status = Status(row);
+        return new()
         {
-            MetaPixelId = store.MetaPixelId,
-            MetaTestEventCode = store.MetaTestEventCode,
-            HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(store.MetaCapiAccessTokenCiphertext),
-            HasActiveMetaAdsConnection = connection.Connected,
-            MetaConnectionLabel = connection.Connected
-                ? FormatConnectionLabel(connection)
-                : connection.Message ?? "Meta Ads not connected for Parfait.",
-            AccountId = connection.AccountId,
-            AccountName = connection.AccountName,
-            BusinessId = connection.BusinessId,
-            BusinessName = connection.BusinessName,
-            MetaUserName = connection.MetaUserName,
-            ConnectedUtc = connection.ConnectedUtc,
-            AccessTokenExpiresUtc = connection.AccessTokenExpiresUtc
-        });
-    }
-
-    public Task SaveMetaSettingsAsync(ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default)
-    {
-        var store = LoadStore();
-
-        store.MetaPixelId = CleanOptional(model.MetaPixelId);
-        store.MetaTestEventCode = CleanOptional(model.MetaTestEventCode);
-        store.UpdatedUtc = DateTime.UtcNow;
-
-        SaveStore(store);
-        return Task.CompletedTask;
-    }
-
-    public Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default)
-    {
-        return Task.FromResult(BuildConnectionStatus(LoadStore()));
-    }
-
-    public Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(CancellationToken ct = default)
-    {
-        return Task.FromResult(BuildConnectionRecord(LoadStore()));
-    }
-
-    public Task SaveMetaConnectionAsync(ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(record.AccessToken))
-            return Task.CompletedTask;
-
-        var store = LoadStore();
-
-        store.MetaCapiAccessTokenCiphertext = _metaCredentialProtector.Protect(record.AccessToken);
-        store.MetaConnectedUtc = record.ConnectedUtc == default ? DateTime.UtcNow : record.ConnectedUtc;
-        store.MetaAccessTokenExpiresUtc = record.AccessTokenExpiresUtc;
-        store.MetaAccountId = CleanOptional(record.AccountId);
-        store.MetaAccountName = CleanOptional(record.AccountName);
-        store.MetaBusinessId = CleanOptional(record.BusinessId);
-        store.MetaBusinessName = CleanOptional(record.BusinessName);
-        store.MetaUserId = CleanOptional(record.MetaUserId);
-        store.MetaUserName = CleanOptional(record.MetaUserName);
-        store.UpdatedUtc = DateTime.UtcNow;
-
-        SaveStore(store);
-        return Task.CompletedTask;
-    }
-
-    public Task DisconnectMetaAsync(CancellationToken ct = default)
-    {
-        var store = LoadStore();
-
-        store.MetaCapiAccessTokenCiphertext = null;
-        store.MetaConnectedUtc = null;
-        store.MetaAccessTokenExpiresUtc = null;
-        store.MetaAccountId = null;
-        store.MetaAccountName = null;
-        store.MetaBusinessId = null;
-        store.MetaBusinessName = null;
-        store.MetaUserId = null;
-        store.MetaUserName = null;
-        store.UpdatedUtc = DateTime.UtcNow;
-
-        SaveStore(store);
-        return Task.CompletedTask;
-    }
-
-    private ParfaitMetaAdsConnectionStatusDto BuildConnectionStatus(ParfaitBusinessProfileStore store)
-    {
-        if (!HasActiveConnection(store))
-        {
-            return new ParfaitMetaAdsConnectionStatusDto
-            {
-                Connected = false,
-                Message = "Meta Ads not connected for Parfait."
-            };
-        }
-
-        return new ParfaitMetaAdsConnectionStatusDto
-        {
-            Connected = true,
-            AccountId = store.MetaAccountId,
-            AccountName = store.MetaAccountName,
-            BusinessId = store.MetaBusinessId,
-            BusinessName = store.MetaBusinessName,
-            MetaUserName = store.MetaUserName,
-            ConnectedUtc = store.MetaConnectedUtc,
-            AccessTokenExpiresUtc = store.MetaAccessTokenExpiresUtc
+            MetaPixelId = row.PixelId, MetaTestEventCode = row.TestEventCode,
+            HasSecureMetaCapiAccessToken = row.CapiAccessTokenCiphertext != null || row.AdsAccessTokenCiphertext != null,
+            HasActiveMetaAdsConnection = status.Connected,
+            MetaConnectionLabel = status.Connected ? $"Connected: {row.AdAccountName ?? row.AdAccountId ?? "Meta"}" : status.Message!,
+            AccountId = row.AdAccountId, AccountName = row.AdAccountName,
+            BusinessId = row.MetaBusinessManagerId, BusinessName = row.MetaBusinessManagerName,
+            MetaUserName = row.MetaUserName, ConnectedUtc = row.ConnectedUtc, AccessTokenExpiresUtc = row.AccessTokenExpiresUtc
         };
     }
 
-    private static bool HasActiveConnection(ParfaitBusinessProfileStore store)
+    public async Task SaveMetaSettingsAsync(ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default)
     {
-        return store.MetaConnectedUtc.HasValue ||
-               !string.IsNullOrWhiteSpace(store.MetaAccountId) ||
-               !string.IsNullOrWhiteSpace(store.MetaAccountName) ||
-               !string.IsNullOrWhiteSpace(store.MetaUserName);
+        var (business, _) = await LoadAsync(ct);
+        var owner = MarketingOwnerScope.Business(business.Id);
+        var row = (await connections.GetStatusAsync(owner, ct))!;
+        await connections.SaveSettingsAsync(owner, model.MetaPixelId, model.MetaTestEventCode, null, row.Revision, ct);
     }
 
-    private static string FormatConnectionLabel(ParfaitMetaAdsConnectionStatusDto status)
+    public async Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default)
     {
-        var account = status.AccountName ?? status.AccountId ?? "Meta account connected";
-        var user = string.IsNullOrWhiteSpace(status.MetaUserName) ? string.Empty : $" as {status.MetaUserName}";
-        var expiry = status.AccessTokenExpiresUtc.HasValue
-            ? $" · expires {status.AccessTokenExpiresUtc.Value.ToLocalTime():MMM d, yyyy h:mm tt}"
-            : string.Empty;
-
-        return $"Connected: {account}{user}{expiry}";
+        var (business, _) = await LoadAsync(ct);
+        return Status((await connections.GetStatusAsync(MarketingOwnerScope.Business(business.Id), ct))!);
     }
 
-    private ParfaitMetaAdsConnectionRecord? BuildConnectionRecord(ParfaitBusinessProfileStore store)
+    private static ParfaitMetaAdsConnectionStatusDto Status(MarketingConnection row) => new()
     {
-        if (!HasActiveConnection(store) || string.IsNullOrWhiteSpace(store.MetaCapiAccessTokenCiphertext))
-            return null;
+        Connected = row.DisconnectedUtc == null && row.AdsAccessTokenCiphertext != null &&
+            (!row.AccessTokenExpiresUtc.HasValue || row.AccessTokenExpiresUtc > DateTime.UtcNow),
+        AccountId = row.AdAccountId, AccountName = row.AdAccountName,
+        BusinessId = row.MetaBusinessManagerId, BusinessName = row.MetaBusinessManagerName,
+        MetaUserName = row.MetaUserName, ConnectedUtc = row.ConnectedUtc, AccessTokenExpiresUtc = row.AccessTokenExpiresUtc,
+        Message = "Meta Ads not connected or the connection has expired."
+    };
 
-        try
+    public async Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(CancellationToken ct = default)
+    {
+        var (business, _) = await LoadAsync(ct);
+        var record = await connections.GetAdsAsync(MarketingOwnerScope.Business(business.Id), ct);
+        return record is null ? null : new()
         {
-            return new ParfaitMetaAdsConnectionRecord
-            {
-                AccessToken = _metaCredentialProtector.Unprotect(store.MetaCapiAccessTokenCiphertext) ?? string.Empty,
-                AccessTokenExpiresUtc = store.MetaAccessTokenExpiresUtc,
-                AccountId = store.MetaAccountId,
-                AccountName = store.MetaAccountName,
-                BusinessId = store.MetaBusinessId,
-                BusinessName = store.MetaBusinessName,
-                MetaUserId = store.MetaUserId,
-                MetaUserName = store.MetaUserName,
-                ConnectedUtc = store.MetaConnectedUtc ?? DateTime.UtcNow,
-                UpdatedUtc = store.UpdatedUtc
-            };
-        }
-        catch
+            AccessToken = record.AccessToken, AccessTokenExpiresUtc = record.AccessTokenExpiresUtc,
+            AccountId = record.AccountId, AccountName = record.AccountName,
+            BusinessId = record.BusinessId, BusinessName = record.BusinessName,
+            MetaUserId = record.MetaUserId, MetaUserName = record.MetaUserName,
+            ConnectedUtc = record.ConnectedUtc, UpdatedUtc = record.UpdatedUtc
+        };
+    }
+
+    public async Task SaveMetaConnectionAsync(ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default)
+    {
+        var (business, _) = await LoadAsync(ct);
+        await connections.SaveAdsAsync(MarketingOwnerScope.Business(business.Id), new()
         {
-            return null;
-        }
+            AccessToken = record.AccessToken, AccessTokenExpiresUtc = record.AccessTokenExpiresUtc,
+            AccountId = record.AccountId, AccountName = record.AccountName,
+            BusinessId = record.BusinessId, BusinessName = record.BusinessName,
+            MetaUserId = record.MetaUserId, MetaUserName = record.MetaUserName,
+            ConnectedUtc = record.ConnectedUtc, UpdatedUtc = record.UpdatedUtc
+        }, ct);
     }
 
-    private ParfaitBusinessProfileStore LoadStore()
+    public async Task DisconnectMetaAsync(CancellationToken ct = default)
     {
-        EnsureDataFile();
-
-        if (_storeLoaded && _cachedStore is not null)
-            return _cachedStore;
-
-        lock (_lock)
-        {
-            var json = File.ReadAllText(DataPath);
-            _cachedStore = JsonSerializer.Deserialize<ParfaitBusinessProfileStore>(json) ?? CreateDefaultStore();
-            _storeLoaded = true;
-            return _cachedStore;
-        }
-    }
-
-    private void SaveStore(ParfaitBusinessProfileStore store)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
-
-        lock (_lock)
-        {
-            File.WriteAllText(
-                DataPath,
-                JsonSerializer.Serialize(store, new JsonSerializerOptions { WriteIndented = true }));
-        }
-
-        _cachedStore = store;
-        _storeLoaded = true;
-    }
-
-    private void EnsureDataFile()
-    {
-        _storagePaths.EnsureInitialized();
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
-
-        if (File.Exists(DataPath))
-            return;
-
-        SaveStore(CreateDefaultStore());
-    }
-
-    private static ParfaitBusinessProfileStore CreateDefaultStore()
-    {
-        return new ParfaitBusinessProfileStore();
-    }
-
-    private static string CleanRequired(string? value, string fallback)
-    {
-        var cleaned = (value ?? string.Empty).Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? fallback : cleaned;
-    }
-
-    private static string? CleanOptional(string? value)
-    {
-        var cleaned = value?.Trim();
-        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+        var (business, _) = await LoadAsync(ct);
+        await connections.DisconnectAsync(MarketingOwnerScope.Business(business.Id), ct);
     }
 
     private sealed class ParfaitBusinessProfileStore

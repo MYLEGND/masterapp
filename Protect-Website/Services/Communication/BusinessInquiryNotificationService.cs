@@ -1,0 +1,70 @@
+using System.Net;
+using Domain.Entities;
+using Infrastructure.Data;
+using Infrastructure.Leads;
+using Microsoft.EntityFrameworkCore;
+using Shared.Analytics;
+
+namespace ProtectWebsite.Services.Communication;
+
+// The persisted inquiry is the durable delivery queue; no second copy of customer data.
+public sealed class BusinessInquiryNotificationService(MasterAppDbContext db,
+    WebsiteIntakeRecipientResolver recipients, IProtectEmailSender sender)
+{
+    public async Task DeliverPendingAsync(CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var rows = await db.Set<CommerceWebsiteInquiry>()
+            .Where(x => x.NotificationSentUtc == null && (x.NotificationNextAttemptUtc == null || x.NotificationNextAttemptUtc <= now))
+            .OrderBy(x => x.CreatedUtc).Take(25).ToListAsync(ct);
+        foreach (var row in rows)
+        {
+            row.NotificationRevision = Guid.NewGuid();
+            row.NotificationNextAttemptUtc = DateTime.UtcNow.AddMinutes(5);
+            row.NotificationStatus = "Sending";
+            row.NotificationAttempts++;
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateConcurrencyException) { db.Entry(row).State = EntityState.Detached; continue; }
+            // Re-resolve current assignment for every attempt; never reuse a revoked recipient.
+            var recipient = await recipients.ResolveAsync(MarketingOwnerScope.Business(row.CommerceBusinessId), ct);
+            var sent = false;
+            try
+            {
+                if (recipient is not null)
+                {
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(60));
+                    sent = await sender.TrySendAsync(recipient, "New website inquiry",
+                        $"<p>{WebUtility.HtmlEncode(row.Name)} · {WebUtility.HtmlEncode(row.Email)}</p><p>{WebUtility.HtmlEncode(row.Message).Replace("\n", "<br>")}</p><p>Page: {WebUtility.HtmlEncode(row.SourcePath)}</p>",
+                        replyToEmail: row.Email, cancellationToken: timeout.Token);
+                }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+            catch (Exception) when (!ct.IsCancellationRequested) { }
+            row.NotificationSentUtc = sent ? DateTime.UtcNow : null;
+            row.NotificationStatus = sent ? "Sent" : recipient is null ? "RecipientUnavailable" : "RetryPending";
+            row.NotificationNextAttemptUtc = sent ? null : DateTime.UtcNow.AddMinutes(Math.Min(60, Math.Pow(2, Math.Min(row.NotificationAttempts, 6))));
+            row.NotificationRevision = Guid.NewGuid();
+            await db.SaveChangesAsync(ct);
+        }
+    }
+}
+
+public sealed class BusinessInquiryNotificationWorker(IServiceScopeFactory scopes,
+    ILogger<BusinessInquiryNotificationWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        do
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<BusinessInquiryNotificationService>().DeliverPendingAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+            catch (Exception) { logger.LogError("Business inquiry delivery did not complete; persisted inquiries will be retried."); }
+        } while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+}

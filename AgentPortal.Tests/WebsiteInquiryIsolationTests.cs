@@ -112,6 +112,33 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal("New", other.Status);
     }
 
+    [Fact]
+    public async Task BusinessPageViewUsesVerifiedHostAndRejectsCrossBusinessEventReplay()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+        var version = await f.Db.Set<WebsiteContentVersion>().SingleAsync();
+        version.CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"test\"}}}";
+        await f.Db.SaveChangesAsync();
+        var controller = new Protect_Website.Controllers.AnalyticsController(f.Db,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Protect_Website.Controllers.AnalyticsController>.Instance)
+            { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
+        controller.Request.Host = new HostString("business.example");
+        controller.Request.Headers.Origin = "https://business.example";
+        var domains = new WebsiteDomainService(f.Db, Mock.Of<IHttpClientFactory>(), new ConfigurationBuilder().Build());
+        var request = new Protect_Website.Controllers.AnalyticsController.BusinessEventRequest(Guid.NewGuid(), Guid.NewGuid(), "/");
+        Assert.IsType<OkObjectResult>(await controller.BusinessPage(request, domains, default));
+        Assert.IsType<OkObjectResult>(await controller.BusinessPage(request, domains, default));
+        var row = Assert.Single(await f.Db.AnalyticsEvents.ToListAsync());
+        Assert.Equal(f.BusinessId, row.CommerceBusinessId);
+        Assert.Null(row.AgentTrackingProfileId);
+        Assert.DoesNotContain("Insurance", row.MetadataJson);
+        Assert.IsType<ConflictResult>(await controller.BusinessPage(request with { SessionId = Guid.NewGuid() }, domains, default));
+        Assert.IsType<NotFoundResult>(await controller.BusinessPage(request with { EventId = Guid.NewGuid(), Path = "/unpublished" }, domains, default));
+        controller.Request.Headers.Origin = "https://foreign.example";
+        Assert.IsType<BadRequestResult>(await controller.BusinessPage(request, domains, default));
+    }
+
     private sealed class Fixture : IDisposable
     {
         public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
@@ -124,13 +151,16 @@ public sealed class WebsiteInquiryIsolationTests
         {
             var config = new ConfigurationBuilder().Build();
             var domains = new WebsiteDomainService(Db, Mock.Of<IHttpClientFactory>(), config);
-            Controller = new(Db, _tickets, config, domains) { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
+            Controller = new(Db, _tickets, config, domains,
+                new Infrastructure.Leads.WebsiteLifeLeadCaptureService(Db, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Leads.WebsiteLifeLeadCaptureService>.Instance))
+                { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
             Controller.Request.Headers.Origin = origin;
         }
         public WebsiteInquiriesController.PublicRequest Request() => new(Guid.NewGuid(), "Visitor", "visitor@example.org", "Please contact me.", "/contact", true);
         public async Task SeedPublishedAsync()
         {
             Db.Add(new CommerceBusiness { Id = BusinessId, Key = "business", DisplayName = "Business" });
+            Db.Add(new CommerceBusinessStorefrontSettings { CommerceBusinessId = BusinessId });
             Db.Add(new WebsiteDomainBinding { CommerceBusinessId = BusinessId, Hostname = "business.example", Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
             var state = new WebsiteContentState { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(BusinessId), SiteKey = WebsiteEditorSiteKeys.Business, PublishedVersionId = VersionId };
             Db.Add(state);

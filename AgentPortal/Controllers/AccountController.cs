@@ -24,19 +24,22 @@ public class AccountController : Controller
     private readonly IAccountLifecycleService _accountLifecycle;
     private readonly IAgentTrackingService _tracking;
     private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
+    private readonly AgentMarketingProfileService _marketing;
 
     public AccountController(
         MasterAppDbContext db,
         AgentProfileAccessResolver profileAccessResolver,
         IAccountLifecycleService accountLifecycle,
         IAgentTrackingService tracking,
-        WebsiteEditorTicketProtector websiteEditorTickets)
+        WebsiteEditorTicketProtector websiteEditorTickets,
+        AgentMarketingProfileService marketing)
     {
         _db = db;
         _profileAccessResolver = profileAccessResolver;
         _accountLifecycle = accountLifecycle;
         _tracking = tracking;
         _websiteEditorTickets = websiteEditorTickets;
+        _marketing = marketing;
     }
 
     private async Task PopulateProtectWebsiteAsync(string userId)
@@ -171,6 +174,8 @@ public class AccountController : Controller
                 ?? "Agent";
         }
 
+        var marketingTracking = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        var marketing = marketingTracking is null ? null : await _marketing.GetAsync(marketingTracking, HttpContext.RequestAborted);
         var vm = new ManageAgentProfileViewModel
         {
             FullName = profile.FullName ?? displayName,
@@ -179,14 +184,15 @@ public class AccountController : Controller
             Phone = profile.Phone,
             ShortBio = profile.ShortBio,
             Npn = profile.Npn,
-            MetaPixelId = profile.MetaPixelId,
+            MetaPixelId = marketing?.PixelId,
+            MarketingRevision = marketing?.Revision,
             BookingEnabled = profile.BookingEnabled ?? false,
             MicrosoftBookingsEmbedUrl = profile.MicrosoftBookingsEmbedUrl,
             FallbackBookingUrl = profile.FallbackBookingUrl,
             BookingPageIdOrMailbox = profile.BookingPageIdOrMailbox,
             CalendarEmail = profile.CalendarEmail,
             PreferModalOnMobile = false,
-            HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)
+            HasSecureMetaCapiAccessToken = marketing?.CapiAccessTokenCiphertext is not null || marketing?.AdsAccessTokenCiphertext is not null
         };
 
         ViewBag.AccountLifecycle = await _accountLifecycle.GetAsync(
@@ -218,7 +224,13 @@ public class AccountController : Controller
             User,
             requireActive: false,
             HttpContext.RequestAborted);
-        vm.HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(existingProfile?.MetaCapiAccessToken);
+        var marketingTracking = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        var marketing = marketingTracking is null ? null : await _marketing.GetAsync(marketingTracking, HttpContext.RequestAborted);
+        vm.HasSecureMetaCapiAccessToken = marketing?.CapiAccessTokenCiphertext is not null || marketing?.AdsAccessTokenCiphertext is not null;
+        if (marketingTracking is null && !string.IsNullOrWhiteSpace(vm.MetaPixelId))
+            ModelState.AddModelError(nameof(vm.MetaPixelId), "Set up your Protect website before connecting its marketing destination.");
+        if (marketing is not null && vm.MarketingRevision != marketing.Revision)
+            ModelState.AddModelError(nameof(vm.MetaPixelId), "Marketing settings changed. Reload your profile and try again.");
 
         if (!ModelState.IsValid)
         {
@@ -244,7 +256,6 @@ public class AccountController : Controller
         profile.Npn = vm.Npn?.Trim();
         profile.Phone = vm.Phone?.Trim();
         profile.ShortBio = string.IsNullOrWhiteSpace(vm.ShortBio) ? null : vm.ShortBio.Trim();
-        profile.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
         var hasBookingFieldValues =
             !string.IsNullOrWhiteSpace(vm.MicrosoftBookingsEmbedUrl) ||
             !string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ||
@@ -266,7 +277,17 @@ public class AccountController : Controller
 
         profile.UpdatedUtc = DateTime.UtcNow;
 
-        _db.SaveChanges();
+        if (marketingTracking is not null)
+        {
+            try { await _marketing.SavePixelAsync(marketingTracking, vm.MetaPixelId, vm.MarketingRevision!.Value, HttpContext.RequestAborted); }
+            catch (DbUpdateConcurrencyException)
+            {
+                ModelState.AddModelError(nameof(vm.MetaPixelId), "Marketing settings changed. Reload your profile and try again.");
+                await PopulateProtectWebsiteAsync(userId);
+                return View(vm);
+            }
+        }
+        else await _db.SaveChangesAsync(HttpContext.RequestAborted);
         TempData["ProfileSaved"] = "Agent profile updated.";
         return RedirectToAction(nameof(ManageProfile));
     }

@@ -25,6 +25,47 @@ public sealed class AnalyticsController : Controller
         _logger = logger;
     }
 
+    public sealed record BusinessEventRequest(Guid EventId, Guid SessionId, string Path);
+
+    [HttpPost("business-page")]
+    [IgnoreAntiforgeryToken]
+    [RequestSizeLimit(4096)]
+    public async Task<IActionResult> BusinessPage([FromBody] BusinessEventRequest input,
+        [FromServices] Infrastructure.WebsiteEditing.WebsiteDomainService domains, CancellationToken ct)
+    {
+        if (input.EventId == Guid.Empty || input.SessionId == Guid.Empty || input.Path is null ||
+            input.Path.Length > 160 || !input.Path.StartsWith('/') || input.Path.Contains('?') || input.Path.Contains('#'))
+            return BadRequest();
+        if (!Uri.TryCreate(Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin) ||
+            origin.Scheme != "https" || !origin.IsDefaultPort || origin.AbsolutePath != "/" ||
+            origin.Query.Length != 0 || origin.Fragment.Length != 0 || origin.UserInfo.Length != 0 ||
+            !origin.IdnHost.Equals(Request.Host.Host, StringComparison.OrdinalIgnoreCase)) return BadRequest();
+        var owner = await domains.ResolveAsync(origin.IdnHost, ct);
+        if (owner is null) return NotFound();
+        var version = await Infrastructure.WebsiteEditing.WebsiteContentStore.PublishedBusinessAsync(_db, owner.Value, ct);
+        if (version?.CompiledPagesJson is null) return NotFound();
+        using var pages = System.Text.Json.JsonDocument.Parse(version.CompiledPagesJson);
+        if (!pages.RootElement.GetProperty("pages").TryGetProperty(input.Path, out _)) return NotFound();
+        var prior = await _db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.ClientEventId == input.EventId, ct);
+        if (prior is not null) return prior.CommerceBusinessId == owner && prior.SessionId == input.SessionId.ToString("N") && prior.PageKey == input.Path
+            ? Ok(new { accepted = true }) : Conflict();
+        var context = UnifiedEventContextBuilder.Build(HttpContext, eventName: "page_view", sessionId: input.SessionId.ToString("N"),
+            visitorId: input.SessionId.ToString("N"), pageKey: input.Path, host: origin.IdnHost,
+            environment: "Production", isBrowserSignal: true, metaServerAuthorityEligible: false);
+        var row = UnifiedEventMapper.ToAnalytics(context with { CommerceBusinessId = owner, WebsiteContentVersionId = version.Id });
+        row.ClientEventId = input.EventId;
+        UnifiedAnalyticsWriter.Write(_db, row);
+        try { await _db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            _db.Entry(row).State = EntityState.Detached;
+            prior = await _db.AnalyticsEvents.AsNoTracking().SingleOrDefaultAsync(x => x.ClientEventId == input.EventId, ct);
+            if (prior is null) throw;
+            if (prior.CommerceBusinessId != owner || prior.SessionId != input.SessionId.ToString("N") || prior.PageKey != input.Path) return Conflict();
+        }
+        return Ok(new { accepted = true });
+    }
+
     [HttpPost("meta-signal")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> MetaSignal([FromBody] MetaSignalIngestRequest? request, CancellationToken cancellationToken)
