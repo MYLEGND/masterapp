@@ -469,7 +469,8 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 8);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 7);
+      assert.equal(f.w.document.querySelector('[data-open="signals"]'), null);
       f.click('[data-open="page"]');
       assert.equal(f.w.document.querySelector('#legend-cms-page-title').disabled, false);
       f.input('#legend-cms-page-title', 'A title <with text>');
