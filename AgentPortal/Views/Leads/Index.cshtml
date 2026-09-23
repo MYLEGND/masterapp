@@ -2,9 +2,10 @@
 @using System.Globalization
 @model List<AgentPortal.Models.ClientListItemViewModel>
 @using AgentPortal.Services
-@using AgentPortal.Security
+
 
 @{
+    var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
     ViewData["Title"] = "Leads";
     var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
@@ -25,7 +26,7 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
-<div class="wrap density-comfort leads-crm pipeline-mode" id="legendWrap">
+<div class="wrap density-comfort leads-crm pipeline-mode" id="legendWrap" data-business-id="@businessWorkspace?.BusinessId" data-crm-api-base="@(businessWorkspace is null ? "" : $"/business/{businessWorkspace.BusinessId}/crm/api")" data-pipeline-stages="@(businessWorkspace is null ? "[]" : System.Text.Json.JsonSerializer.Serialize(businessWorkspace.Preferences.Stages))">
 
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
@@ -234,7 +235,7 @@ else
                 {
                     continue;
                 }
-                var hasPortalAccess = Guid.TryParse(c.ClientUserId, out _);
+                var hasPortalAccess = businessWorkspace is null && Guid.TryParse(c.ClientUserId, out _);
                 var clientUrl = hasPortalAccess
                     ? (Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true }) ?? "")
                     : "";
@@ -638,7 +639,7 @@ var sCity = (c.City ?? "").Trim();
 <script src="~/js/scheduling/qv-appointment-management.js" asp-append-version="true"></script>
 <script>
     window.quickViewBillingOptions = {
-        canSetFounderSubscriptionOptions: @(FounderGuard.IsFounder(User) ? "true" : "false")
+        canSetFounderSubscriptionOptions: @((ViewData["CanSetFounderSubscriptionOptions"] as bool? == true) ? "true" : "false")
     };
 </script>
 <script src="~/js/billing/qv-billing-management.js" asp-append-version="true"></script>

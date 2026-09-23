@@ -1,3 +1,4 @@
+using Shared.Crm;
 namespace AgentPortal.Models;
 
 public sealed class ClientListItemViewModel

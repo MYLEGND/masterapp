@@ -37,6 +37,31 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The CRM and quick-view sources are shared with AgentPortal, not copied. -->
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/Clients/Index.cshtml" Link="Views/Clients/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/Clients/_Clients*.cshtml" Link="Views/Clients/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Leads/Index.cshtml" Link="Views/Leads/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/Leads/_Lead*.cshtml" Link="Views/Leads/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Shared/_QuickView*.cshtml" Link="Views/Shared/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Workstation/_AdvancedMarketsInputSections.cshtml" Link="Views/Workstation/_AdvancedMarketsInputSections.cshtml" />
+    <Content Include="../AgentPortal/wwwroot/css/clients-index.css" Link="wwwroot/css/clients-index.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/clients-index.js;../AgentPortal/wwwroot/js/leads-index.js;../AgentPortal/wwwroot/js/dp-*.js;../AgentPortal/wwwroot/js/zoom-quick-popup.js" Link="wwwroot/js/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../AgentPortal/wwwroot/js/scheduling/qv-*.js" Link="wwwroot/js/scheduling/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/billing/qv-billing-management.js" Link="wwwroot/js/billing/qv-billing-management.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Compile and publish the canonical analytics view/assets; no business copy. -->
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/Index.cshtml" Link="Views/WebsiteAnalytics/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" Link="Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" />
+    <Content Include="../AgentPortal/wwwroot/css/website-analytics.css" Link="wwwroot/css/website-analytics.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/website-analytics*.js" Link="wwwroot/js/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Belt + suspenders: explicitly remove any accidental inclusion of these artifacts -->
   <ItemGroup>
     <RazorGenerate Remove="Views_backup/**" />

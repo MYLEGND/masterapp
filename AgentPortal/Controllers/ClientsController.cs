@@ -2295,6 +2295,7 @@ namespace AgentPortal.Controllers;
 
             ViewBag.ClientPortalBaseUrl = GetClientPortalBaseUrl();
             ViewBag.Search = search ?? "";
+            ViewData["CanSetFounderSubscriptionOptions"] = FounderGuard.IsFounder(User);
             ViewData["ProductionTotals"] = await _production.GetAgentTotalsAsync(agentOid, ProductionSide.Client);
 
             _logger.LogInformation("Clients/Index loaded {Count} records for agent {AgentOid}.", vm?.Count ?? 0, agentOid);

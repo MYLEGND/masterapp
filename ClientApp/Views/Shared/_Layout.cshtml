@@ -6,6 +6,8 @@
 @using System.IO
 @using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
+@using Shared.Auth
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @{
@@ -299,6 +301,13 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            @if (messagingClientContext is not null)
+            {
+                var businessLinks = await BusinessWorkspace.NavigationAsync(messagingClientContext.Profile.Id,
+                    User.GetCanonicalUserId(), messagingClientContext.IsAgentView ? messagingClientContext.AgentEmail : messagingClientContext.Profile.Email,
+                    Context.RequestAborted);
+                @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", businessLinks)
+            }
             <a class="explore-item" data-tone="protection" asp-controller="ProtectionSnapshot" asp-action="Index">
                 <span>Protection Snapshot</span>
                 <small>Planning</small>

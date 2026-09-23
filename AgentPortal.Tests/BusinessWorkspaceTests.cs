@@ -20,6 +20,24 @@ namespace AgentPortal.Tests;
 public sealed class BusinessWorkspaceTests
 {
     [Fact]
+    public async Task CanonicalAnalyticsAdapterAlwaysUsesPermanentBusinessScope()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var businessId = Guid.NewGuid();
+        var range = TimeRangeRequest.FromPreset("7d", null, null, TimeZoneInfo.Utc);
+        var analytics = new Mock<IAnalyticsQueryService>(MockBehavior.Strict);
+        var summary = new SummaryKpiDto();
+        analytics.Setup(x => x.GetSummaryAsync(range,
+            It.Is<ScopeContext>(scope => scope.ScopeType == ScopeType.Business && scope.CommerceBusinessId == businessId && scope.AgentTrackingProfileId == null),
+            TrafficType.All)).ReturnsAsync(summary);
+        var service = new BusinessWorkspaceService(db, analytics.Object, new(db, new ConfigurationBuilder().Build()));
+        Assert.Same(summary, await service.AnalyticsDataAsync(businessId, "summary", range, TrafficType.All));
+        Assert.Null(await service.AnalyticsDataAsync(businessId, "unregistered-agent-action", range, TrafficType.All));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(Guid.Empty, "summary", range, TrafficType.All));
+        analytics.VerifyAll();
+    }
+
+    [Fact]
     public async Task PreferencesAndContactsStayBusinessScopedAndCustomStageSurvivesCapture()
     {
         using var db = ControllerTestHelpers.BuildDb();

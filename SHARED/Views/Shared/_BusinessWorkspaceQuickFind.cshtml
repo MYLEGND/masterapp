@@ -1,0 +1,18 @@
+@model IReadOnlyList<Shared.Crm.BusinessWorkspaceNavigationItem>
+@foreach (var business in Model)
+{
+    var root = $"/business/{business.BusinessId}";
+    if (business.CanCrm)
+    {
+        <a class="explore-item" data-tone="ops" href="@root/crm?kind=Lead"><span>@business.LeadLabel CRM</span><small>@business.BusinessName</small></a>
+        <a class="explore-item" data-tone="ops" href="@root/crm?kind=Client"><span>@business.ClientLabel CRM</span><small>@business.BusinessName</small></a>
+    }
+    if (business.CanAnalytics)
+    {
+        <a class="explore-item" data-tone="growth" href="@root/analytics"><span>Website Analytics</span><small>@business.BusinessName</small></a>
+    }
+    if (business.CanCustomize)
+    {
+        <a class="explore-item" data-tone="ops" href="@root/settings"><span>Personalize workspace</span><small>@business.BusinessName</small></a>
+    }
+}
