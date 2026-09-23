@@ -1,13 +1,10 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly authorized finishing the audit repair batch and direct deployment to affected apps through legend/approved-changes. Code tests only; no live customer/payment/email/Meta test mutations.",
-  "purpose": "Release the preserved launch-audit repairs and completion fixes: scoped business ownership, atomic lead/CRM/event persistence, submission and notification retry integrity, analytics and Meta health, shared route inventory, UI and exports. See Docs/releases/founder-launch-audit-20260923.md for evidence boundaries.",
-  "requestId": "founder-launch-audit-direct-release-20260923-7",
+  "purpose": "Resume only the unfinished Parfait target from direct-release run 35822956679. Portal, ClientApp and Protect already serve revision a97191e9e5e649fbf77bad7424e24e2b74ae7903; preserve their live packages and run the existing schema and code gates.",
+  "requestId": "founder-launch-audit-parfait-resume-20260923-8",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
     "masterapp-parfait"
   ]
 }
