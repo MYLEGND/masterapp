@@ -139,15 +139,18 @@
                         <label asp-for="EntityName" class="client-create-label">Entity Name (Business Client)</label>
                         <input asp-for="EntityName" class="client-create-input" maxlength="160" />
                         <span asp-validation-for="EntityName" class="text-danger"></span>
-                        <label asp-for="OwnerPercentage" class="client-create-label">Primary owner's share (%)</label>
-                        <input asp-for="OwnerPercentage" class="client-create-input" type="number" min="0.01" max="100" step="0.01" />
-                        <p>Link additional owners using their existing personal client account email. Shares must total 100%.</p>
-                        <div id="businessAdditionalOwners">
+                        <p class="client-create-section-copy">The Business Profile Email below controls the business account. Linked personal owners are separate and must already exist as client accounts.</p>
+                        <p class="client-create-section-copy" id="businessOwnerHelp">Add each owner by their personal client email. First and last name are pulled from the attached client profile and cannot be typed here. Ownership shares must total 100%.</p>
+                        <div id="businessAdditionalOwners" data-owner-lookup-url="@Url.Action("BusinessOwnerLookup", "Clients")" aria-describedby="businessOwnerHelp">
                         @for (var ownerIndex = 0; ownerIndex < Model.BusinessOwners.Count; ownerIndex++)
                         {
                             <div data-business-owner>
-                                <label>Email <input name="BusinessOwners[@ownerIndex].Email" type="email" value="@Model.BusinessOwners[ownerIndex].Email" class="client-create-input" required /></label>
-                                <label>Share (%) <input name="BusinessOwners[@ownerIndex].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model.BusinessOwners[ownerIndex].Percentage" class="client-create-input" required /></label>
+                                <input type="hidden" name="BusinessOwners[@ownerIndex].ClientProfileId" value="@Model.BusinessOwners[ownerIndex].ClientProfileId" data-owner-field="ClientProfileId" />
+                                <label>Owner email <input name="BusinessOwners[@ownerIndex].Email" type="email" value="@Model.BusinessOwners[ownerIndex].Email" class="client-create-input" required data-owner-field="Email" data-owner-email /></label>
+                                <label>First name <input type="text" class="client-create-input" readonly aria-readonly="true" data-owner-first-name /></label>
+                                <label>Last name <input type="text" class="client-create-input" readonly aria-readonly="true" data-owner-last-name /></label>
+                                <label>Share (%) <input name="BusinessOwners[@ownerIndex].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model.BusinessOwners[ownerIndex].Percentage" class="client-create-input" required data-owner-field="Percentage" /></label>
+                                <p class="client-create-section-copy" data-owner-status aria-live="polite"></p>
                                 <button type="button" data-remove-business-owner>Remove owner</button>
                             </div>
                         }
@@ -166,8 +169,9 @@
                     </div>
 
                     <div>
-                        <label asp-for="Email" class="client-create-label"></label>
+                        <label asp-for="Email" class="client-create-label" id="primaryEmailLabel"></label>
                         <input asp-for="Email" class="client-create-input" autocomplete="email" inputmode="email" id="Email" data-client-required />
+                        <p class="client-create-section-copy is-hidden" id="businessProfileEmailHelp">This is the Business Profile Email used to control this business account. It is separate from every linked owner's personal email.</p>
                         <span asp-validation-for="Email" class="text-danger client-create-validation"></span>
                     </div>
 
