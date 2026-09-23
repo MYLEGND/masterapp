@@ -40,7 +40,7 @@
   <!-- The CRM and quick-view sources are shared with AgentPortal, not copied. -->
   <ItemGroup>
     <Content Include="../AgentPortal/Views/Clients/Index.cshtml" Link="Views/Clients/Index.cshtml" />
-    <Content Include="../AgentPortal/Views/Clients/_Clients*.cshtml" Link="Views/Clients/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Clients/_Client*.cshtml" Link="Views/Clients/%(Filename)%(Extension)" />
     <Content Include="../AgentPortal/Views/Leads/Index.cshtml" Link="Views/Leads/Index.cshtml" />
     <Content Include="../AgentPortal/Views/Leads/_Lead*.cshtml" Link="Views/Leads/%(Filename)%(Extension)" />
     <Content Include="../AgentPortal/Views/Shared/_QuickView*.cshtml" Link="Views/Shared/%(Filename)%(Extension)" />
@@ -52,6 +52,12 @@
   <ItemGroup>
     <Content Include="../AgentPortal/wwwroot/js/scheduling/qv-*.js" Link="wwwroot/js/scheduling/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../AgentPortal/wwwroot/js/billing/qv-billing-management.js" Link="wwwroot/js/billing/qv-billing-management.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/Leads/_ActionsTab.cshtml;../AgentPortal/Views/Leads/_CommitmentsTab.cshtml" Link="Views/Leads/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Shared/_ActionList.cshtml" Link="Views/Shared/_ActionList.cshtml" />
+    <Content Include="../AgentPortal/Views/Actions/Edit.cshtml" Link="Views/Actions/Edit.cshtml" />
   </ItemGroup>
 
   <!-- Compile and publish the canonical analytics view/assets; no business copy. -->

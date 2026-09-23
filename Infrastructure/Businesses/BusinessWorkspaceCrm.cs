@@ -6,6 +6,9 @@ namespace Infrastructure.Businesses;
 
 public sealed partial class BusinessWorkspaceService
 {
+    // Call only after the controller resolves the actor’s business CRM capability.
+    internal AgentPortal.Services.ExecutionEngine BusinessActions(Guid businessId) => new(db, businessId);
+
     // Both values participate: SQL rowversion protects concurrent writes, while
     // UpdatedUtc also makes stale clients detectable on providers without rowversion.
     private static string ContactRevision(WorkstationLeadProfile row) =>
@@ -145,6 +148,49 @@ public sealed partial class BusinessWorkspaceService
     {
         if (!string.IsNullOrWhiteSpace(link) && (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme != "https"))
             throw new ArgumentException("Meeting links must use HTTPS.");
+    }
+
+    public async Task<object?> BulkUpdateAsync(Guid businessId, BusinessCrmBulkRequest input, string actor, CancellationToken ct)
+    {
+        var ids = input.ClientUserIds;
+        if (ids.Count == 0 || ids.Distinct(StringComparer.Ordinal).Count() != ids.Count)
+            throw new ArgumentException("Choose distinct contacts to update.");
+        var preferences = (await SettingsAsync(businessId, ct)).Preferences;
+        if (input.PipelineStage is not null && !preferences.Stages.Contains(input.PipelineStage))
+            throw new ArgumentException("Choose a configured business stage.");
+        if (input.CrmPriority is not (null or "Low" or "Normal" or "High" or "Urgent"))
+            throw new ArgumentException("Choose a supported priority.");
+        var rows = await Contacts(businessId).Where(x => ids.Contains(x.LeadId)).ToListAsync(ct);
+        if (rows.Count != ids.Count) return null;
+        var metadata = rows.ToDictionary(x => x.LeadId, x => ClientCrmMetaSerializer.Deserialize(x.CrmNotes, preferences.Stages));
+        foreach (var row in rows)
+        {
+            RequireRevision(row, input.Revisions.GetValueOrDefault(row.LeadId));
+            if (input.CrmNextDate.HasValue && string.IsNullOrWhiteSpace(input.CrmNextText ?? metadata[row.LeadId].CrmNextText))
+                throw new ArgumentException("Describe the next action when setting a follow-up date.");
+        }
+        var now = DateTime.UtcNow;
+        foreach (var row in rows)
+        {
+            var meta = metadata[row.LeadId];
+            if (input.PipelineStage is not null)
+            {
+                if (row.CrmStage != input.PipelineStage) meta.StageEnteredUtc = now;
+                row.CrmStage = meta.PipelineStage = input.PipelineStage;
+            }
+            if (input.CrmPriority is not null) meta.CrmPriority = input.CrmPriority;
+            if (input.CrmNextDate.HasValue) meta.CrmNextDate = input.CrmNextDate.Value.Date;
+            if (input.CrmNextText is not null) meta.CrmNextText = input.CrmNextText.Trim();
+            if (input.CrmTags is not null) meta.CrmTags = input.CrmTags.Trim();
+            if (input.WaitingOn is not null) meta.WaitingOn = input.WaitingOn;
+            meta.Activities.Add(new() { Type = "Update", IsSystem = true, CreatedBy = actor,
+                Note = string.IsNullOrWhiteSpace(input.SharedNote) ? "Contact updated through bulk edit." : input.SharedNote.Trim(),
+                Date = now.ToString("O"), CreatedUtc = now });
+            row.CrmNotes = ClientCrmMetaSerializer.Serialize(meta, preferences.Stages);
+            row.UpdatedUtc = now;
+        }
+        await db.SaveChangesAsync(ct);
+        return new { ok = true, updated = rows.Count, revisions = rows.ToDictionary(x => x.LeadId, ContactRevision) };
     }
 
     private static object ContactPayload(WorkstationLeadProfile row, BusinessWorkspacePreferences preferences)

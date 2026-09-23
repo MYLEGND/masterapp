@@ -13,7 +13,7 @@ namespace Infrastructure.Businesses;
 [Authorize]
 [Route("business/{businessId:guid}")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService workspace) : Controller
+public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceService workspace) : Controller
 {
     protected abstract Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct);
 
@@ -73,6 +73,12 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
         catch (DbUpdateConcurrencyException) { return Conflict("This contact changed in another session. Reload before saving."); }
         catch (ArgumentException ex) { return BadRequest(ex.Message); }
     }
+
+    [HttpPost("crm/api/Clients/BulkUpdate")]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> BulkUpdate(Guid businessId, [FromBody] BusinessCrmBulkRequest input,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.BulkUpdateAsync(businessId,
+            input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
 
     [HttpGet("clients")]
     [HttpGet("clients/{contactId}")]

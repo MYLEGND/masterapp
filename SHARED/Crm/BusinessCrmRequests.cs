@@ -61,3 +61,16 @@ public sealed class BusinessCrmReorderRequest
     [MinLength(1), MaxLength(1000)] public List<string> Ids { get; set; } = [];
     public Dictionary<string, string> Revisions { get; set; } = [];
 }
+
+public sealed class BusinessCrmBulkRequest
+{
+    [MinLength(1), MaxLength(1000)] public List<string> ClientUserIds { get; set; } = [];
+    public Dictionary<string, string> Revisions { get; set; } = [];
+    [MaxLength(60)] public string? PipelineStage { get; set; }
+    public DateTime? CrmNextDate { get; set; }
+    [MaxLength(2000)] public string? CrmNextText { get; set; }
+    [MaxLength(20)] public string? CrmPriority { get; set; }
+    [MaxLength(2000)] public string? CrmTags { get; set; }
+    [MaxLength(20000)] public string? SharedNote { get; set; }
+    [MaxLength(40)] public string? WaitingOn { get; set; }
+}

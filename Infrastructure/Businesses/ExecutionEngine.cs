@@ -11,14 +11,34 @@ namespace AgentPortal.Services;
     {
         private readonly MasterAppDbContext _db;
         private bool? _actionLogsTableAvailable;
+        private readonly Guid? _businessId;
+        private IQueryable<ActionItem> Items => _businessId.HasValue
+            ? _db.ActionItems.Where(x => x.OwnerType == ActionOwnerType.Business && x.OwnerId == _businessId.Value.ToString() &&
+                x.RelatedEntityType == RelatedEntityType.BusinessContact &&
+                _db.WorkstationLeadProfiles.Any(contact => contact.LeadId == x.RelatedEntityId &&
+                    contact.CommerceBusinessId == _businessId && contact.AgentUserId == ""))
+            : _db.ActionItems.Where(x => x.OwnerType != ActionOwnerType.Business);
 
-        public ExecutionEngine(MasterAppDbContext db)
+
+        public ExecutionEngine(MasterAppDbContext db, Guid? businessId = null)
     {
         _db = db;
+        if (businessId == Guid.Empty) throw new ArgumentException("A business owner is required.");
+        _businessId = businessId;
     }
 
     public async Task<ActionItem> CreateActionAsync(ActionItem action, CancellationToken ct = default)
     {
+        if (_businessId.HasValue)
+        {
+            if (action.OwnerType != ActionOwnerType.Business || action.OwnerId != _businessId.Value.ToString() ||
+                action.RelatedEntityType != RelatedEntityType.BusinessContact || !string.IsNullOrEmpty(action.EffectiveAgentOid) ||
+                !await _db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == action.RelatedEntityId &&
+                    x.CommerceBusinessId == _businessId && x.AgentUserId == "", ct))
+                throw new ArgumentException("The action must belong to this business contact.");
+        }
+        else if (action.OwnerType == ActionOwnerType.Business)
+            throw new ArgumentException("Business actions require a business scope.");
         if (action.ActionSurface == default)
         {
             action.ActionSurface = ActionSurface.CrmOnly;
@@ -43,7 +63,7 @@ namespace AgentPortal.Services;
 
     public async Task<ActionItem?> CompleteActionAsync(Guid actionId, string actorId, CancellationToken ct = default)
     {
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
+        var action = await Items.FirstOrDefaultAsync(x => x.Id == actionId, ct);
         if (action == null) return null;
         if (!MatchesActor(action, actorId)) return null;
         action.Status = ActionStatus.Completed;
@@ -62,7 +82,7 @@ namespace AgentPortal.Services;
 
     public async Task<ActionItem?> DismissActionAsync(Guid actionId, string actorId, string reason, CancellationToken ct = default)
     {
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
+        var action = await Items.FirstOrDefaultAsync(x => x.Id == actionId, ct);
         if (action == null) return null;
         if (!MatchesActor(action, actorId)) return null;
         action.Status = ActionStatus.Dismissed;
@@ -82,8 +102,12 @@ namespace AgentPortal.Services;
 
     public async Task<ActionItem?> ReassignAsync(Guid actionId, ActionOwnerType newOwnerType, string newOwnerId, CancellationToken ct = default)
     {
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
+        var action = await Items.FirstOrDefaultAsync(x => x.Id == actionId, ct);
         if (action == null) return null;
+        if (_businessId.HasValue && (newOwnerType != ActionOwnerType.Business || newOwnerId != _businessId.Value.ToString()))
+            throw new ArgumentException("An action cannot move outside its business scope.");
+        if (!_businessId.HasValue && newOwnerType == ActionOwnerType.Business)
+            throw new ArgumentException("Business actions require a business scope.");
         action.OwnerType = newOwnerType;
         action.OwnerId = newOwnerId;
         action.UpdatedUtc = DateTime.UtcNow;
@@ -103,9 +127,9 @@ namespace AgentPortal.Services;
     {
         var todayUtc = DateTime.UtcNow.Date;
         var normalizedOwnerId = NormalizeOwnerKey(ownerId);
-        return _db.ActionItems
+        return Items
             .AsNoTracking()
-            .Where(x => (x.OwnerId == normalizedOwnerId || x.EffectiveAgentOid == normalizedOwnerId)
+            .Where(x => (_businessId.HasValue || x.OwnerId == normalizedOwnerId || x.EffectiveAgentOid == normalizedOwnerId)
                         && (x.ActionSurface == ActionSurface.CommandCenter || x.IsEscalated)
                         && (x.DueDateUtc == null ||
                             (x.DueDateUtc >= todayUtc && x.DueDateUtc < todayUtc.AddDays(1)))
@@ -119,9 +143,9 @@ namespace AgentPortal.Services;
     {
         var nowUtc = DateTime.UtcNow;
         var normalizedOwnerId = NormalizeOwnerKey(ownerId);
-        return _db.ActionItems
+        return Items
             .AsNoTracking()
-            .Where(x => (x.OwnerId == normalizedOwnerId || x.EffectiveAgentOid == normalizedOwnerId)
+            .Where(x => (_businessId.HasValue || x.OwnerId == normalizedOwnerId || x.EffectiveAgentOid == normalizedOwnerId)
                         && (x.ActionSurface == ActionSurface.CommandCenter || x.IsEscalated)
                         && x.DueDateUtc < nowUtc
                         && x.Status != ActionStatus.Completed && x.Status != ActionStatus.Dismissed)
@@ -133,10 +157,11 @@ namespace AgentPortal.Services;
     private static string NormalizeOwnerKey(string ownerId)
         => IdentityKey.Normalize(ownerId);
 
-    private static bool MatchesActor(ActionItem action, string actorId)
+    private bool MatchesActor(ActionItem action, string actorId)
     {
         var actorKey = NormalizeOwnerKey(actorId);
         if (string.IsNullOrWhiteSpace(actorKey)) return false;
+        if (_businessId.HasValue) return action.OwnerType == ActionOwnerType.Business && action.OwnerId == _businessId.Value.ToString();
         return string.Equals(NormalizeOwnerKey(action.OwnerId), actorKey, StringComparison.Ordinal)
             || string.Equals(NormalizeOwnerKey(action.EffectiveAgentOid), actorKey, StringComparison.Ordinal);
     }
@@ -149,13 +174,13 @@ namespace AgentPortal.Services;
             return Task.FromResult<IReadOnlyList<ActionItem>>(Array.Empty<ActionItem>());
         }
 
-        return _db.ActionItems
+        return Items
             .AsNoTracking()
             .Where(x =>
                 x.RelatedEntityType == relatedEntityType &&
                 x.RelatedEntityId == relatedEntityId &&
                 x.Status != ActionStatus.Dismissed &&
-                ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+                (_businessId.HasValue || (x.OwnerId ?? string.Empty).ToLower() == actorKey ||
                  (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey))
             .OrderByDescending(x => x.CreatedUtc)
             .ToListAsync(ct)
@@ -170,9 +195,9 @@ namespace AgentPortal.Services;
             return Task.FromResult<ActionItem?>(null);
         }
 
-        return _db.ActionItems.AsNoTracking().FirstOrDefaultAsync(x =>
+        return Items.AsNoTracking().FirstOrDefaultAsync(x =>
             x.Id == id &&
-            ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+            (_businessId.HasValue || (x.OwnerId ?? string.Empty).ToLower() == actorKey ||
              (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey), ct);
     }
 
@@ -181,9 +206,9 @@ namespace AgentPortal.Services;
         var actorKey = NormalizeOwnerKey(actorId);
         if (string.IsNullOrWhiteSpace(actorKey)) return null;
 
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x =>
+        var action = await Items.FirstOrDefaultAsync(x =>
             x.Id == id &&
-            ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+            (_businessId.HasValue || (x.OwnerId ?? string.Empty).ToLower() == actorKey ||
              (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey), ct);
         if (action == null) return null;
 
@@ -211,9 +236,9 @@ namespace AgentPortal.Services;
         var actorKey = NormalizeOwnerKey(actorId);
         if (string.IsNullOrWhiteSpace(actorKey)) return false;
 
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x =>
+        var action = await Items.FirstOrDefaultAsync(x =>
             x.Id == id &&
-            ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+            (_businessId.HasValue || (x.OwnerId ?? string.Empty).ToLower() == actorKey ||
              (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey), ct);
         if (action == null) return false;
 

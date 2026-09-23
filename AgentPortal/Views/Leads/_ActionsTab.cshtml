@@ -22,7 +22,7 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form id="quickCreateActionForm" method="post" action="/Leads/CreateAction">
+        <form id="quickCreateActionForm" method="post" action="@((ViewData["CrmApiBase"] as string ?? "") + "/Leads/CreateAction")">
             @Html.AntiForgeryToken()
             <input type="hidden" name="LeadId" value="@leadId" />
             <div class="mb-3">

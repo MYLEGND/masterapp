@@ -12,7 +12,8 @@ function businessWritePayload(payload) {
   const find = id => contactRows.find(row => row.dataset.clientId === id);
   const result = { ...payload };
   if (payload.clientUserId) result.revision = find(payload.clientUserId)?.dataset.businessRevision || '';
-  if (payload.ids) result.revisions = Object.fromEntries(payload.ids.map(id => [id, find(id)?.dataset.businessRevision || '']));
+  const ids = payload.ids || payload.clientUserIds;
+  if (ids) result.revisions = Object.fromEntries(ids.map(id => [id, find(id)?.dataset.businessRevision || '']));
   return result;
 }
 function rememberBusinessRevisions(data) {
@@ -1391,7 +1392,7 @@ function wireClientActionListControls(){
 
     btn.disabled = true;
     try{
-      const res = await fetch("/Dashboard/CompleteAction", {
+      const res = await fetch(crmRoute("/Dashboard/CompleteAction"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
