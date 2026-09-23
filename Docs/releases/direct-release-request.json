@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested retry of the failed business profile/owner separation direct release after the release workflow packaging condition was corrected.",
-  "purpose": "Retry the already validated business profile owner separation release. The candidate build, focused .NET tests, and shared web checks passed on run 35895292832; the prior release failed only because package creation was skipped after non-selected website checks. Deploy only AgentPortal and ClientApp.",
-  "requestId": "business-profile-owner-separation-retry-20260923",
+  "authorization": "Founder explicitly requested immediate retry after correcting the remaining business identity projection regression.",
+  "purpose": "Retry the validated business profile/owner separation release after updating the canonical business identity projection to include the new account membership role. Deploy only AgentPortal and ClientApp.",
+  "requestId": "business-profile-owner-separation-retry-2-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
