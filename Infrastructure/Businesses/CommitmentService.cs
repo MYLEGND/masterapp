@@ -14,16 +14,36 @@ public class CommitmentService : ICommitmentService
 {
     private readonly MasterAppDbContext _db;
     private readonly IExecutionEngine _execution;
+    private readonly Guid? _businessId;
+    private IQueryable<Commitment> Items => _businessId.HasValue
+        ? _db.Commitments.Where(x => x.PromisedByType == ActionOwnerType.Business && x.PromisedById == _businessId.Value.ToString() &&
+            x.RelatedEntityType == RelatedEntityType.BusinessContact &&
+            _db.WorkstationLeadProfiles.Any(contact => contact.LeadId == x.RelatedEntityId &&
+                contact.CommerceBusinessId == _businessId && contact.AgentUserId == ""))
+        : _db.Commitments.Where(x => x.PromisedByType != ActionOwnerType.Business);
+
     private static string Normalize(string? value) => IdentityKey.Normalize(value);
 
-    public CommitmentService(MasterAppDbContext db, IExecutionEngine execution)
+    public CommitmentService(MasterAppDbContext db, IExecutionEngine execution, Guid? businessId = null)
     {
         _db = db;
+        if (businessId == Guid.Empty) throw new ArgumentException("A business owner is required.");
+        _businessId = businessId;
         _execution = execution;
     }
 
     public async Task<Commitment> CreateCommitmentAsync(CommitmentCreateRequest request, CancellationToken ct = default)
     {
+        if (_businessId.HasValue)
+        {
+            if (request.PromisedByType != ActionOwnerType.Business || request.PromisedById != _businessId.Value.ToString() ||
+                request.RelatedEntityType != RelatedEntityType.BusinessContact ||
+                !await _db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == request.RelatedEntityId &&
+                    x.CommerceBusinessId == _businessId && x.AgentUserId == "", ct))
+                throw new ArgumentException("The commitment must belong to this business contact.");
+        }
+        else if (request.PromisedByType == ActionOwnerType.Business)
+            throw new ArgumentException("Business commitments require a business scope.");
         var now = DateTimeOffset.UtcNow;
 
         var commitment = new Commitment
@@ -61,7 +81,7 @@ public class CommitmentService : ICommitmentService
                 Description = "",
                 OwnerType = request.PromisedByType,
                 OwnerId = request.PromisedById,
-                EffectiveAgentOid = request.PromisedById,
+                EffectiveAgentOid = _businessId.HasValue ? "" : request.PromisedById,
                 DueDateUtc = request.DueDateUtc.UtcDateTime,
                 Status = ActionStatus.Planned,
                 Priority = ActionPriority.P2,
@@ -86,10 +106,10 @@ public class CommitmentService : ICommitmentService
         var actorKey = Normalize(actorId);
         if (string.IsNullOrWhiteSpace(actorKey)) return null;
 
-        var c = await _db.Commitments.FirstOrDefaultAsync(x =>
+        var c = await Items.FirstOrDefaultAsync(x =>
             x.Id == id &&
             (
-                (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                _businessId.HasValue || (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
                 (x.CreatedBy ?? string.Empty).ToLower() == actorKey
             ), ct);
         if (c == null) return null;
@@ -109,10 +129,10 @@ public class CommitmentService : ICommitmentService
         var actorKey = Normalize(actorId);
         if (string.IsNullOrWhiteSpace(actorKey)) return null;
 
-        var c = await _db.Commitments.FirstOrDefaultAsync(x =>
+        var c = await Items.FirstOrDefaultAsync(x =>
             x.Id == id &&
             (
-                (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                _businessId.HasValue || (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
                 (x.CreatedBy ?? string.Empty).ToLower() == actorKey
             ), ct);
         if (c == null) return null;
@@ -126,18 +146,18 @@ public class CommitmentService : ICommitmentService
         var actorKey = Normalize(actorId);
         if (string.IsNullOrWhiteSpace(actorKey)) return null;
 
-        return await _db.Commitments.AsNoTracking()
+        return await Items.AsNoTracking()
             .FirstOrDefaultAsync(x =>
                 x.Id == id &&
                 (
-                    (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                    _businessId.HasValue || (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
                     (x.CreatedBy ?? string.Empty).ToLower() == actorKey
                 ), ct);
     }
 
     public async Task<IReadOnlyList<Commitment>> GetByEntityAsync(RelatedEntityType entityType, string entityId, CancellationToken ct = default)
     {
-        var list = await _db.Commitments.AsNoTracking()
+        var list = await Items.AsNoTracking()
             .Where(c => c.RelatedEntityType == entityType && c.RelatedEntityId == entityId)
             .OrderBy(c => c.DueDateUtc)
             .ToListAsync(ct);
@@ -152,12 +172,12 @@ public class CommitmentService : ICommitmentService
             return Array.Empty<Commitment>();
         }
 
-        var list = await _db.Commitments.AsNoTracking()
+        var list = await Items.AsNoTracking()
             .Where(c =>
                 c.RelatedEntityType == entityType &&
                 c.RelatedEntityId == entityId &&
                 (
-                    (c.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                    _businessId.HasValue || (c.PromisedById ?? string.Empty).ToLower() == actorKey ||
                     (c.CreatedBy ?? string.Empty).ToLower() == actorKey
                 ))
             .OrderBy(c => c.DueDateUtc)

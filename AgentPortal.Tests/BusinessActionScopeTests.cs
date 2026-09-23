@@ -11,6 +11,30 @@ namespace AgentPortal.Tests;
 public sealed class BusinessActionScopeTests
 {
     [Fact]
+    public async Task SharedCommitmentServiceKeepsPromiseAndLinkedActionInBusinessScope()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = Guid.NewGuid();
+        db.Add(new WorkstationLeadProfile { LeadId = "promised-contact", CommerceBusinessId = business, AgentUserId = "" });
+        await db.SaveChangesAsync();
+        var engine = new ExecutionEngine(db, business);
+        var service = new CommitmentService(db, engine, business);
+        var promise = await service.CreateCommitmentAsync(new CommitmentCreateRequest(
+            RelatedEntityType.BusinessContact, "promised-contact", ActionOwnerType.Business, business.ToString(),
+            ActionOwnerType.Client, "promised-contact", "Send estimate", DateTimeOffset.UtcNow.AddDays(1), "member-a"));
+        Assert.NotNull(promise.LinkedActionId);
+        var action = await engine.GetByIdAsync(promise.LinkedActionId.Value, "member-b");
+        Assert.Equal(ActionOwnerType.Business, action!.OwnerType);
+        Assert.Empty(action.EffectiveAgentOid);
+        Assert.Null(await new CommitmentService(db, new ExecutionEngine(db)).GetByIdForActorAsync(promise.Id, "member-a"));
+        var other = Guid.NewGuid();
+        Assert.Null(await new CommitmentService(db, new ExecutionEngine(db, other), other).FulfillCommitmentAsync(promise.Id, "member-a"));
+        Assert.Equal(CommitmentStatus.Fulfilled, (await service.FulfillCommitmentAsync(promise.Id, "member-b"))!.Status);
+        Assert.Equal(ActionStatus.Completed, (await engine.GetByIdAsync(action.Id, "member-b"))!.Status);
+        Assert.Equal(business.ToString(), promise.PromisedById);
+    }
+
+    [Fact]
     public async Task CanonicalEngineKeepsBusinessTasksOutOfAgentAndOtherBusinessScopes()
     {
         using var db = ControllerTestHelpers.BuildDb();

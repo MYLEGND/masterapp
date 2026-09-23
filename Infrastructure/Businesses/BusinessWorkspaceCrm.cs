@@ -8,6 +8,7 @@ public sealed partial class BusinessWorkspaceService
 {
     // Call only after the controller resolves the actor’s business CRM capability.
     internal AgentPortal.Services.ExecutionEngine BusinessActions(Guid businessId) => new(db, businessId);
+    internal AgentPortal.Services.CommitmentService BusinessCommitments(Guid businessId) => new(db, BusinessActions(businessId), businessId);
 
     // Both values participate: SQL rowversion protects concurrent writes, while
     // UpdatedUtc also makes stale clients detectable on providers without rowversion.

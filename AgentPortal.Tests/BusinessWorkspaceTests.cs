@@ -20,6 +20,33 @@ namespace AgentPortal.Tests;
 public sealed class BusinessWorkspaceTests
 {
     [Fact]
+    public async Task BulkEditsRejectStaleBatchWithoutChangingAnyContact()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "bulk" };
+        var first = new WorkstationLeadProfile { LeadId = "bulk-first", CommerceBusinessId = business.Id, CrmStage = "New" };
+        var second = new WorkstationLeadProfile { LeadId = "bulk-second", CommerceBusinessId = business.Id, CrmStage = "New" };
+        db.AddRange(business, first, second, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var input = new BusinessCrmBulkRequest { ClientUserIds = [first.LeadId, second.LeadId], PipelineStage = "Qualified", CrmPriority = "High" };
+        foreach (var id in input.ClientUserIds)
+        {
+            var payload = System.Text.Json.JsonSerializer.SerializeToElement(await service.QuickViewAsync(business.Id, id, "Lead", default));
+            input.Revisions[id] = payload.GetProperty("revision").GetString()!;
+        }
+        var validRevision = input.Revisions[second.LeadId];
+        input.Revisions[second.LeadId] = "stale";
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => service.BulkUpdateAsync(business.Id, input, "owner", default));
+        Assert.Equal("New", first.CrmStage);
+        Assert.Equal("New", second.CrmStage);
+        input.Revisions[second.LeadId] = validRevision;
+        Assert.NotNull(await service.BulkUpdateAsync(business.Id, input, "owner", default));
+        Assert.Equal("Qualified", first.CrmStage);
+        Assert.Equal("High", ClientCrmMetaSerializer.Deserialize(first.CrmNotes, new BusinessWorkspacePreferences().Stages).CrmPriority);
+    }
+
+    [Fact]
     public async Task BusinessQuickViewPersistsCustomStageAndRejectsStaleOrForeignWrites()
     {
         using var db = ControllerTestHelpers.BuildDb();
