@@ -1,10 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized finishing the audit repair batch and direct deployment to affected apps through legend/approved-changes. Code tests only; no live customer/payment/email/Meta test mutations.",
-  "purpose": "Resume only the unfinished Parfait target from direct-release run 35822956679. Portal, ClientApp and Protect already serve revision a97191e9e5e649fbf77bad7424e24e2b74ae7903; preserve their live packages and run the existing schema and code gates.",
-  "requestId": "founder-launch-audit-parfait-resume-20260923-8",
+  "authorization": "Founder explicitly requested these Editor Scope Improvements changes released and direct deployed through legend/approved-changes. Existing customer/payment flows must be preserved. No live customer email or Meta test mutation.",
+  "purpose": "Release the tested shared editor, business-scoped customizable CRM and analytics, scoped intake recipient delivery and shared marketing connection foundations. Signal mappings remain visibly inactive pending runtime integration.",
+  "requestId": "business-workspace-scoped-direct-release-20260923-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-parfait"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait",
+    "masterapp-website"
   ]
 }
