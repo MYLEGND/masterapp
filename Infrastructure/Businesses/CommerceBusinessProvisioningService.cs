@@ -18,12 +18,15 @@ public interface ICommerceBusinessProvisioningService
         CancellationToken cancellationToken = default, string? actorAgentUserId = null);
     Task UpdateOwnershipAsync(Guid businessId, Guid actorClientProfileId, string entityName,
         IReadOnlyList<BusinessOwnerInput> owners, CancellationToken cancellationToken = default, string? actorAgentUserId = null);
+    Task<BusinessOwnerAccount?> ResolveOwnerAsync(string email, string? actorAgentUserId = null,
+        CancellationToken cancellationToken = default);
     Task<CommerceBusiness> CreateAsync(
         CommerceBusinessProvisioningRequest request,
         CancellationToken cancellationToken = default);
 }
 
 public sealed record BusinessOwnerInput(Guid? ClientProfileId, string Email, decimal Percentage);
+public sealed record BusinessOwnerAccount(Guid ClientProfileId, string Email, string FirstName, string LastName);
 
 public sealed record CommerceBusinessProvisioningRequest(
     string DisplayName,
@@ -114,14 +117,14 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         };
 
         var linkedOwners = request.Owners is { Count: > 0 }
-            ? await ResolveOwnersAsync(request.Owners, cancellationToken) : null;
-        if (linkedOwners != null && !linkedOwners.Any(x => x.Profile.Id == request.OwnerClientProfileId))
+            ? await ResolveOwnersAsync(request.Owners, request.ActorAgentUserId, cancellationToken) : null;
+        var primaryIsOwner = string.Equals(roleKey, "owner", StringComparison.OrdinalIgnoreCase);
+        if (linkedOwners != null && primaryIsOwner &&
+            !linkedOwners.Any(x => x.Profile.Id == request.OwnerClientProfileId))
             throw new InvalidOperationException("The primary personal account must remain a linked owner.");
-        if (linkedOwners != null && !string.IsNullOrWhiteSpace(request.ActorAgentUserId))
-            foreach (var owner in linkedOwners)
-                if (!await _db.AgentOwnsClientAsync(request.ActorAgentUserId, owner.Profile.ClientUserId,
-                        ct: cancellationToken))
-                    throw new InvalidOperationException("Each selected owner must belong to the current agent scope.");
+        if (linkedOwners != null && !primaryIsOwner && request.OwnerClientProfileId.HasValue &&
+            linkedOwners.Any(x => x.Profile.Id == request.OwnerClientProfileId.Value))
+            throw new InvalidOperationException("The business profile account must remain separate from linked personal owners.");
         _db.CommerceBusinesses.Add(business);
         var primaryMember = new CommerceBusinessMember
         {
@@ -139,11 +142,13 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
             CanManageTeam = request.CanManageTeam,
             CreatedUtc = now,
             UpdatedUtc = now,
-            OwnershipPercentage = linkedOwners?.Single(x => x.Profile.Id == request.OwnerClientProfileId).Percentage
+            OwnershipPercentage = primaryIsOwner && linkedOwners != null
+                ? linkedOwners.Single(x => x.Profile.Id == request.OwnerClientProfileId).Percentage
+                : null
         };
         _db.CommerceBusinessMembers.Add(primaryMember);
         if (linkedOwners != null)
-            foreach (var owner in linkedOwners.Where(x => x.Profile.Id != request.OwnerClientProfileId))
+            foreach (var owner in linkedOwners.Where(x => !primaryIsOwner || x.Profile.Id != request.OwnerClientProfileId))
                 _db.CommerceBusinessMembers.Add(OwnerMember(business, owner.Profile, owner.Percentage, now));
 
         var storefront = request.Storefront ??
@@ -190,8 +195,9 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         var business = await _db.CommerceBusinesses.SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive, cancellationToken)
             ?? throw new InvalidOperationException("Business is not available.");
         if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
-            x.ClientProfileId == actorClientProfileId && x.Status == "Active" && x.RoleKey == "owner" && x.CanManageTeam, cancellationToken))
-            throw new UnauthorizedAccessException("Business ownership management is not permitted.");
+            x.ClientProfileId == actorClientProfileId && x.Status == "Active" && x.CanManageTeam &&
+            (x.RoleKey == "owner" || x.RoleKey == "account"), cancellationToken))
+            throw new UnauthorizedAccessException("Business management is not permitted.");
         if (!string.IsNullOrWhiteSpace(actorAgentUserId) &&
             !await Infrastructure.WebsiteEditing.WebsiteBusinessAccess.CanManageAsActorAsync(
                 _db, businessId, actorClientProfileId, actorAgentUserId, cancellationToken: cancellationToken))
@@ -222,18 +228,20 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         var business = await _db.CommerceBusinesses.SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive, cancellationToken)
             ?? throw new InvalidOperationException("Business is not available.");
         var members = await _db.CommerceBusinessMembers.Where(x => x.CommerceBusinessId == businessId).ToListAsync(cancellationToken);
-        if (!members.Any(x => x.ClientProfileId == actorClientProfileId && x.Status == "Active" && x.RoleKey == "owner" && x.CanManageTeam))
+        var actorMember = members.SingleOrDefault(x => x.ClientProfileId == actorClientProfileId && x.Status == "Active" &&
+            x.CanManageTeam && (x.RoleKey == "owner" || x.RoleKey == "account"));
+        if (actorMember is null)
             throw new UnauthorizedAccessException("Business ownership management is not permitted.");
-        var resolved = await ResolveOwnersAsync(owners, cancellationToken);
+        var resolved = await ResolveOwnersAsync(owners, actorAgentUserId, cancellationToken);
         foreach (var owner in resolved)
         {
             if (members.Any(m => m.ClientProfileId == owner.Profile.Id && m.RoleKey != "owner"))
                 throw new InvalidOperationException("An existing non-owner membership must be reconciled before changing its role.");
-            if (!string.IsNullOrWhiteSpace(actorAgentUserId) && !await _db.AgentOwnsClientAsync(actorAgentUserId, owner.Profile.ClientUserId, ct: cancellationToken))
-                throw new UnauthorizedAccessException("The selected owner is outside the agent's client scope.");
         }
-        if (!resolved.Any(x => x.Profile.Id == actorClientProfileId))
+        if (actorMember.RoleKey == "owner" && !resolved.Any(x => x.Profile.Id == actorClientProfileId))
             throw new InvalidOperationException("Keep your personal account linked while updating ownership.");
+        if (actorMember.RoleKey == "account" && resolved.Any(x => x.Profile.Id == actorClientProfileId))
+            throw new InvalidOperationException("The business profile account must remain separate from linked personal owners.");
         var history = string.IsNullOrWhiteSpace(business.OwnershipHistoryJson)
             ? new List<JsonElement>() : JsonSerializer.Deserialize<List<JsonElement>>(business.OwnershipHistoryJson)!;
         history.Add(JsonSerializer.SerializeToElement(new
@@ -265,25 +273,60 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<List<(ClientProfile Profile, decimal Percentage)>> ResolveOwnersAsync(
-        IReadOnlyList<BusinessOwnerInput> owners, CancellationToken ct)
+    public async Task<BusinessOwnerAccount?> ResolveOwnerAsync(string email, string? actorAgentUserId = null,
+        CancellationToken cancellationToken = default)
     {
-        if (owners.Count == 0 || owners.Count > 20 || owners.Any(x => x.Percentage <= 0 || x.Percentage > 100 || decimal.Round(x.Percentage, 2) != x.Percentage) || owners.Sum(x => x.Percentage) != 100)
+        ClientProfile? profile;
+        try
+        {
+            profile = await ResolveOwnerProfileAsync(email, null, actorAgentUserId, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        return profile is null
+            ? null
+            : new BusinessOwnerAccount(profile.Id, profile.Email.Trim(), profile.FirstName ?? string.Empty, profile.LastName ?? string.Empty);
+    }
+
+    private async Task<List<(ClientProfile Profile, decimal Percentage)>> ResolveOwnersAsync(
+        IReadOnlyList<BusinessOwnerInput> owners, string? actorAgentUserId, CancellationToken ct)
+    {
+        if (owners.Count == 0 || owners.Count > 20 ||
+            owners.Any(x => x.Percentage <= 0 || x.Percentage > 100 || decimal.Round(x.Percentage, 2) != x.Percentage) ||
+            owners.Sum(x => x.Percentage) != 100)
             throw new InvalidOperationException("Owner shares must be greater than zero and total exactly 100%.");
+
         var result = new List<(ClientProfile Profile, decimal Percentage)>();
         foreach (var owner in owners)
         {
-            var email = Email(owner.Email);
-            var candidates = await _db.ClientProfiles.Where(x => x.Email.ToLower() == email &&
-                (!owner.ClientProfileId.HasValue || x.Id == owner.ClientProfileId.Value)).Take(2).ToListAsync(ct);
-            if (candidates.Count != 1 || string.IsNullOrWhiteSpace(candidates[0].ClientUserId) ||
-                ClientRecordClassification.Resolve(candidates[0].ClientUserId, candidates[0].CrmNotes) == ClientRecordClassification.Lead)
-                throw new InvalidOperationException("Each owner must identify one existing personal client account with matching ID and email.");
-            if (result.Any(x => x.Profile.Id == candidates[0].Id))
+            var profile = await ResolveOwnerProfileAsync(owner.Email, owner.ClientProfileId, actorAgentUserId, ct)
+                ?? throw new InvalidOperationException("Each owner must identify one existing personal client account with matching ID and email.");
+            if (result.Any(x => x.Profile.Id == profile.Id))
                 throw new InvalidOperationException("A personal account cannot be listed twice.");
-            result.Add((candidates[0], owner.Percentage));
+            result.Add((profile, owner.Percentage));
         }
         return result;
+    }
+
+    private async Task<ClientProfile?> ResolveOwnerProfileAsync(
+        string email, Guid? clientProfileId, string? actorAgentUserId, CancellationToken ct)
+    {
+        var normalizedEmail = Email(email);
+        var candidates = await _db.ClientProfiles.Where(x => x.Email.ToLower() == normalizedEmail &&
+            (!clientProfileId.HasValue || x.Id == clientProfileId.Value)).Take(2).ToListAsync(ct);
+        if (candidates.Count != 1 || string.IsNullOrWhiteSpace(candidates[0].ClientUserId) ||
+            ClientRecordClassification.Resolve(candidates[0].ClientUserId, candidates[0].CrmNotes) == ClientRecordClassification.Lead)
+            return null;
+
+        var profile = candidates[0];
+        if (!string.IsNullOrWhiteSpace(actorAgentUserId) &&
+            !await _db.AgentOwnsClientAsync(actorAgentUserId, profile.ClientUserId, ct: ct))
+            return null;
+
+        return profile;
     }
 
     private static CommerceBusinessMember OwnerMember(CommerceBusiness business, ClientProfile profile, decimal percentage, DateTime now) => new()
