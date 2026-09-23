@@ -6,6 +6,7 @@ public sealed class WebsiteContentState
     public string OwnerKey { get; set; } = "";
     public string SiteKey { get; set; } = "";
     public string DraftJson { get; set; } = "{}";
+    public string NamedDraftsJson { get; set; } = "[]";
     public string? ImportReportJson { get; set; }
     public long Revision { get; set; }
     public Guid? PublishedVersionId { get; set; }

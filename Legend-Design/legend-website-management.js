@@ -46,6 +46,23 @@
     const confirmAction = (title, description, action) => {
       section(title); panel.append(el('p', description), button(title, () => run(action), true));
     };
+    const drafts = () => {
+      section('Saved drafts');
+      panel.append(el('p', 'Named variations are saved from the website editor. Loading a variation replaces your working draft; publishing is a separate action.'));
+      if (!state.drafts?.length) panel.append(el('p', 'No named drafts yet. In the editor, choose Save draft and enter a name.'));
+      for (const draft of state.drafts || []) {
+        const row = el('div', null, { class: 'wm-row' });
+        row.append(el('span', `${draft.name} · ${new Date(draft.updatedUtc).toLocaleString()}`));
+        row.append(button('Load for editing', () => confirmAction('Load draft', `Replace the working draft with “${draft.name}”? Save your current changes as a named draft first if you want to keep them.`, async () => {
+          await request('/drafts/load', { draftId: draft.id }); await reload();
+          section('Draft loaded'); panel.append(el('a', 'Edit this draft', { href: trigger.dataset.edit, class: 'wm-primary' }));
+        })));
+        row.append(button('Delete', () => confirmAction('Delete draft', `Delete “${draft.name}”? The current working draft and published website will stay as they are.`, async () => {
+          await request('/drafts/delete', { draftId: draft.id }); await reload(); drafts(); status.textContent = 'Draft deleted.';
+        })));
+        panel.append(row);
+      }
+    };
     const history = () => {
       section('Version history');
       if (!state.history?.length) panel.append(el('p', 'Your first publication will appear here.'));
@@ -255,6 +272,7 @@
       links.append(el('a', 'Open editor', { href: editorHref, class: 'wm-primary' }), el('a', 'View website ↗', { href: trigger.dataset.live, target: '_blank', rel: 'noopener' })); panel.append(links);
       const grid = el('div', null, { class: 'wm-grid' });
       const tile = (name, caption, action) => { const node = button(name, action); node.append(el('small', caption)); grid.append(node); };
+      tile('Saved drafts', 'Choose, edit, or delete named website variations', drafts);
       if (state.capabilities?.canPublish === true) tile('Publish draft', 'Review and make your saved draft live', () => confirmAction('Publish draft', 'Publish the complete saved draft as a new website version.', async () => { await request('/publish', {}); await reload(); overview(); status.textContent = 'Your website is published.'; }));
       if (state.capabilities?.canSchedule === true) tile('Schedule publication', 'Choose when the saved draft goes live', schedule);
       tile('Version history', 'Review publications and restore a version', history);

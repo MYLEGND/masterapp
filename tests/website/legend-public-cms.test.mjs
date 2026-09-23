@@ -26,6 +26,9 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(x => x !== this); }
     get firstChild() { return this.children[0]; }
     setAttribute(key, value) { this.attributes[key] = value; }
+    showModal() {}
+    focus() {}
+    close() { this.listeners.get('close')?.(); }
     setCustomValidity(value) { this.validationMessage = value; }
     async input(value) { this.value = value; await this.listeners.get('input')?.({ target: this }); }
     addEventListener(name, handler) { this.listeners.set(name, handler); }
@@ -99,6 +102,8 @@ test('Protect empty API base initializes the ticketed editor and saves to the sa
   assert.equal(f.heading.textContent, 'Editor content');
   assert.ok(f.ids.has('legend-cms-save'));
   await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
   const saved = f.calls[1];
   assert.equal(saved.url.href, 'https://protect.example.test/api/website-content/manage');
   assert.equal(saved.init.method, 'POST');
@@ -114,6 +119,8 @@ test('LEGEND explicit cross-origin API base remains the public, editor, and save
     origin: 'https://www.example.test', search: '?legendEdit=fixture-ticket' });
   await f.ready();
   await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
   assert.equal(f.calls.length, 2);
   assert.ok(f.calls.every(call => call.url.origin === 'https://portal.example.test'));
   assert.equal(f.calls[0].url.pathname, '/api/website-content/manage');
@@ -159,6 +166,8 @@ for (const siteKey of ['legend', 'protect']) {
     assert.equal(f.ids.get('legend-cms-text-group').hidden, false);
     await f.ids.get('legend-cms-text').input('An edited heading');
     await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
     const override = JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'];
     assert.equal(override.text, 'An edited heading');
     assert.deepEqual(override.style, {});
@@ -184,6 +193,8 @@ test('scale is relative to original responsive typography and never accumulates'
   await f.ids.get('legend-cms-scale').input('');
   assert.equal(f.heading.style.fontSize, '');
   await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
   assert.equal(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style.fontScale, undefined);
 });
 
@@ -195,6 +206,8 @@ test('adjustments above former caps round-trip without changing unrelated fields
   await f.ids.get('legend-cms-padding-top').input('500.5');
   await f.ids.get('legend-cms-padding-bottom').input('800');
   await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
   assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style,
     { fontScale: 12.75, widthPercent: 250.25, paddingTop: 500.5, paddingBottom: 800 });
   assert.equal(f.heading.style.width, '250.25%');
@@ -208,6 +221,8 @@ test('invalid numeric edits never replace a valid stored adjustment', async () =
   for (const bad of ['-2', '0', 'Infinity', 'NaN']) await f.ids.get('legend-cms-scale').input(bad);
   await f.ids.get('legend-cms-padding-top').input('-1');
   await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
   assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style, { fontScale: 3 });
   assert.equal(f.heading.style.fontSize, '192px');
 });
@@ -230,6 +245,8 @@ test('reset restores original content and persists removal without discarding un
   assert.equal(f.heading.textContent, 'Default content');
   assert.equal(f.heading.style.fontSize, '');
   await f.ids.get('legend-cms-save').click();
+  f.ids.get('legend-cms-draft-name').value = 'Test variation';
+  await f.ids.get('legend-cms-draft-submit').click();
   assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements, {});
 });
 
@@ -257,10 +274,11 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[]}={}) {
   const dom = new JSDOM('<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>', {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
-  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || ''};
+  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
+  w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
   w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc})}; };
   w.eval(source);
@@ -268,7 +286,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   await new Promise(resolve=>setTimeout(resolve,0));
   const click=selector=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
-  const save=async()=>{click('#legend-cms-save');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
+  const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,click,input,save,close:()=>w.close()};
 }
 for(const siteKey of ['legend','protect']) {
@@ -328,8 +346,25 @@ test('editing current page preserves independent page content',async()=>{
 test('undo and redo restore content and leave other page drafts intact',async()=>{
  const f=await domFixture();try{f.click('main h1');f.input('#legend-cms-text','First edit');f.input('#legend-cms-text','Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
 });
-test('drag drop snaps across sections and retains the same persisted placement as keyboard controls',async()=>{
- const f=await domFixture();try{const heading=f.w.document.querySelector('main h1'),section=f.w.document.querySelectorAll('main section')[1];f.click('main h1');section.getBoundingClientRect=()=>({left:0,width:1200});const start=new f.w.Event('dragstart',{bubbles:true,cancelable:true});Object.defineProperty(start,'dataTransfer',{value:{setData(){}}});heading.dispatchEvent(start);const drop=new f.w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'clientX',{value:450});section.dispatchEvent(drop);assert.equal(heading.closest('[data-cms-section]'),section);assert.equal(heading.style.getPropertyValue('--cms-column'),'5');const doc=await f.save();assert.equal(Object.values(doc.pages['/'].elements).find(x=>x.placement)?.placement.column,5);}finally{f.close();}
+test('drag drop preserves the destination flow and reloads in the same location',async()=>{
+ const f=await domFixture();let saved;try {
+  const heading=f.w.document.querySelector('main h1'), target=f.w.document.querySelector('main h2');
+  f.click('main h1'); target.getBoundingClientRect=()=>({top:100,height:40});
+  let dragged;const transfer={setData(_type,value){dragged=value;},getData(){return dragged;}};
+  const start=new f.w.Event('dragstart',{bubbles:true,cancelable:true});Object.defineProperty(start,'dataTransfer',{value:transfer});heading.dispatchEvent(start);
+  const drop=new f.w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperties(drop,{dataTransfer:{value:transfer},clientY:{value:101}});target.dispatchEvent(drop);
+  assert.equal(heading.nextElementSibling,target);assert.equal(heading.parentElement,target.parentElement);
+  assert.equal(f.w.document.querySelector('.cms-layout-frame'),null); saved=await f.save();
+ }finally{f.close();}
+ const loaded=await domFixture({doc:saved,search:''});try{assert.equal(loaded.w.document.querySelector('main h1').nextElementSibling,loaded.w.document.querySelector('main h2'));}finally{loaded.close();}
+});
+test('solid section color replaces template gradient and reset restores the original',async()=>{
+ const f=await domFixture();try {
+  const section=f.w.document.querySelector('main section');section.style.backgroundImage='linear-gradient(black, blue)';
+  f.click('main h1');f.click('#legend-cms-container');f.input('[data-style-key="backgroundColor"]','#000000');
+  assert.equal(section.style.backgroundColor,'rgb(0, 0, 0)');assert.equal(section.style.backgroundImage,'none');
+  const saved=await f.save();const loaded=await domFixture({doc:saved,search:''});try{assert.equal(loaded.w.document.querySelector('main section').style.backgroundImage,'none');}finally{loaded.close();}
+ }finally{f.close();}
 });
 test('managed media tickets are render-only and never leak into saved or external media URLs',async()=>{
  const media='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
@@ -437,4 +472,22 @@ test('link editing rejects editor credentials and insecure absolute URLs before 
     assert.ok(Object.values(saved.pages['/'].elements).some(value => value.href === '/contact'));
     assert.equal(JSON.stringify(saved).includes('secret'), false);
   } finally { f.close(); }
+});
+
+for (const siteKey of ['legend', 'protect', 'business']) {
+ test(`${siteKey}: page selector uses supplied catalog, including pages absent from navigation`, async () => {
+  const business=siteKey==='business'?{id:'business-test',displayName:'Business'}:null;
+  const f=await domFixture({siteKey,business,pages:[{path:'/',label:'Home'},{path:'/unlinked-page',label:'Unlinked page'}]});
+  try { const options=[...f.w.document.querySelector('#legend-cms-page-select').options];assert.ok(options.some(o=>o.value==='/unlinked-page'&&o.textContent==='Unlinked page'));assert.ok(!options.some(o=>o.value==='/contact')); }
+  finally {f.close();}
+ });
+}
+test('business selector includes imported custom routes from only the authorized draft',async()=>{
+ const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc:{pages:{'/special-offer':{title:'Special offer',elements:{},extras:[]}}}});
+ try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
+});
+
+test('site palette does not retain the template blue gradient stop',async()=>{
+ const f=await domFixture({doc:{theme:{navy:'#000000',navyDeep:'#000000'}}});
+ try {assert.equal(f.w.document.documentElement.style.getPropertyValue('--web-navy-royal'),'#000000');}finally{f.close();}
 });
