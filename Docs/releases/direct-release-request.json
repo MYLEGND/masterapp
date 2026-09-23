@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder instructed queue this package after release 82 and explicitly wants all release 82 changes released. Release 82 failed before migration and before every app deployment.",
-  "purpose": "Release all unreleased #82 business workspace/editor changes plus entity names, styled business forms, shared full-width analytics, and isolated shared marketing key configuration correcting the #82 predeployment failure.",
-  "requestId": "business-identity-forms-shared-analytics-20260923-pr138",
+  "authorization": "Founder explicitly instructed all approved changes and completed fixes to be published through legend/approved-changes.",
+  "purpose": "Publish completed shared editor exact colors, stable flow placement, dynamic scoped page selection, named draft management, and evidence-based Meta health. Incomplete business CRM action integration remains in draft PR 139.",
+  "requestId": "shared-editor-drafts-pages-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
