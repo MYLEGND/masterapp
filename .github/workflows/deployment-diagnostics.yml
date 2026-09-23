@@ -1,0 +1,32 @@
+name: LEGEND deployment diagnostics
+on:
+  push:
+    branches: [legend/approved-changes]
+    paths: ['.github/workflows/deployment-diagnostics.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: Production
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Read deployment state without restarting or deploying
+        shell: bash
+        run: |
+          set -euo pipefail
+          resource="$(az webapp show -g masterapp-rg -n masterapp-portal --query id -o tsv)"
+          az webapp show -g masterapp-rg -n masterapp-portal --query '{state:state,availabilityState:availabilityState,lastModifiedTimeUtc:lastModifiedTimeUtc}' -o json
+          timeout 90 az rest --method get --url "https://management.azure.com$resource/deployments?api-version=2024-11-01" --query 'value[].{name:name,status:properties.status,message:properties.message,start:properties.startTime,end:properties.endTime,active:properties.active}' -o json || true
+          timeout 90 az webapp log deployment list -g masterapp-rg -n masterapp-portal --query '[0:3].{id:id,status:status,status_text:status_text,active:active,start_time:start_time,end_time:end_time,complete:complete}' -o json || true
+          for host in portal.mylegnd.com masterapp-portal.azurewebsites.net; do
+            echo "Runtime receipt: $host"
+            curl -sS --max-time 25 -w '\nHTTP %{http_code}\n' "https://$host/api/runtime-provenance" || true
+          done
