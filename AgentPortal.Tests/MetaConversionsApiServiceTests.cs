@@ -13,6 +13,33 @@ namespace AgentPortal.Tests;
 
 public class MetaConversionsApiServiceTests
 {
+    [Theory]
+    [InlineData("business", null, null)]
+    [InlineData("business", "business-pixel", null)]
+    [InlineData("business", null, "business-token")]
+    [InlineData("agent", null, null)]
+    [InlineData("agent", "agent-pixel", null)]
+    public async Task TenantEventsNeverUseConfiguredAgencyCredentials(string owner, string? pixel, string? token)
+    {
+        var handler = new RecordingHttpMessageHandler();
+        var authority = new Mock<IMetaSendAuthority>();
+        authority.Setup(x => x.TrySendAsync(It.IsAny<MetaSendAuthorityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetaSendAuthorityDecision(true, "Lead", null,
+                MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService, "key", "reservation", "allowed", null));
+        var service = new MetaConversionsApiService(new HttpClient(handler),
+            Options.Create(new MetaOptions { PixelId = "agency-pixel", AccessToken = "agency-token" }),
+            authority.Object, NullLogger<MetaConversionsApiService>.Instance);
+        var result = await service.SendEventAsync(new MetaConversionsApiEventRequest
+        {
+            EventName = "Lead", EventId = "scoped", PixelOwnerType = owner,
+            PixelId = pixel, AccessToken = token,
+            AuthoritySource = MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService
+        });
+        Assert.False(result.Attempted);
+        Assert.False(result.Sent);
+        Assert.Equal(0, handler.SendCount);
+    }
+
     [Fact]
     public async Task SendEventAsync_BlocksServerTruthFromNonDispatcherSource()
     {

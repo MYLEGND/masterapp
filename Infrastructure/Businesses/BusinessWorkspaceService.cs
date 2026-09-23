@@ -97,7 +97,7 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         model.CanonicalContacts = rows.Select(x => ProjectCanonical(x, model.Preferences)).ToList();
         if (!string.IsNullOrEmpty(contactId))
         {
-            var contact = await Contacts(business.Id).AsNoTracking().SingleOrDefaultAsync(x => x.LeadId == contactId, ct);
+            var contact = await Contacts(business.Id).AsNoTracking().SingleOrDefaultAsync(x => x.LeadId == contactId && x.CrmStatus == kind, ct);
             if (contact is not null)
             {
                 model.Selected = Project(contact, model.Preferences);

@@ -10,6 +10,7 @@ namespace ProtectWebsite.Services.Meta;
 
 public interface IMetaPixelResolutionService
 {
+    Task<ResolvedMetaPixelContext> ResolveForBusinessAsync(Guid businessId, CancellationToken cancellationToken = default);
     Task<ResolvedMetaPixelContext> ResolveForCurrentRequestAsync(HttpContext? httpContext, CancellationToken cancellationToken = default);
     Task<ResolvedMetaPixelContext> ResolveForLeadAsync(Guid? agentTrackingProfileId, string? agentSlug, bool isFounderPath, CancellationToken cancellationToken = default);
 }
@@ -18,6 +19,7 @@ public static class MetaPixelOwnerTypes
 {
     public const string Agency = "agency";
     public const string Agent = "agent";
+    public const string Business = "business";
     public const string None = "none";
 }
 
@@ -109,6 +111,22 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         var resolved = await ResolveInternalAsync(trackingProfile, trackingSlug, isFounderPath, cancellationToken);
         httpContext.Items[RequestCacheKey] = resolved;
         return resolved;
+    }
+
+    public async Task<ResolvedMetaPixelContext> ResolveForBusinessAsync(Guid businessId, CancellationToken cancellationToken = default)
+    {
+        // A missing or disconnected business connection never inherits another owner's credentials.
+        if (businessId == Guid.Empty || !await _db.CommerceBusinesses.AsNoTracking()
+            .AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", cancellationToken)) return new() { PixelOwnerType = MetaPixelOwnerTypes.Business };
+        var owner = MarketingOwnerScope.Business(businessId);
+        var connection = await _connections.GetStatusAsync(owner, cancellationToken);
+        if (connection is null || connection.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(connection.PixelId)) return new() { PixelOwnerType = MetaPixelOwnerTypes.Business };
+        return new ResolvedMetaPixelContext
+        {
+            PixelId = connection.PixelId, PixelOwnerType = MetaPixelOwnerTypes.Business,
+            AccessToken = await _connections.GetCapiTokenAsync(owner, cancellationToken),
+            TestEventCode = connection.TestEventCode
+        };
     }
 
     public async Task<ResolvedMetaPixelContext> ResolveForLeadAsync(Guid? agentTrackingProfileId, string? agentSlug, bool isFounderPath, CancellationToken cancellationToken = default)

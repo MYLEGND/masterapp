@@ -20,9 +20,12 @@ namespace AgentPortal.Tests;
 
 public class MetaSignalOutcomeDispatcherHostedServiceTests
 {
-    [Fact]
-    public async Task DispatchBatchAsync_SendsOnlyDispatchEligibleServerAuthorityRows()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DispatchBatchAsync_SendsOnlyDispatchEligibleServerAuthorityRows(bool businessScope)
     {
+        var businessId = businessScope ? Guid.NewGuid() : (Guid?)null;
         var databaseName = Guid.NewGuid().ToString();
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
         var pixelResolution = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
@@ -42,14 +45,15 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 Status = "sent"
             });
 
-        pixelResolution
-            .Setup(x => x.ResolveForLeadAsync(null, null, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedMetaPixelContext
-            {
-                PixelId = "pixel-123",
-                PixelOwnerType = MetaPixelOwnerTypes.Agency,
-                AccessToken = "token-123"
-            });
+        var resolvedPixel = new ResolvedMetaPixelContext
+        {
+            PixelId = "pixel-123", AccessToken = "token-123",
+            PixelOwnerType = businessScope ? MetaPixelOwnerTypes.Business : MetaPixelOwnerTypes.Agency
+        };
+        if (businessScope)
+            pixelResolution.Setup(x => x.ResolveForBusinessAsync(businessId!.Value, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
+        else
+            pixelResolution.Setup(x => x.ResolveForLeadAsync(null, null, false, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedPixel);
 
         await using var provider = new ServiceCollection()
             .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(databaseName))
@@ -65,6 +69,7 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
                 Id = 1,
                 CreatedUtc = DateTime.UtcNow,
                 EventId = "eligible-row",
+                CommerceBusinessId = businessId,
                 EventName = "Lead",
                 EventCategory = "conversion",
                 SessionId = "session-1",
@@ -145,6 +150,35 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
 
         capi.VerifyAll();
         pixelResolution.VerifyAll();
+    }
+
+    [Fact]
+    public async Task DispatchBatchRejectsMixedBusinessAndAgentOwnersBeforeResolvingOrSending()
+    {
+        var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
+        var pixel = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
+        var database = Guid.NewGuid().ToString();
+        await using var scopedProvider = new ServiceCollection()
+            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
+            .AddSingleton(capi.Object).AddSingleton(pixel.Object).BuildServiceProvider();
+        await using (var scope = scopedProvider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            db.MetaSignalEvents.Add(new MetaSignalEvent { EventId = "conflicting-owner", EventName = "Lead",
+                CommerceBusinessId = Guid.NewGuid(), AgentTrackingProfileId = Guid.NewGuid(),
+                TrafficType = "PaidAds", MetadataJson = BuildBridgeOwnedServerMetadata(true) });
+            await db.SaveChangesAsync();
+        }
+        var dispatcher = new MetaSignalOutcomeDispatcherHostedService(scopedProvider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new MetaSignalIntelligenceOptions { Enabled = true, SendServerEvents = true }),
+            NullLogger<MetaSignalOutcomeDispatcherHostedService>.Instance);
+        await InvokeDispatchBatchAsync(dispatcher);
+        await using var verification = scopedProvider.CreateAsyncScope();
+        var row = await verification.ServiceProvider.GetRequiredService<MasterAppDbContext>().MetaSignalEvents.SingleAsync();
+        Assert.False(row.MetaServerSent);
+        Assert.Equal("skipped_owner_conflict", MetaSignalSingleTruthPolicy.ReadString(row.MetadataJson, "metaServerStatus"));
+        pixel.VerifyNoOtherCalls();
+        capi.VerifyNoOtherCalls();
     }
 
     [Fact]

@@ -17,9 +17,31 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
 {
     protected abstract Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct);
 
+    [HttpGet("clients")]
+    [HttpGet("clients/{contactId}")]
+    public Task<IActionResult> Clients(Guid businessId, string? contactId, string? search = null, int page = 1,
+        CancellationToken cancellationToken = default) =>
+        RenderCrmAsync(businessId, contactId, "Client", search, page, cancellationToken);
+
+    [HttpGet("leads")]
+    [HttpGet("leads/{contactId}")]
+    public Task<IActionResult> Leads(Guid businessId, string? contactId, string? search = null, int page = 1,
+        CancellationToken cancellationToken = default) =>
+        RenderCrmAsync(businessId, contactId, "Lead", search, page, cancellationToken);
+
+    // Preserve existing bookmarks without maintaining a third CRM page.
     [HttpGet("crm")]
     [HttpGet("crm/{contactId}")]
-    public async Task<IActionResult> Crm(Guid businessId, string? contactId, string kind = "Lead", string? search = null, int page = 1, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Crm(Guid businessId, string? contactId, string kind = "Lead", string? search = null,
+        int page = 1, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
+        return RedirectToAction(kind == "Client" ? nameof(Clients) : nameof(Leads),
+            new { businessId, contactId, search, page });
+    }
+
+    private async Task<IActionResult> RenderCrmAsync(Guid businessId, string? contactId, string kind, string? search,
+        int page, CancellationToken cancellationToken)
     {
         var business = await ResolveBusinessAsync(businessId, "crm", cancellationToken);
         if (business is null) return Forbid();
@@ -42,7 +64,7 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
         try { if (!await workspace.UpdateAsync(businessId, contactId, input, User.GetCanonicalUserId(), cancellationToken)) return NotFound(); }
         catch (DbUpdateConcurrencyException) { return Conflict("This contact changed in another session. Reload before saving."); }
         catch (ArgumentException ex) { return BadRequest(ex.Message); }
-        return RedirectToAction(nameof(Crm), new { businessId, contactId, kind = input.Kind });
+        return RedirectToAction(input.Kind == "Client" ? nameof(Clients) : nameof(Leads), new { businessId, contactId });
     }
 
     [HttpGet("analytics")]

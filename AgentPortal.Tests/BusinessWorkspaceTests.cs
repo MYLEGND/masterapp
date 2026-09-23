@@ -20,6 +20,40 @@ namespace AgentPortal.Tests;
 public sealed class BusinessWorkspaceTests
 {
     [Fact]
+    public async Task SeparatePagesUseCanonicalViewsAndRejectOtherBusinessAndRelationshipContacts()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "scoped", DisplayName = "Scoped business" };
+        var other = new CommerceBusiness { Key = "other" };
+        db.AddRange(business, other, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id },
+            new WorkstationLeadProfile { LeadId = "lead", CommerceBusinessId = business.Id, AgentUserId = "", CrmStatus = "Lead" },
+            new WorkstationLeadProfile { LeadId = "client", CommerceBusinessId = business.Id, AgentUserId = "", CrmStatus = "Client" },
+            new WorkstationLeadProfile { LeadId = "foreign", CommerceBusinessId = other.Id, AgentUserId = "", CrmStatus = "Client" });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var controller = new PageController(service, business);
+        var clients = Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await controller.Clients(business.Id, null));
+        Assert.Equal("~/Views/Clients/Index.cshtml", clients.ViewName);
+        Assert.Equal("client", Assert.Single(Assert.IsType<System.Collections.Generic.List<AgentPortal.Models.ClientListItemViewModel>>(clients.Model)).ClientUserId);
+        var leads = Assert.IsType<Microsoft.AspNetCore.Mvc.ViewResult>(await controller.Leads(business.Id, null));
+        Assert.Equal("~/Views/Leads/Index.cshtml", leads.ViewName);
+        Assert.Equal("lead", Assert.Single(Assert.IsType<System.Collections.Generic.List<AgentPortal.Models.ClientListItemViewModel>>(leads.Model)).ClientUserId);
+        Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await controller.Clients(business.Id, "foreign"));
+        Assert.IsType<Microsoft.AspNetCore.Mvc.NotFoundResult>(await controller.Clients(business.Id, "lead"));
+        Assert.IsType<Microsoft.AspNetCore.Mvc.ForbidResult>(await controller.Leads(other.Id, null));
+        var legacy = Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToActionResult>(await controller.Crm(business.Id, null, "Client"));
+        Assert.Equal(nameof(BusinessWorkspaceControllerBase.Clients), legacy.ActionName);
+        Assert.Equal(business.Id, legacy.RouteValues!["businessId"]);
+    }
+
+    private sealed class PageController(BusinessWorkspaceService service, CommerceBusiness business)
+        : BusinessWorkspaceControllerBase(service)
+    {
+        protected override Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct) =>
+            Task.FromResult<CommerceBusiness?>(id == business.Id ? business : null);
+    }
+
+    [Fact]
     public async Task CanonicalAnalyticsAdapterAlwaysUsesPermanentBusinessScope()
     {
         using var db = ControllerTestHelpers.BuildDb();

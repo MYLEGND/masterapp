@@ -7,7 +7,7 @@ namespace Shared.Crm;
 public sealed class BusinessWorkspacePreferences
 {
     public string LeadLabel { get; set; } = "Leads";
-    public string ClientLabel { get; set; } = "Customers";
+    public string ClientLabel { get; set; } = "Clients";
     public List<string> Stages { get; set; } = ["New", "Contacted", "Qualified", "Proposal", "Won", "Closed"];
     public List<string> Metrics { get; set; } = ["visitors", "sessions", "leads", "conversion"];
     public Guid? NotificationMemberId { get; set; }
@@ -39,7 +39,7 @@ public sealed class BusinessWorkspaceSettingsInput
 {
     public Guid Revision { get; set; }
     [Required, MaxLength(40)] public string LeadLabel { get; set; } = "Leads";
-    [Required, MaxLength(40)] public string ClientLabel { get; set; } = "Customers";
+    [Required, MaxLength(40)] public string ClientLabel { get; set; } = "Clients";
     [Required, MaxLength(1240)] public string Stages { get; set; } = "New\nContacted\nQualified\nProposal\nWon\nClosed";
     public List<string> Metrics { get; set; } = [];
     [MaxLength(50)] public string? Recipient { get; set; }

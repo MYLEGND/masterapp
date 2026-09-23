@@ -4,8 +4,8 @@
     var root = $"/business/{business.BusinessId}";
     if (business.CanCrm)
     {
-        <a class="explore-item" data-tone="ops" href="@root/crm?kind=Lead"><span>@business.LeadLabel CRM</span><small>@business.BusinessName</small></a>
-        <a class="explore-item" data-tone="ops" href="@root/crm?kind=Client"><span>@business.ClientLabel CRM</span><small>@business.BusinessName</small></a>
+        <a class="explore-item" data-tone="ops" href="@root/leads"><span>@business.LeadLabel CRM</span><small>@business.BusinessName</small></a>
+        <a class="explore-item" data-tone="ops" href="@root/clients"><span>@business.ClientLabel CRM</span><small>@business.BusinessName</small></a>
     }
     if (business.CanAnalytics)
     {

@@ -6,7 +6,7 @@
 
 @{
     var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
-    ViewData["Title"] = "Leads";
+    ViewData["Title"] = businessWorkspace?.Preferences.LeadLabel ?? "Leads";
     var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
     // Personal revenue mirrors Paid (single-status per card enforced in ProductionService)
