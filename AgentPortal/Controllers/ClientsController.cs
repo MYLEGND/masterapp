@@ -1036,6 +1036,9 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(emailNorm))
             return new PortalEmailSyncResult("Portal-enabled clients must have a real email address.", false);
 
+        if (!AccountEmailChange.IsChanged(previousEmail, emailNorm))
+            return new PortalEmailSyncResult(null, false);
+
         try
         {
             await _entraLifecycle.SynchronizeClientIdentityAsync(profile.Id, cancellationToken);

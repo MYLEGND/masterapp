@@ -42,13 +42,10 @@ public class ClientProfileControllerTests
         db.ClientProfiles.Add(client);
         await db.SaveChangesAsync();
 
-        var entra = new Mock<IClientEntraLifecycleService>();
+        var entra = new Mock<IClientEntraLifecycleService>(MockBehavior.Strict);
         entra
             .Setup(service => service.SynchronizeClientIdentityAsync(client.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ClientEntraIdentitySynchronizationResult(
-                "client-oid-1",
-                "zac.client@example.com",
-                false));
+            .ThrowsAsync(new InvalidOperationException("Directory is unavailable."));
         var subscriptionSync = new Mock<IClientSubscriptionIdentitySyncService>();
         subscriptionSync
             .Setup(service => service.SynchronizeAfterEmailChangeAsync(
@@ -93,7 +90,7 @@ public class ClientProfileControllerTests
         Assert.Equal(ClientAccountManagementModes.SelfManaged, updated.AccountManagementMode);
         entra.Verify(
             service => service.SynchronizeClientIdentityAsync(client.Id, It.IsAny<CancellationToken>()),
-            Times.Once);
+            Times.Never);
         subscriptionSync.Verify(
             service => service.SynchronizeAfterEmailChangeAsync(
                 client.Id,
@@ -101,6 +98,50 @@ public class ClientProfileControllerTests
                 "zac.client@example.com",
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Theory]
+    [InlineData("new@example.com", true)]
+    [InlineData(" OLD@EXAMPLE.COM ", false)]
+    public async Task Save_OnlyChangedLoginAddressCallsIdentityAuthority(string requestedEmail, bool changed)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            ClientUserId = "client-email-test",
+            ExternalIdentityObjectId = "client-email-test",
+            FirstName = "Original", LastName = "Client",
+            Email = "old@example.com", NormalizedEmail = "old@example.com",
+            AccountManagementMode = ClientAccountManagementModes.SharedAccount
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+        var originalId = client.Id;
+        var entra = new Mock<IClientEntraLifecycleService>(MockBehavior.Strict);
+        entra.Setup(x => x.SynchronizeClientIdentityAsync(originalId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientEntraIdentitySynchronizationResult(client.ClientUserId, requestedEmail.Trim().ToLowerInvariant(), false));
+        var subscriptions = new Mock<IClientSubscriptionIdentitySyncService>();
+        subscriptions.Setup(x => x.SynchronizeAfterEmailChangeAsync(originalId, "old@example.com",
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientSubscriptionIdentitySyncResult(changed, 0, 0));
+        var controller = BuildController(db, entra.Object, subscriptions.Object, BuildActiveLifecycle(),
+            new DefaultHttpContext { User = ControllerTestHelpers.BuildUser(client.ClientUserId, client.Email) });
+
+        Assert.IsType<ViewResult>(await controller.Save(new EditClientViewModel
+        {
+            ClientUserId = client.ClientUserId, FirstName = "Updated", LastName = "Client",
+            Email = requestedEmail, MaritalStatus = "Single",
+            AccountManagementMode = ClientAccountManagementModes.SharedAccount
+        }));
+
+        Assert.True(controller.ModelState.IsValid);
+        Assert.Equal(originalId, client.Id);
+        Assert.Equal("client-email-test", client.ClientUserId);
+        Assert.Equal("client-email-test", client.ExternalIdentityObjectId);
+        Assert.Equal(requestedEmail.Trim().ToLowerInvariant(), client.NormalizedEmail);
+        Assert.Equal("Updated", client.FirstName);
+        entra.Verify(x => x.SynchronizeClientIdentityAsync(originalId, It.IsAny<CancellationToken>()),
+            changed ? Times.Once() : Times.Never());
     }
 
     [Fact]
