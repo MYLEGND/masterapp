@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized targeted direct release on legend/approved-changes; this is validation-only before publication.",
-  "purpose": "Validate Portal and Client direct candidate with new release gates for owned client workspace routing, subscription raise/lower terms notification, existing billing notification delivery, and current-scope analytics refresh. Preserve approved changes and payment authority.",
-  "requestId": "portal-client-focused-billing-route-gates-20260923-4",
-  "releaseMode": "validate-only",
+  "authorization": "Founder authorized targeted direct release on legend/approved-changes.",
+  "purpose": "Direct release of validated owned client workspace routing, subscription terms change notification through the existing billing outbox, and current-scope Website Analytics refresh. Preserve payment authority and approved changes. Validation run 35808741295 passed on 05ce433de1470cacf97e6e9cc93bdde27b2ef833.",
+  "requestId": "portal-client-focused-direct-release-20260923-5",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client"
