@@ -1,14 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly instructed immediate deployment of the current tested changes through legend/approved-changes and deferred remaining CRM, Meta, and account email replacement work to a later date.",
-  "purpose": "Release the current shared Quick Find and CRM/analytics integration checkpoint, scoped Meta isolation, canonical workspace keys and analytics scope resolution, and unchanged-email profile-save correction. Remaining contract coverage and actual login email replacement are deferred; no claim of complete CRM parity or live Meta delivery.",
-  "requestId": "shared-workspace-checkpoint-20260923",
+  "authorization": "Founder explicitly requested exact replacement of agent-wide business Quick Find links with selected client/business context and direct deployment only to affected apps.",
+  "purpose": "Scope AgentPortal business Quick Find to the currently selected business. Preserve agent and Founder personal navigation and existing ClientApp selected-profile navigation. Remove the client-book enumeration. No CSS or schema changes.",
+  "requestId": "agent-quickfind-selected-business-20260923",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect",
-    "masterapp-parfait",
-    "masterapp-website"
+    "masterapp-portal"
   ]
 }

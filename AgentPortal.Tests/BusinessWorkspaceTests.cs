@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
+using Domain.Enums;
 using Infrastructure.Analytics;
 using Infrastructure.Businesses;
 using Infrastructure.Leads;
@@ -126,6 +127,33 @@ public sealed class BusinessWorkspaceTests
         var board = await service.CrmAsync(business, "Lead", null, 1, null, default);
         Assert.Equal(41, board.Total);
         Assert.Equal(41, board.CanonicalContacts.Count);
+    }
+
+    [Fact]
+    public async Task AgentQuickFindRequiresSelectedBusinessAndNeverEnumeratesOtherClients()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var selected = new CommerceBusiness { Key = "selected-navigation" };
+        var other = new CommerceBusiness { Key = "other-navigation" };
+        var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = "client@example.org",
+            AccountManagementMode = ClientAccountManagementModes.SharedAccount };
+        var actor = "navigation-agent";
+        db.AddRange(selected, other, profile,
+            new AgentClient { AgentUserId = actor, AgentUpn = "agent@example.org", ClientUserId = profile.ClientUserId },
+            new CommerceBusinessMember { CommerceBusinessId = selected.Id, ClientProfileId = profile.Id },
+            new CommerceBusinessMember { CommerceBusinessId = other.Id, ClientProfileId = profile.Id },
+            new CommerceBusinessStorefrontSettings { CommerceBusinessId = selected.Id },
+            new CommerceBusinessStorefrontSettings { CommerceBusinessId = other.Id });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        Assert.Empty(await service.NavigationForBusinessAsync(null, actor, "agent@example.org", default));
+        Assert.Empty(await service.NavigationForBusinessAsync(Guid.Empty, actor, "agent@example.org", default));
+        Assert.Equal(selected.Id, Assert.Single(await service.NavigationForBusinessAsync(selected.Id, actor, "agent@example.org", default)).BusinessId);
+        Assert.Empty(await service.NavigationForBusinessAsync(selected.Id, "unrelated", "stranger@example.org", default));
+        Assert.Equal(2, (await service.NavigationAsync(profile.Id, profile.ClientUserId, profile.Email, default)).Count);
+        profile.AccountManagementMode = ClientAccountManagementModes.SelfManaged;
+        await db.SaveChangesAsync();
+        Assert.Empty(await service.NavigationForBusinessAsync(selected.Id, actor, "agent@example.org", default));
     }
 
     [Fact]

@@ -430,7 +430,10 @@
                         "Edit LEGEND® website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", "https://www.mylegnd.com", "founder"))
                 }
             }
-            @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForActorAsync(User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
+            @if ((ViewData["BusinessWorkspace"] ?? ViewData.Model) is Shared.Crm.BusinessWorkspaceModel selectedBusinessWorkspace)
+            {
+                @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForBusinessAsync(selectedBusinessWorkspace.BusinessId, User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
+            }
             <div class="explore-group-label">Pages</div>
             <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Agent Documents</span>
