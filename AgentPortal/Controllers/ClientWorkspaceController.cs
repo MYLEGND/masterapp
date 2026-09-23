@@ -127,11 +127,9 @@ namespace AgentPortal.Controllers;
         if (client == null)
             return NotFound();
 
-        ViewBag.ClientUserId = clientUserId;
-        ViewBag.ClientName = $"{client.FirstName} {client.LastName}".Trim();
-        ViewBag.ClientRecordType = ResolveRecordType(client);
-
-        return View(client);
+        // ClientApp owns the client-facing workspace. Keep the existing
+        // shared ownership check above, then use its canonical support entry.
+        return await RedirectToClientPortalAsync(client, "/");
     }
 
     [HttpGet]
