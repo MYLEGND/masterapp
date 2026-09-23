@@ -33,6 +33,35 @@ public sealed class WebsiteContentEditorRoundTripTests
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]
     [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task NamedDrafts_CreateUpdateLoadDelete_KeepPublishedContentIsolated(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Elements[ElementId] = new() { Text = "Black variation" };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0, null, "Black")));
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var draft = Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
+        Assert.Null(state.PublishedVersionId);
+        document.Elements[ElementId].Text = "Second variation";
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 1, null, "Second")));
+        Assert.Equal(2, JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!.Count);
+        Assert.IsType<ConflictObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 1, draft.Id)));
+        Assert.IsType<OkObjectResult>(await fixture.Controller.LoadDraft(new(ticket, 2, draft.Id)));
+        Assert.Equal("Black variation", ReadDocument(await fixture.Controller.Manage(ticket)).Elements[ElementId].Text);
+        document.Elements[ElementId].Text = "Updated black";
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 3, draft.Id, "Black")));
+        Assert.IsType<NotFoundResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, Guid.NewGuid())));
+        Assert.IsType<OkObjectResult>(await fixture.Controller.DeleteDraft(new(ticket, 4, draft.Id)));
+        Assert.Single(JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions)!);
+        Assert.Equal("Updated black", ReadDocument(await fixture.Controller.Manage(ticket)).Elements[ElementId].Text);
+        Assert.Null(state.PublishedVersionId);
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
     public async Task RouteKeyedEditorPage_PreservesContentAndMetadataAcrossSaveAndReload(string siteKey)
     {
         using var fixture = new Fixture(siteKey);

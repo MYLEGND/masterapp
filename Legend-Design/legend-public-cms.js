@@ -28,7 +28,7 @@
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -66,7 +66,7 @@
 
   const editableTextTags = new Set(['H1','H2','H3','H4','H5','P','LI','BUTTON','LABEL','SMALL','STRONG','SPAN']);
   const editableInteractiveTags = new Set(['A']);
-  const sectionCandidates = 'main > section, main > .section, main > .page-hero, main > .cta, main > .legal-page-wrap, main > .quote-page, main > .container-narrow, main > .training-page';
+  const sectionCandidates = 'main > section, main > .section, main > .page-hero, main > .cta, main > .legal-page-wrap, main > .quote-page, main > .container-narrow, main > .training-page, .site-header, .site-footer';
 
   function normalizeDocument(input) {
     const pages = {};
@@ -267,6 +267,8 @@
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
     ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
+    // A chosen solid color replaces template gradients in editor and published rendering.
+    if (style.backgroundColor) el.style.backgroundImage = 'none';
     ['fontSize','letterSpacing','paddingLeft','paddingRight','borderRadius'].forEach(key => { if (spacingNumber(style[key])) el.style[key] = `${style[key]}px`; });
     if (positiveNumber(style.lineHeight)) el.style.lineHeight = String(style.lineHeight);
     if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
@@ -345,7 +347,7 @@
       applyElementOverride(el, override);
     });
 
-    const sections = Array.from(document.querySelectorAll('[data-cms-section]'));
+    const sections = Array.from(document.querySelectorAll('[data-cms-section]')).filter(section => !section.matches('.site-header,.site-footer'));
     sections.sort((a,b) => {
       const ai = pageState().sectionOrder[a.dataset.cmsSection] ?? sections.indexOf(a);
       const bi = pageState().sectionOrder[b.dataset.cmsSection] ?? sections.indexOf(b);
@@ -499,7 +501,8 @@
     if (scale) scale.disabled = isImage;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
-    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
+    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
+    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(ov.style?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
@@ -627,7 +630,7 @@
   }
 
   let saving = false;
-  async function save(publish = false) {
+  async function save(publish = false, namedDraft = null) {
     if (saving) return;
     clearTimeout(autoSaveTimer);
     const status = document.getElementById('legend-cms-status');
@@ -640,13 +643,14 @@
       const response = await fetch(`${API_BASE}/api/website-content/${publish ? 'manage/publish' : 'manage'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision })
+        body: JSON.stringify({ ticket: editorTicket, document: JSON.parse(submitted), expectedRevision: revision, ...(namedDraft || {}) })
       });
       if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || error.error || `Save failed (${response.status})`); }
       const payload = await response.json();
       const changedDuringSave = JSON.stringify(documentState) !== submitted;
       if (!changedDuringSave) documentState = normalizeDocument(payload.document || documentState);
       revision = payload.revision ?? revision;
+      namedDrafts = payload.drafts || namedDrafts;
       dirty = changedDuringSave;
       saved = true;
       if (status) status.textContent = changedDuringSave ? 'Draft saved; newer edits remain unsaved' : publish ? 'Published' : 'Draft saved';
@@ -659,9 +663,38 @@
         autoSaveTimer = setTimeout(() => { if (dirty && !saving) void save(false); }, 900);
       }
     }
+    return saved;
   }
 
   let revision = null;
+  let namedDrafts = [];
+  function chooseDraft() {
+    if (saving || document.getElementById('legend-cms-draft-dialog')) return;
+    clearTimeout(autoSaveTimer);
+    const dialog = document.createElement('dialog'); dialog.id = 'legend-cms-draft-dialog'; dialog.className = 'legend-cms-panel legend-cms-editor legend-cms-draft-dialog';
+    const title = document.createElement('h2'); title.textContent = 'Save website draft';
+    const label = document.createElement('label'); label.textContent = 'Save to';
+    const select = document.createElement('select');
+    const fresh = document.createElement('option'); fresh.value = ''; fresh.textContent = 'Create a new draft'; select.appendChild(fresh);
+    namedDrafts.forEach(draft => { const option = document.createElement('option'); option.value = draft.id; option.textContent = draft.name; select.appendChild(option); });
+    label.appendChild(select);
+    const nameLabel = document.createElement('label'); nameLabel.textContent = 'Draft name';
+    const name = document.createElement('input'); name.id = 'legend-cms-draft-name'; name.type = 'text'; name.maxLength = 100; name.required = true; nameLabel.appendChild(name);
+    select.addEventListener('change', () => { name.value = namedDrafts.find(d => d.id === select.value)?.name || ''; });
+    const feedback = document.createElement('p'); feedback.setAttribute('role','status');
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => dialog.close());
+    const submit = document.createElement('button'); submit.id = 'legend-cms-draft-submit'; submit.type = 'button'; submit.textContent = 'Save draft';
+    submit.addEventListener('click', async () => {
+      if (!name.value.trim()) { name.reportValidity(); return; }
+      submit.disabled = true;
+      const saved = await save(false, { draftId: select.value || null, draftName: name.value.trim() });
+      submit.disabled = false;
+      if (saved) dialog.close(); else feedback.textContent = document.getElementById('legend-cms-status')?.textContent || 'Draft could not be saved.';
+    });
+    dialog.appendChild(title); dialog.appendChild(label); dialog.appendChild(nameLabel); dialog.appendChild(feedback); dialog.appendChild(submit); dialog.appendChild(cancel);
+    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) autoSaveTimer = setTimeout(() => save(false), 900); });
+    document.body.appendChild(dialog); dialog.showModal(); name.focus();
+  }
   const undoStack = [], redoStack = [];
   const baselineNodes = new Map();
   function checkpoint() { undoStack.push(JSON.stringify(documentState)); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0; }
@@ -680,6 +713,15 @@
     if (!el || !placement || el.dataset.cmsSection) return;
     const section = document.querySelector(`[data-cms-section="${CSS.escape(placement.sectionId || '')}"]`);
     if (!section || el.contains?.(section)) return;
+    const anchor = placement.beforeId ? document.querySelector(`[data-cms-id="${CSS.escape(placement.beforeId)}"]`) : null;
+    const container = placement.containerId ? document.querySelector(`[data-cms-id="${CSS.escape(placement.containerId)}"]`) : null;
+    // Preserve the actual destination's flow instead of extracting a heading or button
+    // into an unrelated grid at the end of its section.
+    if (placement.flow === true && container && section.contains(container) && !el.contains(container) && !container.closest(lockedSelector)) {
+      container.insertBefore(el, anchor?.parentElement === container && anchor !== el ? anchor : null);
+      el.style.removeProperty('--cms-column'); el.style.removeProperty('--cms-span');
+      return;
+    }
     let frame = Array.from(section.children).find(x => x.classList.contains('cms-layout-frame'));
     if (!frame) { frame = document.createElement('div'); frame.className = 'cms-layout-frame'; section.appendChild(frame); }
     const before = placement.beforeId ? document.querySelector(`[data-cms-id="${CSS.escape(placement.beforeId)}"]`) : null;
@@ -750,6 +792,12 @@
     if (description) description.textContent = document.getElementById('legend-cms-page-description')?.value || 'Add a helpful description of this page.';
   }
 
+  function colorHex(value) {
+    if (/^#[a-f0-9]{6}$/i.test(value || '')) return value;
+    const channels = String(value || '').match(/^rgba?\(\s*(\d+)[, ]+\s*(\d+)[, ]+\s*(\d+)/i);
+    return channels ? '#' + channels.slice(1,4).map(v => Math.min(255,Number(v)).toString(16).padStart(2,'0')).join('') : '#000000';
+  }
+
   function appearanceFields() {
     const choices = { fontFamily: ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial'], fontWeight: ['100','200','300','400','500','600','700','800','900'], objectFit: ['cover','contain','fill','none','scale-down'] };
     return ['color','backgroundColor','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','paddingLeft','paddingRight','borderRadius','objectFit'].map(key => {
@@ -757,7 +805,7 @@
       const control = choices[key]
         ? `<select data-style-key="${key}"><option value="">Default</option>${choices[key].map(value => `<option value="${value}">${value}</option>`).join('')}</select>`
         : `<input data-style-key="${key}" type="${['color','backgroundColor'].includes(key) ? 'color' : 'number'}" step="any">`;
-      return `<label class="legend-cms-group">${label}${control}</label>`;
+      return `<label class="legend-cms-group">${label}${control}${['color','backgroundColor'].includes(key) ? `<input data-color-hex="${key}" type="text" maxlength="7" pattern="#[a-fA-F0-9]{6}" aria-label="${label} hex code" placeholder="#000000"><button type="button" data-color-reset="${key}">Use template color</button>` : ''}</label>`;
     }).join('');
   }
 
@@ -793,7 +841,7 @@
     document.addEventListener('keydown', event => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 's') { event.preventDefault(); void save(false); return; }
+      if (key === 's') { event.preventDefault(); chooseDraft(); return; }
       if (event.target.closest?.('input,textarea,select,[contenteditable="true"]')) return;
       if (key === 'z' || key === 'y') {
         event.preventDefault();
@@ -823,7 +871,7 @@
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Added to your selected section.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Arrange</h2><p>Drag a selected block onto a section. The 12-column guide snaps placement and keeps blocks in the page. On narrow screens blocks stack.</p><button id="legend-cms-drag">Enable drag</button><label class="legend-cms-group">Destination section<select id="legend-cms-destination"></select></label><label class="legend-cms-group">Column<input id="legend-cms-column" type="number" min="1" max="12" value="1"></label><label class="legend-cms-group">Column span<input id="legend-cms-span" type="number" min="1" max="12" value="12"></label><button id="legend-cms-place">Place block</button><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Arrange</h2><p>Drag above or below another block to move it within that layout. Use the column controls to place content in a separate responsive grid.</p><button id="legend-cms-drag">Enable drag</button><label class="legend-cms-group">Destination section<select id="legend-cms-destination"></select></label><label class="legend-cms-group">Column<input id="legend-cms-column" type="number" min="1" max="12" value="1"></label><label class="legend-cms-group">Column span<input id="legend-cms-span" type="number" min="1" max="12" value="12"></label><button id="legend-cms-place">Place block</button><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette and typography system for every page of this website.</p></section>`;
@@ -846,17 +894,47 @@
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
     panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
+      if (!selected) return;
+      if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
+      input.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
+      applyStyle(selected, ov.style); syncEditorControls(); markDirty();
+    }));
+    panel.querySelectorAll('[data-color-reset]').forEach(button => button.addEventListener('click', () => {
+      if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
+      applyStyle(selected, ov.style); syncEditorControls(); markDirty();
+    }));
     ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; applyElementOverride(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
-    function place(sectionId, column, span, beforeId) { if (!selected || selected.dataset.cmsSection) return; checkpoint(); const ov = selectedOverride(); column = Math.max(1, Math.min(12, Math.round(column) || 1)); span = Math.max(1, Math.min(13-column, Math.round(span) || 12)); ov.placement = { sectionId, column, span, beforeId };  applyPlacement(selected, ov.placement); selectedSection = currentSectionFor(selected); markDirty(); }
+    function place(sectionId, column, span, beforeId, containerId, flow = false) { if (!selected || selected.dataset.cmsSection) return; checkpoint(); const ov = selectedOverride(); column = Math.max(1, Math.min(12, Math.round(column) || 1)); span = Math.max(1, Math.min(13-column, Math.round(span) || 12)); ov.placement = { sectionId, column, span, beforeId, containerId, flow };  applyPlacement(selected, ov.placement); selectedSection = currentSectionFor(selected); markDirty(); }
     document.getElementById('legend-cms-place').addEventListener('click', () => place(document.getElementById('legend-cms-destination').value, Number(document.getElementById('legend-cms-column').value), Number(document.getElementById('legend-cms-span').value)));
     document.getElementById('legend-cms-drag').addEventListener('click', () => { if (selected && !selected.dataset.cmsSection) { selected.draggable = true; document.getElementById('legend-cms-status').textContent = 'Drag the selected block onto a section'; } });
-    preview.addEventListener('dragstart', event => { const el = event.target.closest('[data-cms-editable="true"]'); if (!el || el.dataset.cmsSection) { event.preventDefault(); return; } setSelected(el); event.dataTransfer.setData('text/plain', el.dataset.cmsId); preview.classList.add('legend-cms-dragging'); });
+    preview.addEventListener('dragstart', event => { const el = event.target.closest('[data-cms-editable="true"]'); if (!el || el.dataset.cmsSection || el.dataset.cmsSignalOnly || el.closest(lockedSelector)) { event.preventDefault(); return; } setSelected(el); event.dataTransfer.setData('text/plain', el.dataset.cmsId); preview.classList.add('legend-cms-dragging'); });
     preview.addEventListener('dragover', event => { const section = event.target.closest('[data-cms-section]'); if (selected && section && !selected.contains(section)) { event.preventDefault(); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); section.classList.add('legend-cms-drop'); } });
-    preview.addEventListener('drop', event => { event.preventDefault(); const section = event.target.closest('[data-cms-section]'); if (section && selected) { const rect = section.getBoundingClientRect(); const column = Math.max(1, Math.min(12, Math.floor((event.clientX - rect.left) / rect.width * 12) + 1)); const before = event.target.closest('[data-cms-id]'); place(section.dataset.cmsSection, column, Math.min(6, 13-column), before?.dataset.cmsId); } clearDrag(); });
+    preview.addEventListener('drop', event => {
+      event.preventDefault();
+      const section = event.target.closest('[data-cms-section]');
+      const sourceId = event.dataTransfer?.getData('text/plain');
+      if (!section || !selected || sourceId !== selected.dataset.cmsId || selected.contains(section) || selected.dataset.cmsSignalOnly) { clearDrag(); return; }
+      let target = event.target.closest('[data-cms-id]');
+      if (target === selected || selected.contains(target)) { clearDrag(); return; }
+      let container = target?.parentElement;
+      while (container && container !== section && !['DIV','ARTICLE','SECTION','HEADER','FOOTER'].includes(container.tagName)) { target = container; container = container.parentElement; }
+      if (target === section || !container || !section.contains(container)) { container = section; target = null; }
+      if (!container.dataset.cmsId || container.closest(lockedSelector)) { clearDrag(); return; }
+      // The lower half means after the target. Persist the next editable sibling,
+      // not a transient pointer coordinate, so reload and publication agree.
+      let before = target;
+      if (target && event.clientY >= target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2) {
+        before = target.nextElementSibling;
+        while (before && (!before.dataset.cmsId || before === selected)) before = before.nextElementSibling;
+      }
+      place(section.dataset.cmsSection, 1, 12, before?.dataset.cmsId, container.dataset.cmsId, true);
+      clearDrag();
+    });
     function clearDrag() { preview.classList.remove('legend-cms-dragging'); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); }
     preview.addEventListener('dragend', clearDrag);
     showPanel('content');
@@ -883,6 +961,7 @@
       .legend-cms-bar .primary{background:#d4ad45;color:#081a3a}
       .legend-cms-panel{min-width:0;min-height:0;height:100%;overflow:auto;background:#081a3a;color:#f7f6f2;border:1px solid #d4ad45;border-radius:0;padding:20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
+      .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
       .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
@@ -1026,7 +1105,7 @@
       });
     });
 
-    document.getElementById('legend-cms-save')?.addEventListener('click', () => save(false));
+    document.getElementById('legend-cms-save')?.addEventListener('click', chooseDraft);
     document.getElementById('legend-cms-publish')?.addEventListener('click', () => save(true));
     document.getElementById('legend-cms-extra-image')?.addEventListener('change', e => addImage(e.target.files?.[0]));
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
@@ -1052,6 +1131,7 @@
       bindBusiness(payload);
       prepareDom();
       revision = payload.revision;
+      namedDrafts = payload.drafts || [];
       applyDocument(payload.document || {});
       preservePreviewNavigation();
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)

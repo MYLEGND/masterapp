@@ -179,6 +179,6 @@ public static class WebsiteContentSanitizer
         var section = SanitizeId(value.SectionId);
         if (section.Length == 0) return null;
         var column = Math.Clamp(value.Column, 1, 12);
-        return new WebsitePlacement { SectionId = section, BeforeId = SanitizeId(value.BeforeId), Column = column, Span = Math.Clamp(value.Span, 1, 13 - column) };
+        return new WebsitePlacement { SectionId = section, BeforeId = SanitizeId(value.BeforeId), ContainerId = SanitizeId(value.ContainerId), Flow = value.Flow, Column = column, Span = Math.Clamp(value.Span, 1, 13 - column) };
     }
 }
