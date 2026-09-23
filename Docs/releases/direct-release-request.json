@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder explicitly requested the centralized smart CTA routing repair, the immediately preceding shared editor repairs, and direct deployment through legend/approved-changes.",
   "purpose": "Deploy the shared website editor updates to the two affected public website runtimes only: preserve authored whitespace, deterministic container placement, business service duplication/deletion without generic icons, and dynamically wired CTA dropdowns with editable labels and canonical button styling. No unrelated portal, client, database migration, authentication, subscription, or business logic deployment is requested.",
-  "requestId": "shared-website-editor-smart-cta-20260923",
+  "requestId": "shared-website-editor-smart-cta-20260923-retry1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",

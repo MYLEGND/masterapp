@@ -206,7 +206,7 @@ public static class WebsiteCallToActionCatalog
         IReadOnlyList<WebsiteCallToActionOption> options)
     {
         var byKey = options.ToDictionary(option => option.Key, StringComparer.Ordinal);
-        string? Resolve(WebsiteElementOverride element)
+        string? ResolveElement(WebsiteElementOverride element)
         {
             if (string.IsNullOrWhiteSpace(element.ActionKey)) return null;
             if (!byKey.TryGetValue(element.ActionKey, out var option))
@@ -215,7 +215,7 @@ public static class WebsiteCallToActionCatalog
             element.Target = option.OpenInNewTab ? "_blank" : "_self";
             return null;
         }
-        string? Resolve(WebsiteExtraComponent extra)
+        string? ResolveExtra(WebsiteExtraComponent extra)
         {
             if (!string.IsNullOrWhiteSpace(extra.ActionKey))
             {
@@ -233,24 +233,24 @@ public static class WebsiteCallToActionCatalog
 
         foreach (var element in document.Elements.Values)
         {
-            var error = Resolve(element);
+            var error = ResolveElement(element);
             if (error is not null) return error;
         }
         foreach (var extra in document.Extras)
         {
-            var error = Resolve(extra);
+            var error = ResolveExtra(extra);
             if (error is not null) return error;
         }
         foreach (var page in document.Pages.Values)
         {
             foreach (var element in page.Elements.Values)
             {
-                var error = Resolve(element);
+                var error = ResolveElement(element);
                 if (error is not null) return error;
             }
             foreach (var extra in page.Extras)
             {
-                var error = Resolve(extra);
+                var error = ResolveExtra(extra);
                 if (error is not null) return error;
             }
         }
