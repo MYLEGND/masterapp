@@ -29,7 +29,7 @@ public static class WebsiteBusinessAccess
                 member.ClientProfileId == clientProfileId &&
                 member.Status.ToLower() == "active" &&
                 member.CanManageStorefront &&
-                member.RoleKey.ToLower() == "owner",
+                (member.RoleKey.ToLower() == "owner" || member.RoleKey.ToLower() == "account"),
             cancellationToken);
     }
 
