@@ -259,7 +259,7 @@ public class ProfileController : Controller
 
         ViewBag.EditableBusinessIds = await _db.CommerceBusinessMembers.AsNoTracking()
             .Where(member => member.ClientProfileId == context.Profile.Id && member.Status == "Active" &&
-                member.RoleKey == "owner" && member.CanManageTeam)
+                (member.RoleKey == "owner" || member.RoleKey == "account") && member.CanManageTeam)
             .Select(member => member.CommerceBusinessId).ToArrayAsync(HttpContext.RequestAborted);
 
         if (!context.IsAgentView)
@@ -508,7 +508,8 @@ public class ProfileController : Controller
                 LegalName: legalName,
                 BusinessType: "BusinessClient",
                 OwnerEmail: email,
-                OwnerDisplayName: $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
+                OwnerDisplayName: businessName,
+                OwnerRoleKey: "account",
                 CanManageStorefront: true,
                 CanManageCatalog: false,
                 CanManageOrders: false,
@@ -551,12 +552,42 @@ public class ProfileController : Controller
         var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
         if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) is not { } business)
             return Forbid();
-        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId && x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.RoleKey == "owner" && x.CanManageTeam))
+        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
+            x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.CanManageTeam &&
+            (x.RoleKey == "owner" || x.RoleKey == "account")))
             return Forbid();
+
+        var owners = await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.Status == "Active" && x.RoleKey == "owner")
+            .OrderBy(x => x.CreatedUtc)
+            .ToListAsync(HttpContext.RequestAborted);
+        var ownerProfileIds = owners.Where(x => x.ClientProfileId.HasValue).Select(x => x.ClientProfileId!.Value).ToArray();
+
         ViewBag.BusinessId = businessId;
         ViewBag.EntityName = business.DisplayName;
-        return View("BusinessOwners", await _db.CommerceBusinessMembers.AsNoTracking()
-            .Where(x => x.CommerceBusinessId == businessId && x.Status == "Active" && x.RoleKey == "owner").ToListAsync());
+        ViewBag.BusinessProfileEmail = business.OwnerEmail;
+        ViewBag.OwnerNames = await _db.ClientProfiles.AsNoTracking()
+            .Where(x => ownerProfileIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => new[] { x.FirstName ?? string.Empty, x.LastName ?? string.Empty }, HttpContext.RequestAborted);
+        return View("BusinessOwners", owners);
+    }
+
+    [HttpGet("/profile/business/{businessId:guid}/owner-lookup")]
+    public async Task<IActionResult> BusinessOwnerLookup(Guid businessId, string email)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
+            return Forbid();
+        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
+            x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.CanManageTeam &&
+            (x.RoleKey == "owner" || x.RoleKey == "account")))
+            return Forbid();
+
+        var owner = await _businessProvisioning.ResolveOwnerAsync(
+            email,
+            context.IsAgentView ? User.GetCanonicalUserId() : null,
+            HttpContext.RequestAborted);
+        return owner is null ? NotFound() : Json(owner);
     }
 
     [HttpPost("/profile/business/{businessId:guid}/owners")]
