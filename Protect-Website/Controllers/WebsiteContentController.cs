@@ -163,17 +163,18 @@ public sealed class WebsiteContentController : ControllerBase
         var history = await _db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => v.StateId == state.Id)
             .OrderByDescending(v => v.Revision).Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
-        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, commerceBusinessId = actor.CommerceBusinessId, document = Read(state.DraftJson),
+        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = Read(state.DraftJson),
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken),
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
+            drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
             history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken) },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
 
-    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null);
+    public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
     private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
 
@@ -225,6 +226,20 @@ public sealed class WebsiteContentController : ControllerBase
         try { document = WebsiteContentSanitizer.Sanitize(request.Document); }
         catch (ArgumentException ex) { return BadRequest(new { error = "invalid_signal_binding", message = ex.Message }); }
         document.UpdatedUtc = DateTime.UtcNow;
+        if (request.DraftId.HasValue || request.DraftName is not null)
+        {
+            var name = request.DraftName?.Trim();
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 100) return BadRequest(new { message = "Enter a draft name of 1–100 characters." });
+            var drafts = ReadDrafts(state);
+            var draft = request.DraftId.HasValue ? drafts.SingleOrDefault(d => d.Id == request.DraftId) : null;
+            if (request.DraftId.HasValue && draft is null) return NotFound();
+            if (draft is null && drafts.Count >= 20) return BadRequest(new { message = "You can keep up to 20 drafts. Delete a draft before creating another." });
+            if (drafts.Any(d => d.Id != draft?.Id && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase)))
+                return Conflict(new { message = "That name already exists. Select the existing draft to update it, or choose another name." });
+            if (draft is null) { draft = new WebsiteNamedDraft(); drafts.Add(draft); }
+            draft.Name = name; draft.Document = document; draft.UpdatedUtc = DateTime.UtcNow;
+            state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
+        }
         state.ScheduledPublishUtc = null;
         state.ScheduledActorJson = null;
         state.ScheduledRevision = null;
@@ -234,7 +249,41 @@ public sealed class WebsiteContentController : ControllerBase
         state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
-        return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc });
+        return Ok(new { document, revision = state.Revision, savedUtc = state.UpdatedUtc, drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+    }
+
+    private static List<WebsiteNamedDraft> ReadDrafts(WebsiteContentState state) =>
+        string.IsNullOrWhiteSpace(state.NamedDraftsJson) ? new() : JsonSerializer.Deserialize<List<WebsiteNamedDraft>>(state.NamedDraftsJson, JsonOptions) ?? new();
+
+    public sealed record DraftRequest(string Ticket, long ExpectedRevision, Guid DraftId);
+
+    [HttpPost("manage/drafts/load")]
+    public Task<IActionResult> LoadDraft([FromBody] DraftRequest request, CancellationToken cancellationToken = default) => ChangeDraft(request, false, cancellationToken);
+
+    [HttpPost("manage/drafts/delete")]
+    public Task<IActionResult> DeleteDraft([FromBody] DraftRequest request, CancellationToken cancellationToken = default) => ChangeDraft(request, true, cancellationToken);
+
+    private async Task<IActionResult> ChangeDraft(DraftRequest request, bool delete, CancellationToken cancellationToken)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+        var drafts = ReadDrafts(state);
+        var draft = drafts.SingleOrDefault(d => d.Id == request.DraftId);
+        if (draft is null) return NotFound();
+        if (delete) drafts.Remove(draft);
+        else
+        {
+            state.DraftJson = JsonSerializer.Serialize(draft.Document, JsonOptions);
+            state.ScheduledPublishUtc = null; state.ScheduledRevision = null;
+            state.ScheduledActorJson = null; state.ScheduleError = null;
+        }
+        state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
+        state.Revision++; state.UpdatedUtc = DateTime.UtcNow;
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        return Ok(new { revision = state.Revision, document = Read(state.DraftJson), drafts = drafts.Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
     }
 
     [HttpPost("manage/publish")]

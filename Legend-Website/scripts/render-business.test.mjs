@@ -39,6 +39,9 @@ test('published text, URLs, section color and imported page are rendered before 
   assert.equal(page.querySelector('h1').textContent,'Actual business headline');
   assert.equal(page.querySelector('.hero .actions a').href,'https://example.com/book');
   assert.equal(page.querySelector('.hero').style.backgroundColor,'#123456');
+  assert.equal(page.querySelector('.hero').style.backgroundImage,'none');
+  assert.ok(page.querySelector('.site-header').compareDocumentPosition(page.querySelector('main')) & 4);
+  assert.ok(page.querySelector('main').compareDocumentPosition(page.querySelector('.site-footer')) & 4);
   assert.match(result.pages['/team/history'].html,/Verified imported information/);
   assert.ok(!parseHTML(result.pages['/team/history'].html).document.querySelector('main .hero'));
 });

@@ -77,6 +77,8 @@ public sealed class WebsitePlacement
 {
     public string SectionId { get; set; } = "";
     public string? BeforeId { get; set; }
+    public string? ContainerId { get; set; }
+    public bool Flow { get; set; }
     public int Column { get; set; } = 1;
     public int Span { get; set; } = 12;
 }
@@ -125,4 +127,12 @@ public sealed class WebsitePageDocument
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
+}
+
+public sealed class WebsiteNamedDraft
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public WebsiteContentDocument Document { get; set; } = new();
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
