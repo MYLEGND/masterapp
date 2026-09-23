@@ -24,8 +24,11 @@ jobs:
           set -euo pipefail
           resource="$(az webapp show -g masterapp-rg -n masterapp-portal --query id -o tsv)"
           az webapp show -g masterapp-rg -n masterapp-portal --query '{state:state,availabilityState:availabilityState,lastModifiedTimeUtc:lastModifiedTimeUtc}' -o json
-          timeout 90 az rest --method get --url "https://management.azure.com$resource/deployments?api-version=2024-11-01" --query 'value[].{name:name,status:properties.status,message:properties.message,start:properties.startTime,end:properties.endTime,active:properties.active}' -o json || true
-          timeout 90 az webapp log deployment list -g masterapp-rg -n masterapp-portal --query '[0:3].{id:id,status:status,status_text:status_text,active:active,start_time:start_time,end_time:end_time,complete:complete}' -o json || true
+          timeout 90 az webapp log deployment show -g masterapp-rg -n masterapp-portal --deployment-id 3cbe3cf0e67c45dabfbde3f1b7709268 --query '[].{time:log_time,type:type,message:message}' -o json || true
+          plan="$(az webapp show -g masterapp-rg -n masterapp-portal --query appServicePlanId -o tsv)"
+          if [ -n "$plan" ]; then
+            timeout 45 az monitor metrics list --resource "$plan" --metric CpuPercentage MemoryPercentage --interval PT5M --aggregation Average Maximum --start-time 2026-09-23T07:15:00Z --query 'value[].{metric:name.value,series:timeseries[].data}' -o json || true
+          fi
           for host in portal.mylegnd.com masterapp-portal.azurewebsites.net; do
             echo "Runtime receipt: $host"
             curl -sS --max-time 25 -w '\nHTTP %{http_code}\n' "https://$host/api/runtime-provenance" || true
