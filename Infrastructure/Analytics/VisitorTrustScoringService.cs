@@ -1,3 +1,5 @@
+using Shared.Analytics;
+using Infrastructure.Analytics;
 using AgentPortal.Models.Analytics;
 using Domain.Entities;
 

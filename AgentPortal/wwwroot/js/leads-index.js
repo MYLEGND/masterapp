@@ -4,6 +4,27 @@ function crmRoute(path) {
   const base = crmWorkspace?.dataset.crmApiBase;
   return base ? base + path : path;
 }
+// Business writes carry the revision displayed to the user, never a fresh
+// pre-save read that would conceal conflicting edits from another session.
+function businessWritePayload(payload) {
+  if (!crmBusinessId || !payload || Array.isArray(payload)) return payload;
+  const contactRows = Array.from(document.querySelectorAll('.client-row[data-client-id]'));
+  const find = id => contactRows.find(row => row.dataset.clientId === id);
+  const result = { ...payload };
+  if (payload.clientUserId) result.revision = find(payload.clientUserId)?.dataset.businessRevision || '';
+  if (payload.ids) result.revisions = Object.fromEntries(payload.ids.map(id => [id, find(id)?.dataset.businessRevision || '']));
+  return result;
+}
+function rememberBusinessRevisions(data) {
+  if (!crmBusinessId || !data) return data;
+  const payload = data.payload || data;
+  const revisions = payload.revisions || (payload.clientUserId && payload.revision ? { [payload.clientUserId]: payload.revision } : {});
+  document.querySelectorAll('.client-row[data-client-id]').forEach(row => {
+    if (revisions[row.dataset.clientId]) row.dataset.businessRevision = revisions[row.dataset.clientId];
+  });
+  return data;
+}
+
 function crmStorageKey(key) { return crmBusinessId ? `${key}:business:${crmBusinessId}` : key; }
 
 /* ==========================================================
@@ -646,6 +667,7 @@ function getAntiForgeryToken(scope){
 }
 
 async function postJson(url, payload){
+  payload = businessWritePayload(payload);
   const token = getAntiForgeryToken();
   const res = await fetch(url, withDialHeaders({
     method: "POST",
@@ -665,7 +687,7 @@ async function postJson(url, payload){
   }
 
   try {
-    return raw ? JSON.parse(raw) : {};
+    return rememberBusinessRevisions(raw ? JSON.parse(raw) : {});
   } catch (err){
     throw new Error(raw || err.message || "Invalid JSON response");
   }
@@ -678,7 +700,7 @@ async function loadQuickView(clientId){
     let lead = null;
     try{
       const leadRes = await fetch(crmRoute(`/Leads/Lead?id=${encodeURIComponent(clientId)}`), withDialHeaders());
-      if (leadRes.ok) lead = await leadRes.json();
+      if (leadRes.ok) lead = rememberBusinessRevisions(await leadRes.json());
     }catch{}
 
     const preferNumber = (...vals) => {
@@ -768,7 +790,7 @@ async function loadQuickView(clientId){
 
   const res = await fetch(crmRoute(`/Leads/Lead?id=${encodeURIComponent(clientId)}`), withDialHeaders());
   if (!res.ok) throw new Error("Lead not found");
-  const lead = await res.json();
+  const lead = rememberBusinessRevisions(await res.json());
   const dobIso = lead.dob ? lead.dob.slice(0,10) : "";
     return {
       clientUserId: lead.leadId || clientId,
@@ -825,7 +847,7 @@ async function refreshLeadCountsFromServer(row){
   try{
     const res = await fetch(crmRoute(`/Leads/Lead?id=${encodeURIComponent(clientId)}`), withDialHeaders());
     if (!res.ok) return;
-    const lead = await res.json();
+    const lead = rememberBusinessRevisions(await res.json());
     const preferNumber = (...vals) => {
       for (const v of vals){
         const n = Number(v);
@@ -1116,7 +1138,7 @@ async function incrementCallLead(row){
       body: `id=${encodeURIComponent(clientId)}`
     }));
     if (res.ok){
-      payload = await res.json().catch(() => null);
+      payload = rememberBusinessRevisions(await res.json()).catch(() => null);
     }
   }catch{}
 
@@ -1292,10 +1314,10 @@ const PIPELINE_STAGE_CLASSES = Array.from(new Set(pipelineStages.map(stage => st
 
 function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   const value = norm(stage);
-  if (!value) return fallback;
+  if (!value) return crmBusinessId ? (pipelineStages.find(x => x.key === fallback)?.key || pipelineStages[0]?.key || "") : fallback;
   const exact = pipelineStages.find(x => x.key.toLowerCase() === value.toLowerCase());
   if (exact) return exact.key;
-  return pipelineAliases[value.toLowerCase()] || fallback;
+  return crmBusinessId ? (pipelineStages.find(x => x.key === fallback)?.key || pipelineStages[0]?.key || "") : (pipelineAliases[value.toLowerCase()] || fallback);
 }
 
 const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance","AutoInsurance","HomeInsurance","HealthInsurance","CommercialInsurance"]);
@@ -1901,7 +1923,7 @@ async function ensureDialPeriodsFresh(){
     }));
 
     if (res.ok){
-      const leads = await res.json().catch(() => []);
+      const leads = rememberBusinessRevisions(await res.json()).catch(() => []);
       const byId = new Map((Array.isArray(leads) ? leads : []).map(x => [x?.leadId, x]));
 
       metricRows().forEach(row => {
@@ -3007,7 +3029,7 @@ async function refreshLeadProductionTiles(){
   try{
     const res = await fetch("/production/summary/leads", { credentials: "include" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = rememberBusinessRevisions(await res.json());
     const fmt = (v) => Number(v || 0).toLocaleString("en-US", { style:"currency", currency:"USD", maximumFractionDigits:0 });
     if (tileSubmittedTotal) tileSubmittedTotal.textContent = fmt(data.submitted);
     if (tileIssuedTotal) tileIssuedTotal.textContent = fmt(data.issued);
@@ -3184,7 +3206,7 @@ if (liveSync){
     try{
       const res = await fetch(crmRoute(`/Leads/Lead?id=${encodeURIComponent(leadId)}`), withDialHeaders({ credentials: "include" }));
       if (res.ok){
-        const payload = await res.json().catch(() => ({}));
+        const payload = rememberBusinessRevisions(await res.json()).catch(() => ({}));
         row.dataset.sAttemptstoday = String(payload.attemptsToday ?? row.dataset.sAttemptstoday ?? 0);
         row.dataset.sAttemptsweek = String(payload.attemptsThisWeek ?? row.dataset.sAttemptsweek ?? 0);
         row.dataset.sAttemptsmonth = String(payload.attemptsThisMonth ?? row.dataset.sAttemptsmonth ?? 0);
@@ -3877,7 +3899,7 @@ async function loadMyDaySnapshot(force = false){
   try{
     const res = await fetch(MYDAY_SNAPSHOT_URL, withDialHeaders({ credentials: "include" }));
     if (!res.ok) return;
-    const data = await res.json();
+    const data = rememberBusinessRevisions(await res.json());
     const queues = data?.queues || {};
     const idsByQueue = {};
     const counts = {};
@@ -4020,7 +4042,7 @@ async function openDrawerById(clientId){
   try{
     const res = await fetch(crmRoute(`/Leads/Lead?id=${encodeURIComponent(clientId)}`), withDialHeaders());
     if (!res.ok) throw new Error("Lead not found");
-    const lead = await res.json();
+    const lead = rememberBusinessRevisions(await res.json());
     const stub = {
       dataset: {
         clientId: lead.leadId || clientId,
@@ -4303,7 +4325,7 @@ async function loadProductionHistory(leadId){
     try{
     const res = await fetch(`/production/history/lead?leadId=${encodeURIComponent(leadId)}`, { headers: { 'Accept':'application/json' }});
       if (!res.ok) throw new Error("load fail");
-      const payload = await res.json();
+      const payload = rememberBusinessRevisions(await res.json());
     const items = Array.isArray(payload?.items) ? payload.items : [];
     const latest = items.length ? items[0] : null;
     const totals = {
@@ -4717,7 +4739,7 @@ async function noteLoadDates(leadIdValue){
   try{
     const res = await fetch(`/WorkstationNotes/Dates?leadId=${encodeURIComponent(leadId)}`, withDialHeaders({ credentials: "include" }));
     if (!res.ok) throw new Error("fail");
-    const dates = await res.json();
+    const dates = rememberBusinessRevisions(await res.json());
     const list = Array.isArray(dates) ? dates : [];
     const current = noteDatesSelect.value || "";
     noteDatesSelect.innerHTML = ['<option value="">Select lead + date</option>']
@@ -4754,7 +4776,7 @@ async function noteLoadForDate(dateValue, leadIdValue){
   try{
     const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, withDialHeaders({ credentials: "include" }));
     if (!res.ok) throw new Error("fail");
-    const payload = await res.json();
+    const payload = rememberBusinessRevisions(await res.json());
     noteWentWell.value = extractNoteBodyText(payload?.wentWell || "");
     noteCouldBetter.value = extractNoteBodyText(payload?.couldBetter || "");
     noteSyncPrefixVisual(date);
@@ -4807,7 +4829,7 @@ async function noteSave(){
       })
     }));
     if (!res.ok) throw new Error("fail");
-    const payload = await res.json().catch(() => null);
+    const payload = rememberBusinessRevisions(await res.json()).catch(() => null);
     noteSetStatus(payload?.deleted ? `Cleared ${ctx.leadName} — ${noteDisplayDate(date)}` : `Saved ${ctx.leadName} — ${noteDisplayDate(date)}`);
     await noteLoadDates(ctx.leadId);
     if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(ctx.leadId, date);
@@ -6573,7 +6595,7 @@ async function calendarStatus(){
   try{
     const res = await fetch("/calendar/status", withDialHeaders({ credentials: "include" }));
     if (!res.ok) throw new Error(`Calendar status failed: ${res.status}`);
-    return await res.json();
+    return rememberBusinessRevisions(await res.json());
   }catch(error){
     quickViewDiagnostics.error("Calendar status check failed", error, "calendar");
     return { connected: false };
@@ -6726,7 +6748,7 @@ async function fetchMeetingAddressSuggestions(query){
       throw new Error("Address lookup failed.");
     }
 
-    const data = await res.json();
+    const data = rememberBusinessRevisions(await res.json());
     const suggestions = Array.isArray(data)
       ? data.map(x => norm(x.display_name)).filter(Boolean).slice(0, 5)
       : [];

@@ -1,3 +1,4 @@
+using Shared.Analytics;
 using System.Collections.Generic;
 
 namespace AgentPortal.Models.Analytics;

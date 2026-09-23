@@ -4,6 +4,27 @@ function crmRoute(path) {
   const base = crmWorkspace?.dataset.crmApiBase;
   return base ? base + path : path;
 }
+// Business writes carry the revision displayed to the user, never a fresh
+// pre-save read that would conceal conflicting edits from another session.
+function businessWritePayload(payload) {
+  if (!crmBusinessId || !payload || Array.isArray(payload)) return payload;
+  const contactRows = Array.from(document.querySelectorAll('.client-row[data-client-id]'));
+  const find = id => contactRows.find(row => row.dataset.clientId === id);
+  const result = { ...payload };
+  if (payload.clientUserId) result.revision = find(payload.clientUserId)?.dataset.businessRevision || '';
+  if (payload.ids) result.revisions = Object.fromEntries(payload.ids.map(id => [id, find(id)?.dataset.businessRevision || '']));
+  return result;
+}
+function rememberBusinessRevisions(data) {
+  if (!crmBusinessId || !data) return data;
+  const payload = data.payload || data;
+  const revisions = payload.revisions || (payload.clientUserId && payload.revision ? { [payload.clientUserId]: payload.revision } : {});
+  document.querySelectorAll('.client-row[data-client-id]').forEach(row => {
+    if (revisions[row.dataset.clientId]) row.dataset.businessRevision = revisions[row.dataset.clientId];
+  });
+  return data;
+}
+
 function crmStorageKey(key) { return crmBusinessId ? `${key}:business:${crmBusinessId}` : key; }
 
 /* ==========================================================
@@ -834,6 +855,7 @@ async function deleteClientRecord(clientUserId){
 }
 
 async function postJson(url, payload){
+  payload = businessWritePayload(payload);
   const token = getAntiForgeryToken();
   const res = await fetch(url, {
     method: "POST",
@@ -850,7 +872,7 @@ async function postJson(url, payload){
     throw new Error(text || `Request failed: ${res.status}`);
   }
 
-  return await res.json();
+  return rememberBusinessRevisions(await res.json());
 }
 
 async function loadQuickView(clientId){
@@ -873,7 +895,7 @@ async function loadQuickView(clientId){
   }
 
   try{
-    return JSON.parse(text);
+    return rememberBusinessRevisions(JSON.parse(text));
   }catch(parseErr){
     const err = new Error("Quick View JSON parse failed");
     err.body = text;
@@ -1890,7 +1912,7 @@ const statusLabels = {
 };
 
 function crmStatusLabel(status){
-  return statusLabels[status] || "Lead";
+  return crmBusinessId ? (status === "Client" ? "Client" : "Lead") : (statusLabels[status] || "Lead");
 }
 
 const pipelineStages = crmBusinessId ? JSON.parse(crmWorkspace.dataset.pipelineStages || "[]").map((label, index) => ({ key: label, label, tone: "info", className: "stage-contacted", note: "", order: index })) : [
@@ -1960,7 +1982,7 @@ function laneOrderFromDom(stageKey){
 }
 
 function pipelineLabel(stage){
-  return pipelineLabels[stage] || "Lead";
+  return crmBusinessId ? (pipelineStages.find(x => x.key === stage)?.label || stage) : (pipelineLabels[stage] || "Lead");
 }
 
 function pipelineMeta(stage){

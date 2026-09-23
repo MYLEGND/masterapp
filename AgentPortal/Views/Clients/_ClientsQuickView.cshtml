@@ -202,15 +202,36 @@
                             <div class="qv-field">
                                 <label>Status</label>
                                 <select id="dStatus">
+                                @if (ViewData["BusinessWorkspace"] is Shared.Crm.BusinessWorkspaceModel businessScopedStatus)
+                                {
+
+                                    <option value="Lead">@businessScopedStatus.Preferences.LeadLabel</option>
+                                    <option value="Client">@businessScopedStatus.Preferences.ClientLabel</option>
+                                }
+                                else
+                                {
+
                                     <option value="Lead">Lead</option>
                                     <option value="Prospect">Prospect</option>
                                     <option value="Active">Portal Client</option>
                                     <option value="Dormant">Inactive</option>
-                                </select>
+                                                                }
+</select>
                             </div>
                             <div class="qv-field">
                                 <label>Pipeline Stage</label>
                                 <select id="dPipelineStage">
+                                @if (ViewData["BusinessWorkspace"] is Shared.Crm.BusinessWorkspaceModel businessScopedPipelineStage)
+                                {
+
+                                    @foreach (var stage in businessScopedPipelineStage.Preferences.Stages)
+                                    {
+                                        <option value="@stage">@stage</option>
+                                    }
+                                }
+                                else
+                                {
+
                                     <option value="NewLead">Lead</option>
                                     <option value="Opportunities">Opportunities</option>
                                     <option value="Contacted">Contacted</option>
@@ -223,7 +244,8 @@
                                     <option value="Submitted">Submitted</option>
                                     <option value="ClosedLost">Not Moving Forward</option>
                                     <option value="Nurture">Nurture</option>
-                                </select>
+                                                                }
+</select>
                             </div>
                             <div class="qv-field">
                                 <label>Waiting On</label>

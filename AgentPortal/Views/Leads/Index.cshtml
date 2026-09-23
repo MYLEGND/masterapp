@@ -318,7 +318,7 @@ var sCity = (c.City ?? "").Trim();
                     : 0;
 
                 <tr class="client-row"
-                    data-client-id="@c.ClientUserId"
+                    data-client-id="@c.ClientUserId" data-business-revision="@c.BusinessRevision"
                     data-first="@c.FirstName"
                     data-last="@c.LastName"
                     data-email="@c.Email"

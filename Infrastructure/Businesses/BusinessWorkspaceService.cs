@@ -11,7 +11,7 @@ using Shared.Crm;
 
 namespace Infrastructure.Businesses;
 
-public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients)
+public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients)
 {
     public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForActorAsync(string actor, string? email, CancellationToken ct)
     {
@@ -57,9 +57,24 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         return result;
     }
 
-    public async Task<object?> AnalyticsDataAsync(Guid businessId, string section, TimeRangeRequest range, TrafficType trafficType)
+    public async Task<object?> AnalyticsDataAsync(Guid businessId, string section, TimeRangeRequest range, TrafficType trafficType,
+        string? metric = null, string? visitorId = null, string? sessionId = null, CancellationToken ct = default)
     {
         var scope = ScopeContext.ForBusiness(businessId);
+        if (section is "kpi-detail" or "visitor-timeline")
+        {
+            var trust = new AgentPortal.Services.Analytics.VisitorTrustScoringService();
+            var projection = new AnalyticsDetailProjection(analytics, new AgentPortal.Services.Analytics.KpiDetailBreakdownService());
+            if (section == "kpi-detail")
+            {
+                if (string.IsNullOrWhiteSpace(metric)) throw new ArgumentException("Choose a metric.");
+                var concentration = new AgentPortal.Services.Analytics.VisitorConcentrationService(db, trust, analytics);
+                return await projection.KpiAsync(metric, range, scope, trafficType, concentration.GetVisitorConcentrationAsync, ct);
+            }
+            if (string.IsNullOrWhiteSpace(visitorId) && string.IsNullOrWhiteSpace(sessionId))
+                throw new ArgumentException("Choose a visitor or session.");
+            return await projection.VisitorTimelineAsync(visitorId?.Trim(), sessionId?.Trim(), range, scope, trafficType, trust, ct);
+        }
         return section switch
         {
             "meta-signal" => await new MetaSignalAnalyticsService(db, analytics).GetDashboardAsync(range, scope, trafficType),
@@ -210,7 +225,7 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         var meta = ClientCrmMetaSerializer.Deserialize(row.CrmNotes, preferences.Stages);
         return new()
         {
-            ClientUserId = row.LeadId, SourceWorkstationLeadId = row.LeadId,
+            ClientUserId = row.LeadId, SourceWorkstationLeadId = row.LeadId, BusinessRevision = ContactRevision(row),
             FirstName = row.FirstName, LastName = row.LastName, Email = row.Email, Phone = row.Phone,
             RecordType = row.CrmStatus, AccountManagementMode = "BusinessContact", CrmStatus = row.CrmStatus,
             PipelineStage = row.CrmStage, PipelineOrder = row.CrmOrder, CrmPriority = meta.CrmPriority ?? "Normal",

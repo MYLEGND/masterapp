@@ -27,6 +27,53 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
     protected virtual Task<IActionResult> CreateWebsiteSessionAsync(Guid businessId, CancellationToken ct) =>
         Task.FromResult<IActionResult>(Forbid());
 
+    [HttpGet("crm/api/Clients/QuickView")]
+    public async Task<IActionResult> ClientQuickView(Guid businessId, string clientUserId, CancellationToken cancellationToken)
+    {
+        if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
+        var result = await workspace.QuickViewAsync(businessId, clientUserId, "Client", cancellationToken);
+        return result is null ? NotFound() : Json(result);
+    }
+
+    [HttpGet("crm/api/Leads/Lead")]
+    public async Task<IActionResult> LeadQuickView(Guid businessId, string id, CancellationToken cancellationToken)
+    {
+        if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
+        var result = await workspace.QuickViewAsync(businessId, id, "Lead", cancellationToken);
+        return result is null ? NotFound() : Json(result);
+    }
+
+    [HttpPost("crm/api/{recordSet:regex(^(Clients|Leads)$)}/SaveQuickView")]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> SaveQuickView(Guid businessId, string recordSet, [FromBody] BusinessCrmQuickViewRequest input,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.SaveQuickViewAsync(businessId,
+            recordSet == "Clients" ? "Client" : "Lead", input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
+
+    [HttpPost("crm/api/Clients/AddActivity")]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> AddActivity(Guid businessId, [FromBody] BusinessCrmActivityRequest input,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.AddActivityAsync(businessId,
+            input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
+
+    [HttpPost("crm/api/{recordSet:regex(^(Clients|Leads)$)}/Reorder")]
+    [ValidateAntiForgeryToken]
+    public Task<IActionResult> Reorder(Guid businessId, string recordSet, [FromBody] BusinessCrmReorderRequest input,
+        CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => workspace.ReorderAsync(businessId,
+            recordSet == "Clients" ? "Client" : "Lead", input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
+
+    private async Task<IActionResult> ExecuteCrmWrite(Guid businessId, Func<Task<object?>> write, CancellationToken ct)
+    {
+        if (await ResolveBusinessAsync(businessId, "crm", ct) is null) return Forbid();
+        if (!ModelState.IsValid) return BadRequest(ModelState);
+        try
+        {
+            var result = await write();
+            return result is null ? NotFound() : Json(result);
+        }
+        catch (DbUpdateConcurrencyException) { return Conflict("This contact changed in another session. Reload before saving."); }
+        catch (ArgumentException ex) { return BadRequest(ex.Message); }
+    }
+
     [HttpGet("clients")]
     [HttpGet("clients/{contactId}")]
     public Task<IActionResult> Clients(Guid businessId, string? contactId, string? search = null, int page = 1,
@@ -97,6 +144,7 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
     public async Task<IActionResult> AnalyticsData(Guid businessId, string section, string? preset = null,
         DateTime? fromUtc = null, DateTime? toUtc = null, TrafficType trafficType = TrafficType.All,
         TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic, string? timezoneId = null,
+        string? metric = null, string? visitorId = null, string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
         if (await ResolveBusinessAsync(businessId, "analytics", cancellationToken) is null) return Forbid();
@@ -108,8 +156,13 @@ public abstract class BusinessWorkspaceControllerBase(BusinessWorkspaceService w
         }
         catch (Exception ex) when (ex is ArgumentException or TimeZoneNotFoundException or InvalidTimeZoneException)
         { return BadRequest("Choose a valid time range and time zone."); }
-        var result = await workspace.AnalyticsDataAsync(businessId, section, range, trafficType);
-        return result is null ? NotFound() : Json(result);
+        try
+        {
+            var result = await workspace.AnalyticsDataAsync(businessId, section, range, trafficType,
+                metric, visitorId, sessionId, cancellationToken);
+            return result is null ? NotFound() : Json(result);
+        }
+        catch (ArgumentException ex) { return BadRequest(ex.Message); }
     }
 
     [HttpGet("settings")]

@@ -20,6 +20,71 @@ namespace AgentPortal.Tests;
 public sealed class BusinessWorkspaceTests
 {
     [Fact]
+    public async Task BusinessQuickViewPersistsCustomStageAndRejectsStaleOrForeignWrites()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "contract" };
+        var preferences = new BusinessWorkspacePreferences { Stages = ["Estimate", "Scheduled", "Complete"] };
+        var row = new WorkstationLeadProfile { LeadId = "contract-lead", CommerceBusinessId = business.Id,
+            AgentUserId = "", CrmStatus = "Lead", CrmStage = "Estimate", FirstName = "Contact" };
+        var foreign = new WorkstationLeadProfile { LeadId = "foreign-contract", CommerceBusinessId = Guid.NewGuid(),
+            AgentUserId = "", CrmStatus = "Lead", CrmStage = "Estimate" };
+        db.AddRange(business, row, foreign, new CommerceBusinessStorefrontSettings
+            { CommerceBusinessId = business.Id, WorkspacePreferencesJson = preferences.Write() });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var initial = System.Text.Json.JsonSerializer.SerializeToElement(await service.QuickViewAsync(business.Id, row.LeadId, "Lead", default));
+        var input = new BusinessCrmQuickViewRequest { ClientUserId = row.LeadId,
+            Revision = initial.GetProperty("revision").GetString()!, PipelineStage = "Scheduled", CrmStatus = "Lead",
+            Email = "contact@example.org", AgentNotes = "Use side entrance", CrmNextDate = DateTime.UtcNow.Date.AddDays(1),
+            CrmNextText = "Confirm estimate" };
+        var saved = System.Text.Json.JsonSerializer.SerializeToElement(await service.SaveQuickViewAsync(business.Id, "Lead", input, "owner", default));
+        Assert.Equal("Scheduled", saved.GetProperty("pipelineStage").GetString());
+        Assert.Equal("Use side entrance", ClientCrmMetaSerializer.Deserialize(row.CrmNotes, preferences.Stages).AgentNotes);
+        Assert.NotEqual(input.Revision, saved.GetProperty("revision").GetString());
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => service.SaveQuickViewAsync(business.Id, "Lead", input, "owner", default));
+        Assert.Null(await service.QuickViewAsync(business.Id, foreign.LeadId, "Lead", default));
+        input.ClientUserId = foreign.LeadId;
+        Assert.Null(await service.SaveQuickViewAsync(business.Id, "Lead", input, "owner", default));
+        Assert.Null(await service.QuickViewAsync(business.Id, row.LeadId, "Client", default));
+        var activity = new BusinessCrmActivityRequest { ClientUserId = row.LeadId,
+            Revision = saved.GetProperty("revision").GetString()!, Type = "Note", Note = "Confirmed access" };
+        Assert.NotNull(await service.AddActivityAsync(business.Id, activity, "owner", default));
+        Assert.Contains(ClientCrmMetaSerializer.Deserialize(row.CrmNotes, preferences.Stages).Activities,
+            x => x.Note == "Confirmed access" && x.CreatedBy == "owner");
+    }
+
+    [Fact]
+    public async Task BusinessReorderRejectsEntireMixedTenantBatchAndStaleRevision()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "reorder" };
+        var first = new WorkstationLeadProfile { LeadId = "first", CommerceBusinessId = business.Id, CrmStage = "New" };
+        var second = new WorkstationLeadProfile { LeadId = "second", CommerceBusinessId = business.Id, CrmStage = "New" };
+        var other = new WorkstationLeadProfile { LeadId = "other", CommerceBusinessId = Guid.NewGuid(), CrmStage = "New" };
+        db.AddRange(business, first, second, other, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
+        await db.SaveChangesAsync();
+        var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>(), new(db, new ConfigurationBuilder().Build()));
+        var request = new BusinessCrmReorderRequest { Bucket = "Qualified", Ids = [second.LeadId, first.LeadId] };
+        foreach (var id in request.Ids)
+        {
+            var payload = System.Text.Json.JsonSerializer.SerializeToElement(await service.QuickViewAsync(business.Id, id, "Lead", default));
+            request.Revisions[id] = payload.GetProperty("revision").GetString()!;
+        }
+        request.Ids.Add(other.LeadId);
+        Assert.Null(await service.ReorderAsync(business.Id, "Lead", request, "owner", default));
+        Assert.Equal("New", first.CrmStage);
+        Assert.Equal("New", second.CrmStage);
+        request.Ids.Remove(other.LeadId);
+        Assert.NotNull(await service.ReorderAsync(business.Id, "Lead", request, "owner", default));
+        Assert.Equal("Qualified", first.CrmStage);
+        Assert.Equal(0, second.CrmOrder);
+        Assert.Equal(1, first.CrmOrder);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => service.ReorderAsync(business.Id, "Lead", request, "owner", default));
+        Assert.Equal("New", other.CrmStage);
+    }
+
+    [Fact]
     public async Task CanonicalBoardReceivesAllScopedContactsForItsOwnPagination()
     {
         using var db = ControllerTestHelpers.BuildDb();
