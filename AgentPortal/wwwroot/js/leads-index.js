@@ -5686,7 +5686,7 @@ function renderCards(filteredRows){
   pipelineBoard.innerHTML = lanes.map(stage => {
     const stageRows = orderedStageRows(stage.key, rowsForStage(stage.key, filteredRows));
     return `
-      <section class="pipeline-lane ${stage.className}" data-dropstage="${stage.key}">
+      <section class="pipeline-lane ${stage.className}" data-dropstage="${safeHtml(stage.key)}">
         <div class="pipeline-lane-head">
           <div>
             <h3 class="pipeline-lane-title">${safeHtml(stage.label)}</h3>
@@ -5694,10 +5694,10 @@ function renderCards(filteredRows){
           </div>
           <div class="pipeline-lane-meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <span class="pipeline-lane-count">${stageRows.length} contact${stageRows.length === 1 ? "" : "s"}</span>
-            ${productBuckets.has(stage.key) ? `<button type="button" class="btn btn-gold" data-import-bucket="${stage.key}">Import CSV</button>` : ""}
+            ${productBuckets.has(stage.key) ? `<button type="button" class="btn btn-gold" data-import-bucket="${safeHtml(stage.key)}">Import CSV</button>` : ""}
           </div>
         </div>
-        <div class="pipeline-lane-body" data-dropzone="${stage.key}">
+        <div class="pipeline-lane-body" data-dropzone="${safeHtml(stage.key)}">
           ${renderLaneCards(stageRows)}
         </div>
       </section>

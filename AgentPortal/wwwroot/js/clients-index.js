@@ -5536,7 +5536,7 @@ function renderCards(filteredRows){
   pipelineBoard.innerHTML = lanes.map(stage => {
     const stageRows = orderedStageRows(stage.key, filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key));
     return `
-      <section class="pipeline-lane ${stage.className}" data-dropstage="${stage.key}">
+      <section class="pipeline-lane ${stage.className}" data-dropstage="${safeHtml(stage.key)}">
         <div class="pipeline-lane-head">
           <div>
             <h3 class="pipeline-lane-title">${safeHtml(stage.label)}</h3>
@@ -5544,10 +5544,10 @@ function renderCards(filteredRows){
           </div>
           <div class="pipeline-lane-meta">
             <span class="pipeline-lane-count">${stageRows.length} contact${stageRows.length === 1 ? "" : "s"}</span>
-            <button type="button" class="btn btn-ghost" data-pipeline-nav="${stage.key}">${focusMeta ? "Refresh" : "Review"}</button>
+            <button type="button" class="btn btn-ghost" data-pipeline-nav="${safeHtml(stage.key)}">${focusMeta ? "Refresh" : "Review"}</button>
           </div>
         </div>
-        <div class="pipeline-lane-body" data-dropzone="${stage.key}">
+        <div class="pipeline-lane-body" data-dropzone="${safeHtml(stage.key)}">
           ${renderLaneCards(stageRows)}
         </div>
       </section>
