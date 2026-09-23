@@ -65,6 +65,18 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public void EditorContentPreservesIntentionalWhitespaceAndBusinessCards()
+    {
+        var doc = Document("  First\tline\r\nSecond  line  ");
+        doc.Extras.Add(new() { Id = "service-one", SectionId = "services", Type = "card", Title = "  Window\tCleaning  ", Text = "Line one\r\n\tLine two" });
+        var result = WebsiteContentSanitizer.Sanitize(doc);
+        Assert.Equal("  First\tline\nSecond  line  ", result.Elements["title"].Text);
+        Assert.Equal("card", result.Extras.Single().Type);
+        Assert.Equal("  Window\tCleaning  ", result.Extras.Single().Title);
+        Assert.Equal("Line one\n\tLine two", result.Extras.Single().Text);
+    }
+
+    [Fact]
     public void ControlsRejectExecutableUrlsAndClampPlacementWithinGrid()
     {
         var doc = Document("safe");

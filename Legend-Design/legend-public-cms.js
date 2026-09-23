@@ -280,7 +280,9 @@
     if (style.objectPosition && el instanceof HTMLImageElement) el.style.objectPosition = style.objectPosition;
   }
 
-  function setContentText(el, text) {
+  function setContentText(el, text, preserveWhitespace = false) {
+    if (preserveWhitespace) el.dataset.cmsPreserveWhitespace = 'true';
+    else delete el.dataset.cmsPreserveWhitespace;
     if (el.tagName !== 'A' || !el.children.length || !document.createTreeWalker) { el.textContent = text; return; }
     const walker = document.createTreeWalker(el, 4); const nodes = []; let node;
     while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('svg,i,[aria-hidden="true"]')) nodes.push(node);
@@ -303,7 +305,7 @@
     if (el instanceof HTMLImageElement) {
       if (override.imageDataUrl) el.src = mediaUrl(override.imageDataUrl);
     } else if (override.text != null && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) {
-      setContentText(el, override.text);
+      setContentText(el, override.text, true);
     }
 
     if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
@@ -325,6 +327,15 @@
       el = document.createElement('section'); el.dataset.cmsSection = `extra:${extra.id}`; el.className = 'cms-extra cms-extra-section';
     } else if (extra.type === 'video') {
       el = document.createElement('video'); el.controls = true; el.preload = 'metadata'; if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+    } else if (extra.type === 'card') {
+      el = document.createElement('article'); el.className = 'cms-extra card cms-extra-card';
+      const heading = document.createElement('h3'); setContentText(heading, extra.title || 'New service', true);
+      const copy = document.createElement('p'); setContentText(copy, extra.text || '', true);
+      for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
+        node.dataset.cmsExtraId = extra.id; node.dataset.cmsExtraField = field;
+        node.dataset.cmsId = `extra:${extra.id}:${field}`; node.dataset.cmsEditable = 'true';
+      }
+      el.append(heading, copy);
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn';
     } else {
@@ -466,6 +477,11 @@
     return el?.closest?.('[data-cms-section]') || null;
   }
 
+  function businessServiceCardFor(el) {
+    if (SITE_KEY !== 'business') return null;
+    return el?.closest?.('.card-grid > article.card') || null;
+  }
+
   function ensureOverride(id) {
     if (!pageState().elements[id]) {
       pageState().elements[id] = { style: {} };
@@ -539,7 +555,10 @@
     const actualWidth = parentWidth > 0 ? parseFloat(computed.width) / parentWidth * 100 : 100;
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
-    if (text && !isImage) text.value = ov.text ?? selected.textContent ?? '';
+    if (text && !isImage) text.value = selected.dataset.cmsExtraField === 'title' ? ov.title ?? selected.textContent ?? '' : ov.text ?? selected.textContent ?? '';
+    const serviceCard = businessServiceCardFor(selected);
+    const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate block';
+    const removeButton = document.getElementById('legend-cms-remove'); if (removeButton) removeButton.textContent = serviceCard ? 'Delete service' : 'Delete selected';
     if (scale) scale.value = String(ov.style?.fontScale ?? 1);
     if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
     if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
@@ -574,8 +593,9 @@
     const ov = selectedOverride();
     if (!ov) return;
     if (control.id === 'legend-cms-text' && !(selected instanceof HTMLImageElement) && !selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) {
-      ov.text = control.value;
-      setContentText(selected, control.value);
+      if (selected.dataset.cmsExtraField === 'title') ov.title = control.value;
+      else ov.text = control.value;
+      setContentText(selected, control.value, true);
     } else if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
       selected.hidden = control.checked;
@@ -660,8 +680,9 @@
       const removedId = selected.dataset.cmsExtraId;
       const removedSection = selected.dataset.cmsSection;
       pageState().extras = pageState().extras.filter(x => x.id !== removedId && (!removedSection || (x.sectionId !== removedSection && x.placement?.sectionId !== removedSection)));
-      scaledElements.delete(selected);
-      selected.remove();
+      const removedNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(removedId)}"]`) || selected;
+      scaledElements.delete(removedNode);
+      removedNode.remove();
       setSelected(null);
       markDirty();
       return;
@@ -865,7 +886,24 @@
       });
     }
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
-      if (!selected || selected.dataset.cmsSection || !['P','H1','H2','H3','H4','H5','A','IMG','VIDEO'].includes(selected.tagName) || !selectedSection) return;
+      if (!selected || !selectedSection) return;
+      const serviceCard = businessServiceCardFor(selected);
+      if (serviceCard) {
+        const grid = serviceCard.parentElement;
+        if (!grid?.dataset.cmsId) return;
+        checkpoint();
+        const heading = serviceCard.querySelector('h1,h2,h3,h4,h5');
+        const body = [...serviceCard.querySelectorAll('p')].find(node => !node.classList.contains('eyebrow')) || serviceCard.querySelector('p');
+        const copy = {
+          id: crypto.randomUUID(), type: 'card', sectionId: selectedSection.dataset.cmsSection,
+          title: heading?.textContent || 'New service', text: body?.textContent || '', style: {},
+          placement: { sectionId: selectedSection.dataset.cmsSection, containerId: grid.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 }
+        };
+        pageState().extras.push(copy);
+        const created = createExtra(copy); applyPlacement(created, copy.placement); setSelected(created.querySelector('h3') || created); markDirty();
+        return;
+      }
+      if (selected.dataset.cmsSection || !['P','H1','H2','H3','H4','H5','A','IMG','VIDEO'].includes(selected.tagName)) return;
       checkpoint();
       const original = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : pageState().elements[selected.dataset.cmsId];
       const copy = JSON.parse(JSON.stringify(original || {}));
@@ -898,13 +936,26 @@
     });
     refreshHistoryControls();
   }
+  function selectedFlowContainer(section) {
+    let node = selected;
+    while (node && node !== section) {
+      if (['DIV','ARTICLE'].includes(node.tagName) && node.dataset?.cmsId && !node.closest(lockedSelector)) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
     checkpoint();
     const extra = { id: crypto.randomUUID(), type, sectionId: section?.dataset.cmsSection || `${pageKey}.root`, text: type === 'button' ? 'Your button' : type === 'text' ? 'Your text' : '', style: {} };
-    if (type === 'button') extra.href = '#';
-    pageState().extras.push(extra); const el = createExtra(extra); setSelected(el); markDirty();
+    if (type === 'button') {
+      extra.href = '#';
+      const container = selectedFlowContainer(section);
+      if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
+    }
+    pageState().extras.push(extra); const el = createExtra(extra); if (extra.placement) applyPlacement(el, extra.placement); setSelected(el); markDirty();
   }
   function enhanceEditor(panel, preview) {
     document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
@@ -1157,7 +1208,16 @@
     document.getElementById('legend-cms-extra-image')?.addEventListener('change', e => addImage(e.target.files?.[0]));
     document.getElementById('legend-cms-up')?.addEventListener('click', () => moveSelectedSection(-1));
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
-    document.getElementById('legend-cms-remove')?.addEventListener('click', () => { if (!selected) return; if (selected.dataset.cmsExtraId) { removeSelected(); return; } checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty(); });
+    document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
+      if (!selected) return;
+      const serviceCard = businessServiceCardFor(selected);
+      if (serviceCard) {
+        if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
+        checkpoint(); const ov = ensureOverride(serviceCard.dataset.cmsId); ov.hidden = true; serviceCard.hidden = true; setSelected(null); markDirty(); return;
+      }
+      if (selected.dataset.cmsExtraId) { removeSelected(); return; }
+      checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
+    });
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
       if (dirty && !confirm('Exit with unsaved changes?')) return;

@@ -75,6 +75,7 @@ h3{font-size:22px;letter-spacing:-.018em}
 .card .icon,.contact-card .icon{width:48px;height:48px;display:grid;place-items:center;border-radius:14px;background:color-mix(in srgb,var(--gold) 15%,transparent);color:color-mix(in srgb,var(--gold) 88%,var(--navy) 12%);margin-bottom:24px}
 .icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .card p:last-child{color:var(--muted)}
+[data-cms-preserve-whitespace="true"]{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere}
 .statement,.pullquote{max-width:1000px;border-left:3px solid var(--gold);padding:24px 30px;background:var(--surface);font-size:clamp(19px,2.25vw,25px)}
 .pullquote{background:rgba(255,255,255,.05);color:#fff}
 .steps{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid rgba(255,255,255,.14);border-radius:20px;overflow:hidden}

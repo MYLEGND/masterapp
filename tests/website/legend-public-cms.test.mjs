@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../Legend-Design/legend-public-cms.js', import.meta.url), 'utf8');
+const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.css', import.meta.url), 'utf8');
 
 function fixture({ context, origin = 'https://protect.example.test', search = '', denied = false, savedStyle = null } = {}) {
   const ids = new Map(), events = new Map(), calls = [], alerts = [], errors = [], windowEvents = new Map();
@@ -274,8 +275,8 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[]}={}) {
-  const dom = new JSDOM('<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>', {url:'https://site.example/'+search,runScripts:'outside-only'});
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+  const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
@@ -289,6 +290,62 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,click,input,save,close:()=>w.close()};
 }
+test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
+  assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
+});
+for (const siteKey of ['legend','protect','business']) {
+  test(`${siteKey}: shared editor round-trips authored whitespace exactly`,async()=>{
+    const business=siteKey==='business'?{id:'business-id',displayName:'Fixture business'}:null;
+    const f=await domFixture({siteKey,business}); let saved;
+    const value='Line one\n\tLine two  with  spaces';
+    try {
+      f.click('main h1'); f.input('#legend-cms-text',value);
+      const heading=f.w.document.querySelector('main h1');
+      assert.equal(heading.textContent,value);
+      assert.equal(heading.dataset.cmsPreserveWhitespace,'true');
+      saved=await f.save();
+      assert.ok(Object.values(saved.pages['/'].elements).some(item=>item.text===value));
+    } finally { f.close(); }
+    const published=await domFixture({siteKey,business,doc:saved,search:''});
+    try {
+      assert.equal(published.w.document.querySelector('main h1').textContent,value);
+      assert.equal(published.w.document.querySelector('main h1').dataset.cmsPreserveWhitespace,'true');
+    } finally { published.close(); }
+  });
+}
+test('new button goes to the bottom of the selected container and persists that flow placement',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section><div class="chosen"><h1>Headline</h1><p>Copy</p></div><div class="other"><p>Other</p></div></section></main></body></html>';
+  const f=await domFixture({html});
+  try {
+    f.click('.chosen h1'); f.click('[data-add="button"]');
+    const container=f.w.document.querySelector('.chosen');
+    const button=container.querySelector('[data-cms-extra-id]');
+    assert.ok(button); assert.equal(container.lastElementChild,button);
+    const saved=await f.save(); const extra=saved.pages['/'].extras[0];
+    assert.equal(extra.type,'button'); assert.equal(extra.placement.flow,true);
+    assert.equal(extra.placement.containerId,container.dataset.cmsId); assert.equal(extra.placement.beforeId,null);
+  } finally { f.close(); }
+});
+test('business services can be duplicated and deleted as whole cards without generic icons',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section><div class="card-grid"><article class="card"><h3>Service one</h3><p>First description</p></article><article class="card"><h3>Service two</h3><p>Second description</p></article></div></section></main></body></html>';
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},html});
+  try {
+    f.click('.card-grid > article.card h3');
+    assert.equal(f.w.document.querySelector('#legend-cms-duplicate').textContent,'Duplicate service');
+    assert.equal(f.w.document.querySelector('#legend-cms-remove').textContent,'Delete service');
+    f.click('#legend-cms-duplicate');
+    const cards=f.w.document.querySelectorAll('.card-grid > article.card');
+    assert.equal(cards.length,3); assert.equal(cards[2].querySelector('h3').textContent,'Service one');
+    assert.equal(cards[2].querySelector('.icon'),null);
+    let saved=await f.save(); const service=saved.pages['/'].extras.find(item=>item.type==='card');
+    assert.ok(service); assert.equal(service.title,'Service one'); assert.equal(service.text,'First description'); assert.equal(service.placement.flow,true);
+    f.click('.card-grid > article.card h3'); f.click('#legend-cms-remove');
+    assert.equal(f.w.document.querySelector('.card-grid > article.card').hidden,true);
+    saved=await f.save();
+    assert.ok(Object.values(saved.pages['/'].elements).some(item=>item.hidden===true));
+  } finally { f.close(); }
+});
+
 for(const siteKey of ['legend','protect']) {
   test(`${siteKey}: nested existing links edit label and URL, reject unsafe destinations, draft uses revision`,async()=>{
     const f=await domFixture({siteKey}); try {

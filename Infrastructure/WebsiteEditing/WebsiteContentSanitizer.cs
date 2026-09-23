@@ -30,14 +30,15 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card")) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id,
                 SectionId = sectionId,
                 Type = type,
                 Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
-                Text = ClampText(extra.Text),
+                Title = ClampContentText(extra.Title),
+                Text = ClampContentText(extra.Text),
                 Href = SanitizeUrl(extra.Href), Target = SanitizeTarget(extra.Target),
                 Alt = ClampText(extra.Alt), VideoUrl = SanitizeUrl(extra.VideoUrl, true),
                 Placement = SanitizePlacement(extra.Placement),
@@ -61,7 +62,7 @@ public static class WebsiteContentSanitizer
     private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source) => new()
     {
         Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
-        Text = ClampText(source.Text),
+        Text = ClampContentText(source.Text),
         ImageDataUrl = SanitizeImage(source.ImageDataUrl),
         Hidden = source.Hidden,
         Href = SanitizeUrl(source.Href), Target = SanitizeTarget(source.Target),
@@ -127,6 +128,16 @@ public static class WebsiteContentSanitizer
             BorderRadius = source.BorderRadius >= 0 ? source.BorderRadius : null,
             ObjectFit = source.ObjectFit is "cover" or "contain" or "fill" or "none" or "scale-down" ? source.ObjectFit : null
         };
+    }
+
+    private static string? ClampContentText(string? value)
+    {
+        if (value is null) return null;
+        var normalized = value.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\0", string.Empty);
+        var filtered = new string(normalized.Where(ch => ch is '\n' or '\t' || !char.IsControl(ch)).ToArray());
+        return filtered.Length <= MaxTextLength
+            ? filtered
+            : filtered[..MaxTextLength];
     }
 
     private static string? ClampText(string? value)

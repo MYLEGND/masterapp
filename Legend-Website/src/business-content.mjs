@@ -18,8 +18,8 @@ export const businessHome = {
   sections: [
     { id:'about', kicker:'ABOUT', title:'Tell your story.', text:'Add your business history and what matters to your team.' },
     { id:'services', kicker:'SERVICES', title:'What you offer.', text:'Replace these prompts with your actual services.', style:'surface', cards:[
-      {icon:'compass',title:'Add a service',text:'Describe the service and who it helps.'},
-      {icon:'spark',title:'Add a service',text:'Describe another service your business provides.'}
+      {icon:false,title:'Add a service',text:'Describe the service and who it helps.'},
+      {icon:false,title:'Add a service',text:'Describe another service your business provides.'}
     ] },
     { id:'approach', kicker:'OUR APPROACH', title:'How you work.', text:'Explain what customers can expect when working with your business.' },
     { id:'locations', kicker:'WHERE WE WORK', title:'Your locations and service area.', text:'Add your actual locations, opening hours, or service areas.', style:'dark' }

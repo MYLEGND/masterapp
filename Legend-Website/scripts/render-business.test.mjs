@@ -21,6 +21,8 @@ test('all normal business pages use canonical components, actual scoped name and
     assert.ok(dom.querySelector('script[src^="/legend-public-cms.js"]'));
   }
   assert.ok(parseHTML(result.pages['/'].html).document.querySelector('.hero .hero-copy'));
+  assert.equal(parseHTML(result.pages['/'].html).document.querySelectorAll('#services .card .icon').length,0);
+  assert.equal(parseHTML(result.pages['/services'].html).document.querySelectorAll('.card .icon').length,0);
   assert.ok(parseHTML(result.pages['/about'].html).document.querySelector('.story .story-rail'));
   assert.equal(parseHTML(result.pages['/contact'].html).document.querySelector('fieldset').hasAttribute('disabled'),false);
 });
