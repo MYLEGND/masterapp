@@ -16,8 +16,6 @@ namespace AgentPortal.Models
 
         [StringLength(160)]
         public string? EntityName { get; set; }
-        [Range(0.01, 100)]
-        public decimal OwnerPercentage { get; set; } = 100;
         public List<Infrastructure.Businesses.BusinessOwnerInput> BusinessOwners { get; set; } = new();
 
         public string? FirstName { get; set; }
@@ -86,8 +84,10 @@ namespace AgentPortal.Models
             {
                 if (string.IsNullOrWhiteSpace(EntityName))
                     yield return new ValidationResult("Entity Name is required for a business client.", new[] { nameof(EntityName) });
-                if (OwnerPercentage + BusinessOwners.Sum(x => x.Percentage) != 100)
-                    yield return new ValidationResult("Ownership percentages must total 100%.", new[] { nameof(OwnerPercentage) });
+                if (BusinessOwners.Count == 0)
+                    yield return new ValidationResult("Add at least one linked personal owner.", new[] { nameof(BusinessOwners) });
+                else if (BusinessOwners.Sum(x => x.Percentage) != 100)
+                    yield return new ValidationResult("Ownership percentages must total 100%.", new[] { nameof(BusinessOwners) });
             }
             if (isPortalClient)
             {
