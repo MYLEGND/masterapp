@@ -1,13 +1,14 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly instructed DEPLOY IT for PR #138 through legend/approved-changes. Deploy affected applications only; no live customer, payment, email or Meta test mutations.",
-  "purpose": "Release canonical business entity-name profile editing, business account labels, shared ownership/inquiry form styling, and full-width horizontal analytics across the centralized app shell and shared business workspace. Hold merge until active release #82 is stopped or its completed targets are reconciled.",
+  "authorization": "Founder instructed queue this package after release 82 and explicitly wants all release 82 changes released. Release 82 failed before migration and before every app deployment.",
+  "purpose": "Release all unreleased #82 business workspace/editor changes plus entity names, styled business forms, shared full-width analytics, and isolated shared marketing key configuration correcting the #82 predeployment failure.",
   "requestId": "business-identity-forms-shared-analytics-20260923-pr138",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
     "masterapp-protect",
+    "masterapp-parfait",
     "masterapp-website"
   ]
 }

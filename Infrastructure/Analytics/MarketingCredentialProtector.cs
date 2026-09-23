@@ -23,7 +23,19 @@ public sealed class MarketingCredentialProtector : IDisposable
     public static MarketingCredentialProtector CreateShared(IConfiguration configuration, IHostEnvironment environment)
     {
         var services = new ServiceCollection();
-        services.AddPlatformDataProtection(configuration, environment, "LEGEND.MarketingConnections",
+        var marketing = configuration.GetSection("MarketingDataProtection");
+        var blob = marketing["BlobUri"];
+        var vault = marketing["KeyVaultKeyId"];
+        if (string.IsNullOrWhiteSpace(blob) != string.IsNullOrWhiteSpace(vault))
+            throw new InvalidOperationException("Marketing key authority requires both BlobUri and KeyVaultKeyId.");
+        // Scope the shared authority to this provider; never alter cookie/antiforgery configuration.
+        var authority = string.IsNullOrWhiteSpace(blob) ? configuration : new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [PlatformDataProtection.BlobUriConfigKey] = blob,
+                [PlatformDataProtection.KeyVaultKeyIdConfigKey] = vault
+            }).Build();
+        services.AddPlatformDataProtection(authority, environment, "LEGEND.MarketingConnections",
             Path.GetFullPath(Path.Combine(environment.ContentRootPath, "..", "AgentPortal", "App_Data", "marketing-keys")));
         return new MarketingCredentialProtector(services.BuildServiceProvider());
     }
