@@ -294,6 +294,14 @@ document.addEventListener("DOMContentLoaded", function() {
     const iframe = document.getElementById('training-frame');
     const title = document.getElementById('training-title');
     const emptyState = document.getElementById('training-empty');
+    if (dropdown.options.length <= 1) {
+        dropdown.disabled = true;
+        document.getElementById('training-search').disabled = true;
+        emptyState.querySelector('.empty-title').textContent = 'No training materials are available yet';
+        emptyState.querySelector('.empty-text').textContent = 'Published training materials will appear here when available.';
+        document.querySelectorAll('.control-help').forEach(help => { help.textContent = 'No published materials to browse.'; });
+    }
+
 
     dropdown.addEventListener('change', function() {
         const file = this.value;

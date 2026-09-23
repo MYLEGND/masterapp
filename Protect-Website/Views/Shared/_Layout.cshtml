@@ -62,16 +62,9 @@
         ?? "Get a personalized protection review for life insurance, mortgage protection, final expense, and family coverage options.";
 
     var seoRequestPath = Context.Request.Path.Value ?? "/";
-    var seoCanonicalPath = seoRequestPath.EndsWith("/landing", StringComparison.OrdinalIgnoreCase)
-        ? seoRequestPath[..^"/landing".Length]
-        : seoRequestPath;
-
-    if (string.IsNullOrWhiteSpace(seoCanonicalPath))
-    {
-        seoCanonicalPath = "/";
-    }
-
-    var seoCanonicalUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{seoCanonicalPath}";
+    var seoCanonicalPath = ProtectRouteCatalog.CanonicalPath(seoRequestPath);
+    var seoOrigin = Env.IsProduction() ? ProtectRouteCatalog.CanonicalOrigin : $"{Context.Request.Scheme}://{Context.Request.Host}";
+    var seoCanonicalUrl = seoOrigin + seoCanonicalPath;
     var seoOgImage = (ViewData["SeoImage"] as string) ?? $"{Context.Request.Scheme}://{Context.Request.Host}/images/legend-social-preview.png";
     var seoRobots = (ViewData["SeoRobots"] as string) ?? "index,follow";
     var seoType = (ViewData["SeoType"] as string) ?? "website";

@@ -119,6 +119,7 @@ namespace Protect_Website.Controllers
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
             // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLifeLeadCaptureResult? capturedSubmission = null;
             WebsiteLead lead;
             try
             {
@@ -189,8 +190,71 @@ namespace Protect_Website.Controllers
                         CorrelationId  = correlationId,
                     })
                 };
-                _db.WebsiteLeads.Add(lead);
-                await _db.SaveChangesAsync();
+                if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead,
+                        Request.HasFormContentType ? Request.Form["SubmissionId"].FirstOrDefault() : null,
+                        HttpContext.RequestAborted, async ct =>
+                        {
+                            capturedSubmission = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = QuoteProductType,
+                        OfferKey = QuoteOfferKey,
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        Age = model.Age,
+                        AgeRange = model.AgeRange,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                            if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
+                                throw new InvalidOperationException("The advisor handoff could not be completed.");
+await TryWriteLeadEventAsync(
+                    "lead_persisted",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        QuoteType = QuoteInterestType,
+                        OfferKey = QuoteOfferKey,
+                        ProductType = QuoteProductType,
+                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
+                        PagePath = Request?.Path.Value
+                    },
+                    lead.CreatedUtc);
+await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    OfferKey = QuoteOfferKey,
+                    ProductType = QuoteProductType,
+                    PageKey = effectivePageKey,
+                    PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                    PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
+                    PagePath = Request?.Path.Value
+                },
+                lead.CreatedUtc);
+                        }))
+                {
+                    TempData["QuoteType"] = lead.InterestType;
+            var replayBookingHint = await BuildPublicBookingAjaxHintAsync(
+                lead.LeadId,
+                lead.AgentTrackingProfileId,
+                agentSlug,
+                effectivePageKey,
+                QuoteOfferKey,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = "lead_" + lead.LeadId.ToString("N"), booking = replayBookingHint });
+                    return RedirectToAction("Index", "ThankYou");
+                }
                 _logger.LogInformation(
                     "DentalVisionHearingQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
                     correlationId, lead.LeadId);
@@ -224,6 +288,7 @@ namespace Protect_Website.Controllers
                 }
                 catch (Exception analyticsEx)
                 {
+                    if (eventType is "lead_persisted" or "website_lead_submitted") throw;
                     if (analyticsEvent != null)
                     {
                         var entry = _db.Entry(analyticsEvent);
@@ -240,20 +305,7 @@ namespace Protect_Website.Controllers
                 }
             }
 
-            await TryWriteLeadEventAsync(
-                    "lead_persisted",
-                    new
-                    {
-                        LeadId = lead.LeadId,
-                        CorrelationId = correlationId,
-                        QuoteType = QuoteInterestType,
-                        OfferKey = QuoteOfferKey,
-                        ProductType = QuoteProductType,
-                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
-                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
-                        PagePath = Request?.Path.Value
-                    },
-                    lead.CreatedUtc);
+
 
             try
             {
@@ -270,24 +322,7 @@ namespace Protect_Website.Controllers
                         PagePath = Request?.Path.Value
                     });
 
-                var captureResult = await _websiteLeadCapture.UpsertAsync(
-                    new WebsiteLifeLeadCaptureRequest
-                    {
-                        WebsiteLeadId = lead.LeadId,
-                        SubmittedUtc = lead.CreatedUtc,
-                        ProductType = QuoteProductType,
-                        OfferKey = QuoteOfferKey,
-                        FirstName = lead.FirstName,
-                        LastName = lead.LastName,
-                        Email = lead.Email,
-                        Phone = lead.Phone,
-                        Age = model.Age,
-                        AgeRange = model.AgeRange,
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug = agentSlug,
-                        RecipientEmail = leadRecipientEmail
-                    },
-                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var captureResult = capturedSubmission!;
 
                 if (captureResult.Captured)
                 {
@@ -386,7 +421,7 @@ namespace Protect_Website.Controllers
                     });
             }
 
-            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            var metaLeadEventId = "lead_" + lead.LeadId.ToString("N");
             await MetaLeadTrackingWorkflow.TryPersistAsync(
                 lead,
                 _db,
@@ -478,20 +513,7 @@ namespace Protect_Website.Controllers
             }
 
             // ── 3. Write analytics event ─────────────────────────────────────────
-            await TryWriteLeadEventAsync(
-                "website_lead_submitted",
-                new
-                {
-                    LeadId = lead.LeadId,
-                    CorrelationId = correlationId,
-                    OfferKey = QuoteOfferKey,
-                    ProductType = QuoteProductType,
-                    PageKey = effectivePageKey,
-                    PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
-                    PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
-                    PagePath = Request?.Path.Value
-                },
-                lead.CreatedUtc);
+
 
             var publicBookingHint = await BuildPublicBookingAjaxHintAsync(
                 lead.LeadId,

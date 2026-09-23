@@ -30,7 +30,7 @@
 
 	    var contactMethodOptions = new[]{ "Call","Text","Email" };
 	    var bestTimeOptions = new[]{ "Morning","Afternoon","Evening" };
-	
+
 	    var totalSteps = 14;
 	    var startStep = ((int?)ViewData["StartStep"] ?? (Model.CurrentStep > 0 ? Model.CurrentStep : 1));
 	    var hasServerErrors = !ViewData.ModelState.IsValid;
@@ -43,9 +43,9 @@
 	    var formHeadingTitle = "Build your commercial protection plan";
 	    var formHeadingCopy = "Tell us about your business, operations, and coverage needs so we can review protection options that fit how you work.";
 	}
-	
+
 <partial name="_PropertyCasualtyQuoteStyles" />
-	
+
 	<div class="container-narrow">
 	    <div class="pcq-shell">
 	        <div class="pcq-surface">
@@ -53,7 +53,7 @@
 	                <figure class="pcq-hero-banner-wrap">
 	                    <img class="pcq-hero-banner-image" src="~/images/ads/commercial-top-banner.png" asp-append-version="true" alt="Legend commercial insurance review creative asking what happens if your business is not protected." loading="eager" />
 	                </figure>
-	
+
 	                <div class="pcq-proof-row" aria-label="Commercial quote benefits">
 	                    <span class="pcq-proof-pill">
 	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -81,37 +81,37 @@
 	                        @heroProofChips[2]
 	                    </span>
 	                </div>
-	
+
 	                <div class="pcq-step-copy">
 	                    <div class="pcq-step-copy-title">@heroStepIntroTitle</div>
 	                    <p class="pcq-step-copy-helper">@heroStepIntroHelper</p>
 	                </div>
-	
+
 	                <div class="pcq-hero-actions">
 	                    <button type="button" class="btn btn-gold pcq-primary-start-cta" id="commercialHeroStartCta" data-cta="commercial_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
 	                    <div class="pcq-start-note"><span>@primaryStartCtaNote</span></div>
 	                </div>
 	            </div>
-	
+
 	            <div class="pcq-form-shell" id="commercialQuoteFlowShell" @((showQuoteStartedByDefault ? null : "hidden"))>
 	                <div class="pcq-form-heading">
 	                    <h1 class="pcq-form-heading-title">@formHeadingTitle</h1>
 	                    <p class="pcq-form-heading-copy">@formHeadingCopy</p>
 	                </div>
-	
+
 	                <p class="required-note text-center">
 	                    <strong>
 	                        <span class="text-danger">*</span> Fields marked with a red asterisk are required.
 	                    </strong>
 	                </p>
-	
+
 	                <div class="wizard-top">
 	                    <div class="wizard-steptext" id="stepLabel"></div>
 	                    <div class="wizard-progress">
 	                        <div class="wizard-progress-fill" id="progressFill"></div>
 	                    </div>
 	                </div>
-	
+
 	<form action="/Quote/Commercial"
 	      method="post"
 	      id="commercialQuoteForm"
@@ -119,6 +119,7 @@
 
 
         @Html.AntiForgeryToken()
+        <input type="hidden" name="SubmissionId" value="@(Context.Request.HasFormContentType && Guid.TryParse(Context.Request.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
         @if (!string.IsNullOrWhiteSpace(agentSlug))
         {
             <input type="hidden" name="AgentSlug" value="@agentSlug" />
@@ -322,13 +323,13 @@
 	                <label class="fw-bold mt-4">
 	                    Coverage Types Needed<span class="required-star">*</span>
 	                </label>
-	
+
 	                <div class="pcq-choice-grid" id="commercialInterestedInGroup">
 	                    @foreach (var option in interestedInOptions)
 	                    {
 	                        var id = "interest_" + option.Replace(" ", "").Replace("&", "").Replace("/", "").Replace("-", "");
 	                        var isChecked = Model.InterestedIn != null && Model.InterestedIn.Contains(option);
-	
+
 	                        <div class="form-check">
 	                            <input class="form-check-input"
 	                                   type="checkbox"
@@ -1306,28 +1307,7 @@
 	        </div>
 	    </div>
 	</div>
-	<script>
-(function () {
-    var ids = window.legendTrackingIds;
-    var p = new URLSearchParams(window.location.search);
-    var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
-    function sh(n, v) { var e = document.querySelector('input[name="' + n + '"]'); if (e && v) e.value = v; }
-    sh('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
-    sh('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
-    sh('UtmSource',    attr.utmSource || p.get('utm_source') || '');
-    sh('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
-    sh('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
-    sh('UtmId',        attr.utmId || p.get('utm_id') || '');
-    sh('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
-    sh('UtmContent',   attr.utmContent || p.get('utm_content') || '');
-    sh('MetaCampaignId', attr.metaCampaignId || p.get('meta_campaign_id') || '');
-    sh('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
-    sh('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
-    sh('Fbclid',       attr.fbclid || p.get('fbclid') || '');
-    sh('ReferrerUrl',  document.referrer || '');
-    sh('LandingPageUrl', window.location.href || '');
-})();
-</script>
+
 
 @section Scripts {
     <script>
@@ -1378,7 +1358,7 @@
 	                    PageKey: pageKey
 	                });
 	            }
-	
+
 	            // -----------------------------
 	            // Helpers
 	            // -----------------------------
@@ -1480,7 +1460,7 @@
 	                    }
 	                });
 	            }
-	
+
 	            // -----------------------------
 	            // Make "required-star" actually required in HTML
             // (so native validity works even if you forgot required attrs)
@@ -1535,7 +1515,7 @@ function enforceRequiredByLabels() {
             // -----------------------------
 	            function validateInterestedIn(stepEl) {
 	                if (!stepEl) return true;
-	
+
 	                const inputs = stepEl.querySelectorAll('input[name="InterestedIn"]');
 	                if (!inputs || inputs.length === 0) return true;
 
@@ -1564,11 +1544,11 @@ function enforceRequiredByLabels() {
 
 	            function validateDisclaimer(stepEl) {
 	                if (!stepEl) return true;
-	
+
 	                const cb = stepEl.querySelector('input[name="AcknowledgedDisclaimer"]');
 	                if (!cb) return true;
 	                updateFieldState(cb);
-	
+
 	                const msg = stepEl.querySelector('[data-valmsg-for="AcknowledgedDisclaimer"], span[data-valmsg-for="AcknowledgedDisclaimer"]');
 
                 if (!cb.checked) {

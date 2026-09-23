@@ -104,8 +104,6 @@ public sealed class FounderSubscribersController : Controller
             if (context is null)
                 return NotFound();
 
-            await _impersonation.StartAsync(HttpContext, User, context.AgentUserId, cancellationToken);
-
             var clientUserId = Uri.EscapeDataString(context.ClientUserId);
             var target = (destination ?? string.Empty).Trim().ToLowerInvariant() switch
             {
@@ -117,6 +115,8 @@ public sealed class FounderSubscribersController : Controller
 
             if (string.IsNullOrWhiteSpace(target))
                 return BadRequest("A valid subscriber destination is required.");
+
+            await _impersonation.StartAsync(HttpContext, User, context.AgentUserId, cancellationToken);
 
             _logger.LogInformation(
                 "Founder opened {Destination} for subscriber profile {ClientProfileId} in owner context {AgentUserId}",

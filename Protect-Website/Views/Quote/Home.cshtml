@@ -30,9 +30,9 @@
 	    var formHeadingTitle = "Build your home protection plan";
 	    var formHeadingCopy = "Share a few home and household details so we can review protection options that fit your property, timing, and coverage needs.";
 	}
-	
+
 	<partial name="_PropertyCasualtyQuoteStyles" />
-	
+
 	<div class="container-narrow">
 	    <div class="pcq-shell">
 	        <div class="pcq-surface">
@@ -40,7 +40,7 @@
 	                <figure class="pcq-hero-banner-wrap">
 	                    <img class="pcq-hero-banner-image" src="~/images/ads/home-top-banner.png" asp-append-version="true" alt="Legend home insurance review creative asking what happens if your home is not protected." loading="eager" />
 	                </figure>
-	
+
 	                <div class="pcq-proof-row" aria-label="Home quote benefits">
 	                    <span class="pcq-proof-pill">
 	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -68,37 +68,37 @@
 	                        @heroProofChips[2]
 	                    </span>
 	                </div>
-	
+
 	                <div class="pcq-step-copy">
 	                    <div class="pcq-step-copy-title">@heroStepIntroTitle</div>
 	                    <p class="pcq-step-copy-helper">@heroStepIntroHelper</p>
 	                </div>
-	
+
 	                <div class="pcq-hero-actions">
 	                    <button type="button" class="btn btn-gold pcq-primary-start-cta" id="homeHeroStartCta" data-cta="home_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
 	                    <div class="pcq-start-note"><span>@primaryStartCtaNote</span></div>
 	                </div>
 	            </div>
-	
+
 	            <div class="pcq-form-shell" id="homeQuoteFlowShell" @((showQuoteStartedByDefault ? null : "hidden"))>
 	                <div class="pcq-form-heading">
 	                    <h1 class="pcq-form-heading-title">@formHeadingTitle</h1>
 	                    <p class="pcq-form-heading-copy">@formHeadingCopy</p>
 	                </div>
-	
+
 	                <p class="required-note text-center">
 	                    <strong>
 	                        <span class="text-danger">*</span> Fields marked with a red asterisk are required.
 	                    </strong>
 	                </p>
-	
+
 	                @if (!ViewData.ModelState.IsValid)
 	                {
 	                    <div class="alert alert-danger fw-bold">
 	                        @Html.ValidationSummary(excludePropertyErrors: false)
 	                    </div>
 	                }
-	
+
 	                <div class="wizard-steps">
 	                    <div class="wizard-pill" data-pill="1">Section 1 - Applicant</div>
 	                    <div class="wizard-pill" data-pill="2">Section 2 - Address and Contact</div>
@@ -107,9 +107,10 @@
 	                    <div class="wizard-pill" data-pill="5">Section 5 - Coverages</div>
 	                    <div class="wizard-pill" data-pill="6">Section 6 - Endorsements</div>
 	                </div>
-	
+
 	                <form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="pcq-form-frame" id="homeQuoteForm" novalidate data-form-key="@formKey">
 	    @Html.AntiForgeryToken()
+        <input type="hidden" name="SubmissionId" value="@(Context.Request.HasFormContentType && Guid.TryParse(Context.Request.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
 	    @if (!string.IsNullOrWhiteSpace(agentSlug))
 	    {
 	        <input type="hidden" name="AgentSlug" value="@agentSlug" />
@@ -1419,28 +1420,7 @@
 	        </div>
 	    </div>
 	</div>
-	<script>
-(function () {
-    var ids = window.legendTrackingIds;
-    var p = new URLSearchParams(window.location.search);
-    var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
-    function sh(n, v) { var e = document.querySelector('input[name="' + n + '"]'); if (e && v) e.value = v; }
-    sh('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
-    sh('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
-    sh('UtmSource',    attr.utmSource || p.get('utm_source') || '');
-    sh('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
-    sh('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
-    sh('UtmId',        attr.utmId || p.get('utm_id') || '');
-    sh('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
-    sh('UtmContent',   attr.utmContent || p.get('utm_content') || '');
-    sh('MetaCampaignId', attr.metaCampaignId || p.get('meta_campaign_id') || '');
-    sh('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
-    sh('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
-    sh('Fbclid',       attr.fbclid || p.get('fbclid') || '');
-    sh('ReferrerUrl',  document.referrer || '');
-    sh('LandingPageUrl', window.location.href || '');
-})();
-</script>
+
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
@@ -1513,7 +1493,7 @@
 	        function setStep(step) {
 	            currentStep = step;
 	            if (currentStepField) currentStepField.value = step.toString();
-	
+
 	            document.querySelectorAll(".wizard-step").forEach(s => {
 	                const isActive = parseInt(s.getAttribute("data-step")) === step;
 	                s.classList.toggle("active", isActive);
@@ -1651,7 +1631,7 @@
 
 	        document.addEventListener("DOMContentLoaded", function () {
 	            setQuoteStartedState(quoteStarted);
-	
+
 	            setStep(initialStartStep);
 
             // Default Primary/Previous Country to United States if empty
@@ -1755,7 +1735,7 @@
 	                }
 	            });
 	        }
-	
+
 	        document.querySelectorAll("input, select, textarea").forEach(el => {
 	            el.addEventListener("input", () => updateFieldState(el));
 	            el.addEventListener("change", () => updateFieldState(el));

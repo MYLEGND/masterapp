@@ -1,11 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized targeted direct release on legend/approved-changes.",
-  "purpose": "Direct release of validated owned client workspace routing, subscription terms change notification through the existing billing outbox, and current-scope Website Analytics refresh. Preserve payment authority and approved changes. Validation run 35808741295 passed on 05ce433de1470cacf97e6e9cc93bdde27b2ef833.",
-  "requestId": "portal-client-focused-direct-release-20260923-5",
+  "authorization": "Founder explicitly authorized finishing the audit repair batch and direct deployment to affected apps through legend/approved-changes. Code tests only; no live customer/payment/email/Meta test mutations.",
+  "purpose": "Release the preserved launch-audit repairs and completion fixes: scoped business ownership, atomic lead/CRM/event persistence, submission and notification retry integrity, analytics and Meta health, shared route inventory, UI and exports. See Docs/releases/founder-launch-audit-20260923.md for evidence boundaries.",
+  "requestId": "founder-launch-audit-direct-release-20260923-6",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client"
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-parfait"
   ]
 }

@@ -70,6 +70,22 @@ namespace AgentPortal.Controllers;
             Converters = { new JsonStringEnumConverter() }
         };
 
+        private async Task EnsureBusinessEntityAsync(CreateClientViewModel model, ClientProfile profile, string agentOid)
+        {
+            if (!string.Equals((model.RecordType ?? "").Replace(" ", ""), "BusinessClient", StringComparison.OrdinalIgnoreCase)) return;
+            var owners = new List<Infrastructure.Businesses.BusinessOwnerInput>
+            {
+                new(profile.Id, profile.Email, model.OwnerPercentage)
+            };
+            owners.AddRange(model.BusinessOwners);
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.ICommerceBusinessProvisioningService>();
+            await service.CreateAsync(new Infrastructure.Businesses.CommerceBusinessProvisioningRequest(
+                DisplayName: model.EntityName!, LegalName: model.EntityName!, BusinessType: "BusinessClient",
+                OwnerEmail: profile.Email, OwnerDisplayName: $"{profile.FirstName} {profile.LastName}".Trim(),
+                CanManageCatalog: false, CanManageOrders: false, OwnerClientProfileId: profile.Id,
+                Owners: owners, ActorAgentUserId: agentOid), HttpContext.RequestAborted);
+        }
+
         public ClientsController(
             MasterAppDbContext db,
             ClientProvisioningService provisioning,
@@ -2138,6 +2154,7 @@ namespace AgentPortal.Controllers;
             ? await _production.GetContactSnapshotsAsync(agentOid, ProductionSide.Client, clientIds, HttpContext.RequestAborted)
             : new Dictionary<string, ProductionContactSnapshot>(StringComparer.OrdinalIgnoreCase);
 
+        var entityLabels = await Infrastructure.Businesses.BusinessIdentityProjection.LoadLabelsAsync(_db, clients.Select(x => x.Id), HttpContext.RequestAborted);
         var mapped = new List<ClientListItemViewModel>();
 
         foreach (var x in clients)
@@ -2166,6 +2183,7 @@ namespace AgentPortal.Controllers;
 
                 mapped.Add(new ClientListItemViewModel
                 {
+                    EntityName = entityLabels.GetValueOrDefault(x.Id),
                     Id = x.Id,
                     ClientUserId = x.ClientUserId,
                     FirstName = x.FirstName,
@@ -3487,6 +3505,7 @@ namespace AgentPortal.Controllers;
                     beforeCommitAsync: async convertedProfile =>
                     {
                         createdClientProfile = convertedProfile;
+                        await EnsureBusinessEntityAsync(model, convertedProfile, agentOid);
                         createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
                             new CreateClientSubscriptionOfferCommand(
                                 convertedProfile.Id,
@@ -3641,6 +3660,7 @@ namespace AgentPortal.Controllers;
 
             if (isPortalClient)
             {
+                await EnsureBusinessEntityAsync(model, createdClientProfile, agentOid);
                 createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
                     new CreateClientSubscriptionOfferCommand(
                         createdClientProfile.Id,

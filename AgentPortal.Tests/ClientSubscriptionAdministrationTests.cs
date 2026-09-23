@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Infrastructure.Businesses;
 using System;
 using System.Linq;
 using System.Security.Claims;
@@ -36,9 +38,13 @@ public sealed class ClientSubscriptionAdministrationTests
             billingOrchestrator: BuildInvitationOnlyOrchestrator(db),
             emailSender: emailSender.Object);
 
+        controller.Url = Mock.Of<Microsoft.AspNetCore.Mvc.IUrlHelper>();
+        controller.HttpContext.RequestServices = new ServiceCollection()
+            .AddSingleton<ICommerceBusinessProvisioningService>(new CommerceBusinessProvisioningService(db)).BuildServiceProvider();
         var result = await controller.Create(new CreateClientViewModel
         {
             RecordType = recordType,
+            EntityName = recordType == "BusinessClient" ? "Test Entity" : null,
             AccountManagementMode = "SharedAccount",
             FirstName = recordType == "BusinessClient" ? "Business" : "Client",
             LastName = "Owner",

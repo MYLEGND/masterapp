@@ -185,8 +185,6 @@ public class ProfileController : Controller
         ClientProfile profile,
         CancellationToken cancellationToken)
     {
-        if (!IsBusinessClient(profile))
-            return new List<BusinessWebsiteProfileSummary>();
 
         var businesses = await WebsiteBusinessAccess.QueryManagedBusinesses(_db, profile.Id)
             .OrderBy(business => business.DisplayName)
@@ -220,8 +218,6 @@ public class ProfileController : Controller
         Guid businessId,
         CancellationToken cancellationToken)
     {
-        if (!IsBusinessClient(context.Profile))
-            return null;
 
         if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
                 _db,
@@ -515,6 +511,39 @@ public class ProfileController : Controller
 
         TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
         return RedirectToAction(nameof(MyProfile));
+    }
+
+    [HttpGet("/profile/business/{businessId:guid}/owners")]
+    public async Task<IActionResult> BusinessOwners(Guid businessId)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) is not { } business)
+            return Forbid();
+        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId && x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.RoleKey == "owner" && x.CanManageTeam))
+            return Forbid();
+        ViewBag.BusinessId = businessId;
+        ViewBag.EntityName = business.DisplayName;
+        return View("BusinessOwners", await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.Status == "Active" && x.RoleKey == "owner").ToListAsync());
+    }
+
+    [HttpPost("/profile/business/{businessId:guid}/owners")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessOwners(Guid businessId, string entityName, List<BusinessOwnerInput> owners)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
+            return Forbid();
+        try
+        {
+            if (!ModelState.IsValid) throw new InvalidOperationException("Check owner account IDs, emails and percentages.");
+            await _businessProvisioning.UpdateOwnershipAsync(businessId, context.Profile.Id, entityName, owners, HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
+            TempData["BusinessWebsiteNotice"] = "Entity name and linked owners saved.";
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { TempData["BusinessWebsiteWarning"] = "Ownership changed in another session. Reload and try again."; }
+        catch (InvalidOperationException ex) { TempData["BusinessWebsiteWarning"] = ex.Message; }
+        return RedirectToAction(nameof(BusinessOwners), new { businessId });
     }
 
     [HttpGet("/profile/business-website/session/{businessId:guid}")]

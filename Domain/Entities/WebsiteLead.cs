@@ -33,6 +33,8 @@ public class WebsiteLead
     public Guid? AgentTrackingProfileId { get; set; }
     public string? AgentSlug { get; set; }
     public DateTime CreatedUtc { get; set; }
+    public DateTime? NotificationAttemptUtc { get; set; }
+    public DateTime? NotificationSentUtc { get; set; }
     public string Status { get; set; } = "New";
     public string? MetadataJson { get; set; }
     public bool IsDeleted { get; set; }

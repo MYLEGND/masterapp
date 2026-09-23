@@ -56,27 +56,40 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var capi = scope.ServiceProvider.GetRequiredService<IMetaConversionsApiService>();
         var metaPixelResolutionService = scope.ServiceProvider.GetRequiredService<IMetaPixelResolutionService>();
 
-        var rows = await db.MetaSignalEvents
+        var candidates = db.MetaSignalEvents
             .Where(x =>
                 !x.MetaServerSent &&
                 x.MetadataJson != null &&
-                !x.MetadataJson.Contains("\"metaServerStatus\":") &&
-                (x.TrafficType == "crm" ||
-                 x.TrafficType == "ecommerce" ||
+                (!x.MetadataJson.Contains("\"metaServerStatus\":") ||
+                 x.MetadataJson.Contains("\"metaServerRetryable\":true")) &&
+                (x.TrafficType == "crm" || x.TrafficType == "ecommerce" ||
                  x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker)) &&
                 DispatchableEvents.Contains(x.EventName) &&
                 x.MetadataJson.Contains(MetaSignalSingleTruthPolicy.DispatchEligibleMarker))
             .OrderBy(x => x.CreatedUtc)
-            .Take(25)
-            .ToListAsync(cancellationToken);
+            .AsAsyncEnumerable();
 
-        rows = rows
-            .Where(x =>
-                string.Equals(x.TrafficType, "crm", StringComparison.OrdinalIgnoreCase) ||
-                MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(x.MetadataJson) ||
-                MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(x.TrafficType, x.MetadataJson))
-            .Where(x => !IsBlockedAutomatedTraffic(x))
-            .ToList();
+        var rows = new List<MetaSignalEvent>();
+        await foreach (var row in candidates.WithCancellation(cancellationToken))
+        {
+            if (IsBlockedAutomatedTraffic(row) ||
+                !(string.Equals(row.TrafficType, "crm", StringComparison.OrdinalIgnoreCase) ||
+                  MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson) ||
+                  MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(row.TrafficType, row.MetadataJson)))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Status = "skipped_traffic_or_producer", Note = "untrusted_or_automated"
+                });
+                continue;
+            }
+            if (DateTime.TryParse(ReadMetadataString(row.MetadataJson, "metaServerNextAttemptUtc"),
+                    CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var nextAttempt) && nextAttempt > DateTime.UtcNow)
+                continue;
+            rows.Add(row);
+            if (rows.Count == 25) break;
+        }
+        await db.SaveChangesAsync(cancellationToken);
 
         var leadIds = rows
             .Where(x => x.LeadId.HasValue)
@@ -661,6 +674,17 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             };
         }
 
+        var attempt = int.TryParse(ReadMetadataString(existingJson, "metaServerAttemptCount"), out var prior) ? prior + 1 : 1;
+        var retryable = result.Retryable && !result.Sent && attempt < 8;
+        metadata["metaServerAttemptCount"] = attempt;
+        metadata["metaServerRetryable"] = retryable;
+        metadata["metaServerRetryExhausted"] = result.Retryable && !result.Sent && !retryable;
+        metadata["metaServerHttpStatusCode"] = result.HttpStatusCode;
+        metadata["metaServerNextAttemptUtc"] = retryable
+            ? DateTime.UtcNow.AddSeconds(Math.Min(3600, 30 * Math.Pow(2, attempt - 1)))
+            : (DateTime?)null;
+        metadata["metaServerEventsReceived"] = result.EventsReceived;
+        metadata["metaServerTraceId"] = result.TraceId;
         metadata["metaServerStatus"] = result.Status;
         metadata["metaServerNote"] = result.Note;
         metadata["metaServerAttempted"] = result.Attempted;

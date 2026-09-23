@@ -43,6 +43,7 @@ public class LeadSubmitController : ControllerBase
 
     public sealed class LeadSubmitRequest
     {
+        public string? SubmissionId { get; set; }
         [Required]
         public string FirstName { get; set; } = null!;
         public string? LastName { get; set; }
@@ -92,7 +93,7 @@ public class LeadSubmitController : ControllerBase
             : Guid.NewGuid();
 
         // Shared secret check
-        var expected = _config["Analytics:SharedSecret"] ?? _config["LeadIngest:SharedSecret"];
+        var expected = Shared.Analytics.AnalyticsIngestConfiguration.ResolveSecret(key => _config[key]);
         var provided = Request.Headers["X-Shared-Secret"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(expected) || !string.Equals(expected, provided, StringComparison.Ordinal))
         {
@@ -181,14 +182,7 @@ public class LeadSubmitController : ControllerBase
             MetadataJson = string.IsNullOrWhiteSpace(req.MetadataJson) ? null : req.MetadataJson.Trim()
         };
 
-        _db.WebsiteLeads.Add(lead);
-        await _db.SaveChangesAsync();
-        _logger.LogInformation(
-            "LeadSubmit [{CorrelationId}]: WebsiteLead {LeadId} saved attributedTo={AttributedId}",
-            correlationId, lead.LeadId, lead.AgentTrackingProfileId);
-
-        // ── Analytics event (server-side lead submission record) ──────────────────
-        try
+        if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, req.SubmissionId, HttpContext.RequestAborted, async ct =>
         {
             var evt = new AnalyticsEvent
             {
@@ -230,16 +224,14 @@ public class LeadSubmitController : ControllerBase
             };
             _db.AnalyticsEvents.Add(evt);
             await _db.SaveChangesAsync();
-            _logger.LogInformation(
-                "LeadSubmit [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
-                correlationId, evt.EventId, lead.LeadId);
-        }
-        catch (Exception analyticsEx)
-        {
-            _logger.LogError(analyticsEx,
-                "LeadSubmit [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
-                correlationId, lead.LeadId);
-        }
+        }))
+            lead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, HttpContext.RequestAborted);
+        if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, HttpContext.RequestAborted))
+            return Ok(new { status = "already_captured", captured = true, leadId = lead.LeadId,
+                notificationSent = lead.NotificationSentUtc != null, emailSent = lead.NotificationSentUtc != null });
+        _logger.LogInformation(
+            "LeadSubmit [{CorrelationId}]: WebsiteLead {LeadId} saved attributedTo={AttributedId}",
+            correlationId, lead.LeadId, lead.AgentTrackingProfileId);
 
         // Determine recipient: agent if resolved, otherwise founder
         var recipient = resolved.Found && !string.IsNullOrWhiteSpace(resolved.Profile.AgentUpn)
@@ -348,16 +340,15 @@ Notes: {lead.Notes}";
             }
         }
 
+        await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, HttpContext.RequestAborted);
         if (!emailSent)
         {
-            lead.Status = "NotificationFailed";
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
             _logger.LogError(
                 "LeadSubmit [{CorrelationId}]: lead {LeadId} was captured but scoped-agent notification failed for {Recipient}",
                 correlationId, lead.LeadId, recipient);
 
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            return Ok(new
             {
                 status = "lead_saved_notification_failed",
                 error = "agent_notification_failed",

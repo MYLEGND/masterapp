@@ -1,0 +1,45 @@
+@model List<Domain.Entities.CommerceBusinessMember>
+@{ ViewData["Title"] = "Business owners"; }
+<h1>@ViewBag.EntityName</h1>
+<p>@TempData["BusinessWebsiteNotice"]</p><p role="alert">@TempData["BusinessWebsiteWarning"]</p>
+<form method="post" action="/profile/business/@ViewBag.BusinessId/owners">
+    @Html.AntiForgeryToken()
+    <label for="entityName">Entity Name</label>
+    <input id="entityName" name="entityName" value="@ViewBag.EntityName" required maxlength="160" />
+    <p>Each owner must have an existing personal client account. Shares must total 100%. Blank historical shares need confirmation.</p>
+    <div id="businessOwners">
+    @for (var i = 0; i < Model.Count; i++)
+    {
+        <fieldset><legend>Owner @(i + 1): @Model[i].DisplayName</legend>
+            <input type="hidden" name="owners[@i].ClientProfileId" value="@Model[i].ClientProfileId" />
+            <label for="ownerEmail-@i">Personal account email</label><input id="ownerEmail-@i" name="owners[@i].Email" type="email" value="@Model[i].Email" required />
+            <label for="ownerShare-@i">Ownership (%)</label><input id="ownerShare-@i" name="owners[@i].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model[i].OwnershipPercentage" required />
+            <button type="button" data-remove-owner>Remove owner</button>
+        </fieldset>
+    }
+    </div>
+    <button type="button" id="addBusinessOwner">Add linked owner</button>
+    <button type="submit">Save entity and ownership</button>
+</form>
+<a href="/profile">Back to profile</a>
+<script>
+(() => {
+ let index = @Model.Count;
+ const container = document.getElementById('businessOwners');
+ const renumber = () => { Array.from(container.children).forEach((row, i) => row.querySelectorAll('input').forEach(input => { input.name = input.name.replace(/owners\[\d+\]/, `owners[${i}]`); })); index = container.children.length; };
+ container.addEventListener('click', event => { if (event.target.matches('[data-remove-owner]')) { event.target.closest('fieldset').remove(); renumber(); } });
+ document.getElementById('addBusinessOwner').addEventListener('click', () => {
+   if (index >= 20) return;
+   const row = document.createElement('fieldset');
+   const legend = document.createElement('legend'); legend.textContent = `Owner ${index + 1}`; row.append(legend);
+   for (const [key, text, type] of [['Email','Personal account email','email'], ['Percentage','Ownership (%)','number']]) {
+     const label = document.createElement('label'); const input = document.createElement('input');
+     input.id = `owner-${index}-${key}`; input.name = `owners[${index}].${key}`; input.type = type; input.required = true;
+     if (type === 'number') { input.min = '0.01'; input.max = '100'; input.step = '0.01'; }
+     label.htmlFor = input.id; label.textContent = text; row.append(label, input);
+   }
+   const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeOwner = ''; remove.textContent = 'Remove owner'; row.append(remove);
+   container.append(row); index++;
+ });
+})();
+</script>

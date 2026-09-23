@@ -606,6 +606,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceBusiness>(e =>
         {
+            e.Property(x => x.UpdatedUtc).IsConcurrencyToken();
             e.HasKey(x => x.Id);
             e.Property(x => x.Key).IsRequired().HasMaxLength(80);
             e.Property(x => x.DisplayName).IsRequired().HasMaxLength(160);
@@ -634,6 +635,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceBusinessMember>(e =>
         {
+            e.Property(x => x.OwnershipPercentage).HasPrecision(5, 2);
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).IsRequired().HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).IsRequired().HasMaxLength(320);
@@ -1591,6 +1593,7 @@ public class MasterAppDbContext : DbContext
         // WEBSITE LEADS
         modelBuilder.Entity<WebsiteLead>(e =>
         {
+            e.HasIndex(x => x.LeadId).IsUnique();
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
             e.HasIndex(x => x.CreatedUtc);
@@ -2640,6 +2643,7 @@ public class MasterAppDbContext : DbContext
         // ==========================================================
         modelBuilder.Entity<WebsiteLead>(e =>
         {
+            e.HasIndex(x => x.LeadId).IsUnique();
             e.HasKey(x => x.Id);
             e.Property(x => x.LeadId).IsRequired();
             e.Property(x => x.FirstName).IsRequired().HasMaxLength(120);

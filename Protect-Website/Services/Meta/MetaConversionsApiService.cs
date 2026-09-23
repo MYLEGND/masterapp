@@ -90,6 +90,10 @@ public sealed class MetaConversionsApiEventRequest
 
 public sealed class MetaConversionsApiResult
 {
+    public int? EventsReceived { get; init; }
+    public string? TraceId { get; init; }
+    public bool Retryable { get; init; }
+    public int? HttpStatusCode { get; init; }
     public bool Attempted { get; init; }
     public bool Sent { get; init; }
     public string Status { get; init; } = "unknown";
@@ -169,9 +173,17 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         eventRequest.AuthorityDeduplicationKey = authorityDecision.DedupeKey;
         eventRequest.AuthorityReservationToken = authorityDecision.ReservationToken;
 
-        var result = await SendEventCoreAsync(eventRequest, cancellationToken);
-        _metaSendAuthority.Complete(authorityDecision, result.Sent);
-        return result;
+        var sent = false;
+        try
+        {
+            var result = await SendEventCoreAsync(eventRequest, cancellationToken);
+            sent = result.Sent;
+            return result;
+        }
+        finally
+        {
+            _metaSendAuthority.Complete(authorityDecision, sent);
+        }
     }
 
     public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default)
@@ -189,9 +201,17 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         request.AuthorityDeduplicationKey = authorityDecision.DedupeKey;
         request.AuthorityReservationToken = authorityDecision.ReservationToken;
 
-        var result = await SendEventCoreAsync(request, cancellationToken);
-        _metaSendAuthority.Complete(authorityDecision, result.Sent);
-        return result;
+        var sent = false;
+        try
+        {
+            var result = await SendEventCoreAsync(request, cancellationToken);
+            sent = result.Sent;
+            return result;
+        }
+        finally
+        {
+            _metaSendAuthority.Complete(authorityDecision, sent);
+        }
     }
 
     private async Task<MetaConversionsApiResult> SendEventCoreAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken)
@@ -277,6 +297,25 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
             if (response.IsSuccessStatusCode)
             {
+                int? received = null;
+                string? traceId = null;
+                try
+                {
+                    using var acknowledgement = JsonDocument.Parse(responseBody);
+                    if (acknowledgement.RootElement.ValueKind == JsonValueKind.Object && acknowledgement.RootElement.TryGetProperty("events_received", out var count) && count.ValueKind == JsonValueKind.Number && count.TryGetInt32(out var value))
+                        received = value;
+                    if (acknowledgement.RootElement.ValueKind == JsonValueKind.Object && acknowledgement.RootElement.TryGetProperty("fbtrace_id", out var trace) && trace.ValueKind == JsonValueKind.String)
+                        traceId = trace.GetString();
+                }
+                catch (JsonException) { }
+                if (received is not > 0)
+                    return new MetaConversionsApiResult
+                    {
+                        Attempted = true, Sent = false, Status = "unconfirmed_response",
+                        Note = "meta_acceptance_not_confirmed", EventsReceived = received,
+                        HttpStatusCode = (int)response.StatusCode, TraceId = traceId,
+                        PixelId = pixelId, PixelOwnerType = pixelOwnerType
+                    };
                 _logger.LogInformation(
                     "MetaCapi [{CorrelationId}]: sent event={EventName} outboundEvent={OutboundEventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
                     request.CorrelationId, normalizedEventName, outboundEventName, request.LeadId, request.QuoteType, request.EventId, "sent");
@@ -286,6 +325,9 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                     Attempted = true,
                     Sent = true,
                     Status = "sent",
+                    EventsReceived = received,
+                    TraceId = traceId,
+                    HttpStatusCode = (int)response.StatusCode,
                     PixelId = pixelId,
                     PixelOwnerType = pixelOwnerType
                 };
@@ -301,10 +343,16 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 Attempted = true,
                 Sent = false,
                 Status = "failed",
+                Retryable = (int)response.StatusCode is 408 or 429 || (int)response.StatusCode >= 500,
+                HttpStatusCode = (int)response.StatusCode,
                 Note = safeNote,
                 PixelId = pixelId,
                 PixelOwnerType = pixelOwnerType
             };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -318,6 +366,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 Attempted = true,
                 Sent = false,
                 Status = "failed",
+                Retryable = true,
                 Note = "exception",
                 PixelId = pixelId,
                 PixelOwnerType = pixelOwnerType
@@ -350,6 +399,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             Attempted = false,
             Sent = false,
             Status = "blocked_by_authority",
+            Retryable = authorityDecision.Status == "authority_unavailable",
             Note = authorityDecision.Note ?? authorityDecision.Status ?? "blocked_duplicate",
             PixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId),
             PixelOwnerType = Normalize(request.PixelOwnerType)

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Infrastructure.Data;
 using Infrastructure.Leads;
 using Microsoft.AspNetCore.Mvc;
@@ -41,12 +42,32 @@ public sealed class AnalyticsController : Controller
             });
         }
 
+        if (!Guid.TryParse(request.EventId, out var clientEventId) || clientEventId == Guid.Empty)
+            return BadRequest(new { accepted = false, error = "A stable event ID is required." });
+
+        var existing = await _db.AnalyticsEvents.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
+        if (existing is not null)
+            return DuplicateResult(existing, request, eventName, clientEventId);
+
         try
         {
             var trackingContext = BuildTrackingContext(request, eventName, definition);
             var analyticsEvent = UnifiedEventMapper.ToAnalytics(trackingContext);
+            analyticsEvent.ClientEventId = clientEventId;
             UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
-            await _db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                _db.Entry(analyticsEvent).State = EntityState.Detached;
+                var concurrent = await _db.AnalyticsEvents.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
+                if (concurrent is null) throw;
+                return DuplicateResult(concurrent, request, eventName, clientEventId);
+            }
 
             return Json(new MetaSignalProcessResult
             {
@@ -77,6 +98,22 @@ public sealed class AnalyticsController : Controller
                 MetaServerNote = "server_exception"
             });
         }
+    }
+
+    private IActionResult DuplicateResult(Domain.Entities.AnalyticsEvent existing,
+        MetaSignalIngestRequest request, string eventName, Guid eventId)
+    {
+        if (!string.Equals(existing.EventType, eventName, StringComparison.OrdinalIgnoreCase) ||
+            existing.SessionId != Normalize(request.SessionId) ||
+            existing.VisitorId != Normalize(request.VisitorId) ||
+            existing.AgentTrackingProfileId != request.AgentTrackingProfileId ||
+            !string.Equals(existing.AgentSlug, Normalize(request.AgentSlug), StringComparison.OrdinalIgnoreCase))
+            return Conflict(new { accepted = false, error = "Event ID belongs to a different event." });
+        return Json(new MetaSignalProcessResult
+        {
+            Accepted = true, Skipped = true, EventId = eventId.ToString("N"),
+            EventName = eventName, MetaServerStatus = "duplicate_ignored"
+        });
     }
 
     private UnifiedEventContext BuildTrackingContext(

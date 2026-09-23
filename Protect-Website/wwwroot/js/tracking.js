@@ -208,7 +208,7 @@
       return;
     }
 
-    if (stageRank(nextStage) < stageRank(previousStage)) {
+    if (nextStage !== 'submitted' && stageRank(nextStage) < stageRank(previousStage)) {
       return;
     }
 
@@ -999,6 +999,7 @@
         break;
       case 'form_submit_attempt':
       case 'life_step2_submit_attempt':
+        if (['error', 'failure', 'failed'].includes(String(payload.SubmitOutcome || '').toLowerCase())) state.nativeSubmissionPending = false;
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
         break;
@@ -1006,6 +1007,7 @@
         transitionFormState(state, 'submitted', 'lead_form_submit_success');
         break;
       case 'lead_form_submit_failure':
+        state.nativeSubmissionPending = false;
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
         break;
@@ -1021,7 +1023,6 @@
   let _activeStart = document.visibilityState === 'visible' ? Date.now() : null;
   let _exitFired = false;
 
-let _formAbandonCallbacks = [];
 
 function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   const normalizedFormKey = (formKey || '').trim();
@@ -1182,16 +1183,9 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   function ensureFormTrackState(formKey) {
     if (!formKey) return null;
-
-    window.__legendFormTrackState = window.__legendFormTrackState || {};
-
-    if (!window.__legendFormTrackState[formKey]) {
-      window.__legendFormTrackState[formKey] = {
-        errorsSeen: new Set()
-      };
-    }
-
-    return window.__legendFormTrackState[formKey];
+    if (!_formTrackStateByKey.has(formKey))
+      _formTrackStateByKey.set(formKey, createFormTrackState(formKey, PAGE_QUOTE_TYPE));
+    return _formTrackStateByKey.get(formKey);
   }
 
   function clearTrackedFieldError(formKey, fieldName) {
@@ -1221,13 +1215,20 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
     firePageExit(lifecycleSource || 'pagehide', event);
 
-    _formAbandonCallbacks.forEach(function (cb) {
-      try {
-        cb(lifecycleSource || 'pagehide');
-      } catch {
-        /* swallow */
-      }
-    });
+    // Only an actual non-BFCache page exit can establish abandonment.
+    if (lifecycleSource === 'pagehide') {
+      _formTrackStateByKey.forEach(state => {
+        if (!state.started || state.submitted || state.nativeSubmissionPending || state.abandonedAt) return;
+        const previousStage = state.currentStage;
+        transitionFormState(state, 'abandoned', 'pagehide');
+        beaconSend(buildBody({
+          EventType: 'form_abandon', FormKey: state.formKey,
+          MetadataJson: JSON.stringify({ reason: 'pagehide', stage: previousStage,
+            durationMilliseconds: Math.max(0, Date.now() - (state.startedAt || Date.now())),
+            lastFocusedField: state.lastFocusedField || null })
+        }));
+      });
+    }
   }
 
 
@@ -1756,20 +1757,60 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     });
   }
 
-  function wireFormStart(selector, formKey) {
-    const form = document.querySelector(selector);
-    if (!form) return;
-    const handler = () => {
+  function syncFormAttribution(form) {
+    const attr = getAttribution() || {};
+    const values = {
+      SessionId: getSessionId(), VisitorId: getVisitorId(),
+      UtmSource: attr.utmSource, UtmMedium: attr.utmMedium, UtmCampaign: attr.utmCampaign,
+      UtmId: attr.utmId, UtmTerm: attr.utmTerm, UtmContent: attr.utmContent,
+      MetaCampaignId: attr.metaCampaignId, MetaAdSetId: attr.metaAdSetId, MetaAdId: attr.metaAdId,
+      Fbclid: attr.fbclid, ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
+    };
+    Object.entries(values).forEach(([name, value]) => {
+      const field = form.elements.namedItem(name);
+      if (field instanceof HTMLInputElement && field.type === 'hidden') field.value = value || '';
+    });
+  }
+
+  function wireFormStart(form, formKey) {
+    if (!form || form._legendTrackingBound) return;
+    form._legendTrackingBound = true;
+    const state = ensureFormTrackState(formKey);
+    syncFormAttribution(form);
+    const handler = event => {
+      state.lastFocusedField = event.target?.name || null;
       fireTrackedFormStartOnce(formKey);
     };
     form.addEventListener('focusin', handler);
     form.addEventListener('change', handler);
+    let submitRevision = 0;
+    const isAjax = form.dataset.ajaxSubmit === 'true';
+    form._trackSubmitAttempt = (valid, errorCount = 0) => {
+      submitRevision++;
+      syncFormAttribution(form);
+      state.nativeSubmissionPending = Boolean(valid) && !isAjax;
+      sendEvent({ EventType: 'form_submit_attempt', FormKey: formKey,
+        MetadataJson: JSON.stringify({ valid: Boolean(valid), errorCount: Number(errorCount) || 0 }) });
+    };
+    form.addEventListener('submit', event => {
+      const initialRevision = submitRevision;
+      syncFormAttribution(form);
+      queueMicrotask(() => {
+        if (!event.defaultPrevented && !isAjax) {
+          if (submitRevision === initialRevision) form._trackSubmitAttempt(true, 0);
+          state.nativeSubmissionPending = true;
+        } else {
+          state.nativeSubmissionPending = false;
+        }
+      });
+    }, true);
   }
 
   const _trackedFormStartFlags = new Set();
 
   function fireTrackedFormStartOnce(formKey) {
     if (!formKey) return false;
+    transitionFormState(ensureFormTrackState(formKey), 'started', 'form_interaction');
     const currentSessionId = getSessionId();
     const sessionFlag = `form_started_${currentSessionId}_${window.location.pathname}_${formKey}`;
 
@@ -1842,7 +1883,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   document.querySelectorAll('form[data-form-key]').forEach(f => {
     const key = f.getAttribute('data-form-key');
     if (!key) return;
-    wireFormStart(`form[data-form-key="${key}"]`, key);
+    wireFormStart(f, key);
   });
 
 
@@ -1856,7 +1897,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   // ============================================================
 
   // Expose existing tracking helpers for legacy/on-page scripts and diagnostics.
-  window._formAbandonCallbacks = window._formAbandonCallbacks || _formAbandonCallbacks;
   window.trackCustomFieldError = window.trackCustomFieldError || trackCustomFieldError;
 
   window.legendTrack = (payload) => {

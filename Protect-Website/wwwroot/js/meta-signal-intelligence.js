@@ -1214,19 +1214,17 @@
     }
 
     function fireBrowserPixel(eventName, eventId, pixelPayload) {
-      if (!config.enabled || !config.sendBrowserEvents || !config.browserEventNames.has(eventName) || typeof window.fbq !== 'function') {
-        return false;
-      }
-
-      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) {
-        return false;
-      }
+      if (!config.enabled || !config.sendBrowserEvents) return 'disabled';
+      if (!config.browserEventNames.has(eventName)) return 'not_required';
+      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) return 'human_gate';
+      if (typeof window.fbq !== 'function') return 'pixel_unavailable';
 
       try {
         window.fbq('trackCustom', eventName, pixelPayload, { eventID: eventId });
-        return true;
+        // fbq can queue locally. Returning from it does not acknowledge delivery to Meta.
+        return 'invoked';
       } catch {
-        return false;
+        return 'invocation_failed';
       }
     }
 
@@ -1358,7 +1356,9 @@
         buildLearningEnrichment(eventName, score, clientContext, attribution, metadata)
       );
       const browserPixelPayload = buildPixelPayload(stepNumber, stepName, score, enrichedMetadata, attribution);
-      const browserEventSent = fireBrowserPixel(eventName, eventId, browserPixelPayload);
+      const browserDispatchStatus = fireBrowserPixel(eventName, eventId, browserPixelPayload);
+      const browserEventSent = browserDispatchStatus === 'invoked';
+      enrichedMetadata.browserDispatchStatus = browserDispatchStatus;
       const payload = {
         eventName,
         eventId,

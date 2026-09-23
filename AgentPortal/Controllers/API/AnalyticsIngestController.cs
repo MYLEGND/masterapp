@@ -112,7 +112,7 @@ public class AnalyticsIngestController : ControllerBase
     public async Task<IActionResult> Ingest([FromBody] AnalyticsEventRequest req)
     {
         // Shared secret check
-        var expected = _config["Analytics:SharedSecret"] ?? _config["LeadIngest:SharedSecret"];
+        var expected = Shared.Analytics.AnalyticsIngestConfiguration.ResolveSecret(key => _config[key]);
         var provided = Request.Headers["X-Shared-Secret"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(expected) || !string.Equals(expected, provided, StringComparison.Ordinal))
         {

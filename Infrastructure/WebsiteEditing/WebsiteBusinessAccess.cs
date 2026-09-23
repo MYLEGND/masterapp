@@ -36,7 +36,7 @@ public static class WebsiteBusinessAccess
     public static async Task<bool> CanManageAsync(MasterAppDbContext db, Guid businessId, Guid clientProfileId, CancellationToken cancellationToken = default)
     {
         var profile = await db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(p => p.Id == clientProfileId, cancellationToken);
-        return profile is not null && (await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db, new Domain.Accounts.AccountLifecycleSubject(profile.ClientUserId, MessagingParticipantTypes.Client, profile.Id), cancellationToken)).AllowsFullAccess && ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes) == ClientRecordClassification.BusinessClient &&
+        return profile is not null && (await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db, new Domain.Accounts.AccountLifecycleSubject(profile.ClientUserId, MessagingParticipantTypes.Client, profile.Id), cancellationToken)).AllowsFullAccess &&
             await QueryManagedBusinesses(db, clientProfileId).AnyAsync(b => b.Id == businessId, cancellationToken);
     }
 

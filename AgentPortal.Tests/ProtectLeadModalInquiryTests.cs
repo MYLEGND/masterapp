@@ -135,7 +135,7 @@ public sealed class ProtectLeadModalInquiryTests
     }
 
     [Fact]
-    public async Task CentralLeadSubmit_DoesNotReportSuccessWhenAgentNotificationFails()
+    public async Task CentralLeadSubmit_ReportsCaptureSeparatelyWhenAgentNotificationFails()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var profile = SeedAgent(db);
@@ -153,8 +153,8 @@ public sealed class ProtectLeadModalInquiryTests
         var controller = BuildCentralController(db, sender.Object);
         var result = await controller.Submit(Request(profile));
 
-        var unavailable = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(StatusCodes.Status503ServiceUnavailable, unavailable.StatusCode);
+        var unavailable = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(StatusCodes.Status200OK, unavailable.StatusCode);
 
         var lead = Assert.Single(db.WebsiteLeads);
         Assert.Equal("NotificationFailed", lead.Status);

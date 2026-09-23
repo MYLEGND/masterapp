@@ -2166,6 +2166,8 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("OwnershipHistoryJson").HasColumnType("nvarchar(max)");
+
                     b.Property<string>("OwnerEmail")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -2181,6 +2183,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(40)");
 
                     b.Property<DateTime>("UpdatedUtc")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
@@ -2237,6 +2240,10 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<decimal?>("OwnershipPercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<string>("RoleKey")
                         .IsRequired()
@@ -12022,6 +12029,9 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.WebsiteLead", b =>
                 {
+                    b.Property<DateTime?>("NotificationAttemptUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("NotificationSentUtc").HasColumnType("datetime2");
+
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
@@ -12176,6 +12186,7 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(120)");
 
                     b.HasKey("Id");
+                    b.HasIndex("LeadId").IsUnique();
 
                     b.HasIndex("AgentSlug");
 

@@ -209,8 +209,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         CancellationToken ct = default)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
-        var analyticsRows = await _analytics
-            .ScopedEvents(range, scope, scopedAgentIds)
+        var analyticsRows = (await _analytics.LoadFilteredEventsAsync(range, scope, scopedAgentIds, ct))
             .Select(x => new HealthAnalyticsEventRow
             {
                 Id = x.Id,
@@ -223,7 +222,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 EngagedMilliseconds = x.EngagedMilliseconds,
                 IsBounceCandidate = x.IsBounceCandidate
             })
-            .ToListAsync(ct);
+            .ToList();
 
         var metaRows = await BuildHealthMetaQuery(range, scope, scopedAgentIds, analyticsRows)
             .Select(x => new HealthMetaSignalRow
@@ -313,7 +312,10 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         var browserEligibleRows = metaContexts
             .Where(x => BrowserPixelEventNames.Contains(x.Row.EventName))
             .ToList();
-        var browserStuckCount = browserEligibleRows.Count(x => !x.Row.MetaBrowserSent);
+        var browserStatuses = browserEligibleRows.Select(x => MetaSignalBrowserDispatch.Resolve(
+            x.Row.MetaBrowserSent, x.Row.MetadataJson)).ToList();
+        var browserStuckCount = browserStatuses.Count(MetaSignalBrowserDispatch.IsFailure);
+        var browserUnverifiedCount = browserStatuses.Count(x => x == "unverified");
         var dispatcherMissingCount = dispatcherDueRows.Count(x => !HasDispatcherActivity(x));
 
         var failureDetection = new List<MetaSignalHealthIssueDto>
@@ -334,12 +336,12 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 $"Missing lead on {conversionRowsMissingLead} conversion rows and missing session on {bridgeRowsMissingSession} bridge rows."),
             BuildIssue(
                 "browser_pending",
-                "Events Stuck at MetaBrowserSent = 0",
+                "Browser Pixel Invocation Failures",
                 browserStuckCount,
                 browserEligibleRows.Count,
                 browserEligibleRows.Count == 0
                     ? "No browser-eligible Meta Signal rows were produced in the selected diagnostic range."
-                    : $"{browserStuckCount} of {browserEligibleRows.Count} browser-eligible rows never marked browser send success."),
+                    : $"{browserStuckCount} recorded pixel availability or invocation failures; {browserUnverifiedCount} rows have no verifiable browser outcome. Invocation does not prove Meta delivery."),
             BuildIssue(
                 "dispatcher_pending",
                 "Events Never Reaching Dispatcher",
@@ -349,6 +351,24 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                     ? $"No dispatcher-eligible rows are older than the {DispatcherGraceMinutes}-minute grace window."
                     : $"{dispatcherMissingCount} of {dispatcherDueRows.Count} dispatcher-eligible rows show no dispatch metadata after {DispatcherGraceMinutes} minutes.")
         };
+
+        if (browserUnverifiedCount > 0)
+            failureDetection.Add(new MetaSignalHealthIssueDto
+            {
+                Key = "browser_unverified",
+                Label = "Browser Outcome Unverified",
+                Count = browserUnverifiedCount,
+                Status = "Watch",
+                Detail = "Historical browser signals lack invocation evidence. Inspect the browser and Meta Test Events; these rows are neither confirmed sends nor proven failures."
+            });
+
+        var serverFailures = metaContexts.Count(x => !x.Row.MetaServerSent &&
+            (x.MetaServerStatus is "failed" or "unconfirmed_response" ||
+             (x.MetaServerStatus == "blocked_by_authority" && x.Row.MetadataJson?.Contains("authority_unavailable", StringComparison.Ordinal) == true) ||
+             x.Row.MetadataJson?.Contains("\"metaServerRetryExhausted\":true", StringComparison.Ordinal) == true));
+        failureDetection.Add(BuildIssue("server_not_accepted", "Meta Server Acceptance Failures",
+            serverFailures, dispatcherTouchedRows.Count,
+            $"{serverFailures} server outcomes failed or lack Meta acceptance. Inspect retry and response metadata."));
 
         var result = new MetaSignalHealthDashboardDto
         {
@@ -408,6 +428,9 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                     LeadId = x.Row.LeadId,
                     FunnelStep = BuildFunnelStepLabel(x.Row),
                     MetaBrowserSent = x.Row.MetaBrowserSent,
+                    BrowserDispatchStatus = BrowserPixelEventNames.Contains(x.Row.EventName)
+                        ? MetaSignalBrowserDispatch.Resolve(x.Row.MetaBrowserSent, x.Row.MetadataJson)
+                        : "not_required",
                     MetaServerSent = x.Row.MetaServerSent,
                     DispatcherStatus = ResolveDispatcherStatus(x, dispatcherThresholdUtc),
                     AuthorityStatus = ResolveAuthorityStatus(x),
@@ -703,10 +726,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (range.QualityMode == TrafficQualityMode.AllTraffic)
             return query;
 
-        var qualityEvents = await _analytics
-            .ScopedEvents(range, scope, scopedAgentIds)
-            .Select(e => new { e.VisitorId, e.SessionId })
-            .ToListAsync(ct);
+        var qualityEvents = (await _analytics.LoadFilteredEventsAsync(range, scope, scopedAgentIds, ct))
+            .Select(e => new { e.VisitorId, e.SessionId }).ToList();
 
         var visitorIds = qualityEvents
             .Select(x => x.VisitorId)
@@ -724,7 +745,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             return query.Where(x => false);
 
         return query.Where(x =>
-            (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
+            (string.IsNullOrWhiteSpace(x.SessionId) && !string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
             (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
     }
 
@@ -782,7 +803,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             return query.Where(x => false);
 
         return query.Where(x =>
-            (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
+            (string.IsNullOrWhiteSpace(x.SessionId) && !string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
             (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
     }
 
@@ -1158,10 +1179,10 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             return "Excluded: localhost/internal QA traffic.";
 
         if ((row.MetaServerSent || row.MetaBrowserSent) && IsMetaAttributedPaid(attribution))
-            return "Included: sent to Meta and paid Meta-attributed.";
+            return "Included: reported to the browser pixel or accepted by Meta server and paid Meta-attributed.";
 
         if (row.MetaServerSent || row.MetaBrowserSent)
-            return "Included: sent to Meta; not paid Meta-attributed.";
+            return "Included: reported to the browser pixel or accepted by Meta server; not paid Meta-attributed.";
 
         return Normalize(row.TrafficType) switch
         {

@@ -112,7 +112,7 @@ namespace Protect_Website.Models
         public decimal? ProfessionalLiabilityLimit { get; set; }
 
                         [Display(Name = "Acknowledged Disclaimer")]
-        [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
+        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
     }
 }

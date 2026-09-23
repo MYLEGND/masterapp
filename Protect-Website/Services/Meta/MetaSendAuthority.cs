@@ -12,6 +12,7 @@ public interface IMetaSendAuthority
 
 public sealed class MetaSendAuthority : IMetaSendAuthority
 {
+    private static readonly SemaphoreSlim ReservationGate = new(1, 1);
     private const int ReservationTtlMinutes = 10;
     private const int SentTtlHours = 6;
     private static readonly ConcurrentDictionary<string, AuthorityReservation> Reservations = new(StringComparer.OrdinalIgnoreCase);
@@ -32,7 +33,14 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         _logger = logger;
     }
 
-    public async Task<MetaSendAuthorityDecision> TrySendAsync(
+    public async Task<MetaSendAuthorityDecision> TrySendAsync(MetaSendAuthorityRequest request, CancellationToken cancellationToken = default)
+    {
+        await ReservationGate.WaitAsync(cancellationToken);
+        try { return await ReserveAsync(request, cancellationToken); }
+        finally { ReservationGate.Release(); }
+    }
+
+    private async Task<MetaSendAuthorityDecision> ReserveAsync(
         MetaSendAuthorityRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -100,18 +108,22 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                 Status: "allowed",
                 Note: null);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             var source = NormalizeSource(request.Source);
             var eventType = NormalizeText(request.EventType) ?? "unknown";
             _logger.LogWarning(
                 ex,
-                "MetaSendAuthority fail-open event {EventType} source {Source}",
+                "MetaSendAuthority unavailable for event {EventType} source {Source}",
                 eventType,
                 source);
 
             return new MetaSendAuthorityDecision(
-                Allowed: true,
+                Allowed: false,
                 EventType: eventType,
                 LeadId: request.LeadId,
                 Source: source,
@@ -124,8 +136,8 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                     request.DeduplicationKey,
                     request.EventId),
                 ReservationToken: null,
-                Status: "allowed_fail_open",
-                Note: "authority_fail_open");
+                Status: "authority_unavailable",
+                Note: "authority_unavailable");
         }
     }
 

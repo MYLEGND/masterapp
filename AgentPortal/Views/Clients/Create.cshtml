@@ -135,6 +135,25 @@
                     </div>
                     <div class="client-create-grid">
                     <div>
+                        <div id="businessIdentityFields" hidden>
+                        <label asp-for="EntityName" class="client-create-label">Entity Name (Business Client)</label>
+                        <input asp-for="EntityName" class="client-create-input" maxlength="160" />
+                        <span asp-validation-for="EntityName" class="text-danger"></span>
+                        <label asp-for="OwnerPercentage" class="client-create-label">Primary owner's share (%)</label>
+                        <input asp-for="OwnerPercentage" class="client-create-input" type="number" min="0.01" max="100" step="0.01" />
+                        <p>Link additional owners using their existing personal client account email. Shares must total 100%.</p>
+                        <div id="businessAdditionalOwners">
+                        @for (var ownerIndex = 0; ownerIndex < Model.BusinessOwners.Count; ownerIndex++)
+                        {
+                            <div data-business-owner>
+                                <label>Email <input name="BusinessOwners[@ownerIndex].Email" type="email" value="@Model.BusinessOwners[ownerIndex].Email" class="client-create-input" required /></label>
+                                <label>Share (%) <input name="BusinessOwners[@ownerIndex].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model.BusinessOwners[ownerIndex].Percentage" class="client-create-input" required /></label>
+                                <button type="button" data-remove-business-owner>Remove owner</button>
+                            </div>
+                        }
+                        </div>
+                        <button type="button" id="addBusinessOwner">Add linked owner</button>
+                        </div>
                         <label asp-for="FirstName" class="client-create-label"></label>
                         <input asp-for="FirstName" class="client-create-input" autocomplete="given-name" data-client-required />
                         <span asp-validation-for="FirstName" class="text-danger client-create-validation"></span>

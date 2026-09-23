@@ -114,13 +114,11 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             try
             {
                 var bridgeRow = await TryBuildBridgeRowAsync(db, analyticsEvent, cancellationToken);
-                _watermark = analyticsEvent.Id;
-
-                if (bridgeRow == null)
+                if (bridgeRow == null || await AlreadyDerivedAsync(db, bridgeRow, cancellationToken))
+                {
+                    _watermark = analyticsEvent.Id;
                     continue;
-
-                if (await AlreadyDerivedAsync(db, bridgeRow, cancellationToken))
-                    continue;
+                }
 
                 db.MetaSignalEvents.Add(bridgeRow);
 
@@ -134,6 +132,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     if (entry.State != EntityState.Detached)
                         entry.State = EntityState.Detached;
 
+                    _watermark = analyticsEvent.Id;
                     _logger.LogDebug(
                         ex,
                         "MetaSignalAnalyticsBridge ignored duplicate derived row sourceAnalyticsEventId={AnalyticsId} eventName={EventName}",
@@ -142,6 +141,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     continue;
                 }
 
+                _watermark = analyticsEvent.Id;
                 _logger.LogInformation(
                     "MetaSignalBridge processed event {EventType} for Lead {LeadId}",
                     bridgeRow.EventName,
@@ -154,7 +154,9 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     "MetaSignalAnalyticsBridge failed sourceAnalyticsEventId={AnalyticsId} sourceEventType={EventType}",
                     analyticsEvent.Id,
                     analyticsEvent.EventType);
-                _watermark = analyticsEvent.Id;
+                // The scoped context is disposed before the next poll. Keep the
+                // watermark behind the failed row so its stable event ID is retried.
+                return false;
             }
         }
 

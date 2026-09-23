@@ -264,6 +264,7 @@ public sealed class MetaSignalAiPayload
 
 public sealed class MarketingHealthAiPayload
 {
+    public string MetaHealthStatus { get; set; } = "Unverified";
     public int ClientTrackingErrors { get; set; }
     public int ClientTrackingErrorSessions { get; set; }
     public int InferredFormStarts { get; set; }

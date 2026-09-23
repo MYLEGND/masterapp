@@ -68,18 +68,24 @@ public class WebsiteAnalyticsScopeTests
             Mock.Of<IMetaSignalAnalyticsService>(),
             NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
 
+        var metaConnections = new Mock<IMetaAdsConnectionStore>();
+        analytics.Setup(x => x.LoadAttributedEventsAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<TrafficType>(), It.IsAny<CancellationToken>()))
+            .Callback<TimeRangeRequest, ScopeContext, TrafficType, CancellationToken>((_, scope, _, _) => captured = scope)
+            .ReturnsAsync(new List<AnalyticsEvent>());
+        analytics.Setup(x => x.LoadScopedMetaEventsAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<IReadOnlyCollection<AnalyticsEvent>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MetaSignalEvent>());
         var controller = new WebsiteAnalyticsController(
             analytics.Object,
             Mock.Of<IMetaAdsService>(),
             Mock.Of<IMetaAdsOAuthService>(),
-            Mock.Of<IMetaAdsConnectionStore>(),
+            metaConnections.Object,
             tracking.Object,
             Mock.Of<IMetaSignalAnalyticsService>(),
             Mock.Of<ILandingRouteDiscoveryService>(),
             aiDataBuilder,
             Mock.Of<IVisitorConcentrationService>(),
             Mock.Of<IKpiDetailBreakdownService>(),
-            Mock.Of<IVisitorTrustScoringService>(),
+            new VisitorTrustScoringService(),
             Mock.Of<IAnalyticsIncidentQueryService>(),
             NullLogger<WebsiteAnalyticsController>.Instance,
             db,
@@ -96,5 +102,11 @@ public class WebsiteAnalyticsScopeTests
         Assert.NotNull(captured);
         Assert.Equal(ScopeType.Agent, captured!.ScopeType);
         Assert.Equal(profileId, captured.AgentTrackingProfileId);
+        var otherAgent = Guid.NewGuid();
+        await controller.VisitorTimeline("shared-visitor", agentProfileId: otherAgent, team: true);
+        Assert.Equal(profileId, captured.AgentTrackingProfileId);
+        await controller.MetaDisconnect(otherAgent, team: true);
+        metaConnections.Verify(x => x.DeleteAsync(profileId, It.IsAny<CancellationToken>()), Times.Once);
+        metaConnections.Verify(x => x.DeleteAsync(otherAgent, It.IsAny<CancellationToken>()), Times.Never);
     }
 }

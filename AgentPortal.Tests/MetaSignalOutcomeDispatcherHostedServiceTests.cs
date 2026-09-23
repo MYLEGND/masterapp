@@ -147,6 +147,59 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
         pixelResolution.VerifyAll();
     }
 
+    [Fact]
+    public async Task DispatchBatch_RetriesSameEventAfterBackoffAndBlockedRowsDoNotStarveIt()
+    {
+        var ids = new System.Collections.Generic.List<string>();
+        var capi = new Mock<IMetaConversionsApiService>();
+        capi.Setup(x => x.SendEventAsync(It.IsAny<MetaConversionsApiEventRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<MetaConversionsApiEventRequest, CancellationToken>((request, _) => ids.Add(request.EventId))
+            .ReturnsAsync(() => ids.Count == 1
+                ? new MetaConversionsApiResult { Attempted = true, Status = "failed", Retryable = true, HttpStatusCode = 503 }
+                : new MetaConversionsApiResult { Attempted = true, Sent = true, Status = "sent", EventsReceived = 1 });
+        var pixel = new Mock<IMetaPixelResolutionService>();
+        pixel.Setup(x => x.ResolveForLeadAsync(null, null, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedMetaPixelContext { PixelId = "test", AccessToken = "test", PixelOwnerType = MetaPixelOwnerTypes.Agency });
+        var database = Guid.NewGuid().ToString();
+        await using var provider = new ServiceCollection()
+            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
+            .AddSingleton(capi.Object).AddSingleton(pixel.Object).BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            for (var i = 0; i < 27; i++)
+                db.MetaSignalEvents.Add(new MetaSignalEvent
+                {
+                    EventId = "retry-test-" + i, EventName = "Lead", TrafficType = "PaidAds",
+                    SessionId = "retry-session-" + i, MetaDeduplicationKey = "retry-key-" + i,
+                    CreatedUtc = DateTime.UtcNow.AddMinutes(-30).AddSeconds(i),
+                    WebDriver = i < 26, MetadataJson = BuildBridgeOwnedServerMetadata(true)
+                });
+            await db.SaveChangesAsync();
+        }
+        var service = new MetaSignalOutcomeDispatcherHostedService(provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new MetaSignalIntelligenceOptions { Enabled = true, SendServerEvents = true }),
+            NullLogger<MetaSignalOutcomeDispatcherHostedService>.Instance);
+        await InvokeDispatchBatchAsync(service);
+        Assert.Single(ids);
+        await InvokeDispatchBatchAsync(service);
+        Assert.Single(ids); // Future retry does not send early.
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            Assert.Equal(26, await db.MetaSignalEvents.CountAsync(x => x.MetadataJson!.Contains("skipped_traffic_or_producer")));
+            var row = await db.MetaSignalEvents.SingleAsync(x => x.EventId == "retry-test-26");
+            var metadata = System.Text.Json.Nodes.JsonNode.Parse(row.MetadataJson!)!;
+            metadata["metaServerNextAttemptUtc"] = DateTime.UtcNow.AddSeconds(-1);
+            row.MetadataJson = metadata.ToJsonString();
+            await db.SaveChangesAsync();
+        }
+        await InvokeDispatchBatchAsync(service);
+        Assert.Equal(new[] { "retry-key-26", "retry-key-26" }, ids);
+        await InvokeDispatchBatchAsync(service);
+        Assert.Equal(2, ids.Count);
+    }
+
     private static string BuildBridgeOwnedServerMetadata(bool dispatchEligible)
     {
         return JsonSerializer.Serialize(new

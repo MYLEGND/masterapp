@@ -170,7 +170,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
     private static LandingRouteRegistryItem? MergeRoute(LandingRouteRegistryItem? fallback, LandingRouteRegistryItem? configured)
     {
         var basePath = NormalizeBasePath(FirstNonEmpty(configured?.BasePath, fallback?.BasePath));
-        var key = ResolveRouteKey(configured) ?? ResolveRouteKey(fallback) ?? BuildRouteKeyFromBasePath(basePath);
+        var key = FirstNonEmpty(ResolveRouteKey(configured), ResolveRouteKey(fallback)) ?? BuildRouteKeyFromBasePath(basePath);
         if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(basePath))
             return null;
 
@@ -477,152 +477,30 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
 
     private static List<LandingRouteRegistryItem> BuildFallbackRoutes()
     {
-        return new List<LandingRouteRegistryItem>
-        {
-            new()
+        return Shared.Analytics.ProtectRouteCatalog.Routes.Where(route => route.HasPaidLanding)
+            .Select(route => new LandingRouteRegistryItem
             {
-                Key = "quote_life_landing",
-                DisplayName = "Life Insurance Landing",
-                BasePath = "/Quote/Life/landing",
-                ControlPath = "/Quote/Life",
-                QuoteType = "life",
+                Key = route.PageKey + "_landing",
+                DisplayName = route.DisplayName + " Landing",
+                BasePath = route.Path + "/landing",
+                ControlPath = route.Path,
+                QuoteType = route.QuoteType,
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Paid life landing variants live under /Quote/Life/landing while the main control experience uses /Quote/Life.",
+                Notes = $"Paid variants use {route.Path}/landing; the canonical control is {route.Path}.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
                     {
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
-                        EffectivePageKey = "quote_life_landing",
-                        Description = "Current paid life landing destination.",
+                        EffectivePageKey = route.PageKey + "_landing",
+                        Description = $"Current paid {route.DisplayName} landing destination.",
                         IsControl = true,
                         IsActive = true
                     }
                 }
-            },
-            new()
-            {
-                Key = "quote_mortgage_protection_landing",
-                DisplayName = "Mortgage Protection Landing",
-                BasePath = "/Quote/Mortgage-Protection/landing",
-                ControlPath = "/Quote/Mortgage-Protection",
-                QuoteType = "mortgage_protection",
-                PageMode = "paid_landing",
-                DefaultPageVariant = "contact_first_education_v1",
-                IsActive = true,
-                Notes = "Paid mortgage protection landing variants live under /Quote/Mortgage-Protection/landing while the main control experience uses /Quote/Mortgage-Protection.",
-                Variants = new List<LandingVariantRegistryItem>
-                {
-                    new()
-                    {
-                        Variant = "contact_first_education_v1",
-                        DisplayName = "Control",
-                        EffectivePageKey = "quote_mortgage_protection_landing",
-                        Description = "Current paid mortgage protection landing destination.",
-                        IsControl = true,
-                        IsActive = true
-                    }
-                }
-            },
-            new()
-            {
-                Key = "quote_term_life_landing",
-                DisplayName = "Term Life Landing",
-                BasePath = "/Quote/Term-Life/landing",
-                ControlPath = "/Quote/Term-Life",
-                QuoteType = "term_life",
-                PageMode = "paid_landing",
-                DefaultPageVariant = "contact_first_education_v1",
-                IsActive = true,
-                Notes = "Paid term life landing variants live under /Quote/Term-Life/landing while the main control experience uses /Quote/Term-Life.",
-                Variants = new List<LandingVariantRegistryItem>
-                {
-                    new()
-                    {
-                        Variant = "contact_first_education_v1",
-                        DisplayName = "Control",
-                        EffectivePageKey = "quote_term_life_landing",
-                        Description = "Current paid term life landing destination.",
-                        IsControl = true,
-                        IsActive = true
-                    }
-                }
-            },
-            new()
-            {
-                Key = "quote_whole_life_landing",
-                DisplayName = "Whole Life Landing",
-                BasePath = "/Quote/Whole-Life/landing",
-                ControlPath = "/Quote/Whole-Life",
-                QuoteType = "whole_life",
-                PageMode = "paid_landing",
-                DefaultPageVariant = "contact_first_education_v1",
-                IsActive = true,
-                Notes = "Paid whole life landing variants live under /Quote/Whole-Life/landing while the main control experience uses /Quote/Whole-Life.",
-                Variants = new List<LandingVariantRegistryItem>
-                {
-                    new()
-                    {
-                        Variant = "contact_first_education_v1",
-                        DisplayName = "Control",
-                        EffectivePageKey = "quote_whole_life_landing",
-                        Description = "Current paid whole life landing destination.",
-                        IsControl = true,
-                        IsActive = true
-                    }
-                }
-            },
-            new()
-            {
-                Key = "quote_final_expense_landing",
-                DisplayName = "Final Expense Landing",
-                BasePath = "/Quote/Final-Expense/landing",
-                ControlPath = "/Quote/Final-Expense",
-                QuoteType = "final_expense",
-                PageMode = "paid_landing",
-                DefaultPageVariant = "contact_first_education_v1",
-                IsActive = true,
-                Notes = "Paid final expense landing variants live under /Quote/Final-Expense/landing while the main control experience uses /Quote/Final-Expense.",
-                Variants = new List<LandingVariantRegistryItem>
-                {
-                    new()
-                    {
-                        Variant = "contact_first_education_v1",
-                        DisplayName = "Control",
-                        EffectivePageKey = "quote_final_expense_landing",
-                        Description = "Current paid final expense landing destination.",
-                        IsControl = true,
-                        IsActive = true
-                    }
-                }
-            },
-            new()
-            {
-                Key = "quote_iul_landing",
-                DisplayName = "Indexed Universal Life (IUL) Landing",
-                BasePath = "/Quote/IUL/landing",
-                ControlPath = "/Quote/IUL",
-                QuoteType = "iul",
-                PageMode = "paid_landing",
-                DefaultPageVariant = "contact_first_education_v1",
-                IsActive = true,
-                Notes = "Paid IUL landing variants live under /Quote/IUL/landing while the main control experience uses /Quote/IUL.",
-                Variants = new List<LandingVariantRegistryItem>
-                {
-                    new()
-                    {
-                        Variant = "contact_first_education_v1",
-                        DisplayName = "Control",
-                        EffectivePageKey = "quote_iul_landing",
-                        Description = "Current paid IUL landing destination.",
-                        IsControl = true,
-                        IsActive = true
-                    }
-                }
-            }
-        };
+            }).ToList();
     }
 }

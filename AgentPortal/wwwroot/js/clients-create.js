@@ -21,6 +21,29 @@
   const subscriptionFreeTrialDaysWrap = document.getElementById("subscriptionFreeTrialDaysWrap");
   const subscriptionCurrency = document.getElementById("SubscriptionCurrency");
 
+  const ownerRows = document.getElementById('businessAdditionalOwners');
+  function reindexOwners() {
+    ownerRows?.querySelectorAll('[data-business-owner]').forEach((row, index) => {
+      row.querySelectorAll('input').forEach(input => {
+        input.name = `BusinessOwners[${index}].${input.type === 'email' ? 'Email' : 'Percentage'}`;
+      });
+    });
+  }
+  document.getElementById('addBusinessOwner')?.addEventListener('click', () => {
+    if (!ownerRows || ownerRows.children.length >= 19) return;
+    const row = document.createElement('div');
+    row.dataset.businessOwner = '';
+    row.innerHTML = '<label>Email <input type="email" class="client-create-input" required></label><label>Share (%) <input type="number" min="0.01" max="100" step="0.01" class="client-create-input" required></label><button type="button" data-remove-business-owner>Remove owner</button>';
+    ownerRows.appendChild(row);
+    reindexOwners();
+  });
+  ownerRows?.addEventListener('click', event => {
+    const button = event.target.closest('[data-remove-business-owner]');
+    if (!button) return;
+    button.closest('[data-business-owner]').remove();
+    reindexOwners();
+  });
+
   // Ensure a default selection (Lead) so required radios don't block submit silently
   if (!recordTypeRadios.some(r => r.checked)) {
     const leadRadio = recordTypeRadios.find(r => r.value === "Lead");
@@ -82,6 +105,13 @@
   function applyRecordType() {
     const selected = recordTypeRadios.find((x) => x.checked)?.value || "Lead";
     const isClient = isPortalRecordType(selected);
+    const businessFields = document.getElementById('businessIdentityFields');
+    const isBusiness = selected === 'BusinessClient';
+    if (businessFields) {
+      businessFields.hidden = !isBusiness;
+      businessFields.querySelectorAll('input').forEach(field => { field.disabled = !isBusiness; });
+      setRequiredState(document.getElementById('EntityName'), isBusiness);
+    }
     const requiresSignificantOther = isClient && needsSO(status ? status.value : "");
     const useCustomAmount = isClient && subscriptionPriceType?.value === "Custom";
     const useAnchorDay = isClient && subscriptionAnchorMode?.value === "SpecificDayOfMonth";

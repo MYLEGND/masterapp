@@ -16,6 +16,40 @@ namespace AgentPortal.Tests;
 public sealed class ClientBillingNotificationAndSchemaTests
 {
     [Fact]
+    public async Task ConcurrentWorkersClaimNoticeBeforeSending()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options;
+        await using var seed = new MasterAppDbContext(options);
+        await seed.Database.EnsureCreatedAsync();
+        var profile = await AddProfileAsync(seed);
+        var subscription = await AddSubscriptionAsync(seed, profile.Id);
+        seed.ClientBillingNotifications.Add(new ClientBillingNotification
+        { ClientProfileId = profile.Id, ClientSubscriptionId = subscription.Id, EventKey = "claim-test", Subject = "Test", PlainTextBody = "Test", NotBeforeUtc = DateTime.UtcNow.AddMinutes(-1) });
+        await seed.SaveChangesAsync();
+        await using var first = new MasterAppDbContext(options);
+        await using var second = new MasterAppDbContext(options);
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var email = new Mock<IEmailSender>();
+        email.Setup(x => x.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), null, It.IsAny<string>(), null, null, null))
+            .Returns(async () => { calls++; entered.SetResult(true); return await release.Task; });
+        var one = new ClientBillingNotificationDeliveryService(first, email.Object, NullLogger<ClientBillingNotificationDeliveryService>.Instance);
+        var two = new ClientBillingNotificationDeliveryService(second, email.Object, NullLogger<ClientBillingNotificationDeliveryService>.Instance);
+        var pending = one.DeliverDueAsync(10);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var competing = await two.DeliverDueAsync(10);
+        Assert.Equal(0, competing.Sent);
+        Assert.Equal(1, calls);
+        release.SetResult(true);
+        Assert.Equal(1, (await pending).Sent);
+        seed.ChangeTracker.Clear();
+        Assert.NotNull((await seed.ClientBillingNotifications.SingleAsync()).SentUtc);
+    }
+
+    [Fact]
     public async Task NotificationQueue_IsIdempotentAndDeliveryMarksTheNoticeSent()
     {
         await using var db = ControllerTestHelpers.BuildDb();

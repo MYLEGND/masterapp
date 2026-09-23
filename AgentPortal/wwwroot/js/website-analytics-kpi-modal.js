@@ -62,7 +62,7 @@
         if (s.rangeParams) {
             const params = new URLSearchParams(s.rangeParams());
             params.set('metric', metric);
-            params.set('trafficType', 'All');
+
             return params.toString();
         }
 
@@ -158,6 +158,7 @@
         if (Number.isNaN(parsed.getTime())) return escHtml(String(value));
 
         return escHtml(parsed.toLocaleString('en-US', {
+            timeZone: new URLSearchParams(buildParams('visitors')).get('timezoneId') || undefined,
             month: 'numeric',
             day: 'numeric',
             hour: 'numeric',
@@ -484,7 +485,8 @@
     async function openVisitorTimelineModal(visitorId, sessionId) {
         if (!visitorId && !sessionId) return;
 
-        const params = new URLSearchParams();
+        const params = new URLSearchParams(buildParams('visitors'));
+        params.delete('metric');
 
         if (visitorId)
             params.set('visitorId', visitorId);
@@ -492,7 +494,7 @@
         if (sessionId)
             params.set('sessionId', sessionId);
 
-        params.set('preset', window.currentPreset || 'today');
+
 
         const response = await fetch(
             `/WebsiteAnalytics/visitor-timeline?${params.toString()}`

@@ -157,7 +157,8 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
         var openIssues = _db.Set<LegendConnectOperationalEvent>().AsNoTracking()
             .Where(item => item.LanguageCode == selectedCode && !item.IsResolved &&
                 (item.Severity == "Warning" || item.Severity == "Error"));
-        var openIssueCount = await openIssues.LongCountAsync(cancellationToken);
+        var openIssueCount = await openIssues.Select(item => new
+        { item.Category, item.ErrorCode, item.LanguageCode, item.PairKey }).Distinct().LongCountAsync(cancellationToken);
 
         var summary = new LegendConnectFounderLanguageSummarySnapshot(
             selectedCode,
@@ -5544,10 +5545,20 @@ internal sealed partial class LegendConnectOperations : ILegendConnectOperations
             .Where(item =>
                 (!string.IsNullOrWhiteSpace(languageCode) && string.Equals(item.LanguageCode, languageCode, StringComparison.OrdinalIgnoreCase)) ||
                 (!string.IsNullOrWhiteSpace(item.PairKey) && pairKeys.Contains(item.PairKey)))
-            .OrderByDescending(item => item.OccurredUtc)
+            .GroupBy(item => new { item.Category, item.ErrorCode, item.LanguageCode, item.PairKey })
+            .OrderByDescending(group => group.Max(item => item.OccurredUtc))
             .Take(12)
-            .Select(ToSnapshot)
-            .ToList();
+            .Select(group =>
+            {
+                var latest = group.OrderByDescending(item => item.OccurredUtc).First();
+                var remediation = latest.ErrorCode switch
+                {
+                    "translation_capacity_reservation_pending" => "Another request holds reserved capacity. Review active reservations and retry after their lease expires; capacity limits remain enforced.",
+                    "translation_capacity_monthly_exhausted" => "Monthly translation allowance is exhausted. Review usage and the reset date; conversations continue in the sender's language.",
+                    _ => latest.Summary
+                };
+                return ToSnapshot(latest) with { Summary = $"{group.Count()} occurrences since {group.Min(item => item.OccurredUtc):u}. {remediation}" };
+            }).ToList();
 
         var inferred = ActiveLearningEvents(state)
             .Where(item => !string.IsNullOrWhiteSpace(item.FailureCode))

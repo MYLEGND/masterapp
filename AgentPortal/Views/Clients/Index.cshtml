@@ -382,7 +382,7 @@ else
                                 }
                             </div>
                             <div class="crm-contact-name-row">
-                                <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
+                                <span class="name open-drawer" title="Quick View">@(string.IsNullOrWhiteSpace(c.EntityName) ? $"{c.FirstName} {c.LastName}" : $"{c.EntityName} — {c.FirstName} {c.LastName}")</span>
                                 @if (hasPortalAccess)
                                 {
                                     <span class="crm-account-management-pill @(isSelfManaged ? "is-self-managed" : "is-shared")">@(isSelfManaged ? "Self managed" : "Managed")</span>

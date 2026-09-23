@@ -14,6 +14,12 @@ namespace AgentPortal.Models
         // Required only for Client and Business Client. Leads stay CRM-only.
         public string? AccountManagementMode { get; set; }
 
+        [StringLength(160)]
+        public string? EntityName { get; set; }
+        [Range(0.01, 100)]
+        public decimal OwnerPercentage { get; set; } = 100;
+        public List<Infrastructure.Businesses.BusinessOwnerInput> BusinessOwners { get; set; } = new();
+
         public string? FirstName { get; set; }
 
         public string? LastName { get; set; }
@@ -76,6 +82,13 @@ namespace AgentPortal.Models
                     new[] { nameof(RecordType) });
             }
 
+            if (recordType.Replace(" ", "").Equals("BusinessClient", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(EntityName))
+                    yield return new ValidationResult("Entity Name is required for a business client.", new[] { nameof(EntityName) });
+                if (OwnerPercentage + BusinessOwners.Sum(x => x.Percentage) != 100)
+                    yield return new ValidationResult("Ownership percentages must total 100%.", new[] { nameof(OwnerPercentage) });
+            }
             if (isPortalClient)
             {
                 if (!ClientAccountManagementModes.IsValid(AccountManagementMode))

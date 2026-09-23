@@ -127,11 +127,15 @@
   }
 
   // ── Open / close ──────────────────────────────────────────────────────────
+  var priorFocus = null;
   function openDrawer() {
     var d = drawer();
     var b = backdrop();
     if (!d) return;
     updateDrawerScopeLabel(getCurrentState());
+    priorFocus = document.activeElement;
+    d.inert = false;
+    d.removeAttribute('aria-hidden');
     d.classList.add('open');
     if (b) b.classList.add('visible');
     drawerOpen = true;
@@ -145,7 +149,10 @@
     var d = drawer();
     var b = backdrop();
     if (!d) return;
+    d.inert = true;
+    d.setAttribute('aria-hidden', 'true');
     d.classList.remove('open');
+    if (priorFocus?.isConnected) priorFocus.focus();
     if (b) b.classList.remove('visible');
     drawerOpen = false;
     document.body.style.overflow = '';

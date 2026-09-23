@@ -360,7 +360,7 @@ public sealed class TrackingProxyController : ControllerBase
     private async Task<HttpResponseMessage?> ForwardAsync(string path, object payload, CancellationToken ct, Guid? callerCorrelationId = null)
     {
         var portalBase = (_config["Tracking:ApiBase"] ?? Environment.GetEnvironmentVariable("TRACKING_API_BASE") ?? string.Empty).Trim();
-        var sharedSecret = (_config["Tracking:SharedSecret"] ?? Environment.GetEnvironmentVariable("TRACKING_SHARED_SECRET") ?? string.Empty).Trim();
+        var sharedSecret = Shared.Analytics.AnalyticsIngestConfiguration.ResolveSecret(key => _config[key]);
 
         if (string.IsNullOrWhiteSpace(portalBase) || string.IsNullOrWhiteSpace(sharedSecret))
         {
@@ -646,6 +646,7 @@ public sealed class TrackingProxyController : ControllerBase
 
     public sealed class LeadSubmitRequest
     {
+        public string? SubmissionId { get; set; }
         [Required] public string FirstName { get; set; } = string.Empty;
         public string? LastName { get; set; }
         [Required, EmailAddress] public string Email { get; set; } = string.Empty;

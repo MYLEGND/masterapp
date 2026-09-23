@@ -21,6 +21,7 @@
   const successEl = document.getElementById('leadSuccess');
   const interestSelect = document.getElementById('leadInterest');
   const pageKey = document.body.dataset.pageKey || '';
+  let submissionId = crypto.randomUUID();
   const INGEST_URL = '/api/lead/submit';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
@@ -83,6 +84,7 @@
     errorEl.classList.remove('show');
     successEl.classList.remove('show');
     form.reset();
+    submissionId = crypto.randomUUID();
     if (interestSelect.value === '') {
       interestSelect.value = options.interest || '';
     }
@@ -228,6 +230,7 @@
     const query = new URLSearchParams(location.search);
     const attribution = (ids.getAttribution && ids.getAttribution()) || {};
     const payload = {
+      SubmissionId: submissionId,
       FirstName: getField('FirstName'),
       LastName: getField('LastName'),
       Email: getField('Email'),
@@ -273,7 +276,7 @@
       });
 
       const responseBody = await res.json().catch(() => null);
-      if (!res.ok || responseBody?.emailSent !== true) {
+      if (!res.ok || responseBody?.captured !== true) {
         const captured = responseBody?.captured === true;
         const message = captured
           ? 'Your inquiry was saved, but we could not confirm the agent notification. Please use Contact if you need immediate help.'
@@ -284,6 +287,12 @@
         throw error;
       }
 
+      if (responseBody.notificationSent === false || responseBody.emailSent === false) {
+        successEl.textContent = 'Your inquiry is saved. The advisor email was not confirmed. Submit again to retry the notification without creating another inquiry.';
+        successEl.classList.add('show');
+        return;
+      }
+      successEl.textContent = 'Your inquiry has been received.';
       successEl.classList.add('show');
       tracking({
         EventType: 'lead_form_submit_success',

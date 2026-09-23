@@ -1915,6 +1915,7 @@ body.dvh-final-step-active .dq-form-panel {
 
             <form asp-action="SubmitDentalVisionHearingQuote" asp-controller="DentalVisionHearingQuote" method="post" id="dvhQuoteForm" data-form-key="@formKey" novalidate>
                 @Html.AntiForgeryToken()
+        <input type="hidden" name="SubmissionId" value="@(Context.Request.HasFormContentType && Guid.TryParse(Context.Request.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
                 @if (!string.IsNullOrWhiteSpace(agentSlug))
                 {
                     <input type="hidden" name="AgentSlug" value="@agentSlug" />

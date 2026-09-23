@@ -16,8 +16,6 @@ public sealed class IngestSignatureValidator
     private readonly IConfiguration _config;
     private readonly ILogger<IngestSignatureValidator> _logger;
 
-    private const string SecretConfigKey = "Analytics:SharedSecret";
-    private const string SecretFallbackKey = "LeadIngest:SharedSecret";
     private static readonly TimeSpan AllowedSkew = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan NonceTtl = TimeSpan.FromMinutes(10);
 
@@ -30,7 +28,7 @@ public sealed class IngestSignatureValidator
 
     public bool TryValidate(Guid requestId, DateTimeOffset timestamp, string? providedSignature, out string failureReason)
     {
-        var secret = _config[SecretConfigKey] ?? _config[SecretFallbackKey];
+        var secret = Shared.Analytics.AnalyticsIngestConfiguration.ResolveSecret(key => _config[key]);
         if (string.IsNullOrWhiteSpace(secret))
         {
             failureReason = "missing_secret";
