@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested the Protect Website proven analytics/Meta/runtime authority be extended centrally to LEGEND and business-scoped websites, with scoped Website Analytics verified intact before any direct deployment.",
-  "purpose": "Validation only. Build and test the centralized website automation candidate across AgentPortal, ClientApp, Protect Website, and LEGEND Website. Verify typed business/agent scope isolation, canonical Website Analytics reads, immutable CTA action semantics, shared Protect tracking and Meta runtime identity, server-authority conversion rules, and business CRM attribution. Do not deploy, migrate, restart, or publish any production application during this validation run.",
-  "requestId": "centralized-website-automation-validation-20260923-run7",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly approved direct production deployment of the fully validated centralized website automation batch through legend/approved-changes after validation Run #100 passed.",
+  "purpose": "Deploy the validated centralized website automation and analytics authority across the affected applications only. Preserve Protect Website as the single tracking/Meta/runtime source of truth consumed by LEGEND and business-scoped websites; preserve typed business/agent analytics isolation, canonical Website Analytics reads, server-authority conversions, CRM attribution, smart CTA routing, and the previously validated shared editor updates. No unrelated application or Parfait deployment is requested.",
+  "requestId": "centralized-website-automation-release-20260923",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
