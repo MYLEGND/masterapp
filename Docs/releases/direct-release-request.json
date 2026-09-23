@@ -1,10 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized surgical AgentPortal fixes on legend/approved-changes and direct release of affected apps. Validate before publication.",
-  "purpose": "Validate canonical ClientApp workspace routing and current-scope Marketing Health refresh/teaser reset in AgentPortal. Preserve all newer approved changes, ownership privacy, billing and subscription behavior. No schema or other-app changes.",
-  "requestId": "agentportal-workspace-analytics-scope-validation-20260923-2",
+  "authorization": "Founder authorized surgical direct release on legend/approved-changes for affected apps after validation.",
+  "purpose": "Validate AgentPortal and ClientApp against the central billing terms-change notification queue, exact client workspace route and current-scope analytics health refresh. Preserve approved changes; do not alter payments, pricing authority, entitlement policy, or database schema.",
+  "requestId": "portal-client-billing-terms-notice-validation-20260923-3",
   "releaseMode": "validate-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-portal",
+    "masterapp-client"
   ]
 }

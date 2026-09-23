@@ -49,6 +49,18 @@ internal sealed class ClientBillingNotificationService : IClientBillingNotificat
             var amount = request.AmountCents.HasValue
                 ? (request.AmountCents.Value / 100m).ToString("C", CultureInfo.GetCultureInfo("en-US"))
                 : null;
+            var previousAmount = request.PreviousAmountCents.HasValue
+                ? (request.PreviousAmountCents.Value / 100m).ToString("C", CultureInfo.GetCultureInfo("en-US"))
+                : null;
+            var effectiveDate = request.EffectiveAtUtc.HasValue
+                ? DateTime.SpecifyKind(request.EffectiveAtUtc.Value, DateTimeKind.Utc).ToString("MMMM d, yyyy 'at' h:mm tt 'UTC'", CultureInfo.InvariantCulture)
+                : null;
+            var amountChange = request.PreviousAmountCents == request.AmountCents
+                ? $"Your monthly amount remains {amount ?? "unchanged"}."
+                : $"Your monthly amount changed from {previousAmount ?? "your previous amount"} to {amount ?? "your new amount"}.";
+            var billingDayChange = request.PreviousBillingAnchorDay == request.BillingAnchorDay
+                ? string.Empty
+                : $" Your billing day changed from day {request.PreviousBillingAnchorDay?.ToString(CultureInfo.InvariantCulture) ?? "the previous schedule"} to day {request.BillingAnchorDay?.ToString(CultureInfo.InvariantCulture) ?? "the new schedule"}.";
             var graceEnd = request.GracePeriodEndsUtc.HasValue
                 ? DateTime.SpecifyKind(request.GracePeriodEndsUtc.Value, DateTimeKind.Utc).ToLocalTime().ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)
                 : null;
@@ -77,6 +89,8 @@ internal sealed class ClientBillingNotificationService : IClientBillingNotificat
                     ("Your Legend membership is active again", "Your payment was received and your Legend membership is active again."),
                 ClientBillingNotificationKind.UpcomingRenewal =>
                     ("Your Legend membership renewal is coming up", "Your membership renewal is coming up soon. You can review your saved payment method anytime in Membership & Billing."),
+                ClientBillingNotificationKind.MembershipTermsUpdated =>
+                    ("Your Legend membership terms changed", $"{amountChange}{billingDayChange} This change applies to your next scheduled charge{(effectiveDate is null ? "." : $" on {effectiveDate}.")} Review your membership details in the Client Portal."),
                 _ => throw new ArgumentOutOfRangeException(nameof(request.Kind), request.Kind, "Unsupported billing notification kind.")
             };
         }

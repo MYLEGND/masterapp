@@ -851,40 +851,56 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             subscription.Id.ToString(),
             amountCents.ToString(System.Globalization.CultureInfo.InvariantCulture),
             billingAnchorDay?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none");
-        var previousTerms = System.Text.Json.JsonSerializer.Serialize(new
+        var previousAmountCents = subscription.MonthlyAmountCents;
+        var previousBillingAnchorDay = subscription.BillingAnchorDay;
+        var termsChanged = previousAmountCents != amountCents || previousBillingAnchorDay != billingAnchorDay;
+        if (termsChanged)
         {
-            subscription.MonthlyAmountCents,
-            subscription.BillingAnchorDay,
-            subscription.TrialEndsUtc
-        });
-
-        subscription.MonthlyAmountCents = amountCents;
-        subscription.BillingAnchorDay = billingAnchorDay;
-        subscription.UpdatedUtc = nowUtc;
-        AddAuditEntry(
-            "ClientSubscription",
-            subscription.Id,
-            "terms_updated",
-            previousTerms,
-            System.Text.Json.JsonSerializer.Serialize(new
+            var previousTerms = System.Text.Json.JsonSerializer.Serialize(new
             {
-                MonthlyAmountCents = amountCents,
-                BillingAnchorDay = billingAnchorDay,
-                EffectiveAtUtc = subscription.NextBillingDateUtc
-            }),
-            BillingActorType.Agent,
-            command.ActorId,
-            "billing_orchestrator",
-            null,
-            correlationId,
-            "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged.");
-        await _db.SaveChangesAsync(cancellationToken);
+                subscription.MonthlyAmountCents,
+                subscription.BillingAnchorDay,
+                subscription.TrialEndsUtc
+            });
+
+            subscription.MonthlyAmountCents = amountCents;
+            subscription.BillingAnchorDay = billingAnchorDay;
+            subscription.UpdatedUtc = nowUtc;
+            AddAuditEntry(
+                "ClientSubscription",
+                subscription.Id,
+                "terms_updated",
+                previousTerms,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    MonthlyAmountCents = amountCents,
+                    BillingAnchorDay = billingAnchorDay,
+                    EffectiveAtUtc = subscription.NextBillingDateUtc
+                }),
+                BillingActorType.Agent,
+                command.ActorId,
+                "billing_orchestrator",
+                null,
+                correlationId,
+                "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged.");
+            QueueNotification(
+                subscription,
+                ClientBillingNotificationKind.MembershipTermsUpdated,
+                $"membership-terms-updated:{subscription.Id:N}:{nowUtc.Ticks}",
+                amountCents: amountCents,
+                currency: subscription.Currency,
+                previousAmountCents: previousAmountCents,
+                effectiveAtUtc: subscription.NextBillingDateUtc,
+                previousBillingAnchorDay: previousBillingAnchorDay,
+                billingAnchorDay: billingAnchorDay);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         return new ClientSubscriptionLifecycleResult(
             true,
             subscription.Status.ToString(),
             null,
-            "Subscription terms were updated for the next scheduled charge.",
+            termsChanged ? "Subscription terms were updated for the next scheduled charge." : "Subscription terms are already current.",
             null,
             false,
             subscription.ProviderCustomerId,
@@ -1881,7 +1897,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         DateTime? notBeforeUtc = null,
         DateTime? gracePeriodEndsUtc = null,
         int? amountCents = null,
-        string? currency = null)
+        string? currency = null,
+        int? previousAmountCents = null,
+        DateTime? effectiveAtUtc = null,
+        int? previousBillingAnchorDay = null,
+        int? billingAnchorDay = null)
     {
         _notifications?.Queue(new ClientBillingNotificationRequest(
             subscription.ClientProfileId,
@@ -1891,7 +1911,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             notBeforeUtc,
             gracePeriodEndsUtc,
             amountCents,
-            currency));
+            currency,
+            previousAmountCents,
+            effectiveAtUtc,
+            previousBillingAnchorDay,
+            billingAnchorDay));
     }
 
     private async Task<ClientPaymentMethod?> GetDefaultPaymentMethodAsync(

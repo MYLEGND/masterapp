@@ -236,7 +236,11 @@ public sealed record ClientBillingNotificationRequest(
     DateTime? NotBeforeUtc = null,
     DateTime? GracePeriodEndsUtc = null,
     int? AmountCents = null,
-    string? Currency = null);
+    string? Currency = null,
+    int? PreviousAmountCents = null,
+    DateTime? EffectiveAtUtc = null,
+    int? PreviousBillingAnchorDay = null,
+    int? BillingAnchorDay = null);
 
 public sealed record ClientSubscriptionActivationSchedule(
     int MonthlyAmountCents,

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers.API;
+using AgentPortal.Services;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing;
@@ -14,6 +15,7 @@ using Infrastructure.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -2241,7 +2243,8 @@ public sealed class BillingCentralizationTests
             db,
             BuildGateway().Object,
             Mock.Of<IBillingEntitlementService>(),
-            Mock.Of<IClientSubscriptionActivationPolicyService>());
+            Mock.Of<IClientSubscriptionActivationPolicyService>(),
+            new ClientBillingNotificationService(db));
 
         var denied = await orchestrator.UpdateClientSubscriptionAsync(
             new UpdateClientSubscriptionCommand(
@@ -2273,6 +2276,42 @@ public sealed class BillingCentralizationTests
             entry.EntityType == "ClientSubscription" &&
             entry.EntityId == subscription.Id.ToString() &&
             entry.Action == "terms_updated");
+
+        var notification = await db.ClientBillingNotifications.SingleAsync();
+        Assert.Equal(ClientBillingNotificationKind.MembershipTermsUpdated, notification.Kind);
+        Assert.Contains("$100.00", notification.PlainTextBody);
+        Assert.Contains("$175.00", notification.PlainTextBody);
+        Assert.Contains("next scheduled charge", notification.PlainTextBody);
+        Assert.Contains(scheduledCharge!.Value.ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture),
+            notification.PlainTextBody);
+
+        var unchanged = await orchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(subscription.Id, ClientSubscriptionOfferPriceType.Custom, 17_500,
+                BillingAnchorSelectionMode.SpecificDayOfMonth, 20, "founder-oid", FounderAuthorized: true));
+        Assert.True(unchanged.Success);
+        Assert.Equal(1, await db.ClientBillingNotifications.CountAsync());
+        Assert.Equal(1, await db.BillingAuditEntries.CountAsync(entry => entry.Action == "terms_updated"));
+        
+        var lowered = await orchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(subscription.Id, ClientSubscriptionOfferPriceType.Custom, 5_000,
+                BillingAnchorSelectionMode.FirstOfMonth, null, "founder-oid", FounderAuthorized: true));
+        Assert.True(lowered.Success);
+        Assert.Equal(5_000, (await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id)).MonthlyAmountCents);
+        Assert.Equal(scheduledCharge, (await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id)).NextBillingDateUtc);
+        var notices = await db.ClientBillingNotifications.OrderBy(item => item.CreatedUtc).ToListAsync();
+        Assert.Equal(2, notices.Count);
+        Assert.Contains(notices, item => item.PlainTextBody.Contains("$175.00") && item.PlainTextBody.Contains("$50.00"));
+        var email = new Mock<IEmailSender>(MockBehavior.Strict);
+        email.Setup(sender => sender.TrySendAsync(
+                profile.Email!, "Your Legend membership terms changed", null,
+                It.Is<string>(body => body.Contains("next scheduled charge", StringComparison.Ordinal)),
+                null, null, null))
+            .ReturnsAsync(true);
+        var delivery = new ClientBillingNotificationDeliveryService(
+            db, email.Object, NullLogger<ClientBillingNotificationDeliveryService>.Instance);
+        var delivered = await delivery.DeliverDueAsync(10);
+        Assert.Equal(2, delivered.Sent);
+        Assert.All(await db.ClientBillingNotifications.ToListAsync(), item => Assert.NotNull(item.SentUtc));
     }
 
     private static MasterAppBillingOrchestrator BuildOrchestrator(MasterAppDbContext db)
