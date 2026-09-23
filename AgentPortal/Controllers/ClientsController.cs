@@ -73,17 +73,25 @@ namespace AgentPortal.Controllers;
         private async Task EnsureBusinessEntityAsync(CreateClientViewModel model, ClientProfile profile, string agentOid)
         {
             if (!string.Equals((model.RecordType ?? "").Replace(" ", ""), "BusinessClient", StringComparison.OrdinalIgnoreCase)) return;
-            var owners = new List<Infrastructure.Businesses.BusinessOwnerInput>
-            {
-                new(profile.Id, profile.Email, model.OwnerPercentage)
-            };
-            owners.AddRange(model.BusinessOwners);
             var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.ICommerceBusinessProvisioningService>();
             await service.CreateAsync(new Infrastructure.Businesses.CommerceBusinessProvisioningRequest(
                 DisplayName: model.EntityName!, LegalName: model.EntityName!, BusinessType: "BusinessClient",
-                OwnerEmail: profile.Email, OwnerDisplayName: $"{profile.FirstName} {profile.LastName}".Trim(),
-                CanManageCatalog: false, CanManageOrders: false, OwnerClientProfileId: profile.Id,
-                Owners: owners, ActorAgentUserId: agentOid), HttpContext.RequestAborted);
+                OwnerEmail: profile.Email, OwnerDisplayName: model.EntityName!,
+                OwnerRoleKey: "account", CanManageCatalog: false, CanManageOrders: false,
+                OwnerClientProfileId: profile.Id, Owners: model.BusinessOwners, ActorAgentUserId: agentOid),
+                HttpContext.RequestAborted);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> BusinessOwnerLookup(string email)
+        {
+            var agentOid = User.GetCanonicalUserId();
+            if (string.IsNullOrWhiteSpace(agentOid) || string.IsNullOrWhiteSpace(email))
+                return NotFound();
+
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.ICommerceBusinessProvisioningService>();
+            var owner = await service.ResolveOwnerAsync(email, agentOid, HttpContext.RequestAborted);
+            return owner is null ? NotFound() : Json(owner);
         }
 
         public ClientsController(
