@@ -661,9 +661,9 @@
       trafficMeta.textContent = dir ? `Traffic ${dir} · ${hint}` : hint;
     }
     const tp = document.getElementById('mod-page-meta');
-    if (tp && data.topPage) tp.textContent = `Top page: ${data.topPage}`;
+    if (tp) tp.textContent = data.topPage ? `Top page: ${data.topPage}` : 'Top pages and conversions';
     const tc = document.getElementById('mod-cta-meta');
-    if (tc && data.topCta) tc.textContent = `Top CTA: ${data.topCta}`;
+    if (tc) tc.textContent = data.topCta ? `Top CTA: ${data.topCta}` : 'Clicks by CTA';
   }
 
   function calculateMarketingHealthScore(data) {
@@ -2905,10 +2905,9 @@ function escapeHtml(value) {
       setSummaryRefreshStatus('', false);
       renderSummary(data);
 
-      if (!state.cache.marketingHealthLoaded) {
-        state.cache.marketingHealthLoaded = true;
-        void loadMarketingHealth();
-      }
+      // Health uses the same current range, quality and scope as the summary.
+      // Refresh it whenever the summary does, including filter changes.
+      void loadMarketingHealth();
     } catch (err) {
       if (requestId !== summaryRequestId) return;
 
