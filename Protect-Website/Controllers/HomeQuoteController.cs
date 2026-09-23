@@ -152,8 +152,8 @@ namespace Protect_Website.Controllers
                     })
                 };
                 if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead,
-                        Request.HasFormContentType ? Request.Form["SubmissionId"].FirstOrDefault() : null,
-                        HttpContext.RequestAborted, async ct =>
+                        HttpContext?.Request is { HasFormContentType: true } submissionRequest ? submissionRequest.Form["SubmissionId"].FirstOrDefault() : null,
+                        HttpContext?.RequestAborted ?? CancellationToken.None, async ct =>
                         {
                             capturedSubmission = await _websiteLeadCapture.UpsertAsync(
                     new WebsiteLifeLeadCaptureRequest

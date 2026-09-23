@@ -118,7 +118,7 @@
 
 	                <form action="/Quote/Auto" method="post" class="pcq-form-frame" id="autoQuoteForm" novalidate data-form-key="@formKey">
 	    @Html.AntiForgeryToken()
-        <input type="hidden" name="SubmissionId" value="@(Context.Request.HasFormContentType && Guid.TryParse(Context.Request.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
+        <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
 	    @if (!string.IsNullOrWhiteSpace(agentSlug))
 	    {
 	        <input type="hidden" name="AgentSlug" value="@agentSlug" />
