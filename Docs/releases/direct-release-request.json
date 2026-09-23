@@ -1,10 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized finishing the audit repair batch and direct deployment to affected apps through legend/approved-changes. Code tests only; no live customer/payment/email/Meta test mutations.",
-  "purpose": "Resume only the unfinished Parfait target from direct-release run 35822956679. Portal, ClientApp and Protect already serve revision a97191e9e5e649fbf77bad7424e24e2b74ae7903; preserve their live packages and run the existing schema and code gates.",
-  "requestId": "founder-launch-audit-parfait-resume-20260923-8",
+  "authorization": "Founder explicitly instructed DEPLOY IT for PR #138 through legend/approved-changes. Deploy affected applications only; no live customer, payment, email or Meta test mutations.",
+  "purpose": "Release canonical business entity-name profile editing, business account labels, and shared ownership/inquiry form styling. This is a new repair release, not a rerun of successful run #80 targets. Parfait is excluded.",
+  "requestId": "business-identity-and-form-styling-20260923-pr138",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-parfait"
+    "masterapp-portal",
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-website"
   ]
 }
