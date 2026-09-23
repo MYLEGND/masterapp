@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Content Include="../Legend-Design/legend-web-foundation.css" Link="wwwroot/design/legend-web-foundation.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-favicon.svg" Link="wwwroot/images/favicon/legend-favicon.svg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.4.0" />
     <ProjectReference Include="..\\Infrastructure\\Infrastructure.csproj" />
     <ProjectReference Include="..\\Domain\\Domain.csproj" />
