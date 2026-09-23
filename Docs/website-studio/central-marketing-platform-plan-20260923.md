@@ -2,7 +2,7 @@
 
 **Status:** architecture and implementation plan only. No application code, database migration, Meta destination, or release is changed by this document.
 
-**Isolation:** `plan/central-website-marketing-20260923`, based on the locally tested editor commit `a68ad79` (`f12e60b` ancestor). The separate launch-audit repair was at local `0adfc63`; GitHub subsequently displayed a release commit `25482c84…` with the same repair title. Before coding or merging, resolve the **exact published release commit**, verify the release/migrations, compare changed files, and rebase this plan and the editor work. Do not assume the two commit hashes are interchangeable. The active repair edits authorization, CRM, analytics, Meta dispatch, and sitemap code.
+**Isolation:** the remote review branch `plan/central-website-marketing-20260923` starts at release candidate `25482c84…` and contains only this plan. Earlier editor work is separate at local commit `a68ad79` (`f12e60b` ancestor); a local planning worktree also contains this document. The launch-audit repair appeared as local `0adfc63` and remote `25482c84…` with the same title. Before coding or merging, verify the **exact deployed release commit** and migrations, compare changed files, and reconcile/rebase the editor work. Do not assume the two audit hashes are interchangeable. The repair edits authorization, CRM, analytics, Meta dispatch, and sitemap code.
 
 ## Product contract
 
