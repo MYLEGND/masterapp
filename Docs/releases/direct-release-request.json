@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested separation of the Business Profile Email from linked personal owners, canonical owner-name resolution from existing client accounts, save validation, and direct deployment only to affected apps.",
-  "purpose": "Separate the business account identity from personal owner memberships. Resolve owner first and last names from exact linked client emails as read-only outputs, revalidate owner identity and agent scope on save, preserve account management/publish authority, and release only AgentPortal and ClientApp. No CSS overrides, duplicate ownership system, schema migration, or unrelated app deployment.",
-  "requestId": "business-profile-owner-separation-20260923",
+  "authorization": "Founder explicitly requested retry of the failed business profile/owner separation direct release after the release workflow packaging condition was corrected.",
+  "purpose": "Retry the already validated business profile owner separation release. The candidate build, focused .NET tests, and shared web checks passed on run 35895292832; the prior release failed only because package creation was skipped after non-selected website checks. Deploy only AgentPortal and ClientApp.",
+  "requestId": "business-profile-owner-separation-retry-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
