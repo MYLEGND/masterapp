@@ -88,7 +88,7 @@ jobs:
   release:
     needs: [discover-live, preserve-rollback]
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     environment: Production
     env:
       EXPECTED_BASE_SHA: ${{ needs.discover-live.outputs.portal }}
@@ -338,15 +338,23 @@ jobs:
           [ "$(resolve_value "$protect_settings" Analytics__SharedSecret 'Analytics:SharedSecret')" = "$ingest_secret" ]
           [ "$(resolve_value "$protect_settings" Tracking__SharedSecret 'Tracking:SharedSecret' TRACKING_SHARED_SECRET)" = "$ingest_secret" ]
           echo "Protect website and analytics ingest authority match AgentPortal."
-          for app in masterapp-client masterapp-parfait; do
+          for app in masterapp-portal masterapp-protect masterapp-client masterapp-parfait; do
             if [[ "$SELECTED_TARGETS" != *"\"$app\""* ]]; then continue; fi
             settings_file="/tmp/$app-marketing-authority.json"
             az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
-            if [ "$(resolve_value "$settings_file" DataProtection__BlobUri 'DataProtection:BlobUri' || true)" != "$blob" ] ||
-               [ "$(resolve_value "$settings_file" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)" != "$keyvault" ]; then
-              echo "Shared marketing key authority differs for $app; stopping before migration or package deployment."
-              exit 1
+            marketing_updates=()
+            for pair in BlobUri KeyVaultKeyId; do
+              expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
+              key="$(resolve_key "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
+              current="$(resolve_value "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
+              if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-MarketingDataProtection__$pair}=$expected"); fi
+            done
+            if [ "${#marketing_updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${marketing_updates[@]}" --output none
             fi
+            az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
+            [ "$(resolve_value "$settings_file" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
+            [ "$(resolve_value "$settings_file" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
           done
           echo "Selected marketing consumers use the shared key authority."
 

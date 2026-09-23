@@ -1,44 +1,83 @@
 @model List<Domain.Entities.CommerceBusinessMember>
 @{ ViewData["Title"] = "Business owners"; }
-<h1>@ViewBag.EntityName</h1>
-<p>@TempData["BusinessWebsiteNotice"]</p><p role="alert">@TempData["BusinessWebsiteWarning"]</p>
+<main class="dashboard-page-shell client-create-page client-edit-page">
+<div class="client-create-shell">
+<section class="client-create-panel" aria-labelledby="businessOwnersTitle">
+    <div class="client-create-header">
+        <div>
+            <div class="dashboard-eyebrow">Business profile</div>
+            <h1 id="businessOwnersTitle" class="client-create-title">@ViewBag.EntityName</h1>
+            <p class="client-create-subtitle">Manage your business name and linked owners.</p>
+        </div>
+        <a class="client-create-button client-create-button-secondary" href="/profile">Back to profile</a>
+    </div>
+    <div class="client-create-body">
+@if (TempData["BusinessWebsiteNotice"] is string notice)
+{
+    <p class="client-edit-note" role="status">@notice</p>
+}
+@if (TempData["BusinessWebsiteWarning"] is string warning)
+{
+    <p class="client-create-validation" role="alert">@warning</p>
+}
 <form method="post" action="/profile/business/@ViewBag.BusinessId/owners">
     @Html.AntiForgeryToken()
-    <label for="entityName">Entity Name</label>
-    <input id="entityName" name="entityName" value="@ViewBag.EntityName" required maxlength="160" />
-    <p>Each owner must have an existing personal client account. Shares must total 100%. Blank historical shares need confirmation.</p>
-    <div id="businessOwners">
+    <div><label class="client-create-label" for="entityName">Entity Name</label>
+    <input class="client-create-input" id="entityName" name="entityName" value="@ViewBag.EntityName" required maxlength="160" /></div>
+    <p class="client-edit-note" id="ownershipHelp">Each owner must have an existing personal client account. Shares must total 100%. Blank historical shares need confirmation.</p>
+    <div id="businessOwners" class="client-edit-child-list" aria-describedby="ownershipHelp">
     @for (var i = 0; i < Model.Count; i++)
     {
-        <fieldset><legend>Owner @(i + 1): @Model[i].DisplayName</legend>
+        <fieldset class="client-edit-child-card"><legend class="client-edit-child-title">Owner @(i + 1): @Model[i].DisplayName</legend>
+            <div class="client-create-grid">
             <input type="hidden" name="owners[@i].ClientProfileId" value="@Model[i].ClientProfileId" />
-            <label for="ownerEmail-@i">Personal account email</label><input id="ownerEmail-@i" name="owners[@i].Email" type="email" value="@Model[i].Email" required />
-            <label for="ownerShare-@i">Ownership (%)</label><input id="ownerShare-@i" name="owners[@i].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model[i].OwnershipPercentage" required />
-            <button type="button" data-remove-owner>Remove owner</button>
+            <div><label class="client-create-label" for="ownerEmail-@i">Personal account email</label><input class="client-create-input" id="ownerEmail-@i" name="owners[@i].Email" type="email" value="@Model[i].Email" required /></div>
+            <div><label class="client-create-label" for="ownerShare-@i">Ownership (%)</label><input class="client-create-input" id="ownerShare-@i" name="owners[@i].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model[i].OwnershipPercentage" required /></div>
+            </div>
+            <div class="client-create-actions"><button class="client-create-button client-create-button-secondary" type="button" data-remove-owner>Remove owner</button></div>
         </fieldset>
     }
     </div>
-    <button type="button" id="addBusinessOwner">Add linked owner</button>
-    <button type="submit">Save entity and ownership</button>
+    <div class="client-create-actions"><button class="client-create-button client-create-button-secondary" type="button" id="addBusinessOwner">Add linked owner</button>
+    <button class="client-create-button client-create-button-primary" type="submit">Save entity and ownership</button></div>
 </form>
-<a href="/profile">Back to profile</a>
+</div>
+</section>
+</div>
+</main>
 <script>
 (() => {
  let index = @Model.Count;
  const container = document.getElementById('businessOwners');
- const renumber = () => { Array.from(container.children).forEach((row, i) => row.querySelectorAll('input').forEach(input => { input.name = input.name.replace(/owners\[\d+\]/, `owners[${i}]`); })); index = container.children.length; };
+ const renumber = () => {
+   Array.from(container.children).forEach((row, i) => {
+     row.querySelectorAll('input').forEach(input => {
+       input.name = input.name.replace(/owners\[\d+\]/, `owners[${i}]`);
+       const label = Array.from(row.querySelectorAll('label')).find(label => label.htmlFor === input.id);
+       if (label) {
+         input.id = `owner-${i}-${input.name.split('.').pop()}`;
+         label.htmlFor = input.id;
+       }
+     });
+   });
+   index = container.children.length;
+ };
  container.addEventListener('click', event => { if (event.target.matches('[data-remove-owner]')) { event.target.closest('fieldset').remove(); renumber(); } });
  document.getElementById('addBusinessOwner').addEventListener('click', () => {
    if (index >= 20) return;
-   const row = document.createElement('fieldset');
-   const legend = document.createElement('legend'); legend.textContent = `Owner ${index + 1}`; row.append(legend);
+   const row = document.createElement('fieldset'); row.className = 'client-edit-child-card';
+   const legend = document.createElement('legend'); legend.className = 'client-edit-child-title'; legend.textContent = `Owner ${index + 1}`; row.append(legend);
+   const grid = document.createElement('div'); grid.className = 'client-create-grid'; row.append(grid);
    for (const [key, text, type] of [['Email','Personal account email','email'], ['Percentage','Ownership (%)','number']]) {
-     const label = document.createElement('label'); const input = document.createElement('input');
+     const field = document.createElement('div');
+     const label = document.createElement('label'); label.className = 'client-create-label';
+     const input = document.createElement('input'); input.className = 'client-create-input';
      input.id = `owner-${index}-${key}`; input.name = `owners[${index}].${key}`; input.type = type; input.required = true;
      if (type === 'number') { input.min = '0.01'; input.max = '100'; input.step = '0.01'; }
-     label.htmlFor = input.id; label.textContent = text; row.append(label, input);
+     label.htmlFor = input.id; label.textContent = text; field.append(label, input); grid.append(field);
    }
-   const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeOwner = ''; remove.textContent = 'Remove owner'; row.append(remove);
+   const actions = document.createElement('div'); actions.className = 'client-create-actions'; row.append(actions);
+   const remove = document.createElement('button'); remove.className = 'client-create-button client-create-button-secondary'; remove.type = 'button'; remove.dataset.removeOwner = ''; remove.textContent = 'Remove owner'; actions.append(remove);
    container.append(row); index++;
  });
 })();

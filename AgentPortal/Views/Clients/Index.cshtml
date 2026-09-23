@@ -284,6 +284,9 @@ else
                     : (string.Equals(sPipeline, "BusinessClient", StringComparison.OrdinalIgnoreCase)
                         ? "BusinessClient"
                         : sRecordType);
+                var accountDisplayName = string.Equals(resolvedRecordType, "BusinessClient", StringComparison.OrdinalIgnoreCase)
+                    ? (string.IsNullOrWhiteSpace(c.EntityName) ? "Business account" : c.EntityName)
+                    : $"{c.FirstName} {c.LastName}";
                 var isFakeEmail = IsPlaceholderEmail(c.Email);
                 var isSelfManaged = hasPortalAccess && string.Equals(c.AccountManagementMode, "SelfManaged", StringComparison.OrdinalIgnoreCase);
 
@@ -291,6 +294,7 @@ else
                     data-client-id="@c.ClientUserId"
                     data-client-profile-id="@c.Id"
                     data-source-workstation-lead-id="@c.SourceWorkstationLeadId"
+                    data-entity-name="@c.EntityName"
                     data-first="@c.FirstName"
                     data-last="@c.LastName"
                     data-email="@c.Email"
@@ -382,12 +386,16 @@ else
                                 }
                             </div>
                             <div class="crm-contact-name-row">
-                                <span class="name open-drawer" title="Quick View">@(string.IsNullOrWhiteSpace(c.EntityName) ? $"{c.FirstName} {c.LastName}" : $"{c.EntityName} — {c.FirstName} {c.LastName}")</span>
+                                <span class="name open-drawer" title="Quick View">@accountDisplayName</span>
                                 @if (hasPortalAccess)
                                 {
                                     <span class="crm-account-management-pill @(isSelfManaged ? "is-self-managed" : "is-shared")">@(isSelfManaged ? "Self managed" : "Managed")</span>
                                 }
                             </div>
+                            @if (string.Equals(resolvedRecordType, "BusinessClient", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="muted">Linked contact: @c.FirstName @c.LastName</span>
+                            }
                             <span class="muted@(isFakeEmail ? " crm-email-fake" : "")" data-email-summary="true">@c.Email</span>
                             @if (!string.IsNullOrWhiteSpace(dialPhone))
                             {
@@ -488,7 +496,7 @@ else
                         <a class="btn btn-ghost" href="@Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true })" target="_blank" rel="noopener">Edit</a>
                         <button type="button" class="btn btn-outline-light add-client-production-btn"
                                 data-client-id="@c.ClientUserId"
-                                data-client-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
+                                data-client-name="@accountDisplayName">Add Production</button>
                     </td>
                 </tr>
             }

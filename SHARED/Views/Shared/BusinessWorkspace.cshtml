@@ -6,7 +6,7 @@
     var root = $"/business/{Model.BusinessId}";
     var preferences = Model.Preferences;
 }
-<main class="container py-4">
+<section class="legend-workspace-page">
     <h1>@Model.BusinessName</h1>
     <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Business workspace">
         <a href="@root/crm?kind=Lead">@preferences.LeadLabel</a>
@@ -46,17 +46,17 @@
     else if (Model.Tab == "analytics")
     {
         <h2>Website analytics</h2>
-        <form action="@root/analytics" method="get" class="d-flex gap-2 mb-3">
+        <form action="@root/analytics" method="get" class="d-flex flex-wrap align-items-end gap-2 mb-3">
             <label>Period<select class="form-select" name="days">@foreach (var days in new[] { 7, 30, 90 }) { <option value="@days" selected="@(Model.Days == days)">Last @days days</option> }</select></label>
             <button type="submit" class="btn btn-primary">Apply</button>
         </form>
         @if (Model.Summary is { } summary)
         {
-            <dl class="row">
+            <dl class="legend-workspace-metrics">
             @foreach (var metric in preferences.Metrics)
             {
                 var value = metric switch { "visitors" => summary.UniqueVisitors.ToString("N0"), "sessions" => summary.Sessions.ToString("N0"), "pageviews" => summary.PageViews.ToString("N0"), "leads" => summary.VerifiedLeads.ToString("N0"), "conversion" => summary.SessionConversionRate.ToString("0.##") + "%", _ => "" };
-                <div class="col-6 col-md-4"><dt>@(metric == "leads" ? preferences.LeadLabel : metric)</dt><dd>@value</dd></div>
+                <div><dt>@(metric == "leads" ? preferences.LeadLabel : metric)</dt><dd>@value</dd></div>
             }
             </dl>
         }
@@ -74,7 +74,7 @@
     else
     {
         <h2>@(Model.Kind == "Client" ? preferences.ClientLabel : preferences.LeadLabel)</h2>
-        <form action="@root/crm" method="get" class="d-flex gap-2 mb-3"><input type="hidden" name="kind" value="@Model.Kind" /><label>Search<input class="form-control" name="search" value="@Model.Search" maxlength="120" /></label><button class="btn btn-primary" type="submit">Search</button></form>
+        <form action="@root/crm" method="get" class="d-flex flex-wrap align-items-end gap-2 mb-3"><input type="hidden" name="kind" value="@Model.Kind" /><label>Search<input class="form-control" name="search" value="@Model.Search" maxlength="120" /></label><button class="btn btn-primary" type="submit">Search</button></form>
         <p>@Model.Total records</p>
         <div class="table-responsive"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Stage</th></tr></thead><tbody>
         @foreach (var contact in Model.Contacts) { <tr><td><a href="@root/crm/@Uri.EscapeDataString(contact.Id)?kind=@Model.Kind">@contact.Name</a></td><td>@contact.Email</td><td>@contact.Phone</td><td>@contact.Stage</td></tr> }
@@ -96,4 +96,4 @@
             </section>
         }
     }
-</main>
+</section>

@@ -23,6 +23,13 @@ public sealed class EffectiveClientContext
     /// <summary>The paid household owner's profile used only for legacy financial audit fields.</summary>
     public Guid? FinancialScopeOwnerClientProfileId { get; init; }
 
+    public string? EntityName { get; init; }
+    public string AccountDisplayName => string.Equals(
+        ClientRecordClassification.Resolve(Profile.ClientUserId, Profile.CrmNotes),
+        ClientRecordClassification.BusinessClient, StringComparison.Ordinal)
+        ? (string.IsNullOrWhiteSpace(EntityName) ? "Business account" : EntityName)
+        : $"{Profile.FirstName} {Profile.LastName}".Trim();
+
     public string? AgentDisplayName { get; init; }
     public Guid? AgentProfileId { get; init; }
     public string? AgentNpn { get; init; }
@@ -137,12 +144,22 @@ public sealed class EffectiveClientContextService
         EffectiveClientContext context,
         CancellationToken cancellationToken = default)
     {
-        if (_households is null)
-            return context;
-
-        var access = await _households.ResolveActiveAccessAsync(
-            context.ClientProfileId,
-            cancellationToken);
+        string? entityName = null;
+        if (string.Equals(ClientRecordClassification.Resolve(context.Profile.ClientUserId, context.Profile.CrmNotes),
+            ClientRecordClassification.BusinessClient, StringComparison.Ordinal))
+        {
+            var labels = await global::Infrastructure.Businesses.BusinessIdentityProjection.LoadLabelsAsync(
+                _db, new[] { context.ClientProfileId }, cancellationToken);
+            entityName = labels.GetValueOrDefault(context.ClientProfileId);
+        }
+        Guid? householdAccountId = null;
+        Guid? financialScopeOwnerClientProfileId = null;
+        if (_households is not null)
+        {
+            var access = await _households.ResolveActiveAccessAsync(context.ClientProfileId, cancellationToken);
+            householdAccountId = access.HasActiveMembership ? access.HouseholdAccountId : null;
+            financialScopeOwnerClientProfileId = access.HasActiveMembership ? access.SubscriptionOwnerClientProfileId : null;
+        }
 
         return new EffectiveClientContext
         {
@@ -150,8 +167,9 @@ public sealed class EffectiveClientContextService
             ClientUserId = context.ClientUserId,
             Profile = context.Profile,
             IsAgentView = context.IsAgentView,
-            HouseholdAccountId = access.HasActiveMembership ? access.HouseholdAccountId : null,
-            FinancialScopeOwnerClientProfileId = access.HasActiveMembership ? access.SubscriptionOwnerClientProfileId : null,
+            HouseholdAccountId = householdAccountId,
+            FinancialScopeOwnerClientProfileId = financialScopeOwnerClientProfileId,
+            EntityName = entityName,
             AgentDisplayName = context.AgentDisplayName,
             AgentProfileId = context.AgentProfileId,
             AgentNpn = context.AgentNpn,

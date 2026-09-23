@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested these Editor Scope Improvements changes released and direct deployed through legend/approved-changes. Existing customer/payment flows must be preserved. No live customer email or Meta test mutation.",
-  "purpose": "Release the tested shared editor, business-scoped customizable CRM and analytics, scoped intake recipient delivery and shared marketing connection foundations. Signal mappings remain visibly inactive pending runtime integration.",
-  "requestId": "business-workspace-scoped-direct-release-20260923-1",
+  "authorization": "Founder instructed queue this package after release 82 and explicitly wants all release 82 changes released. Release 82 failed before migration and before every app deployment.",
+  "purpose": "Release all unreleased #82 business workspace/editor changes plus entity names, styled business forms, shared full-width analytics, and isolated shared marketing key configuration correcting the #82 predeployment failure.",
+  "requestId": "business-identity-forms-shared-analytics-20260923-pr138",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",

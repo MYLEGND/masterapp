@@ -15,6 +15,28 @@ namespace AgentPortal.Tests;
 public sealed class MarketingConnectionIsolationTests
 {
     [Fact]
+    public void SharedMarketingAuthorityDoesNotReplaceHostCookieConfiguration()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new System.Collections.Generic.Dictionary<string, string?>
+        {
+            ["DataProtection:BlobUri"] = "host-cookie-ring",
+            ["DataProtection:KeyVaultKeyId"] = "host-cookie-vault",
+            ["MarketingDataProtection:BlobUri"] = "https://example.blob.core.windows.net/keys/shared.xml",
+            ["MarketingDataProtection:KeyVaultKeyId"] = "https://example.vault.azure.net/keys/shared"
+        }).Build();
+        var environment = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment
+        {
+            ContentRootPath = System.IO.Path.GetTempPath(),
+            EnvironmentName = "Production"
+        };
+        using var protector = MarketingCredentialProtector.CreateShared(config, environment);
+        Assert.Equal("host-cookie-ring", config["DataProtection:BlobUri"]);
+        Assert.Equal("host-cookie-vault", config["DataProtection:KeyVaultKeyId"]);
+        config["MarketingDataProtection:KeyVaultKeyId"] = null;
+        Assert.Throws<InvalidOperationException>(() => MarketingCredentialProtector.CreateShared(config, environment));
+    }
+
+    [Fact]
     public async Task SameAccountAcrossOwnersHasIndependentCredentialsAndDisconnect()
     {
         using var db = ControllerTestHelpers.BuildDb();

@@ -182,6 +182,15 @@ public class ClientProfileControllerTests
         Assert.Equal(business.Id, storefront.CommerceBusinessId);
         Assert.Equal("Smith Plumbing", storefront.BrandHeadline);
         Assert.Equal("Draft", storefront.StorefrontStatus);
+
+        Assert.IsType<RedirectToActionResult>(await controller.SaveBusinessEntityName(business.Id, "Smith Services"));
+        Assert.Equal("Smith Services", business.DisplayName);
+        Assert.Equal("Smith Plumbing LLC", business.LegalName);
+        Assert.Equal("Business", Assert.Single(db.ClientProfiles).FirstName);
+        Assert.IsType<ForbidResult>(await controller.SaveBusinessEntityName(Guid.NewGuid(), "Other Business"));
+        Assert.IsType<ViewResult>(await controller.MyProfile());
+        Assert.Equal("Smith Services", controller.ViewData["ViewingClientName"]);
+        Assert.Contains(business.Id, Assert.IsType<Guid[]>(controller.ViewData["EditableBusinessIds"]));
     }
 
     [Fact]
