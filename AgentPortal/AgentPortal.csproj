@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Content Include="../Legend-Design/legend-web-foundation.css" Link="wwwroot/design/legend-web-foundation.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-favicon.svg" Link="wwwroot/images/favicon/legend-favicon.svg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../Legend-Design/legend-app-shell.css" Link="wwwroot/design/legend-app-shell.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../Legend-Design/legend-website-management.css" Link="wwwroot/design/legend-website-management.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../Legend-Design/legend-website-management.js" Link="wwwroot/design/legend-website-management.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
