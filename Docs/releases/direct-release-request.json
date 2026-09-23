@@ -1,11 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested immediate retry after correcting the remaining business identity projection regression.",
-  "purpose": "Retry the validated business profile/owner separation release after updating the canonical business identity projection to include the new account membership role. Deploy only AgentPortal and ClientApp.",
-  "requestId": "business-profile-owner-separation-retry-2-20260923",
+  "authorization": "Founder explicitly requested a surgical favicon replacement and direct deployment to all four affected web applications.",
+  "purpose": "Deploy the single canonical LEGEND phoenix favicon source to AgentPortal, ClientApp, Protect Website, and the LEGEND Website only. No unrelated application, database, authentication, CSS, or business logic changes are included.",
+  "requestId": "unified-phoenix-favicon-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
-    "masterapp-client"
+    "masterapp-client",
+    "masterapp-protect",
+    "masterapp-website"
   ]
 }
