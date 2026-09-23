@@ -132,6 +132,16 @@ public class LeadSubmitController : ControllerBase
             correlationId, req.AgentSlug, req.AgentTrackingProfileId);
 
         var resolved = await _resolver.ResolveAsync(req.AgentSlug, req.AgentTrackingProfileId, HttpContext.RequestAborted);
+        var explicitOwner = req.AgentTrackingProfileId.HasValue || !string.IsNullOrWhiteSpace(req.AgentSlug);
+        if (explicitOwner && (!resolved.Found || !string.Equals(resolved.Profile.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(resolved.Profile.AgentUpn) || !new EmailAddressAttribute().IsValid(resolved.Profile.AgentUpn)))
+            return BadRequest(new { error = "lead_owner_unavailable" });
+        if (req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
+        {
+            var slugOwner = await _resolver.ResolveAsync(req.AgentSlug, null, HttpContext.RequestAborted);
+            if (!slugOwner.Found || slugOwner.Profile.Id != req.AgentTrackingProfileId.Value)
+                return BadRequest(new { error = "lead_owner_mismatch" });
+        }
         if (!resolved.Found)
         {
             _logger.LogInformation(

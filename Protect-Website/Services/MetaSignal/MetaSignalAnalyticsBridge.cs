@@ -101,7 +101,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         var batchSize = Math.Clamp(bridgeOptions.AnalyticsBridgeBatchSize, 10, 500);
         var analyticsEvents = await db.AnalyticsEvents
             .AsNoTracking()
-            .Where(x => x.Id > _watermark && SourceEventTypes.Contains(x.EventType))
+            .Where(x => x.CommerceBusinessId == null && x.Id > _watermark && SourceEventTypes.Contains(x.EventType))
             .OrderBy(x => x.Id)
             .Take(batchSize)
             .ToListAsync(cancellationToken);

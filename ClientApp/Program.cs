@@ -26,6 +26,9 @@ using Shared.Diagnostics;
 using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<Infrastructure.Analytics.IAnalyticsQueryService, Infrastructure.Analytics.AnalyticsQueryService>();
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
 
 // ------------------------------------------------------------
 // MVC + DI

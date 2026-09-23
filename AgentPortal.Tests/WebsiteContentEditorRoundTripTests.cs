@@ -33,6 +33,30 @@ public sealed class WebsiteContentEditorRoundTripTests
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]
     [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task RouteKeyedEditorPage_PreservesContentAndMetadataAcrossSaveAndReload(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var document = JsonSerializer.Deserialize<WebsiteContentDocument>("""
+            {"pages":{"/":{"title":"Our business","description":"Our services",
+              "elements":{"home.h1.title":{"text":"Saved page content"}},
+              "extras":[{"id":"new-section","type":"section","sectionId":"home.root"}]},
+              "/about":{"title":"About us","elements":{}}}}
+            """, JsonOptions)!;
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        Assert.Equal("Saved page content", saved.Pages["/"].Elements[ElementId].Text);
+        fixture.Db.ChangeTracker.Clear();
+        var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket));
+        Assert.Equal("Our business", reloaded.Pages["/"].Title);
+        Assert.Equal("Our services", reloaded.Pages["/"].Description);
+        Assert.Equal("About us", reloaded.Pages["/about"].Title);
+        Assert.Single(reloaded.Pages["/"].Extras);
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
     public async Task LargeFractionalAdjustments_SurviveSaveAndReloadThroughBothReadPaths(string siteKey)
     {
         using var fixture = new Fixture(siteKey);

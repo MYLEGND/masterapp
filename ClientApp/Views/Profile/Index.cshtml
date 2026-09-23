@@ -239,7 +239,7 @@
                         @foreach (var website in businessWebsites)
                         {
                             <section class="legend-website-summary">
-                                <div><span class="legend-website-eyebrow">Business website</span><h3>@website.BusinessName</h3><a href="/profile/business/@website.BusinessId/owners">Entity name and owners</a><p>@(website.PrimaryDomain ?? "Domain not connected")</p></div>
+                                <div><span class="legend-website-eyebrow">Business website</span><h3>@website.BusinessName</h3><a href="/profile/business/@website.BusinessId/owners">Entity name and owners</a><p>@(website.PrimaryDomain ?? "Domain not connected")</p><nav aria-label="Business workspace"><a href="/business/@website.BusinessId/crm">CRM</a> · <a href="/business/@website.BusinessId/analytics">Website analytics</a> · <a href="/business/@website.BusinessId/settings">Personalize workspace</a></nav></div>
                                 <button type="button" data-website-manage data-session="/profile/business-website/session/@website.BusinessId" data-edit="@website.PreviewUrl" data-live="@(string.IsNullOrWhiteSpace(website.PrimaryDomain) ? website.PreviewUrl : $"https://{website.PrimaryDomain}")" data-title="@website.BusinessName" data-scope="business">Manage website →</button>
                             </section>
                         }

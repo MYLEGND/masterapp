@@ -1,0 +1,99 @@
+@model Shared.Crm.BusinessWorkspaceModel
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = Model.BusinessName + " workspace";
+    var root = $"/business/{Model.BusinessId}";
+    var preferences = Model.Preferences;
+}
+<section class="legend-workspace-page">
+    <h1>@Model.BusinessName</h1>
+    <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Business workspace">
+        <a href="@root/crm?kind=Lead">@preferences.LeadLabel</a>
+        <a href="@root/crm?kind=Client">@preferences.ClientLabel</a>
+        <a href="@root/analytics">Website analytics</a>
+        @if (Model.CanCustomize) { <a href="@root/settings">Personalize workspace</a> }
+    </nav>
+    @if (Model.Tab == "settings")
+    {
+        <h2>Personalize your workspace</h2>
+        <form action="@root/settings" method="post" class="d-grid gap-3">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Revision" value="@Model.SettingsRevision" />
+            <label>Lead label<input class="form-control" name="LeadLabel" value="@preferences.LeadLabel" maxlength="40" required /></label>
+            <label>Customer label<input class="form-control" name="ClientLabel" value="@preferences.ClientLabel" maxlength="40" required /></label>
+            <label>Pipeline stages, one per line<textarea class="form-control" name="Stages" rows="8" maxlength="1240" required>@string.Join("\n", preferences.Stages)</textarea></label>
+            <fieldset><legend>Analytics metrics</legend>
+                @foreach (var metric in Shared.Crm.BusinessWorkspacePreferences.AvailableMetrics)
+                { <label class="me-3"><input type="checkbox" name="Metrics" value="@metric" checked="@preferences.Metrics.Contains(metric)" /> @metric</label> }
+            </fieldset>
+            <label>Website inquiry recipient<select class="form-select" name="Recipient">
+                @{
+                    var currentRecipient = preferences.NotificationMemberId is { } memberId ? "member:" + memberId.ToString("D") : preferences.NotificationAgentTrackingProfileId is { } agentId ? "agent:" + agentId.ToString("D") : "";
+                }
+                @if (currentRecipient.Length > 0 && !Model.Recipients.Any(x => x.Key == currentRecipient)) { <option value="@currentRecipient" selected>Assigned recipient unavailable — choose an active recipient</option> }
+                <option value="" selected="@(currentRecipient.Length == 0)">Business owner</option>
+                @foreach (var recipient in Model.Recipients)
+                {
+                    var selected = recipient.Key == "member:" + preferences.NotificationMemberId?.ToString("D") || recipient.Key == "agent:" + preferences.NotificationAgentTrackingProfileId?.ToString("D");
+                    <option value="@recipient.Key" selected="@selected">@recipient.Label — @recipient.Email</option>
+                }
+            </select></label>
+            <p>Only active team members and assigned agents are eligible. If an assignment is removed, delivery waits until an eligible recipient is selected.</p>
+            <button class="btn btn-primary" type="submit">Save preferences</button>
+        </form>
+    }
+    else if (Model.Tab == "analytics")
+    {
+        <h2>Website analytics</h2>
+        <form action="@root/analytics" method="get" class="d-flex flex-wrap align-items-end gap-2 mb-3">
+            <label>Period<select class="form-select" name="days">@foreach (var days in new[] { 7, 30, 90 }) { <option value="@days" selected="@(Model.Days == days)">Last @days days</option> }</select></label>
+            <button type="submit" class="btn btn-primary">Apply</button>
+        </form>
+        @if (Model.Summary is { } summary)
+        {
+            <dl class="legend-workspace-metrics">
+            @foreach (var metric in preferences.Metrics)
+            {
+                var value = metric switch { "visitors" => summary.UniqueVisitors.ToString("N0"), "sessions" => summary.Sessions.ToString("N0"), "pageviews" => summary.PageViews.ToString("N0"), "leads" => summary.VerifiedLeads.ToString("N0"), "conversion" => summary.SessionConversionRate.ToString("0.##") + "%", _ => "" };
+                <div><dt>@(metric == "leads" ? preferences.LeadLabel : metric)</dt><dd>@value</dd></div>
+            }
+            </dl>
+        }
+        @if (Model.Health is { } health) { <p>Meta delivery health: @health.MetaHealthStatus</p> @foreach (var warning in health.Warnings) { <p>@warning</p> } }
+        <h3>Website event mappings</h3>
+        <p>Change mappings in your website editor. Draft changes take effect after publishing.</p>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Page</th><th>Element</th><th>Trigger</th><th>Event</th><th>Delivery</th><th>Version</th></tr></thead><tbody>
+        @foreach (var row in Model.EventMap) { <tr><td>@row.Page</td><td>@row.Element</td><td>@row.Trigger</td><td>@row.Event</td><td>@row.Mode</td><td>@(row.Published ? "Published" : "Draft") @row.Revision</td></tr> }
+        </tbody></table></div>
+        <h3>Recent events</h3>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Time (UTC)</th><th>Event</th><th>Page</th><th>Server accepted</th></tr></thead><tbody>
+        @foreach (var row in Model.RecentEvents) { <tr><td>@row.OccurredUtc.ToString("u")</td><td>@row.Event</td><td>@row.Page</td><td>@(row.ServerSent ? "Yes" : "Unconfirmed")</td></tr> }
+        </tbody></table></div>
+    }
+    else
+    {
+        <h2>@(Model.Kind == "Client" ? preferences.ClientLabel : preferences.LeadLabel)</h2>
+        <form action="@root/crm" method="get" class="d-flex flex-wrap align-items-end gap-2 mb-3"><input type="hidden" name="kind" value="@Model.Kind" /><label>Search<input class="form-control" name="search" value="@Model.Search" maxlength="120" /></label><button class="btn btn-primary" type="submit">Search</button></form>
+        <p>@Model.Total records</p>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Stage</th></tr></thead><tbody>
+        @foreach (var contact in Model.Contacts) { <tr><td><a href="@root/crm/@Uri.EscapeDataString(contact.Id)?kind=@Model.Kind">@contact.Name</a></td><td>@contact.Email</td><td>@contact.Phone</td><td>@contact.Stage</td></tr> }
+        </tbody></table></div>
+        <nav aria-label="Records pages">@if (Model.Page > 1) { <a href="@root/crm?kind=@Model.Kind&amp;search=@Uri.EscapeDataString(Model.Search)&amp;page=@(Model.Page - 1)">Previous</a> } @if (Model.Page * 30 < Model.Total) { <a href="@root/crm?kind=@Model.Kind&amp;search=@Uri.EscapeDataString(Model.Search)&amp;page=@(Model.Page + 1)">Next</a> }</nav>
+        @if (Model.Selected is { } selected)
+        {
+            <section class="mt-4"><h3>@selected.Name</h3>
+            <form action="@root/crm/@Uri.EscapeDataString(selected.Id)" method="post" class="d-grid gap-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Revision" value="@selected.Revision" /><input type="hidden" name="ExpectedUpdatedUtc" value="@selected.UpdatedUtc.ToString("O")" />
+                <label>Relationship<select class="form-select" name="Kind"><option value="Lead" selected="@(selected.Kind == "Lead")">@preferences.LeadLabel</option><option value="Client" selected="@(selected.Kind == "Client")">@preferences.ClientLabel</option></select></label>
+                <label>Stage<select class="form-select" name="Stage">@foreach (var stage in preferences.Stages) { <option selected="@(stage == selected.Stage)">@stage</option> }</select></label>
+                <label>Notes<textarea class="form-control" name="Notes" rows="5" maxlength="12000">@selected.Notes</textarea></label>
+                <button type="submit" class="btn btn-primary">Save contact</button>
+            </form>
+            <h4 class="mt-3">Inquiries</h4>@foreach (var inquiry in selected.Inquiries) { <article><p>@inquiry.CreatedUtc.ToString("u") · @inquiry.SourcePath · Notification: @inquiry.NotificationStatus</p><p class="text-break">@inquiry.Message</p></article> }
+            <h4>History</h4>@foreach (var item in selected.History) { <p>@item.Date · @item.Note</p> }
+            </section>
+        }
+    }
+</section>

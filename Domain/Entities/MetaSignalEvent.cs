@@ -41,6 +41,9 @@ public class MetaSignalEvent
     public string? UserAgentHash { get; set; }
     public string? IpHash { get; set; }
     public Guid? AgentTrackingProfileId { get; set; }
+    public Guid? CommerceBusinessId { get; set; }
+    public Guid? WebsiteContentVersionId { get; set; }
+    public string? WebsiteBindingId { get; set; }
     public string? AgentSlug { get; set; }
     public string? Environment { get; set; }
     public string? Host { get; set; }

@@ -40,7 +40,9 @@ public static class UnifiedEventMapper
 
             Fbclid = ctx.Fbclid,
             AgentSlug = ctx.AgentSlug,
-            AgentTrackingProfileId = ctx.AgentTrackingProfileId,
+            AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
+            CommerceBusinessId = ctx.CommerceBusinessId,
+            WebsiteContentVersionId = ctx.WebsiteContentVersionId,
 
             IsInternal = ctx.IsInternal ?? false,
             Environment = ctx.Environment,
@@ -80,7 +82,7 @@ public static class UnifiedEventMapper
                 ctx.EventName,
                 leadId: null,
                 ctx.SessionId,
-                BuildAnalyticsMetadata(ctx.Metadata),
+                BuildAnalyticsMetadata(ctx),
                 isBrowserSignal: ctx.IsBrowserSignal == true,
                 isServerAuthority: ctx.IsServerAuthority == true,
                 metaServerAuthorityEligible: ctx.MetaServerAuthorityEligible == true,
@@ -140,18 +142,20 @@ public static class UnifiedEventMapper
             TimeZone = ctx.TimeZone,
 
             AgentSlug = ctx.AgentSlug,
-            AgentTrackingProfileId = ctx.AgentTrackingProfileId,
+            AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
+            CommerceBusinessId = ctx.CommerceBusinessId,
+            WebsiteContentVersionId = ctx.WebsiteContentVersionId,
 
             Environment = null,
             Host = null
         };
     }
 
-    private static object BuildAnalyticsMetadata(object? metadata) => new
+    private static object BuildAnalyticsMetadata(UnifiedEventContext ctx) => new
     {
-        siteKey = SiteKey,
-        businessType = BusinessType,
-        reportingOwner = ReportingOwner,
-        payload = metadata
+        siteKey = ctx.CommerceBusinessId.HasValue ? "BusinessWebsite" : SiteKey,
+        businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
+        reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
+        payload = ctx.Metadata
     };
 }

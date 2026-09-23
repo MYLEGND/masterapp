@@ -19,6 +19,8 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
         toggle: name => { const has = this.className.split(' ').includes(name); if (has) this.classList.remove(name); else this.classList.add(name); return !has; }
       };
     }
+    set id(value) { this._id = value; ids.set(value, this); }
+    get id() { return this._id; }
     appendChild(child) { if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(x => x !== child); this.children.push(child); child.parentElement = this; return child; }
     insertBefore(child, before) { if (!before) return this.appendChild(child); this.children.splice(this.children.indexOf(before), 0, child); child.parentElement = this; return child; }
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(x => x !== this); }
@@ -30,9 +32,10 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
     closest(selector) { return selector === '[data-cms-editable="true"]' && this.dataset.cmsEditable === 'true' ? this : null; }
     matches() { return false; }
     getAttribute() { return null; }
-    querySelector() { return null; }
+    querySelector(selector) { return selector === '.legend-cms-bar' ? this.children.find(x => x.className.includes('legend-cms-bar')) : selector === '[data-cms-view="layout"]' ? new Element('section') : null; }
     querySelectorAll(selector) { return selector?.startsWith('[data-') ? [] : this.children; }
     async click() { await this.listeners.get('click')?.({ target: this }); }
+    replaceChildren(...children) { this.children = []; children.forEach(child => this.appendChild(child)); }
     set innerHTML(html) {
       this.html = html;
       for (const match of html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
@@ -101,7 +104,7 @@ test('Protect empty API base initializes the ticketed editor and saves to the sa
   assert.equal(saved.init.method, 'POST');
   assert.equal(saved.init.headers['Content-Type'], 'application/json');
   assert.equal(JSON.parse(saved.init.body).ticket, ticket);
-  assert.equal(JSON.parse(saved.init.body).document.pages.home.elements['home.title'].text, 'Editor content');
+  assert.equal(JSON.parse(saved.init.body).document.pages['/'].elements['home.title'].text, 'Editor content');
   assert.equal(f.ids.get('legend-cms-status').textContent, 'Draft saved');
   assert.deepEqual(f.alerts, []);
 });
@@ -156,7 +159,7 @@ for (const siteKey of ['legend', 'protect']) {
     assert.equal(f.ids.get('legend-cms-text-group').hidden, false);
     await f.ids.get('legend-cms-text').input('An edited heading');
     await f.ids.get('legend-cms-save').click();
-    const override = JSON.parse(f.calls.at(-1).init.body).document.pages.home.elements['home.title'];
+    const override = JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'];
     assert.equal(override.text, 'An edited heading');
     assert.deepEqual(override.style, {});
     assert.equal(f.heading.style.fontSize, '');
@@ -181,7 +184,7 @@ test('scale is relative to original responsive typography and never accumulates'
   await f.ids.get('legend-cms-scale').input('');
   assert.equal(f.heading.style.fontSize, '');
   await f.ids.get('legend-cms-save').click();
-  assert.equal(JSON.parse(f.calls.at(-1).init.body).document.pages.home.elements['home.title'].style.fontScale, undefined);
+  assert.equal(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style.fontScale, undefined);
 });
 
 test('adjustments above former caps round-trip without changing unrelated fields', async () => {
@@ -192,7 +195,7 @@ test('adjustments above former caps round-trip without changing unrelated fields
   await f.ids.get('legend-cms-padding-top').input('500.5');
   await f.ids.get('legend-cms-padding-bottom').input('800');
   await f.ids.get('legend-cms-save').click();
-  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages.home.elements['home.title'].style,
+  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style,
     { fontScale: 12.75, widthPercent: 250.25, paddingTop: 500.5, paddingBottom: 800 });
   assert.equal(f.heading.style.width, '250.25%');
   assert.equal(f.heading.style.maxWidth, '100%');
@@ -205,7 +208,7 @@ test('invalid numeric edits never replace a valid stored adjustment', async () =
   for (const bad of ['-2', '0', 'Infinity', 'NaN']) await f.ids.get('legend-cms-scale').input(bad);
   await f.ids.get('legend-cms-padding-top').input('-1');
   await f.ids.get('legend-cms-save').click();
-  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages.home.elements['home.title'].style, { fontScale: 3 });
+  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style, { fontScale: 3 });
   assert.equal(f.heading.style.fontSize, '192px');
 });
 
@@ -227,7 +230,7 @@ test('reset restores original content and persists removal without discarding un
   assert.equal(f.heading.textContent, 'Default content');
   assert.equal(f.heading.style.fontSize, '');
   await f.ids.get('legend-cms-save').click();
-  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages.home.elements, {});
+  assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements, {});
 });
 
 test('public pages retain responsive baseline-relative scale after viewport changes', async () => {
@@ -276,7 +279,7 @@ for(const siteKey of ['legend','protect']) {
       assert.equal(f.w.document.querySelector('main a').href,'https://business.example/book');
       f.input('#legend-cms-href','javascript:alert(1)');
       assert.equal(f.w.document.querySelector('main a').href,'https://business.example/book');
-      const saved=await f.save(); assert.ok(Object.values(saved.pages.home.elements).some(x=>x.href==='https://business.example/book'));
+      const saved=await f.save(); assert.ok(Object.values(saved.pages['/'].elements).some(x=>x.href==='https://business.example/book'));
       assert.equal(JSON.parse(f.calls.at(-1).body).expectedRevision,'r1');
       assert.ok(f.calls.every(x=>!x.url.includes('/public/')));
     } finally {f.close();}
@@ -290,7 +293,7 @@ test('autosave persists edits before domain connection and panel can collapse to
     await new Promise(resolve=>setTimeout(resolve,1000));
     const saveCall=f.calls.find(call=>call.method==='POST' && call.url.endsWith('/manage'));
     assert.ok(saveCall);
-    assert.equal(JSON.parse(saveCall.body).document.pages.home.elements[Object.keys(JSON.parse(saveCall.body).document.pages.home.elements)[0]].text,'Persisted before domain');
+    assert.equal(JSON.parse(saveCall.body).document.pages['/'].elements[Object.keys(JSON.parse(saveCall.body).document.pages['/'].elements)[0]].text,'Persisted before domain');
     const toggle=f.w.document.querySelector('#legend-cms-panel-toggle');
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
@@ -303,7 +306,7 @@ test('autosave persists edits before domain connection and panel can collapse to
 test('section deletion preserves child structure, reset restores, global theme remains separate',async()=>{
   const f=await domFixture();try {f.click('main h1');f.click('#legend-cms-container'); f.click('#legend-cms-remove');
     assert.equal(f.w.document.querySelector('main section').hidden,true);assert.ok(f.w.document.querySelector('main section h1'));
-    const doc=await f.save();assert.equal(doc.pages.home.elements['section:home.section.1'].hidden,true);
+    const doc=await f.save();assert.equal(doc.pages['/'].elements['section:home.section.1'].hidden,true);
   }finally{f.close();}
 });
 test('new blocks, keyboard placement and published reload preserve page bounds and section ownership',async()=>{
@@ -320,16 +323,118 @@ test('publish saves unsaved draft first then calls the explicit publish action',
  const f=await domFixture();try{f.click('main h1');f.input('#legend-cms-text','New draft');f.click('#legend-cms-publish');await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,3);assert.ok(f.calls[1].url.endsWith('/manage'));assert.ok(f.calls[2].url.endsWith('/manage/publish'));assert.equal(JSON.parse(f.calls[2].body).expectedRevision,'r2');}finally{f.close();}
 });
 test('editing current page preserves independent page content',async()=>{
- const f=await domFixture({doc:{pages:{about:{title:'About',elements:{'about.h1':{text:'Other page'}},extras:[],sectionOrder:{}}}}});try{f.click('main h1');f.input('#legend-cms-text','Home edit');const doc=await f.save();assert.equal(doc.pages.about.elements['about.h1'].text,'Other page');assert.ok(doc.pages.home);}finally{f.close();}
+ const f=await domFixture({doc:{pages:{about:{title:'About',elements:{'about.h1':{text:'Other page'}},extras:[],sectionOrder:{}}}}});try{f.click('main h1');f.input('#legend-cms-text','Home edit');const doc=await f.save();assert.equal(doc.pages['/about'].elements['about.h1'].text,'Other page');assert.ok(doc.pages['/']);}finally{f.close();}
 });
 test('undo and redo restore content and leave other page drafts intact',async()=>{
  const f=await domFixture();try{f.click('main h1');f.input('#legend-cms-text','First edit');f.input('#legend-cms-text','Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
 });
 test('drag drop snaps across sections and retains the same persisted placement as keyboard controls',async()=>{
- const f=await domFixture();try{const heading=f.w.document.querySelector('main h1'),section=f.w.document.querySelectorAll('main section')[1];f.click('main h1');section.getBoundingClientRect=()=>({left:0,width:1200});const start=new f.w.Event('dragstart',{bubbles:true,cancelable:true});Object.defineProperty(start,'dataTransfer',{value:{setData(){}}});heading.dispatchEvent(start);const drop=new f.w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'clientX',{value:450});section.dispatchEvent(drop);assert.equal(heading.closest('[data-cms-section]'),section);assert.equal(heading.style.getPropertyValue('--cms-column'),'5');const doc=await f.save();assert.equal(Object.values(doc.pages.home.elements).find(x=>x.placement)?.placement.column,5);}finally{f.close();}
+ const f=await domFixture();try{const heading=f.w.document.querySelector('main h1'),section=f.w.document.querySelectorAll('main section')[1];f.click('main h1');section.getBoundingClientRect=()=>({left:0,width:1200});const start=new f.w.Event('dragstart',{bubbles:true,cancelable:true});Object.defineProperty(start,'dataTransfer',{value:{setData(){}}});heading.dispatchEvent(start);const drop=new f.w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'clientX',{value:450});section.dispatchEvent(drop);assert.equal(heading.closest('[data-cms-section]'),section);assert.equal(heading.style.getPropertyValue('--cms-column'),'5');const doc=await f.save();assert.equal(Object.values(doc.pages['/'].elements).find(x=>x.placement)?.placement.column,5);}finally{f.close();}
 });
 test('managed media tickets are render-only and never leak into saved or external media URLs',async()=>{
  const media='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
  const doc={pages:{home:{elements:{},sectionOrder:{},extras:[{id:'own',type:'image',sectionId:'home.section.1',imageDataUrl:media},{id:'external',type:'image',sectionId:'home.section.1',imageDataUrl:'https://external.example/photo.png'}]}}};
- const f=await domFixture({doc});try{assert.equal(new URL(f.w.document.querySelector('[data-cms-extra-id="own"]').src).searchParams.get('ticket'),'ticket');assert.equal(new URL(f.w.document.querySelector('[data-cms-extra-id="external"]').src).search,'');const saved=await f.save();assert.equal(saved.pages.home.extras[0].imageDataUrl,media);assert.equal(JSON.stringify(saved).includes('?ticket'),false);}finally{f.close();}
+ const f=await domFixture({doc});try{assert.equal(new URL(f.w.document.querySelector('[data-cms-extra-id="own"]').src).searchParams.get('ticket'),'ticket');assert.equal(new URL(f.w.document.querySelector('[data-cms-extra-id="external"]').src).search,'');const saved=await f.save();assert.equal(saved.pages['/'].extras[0].imageDataUrl,media);assert.equal(JSON.stringify(saved).includes('?ticket'),false);}finally{f.close();}
+});
+
+for (const siteKey of ['legend', 'protect', 'business']) {
+  test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
+    const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
+    try {
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 8);
+      f.click('[data-open="page"]');
+      assert.equal(f.w.document.querySelector('#legend-cms-page-title').disabled, false);
+      f.input('#legend-cms-page-title', 'A title <with text>');
+      f.input('#legend-cms-page-description', 'Services for our community.');
+      f.click('[data-open="theme"]');
+      assert.equal(f.w.document.querySelector('[data-theme-key="fontFamily"]').disabled, false);
+      f.input('[data-theme-key="fontFamily"]', 'Georgia');
+      const saved = await f.save();
+      assert.equal(saved.pages['/'].title, 'A title <with text>');
+      assert.equal(saved.pages['/'].description, 'Services for our community.');
+      assert.equal(saved.theme.fontFamily, 'Georgia');
+      assert.equal(Object.hasOwn(saved.pages, 'home'), false);
+    } finally { f.close(); }
+  });
+}
+
+test('layers recover a hidden section without losing its descendants', async () => {
+  const f = await domFixture();
+  try {
+    f.click('main h1'); f.click('#legend-cms-container'); f.click('#legend-cms-remove');
+    f.click('[data-open="layers"]');
+    f.click('#legend-cms-layers button[aria-label^="Show Section"]');
+    assert.equal(f.w.document.querySelector('main section').hidden, false);
+    assert.equal(f.w.document.querySelector('main h1').textContent, 'Template title');
+    const saved = await f.save();
+    assert.equal(saved.pages['/'].elements['section:home.section.1'].hidden, false);
+  } finally { f.close(); }
+});
+
+test('duplicate link has independent identity and undo removes only the duplicate', async () => {
+  const f = await domFixture();
+  try {
+    f.click('main a'); f.input('#legend-cms-href', 'https://business.example/book');
+    f.click('#legend-cms-duplicate');
+    f.input('#legend-cms-text', 'Another booking link');
+    const saved = await f.save();
+    assert.equal(saved.pages['/'].extras[0].href, 'https://business.example/book');
+    assert.equal(saved.pages['/'].extras[0].text, 'Another booking link');
+    assert.equal(f.w.document.querySelector('main a').textContent, 'Original link');
+    f.click('#legend-cms-undo'); f.click('#legend-cms-undo');
+    assert.equal(f.w.document.querySelectorAll('main a').length, 1);
+  } finally { f.close(); }
+});
+
+test('design controls preserve numeric font weight and signed letter spacing', async () => {
+  const f = await domFixture();
+  try {
+    f.click('main h1'); f.input('[data-style-key="fontWeight"]', '700');
+    f.input('[data-style-key="letterSpacing"]', '-1.25');
+    const saved = await f.save();
+    const style = Object.values(saved.pages['/'].elements)[0].style;
+    assert.equal(style.fontWeight, 700);
+    assert.equal(style.letterSpacing, -1.25);
+  } finally { f.close(); }
+});
+
+test('legacy page keys migrate without discarding another page or canonical content', async () => {
+  const f = await domFixture({doc: {pages: {
+    home: {title: 'Legacy', elements: {'home.legacy': {text: 'Keep'}}},
+    '/': {title: 'Current', elements: {'home.current': {text: 'Current'}}},
+    about: {title: 'About', elements: {}}
+  }}});
+  try {
+    const saved = await f.save();
+    assert.deepEqual(Object.keys(saved.pages).sort(), ['/', '/about']);
+    assert.equal(saved.pages['/'].title, 'Current');
+    assert.equal(saved.pages['/'].elements['home.legacy'].text, 'Keep');
+    assert.equal(saved.pages['/about'].title, 'About');
+  } finally { f.close(); }
+});
+
+test('deleting an added block removes it from the saved document and published reload', async () => {
+  const f = await domFixture(); let saved;
+  try {
+    f.click('main h1'); f.click('[data-add="button"]'); f.click('#legend-cms-remove');
+    saved = await f.save();
+    assert.equal(saved.pages['/'].extras.length, 0);
+  } finally { f.close(); }
+  const published = await domFixture({doc: saved, search: ''});
+  try { assert.equal(published.w.document.querySelectorAll('[data-cms-extra-id]').length, 0); }
+  finally { published.close(); }
+});
+
+test('link editing rejects editor credentials and insecure absolute URLs before save', async () => {
+  const f = await domFixture();
+  try {
+    f.click('main a'); f.input('#legend-cms-href', '/contact');
+    for (const value of ['http://external.example', '/?legendEdit=secret', '/?ticket=secret', '//external.example']) {
+      f.input('#legend-cms-href', value);
+      assert.equal(f.w.document.querySelector('main a').getAttribute('href'), '/contact');
+    }
+    const saved = await f.save();
+    assert.ok(Object.values(saved.pages['/'].elements).some(value => value.href === '/contact'));
+    assert.equal(JSON.stringify(saved).includes('secret'), false);
+  } finally { f.close(); }
 });

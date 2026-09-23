@@ -8,6 +8,8 @@ namespace ProtectWebsite.Services.Tracking;
 /// </summary>
 public sealed record UnifiedEventContext
 {
+    public Guid? CommerceBusinessId { get; init; }
+    public Guid? WebsiteContentVersionId { get; init; }
     // =========================
     // CORE EVENT IDENTITY
     // =========================

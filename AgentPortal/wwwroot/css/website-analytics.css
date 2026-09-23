@@ -3781,14 +3781,14 @@ body {
     display: grid;
     gap: 1rem;
     padding: 1.15rem 1.2rem 1.05rem;
-    border-radius: 22px;
-    border: 1.5px solid rgba(166,128,35,.9);
+    border-radius: 10px;
+    border: 1px solid rgba(166,128,35,.65);
     background:
         radial-gradient(920px 320px at -4% 0%, rgba(199,153,49,.12), transparent 55%),
         radial-gradient(760px 300px at 104% 0%, rgba(55,91,154,.18), transparent 58%),
         linear-gradient(158deg, #0b1530 0%, #0f1d3c 52%, #0b1530 100%);
     box-shadow:
-        0 28px 56px rgba(0,0,0,.24),
+        0 2px 6px rgba(0,0,0,.12),
         inset 0 1px 0 rgba(255,255,255,.05),
         inset 0 0 0 1px rgba(199,153,49,.08);
     overflow: hidden;

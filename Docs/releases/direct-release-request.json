@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly instructed DEPLOY IT for PR #138 through legend/approved-changes. Deploy affected applications only; no live customer, payment, email or Meta test mutations.",
-  "purpose": "Release canonical business entity-name profile editing, business account labels, and shared ownership/inquiry form styling. This is a new repair release, not a rerun of successful run #80 targets. Parfait is excluded.",
-  "requestId": "business-identity-and-form-styling-20260923-pr138",
+  "purpose": "Release canonical business entity-name profile editing, business account labels, shared ownership/inquiry form styling, and full-width horizontal analytics across the centralized app shell and shared business workspace. Hold merge until active release #82 is stopped or its completed targets are reconciled.",
+  "requestId": "business-identity-forms-shared-analytics-20260923-pr138",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",

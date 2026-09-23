@@ -8,59 +8,46 @@ using Microsoft.Extensions.Caching.Distributed;
 
 namespace AgentPortal.Services.Analytics;
 
+/// <summary>Compatibility adapter for agent callers; SQL is the sole active connection store.</summary>
 public sealed class MetaAdsConnectionStore : IMetaAdsConnectionStore
 {
-    private readonly IDistributedCache _cache;
-    private readonly IDataProtector _protector;
+    private readonly IDistributedCache _legacyCache;
+    private readonly IDataProtector _legacyProtector;
+    private readonly MarketingConnectionStore _connections;
 
-    public MetaAdsConnectionStore(IDistributedCache cache, IDataProtectionProvider dataProtectionProvider)
+    public MetaAdsConnectionStore(IDistributedCache cache, IDataProtectionProvider dataProtectionProvider,
+        MarketingConnectionStore connections)
     {
-        _cache = cache;
-        _protector = dataProtectionProvider.CreateProtector("MetaAds.ConnectionStore.v1");
+        _legacyCache = cache;
+        _legacyProtector = dataProtectionProvider.CreateProtector("MetaAds.ConnectionStore.v1");
+        _connections = connections;
     }
 
-    private static string CacheKey(Guid agentTrackingProfileId) => $"metaads:connection:{agentTrackingProfileId:D}";
+    private static string CacheKey(Guid id) => $"metaads:connection:{id:D}";
 
     public async Task<MetaAdsConnectionRecord?> GetAsync(Guid agentTrackingProfileId, CancellationToken ct = default)
     {
-        var key = CacheKey(agentTrackingProfileId);
-        var cipher = await _cache.GetStringAsync(key, ct);
-        if (string.IsNullOrWhiteSpace(cipher)) return null;
-
-        try
+        var owner = MarketingOwnerScope.Agent(agentTrackingProfileId);
+        if ((await _connections.GetStatusAsync(owner, ct))?.LegacyAdsImportedUtc is null)
         {
-            var json = _protector.Unprotect(cipher);
-            return JsonSerializer.Deserialize<MetaAdsConnectionRecord>(json);
+            var cipher = await _legacyCache.GetStringAsync(CacheKey(agentTrackingProfileId), ct);
+            var legacy = string.IsNullOrWhiteSpace(cipher) ? null :
+                JsonSerializer.Deserialize<MetaAdsConnectionRecord>(_legacyProtector.Unprotect(cipher));
+            if (legacy is not null && legacy.AgentTrackingProfileId != agentTrackingProfileId)
+                throw new InvalidOperationException("Legacy Meta connection owner mismatch.");
+            await _connections.ImportAsync(owner, legacy, ct: ct);
+            // Removal follows the durable commit. A failed removal cannot revive this cache record.
+            await _legacyCache.RemoveAsync(CacheKey(agentTrackingProfileId), ct);
         }
-        catch
-        {
-            return null;
-        }
+        return await _connections.GetAdsAsync(owner, ct);
     }
 
-    public async Task SaveAsync(MetaAdsConnectionRecord record, CancellationToken ct = default)
-    {
-        record.UpdatedUtc = DateTime.UtcNow;
-        if (record.ConnectedUtc == default) record.ConnectedUtc = DateTime.UtcNow;
-
-        var key = CacheKey(record.AgentTrackingProfileId);
-        var json = JsonSerializer.Serialize(record);
-        var cipher = _protector.Protect(json);
-
-        var ttl = record.AccessTokenExpiresUtc.HasValue
-            ? record.AccessTokenExpiresUtc.Value - DateTime.UtcNow
-            : TimeSpan.FromDays(60);
-
-        if (ttl < TimeSpan.FromHours(1)) ttl = TimeSpan.FromHours(1);
-
-        await _cache.SetStringAsync(key, cipher, new DistributedCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = ttl
-        }, ct);
-    }
+    public Task SaveAsync(MetaAdsConnectionRecord record, CancellationToken ct = default) =>
+        _connections.SaveAdsAsync(MarketingOwnerScope.Agent(record.AgentTrackingProfileId), record, ct);
 
     public async Task DeleteAsync(Guid agentTrackingProfileId, CancellationToken ct = default)
     {
-        await _cache.RemoveAsync(CacheKey(agentTrackingProfileId), ct);
+        await _connections.DisconnectAsync(MarketingOwnerScope.Agent(agentTrackingProfileId), ct);
+        await _legacyCache.RemoveAsync(CacheKey(agentTrackingProfileId), ct);
     }
 }

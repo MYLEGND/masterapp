@@ -49,7 +49,7 @@ public class ProfileWebsiteFounderTests : System.IDisposable
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
             new System.Collections.Generic.Dictionary<string, string?> { ["LegendWebsiteBaseUrl"] = "https://www.example.test" }).Build();
         var services = new ServiceCollection().AddSingleton<IConfiguration>(configuration).BuildServiceProvider();
-        return new AccountController(null!, null!, null!, null!, new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
+        return new AccountController(null!, null!, null!, null!, new WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()), null!)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext
             {

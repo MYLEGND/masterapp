@@ -1,3 +1,5 @@
+using Infrastructure.Analytics;
+using Shared.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
@@ -52,27 +54,30 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
     private readonly IConfiguration _configuration;
     private readonly MasterAppDbContext _db;
     private readonly AgentTrackingResolver _resolver;
-    private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
+    private readonly AgentMarketingProfileService _agentMarketing;
+    private readonly MarketingConnectionStore _connections;
     private readonly ILogger<MetaPixelResolutionService> _logger;
 
     public MetaPixelResolutionService(
         IConfiguration configuration,
         MasterAppDbContext db,
         AgentTrackingResolver resolver,
-        MetaCapiCredentialProtector metaCapiCredentialProtector,
+        AgentMarketingProfileService agentMarketing,
+        MarketingConnectionStore connections,
         ILogger<MetaPixelResolutionService> logger)
     {
         _configuration = configuration;
         _db = db;
         _resolver = resolver;
-        _metaCapiCredentialProtector = metaCapiCredentialProtector;
+        _agentMarketing = agentMarketing;
+        _connections = connections;
         _logger = logger;
     }
 
     public async Task<ResolvedMetaPixelContext> ResolveForCurrentRequestAsync(HttpContext? httpContext, CancellationToken cancellationToken = default)
     {
         if (httpContext == null)
-            return ResolveAgencyFallback();
+            return await ResolveAgencyFallbackAsync(cancellationToken);
 
         if (httpContext.Items.TryGetValue(RequestCacheKey, out var cached) &&
             cached is ResolvedMetaPixelContext cachedContext)
@@ -109,7 +114,7 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
     public async Task<ResolvedMetaPixelContext> ResolveForLeadAsync(Guid? agentTrackingProfileId, string? agentSlug, bool isFounderPath, CancellationToken cancellationToken = default)
     {
         if (isFounderPath)
-            return ResolveAgencyFallback();
+            return await ResolveAgencyFallbackAsync(cancellationToken);
 
         AgentTrackingProfile? trackingProfile = null;
         var normalizedSlug = Normalize(agentSlug);
@@ -139,7 +144,7 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         bool isFounderPath,
         CancellationToken cancellationToken)
     {
-        var agencyFallback = ResolveAgencyFallback();
+        var agencyFallback = await ResolveAgencyFallbackAsync(cancellationToken);
         if (isFounderPath)
             return agencyFallback;
 
@@ -148,30 +153,16 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
 
         try
         {
-            var agentProfile = await ResolveAgentProfileAsync(trackingProfile, cancellationToken);
-            var agentPixelId = Normalize(agentProfile?.MetaPixelId);
-            if (string.IsNullOrWhiteSpace(agentPixelId))
+            var connection = await _agentMarketing.GetAsync(trackingProfile, cancellationToken);
+            if (connection.DisconnectedUtc.HasValue)
+                return MergeWithAgentContext(new ResolvedMetaPixelContext(), trackingProfile, agentSlug);
+            if (string.IsNullOrWhiteSpace(connection.PixelId))
                 return MergeWithAgentContext(agencyFallback, trackingProfile, agentSlug);
-
-            var encryptedTokenPresent = !string.IsNullOrWhiteSpace(agentProfile?.MetaCapiAccessToken);
-            var decryptedAgentAccessToken = Normalize(
-                _metaCapiCredentialProtector.Unprotect(agentProfile?.MetaCapiAccessToken, _logger));
-            var agentTestEventCode = Normalize(agentProfile?.MetaTestEventCode);
-
-            _logger.LogInformation(
-                "Meta pixel resolution token audit trackingProfileId={TrackingProfileId} agentProfileId={AgentProfileId} hasPixel={HasPixel} encryptedTokenPresent={EncryptedTokenPresent} decryptedTokenPresent={DecryptedTokenPresent}",
-                trackingProfile.Id,
-                agentProfile?.Id,
-                !string.IsNullOrWhiteSpace(agentPixelId),
-                encryptedTokenPresent,
-                !string.IsNullOrWhiteSpace(decryptedAgentAccessToken));
-
+            var token = await _connections.GetCapiTokenAsync(MarketingOwnerScope.Agent(trackingProfile.Id), cancellationToken);
             return new ResolvedMetaPixelContext
             {
-                PixelId = agentPixelId,
-                PixelOwnerType = MetaPixelOwnerTypes.Agent,
-                AccessToken = decryptedAgentAccessToken,
-                TestEventCode = string.IsNullOrWhiteSpace(decryptedAgentAccessToken) ? null : agentTestEventCode,
+                PixelId = connection.PixelId, PixelOwnerType = MetaPixelOwnerTypes.Agent,
+                AccessToken = token, TestEventCode = token is null ? null : connection.TestEventCode,
                 AgentTrackingProfileId = trackingProfile.Id,
                 AgentSlug = Normalize(agentSlug) ?? Normalize(trackingProfile.Slug)
             };
@@ -180,59 +171,24 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
         {
             _logger.LogWarning(
                 ex,
-                "Meta pixel resolution failed for tracking profile {TrackingProfileId}; using agency fallback.",
+                "Meta pixel resolution failed for tracking profile {TrackingProfileId}; advertising is disabled for this request.",
                 trackingProfile.Id);
-            return MergeWithAgentContext(agencyFallback, trackingProfile, agentSlug);
+            return MergeWithAgentContext(new ResolvedMetaPixelContext(), trackingProfile, agentSlug);
         }
     }
 
-    private ResolvedMetaPixelContext ResolveAgencyFallback()
+    private async Task<ResolvedMetaPixelContext> ResolveAgencyFallbackAsync(CancellationToken cancellationToken)
     {
-        var pixelId = Normalize(_configuration["Meta:PixelId"]);
-        if (string.IsNullOrWhiteSpace(pixelId))
-        {
-            return new ResolvedMetaPixelContext
-            {
-                PixelId = null,
-                PixelOwnerType = MetaPixelOwnerTypes.None,
-                AccessToken = null,
-                TestEventCode = null
-            };
-        }
-
+        var owner = MarketingOwnerScope.Founder;
+        await _connections.ImportProfileAsync(owner, Normalize(_configuration["Meta:PixelId"]),
+            Normalize(_configuration["Meta:AccessToken"]), Normalize(_configuration["Meta:TestEventCode"]), cancellationToken);
+        var connection = (await _connections.GetStatusAsync(owner, cancellationToken))!;
+        if (connection.DisconnectedUtc.HasValue || string.IsNullOrWhiteSpace(connection.PixelId)) return new();
         return new ResolvedMetaPixelContext
         {
-            PixelId = pixelId,
-            PixelOwnerType = MetaPixelOwnerTypes.Agency,
-            AccessToken = Normalize(_configuration["Meta:AccessToken"]),
-            TestEventCode = Normalize(_configuration["Meta:TestEventCode"])
+            PixelId = connection.PixelId, PixelOwnerType = MetaPixelOwnerTypes.Agency,
+            AccessToken = await _connections.GetCapiTokenAsync(owner, cancellationToken), TestEventCode = connection.TestEventCode
         };
-    }
-
-    private async Task<AgentProfile?> ResolveAgentProfileAsync(AgentTrackingProfile trackingProfile, CancellationToken cancellationToken)
-    {
-        var hasAgentUserId = !string.IsNullOrWhiteSpace(trackingProfile.AgentUserId);
-        var hasAgentUpn = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn);
-        var normalizedUpn = hasAgentUpn ? trackingProfile.AgentUpn.Trim().ToUpperInvariant() : string.Empty;
-
-        if (!hasAgentUserId && !hasAgentUpn)
-            return null;
-
-        var candidates = await _db.AgentProfiles.AsNoTracking()
-            .Where(x =>
-                (hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId) ||
-                (hasAgentUpn && (x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn)))
-            .ToListAsync(cancellationToken);
-
-        return candidates
-            .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.MetaPixelId))
-            .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.MetaCapiAccessToken))
-            .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.Npn))
-            .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.ShortBio))
-            .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
-            .ThenByDescending(x => hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId)
-            .ThenByDescending(x => x.UpdatedUtc)
-            .FirstOrDefault();
     }
 
     private static ResolvedMetaPixelContext MergeWithAgentContext(

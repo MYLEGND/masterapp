@@ -43,6 +43,8 @@ using Shared.Diagnostics;
 using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
 
 // QuestPDF license (Community; change if revenue threshold exceeded)
 QuestPDF.Settings.License = LicenseType.Community;

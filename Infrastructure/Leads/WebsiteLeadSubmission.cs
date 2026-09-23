@@ -14,6 +14,12 @@ public static class WebsiteLeadSubmission
     {
         if (!Guid.TryParse(submissionId, out var token) || token == Guid.Empty) return lead.LeadId;
         var key = $"{token:D}|{lead.AgentTrackingProfileId}|{lead.SourcePageKey}|{lead.Email.Trim().ToLowerInvariant()}";
+        if (lead.CommerceBusinessId.HasValue)
+        {
+            if (lead.CommerceBusinessId == Guid.Empty || lead.AgentTrackingProfileId.HasValue)
+                throw new InvalidOperationException("A website submission must have exactly one permanent owner.");
+            key = $"business:v1|{lead.CommerceBusinessId:N}|{key}";
+        }
         return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(key)).AsSpan(0, 16));
     }
 

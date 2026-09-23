@@ -34,7 +34,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context); return; }
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
-        if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) || path == "/api/website-inquiries/public")
+        if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) || path == "/api/website-inquiries/public" || path == "/analytics/business-page")
         {
             await next(context);
             return;
