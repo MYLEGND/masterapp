@@ -114,8 +114,12 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .Where(x => workstationLeadIds.Contains(x.WorkstationLeadId))
             .ToDictionaryAsync(x => x.WorkstationLeadId, cancellationToken);
 
+        // A canonical website conversion may carry either the public WebsiteLead ID
+        // directly (business/website intake) or a workstation lead ID (legacy Protect
+        // bridge). Load both through this one lookup; owner checks below remain mandatory.
         var websiteLeadIds = intakeLinksByWorkstationLeadId.Values
             .Select(x => x.WebsiteLeadPublicId)
+            .Concat(leadIds)
             .Distinct()
             .ToArray();
 

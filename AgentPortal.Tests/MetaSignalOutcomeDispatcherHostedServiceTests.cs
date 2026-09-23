@@ -153,6 +153,97 @@ public class MetaSignalOutcomeDispatcherHostedServiceTests
     }
 
     [Fact]
+    public async Task BusinessWebsiteLeadIdentityFlowsToTheExistingScopedDispatcher()
+    {
+        var businessId = Guid.NewGuid();
+        var leadId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
+        var pixel = new Mock<IMetaPixelResolutionService>(MockBehavior.Strict);
+
+        capi.Setup(x => x.SendEventAsync(
+                It.Is<MetaConversionsApiEventRequest>(request =>
+                    request.EventName == "Lead" &&
+                    request.LeadId == leadId &&
+                    request.CommerceBusinessId == businessId &&
+                    request.AgentTrackingProfileId == null &&
+                    request.Email == "visitor@example.org" &&
+                    request.FirstName == "Visitor" &&
+                    request.PixelOwnerType == MetaPixelOwnerTypes.Business),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetaConversionsApiResult { Attempted = true, Sent = true, Status = "sent" });
+        pixel.Setup(x => x.ResolveForBusinessAsync(businessId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedMetaPixelContext
+            {
+                PixelId = "business-pixel",
+                AccessToken = "business-token",
+                PixelOwnerType = MetaPixelOwnerTypes.Business
+            });
+
+        var database = Guid.NewGuid().ToString();
+        await using var provider = new ServiceCollection()
+            .AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(database))
+            .AddSingleton(capi.Object)
+            .AddSingleton(pixel.Object)
+            .BuildServiceProvider();
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            db.WebsiteLeads.Add(new WebsiteLead
+            {
+                LeadId = leadId,
+                CommerceBusinessId = businessId,
+                WebsiteContentVersionId = versionId,
+                WebsiteBindingId = "business_contact",
+                FirstName = "Visitor",
+                Email = "visitor@example.org",
+                InterestType = "BusinessInquiry",
+                SourcePageKey = "/contact",
+                SessionId = "business-session",
+                TermsAccepted = true,
+                CreatedUtc = DateTime.UtcNow,
+                ClientIpAddress = "1.2.3.4",
+                ClientUserAgent = "browser-agent"
+            });
+            db.MetaSignalEvents.Add(new MetaSignalEvent
+            {
+                CreatedUtc = DateTime.UtcNow,
+                EventId = "business:" + businessId.ToString("N") + ":lead-event",
+                EventName = "Lead",
+                EventCategory = "conversion",
+                LeadId = leadId,
+                CommerceBusinessId = businessId,
+                WebsiteContentVersionId = versionId,
+                WebsiteBindingId = "business_contact",
+                SessionId = "business-session",
+                TrafficType = "Direct",
+                MetaDeduplicationKey = "Lead:" + leadId.ToString("N"),
+                MetadataJson = BuildBridgeOwnedServerMetadata(true)
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var dispatcher = new MetaSignalOutcomeDispatcherHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new MetaSignalIntelligenceOptions { Enabled = true, SendServerEvents = true }),
+            NullLogger<MetaSignalOutcomeDispatcherHostedService>.Instance);
+
+        await InvokeDispatchBatchAsync(dispatcher);
+
+        await using var verification = provider.CreateAsyncScope();
+        var row = await verification.ServiceProvider.GetRequiredService<MasterAppDbContext>()
+            .MetaSignalEvents.SingleAsync();
+        Assert.True(row.MetaServerSent);
+        Assert.Equal(businessId, row.CommerceBusinessId);
+        Assert.Equal(versionId, row.WebsiteContentVersionId);
+        Assert.Equal("business_contact", row.WebsiteBindingId);
+        Assert.Null(row.AgentTrackingProfileId);
+        capi.VerifyAll();
+        pixel.VerifyAll();
+    }
+
+    [Fact]
     public async Task DispatchBatchRejectsMixedBusinessAndAgentOwnersBeforeResolvingOrSending()
     {
         var capi = new Mock<IMetaConversionsApiService>(MockBehavior.Strict);
