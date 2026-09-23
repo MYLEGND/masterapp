@@ -274,10 +274,10 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[]}={}) {
   const dom = new JSDOM('<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>', {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
-  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || ''};
+  w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
   w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc})}; };
@@ -472,4 +472,22 @@ test('link editing rejects editor credentials and insecure absolute URLs before 
     assert.ok(Object.values(saved.pages['/'].elements).some(value => value.href === '/contact'));
     assert.equal(JSON.stringify(saved).includes('secret'), false);
   } finally { f.close(); }
+});
+
+for (const siteKey of ['legend', 'protect', 'business']) {
+ test(`${siteKey}: page selector uses supplied catalog, including pages absent from navigation`, async () => {
+  const business=siteKey==='business'?{id:'business-test',displayName:'Business'}:null;
+  const f=await domFixture({siteKey,business,pages:[{path:'/',label:'Home'},{path:'/unlinked-page',label:'Unlinked page'}]});
+  try { const options=[...f.w.document.querySelector('#legend-cms-page-select').options];assert.ok(options.some(o=>o.value==='/unlinked-page'&&o.textContent==='Unlinked page'));assert.ok(!options.some(o=>o.value==='/contact')); }
+  finally {f.close();}
+ });
+}
+test('business selector includes imported custom routes from only the authorized draft',async()=>{
+ const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc:{pages:{'/special-offer':{title:'Special offer',elements:{},extras:[]}}}});
+ try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
+});
+
+test('site palette does not retain the template blue gradient stop',async()=>{
+ const f=await domFixture({doc:{theme:{navy:'#000000',navyDeep:'#000000'}}});
+ try {assert.equal(f.w.document.documentElement.style.getPropertyValue('--web-navy-royal'),'#000000');}finally{f.close();}
 });

@@ -1,6 +1,8 @@
 ﻿@using System.Text.Json
 @using Microsoft.AspNetCore.Http
 @using Shared.Analytics
+@inject Microsoft.AspNetCore.Mvc.Infrastructure.IActionDescriptorCollectionProvider EditorActions
+@inject Microsoft.AspNetCore.Mvc.Razor.IRazorViewEngine EditorViews
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
@@ -562,7 +564,9 @@
     window.LEGEND_PUBLIC_CMS_CONTEXT = {
         siteKey: "protect",
         apiBase: "",
-        agentSlug: @Html.Raw(JsonSerializer.Serialize(trackingSlug ?? string.Empty))
+        agentSlug: @Html.Raw(JsonSerializer.Serialize(trackingSlug ?? string.Empty)),
+        pagePrefix: @Html.Raw(JsonSerializer.Serialize(legalBasePath)),
+        pages: @Html.Raw(JsonSerializer.Serialize(ProtectWebsite.Services.WebsiteEditorPageCatalog.Discover(EditorActions, EditorViews).Select(page => new { path = page.Path, label = page.Label })))
     };
 </script>
 <script src="~/design/legend-public-web.js" asp-append-version="true" defer></script>

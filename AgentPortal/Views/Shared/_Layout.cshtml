@@ -5,6 +5,8 @@
 @using Microsoft.EntityFrameworkCore
 @using Infrastructure.Data
 @using Shared.Messaging
+@using Shared.Auth
+@inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject MasterAppDbContext _db
@@ -411,6 +413,7 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForActorAsync(User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
             <div class="explore-group-label">Pages</div>
             <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Agent Documents</span>

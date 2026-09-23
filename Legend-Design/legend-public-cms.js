@@ -11,11 +11,13 @@
   let SITE_KEY = String(context.siteKey).toLowerCase();
   const AGENT_SLUG = context.agentSlug || '';
   let BUSINESS_ID = context.businessId || '';
-  const pageKey = renderInput?.pageKey || document.body?.dataset?.pageKey
+  const params = new URLSearchParams(location.search);
+  const requestedPage = SITE_KEY === 'business' && params.has('legendEdit') ? params.get('cmsPage') : null;
+  const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/?)*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
+  const pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
     || location.pathname.replace(/^\/+|\/+$/g, '').replace(/[^a-z0-9]+/gi, '-')?.toLowerCase()
     || 'home';
 
-  const params = new URLSearchParams(location.search);
   const editorTicket = params.get('legendEdit') || '';
   const editorMode = !!editorTicket;
   const originalTitle = document.title || '';
@@ -66,7 +68,7 @@
 
   const editableTextTags = new Set(['H1','H2','H3','H4','H5','P','LI','BUTTON','LABEL','SMALL','STRONG','SPAN']);
   const editableInteractiveTags = new Set(['A']);
-  const sectionCandidates = 'main > section, main > .section, main > .page-hero, main > .cta, main > .legal-page-wrap, main > .quote-page, main > .container-narrow, main > .training-page, .site-header, .site-footer';
+  const sectionCandidates = 'main > section, main > .section, main > .page-hero, main > .cta, main > .legal-page-wrap, main > .quote-page, main > .container-narrow, main > .training-page';
 
   function normalizeDocument(input) {
     const pages = {};
@@ -96,7 +98,7 @@
 
   function pageState() {
     documentState.pages ||= {};
-    const pathname = location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
     const routeKey = pathname;
     if (!documentState.pages[routeKey]) {
       const belongs = id => id.startsWith(`${pageKey}.`) || id.startsWith(`section:${pageKey}.`);
@@ -139,10 +141,10 @@
       document.querySelector('.site-footer')
     ].filter(Boolean);
 
-    const sections = Array.from(document.querySelectorAll(sectionCandidates));
+    const sections = [...document.querySelectorAll(sectionCandidates), ...document.querySelectorAll('.site-header,.site-footer')];
     sections.forEach((section, index) => {
       if (!section.dataset.cmsSection) {
-        section.dataset.cmsSection = `${pageKey}.section.${index + 1}`;
+        section.dataset.cmsSection = section.matches('.site-header') ? `${pageKey}.header` : section.matches('.site-footer') ? `${pageKey}.footer` : `${pageKey}.section.${index + 1}`;
       }
       section.dataset.cmsId = `section:${section.dataset.cmsSection}`;
       section.dataset.cmsEditable = 'true';
@@ -243,6 +245,10 @@
       goldStrong: '--web-gold-strong',
       surface: '--web-surface', text: '--web-ink', muted: '--web-muted', fontFamily: '--web-font'
     };
+    // The template's gradient end follows the selected primary color; it must
+    // not retain an uneditable royal-blue stop when the palette changes.
+    if (theme?.navy) root.style.setProperty('--web-navy-royal', theme.navy);
+    else root.style.removeProperty('--web-navy-royal');
     Object.entries(map).forEach(([key, cssVar]) => {
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
@@ -378,6 +384,47 @@
     document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
 
   }
+  function installPageSelector(payload) {
+    const panel = document.querySelector('.legend-cms-panel');
+    if (!panel) return;
+    const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = 'Website page';
+    const select = document.createElement('select'); select.id = 'legend-cms-page-select'; select.setAttribute('aria-label', 'Website page'); label.appendChild(select);
+    const prefix = SITE_KEY === 'protect' ? (payload.agentSlug ? `/a/${encodeURIComponent(payload.agentSlug)}` : context.pagePrefix || '') : '';
+    const current = customPage || (SITE_KEY === 'business' ? location.pathname.replace(/^\/business-preview/, '') : location.pathname.slice(prefix.length)) || '/';
+    const normalize = path => path.replace(/\/$/, '') || '/';
+    const entries = new Map();
+    for (const page of context.pages || []) {
+      if (typeof page.path === 'string' && /^\/(?:[a-z0-9_-]+\/?)*$/i.test(page.path)) entries.set(normalize(page.path), { label: page.label || page.path, template: true });
+    }
+    // Business imported/custom routes are part of this authorized website document,
+    // even when they have no template or navigation link.
+    if (SITE_KEY === 'business') for (const [path, page] of Object.entries(documentState.pages)) {
+      if (/^\/(?:[a-z0-9_-]+\/?)*$/i.test(path)) entries.set(normalize(path), { ...entries.get(normalize(path)), label: page.title || entries.get(normalize(path))?.label || path });
+    }
+    if (!entries.has(normalize(current))) entries.set(normalize(current), { label: document.title || current, template: !customPage });
+    for (const [path, page] of entries) {
+      const option = document.createElement('option'); option.value = path; option.textContent = page.label; select.appendChild(option);
+    }
+    select.value = normalize(current);
+    select.addEventListener('change', async () => {
+      const route = select.value; if (!entries.has(route)) return;
+      select.disabled = true;
+      try {
+        if (saving) { document.getElementById('legend-cms-status').textContent = 'Wait for the current save to finish, then choose a page.'; return; }
+        if (dirty) { const saved = await save(false); if (!saved || dirty) return; }
+        const url = new URL(location.origin);
+        if (SITE_KEY === 'business') {
+          url.pathname = '/business-preview/' + (entries.get(route).template ? route.replace(/^\//, '') : '');
+          url.searchParams.set('businessId', BUSINESS_ID);
+          if (!entries.get(route).template) url.searchParams.set('cmsPage', route);
+        } else url.pathname = prefix + (route === '/' ? '/' : route);
+        url.searchParams.set('legendEdit', editorTicket);
+        location.assign(url.toString());
+      } finally { select.value = normalize(current); select.disabled = false; }
+    });
+    panel.insertBefore(label, panel.querySelector('.legend-cms-navigation'));
+  }
+
   function preservePreviewNavigation() {
     if (renderInput || SITE_KEY !== 'business') return;
     document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
@@ -1129,6 +1176,11 @@
       const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
       bindBusiness(payload);
+      if (customPage) {
+        const pages = normalizeDocument(payload.document).pages;
+        if (!pages[customPage]) throw new Error('This page is not part of the authorized website draft.');
+        document.querySelector('main').replaceChildren();
+      }
       prepareDom();
       revision = payload.revision;
       namedDrafts = payload.drafts || [];
@@ -1137,6 +1189,7 @@
       signalCatalog = Array.isArray(payload.signalCatalog?.events) && Array.isArray(payload.signalCatalog?.matchingFields)
         ? payload.signalCatalog : null;
       buildEditor();
+      installPageSelector(payload);
       renderSignalControls();
       const publishButton = document.getElementById('legend-cms-publish'); if (publishButton && payload.capabilities?.canPublish === false) { publishButton.disabled = true; publishButton.title = 'An owner must publish this draft.'; }
       document.documentElement.hidden = false;

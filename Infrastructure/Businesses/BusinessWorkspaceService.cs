@@ -13,6 +13,26 @@ namespace Infrastructure.Businesses;
 
 public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQueryService analytics, WebsiteIntakeRecipientResolver recipients)
 {
+    public async Task<List<BusinessWorkspaceNavigationItem>> NavigationForActorAsync(string actor, string? email, CancellationToken ct)
+    {
+        var key = Shared.Auth.IdentityKey.Normalize(actor);
+        if (string.IsNullOrWhiteSpace(key)) return new();
+        var mail = Shared.Auth.IdentityKey.Normalize(email);
+        var profileIds = await db.ClientProfiles.AsNoTracking().Where(p =>
+            p.ClientUserId.ToLower() == key || (p.ExternalIdentityObjectId ?? "").ToLower() == key ||
+            db.AgentClients.Any(link => (link.ClientUserId ?? "").ToLower() == p.ClientUserId.ToLower() &&
+                ((link.AgentUserId ?? "").ToLower() == key || (mail != "" && (link.AgentUpn ?? "").ToLower() == mail))))
+            .Where(p => db.CommerceBusinessMembers.Any(m => m.ClientProfileId == p.Id && m.Status == "Active"))
+            .Select(p => p.Id).ToListAsync(ct);
+        var items = new List<BusinessWorkspaceNavigationItem>();
+        foreach (var id in profileIds) items.AddRange(await NavigationAsync(id, actor, email, ct));
+        return items.GroupBy(x => x.BusinessId).Select(group =>
+        {
+            var first = group.First();
+            return first with { CanCrm = group.Any(x => x.CanCrm), CanAnalytics = group.Any(x => x.CanAnalytics), CanCustomize = group.Any(x => x.CanCustomize) };
+        }).OrderBy(x => x.BusinessName).ToList();
+    }
+
     public async Task<List<BusinessWorkspaceNavigationItem>> NavigationAsync(Guid profileId, string actor, string? email, CancellationToken ct)
     {
         var ids = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId && x.Status == "Active")
@@ -37,12 +57,14 @@ public sealed class BusinessWorkspaceService(MasterAppDbContext db, IAnalyticsQu
         var scope = ScopeContext.ForBusiness(businessId);
         return section switch
         {
+            "meta-signal" => await new MetaSignalAnalyticsService(db, analytics).GetDashboardAsync(range, scope, trafficType),
+            "meta-signal-health" => await new MetaSignalAnalyticsService(db, analytics).GetHealthDashboardAsync(range, scope),
             "summary" => await analytics.GetSummaryAsync(range, scope, trafficType),
             "traffic" => await analytics.GetTrafficAsync(range, scope, trafficType),
             "page-performance" => await analytics.GetPagePerformanceAsync(range, scope, trafficType),
             "cta-performance" => await analytics.GetCtaPerformanceAsync(range, scope, trafficType),
             "quote-funnel" => await analytics.GetQuoteFunnelAsync(range, scope, trafficType),
-            "marketing-health" => await analytics.GetMarketingHealthAsync(range, scope, trafficType),
+            "marketing-health" => await MarketingHealthProjection.LoadAsync(analytics, new MetaSignalAnalyticsService(db, analytics), range, scope, trafficType, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance),
             "conversions" => await analytics.GetConversionsAsync(range, scope, trafficType),
             "leads" => await analytics.GetLeadsAsync(range, scope, trafficType),
             "behavior/summary" => await analytics.GetEngagementSummaryAsync(range, scope, trafficType),

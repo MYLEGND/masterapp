@@ -39,6 +39,20 @@ public class LaunchAuditProjectionTests
         Assert.Contains(result.Warnings, x => x.Contains("No acceptance evidence"));
     }
 
+    [Theory]
+    [InlineData(0, "Unverified")]
+    [InlineData(1, "Healthy")]
+    public async Task Healthy_delivery_requires_server_acceptance_evidence(int accepted, string expected)
+    {
+        var query = new Mock<IAnalyticsQueryService>();
+        var meta = new Mock<IMetaSignalAnalyticsService>();
+        query.Setup(x => x.GetMarketingHealthAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), TrafficType.All)).ReturnsAsync(new MarketingHealthDto());
+        meta.Setup(x => x.GetHealthDashboardAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetaSignalHealthDashboardDto { PipelineHealth = new() { MetaServerSentCount = accepted } });
+        var result = await MarketingHealthProjection.LoadAsync(query.Object, meta.Object, new TimeRangeRequest(), new ScopeContext(), TrafficType.All, NullLogger.Instance);
+        Assert.Equal(expected, result.MetaHealthStatus);
+    }
+
     [Fact]
     public async Task Missing_meta_diagnostics_cannot_be_healthy()
     {
