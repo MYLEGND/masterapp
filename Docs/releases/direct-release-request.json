@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested a surgical favicon replacement and direct deployment to all four affected web applications.",
-  "purpose": "Deploy the single canonical LEGEND phoenix favicon source to AgentPortal, ClientApp, Protect Website, and the LEGEND Website only. No unrelated application, database, authentication, CSS, or business logic changes are included.",
-  "requestId": "unified-phoenix-favicon-20260923",
+  "authorization": "Founder explicitly requested the centralized smart CTA routing repair, the immediately preceding shared editor repairs, and direct deployment through legend/approved-changes.",
+  "purpose": "Deploy the shared website editor updates to the two affected public website runtimes only: preserve authored whitespace, deterministic container placement, business service duplication/deletion without generic icons, and dynamically wired CTA dropdowns with editable labels and canonical button styling. No unrelated portal, client, database migration, authentication, subscription, or business logic deployment is requested.",
+  "requestId": "shared-website-editor-smart-cta-20260923",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect",
     "masterapp-website"
   ]

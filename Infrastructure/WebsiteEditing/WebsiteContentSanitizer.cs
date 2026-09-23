@@ -37,6 +37,7 @@ public static class WebsiteContentSanitizer
                 SectionId = sectionId,
                 Type = type,
                 Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
+                ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
                 Text = ClampContentText(extra.Text),
                 Href = SanitizeUrl(extra.Href), Target = SanitizeTarget(extra.Target),
@@ -62,6 +63,7 @@ public static class WebsiteContentSanitizer
     private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source) => new()
     {
         Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
+        ActionKey = SanitizeActionKey(source.ActionKey),
         Text = ClampContentText(source.Text),
         ImageDataUrl = SanitizeImage(source.ImageDataUrl),
         Hidden = source.Hidden,
@@ -162,6 +164,12 @@ public static class WebsiteContentSanitizer
             uri.Scheme == Uri.UriSchemeHttps)
             return normalized;
         return null;
+    }
+
+    private static string? SanitizeActionKey(string? value)
+    {
+        var key = SanitizeId(value);
+        return key.Length == 0 ? null : key;
     }
 
     private static string SanitizeId(string? value)

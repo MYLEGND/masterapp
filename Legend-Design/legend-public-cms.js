@@ -24,6 +24,7 @@
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
   let documentState = { version: 1, elements: {}, sectionOrder: {}, extras: [], theme: {} };
   let signalCatalog = null;
+  let ctaCatalog = [];
   let selected = null;
   let selectedSection = null;
   let dirty = false;
@@ -337,7 +338,7 @@
       }
       el.append(heading, copy);
     } else if (extra.type === 'button') {
-      el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn';
+      el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
     } else {
       el = document.createElement('p');
       el.textContent = extra.text || '';
@@ -570,6 +571,7 @@
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
     document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(ov.style?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
+    if (selected.tagName === 'A') syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
   }
@@ -936,6 +938,49 @@
     });
     refreshHistoryControls();
   }
+  function availableCtaOptions() {
+    const items = [];
+    const seen = new Set();
+    const add = (option, managed = false) => {
+      if (!option?.key || !option?.href || option.href === '#' || !safeUrl(option.href) || seen.has(option.key)) return;
+      seen.add(option.key);
+      items.push({ ...option, managed });
+    };
+    (ctaCatalog || []).forEach(option => add(option, true));
+    const pageEntries = new Map();
+    for (const page of context.pages || []) if (typeof page.path === 'string') pageEntries.set(page.path.replace(/\/$/, '') || '/', page.label || page.path);
+    for (const [path, page] of Object.entries(documentState.pages || {})) pageEntries.set(path, page.title || pageEntries.get(path) || path);
+    for (const [path, label] of pageEntries) add({ key: 'page:' + path, group: 'This website', label: 'Page · ' + label, defaultText: label, href: path });
+    document.querySelectorAll('[data-cms-section][id]').forEach(section => {
+      const id = section.id?.trim(); if (!id) return;
+      const label = section.querySelector('h1,h2,h3')?.textContent?.trim() || id;
+      add({ key: 'section:' + id, group: 'This page', label: 'Section · ' + label, defaultText: label, href: '#' + encodeURIComponent(id) });
+    });
+    return items;
+  }
+
+  function preferredCtaOption() {
+    const preferred = SITE_KEY === 'business' ? 'business_contact' : SITE_KEY === 'protect' ? 'protect_quote' : 'legend_contact';
+    const options = availableCtaOptions();
+    return options.find(option => option.key === preferred) || options.find(option => option.managed) || options[0] || null;
+  }
+
+  function syncCtaControls(override, currentHref) {
+    const select = document.getElementById('legend-cms-action');
+    const custom = document.getElementById('legend-cms-custom-link');
+    if (!select) return;
+    const options = availableCtaOptions();
+    select.replaceChildren();
+    const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom destination…'; select.appendChild(customOption);
+    options.forEach(option => {
+      const node = document.createElement('option'); node.value = option.key; node.textContent = (option.group ? option.group + ' · ' : '') + option.label; select.appendChild(node);
+    });
+    const byKey = override?.actionKey ? options.find(option => option.key === override.actionKey) : null;
+    const byHref = !byKey ? options.find(option => option.href === currentHref) : null;
+    select.value = (byKey || byHref)?.key || 'custom';
+    if (custom) custom.hidden = select.value !== 'custom';
+  }
+
   function selectedFlowContainer(section) {
     let node = selected;
     while (node && node !== section) {
@@ -948,10 +993,14 @@
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
+    const action = type === 'button' ? preferredCtaOption() : null;
+    if (type === 'button' && !action) { alert('Configure a working website action before adding this button.'); return; }
     checkpoint();
-    const extra = { id: crypto.randomUUID(), type, sectionId: section?.dataset.cmsSection || `${pageKey}.root`, text: type === 'button' ? 'Your button' : type === 'text' ? 'Your text' : '', style: {} };
+    const extra = { id: crypto.randomUUID(), type, sectionId: section?.dataset.cmsSection || `${pageKey}.root`, text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : '', style: {} };
     if (type === 'button') {
-      extra.href = '#';
+      extra.href = action.href;
+      extra.target = action.openInNewTab ? '_blank' : '_self';
+      if (action.managed) extra.actionKey = action.key;
       const container = selectedFlowContainer(section);
       if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
     }
@@ -984,10 +1033,26 @@
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const duplicate = document.createElement('button'); duplicate.id = 'legend-cms-duplicate'; duplicate.type = 'button'; duplicate.textContent = 'Duplicate block'; layoutView.appendChild(duplicate);
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-href">Link destination</label><input id="legend-cms-href" type="url"><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label><small>Edit the displayed label in Content above.</small></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => { showPanel(button.dataset.open); if (button.dataset.open === 'layout') { const select = document.getElementById('legend-cms-destination'); select.replaceChildren(); document.querySelectorAll('[data-cms-section]').forEach(section => { const option = document.createElement('option'); option.value = section.dataset.cmsSection; option.textContent = section.querySelector('h1,h2,h3')?.textContent || section.dataset.cmsSection; select.appendChild(option); }); } }));
     installStudioControls(panel);
+    document.getElementById('legend-cms-action').addEventListener('change', event => {
+      if (!selected || selected.tagName !== 'A') return;
+      const ov = selectedOverride(); if (!ov) return;
+      checkpoint();
+      const option = availableCtaOptions().find(candidate => candidate.key === event.target.value);
+      if (!option) {
+        delete ov.actionKey;
+        document.getElementById('legend-cms-custom-link').hidden = false;
+        markDirty();
+        return;
+      }
+      if (option.managed) ov.actionKey = option.key; else delete ov.actionKey;
+      ov.href = option.href; ov.target = option.openInNewTab ? '_blank' : '_self';
+      if (selected.dataset.cmsExtraId) { ov.text = option.defaultText || option.label; setContentText(selected, ov.text, true); }
+      applyElementOverride(selected, ov); syncEditorControls(); markDirty();
+    });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
@@ -1002,7 +1067,7 @@
       if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
       applyStyle(selected, ov.style); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; applyElementOverride(selected, ov); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; } applyElementOverride(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
@@ -1236,6 +1301,7 @@
       const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
       bindBusiness(payload);
+      ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
         if (!pages[customPage]) throw new Error('This page is not part of the authorized website draft.');

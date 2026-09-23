@@ -43,6 +43,7 @@ public sealed class WebsiteElementOverride
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public bool? Hidden { get; set; }
+    public string? ActionKey { get; set; }
     public string? Href { get; set; }
     public string? Target { get; set; }
     public string? Alt { get; set; }
@@ -89,6 +90,7 @@ public sealed class WebsiteExtraComponent
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
+    public string? ActionKey { get; set; }
     public string? Href { get; set; }
     public string? Target { get; set; }
     public string? Alt { get; set; }
@@ -136,4 +138,149 @@ public sealed class WebsiteNamedDraft
     public string Name { get; set; } = "";
     public WebsiteContentDocument Document { get; set; } = new();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+
+public sealed record WebsiteCallToActionOption(
+    string Key,
+    string Group,
+    string Label,
+    string DefaultText,
+    string Href,
+    bool OpenInNewTab = false);
+
+/// <summary>
+/// One scope-aware CTA catalog for the shared LEGEND website editor. Dynamic contact
+/// and booking actions are offered only when the existing scoped authority is configured.
+/// </summary>
+public static class WebsiteCallToActionCatalog
+{
+    public static IReadOnlyList<WebsiteCallToActionOption> Build(
+        string siteKey,
+        string? phone = null,
+        string? email = null,
+        string? bookingUrl = null)
+    {
+        var options = new List<WebsiteCallToActionOption>();
+        void Add(string key, string group, string label, string defaultText, string? href, bool external = false)
+        {
+            if (string.IsNullOrWhiteSpace(href) || href == "#") return;
+            options.Add(new(key, group, label, defaultText, href, external));
+        }
+
+        if (siteKey == WebsiteEditorSiteKeys.Legend)
+        {
+            Add("legend_home", "Navigation", "Home", "Home", "/");
+            Add("legend_about", "Navigation", "About LEGEND®", "About LEGEND®", "/about");
+            Add("legend_contact", "Contact", "Contact LEGEND®", "Contact Us", "/contact");
+            Add("legend_email", "Contact", "Email LEGEND®", "Email Us", "mailto:connect@mylegnd.com");
+            Add("legend_protect", "LEGEND®", "Legacy Protection", "Protect What Matters", "https://protect.mylegnd.com/", true);
+        }
+        else if (siteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            Add("protect_home", "Navigation", "Home", "Home", "/");
+            Add("protect_contact", "Contact", "Contact", "Contact Us", "/Contact");
+            Add("protect_quote", "Quotes", "Coverage / quote options", "Get a Quote", "/Quote");
+            foreach (var route in Shared.Analytics.ProtectRouteCatalog.Routes.Where(route => !string.IsNullOrWhiteSpace(route.QuoteType)))
+                Add("protect_" + route.PageKey, "Quotes", route.DisplayName + " quote", "Get " + route.DisplayName + " Quote", route.Path);
+            Add("protect_call", "Contact", "Call the attached agent", "Call Now", NormalizePhone(phone));
+            Add("protect_schedule", "Scheduling", "Schedule with the attached agent", "Schedule a Meeting", NormalizeHttps(bookingUrl), true);
+        }
+        else if (siteKey == WebsiteEditorSiteKeys.Business)
+        {
+            Add("business_home", "Navigation", "Home", "Home", "/");
+            Add("business_about", "Navigation", "About", "About Us", "/about");
+            Add("business_services", "Navigation", "Services", "View Services", "/services");
+            Add("business_contact", "Contact", "Contact form", "Contact Us", "/contact");
+            Add("business_quote", "Contact", "Request a quote through the contact form", "Get a Quote", "/contact");
+            Add("business_call", "Contact", "Call the business", "Call Now", NormalizePhone(phone));
+            Add("business_email", "Contact", "Email the business", "Email Us", NormalizeEmail(email));
+            Add("business_schedule", "Scheduling", "Schedule with the business", "Schedule a Meeting", NormalizeHttps(bookingUrl), true);
+        }
+
+        return options;
+    }
+
+    public static string? PrepareForPublish(
+        WebsiteContentDocument document,
+        IReadOnlyList<WebsiteCallToActionOption> options)
+    {
+        var byKey = options.ToDictionary(option => option.Key, StringComparer.Ordinal);
+        string? Resolve(WebsiteElementOverride element)
+        {
+            if (string.IsNullOrWhiteSpace(element.ActionKey)) return null;
+            if (!byKey.TryGetValue(element.ActionKey, out var option))
+                return "A configured button action is no longer available. Reopen the editor and choose an active action.";
+            element.Href = option.Href;
+            element.Target = option.OpenInNewTab ? "_blank" : "_self";
+            return null;
+        }
+        string? Resolve(WebsiteExtraComponent extra)
+        {
+            if (!string.IsNullOrWhiteSpace(extra.ActionKey))
+            {
+                if (!byKey.TryGetValue(extra.ActionKey, out var option))
+                    return "A configured button action is no longer available. Reopen the editor and choose an active action.";
+                extra.Href = option.Href;
+                extra.Target = option.OpenInNewTab ? "_blank" : "_self";
+            }
+            if (extra.Type == "button" &&
+                (string.IsNullOrWhiteSpace(extra.Href) || extra.Href == "#" ||
+                 WebsiteContentSanitizer.SanitizeUrl(extra.Href) is null))
+                return "Every added button needs a working action or custom destination before publishing.";
+            return null;
+        }
+
+        foreach (var element in document.Elements.Values)
+        {
+            var error = Resolve(element);
+            if (error is not null) return error;
+        }
+        foreach (var extra in document.Extras)
+        {
+            var error = Resolve(extra);
+            if (error is not null) return error;
+        }
+        foreach (var page in document.Pages.Values)
+        {
+            foreach (var element in page.Elements.Values)
+            {
+                var error = Resolve(element);
+                if (error is not null) return error;
+            }
+            foreach (var extra in page.Extras)
+            {
+                var error = Resolve(extra);
+                if (error is not null) return error;
+            }
+        }
+        return null;
+    }
+
+    private static string? NormalizePhone(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        if (digits.Length < 7 || digits.Length > 15) return null;
+        return "tel:" + (trimmed.StartsWith('+') ? "+" : "") + digits;
+    }
+
+    private static string? NormalizeEmail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !System.Net.Mail.MailAddress.TryCreate(value.Trim(), out var address))
+            return null;
+        return "mailto:" + address.Address;
+    }
+
+    private static string? NormalizeHttps(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps ||
+            uri.UserInfo.Length != 0)
+            return null;
+        return uri.ToString();
+    }
 }

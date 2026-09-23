@@ -275,20 +275,21 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
   const click=selector=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
+  const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
-  return {w,calls,click,input,save,close:()=>w.close()};
+  return {w,calls,click,input,change,save,close:()=>w.close()};
 }
 test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
@@ -313,6 +314,41 @@ for (const siteKey of ['legend','protect','business']) {
     } finally { published.close(); }
   });
 }
+test('shared CTA dropdown creates a styled live button and keeps its label independently editable',async()=>{
+  const actions=[
+    {key:'business_contact',group:'Contact',label:'Contact form',defaultText:'Contact Us',href:'/contact',openInNewTab:false},
+    {key:'business_call',group:'Contact',label:'Call the business',defaultText:'Call Now',href:'tel:+16025550199',openInNewTab:false}
+  ];
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions});
+  try {
+    f.click('main h1'); f.click('[data-add="button"]');
+    const button=f.w.document.querySelector('[data-cms-extra-id]');
+    assert.ok(button.classList.contains('primary'));
+    assert.equal(button.getAttribute('href'),'/contact');
+    assert.equal(button.textContent,'Contact Us');
+    f.change('#legend-cms-action','business_call');
+    assert.equal(button.getAttribute('href'),'tel:+16025550199');
+    assert.equal(button.textContent,'Call Now');
+    f.input('#legend-cms-text','Talk with our team');
+    assert.equal(button.textContent,'Talk with our team');
+    const saved=await f.save(); const extra=saved.pages['/'].extras[0];
+    assert.equal(extra.actionKey,'business_call');
+    assert.equal(extra.href,'tel:+16025550199');
+    assert.equal(extra.text,'Talk with our team');
+  } finally { f.close(); }
+});
+test('manual destination remains available and intentionally leaves managed CTA routing',async()=>{
+  const actions=[{key:'legend_contact',group:'Contact',label:'Contact LEGEND®',defaultText:'Contact Us',href:'/contact',openInNewTab:false}];
+  const f=await domFixture({ctaCatalog:actions});
+  try {
+    f.click('main h1'); f.click('[data-add="button"]');
+    f.input('#legend-cms-href','https://example.com/custom');
+    const saved=await f.save(); const extra=saved.pages['/'].extras[0];
+    assert.equal(extra.actionKey,undefined);
+    assert.equal(extra.href,'https://example.com/custom');
+  } finally { f.close(); }
+});
+
 test('new button goes to the bottom of the selected container and persists that flow placement',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><main><section><div class="chosen"><h1>Headline</h1><p>Copy</p></div><div class="other"><p>Other</p></div></section></main></body></html>';
   const f=await domFixture({html});

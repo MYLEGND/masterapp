@@ -77,6 +77,49 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public void ScopeCtaCatalogOnlyOffersConfiguredDynamicActions()
+    {
+        var business = WebsiteCallToActionCatalog.Build(
+            WebsiteEditorSiteKeys.Business,
+            phone: "(602) 555-0199",
+            email: "hello@example.test",
+            bookingUrl: "https://book.example.test/meeting");
+        Assert.Contains(business, option => option.Key == "business_call" && option.Href == "tel:6025550199");
+        Assert.Contains(business, option => option.Key == "business_email" && option.Href == "mailto:hello@example.test");
+        Assert.Contains(business, option => option.Key == "business_schedule" && option.Href.StartsWith("https://book.example.test/"));
+        Assert.Contains(business, option => option.Key == "business_quote" && option.Href == "/contact");
+
+        var protect = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
+        Assert.Contains(protect, option => option.Key == "protect_quote" && option.Href == "/Quote");
+        Assert.Contains(protect, option => option.Href == "/Quote/Life");
+        Assert.DoesNotContain(protect, option => option.Key == "protect_call");
+        Assert.DoesNotContain(protect, option => option.Key == "protect_schedule");
+    }
+
+    [Fact]
+    public async Task PublishRejectsDeadAddedButton_AndResolvesManagedAction()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+        var dead = new WebsiteContentDocument
+        {
+            Extras = [new() { Id = "dead", SectionId = "home.section.1", Type = "button", Text = "Dead", Href = "#" }]
+        };
+        Assert.Equal(1, Body(await f.Controller.Save(new(token, dead, 0))).GetProperty("revision").GetInt32());
+        Assert.IsType<BadRequestObjectResult>(await f.Controller.Publish(new(token, 1)));
+
+        var managed = new WebsiteContentDocument
+        {
+            Extras = [new() { Id = "managed", SectionId = "home.section.1", Type = "button", Text = "Talk", ActionKey = "legend_contact", Href = "#" }]
+        };
+        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1))).GetProperty("revision").GetInt32());
+        Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
+        var published = Body(await f.Controller.Public("legend"));
+        Assert.Equal("/contact", published.GetProperty("document").GetProperty("extras")[0].GetProperty("href").GetString());
+        Assert.Equal("legend_contact", published.GetProperty("document").GetProperty("extras")[0].GetProperty("actionKey").GetString());
+    }
+
+    [Fact]
     public void ControlsRejectExecutableUrlsAndClampPlacementWithinGrid()
     {
         var doc = Document("safe");
