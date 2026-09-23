@@ -629,7 +629,10 @@ updateFinPlanDownMarketState();
 scheduleDpPreview();
 
 function norm(v){ return (v || "").toString().trim(); }
-function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
+function fullName(row){
+  if (norm(row.dataset.sRecordtype).toLowerCase() === "businessclient") return norm(row.dataset.entityName) || "Business account";
+  return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim();
+}
 
 const quickViewDiagnostics = window.LegendPageHealth.current;
 
@@ -3173,6 +3176,7 @@ btnExportCsv?.addEventListener("click", () => {
 
   visible.forEach(r => {
     const row = [
+      norm(r.dataset.entityName),
       norm(r.dataset.first),
       norm(r.dataset.last),
       norm(r.dataset.email),

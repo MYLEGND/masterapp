@@ -246,13 +246,18 @@ public class ProfileController : Controller
         string? warning = null)
     {
         ViewBag.ViewMode = context.IsAgentView ? "agent" : "client";
-        ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
+        ViewBag.ViewingClientName = context.AccountDisplayName;
         ViewBag.ProfileSaveNotice = notice ?? TempData["BusinessWebsiteNotice"]?.ToString();
         ViewBag.ProfileSaveWarning = warning ?? TempData["BusinessWebsiteWarning"]?.ToString();
         ViewBag.IsBusinessClient = IsBusinessClient(context.Profile);
         ViewBag.BusinessWebsites = await LoadBusinessWebsitesAsync(
             context.Profile,
             HttpContext.RequestAborted);
+
+        ViewBag.EditableBusinessIds = await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(member => member.ClientProfileId == context.Profile.Id && member.Status == "Active" &&
+                member.RoleKey == "owner" && member.CanManageTeam)
+            .Select(member => member.CommerceBusinessId).ToArrayAsync(HttpContext.RequestAborted);
 
         if (!context.IsAgentView)
         {
@@ -510,6 +515,26 @@ public class ProfileController : Controller
             HttpContext.RequestAborted);
 
         TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
+        return RedirectToAction(nameof(MyProfile));
+    }
+
+    [HttpPost("/profile/business/{businessId:guid}/entity-name")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessEntityName(Guid businessId, string entityName)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
+            return Forbid();
+        try
+        {
+            if (!ModelState.IsValid) throw new InvalidOperationException("Enter a valid entity name.");
+            await _businessProvisioning.UpdateEntityNameAsync(businessId, context.Profile.Id, entityName,
+                HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
+            TempData["BusinessWebsiteNotice"] = "Entity name saved. Publish your website to update its published pages.";
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { TempData["BusinessWebsiteWarning"] = "Business details changed in another session. Reload and try again."; }
+        catch (InvalidOperationException ex) { TempData["BusinessWebsiteWarning"] = ex.Message; }
         return RedirectToAction(nameof(MyProfile));
     }
 

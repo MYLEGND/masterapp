@@ -92,7 +92,7 @@
                             if (ctx?.Profile != null)
                             {
                                 isBusinessClient = string.Equals(ResolveRecordType(ctx.Profile), "BusinessClient", StringComparison.OrdinalIgnoreCase);
-                                managedClientName = $"{ctx.Profile.FirstName} {ctx.Profile.LastName}".Trim();
+                                managedClientName = ctx.AccountDisplayName;
                                 if (string.IsNullOrWhiteSpace(managedClientName))
                                 {
                                     managedClientName = "Client";
@@ -165,9 +165,12 @@
                             first = CleanToken(messagingClientContext.Profile.FirstName);
                             last = CleanToken(messagingClientContext.Profile.LastName);
 
-                            displayName = string.Join(
-                                " ",
-                                new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                            displayName = messagingClientContext.AccountDisplayName;
+                            if (isBusinessClient)
+                            {
+                                first = displayName;
+                                last = null;
+                            }
 
                             if (string.IsNullOrWhiteSpace(displayName))
                             {

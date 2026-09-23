@@ -14,6 +14,8 @@ namespace Infrastructure.Businesses;
 /// </summary>
 public interface ICommerceBusinessProvisioningService
 {
+    Task UpdateEntityNameAsync(Guid businessId, Guid actorClientProfileId, string entityName,
+        CancellationToken cancellationToken = default, string? actorAgentUserId = null);
     Task UpdateOwnershipAsync(Guid businessId, Guid actorClientProfileId, string entityName,
         IReadOnlyList<BusinessOwnerInput> owners, CancellationToken cancellationToken = default, string? actorAgentUserId = null);
     Task<CommerceBusiness> CreateAsync(
@@ -181,6 +183,39 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         return business;
     }
 
+    public async Task UpdateEntityNameAsync(Guid businessId, Guid actorClientProfileId, string entityName,
+        CancellationToken cancellationToken = default, string? actorAgentUserId = null)
+    {
+        var name = Required(entityName, 160, "Entity name");
+        var business = await _db.CommerceBusinesses.SingleOrDefaultAsync(x => x.Id == businessId && x.IsActive, cancellationToken)
+            ?? throw new InvalidOperationException("Business is not available.");
+        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
+            x.ClientProfileId == actorClientProfileId && x.Status == "Active" && x.RoleKey == "owner" && x.CanManageTeam, cancellationToken))
+            throw new UnauthorizedAccessException("Business ownership management is not permitted.");
+        if (!string.IsNullOrWhiteSpace(actorAgentUserId) &&
+            !await Infrastructure.WebsiteEditing.WebsiteBusinessAccess.CanManageAsActorAsync(
+                _db, businessId, actorClientProfileId, actorAgentUserId, cancellationToken: cancellationToken))
+            throw new UnauthorizedAccessException("Business management is outside the agent's client scope.");
+        var history = string.IsNullOrWhiteSpace(business.OwnershipHistoryJson)
+            ? new List<JsonElement>() : JsonSerializer.Deserialize<List<JsonElement>>(business.OwnershipHistoryJson)!;
+        history.Add(JsonSerializer.SerializeToElement(new
+        {
+            ChangedUtc = DateTime.UtcNow, ActorClientProfileId = actorClientProfileId, ActorAgentUserId = actorAgentUserId,
+            PreviousEntityName = business.DisplayName, EntityName = name
+        }));
+        business.OwnershipHistoryJson = JsonSerializer.Serialize(history);
+        ApplyEntityName(business, name);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void ApplyEntityName(CommerceBusiness business, string entityName)
+    {
+        var legalNameFollowsEntity = string.IsNullOrWhiteSpace(business.LegalName) || business.LegalName == business.DisplayName;
+        business.DisplayName = Required(entityName, 160, "Entity name");
+        if (legalNameFollowsEntity) business.LegalName = business.DisplayName;
+        business.UpdatedUtc = DateTime.UtcNow;
+    }
+
     public async Task UpdateOwnershipAsync(Guid businessId, Guid actorClientProfileId, string entityName,
         IReadOnlyList<BusinessOwnerInput> owners, CancellationToken cancellationToken = default, string? actorAgentUserId = null)
     {
@@ -209,9 +244,7 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
             Owners = resolved.Select(x => new { ClientProfileId = x.Profile.Id, OwnershipPercentage = x.Percentage }).ToArray()
         }));
         business.OwnershipHistoryJson = JsonSerializer.Serialize(history);
-        business.DisplayName = Required(entityName, 160, "Entity name");
-        business.LegalName = business.DisplayName;
-        business.UpdatedUtc = DateTime.UtcNow;
+        ApplyEntityName(business, entityName);
         foreach (var member in members.Where(x => x.RoleKey == "owner"))
         {
             var owner = resolved.SingleOrDefault(x => x.Profile.Id == member.ClientProfileId);

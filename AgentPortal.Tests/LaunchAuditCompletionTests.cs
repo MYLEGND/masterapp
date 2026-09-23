@@ -84,4 +84,51 @@ public sealed class LaunchAuditCompletionTests
         Assert.Equal("Updated Entity", business.DisplayName);
         Assert.Equal("First", first.FirstName);
     }
+    [Fact]
+    public async Task EntityNameEditPreservesOwnersAndOtherBusinesses()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), FirstName = "Personal", LastName = "Owner", Email = "owner@example.test" };
+        db.ClientProfiles.Add(owner);
+        await db.SaveChangesAsync();
+        var service = new CommerceBusinessProvisioningService(db);
+        var first = await service.CreateAsync(new CommerceBusinessProvisioningRequest("First Business", "First Business LLC", "BusinessClient", owner.Email, OwnerClientProfileId: owner.Id));
+        var second = await service.CreateAsync(new CommerceBusinessProvisioningRequest("Second Business", "Second Business", "BusinessClient", owner.Email, OwnerClientProfileId: owner.Id));
+        var membership = await db.CommerceBusinessMembers.SingleAsync(x => x.CommerceBusinessId == first.Id);
+        var previousName = membership.DisplayName;
+        var previousShare = membership.OwnershipPercentage;
+        await service.UpdateEntityNameAsync(first.Id, owner.Id, "Renamed Business");
+        Assert.Equal("Renamed Business", first.DisplayName);
+        Assert.Equal("Second Business", second.DisplayName);
+        Assert.Equal("First Business LLC", first.LegalName);
+        Assert.Equal("Personal", owner.FirstName);
+        Assert.Equal(previousName, membership.DisplayName);
+        Assert.Equal(previousShare, membership.OwnershipPercentage);
+        Assert.Equal("Active", membership.Status);
+        Assert.Contains("Renamed Business", (await BusinessIdentityProjection.LoadLabelsAsync(db, new[] { owner.Id }))[owner.Id]);
+        Assert.Contains("First Business", first.OwnershipHistoryJson!);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.UpdateEntityNameAsync(first.Id, Guid.NewGuid(), "Unauthorized"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateEntityNameAsync(first.Id, owner.Id, " "));
+        Assert.Equal("Renamed Business", first.DisplayName);
+    }
+
+    [Fact]
+    public void BusinessAccountLabelUsesEntityAndPersonalAccountRetainsPersonName()
+    {
+        var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), FirstName = "Personal", LastName = "Owner", CrmNotes = "{\"RecordType\":\"BusinessClient\"}" };
+        var businessContext = new ClientApp.Services.EffectiveClientContext
+        {
+            ClientProfileId = profile.Id, ClientUserId = profile.ClientUserId, Profile = profile,
+            IsAgentView = false, EntityName = "Example Services"
+        };
+        Assert.Equal("Example Services", businessContext.AccountDisplayName);
+        var missingName = new ClientApp.Services.EffectiveClientContext
+        {
+            ClientProfileId = profile.Id, ClientUserId = profile.ClientUserId, Profile = profile, IsAgentView = false
+        };
+        Assert.Equal("Business account", missingName.AccountDisplayName);
+        profile.CrmNotes = "{\"RecordType\":\"Client\"}";
+        Assert.Equal("Personal Owner", businessContext.AccountDisplayName);
+    }
+
 }
