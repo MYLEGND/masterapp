@@ -84,14 +84,19 @@ public sealed class WebsitePublishingAuthorityTests
             phone: "(602) 555-0199",
             email: "hello@example.test",
             bookingUrl: "https://book.example.test/meeting");
-        Assert.Contains(business, option => option.Key == "business_call" && option.Href == "tel:6025550199");
-        Assert.Contains(business, option => option.Key == "business_email" && option.Href == "mailto:hello@example.test");
-        Assert.Contains(business, option => option.Key == "business_schedule" && option.Href.StartsWith("https://book.example.test/"));
-        Assert.Contains(business, option => option.Key == "business_quote" && option.Href == "/contact");
+        Assert.Contains(business, option => option.Key == "business_call" && option.Href == "tel:6025550199" &&
+            option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == "ContactStepReached");
+        Assert.Contains(business, option => option.Key == "business_email" && option.Href == "mailto:hello@example.test" &&
+            option.MetaIntentEventName == "ContactStepReached");
+        Assert.Contains(business, option => option.Key == "business_schedule" && option.Href.StartsWith("https://book.example.test/") &&
+            option.MetaIntentEventName == "ContactStepReached");
+        Assert.Contains(business, option => option.Key == "business_quote" && option.Href == "/contact" &&
+            option.AnalyticsEventName == "cta_click" && option.MetaIntentEventName == "ContactStepReached");
 
         var protect = WebsiteCallToActionCatalog.Build(WebsiteEditorSiteKeys.Protect);
-        Assert.Contains(protect, option => option.Key == "protect_quote" && option.Href == "/Quote");
-        Assert.Contains(protect, option => option.Href == "/Quote/Life");
+        Assert.Contains(protect, option => option.Key == "protect_quote" && option.Href == "/Quote" &&
+            option.AnalyticsEventName == "quote_click");
+        Assert.Contains(protect, option => option.Href == "/Quote/Life" && option.AnalyticsEventName == "quote_click");
         Assert.DoesNotContain(protect, option => option.Key == "protect_call");
         Assert.DoesNotContain(protect, option => option.Key == "protect_schedule");
     }

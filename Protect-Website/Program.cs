@@ -47,6 +47,7 @@ Infrastructure.Social.SocialServiceCollectionExtensions.AddMasterAppMediaStorage
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.PublicWebsiteRuntimeScopeResolver>();
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<ProtectWebsite.Services.WebsitePageCompiler>();
 builder.Services.AddHostedService<ProtectWebsite.Services.WebsitePublishWorker>();

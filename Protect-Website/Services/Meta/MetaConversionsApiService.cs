@@ -53,6 +53,8 @@ public sealed class MetaLeadConversionRequest
 public sealed class MetaConversionsApiEventRequest
 {
     public Guid? LeadId { get; init; }
+    public Guid? CommerceBusinessId { get; init; }
+    public Guid? AgentTrackingProfileId { get; init; }
     public Guid CorrelationId { get; init; }
     public string EventName { get; init; } = string.Empty;
     public string EventId { get; init; } = string.Empty;
@@ -374,6 +376,8 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         {
             EventType = request.EventName,
             LeadId = request.LeadId,
+            CommerceBusinessId = request.CommerceBusinessId,
+            AgentTrackingProfileId = request.AgentTrackingProfileId,
             EventUtc = request.EventUtc,
             EventId = request.EventId,
             DeduplicationKey = request.AuthorityDeduplicationKey,

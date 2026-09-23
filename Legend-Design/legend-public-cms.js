@@ -3,7 +3,13 @@
 
   const publishedData = document.getElementById('legend-cms-published-document');
   const renderInput = window.LEGEND_PUBLIC_CMS_RENDER_INPUT || (publishedData ? JSON.parse(publishedData.textContent) : null);
-  const context = window.LEGEND_PUBLIC_CMS_CONTEXT || (renderInput?.business ? { siteKey: 'business', apiBase: '', businessId: renderInput.business.id } : null);
+  const context = window.LEGEND_PUBLIC_CMS_CONTEXT || (renderInput?.business ? {
+    siteKey: 'business',
+    apiBase: renderInput.runtime?.apiBase || '',
+    businessId: renderInput.business.id,
+    trackingAsset: renderInput.runtime?.trackingAsset || '/legend-public-tracking.js',
+    metaSignalAsset: renderInput.runtime?.metaSignalAsset || '/legend-public-meta-signal-intelligence.js'
+  } : null);
   if (!context || !context.siteKey || typeof context.apiBase !== 'string') return;
 
   // Protect deliberately uses an empty base for its same-origin CMS authority.
@@ -300,6 +306,8 @@
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
+    if (override.actionKey) el.dataset.websiteActionKey = override.actionKey;
+    else delete el.dataset.websiteActionKey;
     if (override.hidden === true) el.hidden = true;
     else if (override.hidden === false) el.hidden = false;
 
@@ -444,6 +452,100 @@
   function unavailable(error) {
     if (SITE_KEY === 'business') { document.body.replaceChildren(); const main = document.createElement('main'); main.textContent = error.message || 'This website is unavailable.'; document.body.appendChild(main); document.documentElement.hidden = false; }
   }
+
+  let publicRuntimeStarted = false;
+  function loadRuntimeScript(src) {
+    return new Promise((resolve, reject) => {
+      if (!src) { resolve(); return; }
+      const existing = [...document.scripts].find(script => script.src === new URL(src, location.origin).href);
+      if (existing) { resolve(); return; }
+      const script = document.createElement('script');
+      script.src = src; script.async = true;
+      script.addEventListener('load', resolve, { once: true });
+      script.addEventListener('error', reject, { once: true });
+      document.head.appendChild(script);
+    });
+  }
+
+  function initializeMetaPixel(pixelId) {
+    if (!pixelId || typeof window === 'undefined') return;
+    if (typeof window.fbq !== 'function') {
+      const fbq = function() { fbq.callMethod ? fbq.callMethod.apply(fbq, arguments) : fbq.queue.push(arguments); };
+      if (!window._fbq) window._fbq = fbq;
+      fbq.push = fbq; fbq.loaded = true; fbq.version = '2.0'; fbq.queue = [];
+      window.fbq = fbq;
+      const script = document.createElement('script');
+      script.async = true; script.src = 'https://connect.facebook.net/en_US/fbevents.js';
+      document.head.appendChild(script);
+    }
+    const initialized = window.__legendWebsitePixelIds ||= new Set();
+    if (!initialized.has(pixelId)) {
+      window.fbq('init', pixelId);
+      initialized.add(pixelId);
+    }
+  }
+
+  function applyRuntimeActionContracts() {
+    const options = Array.isArray(ctaCatalog) ? ctaCatalog : [];
+    if (!options.length) return;
+    document.querySelectorAll('a[href],button[data-website-action-key]').forEach(element => {
+      const key = element.dataset.websiteActionKey;
+      const href = element.getAttribute('href');
+      const option = (key && options.find(candidate => candidate.key === key))
+        || (href && options.find(candidate => candidate.href === href));
+      if (!option) return;
+      element.dataset.websiteActionKey = option.key;
+      element.dataset.websiteBindingId = element.dataset.cmsId || option.key;
+      element.dataset.websiteAnalyticsEvent = option.analyticsEventName || 'cta_click';
+      if (option.metaIntentEventName) element.dataset.websiteMetaIntent = option.metaIntentEventName;
+      else delete element.dataset.websiteMetaIntent;
+    });
+  }
+
+  async function startPublicRuntime() {
+    if (publicRuntimeStarted || editorMode || renderInput?.server) return;
+    if (!['legend','business'].includes(SITE_KEY)) return;
+    if (!context.trackingAsset || !context.metaSignalAsset) return;
+    if (SITE_KEY === 'business' && location.pathname.startsWith('/business-preview')) return;
+    publicRuntimeStarted = true;
+    try {
+      const runtimeUrl = new URL(`${API_BASE}/api/website-content/public/runtime`);
+      runtimeUrl.searchParams.set('siteKey', SITE_KEY);
+      const response = await fetch(runtimeUrl, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Public website runtime is unavailable.');
+      const payload = await response.json();
+      ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
+      applyRuntimeActionContracts();
+
+      const analytics = payload.analytics || {};
+      window.LEGEND_ANALYTICS_CONFIG = {
+        ...analytics,
+        siteKey: SITE_KEY,
+        publishedVersionId: payload.publishedVersionId || null
+      };
+      document.body.dataset.pageKey ||= pageKey;
+
+      const meta = payload.meta || {};
+      initializeMetaPixel(meta.pixelId);
+      await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
+      await loadRuntimeScript(context.metaSignalAsset || '/legend-public-meta-signal-intelligence.js');
+      if (meta.enabled && window.metaSignalIntelligence?.createLandingSession) {
+        window.LEGEND_PUBLIC_META_SESSION = window.metaSignalIntelligence.createLandingSession({
+          ...meta,
+          siteKey: SITE_KEY,
+          quoteType: SITE_KEY === 'business' ? 'business' : 'legend',
+          pageKey,
+          effectivePageKey: pageKey,
+          pageVariant: SITE_KEY + '_website',
+          pageMode: 'site_mode',
+          formId: document.querySelector('form[data-form-key]')?.dataset.formKey || '',
+          requiredContactFields: SITE_KEY === 'business' ? ['email'] : []
+        });
+      }
+    } catch (error) {
+      console.error('[legend-public-runtime]', error);
+    }
+  }
   async function loadPublic() {
     if (SITE_KEY === 'business' && !BUSINESS_ID) {
       const resolved = await fetch(`${API_BASE}/api/website-content/public/resolve?host=${encodeURIComponent(location.hostname)}`, { cache: 'no-store' });
@@ -509,7 +611,7 @@
     if (selected) { selected.classList.add('legend-cms-selected'); selected.draggable = !selected.dataset.cmsSection && !selected.dataset.cmsSignalOnly; }
     syncEditorControls();
     renderSignalControls();
-    showPanel(selected?.dataset.cmsSignalOnly ? 'signals' : 'content');
+    showPanel('content');
     refreshLayers();
   }
 
@@ -1013,7 +1115,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Added to your selected section.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="section">Section</button></div></section>
@@ -1334,22 +1436,20 @@
     document.documentElement.hidden = false;
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
-      if (SITE_KEY === 'business' && !editorMode) {
-        // Anonymous, domain-local session only. No customer matching or Meta delivery.
-        let sessionId;
-        try { sessionId = sessionStorage.getItem('legend.business.session'); if (!sessionId) { sessionId = crypto.randomUUID(); sessionStorage.setItem('legend.business.session', sessionId); } }
-        catch { sessionId = crypto.randomUUID(); }
-        fetch('/analytics/business-page', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: crypto.randomUUID(), sessionId, path: location.pathname.replace(/\/$/, '') || '/' }), keepalive: true }).catch(() => {});
-      }
-      window.addEventListener('resize', refreshScaledElements); if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements); }
+      if (!editorMode) void startPublicRuntime();
+      window.addEventListener('resize', refreshScaledElements);
+      if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
+    }
     return;
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
     injectContentStyles();
     if (editorMode) await loadEditor();
-    else { try { await loadPublic(); } catch (error) { unavailable(error); } }
+    else {
+      try { await loadPublic(); await startPublicRuntime(); }
+      catch (error) { unavailable(error); }
+    }
     window.addEventListener('resize', refreshScaledElements);
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });

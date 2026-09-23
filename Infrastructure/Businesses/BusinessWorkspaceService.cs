@@ -164,16 +164,26 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         var range = new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-days), ToUtc = DateTime.UtcNow,
             QualityMode = TrafficQualityMode.RealHumanTraffic, Label = $"Last {days} days", Preset = "custom" };
         var scope = ScopeContext.ForBusiness(business.Id);
+        var settings = await SettingsAsync(business.Id, ct);
+        var facts = await WebsiteBusinessFacts.LoadAsync(db, business.Id, ct);
+        var bookingUrl = settings.Row.BookingEnabled
+            ? settings.Row.BookingFallbackUrl ?? settings.Row.BookingEmbedUrl
+            : null;
+        var actionCatalog = WebsiteCallToActionCatalog.Build(
+            WebsiteEditorSiteKeys.Business,
+            facts.Phone,
+            facts.ContactEmail,
+            bookingUrl);
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Tab = "analytics", Days = days,
             Summary = await analytics.GetSummaryAsync(range, scope), Health = await analytics.GetMarketingHealthAsync(range, scope) };
-        model.Preferences = (await SettingsAsync(business.Id, ct)).Preferences;
+        model.Preferences = settings.Preferences;
         var owner = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id);
         var state = await db.Set<WebsiteContentState>().AsNoTracking().SingleOrDefaultAsync(x => x.OwnerKey == owner && x.SiteKey == WebsiteEditorSiteKeys.Business, ct);
         if (state is not null)
         {
-            AddMap(model, state.DraftJson, false, state.Revision);
+            AddMap(model, state.DraftJson, false, state.Revision, actionCatalog);
             var version = await db.Set<WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == state.PublishedVersionId && x.StateId == state.Id, ct);
-            if (version is not null) AddMap(model, version.DocumentJson, true, version.Revision);
+            if (version is not null) AddMap(model, version.DocumentJson, true, version.Revision, actionCatalog);
         }
         model.RecentEvents = await db.MetaSignalEvents.AsNoTracking().Where(x => x.CommerceBusinessId == business.Id && x.AgentTrackingProfileId == null && x.CreatedUtc >= range.FromUtc)
             .OrderByDescending(x => x.CreatedUtc).Take(50).Select(x => new BusinessWebsiteEventRow(x.CreatedUtc, x.EventName, x.PageKey, x.MetaServerSent)).ToListAsync(ct);
@@ -247,19 +257,44 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
             UpdatedUtc = row.UpdatedUtc, History = meta.Activities.OrderByDescending(x => x.CreatedUtc).Take(100).ToList() };
     }
 
-    private static void AddMap(BusinessWorkspaceModel model, string json, bool published, long revision)
+    private static void AddMap(
+        BusinessWorkspaceModel model,
+        string json,
+        bool published,
+        long revision,
+        IReadOnlyList<WebsiteCallToActionOption> actionCatalog)
     {
         var document = JsonSerializer.Deserialize<WebsiteContentDocument>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         if (document is null) return;
+        var actions = actionCatalog.ToDictionary(action => action.Key, StringComparer.Ordinal);
+
+        void AddAutomaticAction(string path, string element, string? actionKey)
+        {
+            if (string.IsNullOrWhiteSpace(actionKey) || !actions.TryGetValue(actionKey, out var action)) return;
+            model.EventMap.Add(new(path, element, "click", action.AnalyticsEventName, "automatic", published, revision));
+            if (!string.IsNullOrWhiteSpace(action.MetaIntentEventName))
+                model.EventMap.Add(new(path, element, "click", action.MetaIntentEventName!, "automatic_meta", published, revision));
+        }
+
         void Add(string path, Dictionary<string, WebsiteElementOverride> elements, List<WebsiteExtraComponent> extras)
         {
             foreach (var pair in elements)
+            {
+                AddAutomaticAction(path, pair.Key, pair.Value.ActionKey);
                 foreach (var binding in pair.Value.Signals)
                     model.EventMap.Add(new(path, pair.Key, binding.Trigger, binding.EventName, binding.DeliveryMode, published, revision));
+            }
             foreach (var extra in extras)
+            {
+                AddAutomaticAction(path, "extra:" + extra.Id, extra.ActionKey);
                 foreach (var binding in extra.Signals)
                     model.EventMap.Add(new(path, "extra:" + extra.Id, binding.Trigger, binding.EventName, binding.DeliveryMode, published, revision));
+            }
         }
+
+        // These are intrinsic to the Protect runtime used by every published business website.
+        model.EventMap.Add(new("*", "page", "viewed", "ViewContent", "automatic", published, revision));
+        model.EventMap.Add(new("*", "page", "scroll_threshold", "MeaningfulScroll", "automatic", published, revision));
         Add("*", document.Elements, document.Extras);
         foreach (var page in document.Pages) Add(page.Key, page.Value.Elements, page.Value.Extras);
     }

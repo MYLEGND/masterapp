@@ -48,6 +48,21 @@ for (const file of ['legend-public-cms.js','legend-public-web.js','site.css']) {
 }
 console.log('Shared editor identity and content-versioned assets passed on every route.');
 
+for (const [built, authority] of [
+  ['legend-public-tracking.js','../Protect-Website/wwwroot/js/tracking.js'],
+  ['legend-public-meta-signal-intelligence.js','../Protect-Website/wwwroot/js/meta-signal-intelligence.js']
+]) {
+  const builtBytes=await readFile(resolve(root,'dist',built));
+  const authorityBytes=await readFile(resolve(root,authority));
+  if(!builtBytes.equals(authorityBytes))throw new Error('Public runtime must copy the Protect Website analytics authority exactly: '+built);
+}
+for(const route of routes){
+  const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
+  for(const required of ['trackingAsset:"/legend-public-tracking.js?v=','metaSignalAsset:"/legend-public-meta-signal-intelligence.js?v='])
+    if(!html.includes(required))throw new Error('LEGEND public route missing canonical Protect runtime asset: '+required);
+}
+console.log('Protect tracking and Meta intelligence are the exact public runtime source for LEGEND and business builds.');
+
 const businessPreview=await readFile(resolve(root,'dist',businessPreviewRoute,'index.html'),'utf8');
 for(const file of ['legend-public-cms.js','legend-public-web.js','site.css']){
   const bytes=await readFile(resolve(root,'dist',file));

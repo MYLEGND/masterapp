@@ -293,6 +293,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             var capiRequest = new MetaConversionsApiEventRequest
             {
                 LeadId = row.LeadId,
+                CommerceBusinessId = row.CommerceBusinessId,
+                AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
                 EventName = row.EventName,
                 EventId = isBridgeOwned

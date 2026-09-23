@@ -17,7 +17,13 @@ test('all normal business pages use canonical components, actual scoped name and
     assert.equal(dom.querySelector('meta[name="robots"]'),null);
     assert.equal(dom.querySelector('link[rel="canonical"]').href,'__LEGEND_CANONICAL_URL__');
     for(const link of dom.querySelectorAll('.nav a'))assert.match(link.getAttribute('href'),/^\/(?:about|contact|services)?\/?$/);
-    assert.ok(dom.querySelector('#legend-cms-published-document'));
+    const published=dom.querySelector('#legend-cms-published-document');
+    assert.ok(published);
+    const runtime=JSON.parse(published.textContent).runtime;
+    assert.equal(runtime.apiBase,'https://masterapp-protect.azurewebsites.net');
+    assert.equal(runtime.trackingAsset,'/legend-public-tracking.js');
+    assert.equal(runtime.metaSignalAsset,'/legend-public-meta-signal-intelligence.js');
+    assert.equal(dom.querySelector('script[data-cms-context]'),null);
     assert.ok(dom.querySelector('script[src^="/legend-public-cms.js"]'));
   }
   assert.ok(parseHTML(result.pages['/'].html).document.querySelector('.hero .hero-copy'));

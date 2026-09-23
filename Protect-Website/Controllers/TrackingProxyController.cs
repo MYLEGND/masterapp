@@ -3,7 +3,12 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Infrastructure.Data;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using ProtectWebsite.Services.Tracking;
+using Shared.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 
@@ -50,6 +55,17 @@ public sealed class TrackingProxyController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(req.EventType))
             return BadRequest(new { error = "event_type_required" });
+
+        if (req.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Business)
+        {
+            var scopeResolver = HttpContext.RequestServices.GetService<PublicWebsiteRuntimeScopeResolver>();
+            if (scopeResolver is null)
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "website_runtime_scope_unavailable" });
+            var scope = await scopeResolver.ResolveAsync(HttpContext, req.SiteKey, ct);
+            if (scope is null || !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(scope, req.Path))
+                return BadRequest(new { error = "published_website_scope_required" });
+            return await PersistPublicWebsiteEventAsync(req, scope, ct);
+        }
 
         EnsureClientContextFallback(req);
         await EnsureAgentAttributionAsync(req, ct);
@@ -121,6 +137,125 @@ public sealed class TrackingProxyController : ControllerBase
 
         return await BuildPassThroughResultAsync(response, ct);
     }
+
+    private async Task<IActionResult> PersistPublicWebsiteEventAsync(
+        AnalyticsEventRequest req,
+        PublicWebsiteRuntimeScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (!AnalyticsEventCatalog.TryGet(req.EventType, out var definition) || !definition.AllowBrowser)
+            return BadRequest(new { error = "invalid_event_type" });
+
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var existing = await db.AnalyticsEvents.AsNoTracking()
+            .FirstOrDefaultAsync(row => row.ClientEventId == req.ClientEventId, cancellationToken);
+        if (existing is not null)
+        {
+            var sameOwner = existing.CommerceBusinessId == scope.CommerceBusinessId &&
+                existing.WebsiteContentVersionId == scope.PublishedVersion?.Id &&
+                string.Equals(existing.EventType, req.EventType, StringComparison.OrdinalIgnoreCase);
+            return sameOwner ? Ok(new { status = "duplicate_ignored" }) : Conflict(new { error = "event_id_owner_conflict" });
+        }
+
+        var context = new UnifiedEventContext
+        {
+            SiteKey = scope.SiteKey,
+            CommerceBusinessId = scope.CommerceBusinessId,
+            WebsiteContentVersionId = scope.PublishedVersion?.Id,
+            WebsiteBindingId = string.IsNullOrWhiteSpace(req.WebsiteBindingId) ? null : req.WebsiteBindingId.Trim(),
+            EventId = req.ClientEventId.ToString("N"),
+            EventName = req.EventType.Trim(),
+            EventCategory = definition.Category,
+            EventUtc = req.EventUtc ?? DateTime.UtcNow,
+            SessionId = Clean(req.SessionId),
+            VisitorId = Clean(req.VisitorId),
+            Url = Clean(req.Url),
+            Referrer = Clean(req.Referrer),
+            PageKey = Clean(req.PageKey),
+            ElementKey = Clean(req.ElementKey),
+            ButtonLabel = Clean(req.ButtonLabel),
+            FormKey = Clean(req.FormKey),
+            QuoteType = Clean(req.QuoteType),
+            DeviceType = Clean(req.DeviceType),
+            Browser = Clean(req.Browser),
+            OperatingSystem = Clean(req.OperatingSystem),
+            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            TimeZone = Clean(req.TimeZone),
+            Language = Clean(req.Language),
+            WebDriver = req.WebDriver,
+            IsHeadless = req.IsHeadless,
+            MouseMoveCount = req.MouseMoveCount,
+            HumanInteractionCount = req.HumanInteractionCount,
+            VisibilityChangeCount = req.VisibilityChangeCount,
+            ScreenWidth = req.ScreenWidth,
+            ScreenHeight = req.ScreenHeight,
+            ViewportWidth = req.ViewportWidth,
+            ViewportHeight = req.ViewportHeight,
+            ScrollPercent = req.ScrollPercent,
+            DwellMilliseconds = req.DwellMilliseconds,
+            EngagedMilliseconds = req.EngagedMilliseconds,
+            IsBounceCandidate = req.IsBounceCandidate,
+            IsExitPage = req.IsExitPage,
+            UtmSource = Clean(req.UtmSource),
+            UtmMedium = Clean(req.UtmMedium),
+            UtmCampaign = Clean(req.UtmCampaign),
+            UtmId = Clean(req.UtmId),
+            UtmContent = Clean(req.UtmContent),
+            Fbclid = Clean(req.Fbclid),
+            MetaCampaignId = Clean(req.MetaCampaignId),
+            MetaAdSetId = Clean(req.MetaAdSetId),
+            MetaAdId = Clean(req.MetaAdId),
+            IsInternal = false,
+            Environment = EnvironmentLabelResolver.Resolve(),
+            Host = scope.OriginHost,
+            IsBrowserSignal = true,
+            IsServerAuthority = false,
+            MetaServerAuthorityEligible = false,
+            Metadata = new
+            {
+                Source = "public_website_shared_tracking",
+                Scope = scope.SiteKey,
+                WebsiteBindingId = Clean(req.WebsiteBindingId),
+                AnalyticsMetadata = Clean(req.MetadataJson)
+            }
+        };
+
+        var row = UnifiedEventMapper.ToAnalytics(context);
+        row.ClientEventId = req.ClientEventId;
+        row.SchemaVersion = req.SchemaVersion ?? 1;
+        row.TrackingVersion = Clean(req.TrackingVersion);
+        row.Path = Clean(req.Path);
+        row.SubmitOutcome = Clean(req.SubmitOutcome);
+        row.UtmTerm = Clean(req.UtmTerm);
+        row.MetaCampaignName = Clean(req.MetaCampaignName);
+        row.MetaAdSetName = Clean(req.MetaAdSetName);
+        row.MetaAdName = Clean(req.MetaAdName);
+        row.Placement = Clean(req.Placement);
+        row.FormId = Clean(req.FormId);
+        row.FieldName = Clean(req.FieldName);
+        row.ElementId = Clean(req.ElementId);
+        UnifiedAnalyticsWriter.Write(db, row);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(row).State = EntityState.Detached;
+            existing = await db.AnalyticsEvents.AsNoTracking()
+                .FirstOrDefaultAsync(candidate => candidate.ClientEventId == req.ClientEventId, cancellationToken);
+            if (existing is null) throw;
+            if (existing.CommerceBusinessId != scope.CommerceBusinessId ||
+                existing.WebsiteContentVersionId != scope.PublishedVersion?.Id)
+                return Conflict(new { error = "event_id_owner_conflict" });
+        }
+
+        return Ok(new { status = "ok", eventId = row.EventId });
+    }
+
+    private static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private void EnsureLeadContextFallback(LeadSubmitRequest req)
     {
@@ -579,6 +714,8 @@ public sealed class TrackingProxyController : ControllerBase
     {
         public int? SchemaVersion { get; set; }
         public string? TrackingVersion { get; set; }
+        public string? SiteKey { get; set; }
+        public string? WebsiteBindingId { get; set; }
 
         [Required] public Guid ClientEventId { get; set; }
         [Required] public string EventType { get; set; } = string.Empty;

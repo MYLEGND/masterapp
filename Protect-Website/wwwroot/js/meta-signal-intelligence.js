@@ -455,6 +455,10 @@
       case 'auto_insurance':
       case 'quote_auto':
         return 'auto';
+      case 'business':
+        return 'business';
+      case 'legend':
+        return 'legend';
       case 'life_general':
       case 'life':
       default:
@@ -529,6 +533,7 @@
       persistEvents: rawConfig?.persistEvents !== false,
       debugMode: Boolean(rawConfig?.debugMode),
       endpoint: asTrimmed(rawConfig?.endpoint) || '/analytics/meta-signal',
+      siteKey: asTrimmed(rawConfig?.siteKey),
       quoteType: asTrimmed(rawConfig?.quoteType) || 'life',
       pageKey: asTrimmed(rawConfig?.pageKey),
       effectivePageKey: asTrimmed(rawConfig?.effectivePageKey || rawConfig?.pageKey),
@@ -1360,6 +1365,8 @@
       const browserEventSent = browserDispatchStatus === 'invoked';
       enrichedMetadata.browserDispatchStatus = browserDispatchStatus;
       const payload = {
+        siteKey: config.siteKey || null,
+        websiteBindingId: asTrimmed(metadata?.websiteBindingId || metadata?.actionKey) || null,
         eventName,
         eventId,
         quoteType: state.quoteType,

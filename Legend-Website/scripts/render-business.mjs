@@ -5,6 +5,7 @@ import {resolve} from 'node:path';
 import vm from 'node:vm';
 import {parseHTML} from 'linkedom';
 import {businessPages} from '../src/business-content.mjs';
+import {publicApiBase,publicRuntimeAssets} from '../src/runtime-config.mjs';
 
 export async function compileBusiness(input, root=resolve(import.meta.dirname,'..')) {
   if (!input?.business?.id || !input.business.displayName || !input.document) throw new Error('A business and document are required.');
@@ -58,7 +59,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     renderInput.type='application/json';
     renderInput.id='legend-cms-published-document';
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
-    renderInput.textContent=JSON.stringify({document:currentDocument,business:input.business,pageKey:key,server:false}).replace(/</g,'\\u003c');
+    renderInput.textContent=JSON.stringify({document:currentDocument,business:input.business,pageKey:key,server:false,runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}}).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
     const form=doc.querySelector('[data-business-inquiry]');
     if(form){

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Data;
 using Infrastructure.Leads;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
@@ -82,6 +83,18 @@ public sealed class AnalyticsController : Controller
                 error = "Unknown meta signal event."
             });
         }
+        if (MetaSignalEventCatalog.IsServerAuthorityEvent(eventName))
+            return BadRequest(new { accepted = false, error = "Browser input cannot claim a verified conversion." });
+
+        PublicWebsiteRuntimeScope? publicScope = null;
+        if (request.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Business)
+        {
+            var resolver = HttpContext.RequestServices.GetRequiredService<PublicWebsiteRuntimeScopeResolver>();
+            publicScope = await resolver.ResolveAsync(HttpContext, request.SiteKey, cancellationToken);
+            var publicPath = Uri.TryCreate(request.Url, UriKind.Absolute, out var publicUrl) ? publicUrl.AbsolutePath : null;
+            if (publicScope is null || !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(publicScope, publicPath))
+                return BadRequest(new { accepted = false, error = "Published website scope is required." });
+        }
 
         if (!Guid.TryParse(request.EventId, out var clientEventId) || clientEventId == Guid.Empty)
             return BadRequest(new { accepted = false, error = "A stable event ID is required." });
@@ -89,11 +102,11 @@ public sealed class AnalyticsController : Controller
         var existing = await _db.AnalyticsEvents.AsNoTracking()
             .FirstOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
         if (existing is not null)
-            return DuplicateResult(existing, request, eventName, clientEventId);
+            return DuplicateResult(existing, request, eventName, clientEventId, publicScope);
 
         try
         {
-            var trackingContext = BuildTrackingContext(request, eventName, definition);
+            var trackingContext = BuildTrackingContext(request, eventName, definition, publicScope);
             var analyticsEvent = UnifiedEventMapper.ToAnalytics(trackingContext);
             analyticsEvent.ClientEventId = clientEventId;
             UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
@@ -107,7 +120,7 @@ public sealed class AnalyticsController : Controller
                 var concurrent = await _db.AnalyticsEvents.AsNoTracking()
                     .FirstOrDefaultAsync(x => x.ClientEventId == clientEventId, cancellationToken);
                 if (concurrent is null) throw;
-                return DuplicateResult(concurrent, request, eventName, clientEventId);
+                return DuplicateResult(concurrent, request, eventName, clientEventId, publicScope);
             }
 
             return Json(new MetaSignalProcessResult
@@ -142,13 +155,17 @@ public sealed class AnalyticsController : Controller
     }
 
     private IActionResult DuplicateResult(Domain.Entities.AnalyticsEvent existing,
-        MetaSignalIngestRequest request, string eventName, Guid eventId)
+        MetaSignalIngestRequest request, string eventName, Guid eventId, PublicWebsiteRuntimeScope? publicScope)
     {
+        var ownerMatches = publicScope is not null
+            ? existing.CommerceBusinessId == publicScope.CommerceBusinessId &&
+              existing.WebsiteContentVersionId == publicScope.PublishedVersion?.Id
+            : existing.AgentTrackingProfileId == request.AgentTrackingProfileId &&
+              string.Equals(existing.AgentSlug, Normalize(request.AgentSlug), StringComparison.OrdinalIgnoreCase);
         if (!string.Equals(existing.EventType, eventName, StringComparison.OrdinalIgnoreCase) ||
             existing.SessionId != Normalize(request.SessionId) ||
             existing.VisitorId != Normalize(request.VisitorId) ||
-            existing.AgentTrackingProfileId != request.AgentTrackingProfileId ||
-            !string.Equals(existing.AgentSlug, Normalize(request.AgentSlug), StringComparison.OrdinalIgnoreCase))
+            !ownerMatches)
             return Conflict(new { accepted = false, error = "Event ID belongs to a different event." });
         return Json(new MetaSignalProcessResult
         {
@@ -160,7 +177,8 @@ public sealed class AnalyticsController : Controller
     private UnifiedEventContext BuildTrackingContext(
         MetaSignalIngestRequest request,
         string eventName,
-        MetaSignalEventDefinition definition)
+        MetaSignalEventDefinition definition,
+        PublicWebsiteRuntimeScope? publicScope)
     {
         var attribution = request.Attribution;
         var clientContext = request.ClientContext;
@@ -171,6 +189,10 @@ public sealed class AnalyticsController : Controller
 
         return new UnifiedEventContext
         {
+            SiteKey = publicScope?.SiteKey,
+            CommerceBusinessId = publicScope?.CommerceBusinessId,
+            WebsiteContentVersionId = publicScope?.PublishedVersion?.Id,
+            WebsiteBindingId = Normalize(request.WebsiteBindingId),
             EventId = Normalize(request.EventId),
             EventName = eventName,
             EventCategory = Normalize(request.EventCategory) ?? definition.Category,
@@ -208,11 +230,11 @@ public sealed class AnalyticsController : Controller
             MetaAdSetId = Normalize(attribution?.MetaAdSetId),
             MetaAdId = Normalize(attribution?.MetaAdId),
             Fbclid = Normalize(attribution?.Fbclid),
-            AgentSlug = Normalize(request.AgentSlug),
-            AgentTrackingProfileId = request.AgentTrackingProfileId,
-            IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
+            AgentSlug = publicScope is null ? Normalize(request.AgentSlug) : null,
+            AgentTrackingProfileId = publicScope is null ? request.AgentTrackingProfileId : null,
+            IsInternal = publicScope is null && WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
             Environment = EnvironmentLabelResolver.Resolve(),
-            Host = Request?.Host.ToString(),
+            Host = publicScope?.OriginHost ?? Request?.Host.ToString(),
             QuoteType = Normalize(request.QuoteType) ?? "life",
             StepNumber = request.StepNumber,
             StepName = Normalize(request.StepName),
@@ -222,7 +244,9 @@ public sealed class AnalyticsController : Controller
             MetaServerAuthorityEligible = false,
             Metadata = new
             {
-                Source = "meta_signal_browser_ingest",
+                Source = publicScope is null ? "meta_signal_browser_ingest" : "public_website_shared_meta_ingest",
+                SiteKey = publicScope?.SiteKey,
+                WebsiteBindingId = Normalize(request.WebsiteBindingId),
                 UpstreamMetaEventId = Normalize(request.EventId),
                 EventCategory = Normalize(request.EventCategory) ?? definition.Category,
                 PageVariant = pageVariant,

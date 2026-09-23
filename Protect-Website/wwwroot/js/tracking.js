@@ -15,7 +15,10 @@
   // Extraction target: tracking-core.js
   // ============================================================
 
-  const INGEST_URL = '/api/tracking/ingest';
+  const ANALYTICS_CONFIG = window.LEGEND_ANALYTICS_CONFIG || {};
+  const INGEST_URL = typeof ANALYTICS_CONFIG.endpoint === 'string' && ANALYTICS_CONFIG.endpoint.trim()
+    ? ANALYTICS_CONFIG.endpoint.trim()
+    : '/api/tracking/ingest';
   const PAGE_KEY = document.body.dataset.pageKey || '';
   const PAGE_VARIANT = document.body.dataset.pageVariant || '';
   const PAGE_MODE = document.body.dataset.pageMode || '';
@@ -23,7 +26,6 @@
   const PAGE_QUOTE_TYPE = document.body.dataset.quoteType || '';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
-  const ANALYTICS_CONFIG = window.LEGEND_ANALYTICS_CONFIG || {};
   const DEBUG_TRACKING =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
@@ -579,6 +581,8 @@
     return {
       SchemaVersion: payload.SchemaVersion || payload.schemaVersion || TRACKING_SCHEMA_VERSION,
       TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
+      SiteKey: payload.SiteKey || ANALYTICS_CONFIG.siteKey || null,
+      WebsiteBindingId: payload.WebsiteBindingId || null,
       ClientEventId: uuid(),
       EventType: payload.EventType,
       PageKey: payload.PageKey || PAGE_KEY,
@@ -1772,6 +1776,39 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     });
   }
 
+  function installManagedWebsiteActionTracking() {
+    document.addEventListener('click', event => {
+      const target = event.target?.closest?.('[data-website-action-key]');
+      if (!target || target.closest?.('.legend-cms-editor')) return;
+      // Protect's original template CTAs retain their existing explicit data-cta
+      // wiring. Managed editor-created actions use this central contract.
+      if (target.hasAttribute?.('data-cta') && !target.classList?.contains('cms-extra')) return;
+      const actionKey = target.dataset.websiteActionKey || '';
+      const eventType = target.dataset.websiteAnalyticsEvent || 'cta_click';
+      if (!actionKey || !allowedEvents.has(eventType)) return;
+      try { sessionStorage.setItem('legend_last_website_action_key', actionKey); } catch {}
+      window.LEGEND_LAST_WEBSITE_ACTION_KEY = actionKey;
+      sendEvent({
+        EventType: eventType,
+        ElementKey: actionKey,
+        WebsiteBindingId: target.dataset.websiteBindingId || actionKey,
+        ButtonLabel: target.textContent?.trim() || null,
+        MetadataJson: JSON.stringify({
+          actionKey,
+          href: target.getAttribute?.('href') || null,
+          automaticActionContract: true
+        })
+      });
+      const metaIntent = target.dataset.websiteMetaIntent;
+      const meta = window.LEGEND_PUBLIC_META_SESSION;
+      if (metaIntent === 'ContactStepReached' && meta?.trackContactStepReached) {
+        Promise.resolve(meta.trackContactStepReached({ actionKey, automaticActionContract: true })).catch(() => {});
+      } else if (metaIntent === 'LeadFormStart' && meta?.trackLeadFormStart) {
+        Promise.resolve(meta.trackLeadFormStart({ actionKey, automaticActionContract: true })).catch(() => {});
+      }
+    }, true);
+  }
+
   function wireFormStart(form, formKey) {
     if (!form || form._legendTrackingBound) return;
     form._legendTrackingBound = true;
@@ -1791,6 +1828,11 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       state.nativeSubmissionPending = Boolean(valid) && !isAjax;
       sendEvent({ EventType: 'form_submit_attempt', FormKey: formKey,
         MetadataJson: JSON.stringify({ valid: Boolean(valid), errorCount: Number(errorCount) || 0 }) });
+      if (window.LEGEND_PUBLIC_META_SESSION?.trackSubmitAttempt) {
+        Promise.resolve(window.LEGEND_PUBLIC_META_SESSION.trackSubmitAttempt({
+          formId: formKey, valid: Boolean(valid), errorCount: Number(errorCount) || 0
+        })).catch(() => {});
+      }
     };
     form.addEventListener('submit', event => {
       const initialRevision = submitRevision;
@@ -1843,6 +1885,11 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       clientContext: window.LegendAnalytics?.getClientContext?.() || {},
       EventType: 'lead_form_start', FormKey: formKey });
     }
+    if (window.LEGEND_PUBLIC_META_SESSION?.trackLeadFormStart) {
+      Promise.resolve(window.LEGEND_PUBLIC_META_SESSION.trackLeadFormStart({
+        formId: formKey, startSource: 'shared_form_interaction'
+      })).catch(() => {});
+    }
 
     return true;
   }
@@ -1861,6 +1908,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   void flushQueuedEvents('page_load');
   trackPageView();
   installQuotePrimaryCtaTracking();
+  installManagedWebsiteActionTracking();
 
   wireClick('[data-cta="hero_start_assessment"]',    'hero_start_assessment',    'cta_click');
   wireClick('[data-cta="hero_book_call"]',           'hero_book_call',           'cta_click');

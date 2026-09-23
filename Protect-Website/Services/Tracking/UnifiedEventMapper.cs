@@ -21,6 +21,8 @@ public static class UnifiedEventMapper
             PipelineStamp = UnifiedAnalyticsWriter.PipelineStamp,
             EventType = ctx.EventName ?? "unknown",
             PageKey = ctx.PageKey,
+            ElementKey = ctx.ElementKey,
+            ButtonLabel = ctx.ButtonLabel,
             FormKey = string.IsNullOrWhiteSpace(ctx.FormKey) && !string.IsNullOrWhiteSpace(ctx.PageKey)
                 ? $"{ctx.PageKey}_form"
                 : ctx.FormKey,
@@ -43,6 +45,7 @@ public static class UnifiedEventMapper
             AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
             CommerceBusinessId = ctx.CommerceBusinessId,
             WebsiteContentVersionId = ctx.WebsiteContentVersionId,
+            WebsiteBindingId = ctx.WebsiteBindingId,
 
             IsInternal = ctx.IsInternal ?? false,
             Environment = ctx.Environment,
@@ -145,6 +148,7 @@ public static class UnifiedEventMapper
             AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
             CommerceBusinessId = ctx.CommerceBusinessId,
             WebsiteContentVersionId = ctx.WebsiteContentVersionId,
+            WebsiteBindingId = ctx.WebsiteBindingId,
 
             Environment = null,
             Host = null
@@ -153,7 +157,9 @@ public static class UnifiedEventMapper
 
     private static object BuildAnalyticsMetadata(UnifiedEventContext ctx) => new
     {
-        siteKey = ctx.CommerceBusinessId.HasValue ? "BusinessWebsite" : SiteKey,
+        siteKey = string.IsNullOrWhiteSpace(ctx.SiteKey)
+            ? (ctx.CommerceBusinessId.HasValue ? "BusinessWebsite" : SiteKey)
+            : ctx.SiteKey,
         businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
         reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
         payload = ctx.Metadata

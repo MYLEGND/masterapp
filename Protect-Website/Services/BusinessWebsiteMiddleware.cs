@@ -34,7 +34,12 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         var version = await WebsiteContentStore.PublishedBusinessAsync(db, binding.Value, context.RequestAborted);
         if (string.IsNullOrWhiteSpace(version?.CompiledPagesJson)) { await Unavailable(context); return; }
         // APIs retain their own authenticated/business-scoped authorities. Resolve the host first.
-        if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) || path == "/api/website-inquiries/public" || path == "/analytics/business-page")
+        if (path.StartsWith("/api/website-content/", StringComparison.Ordinal) ||
+            path == "/api/website-inquiries/public" ||
+            path == "/api/tracking/ingest" ||
+            path == "/api/analytics/ingest" ||
+            path == "/analytics/meta-signal" ||
+            path == "/analytics/business-page")
         {
             await next(context);
             return;
@@ -43,8 +48,14 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
         context.Response.Headers.CacheControl = "public,max-age=0,must-revalidate";
         context.Response.Headers.XContentTypeOptions = "nosniff";
         context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-        context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
-        if (path is "/site.css" or "/legend-public-web.js" or "/business-inquiry.js" or "/legend-public-cms.js")
+        var publicApiBase = (configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');
+        var publicApiOrigin = Uri.TryCreate(publicApiBase, UriKind.Absolute, out var apiUri)
+            ? apiUri.GetLeftPart(UriPartial.Authority)
+            : "https://masterapp-protect.azurewebsites.net";
+        context.Response.Headers["Content-Security-Policy"] =
+            $"default-src 'self'; script-src 'self' https://connect.facebook.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' {publicApiOrigin} https://www.facebook.com https://connect.facebook.net; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+        if (path is "/site.css" or "/legend-public-web.js" or "/business-inquiry.js" or "/legend-public-cms.js" or
+            "/legend-public-tracking.js" or "/legend-public-meta-signal-intelligence.js")
         {
             var asset = Path.Combine(environment.ContentRootPath, "WebsiteCompiler", "dist", path.TrimStart('/'));
             if (!File.Exists(asset)) { await Unavailable(context); return; }

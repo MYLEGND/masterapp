@@ -64,6 +64,17 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(f.BusinessId, row.CommerceBusinessId);
         Assert.Equal(f.VersionId, row.PublishedVersionId);
         Assert.Equal("New", row.Status);
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Equal(f.BusinessId, lead.CommerceBusinessId);
+        Assert.Equal(f.VersionId, lead.WebsiteContentVersionId);
+        Assert.Equal("business_contact", lead.WebsiteBindingId);
+        Assert.Equal("business-session", lead.SessionId);
+        Assert.Null(lead.AgentTrackingProfileId);
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(f.BusinessId, analytics.CommerceBusinessId);
+        Assert.Equal(f.VersionId, analytics.WebsiteContentVersionId);
+        Assert.Equal("business_contact", analytics.WebsiteBindingId);
+        Assert.Null(analytics.AgentTrackingProfileId);
         Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Message = "Different request" }, CancellationToken.None));
     }
 
@@ -156,7 +167,10 @@ public sealed class WebsiteInquiryIsolationTests
                 { ControllerContext = new() { HttpContext = new DefaultHttpContext() } };
             Controller.Request.Headers.Origin = origin;
         }
-        public WebsiteInquiriesController.PublicRequest Request() => new(Guid.NewGuid(), "Visitor", "visitor@example.org", "Please contact me.", "/contact", true);
+        public WebsiteInquiriesController.PublicRequest Request() => new(
+            Guid.NewGuid(), "Visitor", "visitor@example.org", "Please contact me.", "/contact", true,
+            SourceActionKey: "business_contact", SessionId: "business-session", VisitorId: "business-visitor",
+            UtmSource: "meta", UtmCampaign: "campaign-one", Fbclid: "fbclid-one");
         public async Task SeedPublishedAsync()
         {
             Db.Add(new CommerceBusiness { Id = BusinessId, Key = "business", DisplayName = "Business" });

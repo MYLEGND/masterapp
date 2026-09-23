@@ -153,6 +153,65 @@ public sealed class WebsiteContentController : ControllerBase
         });
     }
 
+    [HttpGet("public/runtime")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PublicRuntime(
+        [FromQuery] string siteKey,
+        CancellationToken cancellationToken = default)
+    {
+        var scopes = HttpContext.RequestServices.GetRequiredService<PublicWebsiteRuntimeScopeResolver>();
+        var scope = await scopes.ResolveAsync(HttpContext, siteKey, cancellationToken);
+        if (scope is null) return NotFound(new { error = "published_website_scope_not_found" });
+
+        WebsiteBusinessFacts? facts = scope.CommerceBusinessId.HasValue
+            ? await WebsiteBusinessFacts.LoadAsync(_db, scope.CommerceBusinessId.Value, cancellationToken)
+            : null;
+        var actions = await BuildCallToActionCatalogAsync(
+            scope.SiteKey,
+            scope.OwnerKey,
+            agentSlug: null,
+            scope.CommerceBusinessId,
+            facts,
+            cancellationToken);
+
+        var metaResolver = HttpContext.RequestServices.GetRequiredService<ProtectWebsite.Services.Meta.IMetaPixelResolutionService>();
+        var pixel = scope.CommerceBusinessId.HasValue
+            ? await metaResolver.ResolveForBusinessAsync(scope.CommerceBusinessId.Value, cancellationToken)
+            : await metaResolver.ResolveForLeadAsync(null, null, isFounderPath: true, cancellationToken);
+        var metaOptions = HttpContext.RequestServices
+            .GetRequiredService<Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions>>()
+            .Value;
+        var apiBase = WebsiteContentApiBaseUrl();
+
+        return Ok(new
+        {
+            siteKey = scope.SiteKey,
+            publishedVersionId = scope.PublishedVersion?.Id,
+            ctaCatalog = new { options = actions },
+            analytics = new
+            {
+                endpoint = apiBase + "/api/tracking/ingest",
+                allowedBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.BrowserAllowedEventNames,
+                criticalBrowserEvents = Shared.Analytics.AnalyticsEventCatalog.CriticalBrowserEventNames,
+                clientTrackingErrorEvent = Shared.Analytics.AnalyticsEventCatalog.ClientTrackingErrorEventName
+            },
+            meta = new
+            {
+                enabled = metaOptions.Enabled,
+                sendBrowserEvents = metaOptions.SendBrowserEvents,
+                sendServerEvents = metaOptions.SendServerEvents,
+                persistEvents = metaOptions.PersistEvents,
+                debugMode = metaOptions.DebugMode,
+                highIntentThreshold = metaOptions.HighIntentThreshold,
+                leadReadyThreshold = metaOptions.LeadReadyThreshold,
+                endpoint = apiBase + "/analytics/meta-signal",
+                pixelId = pixel.HasBrowserPixel ? pixel.PixelId : null,
+                browserEventNames = Shared.Analytics.MetaSignalEventCatalog.BrowserPixelEventNames,
+                weights = metaOptions.Weights
+            }
+        });
+    }
+
     [HttpGet("manage")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Manage([FromQuery] string ticket, CancellationToken cancellationToken = default)
@@ -527,8 +586,23 @@ public sealed class WebsiteContentController : ControllerBase
     private string MediaBaseUrl() => WebsiteContentApiBaseUrl();
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
 
-    private async Task<IReadOnlyList<WebsiteCallToActionOption>> BuildCallToActionCatalogAsync(
+    private Task<IReadOnlyList<WebsiteCallToActionOption>> BuildCallToActionCatalogAsync(
         WebsiteEditorTicket actor,
+        WebsiteBusinessFacts? facts,
+        CancellationToken cancellationToken) =>
+        BuildCallToActionCatalogAsync(
+            actor.SiteKey,
+            actor.OwnerUserId,
+            actor.AgentSlug,
+            actor.CommerceBusinessId,
+            facts,
+            cancellationToken);
+
+    private async Task<IReadOnlyList<WebsiteCallToActionOption>> BuildCallToActionCatalogAsync(
+        string siteKey,
+        string ownerUserId,
+        string? agentSlug,
+        Guid? commerceBusinessId,
         WebsiteBusinessFacts? facts,
         CancellationToken cancellationToken)
     {
@@ -536,19 +610,19 @@ public sealed class WebsiteContentController : ControllerBase
         string? email = null;
         string? bookingUrl = null;
 
-        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
+        if (siteKey == WebsiteEditorSiteKeys.Business && commerceBusinessId.HasValue)
         {
             phone = facts?.Phone;
             email = facts?.ContactEmail;
             var settings = await _db.CommerceBusinessStorefrontSettings.AsNoTracking()
-                .SingleOrDefaultAsync(row => row.CommerceBusinessId == actor.CommerceBusinessId.Value, cancellationToken);
+                .SingleOrDefaultAsync(row => row.CommerceBusinessId == commerceBusinessId.Value, cancellationToken);
             if (settings?.BookingEnabled == true)
                 bookingUrl = settings.BookingFallbackUrl ?? settings.BookingEmbedUrl;
         }
-        else if (actor.SiteKey == WebsiteEditorSiteKeys.Protect)
+        else if (siteKey == WebsiteEditorSiteKeys.Protect)
         {
             var profile = await _db.AgentProfiles.AsNoTracking()
-                .Where(row => row.AgentUserId == actor.OwnerUserId && row.IsActive)
+                .Where(row => row.AgentUserId == ownerUserId && row.IsActive)
                 .OrderByDescending(row => row.UpdatedUtc)
                 .FirstOrDefaultAsync(cancellationToken);
             phone = profile?.Phone;
@@ -559,15 +633,15 @@ public sealed class WebsiteContentController : ControllerBase
             {
                 var booking = await resolver.ResolveAsync(
                     new ProtectWebsite.Services.Booking.PublicBookingResolveContext(
-                        AgentUserId: actor.OwnerUserId,
-                        AgentSlug: actor.AgentSlug),
+                        AgentUserId: ownerUserId,
+                        AgentSlug: agentSlug),
                     cancellationToken);
                 if (booking.Enabled)
                     bookingUrl = booking.FallbackUrl ?? booking.EmbedUrl;
             }
         }
 
-        return WebsiteCallToActionCatalog.Build(actor.SiteKey, phone, email, bookingUrl);
+        return WebsiteCallToActionCatalog.Build(siteKey, phone, email, bookingUrl);
     }
 
     private async Task<bool> CanPublishAsync(WebsiteEditorTicket actor, CancellationToken cancellationToken) =>
