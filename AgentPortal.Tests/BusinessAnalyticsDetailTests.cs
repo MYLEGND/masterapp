@@ -55,7 +55,7 @@ public sealed class BusinessAnalyticsDetailTests
         {
             Pages = new()
             {
-                ["/"] = new WebsitePageContent
+                ["/"] = new WebsitePageDocument
                 {
                     Extras =
                     [
