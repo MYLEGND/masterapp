@@ -252,6 +252,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     // Always resolve scope through ResolveScopeAsync before query execution.
     private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.ScopeType == ScopeType.Business)
+            return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
+                scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return e => false;
+
         if (scope.HasSiteScope)
             return e => true;
 
@@ -270,6 +277,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.ScopeType == ScopeType.Business)
+            return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
+                scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return e => false;
+
         if (scope.HasSiteScope)
             return l => false;
 
@@ -277,10 +291,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         {
             if (scopedAgentIds != null && scopedAgentIds.Length > 0)
             {
-                return l => l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
+                return l => l.CommerceBusinessId == null && l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
             }
             var agentId = scope.AgentTrackingProfileId.Value;
-            return l => l.AgentTrackingProfileId == agentId;
+            return l => l.CommerceBusinessId == null && l.AgentTrackingProfileId == agentId;
         }
         return l => true;
     }

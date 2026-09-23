@@ -16,6 +16,7 @@ using Infrastructure.Businesses;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 builder.Services.AddControllersWithViews();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

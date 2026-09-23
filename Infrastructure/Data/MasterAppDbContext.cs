@@ -61,6 +61,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<FounderSoftwareRepairBatch> FounderSoftwareRepairBatches => Set<FounderSoftwareRepairBatch>();
     public DbSet<FounderAiActionAuthorization> FounderAiActionAuthorizations => Set<FounderAiActionAuthorization>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
+    public DbSet<MarketingConnection> MarketingConnections => Set<MarketingConnection>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -185,6 +186,7 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyConfiguration(new MarketingConnectionConfiguration());
         modelBuilder.Entity<FounderAiActionAuthorization>(entity =>
         {
             entity.ToTable("FounderAiActionAuthorizations");
@@ -669,6 +671,14 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceBusinessStorefrontSettings>(e =>
         {
+            e.Property(x => x.ShortBio).HasMaxLength(2000);
+            e.Property(x => x.BookingEmbedUrl).HasMaxLength(2048);
+            e.Property(x => x.BookingFallbackUrl).HasMaxLength(2048);
+            e.Property(x => x.BookingMailboxId).HasMaxLength(320);
+            e.Property(x => x.BookingCalendarEmail).HasMaxLength(320);
+            e.Property(x => x.GlobalStoreCheckoutUrl).HasMaxLength(2048);
+            e.Property(x => x.Revision).IsConcurrencyToken();
+
             e.HasKey(x => x.Id);
             e.Property(x => x.BrandHeadline).IsRequired().HasMaxLength(180);
             e.Property(x => x.BrandSubheadline).IsRequired().HasMaxLength(300);
@@ -1428,6 +1438,9 @@ public class MasterAppDbContext : DbContext
         // ==========================================================
         modelBuilder.Entity<AnalyticsEvent>(e =>
         {
+            e.Property(x => x.WebsiteBindingId).HasMaxLength(120);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.EventUtc });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
             e.Property(x => x.EventId).IsRequired();
             e.Property(x => x.EventType).IsRequired().HasMaxLength(80);
@@ -1519,6 +1532,9 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<MetaSignalEvent>(e =>
         {
+            e.Property(x => x.WebsiteBindingId).HasMaxLength(120);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
             e.Property(x => x.CreatedUtc).IsRequired();
             e.Property(x => x.EventId).IsRequired().HasMaxLength(120);
@@ -1593,6 +1609,9 @@ public class MasterAppDbContext : DbContext
         // WEBSITE LEADS
         modelBuilder.Entity<WebsiteLead>(e =>
         {
+            e.Property(x => x.WebsiteBindingId).HasMaxLength(120);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.LeadId).IsUnique();
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
@@ -1607,6 +1626,8 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
         {
+            e.HasIndex(x => x.CommerceBusinessId);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
             e.Property(x => x.WorkstationLeadId).IsRequired().HasMaxLength(64);
             e.Property(x => x.AgentUserId).IsRequired().HasMaxLength(180);
@@ -1763,6 +1784,8 @@ public class MasterAppDbContext : DbContext
             // NormalizedEmail is the enforced uniqueness guardrail (configured above).
         modelBuilder.Entity<WorkstationLeadProfile>(e =>
         {
+            e.HasIndex(x => x.CommerceBusinessId);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.LeadId);
             e.ToTable("WorkstationLeadProfiles");
             e.Property(x => x.LeadId).HasMaxLength(64);
@@ -2397,6 +2420,9 @@ public class MasterAppDbContext : DbContext
         });
         modelBuilder.Entity<CommerceWebsiteInquiry>(e =>
         {
+            e.Property(x => x.NotificationStatus).HasMaxLength(32);
+            e.Property(x => x.NotificationRevision).IsConcurrencyToken();
+            e.HasIndex(x => new { x.NotificationStatus, x.NotificationNextAttemptUtc });
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(160);
             e.Property(x => x.Email).HasMaxLength(254);

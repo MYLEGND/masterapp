@@ -9,6 +9,16 @@ internal static class AnalyticsScopeQueryExtensions
         this IQueryable<AnalyticsEvent> query,
         ScopeContext scope)
     {
+        if (scope.ScopeType == ScopeType.Business)
+            return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
+                ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
+                : query.Where(x => false);
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return query.Where(x => false);
+        if (scope.ScopeType == ScopeType.Agent)
+            query = query.Where(x => x.CommerceBusinessId == null);
+
         var siteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
         var ownerMarker = BuildJsonMarker("reportingOwner", scope.ReportingOwner);
 
@@ -38,6 +48,16 @@ internal static class AnalyticsScopeQueryExtensions
         this IQueryable<MetaSignalEvent> query,
         ScopeContext scope)
     {
+        if (scope.ScopeType == ScopeType.Business)
+            return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
+                ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
+                : query.Where(x => false);
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return query.Where(x => false);
+        if (scope.ScopeType == ScopeType.Agent)
+            query = query.Where(x => x.CommerceBusinessId == null);
+
         var siteMarker = BuildJsonMarker("siteKey", scope.SiteKey);
         var ownerMarker = BuildJsonMarker("reportingOwner", scope.ReportingOwner);
 

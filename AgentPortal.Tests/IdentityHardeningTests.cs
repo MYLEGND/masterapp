@@ -242,7 +242,10 @@ public class IdentityHardeningTests
             new AgentProfileAccessResolver(db),
             BuildActiveAccountLifecycle(),
             Mock.Of<IAgentTrackingService>(),
-            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
+            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()),
+            new Infrastructure.Analytics.AgentMarketingProfileService(db,
+                new Infrastructure.Analytics.MarketingConnectionStore(db, new Infrastructure.Analytics.MarketingCredentialProtector(new EphemeralDataProtectionProvider())),
+                new EphemeralDataProtectionProvider()))
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
@@ -352,7 +355,10 @@ public class IdentityHardeningTests
             new AgentProfileAccessResolver(db),
             BuildActiveAccountLifecycle(),
             Mock.Of<IAgentTrackingService>(),
-            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
+            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()),
+            new Infrastructure.Analytics.AgentMarketingProfileService(db,
+                new Infrastructure.Analytics.MarketingConnectionStore(db, new Infrastructure.Analytics.MarketingCredentialProtector(new EphemeralDataProtectionProvider())),
+                new EphemeralDataProtectionProvider()))
         {
             ControllerContext = new ControllerContext
             {
@@ -389,7 +395,10 @@ public class IdentityHardeningTests
             new AgentProfileAccessResolver(db),
             BuildActiveAccountLifecycle(),
             Mock.Of<IAgentTrackingService>(),
-            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()))
+            new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new EphemeralDataProtectionProvider()),
+            new Infrastructure.Analytics.AgentMarketingProfileService(db,
+                new Infrastructure.Analytics.MarketingConnectionStore(db, new Infrastructure.Analytics.MarketingCredentialProtector(new EphemeralDataProtectionProvider())),
+                new EphemeralDataProtectionProvider()))
         {
             ControllerContext = new ControllerContext
             {

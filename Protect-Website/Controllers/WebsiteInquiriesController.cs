@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Leads;
 using Infrastructure.Security;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
@@ -18,13 +19,15 @@ public sealed class WebsiteInquiriesController : ControllerBase
     private readonly WebsiteEditorTicketProtector _tickets;
     private readonly IConfiguration _configuration;
     private readonly WebsiteDomainService _domains;
+    private readonly IWebsiteLifeLeadCaptureService _capture;
 
-    public WebsiteInquiriesController(MasterAppDbContext db, WebsiteEditorTicketProtector tickets, IConfiguration configuration, WebsiteDomainService domains)
+    public WebsiteInquiriesController(MasterAppDbContext db, WebsiteEditorTicketProtector tickets, IConfiguration configuration, WebsiteDomainService domains, IWebsiteLifeLeadCaptureService capture)
     {
         _db = db;
         _tickets = tickets;
         _configuration = configuration;
         _domains = domains;
+        _capture = capture;
     }
 
     public sealed record PublicRequest(Guid SubmissionId, string Name, string Email, string Message, string SourcePath, bool Consent);
@@ -65,12 +68,34 @@ public sealed class WebsiteInquiriesController : ControllerBase
             SubmissionId = request.SubmissionId, Name = name, Email = email,
             Message = message, SourcePath = path
         };
+        var lead = new WebsiteLead
+        {
+            LeadId = Guid.NewGuid(), CommerceBusinessId = businessId.Value, WebsiteContentVersionId = version.Id,
+            FirstName = name.Length <= 120 ? name : name[..120], LastName = name.Length <= 120 ? "" : name[120..],
+            Email = email, SourcePageKey = path.Length <= 120 ? path : "business-inquiry",
+            InterestType = "BusinessInquiry", TermsAccepted = request.Consent,
+            Host = origin.IdnHost, CreatedUtc = DateTime.UtcNow
+        };
+        inquiry.WebsiteLeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
+        await using var transaction = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(cancellationToken) : null;
         _db.Add(inquiry);
-        try { await _db.SaveChangesAsync(cancellationToken); }
+        try
+        {
+            await WebsiteLeadSubmission.TryCreateAsync(_db, lead, request.SubmissionId.ToString("D"), cancellationToken,
+                async ct =>
+                {
+                    var captured = await _capture.UpsertAsync(new() { WebsiteLeadId = lead.LeadId, SubmittedUtc = lead.CreatedUtc }, ct);
+                    if (!captured.Captured) throw new InvalidOperationException("The business inquiry could not be linked to CRM.");
+                });
+            await _db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        }
         catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 2601 or 2627 })
         {
             // Concurrent retries are constrained by the database, not an in-process lock.
+            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
             _db.Entry(inquiry).State = EntityState.Detached;
+            _db.Entry(lead).State = EntityState.Detached;
             existing = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
                 .SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.SubmissionId == request.SubmissionId, cancellationToken);
             if (existing is null) throw;

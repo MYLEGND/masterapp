@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace AgentPortal.Models;
+namespace Shared.Crm;
 
 public sealed class ClientCrmMeta
 {
@@ -175,32 +175,34 @@ public static class ClientCrmMetaSerializer
         "Unresponsive"
     };
 
-    public static ClientCrmMeta Deserialize(string? raw)
+    public static ClientCrmMeta Deserialize(string? raw, IReadOnlyList<string>? pipelineStages = null)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return new ClientCrmMeta();
+            return new ClientCrmMeta { PipelineStage = pipelineStages?.FirstOrDefault() ?? ClientCrmMeta.DefaultPipelineStage };
 
         try
         {
             var meta = JsonSerializer.Deserialize<ClientCrmMeta>(raw, JsonOptions) ?? new ClientCrmMeta();
-            Normalize(meta);
+            Normalize(meta, pipelineStages);
             return meta;
         }
         catch
         {
-            return new ClientCrmMeta();
+            return new ClientCrmMeta { PipelineStage = pipelineStages?.FirstOrDefault() ?? ClientCrmMeta.DefaultPipelineStage };
         }
     }
 
-    public static string Serialize(ClientCrmMeta meta)
+    public static string Serialize(ClientCrmMeta meta, IReadOnlyList<string>? pipelineStages = null)
     {
-        Normalize(meta);
+        Normalize(meta, pipelineStages);
         return JsonSerializer.Serialize(meta, JsonOptions);
     }
 
-    public static void Normalize(ClientCrmMeta meta)
+    public static void Normalize(ClientCrmMeta meta, IReadOnlyList<string>? pipelineStages = null)
     {
-        var normalizedStage = NormalizePipelineStage(meta.PipelineStage);
+        var normalizedStage = pipelineStages is { Count: > 0 }
+            ? pipelineStages.FirstOrDefault(x => x.Equals(meta.PipelineStage, StringComparison.OrdinalIgnoreCase)) ?? pipelineStages[0]
+            : NormalizePipelineStage(meta.PipelineStage);
         if (!string.Equals(meta.PipelineStage, normalizedStage, StringComparison.Ordinal))
             meta.StageEnteredUtc = DateTime.UtcNow;
 

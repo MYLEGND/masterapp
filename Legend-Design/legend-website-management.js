@@ -154,6 +154,37 @@
         status.textContent = 'Add the routing record shown below at your registrar, then verify status.';
       }), true)); status.textContent = '';
     });
+    const marketingProfile = () => run(async () => {
+      section('Marketing & booking');
+      const profile = await request('/profile');
+      const settings = profile.settings;
+      panel.append(el('p', 'These settings belong to this business and apply across its website and analytics.'));
+      panel.append(el('h4', 'Public card'));
+      const bioLabel = el('label', 'Short bio'), bio = el('textarea', null, { rows: '4', maxlength: '2000' });
+      bio.value = settings.shortBio || ''; bioLabel.append(bio); panel.append(bioLabel);
+      panel.append(el('h4', 'Marketing'), el('p', profile.adsConnected ? `Connected account: ${profile.connectedAccount || 'Meta'}` : 'No active Meta Ads connection.'));
+      const pixel = field('Meta Pixel ID'); pixel.value = settings.metaPixelId || ''; pixel.inputMode = 'numeric';
+      panel.append(el('p', profile.hasSecureCapiToken ? 'Meta CAPI: configured securely' : 'Meta CAPI: not configured'));
+      const token = field('Replace secure CAPI token (leave blank to keep)', 'password'); token.autocomplete = 'new-password';
+      const test = field('Meta Test Event Code (optional)'); test.value = settings.metaTestEventCode || '';
+      panel.append(el('h4', 'Booking'));
+      const enabled = field('Enable this business scheduler', 'checkbox'); enabled.checked = settings.bookingEnabled;
+      const embed = field('Embed URL', 'url'); embed.value = settings.bookingEmbedUrl || '';
+      const fallback = field('Fallback URL', 'url'); fallback.value = settings.bookingFallbackUrl || '';
+      const mailbox = field('Mailbox / Page ID'); mailbox.value = settings.bookingMailboxId || '';
+      const calendar = field('Calendar email', 'email'); calendar.value = settings.bookingCalendarEmail || '';
+      panel.append(button('Save marketing & booking', () => run(async () => {
+        const result = await request('/profile', { settings: {
+          profileRevision: settings.profileRevision, connectionRevision: settings.connectionRevision,
+          shortBio: bio.value, bookingEnabled: enabled.checked, bookingEmbedUrl: embed.value,
+          bookingFallbackUrl: fallback.value, bookingMailboxId: mailbox.value, bookingCalendarEmail: calendar.value || null,
+          metaPixelId: pixel.value, metaTestEventCode: test.value, replacementCapiToken: token.value || null
+        } });
+        token.value = ''; settings.profileRevision = result.settings.profileRevision; settings.connectionRevision = result.settings.connectionRevision;
+        status.textContent = 'Marketing and booking settings saved.';
+      }), true));
+      status.textContent = '';
+    });
     const inquiries = () => run(async () => {
       section('Business inquiries');
       const url = new URL('/api/website-inquiries/manage', session.apiBase); url.searchParams.set('ticket', session.ticket);
@@ -231,7 +262,7 @@
       if (state.capabilities?.canImport === true) tile('Import content', 'Bring an authorized export into draft', importDraft);
       tile('Website usage', 'Storage, media and publication history', usage);
       tile('Export website', 'Download your structured website content', exportWebsite);
-      if (trigger.dataset.scope === 'business') { tile('Business details', 'Public contact details, services and locations', businessDetails); if (state.capabilities?.canManageDomains === true) tile('Domains', 'Connect and verify your business address', domains); tile('Inquiries', 'Manage customer messages for this business', inquiries); }
+      if (trigger.dataset.scope === 'business') { if (state.capabilities?.canPublish === true) tile('Marketing & booking', 'Public card, secure Meta destination and scheduler', marketingProfile); tile('Business details', 'Public contact details, services and locations', businessDetails); if (state.capabilities?.canManageDomains === true) tile('Domains', 'Connect and verify your business address', domains); tile('Inquiries', 'Manage customer messages for this business', inquiries); }
       panel.append(grid);
     };
     await run(async () => {

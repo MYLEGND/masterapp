@@ -36,6 +36,7 @@ public static class WebsiteContentSanitizer
                 Id = id,
                 SectionId = sectionId,
                 Type = type,
+                Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
                 Text = ClampText(extra.Text),
                 Href = SanitizeUrl(extra.Href), Target = SanitizeTarget(extra.Target),
                 Alt = ClampText(extra.Alt), VideoUrl = SanitizeUrl(extra.VideoUrl, true),
@@ -59,6 +60,7 @@ public static class WebsiteContentSanitizer
 
     private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source) => new()
     {
+        Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
         Text = ClampText(source.Text),
         ImageDataUrl = SanitizeImage(source.ImageDataUrl),
         Hidden = source.Hidden,
