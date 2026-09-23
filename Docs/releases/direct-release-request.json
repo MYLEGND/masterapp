@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly instructed all approved changes and completed fixes to be published through legend/approved-changes.",
-  "purpose": "Publish completed shared editor exact colors, stable flow placement, dynamic scoped page selection, named draft management, and evidence-based Meta health. Incomplete business CRM action integration remains in draft PR 139.",
-  "requestId": "shared-editor-drafts-pages-20260923",
+  "authorization": "Founder explicitly instructed immediate deployment of the current tested changes through legend/approved-changes and deferred remaining CRM, Meta, and account email replacement work to a later date.",
+  "purpose": "Release the current shared Quick Find and CRM/analytics integration checkpoint, scoped Meta isolation, canonical workspace keys and analytics scope resolution, and unchanged-email profile-save correction. Remaining contract coverage and actual login email replacement are deferred; no claim of complete CRM parity or live Meta delivery.",
+  "requestId": "shared-workspace-checkpoint-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
