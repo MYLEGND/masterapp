@@ -381,6 +381,48 @@ jobs:
           done
           echo "Selected marketing consumers use the shared key authority."
 
+      - name: Prepare shared business website routing authority
+        id: routingsecret
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        shell: bash
+        env:
+          PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          FALLBACK_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CONFIGURED_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          token="${PRIMARY_CLOUDFLARE_TOKEN:-${FALLBACK_CLOUDFLARE_TOKEN:-}}"
+          if [ -z "$token" ]; then
+            echo "::error::Cloudflare Workers deployment credential is not configured."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
+          if [ -n "${CONFIGURED_CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::add-mask::$CONFIGURED_CLOUDFLARE_ACCOUNT_ID"
+            printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$CONFIGURED_CLOUDFLARE_ACCOUNT_ID" >> "$GITHUB_ENV"
+          fi
+
+          settings=/tmp/protect-website-routing.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
+          bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
+          if [ -z "$bridge_secret" ]; then
+            bridge_secret="$(openssl rand -hex 32)"
+            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
+              --settings "WebsiteRouting__BridgeSecret=$bridge_secret" --output none
+          fi
+          if [ "${#bridge_secret}" -lt 32 ]; then
+            echo "::error::Website routing bridge secret is missing or too short."
+            exit 1
+          fi
+          echo "::add-mask::$bridge_secret"
+          printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge_secret" >> "$GITHUB_ENV"
+
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
+          persisted="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
+          [ "$persisted" = "$bridge_secret" ]
+          echo "Shared website routing authority is present in Protect without exposing its value."
+
 
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
