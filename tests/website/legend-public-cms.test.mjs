@@ -7,6 +7,7 @@ const source = readFileSync(new URL('../../Legend-Design/legend-public-cms.js', 
 const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const businessInquirySource = readFileSync(new URL('../../Legend-Website/src/business-inquiry.js', import.meta.url), 'utf8');
+const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 
 function fixture({ context, origin = 'https://protect.example.test', search = '', denied = false, savedStyle = null } = {}) {
   const ids = new Map(), events = new Map(), calls = [], alerts = [], errors = [], windowEvents = new Map();
@@ -312,6 +313,13 @@ test('shared business inquiry uses Protect contact identity and two-column rows'
   assert.ok(businessInquirySource.includes("fields.get('Email')"));
   assert.ok(source.includes("requiredContactFields: SITE_KEY === 'business' ? ['FirstName','LastName','Phone','Email'] : []"));
   assert.ok(publicCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
+});
+
+test('published business rendering activates the existing inquiry path without a parallel form runtime',()=>{
+  assert.ok(businessRenderSource.includes("form.removeAttribute('data-preview')"));
+  assert.ok(businessRenderSource.includes("form.querySelectorAll('[disabled]').forEach(element=>element.removeAttribute('disabled'))"));
+  assert.ok(businessRenderSource.includes("form.querySelector('[data-preview-notice]')?.remove()"));
+  assert.ok(businessRenderSource.includes("script.src='/business-inquiry.js'"));
 });
 
 test('shared mobile navigation opens as compact horizontal button grids',()=>{
