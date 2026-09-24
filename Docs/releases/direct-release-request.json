@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly approved direct production deployment of the fully validated centralized website automation batch through legend/approved-changes after validation Run #100 passed.",
-  "purpose": "Deploy the validated centralized website automation and analytics authority across the affected applications only. Preserve Protect Website as the single tracking/Meta/runtime source of truth consumed by LEGEND and business-scoped websites; preserve typed business/agent analytics isolation, canonical Website Analytics reads, server-authority conversions, CRM attribution, smart CTA routing, and the previously validated shared editor updates. No unrelated application or Parfait deployment is requested.",
-  "requestId": "centralized-website-automation-release-20260923",
+  "authorization": "Founder explicitly requested release of the shared website delete controls through legend/approved-changes after the canonical parity repair succeeded.",
+  "purpose": "Directly deploy the shared website editor selection-aware delete controls and scoped whole-website deletion capability to every affected website-management surface. This release is limited to AgentPortal, ClientApp, Protect Website, and LEGEND Website. Do not deploy Parfait and do not modify unrelated application behavior.",
+  "requestId": "website-delete-controls-release-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
