@@ -71,7 +71,14 @@ def main():
     release_mode = request['releaseMode']
     if release_mode not in {'approved-only', 'validate-only'}:
         raise ValueError('releaseMode must be approved-only or validate-only')
+    website_routing = request.get('cloudflareWebsiteRouting', False)
+    if not isinstance(website_routing, bool):
+        raise ValueError('cloudflareWebsiteRouting must be a boolean when supplied')
+    if args.automatic:
+        website_routing = False
     targets = TARGETS if args.automatic else selected_targets(request)
+    if website_routing and tuple(row[0] for row in targets) != ('protect',):
+        raise ValueError('Cloudflare website routing releases must target only masterapp-protect')
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(observe, targets))
     for row in rows:
@@ -89,6 +96,7 @@ def main():
             out.write('website_only=' + str(len(rows) == 1 and rows[0]['app'] == 'website').lower() + '\n')
             out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
             out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
+            out.write('website_routing=' + str(website_routing).lower() + '\n')
 
 
 if __name__ == '__main__':
