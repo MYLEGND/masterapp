@@ -77,8 +77,12 @@ def main():
     if args.automatic:
         website_routing = False
     targets = TARGETS if args.automatic else selected_targets(request)
-    if website_routing and tuple(row[0] for row in targets) != ('protect',):
-        raise ValueError('Cloudflare website routing releases must target only masterapp-protect')
+    if website_routing:
+        routing_apps = {row[0] for row in targets}
+        if 'protect' not in routing_apps:
+            raise ValueError('Cloudflare website routing releases must include masterapp-protect')
+        if not routing_apps.issubset({'portal', 'client', 'protect'}):
+            raise ValueError('Cloudflare website routing may be combined only with AgentPortal and ClientApp in one reviewed release')
     website_routing_canary = ''
     if website_routing:
         website_routing_canary = str(request.get('websiteRoutingCanaryHost') or '').strip().lower().rstrip('.')
