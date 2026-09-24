@@ -8,6 +8,7 @@ const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.cs
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
 const businessInquirySource = readFileSync(new URL('../../Legend-Website/src/business-inquiry.js', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
+const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
 
 function fixture({ context, origin = 'https://protect.example.test', search = '', denied = false, savedStyle = null } = {}) {
   const ids = new Map(), events = new Map(), calls = [], alerts = [], errors = [], windowEvents = new Map();
@@ -325,6 +326,10 @@ test('published business rendering activates the existing inquiry path without a
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
   assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
   assert.equal(source.includes('allow-same-origin'),false);
+  assert.ok(businessMiddlewareSource.includes("frame-src data:; object-src 'none'"));
+  const policy=businessMiddlewareSource.match(/default-src 'self'; script-src[^"]+/)?.[0] || '';
+  assert.equal(policy.includes("script-src 'self' 'unsafe-inline'"),false);
+  assert.equal(policy.includes("script-src 'self' 'unsafe-eval'"),false);
 });
 
 test('shared mobile navigation opens as compact horizontal button grids',()=>{
