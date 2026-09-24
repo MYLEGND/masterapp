@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested recovery of failed direct release #121 together with the already-integrated business-domain Worker bridge, as one approved release through legend/approved-changes. The Cloudflare Worker deployment secrets are now configured. Retry the current approved source only after the business analytics regression was surgically corrected.",
+  "authorization": "Founder explicitly requested recovery of failed direct release #121 together with the already-integrated business-domain Worker bridge, as one approved release through legend/approved-changes. The Cloudflare Worker deployment secrets are configured, the exact AnalyticsController regression from the prior attempt is fixed, and the serialized direct-release lane is clear. Retry the current approved source.",
   "purpose": "Retry the same approved unified release after fixing the exact failing WebsiteInquiryIsolation regression: AnalyticsController now consumes injected routing configuration and falls back to the direct Request.Host when bridge configuration is absent, preserving existing tests and direct-host behavior. Deploy the validated Cloudflare business website router and the already-approved Portal/Client/Protect companions, using the existing immutable ClientApp retry path. Preserve domain ownership, billing, analytics semantics, migrations, authorization, and all unrelated apps. No Parfait or LEGEND static website deployment.",
-  "requestId": "domain-diagnostics-and-business-routing-unified-release-20260924-retry2",
+  "requestId": "domain-diagnostics-and-business-routing-unified-release-20260924-retry3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
