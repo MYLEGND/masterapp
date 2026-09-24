@@ -750,48 +750,224 @@
   }
 
   function setSelected(el) {
+    const previous = selected;
+    if (previous && previous !== el) deactivateInlineEditing(previous);
     document.querySelectorAll('.legend-cms-selected').forEach(x => x.classList.remove('legend-cms-selected'));
     selected = el;
     selectedSection = currentSectionFor(el);
-    if (selected) { selected.classList.add('legend-cms-selected'); selected.draggable = !selected.dataset.cmsSection && !selected.dataset.cmsSignalOnly; }
+    if (selected) {
+      selected.classList.add('legend-cms-selected');
+      selected.draggable = false;
+      activateInlineEditing(selected);
+    } else if (previous) {
+      deactivateInlineEditing(previous);
+    }
     syncEditorControls();
     renderSignalControls();
     showPanel('content');
     refreshLayers();
+    updateDirectCanvasUi();
   }
 
   function selectedOverride() {
     return overrideForElement(selected);
   }
 
+  function previewRelativeRect(el) {
+    if (!editorPreview || !el?.getBoundingClientRect) return null;
+    const rect = el.getBoundingClientRect();
+    const previewRect = editorPreview.getBoundingClientRect();
+    return {
+      left: rect.left - previewRect.left + editorPreview.scrollLeft,
+      top: rect.top - previewRect.top + editorPreview.scrollTop,
+      width: rect.width,
+      height: rect.height
+    };
+  }
+
+  function positionGridOverlay(section) {
+    if (!gridOverlay || !section) return;
+    const rect = previewRelativeRect(section);
+    if (!rect) return;
+    gridOverlay.style.left = `${rect.left}px`;
+    gridOverlay.style.top = `${rect.top}px`;
+    gridOverlay.style.width = `${rect.width}px`;
+    gridOverlay.style.height = `${Math.max(rect.height, 120)}px`;
+  }
+
+  function updateDirectCanvasUi() {
+    if (!selectionFrame || !editorPreview || !selected || selected.dataset.cmsSignalOnly || selected.closest('.legend-cms-editor')) {
+      if (selectionFrame) selectionFrame.hidden = true;
+      if (gridOverlay && !directGesture) gridOverlay.hidden = true;
+      return;
+    }
+    const rect = previewRelativeRect(selected);
+    if (!rect) { selectionFrame.hidden = true; return; }
+    selectionFrame.hidden = false;
+    selectionFrame.style.left = `${rect.left}px`;
+    selectionFrame.style.top = `${rect.top}px`;
+    selectionFrame.style.width = `${Math.max(rect.width, 1)}px`;
+    selectionFrame.style.height = `${Math.max(rect.height, 1)}px`;
+    selectionFrame.dataset.sectionSelected = selected.dataset.cmsSection ? 'true' : 'false';
+    if (directGesture) positionGridOverlay(directGesture.section);
+  }
+
+  function installDirectCanvasControls(preview) {
+    editorPreview = preview;
+    gridOverlay = document.createElement('div');
+    gridOverlay.className = 'legend-cms-grid-overlay';
+    gridOverlay.hidden = true;
+    gridOverlay.setAttribute('aria-hidden', 'true');
+    selectionFrame = document.createElement('div');
+    selectionFrame.className = 'legend-cms-selection-frame';
+    selectionFrame.hidden = true;
+    selectionFrame.innerHTML = `
+      <button type="button" class="legend-cms-move-handle" data-cms-gesture="move" aria-label="Move selected block on grid" title="Move on grid">Move</button>
+      <button type="button" class="legend-cms-resize-handle legend-cms-resize-x" data-cms-gesture="resize-x" aria-label="Resize selected block width" title="Resize width"></button>
+      <button type="button" class="legend-cms-resize-handle legend-cms-resize-y" data-cms-gesture="resize-y" aria-label="Resize selected block height" title="Resize height"></button>
+      <button type="button" class="legend-cms-resize-handle legend-cms-resize-xy" data-cms-gesture="resize-xy" aria-label="Resize selected block width and height" title="Resize width and height"></button>`;
+    preview.append(gridOverlay, selectionFrame);
+
+    const startGesture = event => {
+      const handle = event.target.closest?.('[data-cms-gesture]');
+      if (!handle || !selected || selected.dataset.cmsSignalOnly) return;
+      const mode = handle.dataset.cmsGesture;
+      if (mode === 'move' && selected.dataset.cmsSection) return;
+      const section = selectedSection || currentSectionFor(selected);
+      const parent = selected.parentElement;
+      if (!section || !parent) return;
+      const selectedRect = selected.getBoundingClientRect();
+      const sectionRect = section.getBoundingClientRect();
+      const parentRect = parent.getBoundingClientRect();
+      const override = selectedOverride();
+      if (!override) return;
+      override.style ||= {};
+      checkpoint();
+      directGesture = {
+        mode, target: selected, section, parent,
+        startX: event.clientX, startY: event.clientY,
+        selectedRect, sectionRect, parentRect,
+        startWidthPercent: positiveNumber(override.style.widthPercent) ? Number(override.style.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startHeightPx: positiveNumber(override.style.heightPx) ? Number(override.style.heightPx) : Math.max(selectedRect.height, 24),
+        startOffsetXPercent: Number.isFinite(Number(override.style.offsetXPercent)) ? Number(override.style.offsetXPercent) : 0,
+        startOffsetYPx: Number.isFinite(Number(override.style.offsetYPx)) ? Number(override.style.offsetYPx) : 0,
+        changed: false
+      };
+      gridOverlay.hidden = false;
+      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+      positionGridOverlay(section);
+      handle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    selectionFrame.addEventListener('pointerdown', startGesture);
+    window.addEventListener('pointermove', event => {
+      const gesture = directGesture;
+      if (!gesture || selected !== gesture.target) return;
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      const override = selectedOverride();
+      if (!override) return;
+      override.style ||= {};
+      const style = override.style;
+      const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
+      const parentWidth = gesture.parentRect.width || sectionWidth || 1;
+      const cell = sectionWidth / 12;
+      const verticalStep = 24;
+      let snappedDx = dx;
+      let snappedDy = dy;
+      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+
+      if (gesture.mode === 'move') {
+        if (cell > 0) {
+          const desiredLeft = gesture.selectedRect.left + dx;
+          const gridLeft = gesture.sectionRect.left + Math.round((desiredLeft - gesture.sectionRect.left) / cell) * cell;
+          snappedDx = gridLeft - gesture.selectedRect.left;
+        }
+        snappedDy = Math.round(dy / verticalStep) * verticalStep;
+        const desiredCenterX = gesture.selectedRect.left + snappedDx + gesture.selectedRect.width / 2;
+        const sectionCenterX = gesture.sectionRect.left + gesture.sectionRect.width / 2;
+        if (Math.abs(desiredCenterX - sectionCenterX) <= Math.max(8, cell * .18)) {
+          snappedDx += sectionCenterX - desiredCenterX;
+          gridOverlay.classList.add('legend-cms-snap-x');
+        }
+        const desiredCenterY = gesture.selectedRect.top + snappedDy + gesture.selectedRect.height / 2;
+        const sectionCenterY = gesture.sectionRect.top + gesture.sectionRect.height / 2;
+        if (gesture.sectionRect.height > 0 && Math.abs(desiredCenterY - sectionCenterY) <= 12) {
+          snappedDy += sectionCenterY - desiredCenterY;
+          gridOverlay.classList.add('legend-cms-snap-y');
+        }
+        style.offsetXPercent = Math.round((gesture.startOffsetXPercent + snappedDx / parentWidth * 100) * 1000) / 1000;
+        style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
+      } else {
+        if (gesture.mode === 'resize-x' || gesture.mode === 'resize-xy') {
+          const rawWidth = gesture.startWidthPercent + dx / parentWidth * 100;
+          const snappedWidth = cell > 0 ? Math.round((rawWidth / 100 * parentWidth) / cell) * cell / parentWidth * 100 : rawWidth;
+          style.widthPercent = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
+        }
+        if (gesture.mode === 'resize-y' || gesture.mode === 'resize-xy') {
+          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + dy) / verticalStep) * verticalStep);
+        }
+      }
+      gesture.changed = true;
+      applyStyle(selected, style);
+      updateDirectCanvasUi();
+      event.preventDefault();
+    }, { passive: false });
+
+    const finishGesture = () => {
+      if (!directGesture) return;
+      const changed = directGesture.changed;
+      directGesture = null;
+      gridOverlay.hidden = true;
+      gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
+      if (changed) {
+        syncEditorControls();
+        markDirty();
+      }
+      updateDirectCanvasUi();
+    };
+    window.addEventListener('pointerup', finishGesture);
+    window.addEventListener('pointercancel', finishGesture);
+    preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
+    window.addEventListener('resize', updateDirectCanvasUi);
+    updateDirectCanvasUi();
+  }
+
   function syncEditorControls() {
     const title = document.getElementById('legend-cms-selected-label');
-    const text = document.getElementById('legend-cms-text');
+    const inlineHelp = document.getElementById('legend-cms-inline-help');
     const imageGroup = document.getElementById('legend-cms-image-group');
-    const textGroup = document.getElementById('legend-cms-text-group');
+    const codeGroup = document.getElementById('legend-cms-code-group');
     const scale = document.getElementById('legend-cms-scale');
     const width = document.getElementById('legend-cms-width');
+    const height = document.getElementById('legend-cms-height');
     const top = document.getElementById('legend-cms-padding-top');
     const bottom = document.getElementById('legend-cms-padding-bottom');
+    const offsetX = document.getElementById('legend-cms-offset-x');
+    const offsetY = document.getElementById('legend-cms-offset-y');
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
 
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || !!selected.dataset.cmsSignalOnly; });
     if (!selected) {
       if (title) title.textContent = 'Select content on the page';
-      if (textGroup) textGroup.hidden = true;
+      if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
+      if (codeGroup) codeGroup.hidden = true;
       return;
     }
 
     if (title) title.textContent = elementLabel(selected);
     const isImage = selected instanceof HTMLImageElement;
-    if (textGroup) textGroup.hidden = isImage || !!selected.dataset.cmsSection || ['VIDEO','DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName);
+    const extra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
+    const isCode = extra?.type === 'code';
+    if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
+    if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = selected.dataset.cmsExtraId
-      ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) || {}
-      : pageState().elements[selected.dataset.cmsId] || {};
+    const ov = extra || pageState().elements[selected.dataset.cmsId] || {};
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
@@ -799,13 +975,13 @@
     const actualWidth = parentWidth > 0 ? parseFloat(computed.width) / parentWidth * 100 : 100;
     const displayNumber = value => String(Math.round(value * 1000) / 1000);
     const targetInput = document.getElementById('legend-cms-target'); if (targetInput) targetInput.checked = (ov.target ?? selected.getAttribute('target')) === '_blank';
-    if (text && !isImage) text.value = selected.dataset.cmsExtraField === 'title' ? ov.title ?? selected.textContent ?? '' : ov.text ?? selected.textContent ?? '';
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate block';
     const removeButton = document.getElementById('legend-cms-remove');
     if (removeButton) {
       const kind = serviceCard ? 'service'
         : selected.dataset.cmsSection ? 'section'
+        : isCode ? 'code block'
         : selected.tagName === 'IMG' ? 'image'
         : selected.tagName === 'VIDEO' ? 'video'
         : selected.tagName === 'FORM' ? 'form'
@@ -818,10 +994,13 @@
     }
     if (scale) scale.value = String(ov.style?.fontScale ?? 1);
     if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (height) height.value = ov.style?.heightPx != null ? displayNumber(ov.style.heightPx) : '';
     if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
     if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
+    if (offsetX) offsetX.value = displayNumber(ov.style?.offsetXPercent ?? 0);
+    if (offsetY) offsetY.value = displayNumber(ov.style?.offsetYPx ?? 0);
     if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
-    if (scale) scale.disabled = isImage;
+    if (scale) scale.disabled = isImage || isCode;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
     document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
@@ -837,24 +1016,29 @@
     const control = event.target;
     if (control.validity?.badInput) return;
     const fields = {
-      'legend-cms-scale': 'fontScale', 'legend-cms-width': 'widthPercent',
-      'legend-cms-padding-top': 'paddingTop', 'legend-cms-padding-bottom': 'paddingBottom'
+      'legend-cms-scale': 'fontScale',
+      'legend-cms-width': 'widthPercent',
+      'legend-cms-height': 'heightPx',
+      'legend-cms-padding-top': 'paddingTop',
+      'legend-cms-padding-bottom': 'paddingBottom',
+      'legend-cms-offset-x': 'offsetXPercent',
+      'legend-cms-offset-y': 'offsetYPx'
     };
     const field = fields[control.id];
     if (field && control.value !== '') {
       const value = Number(control.value);
-      const valid = field.startsWith('padding') ? spacingNumber(value) : positiveNumber(value);
-      if (!valid) { control.setCustomValidity('Enter a finite ' + (field.startsWith('padding') ? 'nonnegative' : 'positive') + ' number.'); return; }
+      const signed = field === 'offsetXPercent' || field === 'offsetYPx';
+      const valid = signed ? Number.isFinite(value) : field.startsWith('padding') ? spacingNumber(value) : positiveNumber(value);
+      if (!valid) {
+        control.setCustomValidity(signed ? 'Enter a finite position value.' : 'Enter a finite ' + (field.startsWith('padding') ? 'nonnegative' : 'positive') + ' number.');
+        return;
+      }
     }
     control.setCustomValidity('');
     checkpoint();
     const ov = selectedOverride();
     if (!ov) return;
-    if (control.id === 'legend-cms-text' && !(selected instanceof HTMLImageElement) && !selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) {
-      if (selected.dataset.cmsExtraField === 'title') ov.title = control.value;
-      else ov.text = control.value;
-      setContentText(selected, control.value, true);
-    } else if (control.id === 'legend-cms-hidden') {
+    if (control.id === 'legend-cms-hidden') {
       ov.hidden = control.checked;
       selected.hidden = control.checked;
     } else {
@@ -868,6 +1052,7 @@
       } else return;
       applyStyle(selected, ov.style);
     }
+    updateDirectCanvasUi();
     markDirty();
   }
 
