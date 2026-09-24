@@ -36,11 +36,17 @@
   let ctaCatalog = [];
   let selected = null;
   let selectedSection = null;
+  let editorPreview = null;
+  let selectionFrame = null;
+  let gridOverlay = null;
+  let directGesture = null;
+  let inlineEditNode = null;
+  let inlineEditCheckpointed = false;
   let dirty = false;
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -281,6 +287,17 @@
       el.style.width = `${style.widthPercent}%`;
       el.style.maxWidth = '100%';
     }
+    if (positiveNumber(style.heightPx)) {
+      el.style.height = `${style.heightPx}px`;
+      el.style.overflow = 'auto';
+    }
+    const hasOffsetX = style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent));
+    const hasOffsetY = style.offsetYPx != null && Number.isFinite(Number(style.offsetYPx));
+    if (hasOffsetX || hasOffsetY) {
+      el.style.position = 'relative';
+      if (hasOffsetX) el.style.left = `${Number(style.offsetXPercent)}%`;
+      if (hasOffsetY) el.style.top = `${Number(style.offsetYPx)}px`;
+    }
     if (spacingNumber(style.paddingTop)) el.style.paddingTop = `${style.paddingTop}px`;
     if (spacingNumber(style.paddingBottom)) el.style.paddingBottom = `${style.paddingBottom}px`;
     ['color','backgroundColor','fontFamily','fontWeight','objectFit'].forEach(key => { if (style[key]) el.style[key] = style[key]; });
@@ -299,6 +316,90 @@
     while ((node = walker.nextNode())) if (node.textContent.trim() && !node.parentElement.closest('svg,i,[aria-hidden="true"]')) nodes.push(node);
     if (nodes.length) { nodes[0].textContent = text; nodes.slice(1).forEach(node => { node.textContent = ''; }); }
     else el.appendChild(document.createTextNode(text));
+  }
+
+
+  function overrideForElement(el, create = true) {
+    if (!el?.dataset?.cmsId) return null;
+    if (el.dataset.cmsExtraId) return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
+    return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
+  }
+
+  function isInlineEditable(el) {
+    if (!el || el.dataset.cmsSignalOnly || el.dataset.cmsSection) return false;
+    if (['IMG','VIDEO','DIV','ARTICLE','HEADER','FOOTER','FORM','INPUT','SELECT','TEXTAREA'].includes(el.tagName)) return false;
+    return editableTextTags.has(el.tagName) || editableInteractiveTags.has(el.tagName);
+  }
+
+  function inlineTextValue(el) {
+    const value = typeof el.innerText === 'string' ? el.innerText : el.textContent || '';
+    return value.replace(/\r/g, '');
+  }
+
+  function deactivateInlineEditing(el = inlineEditNode) {
+    if (!el) return;
+    const override = overrideForElement(el, false);
+    if (override) {
+      const value = inlineTextValue(el);
+      if (el.dataset.cmsExtraField === 'title') override.title = value;
+      else override.text = value;
+      setContentText(el, value, true);
+    }
+    el.removeAttribute('contenteditable');
+    el.classList.remove('legend-cms-inline-editing');
+    if (inlineEditNode === el) inlineEditNode = null;
+    inlineEditCheckpointed = false;
+  }
+
+  function activateInlineEditing(el) {
+    if (!isInlineEditable(el)) return;
+    if (inlineEditNode && inlineEditNode !== el) deactivateInlineEditing(inlineEditNode);
+    inlineEditNode = el;
+    el.setAttribute('contenteditable', 'plaintext-only');
+    el.setAttribute('spellcheck', 'true');
+    el.classList.add('legend-cms-inline-editing');
+    if (el.dataset.cmsInlineBound === 'true') return;
+    el.dataset.cmsInlineBound = 'true';
+    el.addEventListener('beforeinput', () => {
+      if (!inlineEditCheckpointed) {
+        checkpoint();
+        inlineEditCheckpointed = true;
+      }
+    });
+    el.addEventListener('input', () => {
+      if (!inlineEditCheckpointed) {
+        checkpoint();
+        inlineEditCheckpointed = true;
+      }
+      const override = overrideForElement(el);
+      if (!override) return;
+      const value = inlineTextValue(el);
+      if (el.dataset.cmsExtraField === 'title') override.title = value;
+      else override.text = value;
+      el.dataset.cmsPreserveWhitespace = 'true';
+      markDirty();
+      updateDirectCanvasUi();
+    });
+    el.addEventListener('blur', () => {
+      if (inlineEditNode !== el) return;
+      const override = overrideForElement(el, false);
+      if (override) {
+        const value = inlineTextValue(el);
+        if (el.dataset.cmsExtraField === 'title') override.title = value;
+        else override.text = value;
+        setContentText(el, value, true);
+      }
+      inlineEditCheckpointed = false;
+      updateDirectCanvasUi();
+    });
+  }
+
+  const defaultCodeBlock = '<div style="font:600 18px/1.5 system-ui;padding:24px">Edit this code block to build custom content.</div>';
+
+  function renderCodePreview(el, extra) {
+    const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
+    if (!frame) return;
+    frame.srcdoc = extra?.text?.trim() ? extra.text : defaultCodeBlock;
   }
 
   function mediaUrl(value) {
@@ -380,6 +481,16 @@
       el.append(heading, copy);
     } else if (extra.type === 'button') {
       el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+    } else if (extra.type === 'code') {
+      el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
+      const frame = document.createElement('iframe');
+      frame.dataset.cmsCodeFrame = 'true';
+      frame.title = 'Custom code block';
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
+      frame.setAttribute('loading', 'lazy');
+      el.appendChild(frame);
+      renderCodePreview(el, extra);
     } else {
       el = document.createElement('p');
       el.textContent = extra.text || '';
@@ -650,11 +761,7 @@
   }
 
   function selectedOverride() {
-    if (!selected?.dataset?.cmsId) return null;
-    if (selected.dataset.cmsExtraId) {
-      return pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) || null;
-    }
-    return ensureOverride(selected.dataset.cmsId);
+    return overrideForElement(selected);
   }
 
   function syncEditorControls() {
