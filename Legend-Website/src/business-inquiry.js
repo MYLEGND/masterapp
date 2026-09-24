@@ -15,7 +15,8 @@
       let sourceActionKey = window.LEGEND_LAST_WEBSITE_ACTION_KEY || null;
       try { sourceActionKey ||= sessionStorage.getItem('legend_last_website_action_key'); } catch {}
       const values = {
-        name:String(fields.get('name')||''), email:String(fields.get('email')||''), message:String(fields.get('message')||''),
+        firstName:String(fields.get('FirstName')||''), lastName:String(fields.get('LastName')||''),
+        phone:String(fields.get('Phone')||''), email:String(fields.get('Email')||''), message:String(fields.get('Message')||''),
         sourcePath:location.pathname, sourceActionKey, consent:fields.get('consent')==='on',
         sessionId:analytics?.ids?.getSessionId?.() || null, visitorId:analytics?.ids?.getVisitorId?.() || null,
         utmSource:attribution.utmSource||null, utmMedium:attribution.utmMedium||null, utmCampaign:attribution.utmCampaign||null,
