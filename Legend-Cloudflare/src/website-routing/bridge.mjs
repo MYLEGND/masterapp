@@ -37,17 +37,16 @@ export function buildBridgeRequest(request, env) {
   }
 
   const target = new URL(incoming.pathname + incoming.search, origin);
-  const headers = new Headers(request.headers);
+  const upstream = new Request(target.toString(), request);
+  const headers = new Headers(upstream.headers);
   headers.delete("X-Legend-Original-Host");
   headers.delete("X-Legend-Website-Bridge");
   headers.set("X-Legend-Original-Host", incoming.hostname.toLowerCase());
   headers.set("X-Legend-Website-Bridge", secret);
 
   return {
-    request: new Request(target.toString(), {
-      method: request.method,
+    request: new Request(upstream, {
       headers,
-      body: request.body,
       redirect: "manual"
     })
   };
