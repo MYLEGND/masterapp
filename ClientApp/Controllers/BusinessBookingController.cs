@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using ClientApp.Services;
+using Domain.Entities;
 using Infrastructure.Bookings;
 using Infrastructure.Businesses;
 using Infrastructure.Data;
