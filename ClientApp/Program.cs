@@ -66,6 +66,7 @@ builder.Services.AddHostedService<ClientProfileImageLegacyBackfillHostedService>
 builder.Services.AddScoped<IMessagingActorContextResolver, ClientAppMessagingActorContextResolver>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IClientEntraLifecycleService, ClientEntraLifecycleService>();
+builder.Services.AddHostedService<ClientEntraProvisioningRecoveryHostedService>();
 builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
 builder.Services.AddScoped<IHouseholdMembershipService, HouseholdMembershipService>();
 builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
