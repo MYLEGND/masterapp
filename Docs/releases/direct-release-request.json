@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorized the business website publishing repair for direct deployment through legend/approved-changes. Preserve the successful Cloudflare routing/domain diagnostics, CAMO ownership and draft, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and all unrelated working behavior. Deploy only the affected Protect Website application.",
-  "purpose": "Second surgical publisher correction after the verified post-release exception de605aa5388e946827a56ef72af7d8d5278efa10 still showed the Node child closing stdin before WebsitePageCompiler.cs:44 completed. Remove all path-identity self-detection from the renderer by using a dedicated CLI entrypoint, package that entrypoint with the existing compiler, and align Protect's Windows App Service Node runtime with the compiler's supported Node 24 runtime. Run the direct CLI renderer regression before packaging. No migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
-  "requestId": "business-publisher-dedicated-cli-node24-direct-20260924-1",
+  "purpose": "Retry the second surgical publisher correction after validation proved the new dedicated CLI process test passes but an unrelated pre-existing favicon assertion in the broader renderer test file fails. Run only the new publication-process regression required for this repair, then package and deploy only Protect. Keep the dedicated CLI entrypoint and Protect Windows Node 24 runtime alignment. No migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
+  "requestId": "business-publisher-dedicated-cli-node24-direct-20260924-retry2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
