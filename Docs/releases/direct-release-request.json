@@ -1,16 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly directed that the successful live AgentPortal, ClientApp, and Protect deployments from the prior unified release must be preserved and must not be redeployed. The shared production concurrency lane is now clear; retry only the failed Cloudflare business website routing portion through the existing approved direct-release lane, and fail closed before any mutation if those three applications are not all still live at the preserved release revision.",
-  "purpose": "Retry the preserve-live routing recovery on the clear serialized lane. Verify AgentPortal, ClientApp, and Protect still report aa133def829813e43a8c0442f2573d135dd91a96; do not build deployable application packages, apply migrations, synchronize application settings, or redeploy any application. Reuse the existing Protect bridge secret read-only, accept an absent first Worker deployment as the expected Cloudflare 404, deploy only the shared router, prove camoexterior.com reaches the exact LEGEND business binding, then re-verify all preserved application revisions.",
-  "requestId": "business-routing-preserve-live-recovery-20260924-retry6",
+  "authorization": "Founder explicitly authorized the proven business-website publication repair for direct deployment through legend/approved-changes. Preserve the successful Cloudflare custom-domain routing, domain diagnostics, CAMO ownership/binding, AgentPortal, ClientApp, and all unrelated working behavior. Deploy only the affected Protect Website application.",
+  "purpose": "Surgical production repair for the verified CAMO publishing exception on release aa133def829813e43a8c0442f2573d135dd91a96. The business publication compiler used URL.pathname to detect direct execution, which is incompatible with Windows filesystem path form and caused the Node renderer to exit before consuming stdin; Protect then failed while writing the publication payload at WebsitePageCompiler.cs:44. Use filesystem-safe file-URL comparison, retain the existing compiler and immutable publication authority, include direct-process regression coverage, apply no migrations, and deploy only masterapp-protect. Do not redeploy AgentPortal, ClientApp, LEGEND Website, Parfait, or Cloudflare routing.",
+  "requestId": "business-publisher-windows-entrypoint-direct-20260924-1",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
     "masterapp-protect"
   ],
-  "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com",
-  "preserveLiveTargets": true,
-  "preserveLiveRevision": "aa133def829813e43a8c0442f2573d135dd91a96"
+  "cloudflareWebsiteRouting": false
 }
