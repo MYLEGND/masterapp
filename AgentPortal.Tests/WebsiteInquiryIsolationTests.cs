@@ -81,6 +81,7 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal("business_contact", analytics.WebsiteBindingId);
         Assert.Null(analytics.AgentTrackingProfileId);
         Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Message = "Different request" }, CancellationToken.None));
+        Assert.IsType<ConflictObjectResult>(await f.Controller.Submit(request with { Phone = "(602) 555-0100" }, CancellationToken.None));
     }
 
     [Fact]
