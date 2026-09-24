@@ -3,6 +3,7 @@ using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Infrastructure.WebsiteEditing;
 
@@ -11,7 +12,7 @@ namespace Infrastructure.WebsiteEditing;
 /// immutable published website owner/version. Browser-supplied owner IDs are
 /// never accepted as authority.
 /// </summary>
-public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, WebsiteDomainService domains)
+public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, WebsiteDomainService domains, IConfiguration configuration)
 {
     private static readonly HashSet<string> LegendHosts =
         new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
@@ -26,10 +27,11 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         {
             // Published business pages can call the Protect authority through the
             // verified custom host itself. GET requests do not always carry Origin.
+            var publicHost = WebsiteRequestHostResolver.Resolve(context, configuration);
             if (siteKey != WebsiteEditorSiteKeys.Business || !context.Request.IsHttps ||
-                string.IsNullOrWhiteSpace(context.Request.Host.Host))
+                string.IsNullOrWhiteSpace(publicHost))
                 return null;
-            origin = new Uri("https://" + context.Request.Host.Host);
+            origin = new Uri("https://" + publicHost);
         }
         if (siteKey == WebsiteEditorSiteKeys.Legend)
         {
