@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the surgical custom-domain diagnostic addition and direct publication through legend/approved-changes. The prior release stopped only on the new diagnostic field-name regression test; this retry changes only those diagnostic JSON property names. Deploy only AgentPortal, ClientApp, and Protect Website.",
+  "authorization": "Founder explicitly authorized the surgical custom-domain diagnostic addition and direct publication through legend/approved-changes. The previous retry was cancelled before execution by the serialized release lane; the lane is verified clear now. Deploy only AgentPortal, ClientApp, and Protect Website.",
   "purpose": "Deploy the existing WebsiteDomainService diagnostic enhancement that reports the exact Cloudflare hostname gate, HTTPS/DCV gate, provider validation errors, LEGEND routing-proof result, and the concrete required action instead of the generic pending message. Preserve all domain ownership, Cloudflare hostname/certificate behavior, DNS instructions, website routing, billing, analytics, content, leads, and unrelated application behavior. No overrides, duplicate verifier, schema migration, or unrelated deployment.",
-  "requestId": "business-domain-exact-diagnostics-20260924-r2",
+  "requestId": "business-domain-exact-diagnostics-20260924-r3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
