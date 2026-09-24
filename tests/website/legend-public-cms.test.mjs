@@ -5,6 +5,8 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../Legend-Design/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.css', import.meta.url), 'utf8');
+const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
+const businessInquirySource = readFileSync(new URL('../../Legend-Website/src/business-inquiry.js', import.meta.url), 'utf8');
 
 function fixture({ context, origin = 'https://protect.example.test', search = '', denied = false, savedStyle = null } = {}) {
   const ids = new Map(), events = new Map(), calls = [], alerts = [], errors = [], windowEvents = new Map();
@@ -299,6 +301,24 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
 }
 test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
+});
+
+test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
+  assert.ok(businessBuildSource.includes('id="business_inquiry"'));
+  for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
+  assert.ok(businessInquirySource.includes("fields.get('FirstName')"));
+  assert.ok(businessInquirySource.includes("fields.get('LastName')"));
+  assert.ok(businessInquirySource.includes("fields.get('Phone')"));
+  assert.ok(businessInquirySource.includes("fields.get('Email')"));
+  assert.ok(source.includes("requiredContactFields: SITE_KEY === 'business' ? ['FirstName','LastName','Phone','Email'] : []"));
+  assert.ok(publicCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
+});
+
+test('shared mobile navigation opens as compact horizontal button grids',()=>{
+  assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
+  assert.ok(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'));
+  assert.ok(publicCss.includes('.nav{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}'));
+  assert.equal(publicCss.includes('.nav[data-open=true]{display:flex}'),false);
 });
 for (const siteKey of ['legend','protect','business']) {
   test(`${siteKey}: shared editor round-trips authored whitespace exactly`,async()=>{
