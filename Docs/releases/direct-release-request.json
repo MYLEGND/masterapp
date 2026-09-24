@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly authorized the precise business website publication encoding correction through legend/approved-changes. Preserve the working CAMO draft, published/domain ownership, Cloudflare routing and diagnostics, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and every unrelated working behavior. Deploy only the affected Protect Website application.",
-  "purpose": "Replace the implicit Windows console-code-page boundary in WebsitePageCompiler with explicit strict UTF-8 for Node stdin, stdout, and stderr. This fixes publication mojibake at the .NET-to-Node process transport itself rather than hiding or replacing corrupted characters. Validate an end-to-end business publication containing middle dot, em dash, accented text, registered mark, and curly quotes, plus the dedicated CLI process test. No content substitution, no fallback publisher, no CSS or rendering override, no migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
-  "requestId": "business-publisher-utf8-process-transport-direct-20260924-1",
+  "purpose": "Retry the UTF-8 transport release after the safety gate correctly blocked deployment because the first regression asserted renderer placement instead of the actual process-transport output. Keep the exact production fix: explicit strict UTF-8 for WebsitePageCompiler Node stdin, stdout, and stderr. Validate the raw compiled publication payload preserves middle dot, em dash, accented text, registered mark, and curly quotes without mojibake, plus the dedicated CLI process test. No character substitution, no fallback publisher, no CSS/render override, no migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
+  "requestId": "business-publisher-utf8-process-transport-direct-20260924-retry2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"

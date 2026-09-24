@@ -149,9 +149,9 @@ public sealed class WebsiteContentEditorRoundTripTests
         using var compiled = JsonDocument.Parse(version.CompiledPagesJson!);
         var html = compiled.RootElement.GetProperty("pages").GetProperty("/").GetProperty("html").GetString();
         Assert.NotNull(html);
-        Assert.Contains(unicode, html!, StringComparison.Ordinal);
-        Assert.DoesNotContain("Â", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("Ã", html, StringComparison.Ordinal);
+        Assert.Contains(unicode, version.CompiledPagesJson!, StringComparison.Ordinal);
+        Assert.DoesNotContain("Â", version.CompiledPagesJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ã", version.CompiledPagesJson, StringComparison.Ordinal);
     }
 
     [Theory]
