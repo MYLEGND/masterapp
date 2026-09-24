@@ -49,16 +49,26 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
         JsonElement result;
         if (string.IsNullOrEmpty(binding.ProviderHostnameId))
         {
-            // Recover a successful provider call whose receipt was not persisted, without creating a duplicate.
+            // Recover only legacy provider receipts that carry the exact LEGEND ownership metadata.
+            // New hostnames keep tenant ownership exclusively in WebsiteDomainBinding so Cloudflare
+            // Custom Metadata is not a runtime dependency.
             var existing = await CallAsync(HttpMethod.Get, "?hostname=" + Uri.EscapeDataString(binding.Hostname), null, ct);
             var matches = existing.EnumerateArray().Where(x => x.GetProperty("hostname").GetString() == binding.Hostname).ToArray();
             if (matches.Length > 1) throw new InvalidOperationException("Ambiguous domain provider receipt.");
-            result = matches.Length == 1 ? matches[0] : await CallAsync(HttpMethod.Post, "", new
+            if (matches.Length == 1)
             {
-                hostname = binding.Hostname,
-                ssl = new { method = "http", type = "dv" },
-                custom_metadata = new { legend_binding_id = binding.Id.ToString("N"), legend_business_id = businessId.ToString("N") }
-            }, ct);
+                if (!HasMatchingLegendMetadata(binding, matches[0]))
+                    throw new InvalidOperationException("Domain provider hostname exists without a trusted LEGEND receipt.");
+                result = matches[0];
+            }
+            else
+            {
+                result = await CallAsync(HttpMethod.Post, "", new
+                {
+                    hostname = binding.Hostname,
+                    ssl = new { method = "http", type = "dv" }
+                }, ct);
+            }
         }
         else result = await CallAsync(HttpMethod.Get, "/" + Uri.EscapeDataString(binding.ProviderHostnameId), null, ct);
 
@@ -112,10 +122,7 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
     {
         if (result.GetProperty("hostname").GetString() != binding.Hostname)
             throw new InvalidOperationException("Domain provider returned a different hostname.");
-        if (!result.TryGetProperty("custom_metadata", out var metadata) ||
-            !metadata.TryGetProperty("legend_binding_id", out var bindingId) || bindingId.GetString() != binding.Id.ToString("N") ||
-            !metadata.TryGetProperty("legend_business_id", out var businessId) || businessId.GetString() != binding.CommerceBusinessId.ToString("N"))
-            throw new InvalidOperationException("Domain provider ownership does not match this business.");
+        ValidateOptionalLegendMetadata(binding, result);
         binding.ProviderHostnameId = result.GetProperty("id").GetString() ?? throw new InvalidOperationException("Missing domain receipt.");
         binding.CertificateStatus = result.GetProperty("ssl").GetProperty("status").GetString() ?? "pending";
         var status = result.GetProperty("status").GetString() ?? "pending";
@@ -131,6 +138,29 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
             ownership = result.TryGetProperty("ownership_verification", out var ownership) ? ownership : (JsonElement?)null,
             certificate = ssl.TryGetProperty("validation_records", out var records) ? records : (JsonElement?)null
         });
+    }
+
+    private static bool HasMatchingLegendMetadata(WebsiteDomainBinding binding, JsonElement result)
+    {
+        if (!result.TryGetProperty("custom_metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Object)
+            return false;
+        return metadata.TryGetProperty("legend_binding_id", out var bindingId) &&
+            bindingId.GetString() == binding.Id.ToString("N") &&
+            metadata.TryGetProperty("legend_business_id", out var businessId) &&
+            businessId.GetString() == binding.CommerceBusinessId.ToString("N");
+    }
+
+    private static void ValidateOptionalLegendMetadata(WebsiteDomainBinding binding, JsonElement result)
+    {
+        if (!result.TryGetProperty("custom_metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Object)
+            return;
+        var hasBinding = metadata.TryGetProperty("legend_binding_id", out var bindingId);
+        var hasBusiness = metadata.TryGetProperty("legend_business_id", out var businessId);
+        if (!hasBinding && !hasBusiness) return;
+        if (!hasBinding || !hasBusiness ||
+            bindingId.GetString() != binding.Id.ToString("N") ||
+            businessId.GetString() != binding.CommerceBusinessId.ToString("N"))
+            throw new InvalidOperationException("Domain provider ownership does not match this business.");
     }
 
     private static bool ShouldRetryAutomaticHttpDcv(JsonElement result)
