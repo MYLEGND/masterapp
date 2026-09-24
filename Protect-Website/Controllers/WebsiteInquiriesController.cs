@@ -35,7 +35,9 @@ public sealed class WebsiteInquiriesController : ControllerBase
 
     public sealed record PublicRequest(
         Guid SubmissionId,
-        string Name,
+        string FirstName,
+        string LastName,
+        string Phone,
         string Email,
         string Message,
         string SourcePath,
@@ -72,16 +74,23 @@ public sealed class WebsiteInquiriesController : ControllerBase
         var version = await WebsiteContentStore.PublishedBusinessAsync(_db, businessId.Value, cancellationToken);
         if (version is null) return NotFound(new { error = "published_business_website_required" });
 
-        var name = request.Name?.Trim() ?? "";
+        var firstName = request.FirstName?.Trim() ?? "";
+        var lastName = request.LastName?.Trim() ?? "";
+        var phone = request.Phone?.Trim() ?? "";
         var email = request.Email?.Trim() ?? "";
         var message = request.Message?.Trim() ?? "";
         var path = request.SourcePath?.Trim() ?? "/";
-        if (request.SubmissionId == Guid.Empty || !request.Consent || name.Length is < 1 or > 160 ||
+        var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
+        if (request.SubmissionId == Guid.Empty || !request.Consent ||
+            firstName.Length is < 1 or > 120 || lastName.Length is < 1 or > 120 ||
+            phone.Length is < 7 or > 64 || phoneDigits.Length is < 10 or > 15 ||
             email.Length is < 3 or > 254 || !new EmailAddressAttribute().IsValid(email) ||
-            name.Any(char.IsControl) || email.Any(char.IsControl) || message.Length is < 1 or > 12000 ||
+            firstName.Any(char.IsControl) || lastName.Any(char.IsControl) || phone.Any(char.IsControl) ||
+            email.Any(char.IsControl) || message.Length is < 1 or > 12000 ||
             path.Length > 2048 || !path.StartsWith('/') || path.StartsWith("//") ||
             path.Contains('?') || path.Contains('#') || path.Contains('\\') || path.Any(char.IsControl))
-            return BadRequest(new { error = "invalid_inquiry", message = "Enter your name, email and message, and agree to share them with this business." });
+            return BadRequest(new { error = "invalid_inquiry", message = "Enter your first name, last name, phone number, email and message, and agree to share them with this business." });
+        var name = $"{firstName} {lastName}".Trim();
 
         var existing = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.SubmissionId == request.SubmissionId, cancellationToken);
@@ -95,7 +104,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         var lead = new WebsiteLead
         {
             LeadId = Guid.NewGuid(), CommerceBusinessId = businessId.Value, WebsiteContentVersionId = version.Id,
-            FirstName = name.Length <= 120 ? name : name[..120], LastName = name.Length <= 120 ? "" : name[120..],
+            FirstName = firstName, LastName = lastName, Phone = phone,
             Email = email, SourcePageKey = path.Length <= 120 ? path : "business-inquiry",
             SourceCtaKey = Optional(request.SourceActionKey, 120),
             WebsiteBindingId = Optional(request.SourceActionKey, 120),
