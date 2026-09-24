@@ -17,12 +17,14 @@ public static class WebsiteRequestHostResolver
     public const string OriginalHostHeader = "X-Legend-Original-Host";
     public const string BridgeSecretHeader = "X-Legend-Website-Bridge";
 
-    public static string Resolve(HttpContext context, IConfiguration configuration)
+    public static string Resolve(HttpContext context, IConfiguration? configuration)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(configuration);
 
         var directHost = NormalizeDirectHost(context.Request.Host.Host);
+        if (configuration is null)
+            return directHost;
+
         var expectedSecret = configuration["WebsiteRouting:BridgeSecret"];
         if (string.IsNullOrWhiteSpace(expectedSecret))
             return directHost;
