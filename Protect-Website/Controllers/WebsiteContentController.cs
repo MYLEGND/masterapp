@@ -153,6 +153,34 @@ public sealed class WebsiteContentController : ControllerBase
         });
     }
 
+    [HttpGet("public/{siteKey}/favicon")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PublicFavicon(
+        string siteKey,
+        [FromQuery] string? agentSlug = null,
+        CancellationToken cancellationToken = default)
+    {
+        siteKey = NormalizeSiteKey(siteKey);
+        if (siteKey is not (WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Protect))
+            return NotFound();
+
+        var ownerKey = siteKey == WebsiteEditorSiteKeys.Legend
+            ? WebsiteEditorSiteKeys.GlobalOwnerKey
+            : await ResolveProtectOwnerKeyAsync(agentSlug, cancellationToken);
+        var document = string.IsNullOrWhiteSpace(ownerKey)
+            ? null
+            : await LoadAsync(ownerKey, siteKey, cancellationToken);
+
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        Response.Headers.Pragma = "no-cache";
+        Response.Headers.Expires = "0";
+
+        var favicon = document?.FaviconImageDataUrl;
+        return Redirect(string.IsNullOrWhiteSpace(favicon)
+            ? WebsiteFaviconParity.FallbackUrl(_configuration)
+            : favicon);
+    }
+
     [HttpGet("public/runtime")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> PublicRuntime(

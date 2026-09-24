@@ -7,6 +7,7 @@
 @using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @inject MasterAppDbContext Db
 
 @{
@@ -31,6 +32,9 @@
 
     var currentAction =
         (ViewContext.ActionDescriptor as ControllerActionDescriptor)?.ActionName ?? "";
+    var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
+        WebsiteConfiguration,
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect);
 
     var isAssistant = Context.Items.TryGetValue("IsAssistant", out var assistantValue) &&
         assistantValue is bool assistant && assistant;
@@ -102,7 +106,7 @@
     @await RenderSectionAsync("Styles", required: false)
 
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/svg+xml" href="~/images/favicon/legend-favicon.svg" asp-append-version="true" />
+    <link rel="icon" href="@applicationFaviconUrl" />
 
     <style>
 

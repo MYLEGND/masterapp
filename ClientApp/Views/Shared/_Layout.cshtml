@@ -10,6 +10,7 @@
 @using Shared.Auth
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @{
     var layoutController =
         (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName
@@ -33,6 +34,9 @@
     var messagingServiceContactEmail = messagingClientContext is { IsAgentView: false }
         ? messagingClientContext.AgentEmail?.Trim()
         : null;
+    var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
+        WebsiteConfiguration,
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend);
 }
 <html lang="en">
 <head>
@@ -58,7 +62,7 @@
     <!-- Google Font for Psalms 23 | Proverbs 3:5-6 -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
 
-    <link rel="icon" type="image/svg+xml" href="~/images/favicon/legend-favicon.svg" asp-append-version="true" />
+    <link rel="icon" href="@applicationFaviconUrl" />
     <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
 <body class="legend-app client-portal d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">

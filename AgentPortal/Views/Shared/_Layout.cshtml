@@ -10,6 +10,7 @@
 @inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @inject MasterAppDbContext _db
 @{
     var currentController =
@@ -58,6 +59,9 @@
     var layoutBodyClass = "legend-app d-flex flex-column min-vh-100"
         + (isOnboardingPublic ? " onboarding-public-only" : "")
         + (isFinancePage ? " finance-page" : "");
+    var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
+        WebsiteConfiguration,
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect);
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -85,7 +89,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 
-    <link rel="icon" type="image/svg+xml" href="~/images/favicon/legend-favicon.svg" asp-append-version="true" />
+    <link rel="icon" href="@applicationFaviconUrl" />
 
     @RenderSection("Styles", required: false)
 

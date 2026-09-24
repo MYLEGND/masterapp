@@ -131,6 +131,34 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal("Unpublished revision", ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId].Text);
     }
 
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    public async Task PublicFavicon_FollowsPublishedWebsiteOnly(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        const string first = "https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111";
+        const string second = "https://masterapp-protect.azurewebsites.net/api/website-content/media/22222222-2222-2222-2222-222222222222";
+        var document = new WebsiteContentDocument { FaviconImageDataUrl = first };
+        var slug = siteKey == WebsiteEditorSiteKeys.Protect ? Fixture.AgentSlug : null;
+
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        var unpublished = Assert.IsType<RedirectResult>(await fixture.Controller.PublicFavicon(siteKey, slug));
+        Assert.EndsWith("/images/favicon/legend-favicon.svg", unpublished.Url, StringComparison.Ordinal);
+
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Publish(new(ticket, 1)));
+        fixture.Db.ChangeTracker.Clear();
+        var published = Assert.IsType<RedirectResult>(await fixture.CreateController().PublicFavicon(siteKey, slug));
+        Assert.Equal(first, published.Url);
+
+        document.FaviconImageDataUrl = second;
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().Save(new(ticket, document, 2)));
+        fixture.Db.ChangeTracker.Clear();
+        var stillPublished = Assert.IsType<RedirectResult>(await fixture.CreateController().PublicFavicon(siteKey, slug));
+        Assert.Equal(first, stillPublished.Url);
+    }
+
     [Fact]
     public async Task InvalidNumericDomains_AreDiscardedWithoutInventingReplacementStyles()
     {

@@ -42,6 +42,27 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
         Assert.Contains("session = await exchange.json()", manager, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AppShellFavicons_ReadThePublishedWebsiteParityService()
+    {
+        var portal = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_Layout.cshtml"));
+        var workspace = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml"));
+        var client = File.ReadAllText(Source("ClientApp", "Views", "Shared", "_Layout.cshtml"));
+        var controller = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsiteContentController.cs"));
+
+        Assert.Contains("WebsiteFaviconParity.PublicUrl", portal, StringComparison.Ordinal);
+        Assert.Contains("WebsiteEditorSiteKeys.Protect", portal, StringComparison.Ordinal);
+        Assert.Contains("WebsiteFaviconParity.PublicUrl", workspace, StringComparison.Ordinal);
+        Assert.Contains("WebsiteEditorSiteKeys.Protect", workspace, StringComparison.Ordinal);
+        Assert.Contains("WebsiteFaviconParity.PublicUrl", client, StringComparison.Ordinal);
+        Assert.Contains("WebsiteEditorSiteKeys.Legend", client, StringComparison.Ordinal);
+        Assert.DoesNotContain("~/images/favicon/legend-favicon.svg", portal, StringComparison.Ordinal);
+        Assert.DoesNotContain("~/images/favicon/legend-favicon.svg", workspace, StringComparison.Ordinal);
+        Assert.DoesNotContain("~/images/favicon/legend-favicon.svg", client, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"public/{siteKey}/favicon\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("LoadAsync(ownerKey, siteKey", controller, StringComparison.Ordinal);
+    }
+
     private static string Source(params string[] segments)
     {
         var root = Path.GetFullPath(Path.Combine(
