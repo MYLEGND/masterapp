@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the proven business-website publication repair for direct deployment through legend/approved-changes. Preserve the successful Cloudflare custom-domain routing, domain diagnostics, CAMO ownership/binding, AgentPortal, ClientApp, and all unrelated working behavior. Deploy only the affected Protect Website application.",
-  "purpose": "Surgical production repair for the verified CAMO publishing exception on release aa133def829813e43a8c0442f2573d135dd91a96. The business publication compiler used URL.pathname to detect direct execution, which is incompatible with Windows filesystem path form and caused the Node renderer to exit before consuming stdin; Protect then failed while writing the publication payload at WebsitePageCompiler.cs:44. Use filesystem-safe file-URL comparison, retain the existing compiler and immutable publication authority, include direct-process regression coverage, apply no migrations, and deploy only masterapp-protect. Do not redeploy AgentPortal, ClientApp, LEGEND Website, Parfait, or Cloudflare routing.",
-  "requestId": "business-publisher-windows-entrypoint-direct-20260924-1",
+  "authorization": "Founder authorized the business website publishing repair for direct deployment through legend/approved-changes. Preserve the successful Cloudflare routing/domain diagnostics, CAMO ownership and draft, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and all unrelated working behavior. Deploy only the affected Protect Website application.",
+  "purpose": "Second surgical publisher correction after the verified post-release exception de605aa5388e946827a56ef72af7d8d5278efa10 still showed the Node child closing stdin before WebsitePageCompiler.cs:44 completed. Remove all path-identity self-detection from the renderer by using a dedicated CLI entrypoint, package that entrypoint with the existing compiler, and align Protect's Windows App Service Node runtime with the compiler's supported Node 24 runtime. Run the direct CLI renderer regression before packaging. No migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
+  "requestId": "business-publisher-dedicated-cli-node24-direct-20260924-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"

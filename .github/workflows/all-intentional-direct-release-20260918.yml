@@ -182,6 +182,7 @@ jobs:
           set -euo pipefail
           if [ "$PUBLIC_ONLY" = true ]; then
             dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
+            node --test Legend-Website/scripts/render-business.test.mjs
           elif [ "$PORTAL_ONLY" = true ]; then
             dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
           else
@@ -292,7 +293,7 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Synchronize Protect shared website authorization
+      - name: Synchronize Protect shared website authorization and publisher runtime
         id: protectauth
         if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.azure.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
         shell: bash
@@ -341,6 +342,8 @@ jobs:
           if [ "$protect_founder" != "$founder" ]; then updates+=("${protect_founder_key:-FOUNDER_OID}=$founder"); fi
           if [ "$protect_blob" != "$blob" ]; then updates+=("${protect_blob_key:-DataProtection__BlobUri}=$blob"); fi
           if [ "$protect_keyvault" != "$keyvault" ]; then updates+=("${protect_keyvault_key:-DataProtection__KeyVaultKeyId}=$keyvault"); fi
+          protect_node="$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION || true)"
+          if [ "$protect_node" != "~24" ]; then updates+=("WEBSITE_NODE_DEFAULT_VERSION=~24"); fi
           if [ "${#updates[@]}" -gt 0 ]; then
             az webapp config appsettings set -g masterapp-rg -n masterapp-protect --settings "${updates[@]}" --output none
           fi
@@ -349,6 +352,7 @@ jobs:
           [ "$(resolve_value "$protect_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder" ]
           [ "$(resolve_value "$protect_settings" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
           [ "$(resolve_value "$protect_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
+          [ "$(resolve_value "$protect_settings" WEBSITE_NODE_DEFAULT_VERSION)" = "~24" ]
           # AgentPortal owns the receiver secret. Keep Protect's sender and legacy
           # aliases on that exact value, without printing settings or secret values.
           ingest_secret="$(resolve_value "$portal_settings" Analytics__SharedSecret 'Analytics:SharedSecret' LeadIngest__SharedSecret 'LeadIngest:SharedSecret')"

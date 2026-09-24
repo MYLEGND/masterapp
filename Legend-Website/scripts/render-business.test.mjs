@@ -3,19 +3,12 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {parseHTML} from 'linkedom';
-import {compileBusiness,isDirectExecution} from './render-business.mjs';
+import {compileBusiness} from './render-business.mjs';
 const business={id:'b72b8796-2b35-4eed-8d6d-7260976084ea',displayName:'Sample & Business',legalName:'Sample LLC'};
 const document=()=>({elements:{},sectionOrder:{},extras:[],theme:{},pages:{}});
 
-test('publication compiler direct-execution detection uses filesystem-safe file URLs',()=>{
-  const scriptUrl=new URL('./render-business.mjs',import.meta.url).href;
-  const scriptPath=fileURLToPath(scriptUrl);
-  assert.equal(isDirectExecution(scriptPath,scriptUrl),true);
-  assert.equal(isDirectExecution(scriptPath+'-other',scriptUrl),false);
-});
-
 test('publication compiler process consumes stdin and returns compiled pages',()=>{
-  const scriptPath=fileURLToPath(new URL('./render-business.mjs',import.meta.url));
+  const scriptPath=fileURLToPath(new URL('./render-business-cli.mjs',import.meta.url));
   const stdout=execFileSync(process.execPath,[scriptPath],{
     cwd:fileURLToPath(new URL('..',import.meta.url)),
     input:JSON.stringify({business,document:document()}),

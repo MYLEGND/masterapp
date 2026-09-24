@@ -16,7 +16,7 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
     {
         var root = configuration["WebsitePublishing:CompilerRoot"]
             ?? Path.Combine(environment.ContentRootPath, "WebsiteCompiler");
-        var runner = Path.Combine(root, "scripts", "render-business.mjs");
+        var runner = Path.Combine(root, "scripts", "render-business-cli.mjs");
         if (!File.Exists(runner) || !Directory.Exists(Path.Combine(root, "node_modules", "linkedom")))
             throw new InvalidOperationException("website_compiler_not_configured");
         var info = new ProcessStartInfo(configuration["WebsitePublishing:NodeExecutable"] ?? "node")

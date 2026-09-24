@@ -78,14 +78,14 @@
   <Target Name="CopyBusinessWebsiteCompilerToOutput" AfterTargets="Build" DependsOnTargets="BuildBusinessWebsiteCompiler">
     <Copy SourceFiles="@(_WebsiteCompilerDist)" DestinationFiles="@(_WebsiteCompilerDist->'$(TargetDir)WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_WebsiteCompilerModules)" DestinationFiles="@(_WebsiteCompilerModules->'$(TargetDir)WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs;../Legend-Website/scripts/render-business-cli.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
     <Copy SourceFiles="../Legend-Website/src/business-content.mjs;../Legend-Website/src/runtime-config.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/src" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyBusinessWebsiteCompilerToPublish" AfterTargets="Publish" DependsOnTargets="BuildBusinessWebsiteCompiler">
     <Copy SourceFiles="@(_WebsiteCompilerDist)" DestinationFiles="@(_WebsiteCompilerDist->'$(PublishDir)WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_WebsiteCompilerModules)" DestinationFiles="@(_WebsiteCompilerModules->'$(PublishDir)WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs;../Legend-Website/scripts/render-business-cli.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
     <Copy SourceFiles="../Legend-Website/src/business-content.mjs;../Legend-Website/src/runtime-config.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/src" SkipUnchangedFiles="true" />
   </Target>
 
