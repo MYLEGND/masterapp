@@ -453,9 +453,13 @@ test('autosave persists edits before domain connection and panel can collapse to
     assert.ok(toggle);
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),true);
-    assert.equal(toggle.textContent,'Open editor');
+    assert.equal(toggle.textContent,'Open controls');
+    assert.ok(f.w.document.querySelector('.legend-cms-selected'));
+    f.editSelected('Still editing full width');
+    assert.equal(f.w.document.querySelector('main h1').textContent,'Still editing full width');
     f.click('#legend-cms-panel-toggle');
     assert.equal(f.w.document.body.classList.contains('legend-cms-panel-hidden'),false);
+    assert.equal(toggle.textContent,'Full-page canvas');
   } finally { f.close(); }
 });
 test('section deletion preserves child structure, reset restores, global theme remains separate',async()=>{
