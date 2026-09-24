@@ -393,18 +393,30 @@ jobs:
           set -euo pipefail
           token="${PRIMARY_CLOUDFLARE_TOKEN:-${FALLBACK_CLOUDFLARE_TOKEN:-}}"
           if [ -z "$token" ]; then
-            echo "::error::Cloudflare Workers deployment credential is not configured."
+            echo "::error::Cloudflare Workers deployment credential is not configured. Add the dedicated Production secret CLOUDFLARE_WORKERS_API_TOKEN using the Cloudflare Edit Workers template scoped to this account and mylegnd.com."
             exit 1
           fi
           echo "::add-mask::$token"
           printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
-          if [ -n "${CONFIGURED_CLOUDFLARE_ACCOUNT_ID:-}" ]; then
-            echo "::add-mask::$CONFIGURED_CLOUDFLARE_ACCOUNT_ID"
-            printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$CONFIGURED_CLOUDFLARE_ACCOUNT_ID" >> "$GITHUB_ENV"
-          fi
 
           settings=/tmp/protect-website-routing.json
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
+
+          account_id="${CONFIGURED_CLOUDFLARE_ACCOUNT_ID:-}"
+          if [ -z "$account_id" ]; then
+            zone_id="$(jq -r '.[] | select(.name == "WebsiteDomains__CloudflareZoneId" or .name == "WebsiteDomains:CloudflareZoneId") | (.value // empty)' "$settings" | head -n 1)"
+            [ -n "$zone_id" ]
+            response="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $token" \
+              "https://api.cloudflare.com/client/v4/zones/$zone_id")"
+            account_id="$(printf '%s' "$response" | jq -r 'select(.success == true) | .result.account.id // empty')"
+          fi
+          if ! [[ "$account_id" =~ ^[A-Za-z0-9_-]{16,64}$ ]]; then
+            echo "::error::Cloudflare account ID could not be resolved from the deployment token and configured SaaS zone."
+            exit 1
+          fi
+          echo "::add-mask::$account_id"
+          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
           bridge_secret="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
           if [ -z "$bridge_secret" ]; then
             bridge_secret="$(openssl rand -hex 32)"
