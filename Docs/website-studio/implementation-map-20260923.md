@@ -1,8 +1,9 @@
 # Shared website studio implementation map
 
-Status: partial implementation, not a release or completion certificate.
-Baseline: `legend/approved-changes` at `f12e60be1b54dc2a9b4ba9c7bbb022e479a001a1`.
-Isolated branch: `feature/shared-website-studio-20260923`.
+Status: active shared-editor implementation, not a release or production completion certificate.
+Current baseline: `legend/approved-changes` at `3c24960ee32af2fb9bcd7f4ec04d60558659f879`.
+Current isolated branch: `feature/shared-website-studio-fluid-editing-20260924`.
+Prior 2026-09-23 implementation and validation history remains documented below.
 
 ## Implemented in this branch
 
@@ -11,6 +12,20 @@ The existing `Legend-Design/legend-public-cms.js` remains the only editor/runtim
 Draft page keys now use route paths accepted by `WebsiteContentSanitizer`. Legacy template keys migrate into the same document; canonical values win conflicts and unrelated elements are retained. New sections have a nonempty parent marker even on an empty page. Deleting an added block removes it from the draft rather than persisting an unsupported `hidden` field. Existing section deletion remains reversible through Layers.
 
 This is an editor foundation, not the requested completed website-building platform. Arbitrary page creation/navigation, responsive breakpoint overrides, reusable section patterns, a media library browser, visual event bindings, marketing destination generalization, and business CRM/analytics are not implemented here.
+
+## 2026-09-24 direct-canvas and public-form invariants
+
+These are shared platform rules, not site-specific patches:
+
+- **One editor/runtime:** `Legend-Design/legend-public-cms.js` remains the editor for Founder/LEGEND, Protect/agent, and business scopes. Scope-specific pages may supply owned content and authorization context, but they must not fork editor behavior.
+- **Text edits on the canvas:** editable text, headings, and link/button labels are edited directly on the rendered page with the same canonical element/extra override. The side panel is not a second text source.
+- **Direct geometry in the canonical style contract:** width, optional height, horizontal offset, and vertical offset live in `WebsiteStyleOverride` and are sanitized by `WebsiteContentSanitizer`. The canvas exposes move/resize handles, a 12-column horizontal placement grid, a 24px vertical rhythm grid, and center snap guides. Do not add page-specific drag CSS or a second placement store.
+- **Existing placement compatibility:** legacy `WebsitePlacement` values remain readable so published documents are not broken, but the active studio interaction uses direct canvas movement/resizing rather than the former destination/column/span/drop controls.
+- **Code/embed blocks use the existing Extras model:** `WebsiteExtraComponent.Type == "code"` stores source in the existing `Text` field and geometry in the same `Style` object. Preview/public rendering uses a sandboxed iframe. Browser scripts/forms are allowed inside the sandbox, but `allow-same-origin` is intentionally not granted. There is no server-side code execution path and no parallel database/schema for code blocks.
+- **Business contact identity matches Protect:** public business forms use exact field names `FirstName`, `LastName`, `Phone`, and `Email`, plus `Message`. They persist into the existing `WebsiteLead` fields. CRM capture, analytics, and the existing Meta server dispatcher consume that same lead; no business-only Meta sender or duplicate lead record is introduced.
+- **Published business form activation stays canonical:** `Legend-Website/scripts/render-business.mjs` removes the preview marker, re-enables the form, removes preview-only notice text, and loads the existing `business-inquiry.js`. Preview/editor sessions do not submit production inquiries.
+- **Shared mobile navigation:** the canonical public stylesheet opens mobile navigation as a compact grid, with four columns in the broader mobile range and three columns at narrow mobile widths. Do not reintroduce scope-specific vertical-menu overrides.
+- **CSS rule:** replace authoritative shared rules in place. Do not append emergency overrides, stacked selectors, or page-only fixes to reproduce these behaviors.
 
 ## Verified source map
 
@@ -66,7 +81,19 @@ The other repair checkout had uncommitted changes in business ownership/membersh
 
 The baseline build uses `/tmp/masterapp` by default for all checkouts. For independent validation pass `-p:MasterAppArtifactsRoot=<unique-path>` and disable shared compiler/node reuse as needed. The initial test attempt encountered shared generated Razor artifacts; subsequent validation uses this workspace's own artifact root.
 
-## Validation for this editor branch
+## Validation for the current 2026-09-24 branch
+
+- The current branch is isolated from `legend/approved-changes`; no deployment or merge has been performed.
+- Shared editor JavaScript parses successfully in source-level validation.
+- Business inquiry browser adapter parses successfully.
+- LEGEND build/test modules parse successfully after normalizing module-only `import.meta` tokens for the parser check.
+- Source assertions confirm the side-panel text textarea, destination/column/place controls, and legacy drag-enable button are absent from the active editor; direct inline editing, grid handles, sandboxed code blocks, and the four canonical contact field names are present.
+- Modified C# source files have balanced structural delimiters in source-level validation; focused tests were updated for first/last/phone/email persistence and idempotency.
+- The published-business renderer is explicitly regression-covered for removing `data-preview`, re-enabling the form, removing the preview notice, and loading the one existing inquiry runtime.
+- A full Node/.NET execution is still required before integration because this connector session cannot dispatch the repository's candidate-validation workflow and the local execution environment cannot reach GitHub to materialize the repository.
+- No live deployment, production mutation, migration, or Meta delivery test has been performed by this branch.
+
+## Historical validation for the 2026-09-23 editor branch
 
 - Shared website JS suite: 47/47 passed, including all three editor scopes, route-key persistence, hidden-section restoration, independent duplication, deletion/reload, metadata/theme without selection, numeric style contracts, credential URL rejection, and existing profile management behavior.
 - Focused .NET `WebsiteContentEditorRoundTripTests`: 11/11 passed with the isolated artifact root, including route-keyed page content/metadata saved and reloaded for Founder, agent, and business.
