@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the shared Cloudflare business website routing bridge and requested validation before publication. The prior validation trigger was cancelled while the serialized release lane was occupied; the lane is clear now. Validate only; do not deploy.",
-  "purpose": "Validate only the single-source business custom-domain Worker bridge and Protect effective-host resolver. Prove that WebsiteDomainBinding remains the ownership authority, Cloudflare is transport only, LEGEND-owned hosts bypass the bridge, spoofed bridge headers are ignored without the shared secret and Protect origin, streamed requests are preserved, the Worker dry-run is valid, and the custom-domain release is scoped only to masterapp-protect. No per-customer Azure binding, no duplicate domain authority, no schema migration, and no unrelated app deployment.",
-  "requestId": "business-domain-worker-bridge-20260924-validate-r2",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly authorized the shared Cloudflare business website routing bridge and direct publication through legend/approved-changes after the exact validation run passed. Deploy only the affected Protect/Business Website backend and the shared Cloudflare website-routing Worker.",
+  "purpose": "Deploy the validated single-source custom-domain transport. WebsiteDomainBinding remains the only business/domain ownership authority. The Cloudflare Worker only bridges customer vanity hostnames to the existing masterapp-protect Azure origin, preserves the original hostname through an authenticated internal header, leaves all LEGEND-owned mylegnd.com hosts on their existing routes, and fails closed without the shared authority. Reuse or create the one shared bridge secret, deploy the Worker, deploy masterapp-protect, and require camoexterior.com /.well-known/legend-website to return the exact LEGEND binding proof. No per-customer Azure binding, duplicate routing store, schema migration, unrelated app deployment, override, or stacked system.",
+  "requestId": "business-domain-worker-bridge-20260924-release",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
   ],
