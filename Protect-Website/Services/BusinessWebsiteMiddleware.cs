@@ -11,7 +11,7 @@ public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvi
 {
     public async Task InvokeAsync(HttpContext context, MasterAppDbContext db, WebsiteDomainService domains)
     {
-        var host = context.Request.Host.Host.ToLowerInvariant();
+        var host = WebsiteRequestHostResolver.Resolve(context, configuration);
         var originHost = configuration["WEBSITE_HOSTNAME"];
         if (host == "protect.mylegnd.com" || host == "masterapp-protect.azurewebsites.net" || host == originHost || environment.IsDevelopment() && (host == "localhost" || host == "127.0.0.1"))
         {
