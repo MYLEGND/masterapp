@@ -797,7 +797,7 @@ public sealed class WebsiteContentController : ControllerBase
     [HttpGet("/.well-known/legend-website")]
     public async Task<IActionResult> DomainProof(CancellationToken cancellationToken = default)
     {
-        var host = Request.Host.Host.ToLowerInvariant();
+        var host = WebsiteRequestHostResolver.Resolve(HttpContext, _configuration);
         var binding = await _db.Set<WebsiteDomainBinding>().AsNoTracking().SingleOrDefaultAsync(d => d.Hostname == host && d.Status != "removing", cancellationToken);
         if (binding is null || !await _db.CommerceBusinesses.AnyAsync(b => b.Id == binding.CommerceBusinessId && b.IsActive && b.Status == "Active", cancellationToken)) return NotFound();
         return Ok(new { businessId = binding.CommerceBusinessId, bindingId = binding.Id });
