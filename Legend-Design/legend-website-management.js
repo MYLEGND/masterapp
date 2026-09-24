@@ -32,7 +32,12 @@
       const options = { cache: 'no-store', credentials: 'omit', headers: {} };
       if (payload) { options.method = 'POST'; options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify({ ...payload, ticket: session.ticket, expectedRevision: state?.revision }); }
       else url.searchParams.set('ticket', session.ticket);
-      const response = await fetch(url, options);
+      let response;
+      try {
+        response = await fetch(url, options);
+      } catch {
+        throw new Error('LEGEND could not reach the website service. Your saved website and DNS instructions were not changed. Reopen the workspace or try Verify status again.');
+      }
       if (!response.ok) {
         let detail; try { detail = await response.json(); } catch { /* Server may return no JSON. */ }
         throw new Error(detail?.message || detail?.error || (response.status === 409 ? 'This website changed in another session. Close and reopen management before trying again.' : `The action could not complete (${response.status}).`));
@@ -157,9 +162,13 @@
       const result = await request('/domains');
       for (const domain of result.domains ?? []) {
         const row = el('div', null, { class: 'wm-row' });
-        row.append(el('span', `${domain.hostname} · ${domain.status} · HTTPS ${domain.certificateStatus}`), button('Verify status', () => run(async () => {
+        const domainStatus = el('span', `${domain.hostname} · ${domain.status} · HTTPS ${domain.certificateStatus}`);
+        row.append(domainStatus, button('Verify status', () => run(async () => {
           const checked = await request('/domains/refresh', { bindingId: domain.id });
-          status.textContent = `${checked.hostname ?? domain.hostname}: ${checked.status ?? 'Status refreshed'}`;
+          domainStatus.textContent = `${checked.hostname ?? domain.hostname} · ${checked.status ?? 'pending'} · HTTPS ${checked.certificateStatus ?? 'pending'}`;
+          status.textContent = checked.status === 'active' && checked.certificateStatus === 'active'
+            ? `${checked.hostname ?? domain.hostname}: domain and HTTPS are active.`
+            : `${checked.hostname ?? domain.hostname}: verification is still pending. LEGEND will continue checking automatically.`;
         })), button('Disconnect', () => confirmAction('Disconnect domain', `Remove ${domain.hostname} from this website. Your website content will remain saved.`, async () => {
           await request('/domains/remove', { bindingId: domain.id }); overview(); status.textContent = 'Domain disconnected.';
         })));
