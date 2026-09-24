@@ -10,6 +10,7 @@ namespace ProtectWebsite.Services;
 public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfiguration configuration)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly Encoding ProcessUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     public const int MaxOutputCharacters = 32_000_000;
 
     public async Task<string> CompileAsync(WebsiteContentDocument document, CommerceBusiness business, WebsiteBusinessFacts facts, CancellationToken cancellationToken)
@@ -23,6 +24,7 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
         {
             WorkingDirectory = root, UseShellExecute = false,
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardInputEncoding = ProcessUtf8, StandardOutputEncoding = ProcessUtf8, StandardErrorEncoding = ProcessUtf8,
             CreateNoWindow = true
         };
         info.ArgumentList.Add(runner);

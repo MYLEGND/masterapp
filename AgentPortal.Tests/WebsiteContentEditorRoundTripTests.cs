@@ -131,6 +131,29 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Equal("Unpublished revision", ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId].Text);
     }
 
+    [Fact]
+    public async Task BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        const string unicode = "Locally Owned · Lynden, WA — Café ® “clean”";
+        var document = new WebsiteContentDocument();
+        document.Elements[ElementId] = new WebsiteElementOverride { Text = unicode };
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Publish(new(ticket, 1)));
+
+        fixture.Db.ChangeTracker.Clear();
+        var version = Assert.Single(await fixture.Db.Set<WebsiteContentVersion>().AsNoTracking().ToListAsync());
+        Assert.False(string.IsNullOrWhiteSpace(version.CompiledPagesJson));
+        using var compiled = JsonDocument.Parse(version.CompiledPagesJson!);
+        var html = compiled.RootElement.GetProperty("pages").GetProperty("/").GetProperty("html").GetString();
+        Assert.NotNull(html);
+        Assert.Contains(unicode, html!, StringComparison.Ordinal);
+        Assert.DoesNotContain("Â", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ã", html, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]

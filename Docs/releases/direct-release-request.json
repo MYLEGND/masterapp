@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the business website publishing repair for direct deployment through legend/approved-changes. Preserve the successful Cloudflare routing/domain diagnostics, CAMO ownership and draft, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and all unrelated working behavior. Deploy only the affected Protect Website application.",
-  "purpose": "Retry the second surgical publisher correction after validation proved the new dedicated CLI process test passes but an unrelated pre-existing favicon assertion in the broader renderer test file fails. Run only the new publication-process regression required for this repair, then package and deploy only Protect. Keep the dedicated CLI entrypoint and Protect Windows Node 24 runtime alignment. No migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
-  "requestId": "business-publisher-dedicated-cli-node24-direct-20260924-retry2",
+  "authorization": "Founder explicitly authorized the precise business website publication encoding correction through legend/approved-changes. Preserve the working CAMO draft, published/domain ownership, Cloudflare routing and diagnostics, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and every unrelated working behavior. Deploy only the affected Protect Website application.",
+  "purpose": "Replace the implicit Windows console-code-page boundary in WebsitePageCompiler with explicit strict UTF-8 for Node stdin, stdout, and stderr. This fixes publication mojibake at the .NET-to-Node process transport itself rather than hiding or replacing corrupted characters. Validate an end-to-end business publication containing middle dot, em dash, accented text, registered mark, and curly quotes, plus the dedicated CLI process test. No content substitution, no fallback publisher, no CSS or rendering override, no migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
+  "requestId": "business-publisher-utf8-process-transport-direct-20260924-1",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"
