@@ -72,6 +72,9 @@ public sealed class WebsiteStyleOverride
     public decimal? PaddingRight { get; set; }
     public decimal? BorderRadius { get; set; }
     public string? ObjectFit { get; set; }
+    public decimal? HeightPx { get; set; }
+    public decimal? OffsetXPercent { get; set; }
+    public decimal? OffsetYPx { get; set; }
 
 }
 
