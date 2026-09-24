@@ -94,7 +94,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
 
         var existing = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.SubmissionId == request.SubmissionId, cancellationToken);
-        if (existing is not null) return SubmissionResult(existing, name, email, message, path);
+        if (existing is not null) return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
         var inquiry = new CommerceWebsiteInquiry
         {
             CommerceBusinessId = businessId.Value, PublishedVersionId = version.Id,
@@ -196,7 +196,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             existing = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
                 .SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.SubmissionId == request.SubmissionId, cancellationToken);
             if (existing is null) throw;
-            return SubmissionResult(existing, name, email, message, path);
+            return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
         }
         return Ok(new { accepted = true });
     }
@@ -209,10 +209,31 @@ public sealed class WebsiteInquiriesController : ControllerBase
         return clean;
     }
 
-    private IActionResult SubmissionResult(CommerceWebsiteInquiry row, string name, string email, string message, string path) =>
-        row.Name == name && row.Email == email && row.Message == message && row.SourcePath == path
+    private async Task<IActionResult> SubmissionResult(
+        CommerceWebsiteInquiry row,
+        string firstName,
+        string lastName,
+        string phone,
+        string email,
+        string message,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var name = $"{firstName} {lastName}".Trim();
+        var rowMatches = row.Name == name && row.Email == email && row.Message == message && row.SourcePath == path;
+        if (!rowMatches) return Conflict(new { error = "submission_id_already_used" });
+        if (!row.WebsiteLeadId.HasValue) return Ok(new { accepted = true });
+
+        var lead = await _db.WebsiteLeads.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.LeadId == row.WebsiteLeadId.Value, cancellationToken);
+        return lead is not null &&
+               lead.FirstName == firstName &&
+               (lead.LastName ?? "") == lastName &&
+               (lead.Phone ?? "") == phone &&
+               lead.Email == email
             ? Ok(new { accepted = true })
             : Conflict(new { error = "submission_id_already_used" });
+    }
 
     [HttpGet("manage")]
     public async Task<IActionResult> Manage([FromQuery] string ticket, CancellationToken cancellationToken)
