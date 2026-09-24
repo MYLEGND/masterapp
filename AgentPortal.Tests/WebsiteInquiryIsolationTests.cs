@@ -169,7 +169,7 @@ public sealed class WebsiteInquiryIsolationTests
             Controller.Request.Headers.Origin = origin;
         }
         public WebsiteInquiriesController.PublicRequest Request() => new(
-            Guid.NewGuid(), "Visitor", "visitor@example.org", "Please contact me.", "/contact", true,
+            Guid.NewGuid(), "Visitor", "Example", "(602) 555-0199", "visitor@example.org", "Please contact me.", "/contact", true,
             SourceActionKey: "business_contact", SessionId: "business-session", VisitorId: "business-visitor",
             UtmSource: "meta", UtmCampaign: "campaign-one", Fbclid: "fbclid-one");
         public async Task SeedPublishedAsync()
