@@ -25,7 +25,7 @@ async function fixture({ caps = {}, failPublish = false, scope = 'business' } = 
     if (parsed.pathname.endsWith('/domains')) value = options.method === 'POST'
       ? { cnameTarget: 'sites.example.test', binding: { id: 'binding-new', hostname: body.hostname, status: 'pending', certificateStatus: 'pending', verificationJson: JSON.stringify({ ownership: { type: 'TXT', name: '_verify.' + body.hostname, value: 'proof-new' } }) } }
       : { cnameTarget: 'sites.example.test', domains: [{ id: 'binding-a', hostname: 'business.test', status: 'pending', certificateStatus: 'pending', verificationJson: JSON.stringify({ ownership: { type: 'TXT', name: '_verify.business.test', value: 'proof-value' } }) }] };
-    if (parsed.pathname === '/api/website-inquiries/manage') value = { inquiries: [{ id: 'inquiry-a', name: '<img src=x onerror=alert(1)>', email: 'a@example.test', message: 'Please call', status: 'New' }] };
+    if (parsed.pathname === '/api/website-inquiries/manage') value = { inquiries: [{ id: 'inquiry-a', name: '<img src=x onerror=alert(1)>', firstName: 'Avery', lastName: 'Example', phone: '(602) 555-0199', email: 'a@example.test', message: 'Please call', status: 'New' }] };
     return { ok: true, status: 200, json: async () => value };
   };
   window.eval(source); window.document.querySelector('[data-website-manage]').click(); await flush();
@@ -105,8 +105,11 @@ test('schedule sends ISO time and current draft revision', async () => {
   const body = f.calls.find(c => c.path.endsWith('/schedule')).body; assert.equal(body.expectedRevision, 7); assert.match(body.publishUtc, /^2099-01-02T/); f.dom.window.close();
 });
 
-test('business inbox handles content as text and updates selected inquiry only', async () => {
+test('business inbox shows canonical split name phone and email as text and updates selected inquiry only', async () => {
   const f = await fixture(); await f.click('Inquiries'); assert.equal(f.document.querySelector('img'), null);
+  assert.match(f.document.body.textContent, /Avery Example/);
+  assert.match(f.document.body.textContent, /\(602\) 555-0199/);
+  assert.match(f.document.body.textContent, /a@example\.test/);
   f.document.querySelector('select').value = 'Contacted'; await f.click('Save status');
   assert.deepEqual(f.calls.find(c => c.path.endsWith('/manage/status')).body, { ticket: 'signed-scope-a', inquiryId: 'inquiry-a', status: 'Contacted' }); f.dom.window.close();
 });
