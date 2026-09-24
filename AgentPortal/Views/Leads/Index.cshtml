@@ -574,12 +574,12 @@ var sCity = (c.City ?? "").Trim();
     </div>
 }
 
-@await Html.PartialAsync("_LeadPipelineView")
+@await Html.PartialAsync("~/Views/Leads/_LeadPipelineView.cshtml")
 
 </div>
 
-@await Html.PartialAsync("_LeadQuickView")
-@await Html.PartialAsync("_LeadQuickViewUtilities")
+@await Html.PartialAsync("~/Views/Leads/_LeadQuickView.cshtml")
+@await Html.PartialAsync("~/Views/Leads/_LeadQuickViewUtilities.cshtml")
 
 @if (!isBusinessWorkspace)
 {

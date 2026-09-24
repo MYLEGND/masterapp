@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the isolated business-scoped Clients/Leads CRM Razor routing repair through legend/approved-changes. Preserve every unrelated working flow and deploy only the affected ClientApp.",
-  "purpose": "Validation-only reproduction of the remaining ClientApp business-scoped Clients/Leads server failure. Render the exact precompiled ClientApp canonical CRM Razor views under BusinessWorkspace route data with a scoped business contact. This commit must not deploy or mutate production. Preserve all live applications and unrelated behavior while capturing the exact Razor exception, if any, in the focused BusinessWorkspaceTests gate.",
-  "requestId": "business-crm-raster-render-validation-20260924",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly authorized the exact business-scoped Clients/Leads CRM repair and direct ClientApp deployment through legend/approved-changes. Preserve all unrelated working flows.",
+  "purpose": "Fix the reproduced ClientApp business CRM Razor failures at their canonical source. Remove the orphaned ClientApp/Views/Clients/Index.cshtml duplicate that shadows the linked canonical AgentPortal Clients view and expects the wrong List<ClientProfile> model. Change all top-level Clients and Leads nested partial references to explicit canonical absolute view paths so BusinessWorkspaceController route context cannot redirect relative partial lookup into /Views/BusinessWorkspace. Retain the real Razor render regression tests for both pages. No copied replacement view, no override, no stacked handler, no database migration, and no deployment of AgentPortal, Protect, LEGEND Website, Parfait, or Cloudflare.",
+  "requestId": "business-crm-canonical-razor-resolution-direct-20260924",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
   ],

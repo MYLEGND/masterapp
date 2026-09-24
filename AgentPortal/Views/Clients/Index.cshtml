@@ -517,12 +517,12 @@ else
 
 }
 
-@await Html.PartialAsync("_ClientsPipelineView")
+@await Html.PartialAsync("~/Views/Clients/_ClientsPipelineView.cshtml")
 
 </div>
 
-@await Html.PartialAsync("_ClientsQuickView")
-@await Html.PartialAsync("_ClientsQuickViewUtilities")
+@await Html.PartialAsync("~/Views/Clients/_ClientsQuickView.cshtml")
+@await Html.PartialAsync("~/Views/Clients/_ClientsQuickViewUtilities.cshtml")
 @if (!isBusinessWorkspace)
 {
 
