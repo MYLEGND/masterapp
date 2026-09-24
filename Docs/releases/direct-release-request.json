@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested the narrow post-activation client identity recovery repair be directly released after focused regression coverage. Preserve all working billing, subscription, activation, invitation, entitlement, and sign-in behavior.",
+  "authorization": "Founder explicitly requested the narrow post-activation client identity recovery repair be directly released now that the serialized favicon deployment completed successfully. Preserve all working billing, subscription, activation, invitation, entitlement, and sign-in behavior.",
   "purpose": "Deploy only ClientApp with the bounded recovery worker that retries the existing IClientEntraLifecycleService for active client subscriptions whose ExternalIdentityObjectId is still missing after activation. No billing-orchestrator changes, no schema migration, no duplicate identity system, and no unrelated app deployment.",
-  "requestId": "client-post-activation-entra-recovery-20260923",
+  "requestId": "client-post-activation-entra-recovery-20260923-r2",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
