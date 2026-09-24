@@ -322,6 +322,11 @@ test('published business rendering activates the existing inquiry path without a
   assert.ok(businessRenderSource.includes("script.src='/business-inquiry.js'"));
 });
 
+test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
+  assert.ok(source.includes("frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source)"));
+  assert.equal(source.includes('allow-same-origin'),false);
+});
+
 test('shared mobile navigation opens as compact horizontal button grids',()=>{
   assert.ok(publicCss.includes('.nav[data-open=true]{display:grid}'));
   assert.ok(publicCss.includes('grid-template-columns:repeat(4,minmax(0,1fr))'));
@@ -507,7 +512,8 @@ test('sandboxed code block saves source and previews without same-origin access'
   f.click('.legend-cms-code-actions button');
   const block=f.w.document.querySelector('.cms-extra-code');
   const frame=block.querySelector('iframe');
-  assert.equal(frame.srcdoc,sourceInput.value);
+  assert.ok(frame.src.startsWith('data:text/html;charset=utf-8,'));
+  assert.equal(decodeURIComponent(frame.src.slice(frame.src.indexOf(',')+1)),sourceInput.value);
   assert.equal(frame.getAttribute('sandbox').includes('allow-same-origin'),false);
   const saved=await f.save();const extra=saved.pages['/'].extras.find(x=>x.type==='code');
   assert.ok(extra);assert.equal(extra.text,sourceInput.value);assert.equal(extra.style.widthPercent,100);assert.equal(extra.style.heightPx,320);
