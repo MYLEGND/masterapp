@@ -9,6 +9,21 @@ using Infrastructure.Analytics;
 using Infrastructure.Businesses;
 using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.Razor;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -260,6 +275,108 @@ public sealed class BusinessWorkspaceTests
         var leadModal = leadsIndex.IndexOf("id=\"productionModal\"", StringComparison.Ordinal);
         var leadModalGuard = leadsIndex.LastIndexOf("@if (!isBusinessWorkspace)", leadModal, StringComparison.Ordinal);
         Assert.True(leadModal >= 0 && leadModalGuard >= 0 && leadModal - leadModalGuard < 180);
+    }
+
+    [Fact]
+    public async Task ClientAppBusinessClientViewRendersUnderBusinessWorkspaceContract()
+    {
+        using var host = await BuildClientAppRazorHostAsync();
+        var html = await RenderBusinessCrmViewAsync(host.Services, "~/Views/Clients/Index.cshtml", "Client");
+        Assert.Contains("id=\"legendWrap\"", html, StringComparison.Ordinal);
+        Assert.Contains("/clients", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ClientAppBusinessLeadViewRendersUnderBusinessWorkspaceContract()
+    {
+        using var host = await BuildClientAppRazorHostAsync();
+        var html = await RenderBusinessCrmViewAsync(host.Services, "~/Views/Leads/Index.cshtml", "Lead");
+        Assert.Contains("id=\"legendWrap\"", html, StringComparison.Ordinal);
+        Assert.Contains("/leads", html, StringComparison.Ordinal);
+    }
+
+    private static Task<IHost> BuildClientAppRazorHostAsync()
+    {
+        return new HostBuilder()
+            .ConfigureWebHost(webBuilder => webBuilder
+                .UseEnvironment("Testing")
+                .UseTestServer()
+                .ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddDataProtection();
+                    services.AddControllersWithViews()
+                        .AddApplicationPart(typeof(ClientApp.Controllers.HomeController).Assembly)
+                        .AddApplicationPart(Assembly.Load("ClientApp.Views"));
+                })
+                .Configure(_ => { }))
+            .StartAsync();
+    }
+
+    private static async Task<string> RenderBusinessCrmViewAsync(IServiceProvider services, string viewPath, string kind)
+    {
+        using var scope = services.CreateScope();
+        var scoped = scope.ServiceProvider;
+        var viewEngine = scoped.GetRequiredService<IRazorViewEngine>();
+        var metadata = scoped.GetRequiredService<IModelMetadataProvider>();
+        var tempDataProvider = scoped.GetRequiredService<ITempDataProvider>();
+        var businessId = Guid.NewGuid();
+
+        var http = new DefaultHttpContext { RequestServices = scoped };
+        http.Request.Scheme = "https";
+        http.Request.Host = new HostString("client.test");
+        http.Request.Path = kind == "Client"
+            ? $"/business/{businessId}/clients"
+            : $"/business/{businessId}/leads";
+
+        var routeData = new RouteData();
+        routeData.Values["controller"] = "BusinessWorkspace";
+        routeData.Values["action"] = kind == "Client" ? "Clients" : "Leads";
+        routeData.Values["businessId"] = businessId;
+
+        var actionContext = new ActionContext(http, routeData, new ActionDescriptor());
+        var found = viewEngine.GetView(null, viewPath, isMainPage: false);
+        Assert.True(found.Success, $"View {viewPath} was not found. Searched: {string.Join(", ", found.SearchedLocations ?? Array.Empty<string>())}");
+
+        var model = new System.Collections.Generic.List<AgentPortal.Models.ClientListItemViewModel>
+        {
+            new()
+            {
+                ClientUserId = kind.ToLowerInvariant() + "-render-probe",
+                FirstName = "Render",
+                LastName = "Probe",
+                Email = "render@example.test",
+                Phone = "5555550100",
+                CrmStatus = kind,
+                RecordType = kind,
+                PipelineStage = "New",
+                StageEnteredUtc = DateTime.UtcNow
+            }
+        };
+        var viewData = new ViewDataDictionary<System.Collections.Generic.List<AgentPortal.Models.ClientListItemViewModel>>(
+            metadata, new ModelStateDictionary())
+        {
+            Model = model
+        };
+        viewData["BusinessWorkspace"] = new BusinessWorkspaceModel
+        {
+            BusinessId = businessId,
+            BusinessName = "Render Test Business",
+            Kind = kind,
+            Total = model.Count,
+            Preferences = new BusinessWorkspacePreferences()
+        };
+        viewData["Search"] = "";
+        viewData["TotalClients"] = model.Count;
+        viewData["ClientPortalBaseUrl"] = "https://client.test";
+        viewData["CanSetFounderSubscriptionOptions"] = false;
+        viewData["ProductionTotals"] = new AgentPortal.Services.ProductionTotals();
+
+        var tempData = new TempDataDictionary(http, tempDataProvider);
+        using var writer = new StringWriter();
+        var viewContext = new ViewContext(actionContext, found.View, viewData, tempData, writer, new HtmlHelperOptions());
+        await found.View.RenderAsync(viewContext);
+        return writer.ToString();
     }
 
     private sealed class PageController(BusinessWorkspaceService service, CommerceBusiness business)
