@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested the narrow post-activation client identity recovery repair be directly released. The only follow-up change after the failed attempt is the missing standard imports in its focused test file; runtime code is unchanged.",
+  "authorization": "Founder requested the narrow post-activation client identity recovery repair be directly released now. The prior run was cancelled before execution; the direct-release lane is now clear. Runtime code remains unchanged from the reviewed surgical fix.",
   "purpose": "Deploy only ClientApp with the bounded recovery worker that retries the existing IClientEntraLifecycleService for active client subscriptions whose ExternalIdentityObjectId is still missing after activation. No billing-orchestrator changes, no schema migration, no duplicate identity system, and no unrelated app deployment.",
-  "requestId": "client-post-activation-entra-recovery-20260923-r3",
+  "requestId": "client-post-activation-entra-recovery-20260923-r4",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-client"
