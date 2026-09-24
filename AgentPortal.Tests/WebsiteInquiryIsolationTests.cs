@@ -97,6 +97,25 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
+    public async Task ManagementProjectsPhoneAndSplitNameFromCanonicalWebsiteLead()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+        var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), CrmNotes = "{\"recordType\":\"BusinessClient\"}" };
+        f.Db.Add(profile);
+        f.Db.Add(new CommerceBusinessMember { CommerceBusinessId = f.BusinessId, ClientProfileId = profile.Id });
+        await f.Db.SaveChangesAsync();
+
+        Assert.IsType<OkObjectResult>(await f.Controller.Submit(f.Request(), CancellationToken.None));
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.Manage(f.Ticket(profile), CancellationToken.None));
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
+        Assert.Contains("\"FirstName\":\"Visitor\"", json);
+        Assert.Contains("\"LastName\":\"Example\"", json);
+        Assert.Contains("\"Phone\":\"(602) 555-0199\"", json);
+        Assert.Contains("\"Email\":\"visitor@example.org\"", json);
+    }
+
+    [Fact]
     public async Task MissingManagementAuthorityCannotReadOrMutateInbox()
     {
         using var f = new Fixture();
