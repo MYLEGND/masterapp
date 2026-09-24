@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -226,6 +227,39 @@ public sealed class BusinessWorkspaceTests
         var legacy = Assert.IsType<Microsoft.AspNetCore.Mvc.RedirectToActionResult>(await controller.Crm(business.Id, null, "Client"));
         Assert.Equal(nameof(BusinessWorkspaceControllerBase.Clients), legacy.ActionName);
         Assert.Equal(business.Id, legacy.RouteValues!["businessId"]);
+    }
+
+    [Fact]
+    public void SharedCrmViewsKeepBusinessRenderingInsideTheBusinessRouteContract()
+    {
+        var clientsIndex = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "business-crm-clients-index.cshtml"));
+        var clientsPipeline = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "business-crm-clients-pipeline.cshtml"));
+        var leadsIndex = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "business-crm-leads-index.cshtml"));
+        var leadsPipeline = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "business-crm-leads-pipeline.cshtml"));
+
+        Assert.Contains("var isBusinessWorkspace = businessWorkspace is not null;", clientsIndex, StringComparison.Ordinal);
+        Assert.Contains("var isBusinessWorkspace = businessWorkspace is not null;", leadsIndex, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"@Url.Action(\"Edit\", \"Clients\"", clientsIndex, StringComparison.Ordinal);
+
+        foreach (var pipeline in new[] { clientsPipeline, leadsPipeline })
+        {
+            Assert.Contains("action=\"@listUrl\"", pipeline, StringComparison.Ordinal);
+            Assert.Contains("href=\"@listUrl\"", pipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("asp-action=\"Index\"", pipeline, StringComparison.Ordinal);
+            Assert.Contains("ViewData[\"BusinessWorkspace\"] as Shared.Crm.BusinessWorkspaceModel", pipeline, StringComparison.Ordinal);
+        }
+
+        var archive = clientsIndex.IndexOf("asp-action=\"Archive\"", StringComparison.Ordinal);
+        var archiveGuard = clientsIndex.LastIndexOf("@if (!isBusinessWorkspace)", archive, StringComparison.Ordinal);
+        Assert.True(archive >= 0 && archiveGuard >= 0 && archive - archiveGuard < 180);
+
+        var clientModal = clientsIndex.IndexOf("id=\"clientProductionModal\"", StringComparison.Ordinal);
+        var clientModalGuard = clientsIndex.LastIndexOf("@if (!isBusinessWorkspace)", clientModal, StringComparison.Ordinal);
+        Assert.True(clientModal >= 0 && clientModalGuard >= 0 && clientModal - clientModalGuard < 180);
+
+        var leadModal = leadsIndex.IndexOf("id=\"productionModal\"", StringComparison.Ordinal);
+        var leadModalGuard = leadsIndex.LastIndexOf("@if (!isBusinessWorkspace)", leadModal, StringComparison.Ordinal);
+        Assert.True(leadModal >= 0 && leadModalGuard >= 0 && leadModal - leadModalGuard < 180);
     }
 
     private sealed class PageController(BusinessWorkspaceService service, CommerceBusiness business)

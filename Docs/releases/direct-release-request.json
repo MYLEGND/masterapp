@@ -1,11 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the precise business website publication encoding correction through legend/approved-changes. Preserve the working CAMO draft, published/domain ownership, Cloudflare routing and diagnostics, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and every unrelated working behavior. Deploy only the affected Protect Website application.",
-  "purpose": "Retry the UTF-8 transport release after the safety gate again blocked deployment because the transport test used a legacy top-level element that the business page compiler does not emit into the scoped page payload. Keep the exact production fix unchanged: explicit strict UTF-8 for WebsitePageCompiler Node stdin, stdout, and stderr. Validate authored page title/description Unicode across the actual business publication process using middle dot, em dash, accented text, registered mark, and curly quotes, plus the dedicated CLI process test. No character substitution, no fallback publisher, no CSS/render override, no migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
-  "requestId": "business-publisher-utf8-process-transport-direct-20260924-retry3",
+  "authorization": "Founder explicitly authorized the isolated business-scoped Clients/Leads CRM Razor routing repair through legend/approved-changes. Preserve every unrelated working flow and deploy only the affected ClientApp.",
+  "purpose": "Repair the shared CRM view contract used by ClientApp business workspaces. Business-scoped Clients/Leads pages must not emit AgentPortal-only Archive, Index, Edit, Work Lead, Create/Import, or production form actions while rendering under BusinessWorkspaceController. Search and full-list navigation bind to the scoped /business/{businessId}/clients or /business/{businessId}/leads routes. Keep the canonical AgentPortal view source, no copied business views, no route overrides, no stacked handlers, no database migrations, no Protect/AgentPortal/LEGEND Website/Parfait deployment.",
+  "requestId": "business-crm-shared-view-routing-direct-20260924",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect"
+    "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false
 }

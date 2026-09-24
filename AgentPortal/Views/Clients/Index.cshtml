@@ -6,6 +6,7 @@
 
 @{
     var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
+    var isBusinessWorkspace = businessWorkspace is not null;
     ViewData["Title"] = businessWorkspace?.Preferences.ClientLabel ?? "Clients";
     var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
@@ -27,7 +28,10 @@
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
 <div class="wrap density-comfort clients-crm pipeline-mode" id="legendWrap" data-business-id="@businessWorkspace?.BusinessId" data-crm-api-base="@(businessWorkspace is null ? "" : $"/business/{businessWorkspace.BusinessId}/crm/api")" data-pipeline-stages="@(businessWorkspace is null ? "[]" : System.Text.Json.JsonSerializer.Serialize(businessWorkspace.Preferences.Stages))">
-<a class="btn btn-gold" asp-action="Archive">Archive / Deleted</a>
+@if (!isBusinessWorkspace)
+{
+    <a class="btn btn-gold" asp-action="Archive">Archive / Deleted</a>
+}
 
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
@@ -494,10 +498,16 @@ else
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-gold open-drawer">Quick View</button>
-                        <a class="btn btn-ghost" href="@Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true })" target="_blank" rel="noopener">Edit</a>
-                        <button type="button" class="btn btn-outline-light add-client-production-btn"
-                                data-client-id="@c.ClientUserId" data-business-revision="@c.BusinessRevision"
-                                data-client-name="@accountDisplayName">Add Production</button>
+                        @if (!string.IsNullOrWhiteSpace(clientUrl))
+                        {
+                            <a class="btn btn-ghost" href="@clientUrl" target="_blank" rel="noopener">Edit</a>
+                        }
+                        @if (!isBusinessWorkspace)
+                        {
+                            <button type="button" class="btn btn-outline-light add-client-production-btn"
+                                    data-client-id="@c.ClientUserId" data-business-revision="@c.BusinessRevision"
+                                    data-client-name="@accountDisplayName">Add Production</button>
+                        }
                     </td>
                 </tr>
             }
@@ -513,6 +523,8 @@ else
 
 @await Html.PartialAsync("_ClientsQuickView")
 @await Html.PartialAsync("_ClientsQuickViewUtilities")
+@if (!isBusinessWorkspace)
+{
 
 <div class="modal fade" id="clientProductionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered production-modal-dialog">
@@ -569,6 +581,8 @@ else
         </div>
     </div>
 </div>
+
+}
 
 <script src="~/js/dp-constants.js" asp-append-version="true"></script>
 <script src="~/js/dp-validators.js" asp-append-version="true"></script>

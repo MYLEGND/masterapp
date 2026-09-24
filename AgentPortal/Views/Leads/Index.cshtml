@@ -6,6 +6,7 @@
 
 @{
     var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
+    var isBusinessWorkspace = businessWorkspace is not null;
     ViewData["Title"] = businessWorkspace?.Preferences.LeadLabel ?? "Leads";
     var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
@@ -560,8 +561,11 @@ var sCity = (c.City ?? "").Trim();
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-quickview open-drawer">Quick View</button>
-                        <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
-                        <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
+                        @if (!isBusinessWorkspace)
+                        {
+                            <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
+                            <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
+                        }
                     </td>
                 </tr>
             }
@@ -577,6 +581,8 @@ var sCity = (c.City ?? "").Trim();
 @await Html.PartialAsync("_LeadQuickView")
 @await Html.PartialAsync("_LeadQuickViewUtilities")
 
+@if (!isBusinessWorkspace)
+{
 
 <div class="modal fade" id="productionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered production-modal-dialog">
@@ -633,6 +639,8 @@ var sCity = (c.City ?? "").Trim();
         </div>
     </div>
 </div>
+
+}
 
 <script src="~/js/scheduling/qv-booking.js" asp-append-version="true"></script>
 <script src="~/js/scheduling/qv-appointment-state.js" asp-append-version="true"></script>
