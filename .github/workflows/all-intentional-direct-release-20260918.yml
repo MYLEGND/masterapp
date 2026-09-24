@@ -473,9 +473,56 @@ jobs:
           app-name: masterapp-client
           slot-name: Production
           package: /tmp/clientapp-publish
+      - name: Deploy shared Cloudflare business website router
+        id: routingdeploy
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.package.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd Legend-Cloudflare
+          existed=false
+          if npx wrangler deployments list --name legend-business-website-router --json >/tmp/legend-routing-before.json 2>/dev/null; then
+            if [ "$(jq 'length' /tmp/legend-routing-before.json 2>/dev/null || echo 0)" -gt 0 ]; then existed=true; fi
+          fi
+          printf 'LEGEND_ROUTING_WORKER_EXISTED=%s\n' "$existed" >> "$GITHUB_ENV"
+
+          rollback_router() {
+            if [ "$existed" = true ]; then
+              npx wrangler rollback --name legend-business-website-router --message "Automatic rollback after failed LEGEND website-router smoke" || true
+            else
+              npx wrangler delete --name legend-business-website-router --force || true
+            fi
+          }
+
+          npx wrangler deploy --config wrangler.website-routing.jsonc
+          printf '%s' "$LEGEND_WEBSITE_BRIDGE_SECRET" | npx wrangler secret put LEGEND_WEBSITE_BRIDGE_SECRET --config wrangler.website-routing.jsonc
+
+          if ! python3 - <<'PYFIRSTPARTY'
+          import http.client, ssl
+          hosts=('mylegnd.com','www.mylegnd.com','protect.mylegnd.com','portal.mylegnd.com','client.mylegnd.com')
+          context=ssl.create_default_context()
+          for host in hosts:
+              conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
+              try:
+                  conn.request('GET','/',headers={'User-Agent':'LEGEND-worker-release-smoke/1.0','Cache-Control':'no-cache'})
+                  response=conn.getresponse()
+                  body=response.read(1025)
+                  print(host,response.status,len(body))
+                  if response.status < 200 or response.status >= 400:
+                      raise SystemExit(f'{host} returned HTTP {response.status} after Worker route deployment')
+              finally:
+                  conn.close()
+          PYFIRSTPARTY
+          then
+            rollback_router
+            exit 1
+          fi
+          echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
+
       - name: Direct deploy Protect
         id: protect
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && (env.WEBSITE_ROUTING != 'true' || steps.routingdeploy.outcome == 'success') && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -500,6 +547,47 @@ jobs:
           app-name: masterapp-website
           slot-name: Production
           package: /tmp/diagnostics-packages/website.zip
+      - name: Verify custom-domain bridge end to end
+        id: routinglive
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && steps.protect.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          rollback_router() {
+            cd Legend-Cloudflare
+            if [ "${LEGEND_ROUTING_WORKER_EXISTED:-false}" = true ]; then
+              npx wrangler rollback --name legend-business-website-router --message "Automatic rollback after failed LEGEND custom-domain proof" || true
+            else
+              npx wrangler delete --name legend-business-website-router --force || true
+            fi
+          }
+
+          if ! python3 - <<'PYCUSTOM'
+          import http.client, json, os, ssl
+          host=os.environ['WEBSITE_ROUTING_CANARY']
+          conn=http.client.HTTPSConnection(host,443,timeout=30,context=ssl.create_default_context())
+          try:
+              conn.request('GET','/.well-known/legend-website',headers={'User-Agent':'LEGEND-worker-release-proof/1.0','Cache-Control':'no-cache','Accept':'application/json'})
+              response=conn.getresponse()
+              body=response.read(4097)
+              print(host,response.status,len(body))
+              if response.status != 200 or len(body) > 4096:
+                  raise SystemExit(f'Custom-domain routing proof failed: HTTP {response.status}')
+              receipt=json.loads(body)
+              for key in ('businessId','bindingId'):
+                  value=receipt.get(key)
+                  if not isinstance(value,str) or len(value) < 32:
+                      raise SystemExit(f'Custom-domain routing proof missing {key}')
+          finally:
+              conn.close()
+          PYCUSTOM
+          then
+            rollback_router
+            exit 1
+          fi
+          echo "Custom-domain Worker bridge reached the exact LEGEND business binding proof."
+
       - name: Verify every deployed target and collect all failures
         id: live
         if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true' || env.CLIENT_ONLY == 'true') }}
