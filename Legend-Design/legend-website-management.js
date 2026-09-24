@@ -157,22 +157,38 @@
       documentDownload(link); URL.revokeObjectURL(url); status.textContent = 'Website export downloaded.';
     });
     const documentDownload = link => { document.body.append(link); link.click(); link.remove(); };
+    const domainDiagnosticText = domain => {
+      const diagnostic = domain?.diagnostic;
+      if (!diagnostic?.summary && !diagnostic?.requiredAction) {
+        return `${domain?.hostname ?? 'Domain'}: verification details are not available yet. Choose Verify status to run the provider and LEGEND routing checks now.`;
+      }
+      const providerErrors = Array.isArray(diagnostic.providerErrors) ? diagnostic.providerErrors.filter(Boolean) : [];
+      const certificateErrors = Array.isArray(diagnostic.certificateErrors) ? diagnostic.certificateErrors.filter(Boolean) : [];
+      const details = [...providerErrors, ...certificateErrors]
+        .filter((value, index, values) => values.indexOf(value) === index)
+        .map(value => `Provider detail: ${value}`);
+      return [
+        `${domain.hostname}: ${diagnostic.summary ?? 'Verification is pending.'}`,
+        diagnostic.requiredAction ? `Required action: ${diagnostic.requiredAction}` : null,
+        ...details
+      ].filter(Boolean).join(' ');
+    };
     const domains = () => run(async () => {
       section('Connected domains');
       const result = await request('/domains');
       for (const domain of result.domains ?? []) {
         const row = el('div', null, { class: 'wm-row' });
         const domainStatus = el('span', `${domain.hostname} · ${domain.status} · HTTPS ${domain.certificateStatus}`);
+        const diagnostic = el('p', domainDiagnosticText(domain), { role: 'status', 'aria-live': 'polite' });
         row.append(domainStatus, button('Verify status', () => run(async () => {
           const checked = await request('/domains/refresh', { bindingId: domain.id });
           domainStatus.textContent = `${checked.hostname ?? domain.hostname} · ${checked.status ?? 'pending'} · HTTPS ${checked.certificateStatus ?? 'pending'}`;
-          status.textContent = checked.status === 'active' && checked.certificateStatus === 'active'
-            ? `${checked.hostname ?? domain.hostname}: domain and HTTPS are active.`
-            : `${checked.hostname ?? domain.hostname}: verification is still pending. LEGEND will continue checking automatically.`;
+          diagnostic.textContent = domainDiagnosticText(checked);
+          status.textContent = domainDiagnosticText(checked);
         })), button('Disconnect', () => confirmAction('Disconnect domain', `Remove ${domain.hostname} from this website. Your website content will remain saved.`, async () => {
           await request('/domains/remove', { bindingId: domain.id }); overview(); status.textContent = 'Domain disconnected.';
         })));
-        panel.append(row);
+        panel.append(row, diagnostic);
         dnsInstructions(result.cnameTarget, domain.hostname);
       }
       if (result.cnameTarget) panel.append(el('p', `Website CNAME target: ${result.cnameTarget}`));
@@ -182,7 +198,7 @@
         const result = await request('/domains', { hostname: domain.value.trim() });
         const binding = result.binding ?? result;
         dnsInstructions(result.cnameTarget, binding.hostname ?? domain.value.trim());
-        status.textContent = 'Add the routing record shown below at your registrar, then verify status.';
+        status.textContent = domainDiagnosticText(binding);
       }), true)); status.textContent = '';
     });
     const marketingProfile = () => run(async () => {
