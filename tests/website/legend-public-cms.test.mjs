@@ -585,3 +585,33 @@ test('site palette does not retain the template blue gradient stop',async()=>{
  const f=await domFixture({doc:{theme:{navy:'#000000',navyDeep:'#000000'}}});
  try {assert.equal(f.w.document.documentElement.style.getPropertyValue('--web-navy-royal'),'#000000');}finally{f.close();}
 });
+
+
+test('scoped favicon is projected from the canonical website document without leaking editor tickets',async()=>{
+  const media='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
+  const html='<!doctype html><html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head><body data-page-key="home"><main><section><h1>Title</h1></section></main></body></html>';
+  const f=await domFixture({doc:{faviconImageDataUrl:media},html});
+  try {
+    const link=f.w.document.querySelector('link[rel~="icon"]');
+    assert.equal(new URL(link.href).pathname,'/api/website-content/media/11111111-1111-1111-1111-111111111111');
+    assert.equal(new URL(link.href).searchParams.get('ticket'),'ticket');
+    assert.equal(link.hasAttribute('type'),false);
+    const saved=await f.save();
+    assert.equal(saved.faviconImageDataUrl,media);
+    assert.equal(saved.faviconImageDataUrl.includes('ticket='),false);
+  } finally { f.close(); }
+});
+
+test('removing a scoped favicon restores the canonical fallback before publication',async()=>{
+  const media='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
+  const html='<!doctype html><html><head><link rel="icon" href="/favicon.svg" type="image/svg+xml"></head><body data-page-key="home"><main><section><h1>Title</h1></section></main></body></html>';
+  const f=await domFixture({doc:{faviconImageDataUrl:media},html});
+  try {
+    f.click('#legend-cms-favicon-remove');
+    const link=f.w.document.querySelector('link[rel~="icon"]');
+    assert.equal(link.getAttribute('href'),'/favicon.svg');
+    assert.equal(link.getAttribute('type'),'image/svg+xml');
+    const saved=await f.save();
+    assert.equal(saved.faviconImageDataUrl,null);
+  } finally { f.close(); }
+});

@@ -29,6 +29,7 @@ public sealed record WebsiteEditorTicket(
 public sealed class WebsiteContentDocument
 {
     public int Version { get; set; } = 1;
+    public string? FaviconImageDataUrl { get; set; }
     public Dictionary<string, WebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);

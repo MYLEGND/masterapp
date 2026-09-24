@@ -71,14 +71,17 @@ public sealed class WebsiteContentEditorRoundTripTests
               "extras":[{"id":"new-section","type":"section","sectionId":"home.root"}]},
               "/about":{"title":"About us","elements":{}}}}
             """, JsonOptions)!;
+        document.FaviconImageDataUrl = "https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111";
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
         var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
         Assert.Equal("Saved page content", saved.Pages["/"].Elements[ElementId].Text);
+        Assert.Equal(document.FaviconImageDataUrl, saved.FaviconImageDataUrl);
         fixture.Db.ChangeTracker.Clear();
         var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket));
         Assert.Equal("Our business", reloaded.Pages["/"].Title);
         Assert.Equal("Our services", reloaded.Pages["/"].Description);
         Assert.Equal("About us", reloaded.Pages["/about"].Title);
+        Assert.Equal(document.FaviconImageDataUrl, reloaded.FaviconImageDataUrl);
         Assert.Single(reloaded.Pages["/"].Extras);
     }
 

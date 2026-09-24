@@ -28,7 +28,10 @@
   const editorMode = !!editorTicket;
   const originalTitle = document.title || '';
   const originalDescription = document.querySelector('meta[name="description"]')?.content || '';
-  let documentState = { version: 1, elements: {}, sectionOrder: {}, extras: [], theme: {} };
+  const initialFaviconLink = document.querySelector('link[rel~="icon"]');
+  const originalFaviconHref = initialFaviconLink?.getAttribute('href') || (SITE_KEY === 'protect' ? '/images/favicon/legend-favicon.svg' : '/favicon.svg');
+  const originalFaviconType = initialFaviconLink?.getAttribute('type') || '';
+  let documentState = { version: 1, faviconImageDataUrl: null, elements: {}, sectionOrder: {}, extras: [], theme: {} };
   let signalCatalog = null;
   let ctaCatalog = [];
   let selected = null;
@@ -95,6 +98,7 @@
     }
     return {
       version: 1,
+      faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
       elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
       sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
       extras: Array.isArray(input?.extras) ? input.extras : [],
@@ -303,6 +307,31 @@
     return value;
   }
 
+  function applyFavicon(value) {
+    let link = document.querySelector('link[rel~="icon"]');
+    if (!link) {
+      link = document.createElement('link');
+      link.setAttribute('rel', 'icon');
+      document.head.appendChild(link);
+    }
+    const href = value ? mediaUrl(value) : originalFaviconHref;
+    if (href) link.setAttribute('href', href);
+    if (value) link.removeAttribute('type');
+    else if (originalFaviconType) link.setAttribute('type', originalFaviconType);
+    else link.removeAttribute('type');
+  }
+
+  function syncFaviconControls() {
+    const preview = document.getElementById('legend-cms-favicon-preview');
+    const remove = document.getElementById('legend-cms-favicon-remove');
+    const current = documentState.faviconImageDataUrl;
+    if (preview) {
+      preview.src = current ? mediaUrl(current) : originalFaviconHref;
+      preview.alt = current ? 'Current website favicon' : 'LEGEND fallback favicon';
+    }
+    if (remove) remove.disabled = !current;
+  }
+
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
@@ -363,6 +392,7 @@
   function applyDocument(doc) {
     documentState = normalizeDocument(doc);
     applyTheme(documentState.theme);
+    applyFavicon(documentState.faviconImageDataUrl);
     const metadata = pageState();
     document.title = metadata.title ?? originalTitle;
     const description = document.querySelector('meta[name="description"]');
@@ -1136,7 +1166,7 @@
       <section data-cms-view="layout" hidden><h2>Arrange</h2><p>Drag above or below another block to move it within that layout. Use the column controls to place content in a separate responsive grid.</p><button id="legend-cms-drag">Enable drag</button><label class="legend-cms-group">Destination section<select id="legend-cms-destination"></select></label><label class="legend-cms-group">Column<input id="legend-cms-column" type="number" min="1" max="12" value="1"></label><label class="legend-cms-group">Column span<input id="legend-cms-span" type="number" min="1" max="12" value="12"></label><button id="legend-cms-place">Place block</button><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
-      <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette and typography system for every page of this website.</p></section>`;
+      <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Choose what this interaction means. Draft changes take effect when published.</p><div id="legend-cms-signal-controls"></div>';
@@ -1252,6 +1282,7 @@
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
+      .legend-cms-favicon-preview{display:block;width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:6px;border:1px solid #50617e}.legend-cms-favicon button{width:100%;padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:center}
       .legend-cms-panel button{cursor:pointer}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}.legend-cms-drop{outline:2px dashed #d4ad45;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(8.333% - 1px),#d4ad4560 calc(8.333% - 1px),#d4ad4560 8.333%)}
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
@@ -1374,6 +1405,26 @@
         markDirty();
       });
     });
+
+    document.getElementById('legend-cms-favicon')?.addEventListener('change', e => {
+      const file = e.target.files?.[0];
+      readImage(file, dataUrl => {
+        checkpoint();
+        documentState.faviconImageDataUrl = dataUrl;
+        applyFavicon(dataUrl);
+        syncFaviconControls();
+        markDirty();
+      });
+    });
+    document.getElementById('legend-cms-favicon-remove')?.addEventListener('click', () => {
+      if (!documentState.faviconImageDataUrl) return;
+      checkpoint();
+      documentState.faviconImageDataUrl = null;
+      applyFavicon(null);
+      syncFaviconControls();
+      markDirty();
+    });
+    syncFaviconControls();
 
     document.querySelectorAll('[data-theme-key]').forEach(input => {
       const key = input.dataset.themeKey;

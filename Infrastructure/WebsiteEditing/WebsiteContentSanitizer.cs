@@ -8,7 +8,11 @@ public static class WebsiteContentSanitizer
     private const int MaxImageDataUrlLength = 3500000;
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
     {
-        var clean = new WebsiteContentDocument { Version = 1 };
+        var clean = new WebsiteContentDocument
+        {
+            Version = 1,
+            FaviconImageDataUrl = SanitizeImage(source.FaviconImageDataUrl)
+        };
 
         foreach (var pair in (source.Elements ?? new()).Take(MaxElements))
         {

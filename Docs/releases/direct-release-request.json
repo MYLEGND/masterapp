@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested release of the shared website delete controls through legend/approved-changes after the canonical parity repair succeeded.",
-  "purpose": "Directly deploy the shared website editor selection-aware delete controls and scoped whole-website deletion capability to every affected website-management surface. This release is limited to AgentPortal, ClientApp, Protect Website, and LEGEND Website. Do not deploy Parfait and do not modify unrelated application behavior.",
-  "requestId": "website-delete-controls-release-20260923",
+  "authorization": "Founder explicitly requested the scoped favicon upload control be implemented live in every shared website edit flow with no overrides.",
+  "purpose": "Directly deploy the canonical scoped favicon editor/runtime support through the existing shared website document, media authority, draft/publish flow, and public renderer. Limit release to AgentPortal, ClientApp, Protect Website, and LEGEND Website. Do not deploy Parfait and do not modify unrelated application behavior.",
+  "requestId": "website-scoped-favicon-release-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",

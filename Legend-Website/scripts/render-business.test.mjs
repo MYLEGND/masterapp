@@ -39,6 +39,7 @@ test('published text, URLs, section color and imported page are rendered before 
   const heading=dom.querySelector('h1').dataset.cmsId;
   const link=dom.querySelector('.hero .actions a').dataset.cmsId;
   const value=document();
+  value.faviconImageDataUrl='https://masterapp-protect.azurewebsites.net/api/website-content/media/11111111-1111-1111-1111-111111111111';
   value.pages['/']={title:'Custom title',description:'Verified description',elements:{[heading]:{text:'Actual business headline'},[link]:{text:'Book an appointment',href:'https://example.com/book'},'section:home.section.1':{style:{backgroundColor:'#123456'}}},sectionOrder:{},extras:[]};
   value.pages['/team/history']={title:'Our history',description:'Our actual story',elements:{},sectionOrder:{},extras:[{id:'imported-section',type:'section',sectionId:'',style:{}},{id:'imported-text',type:'text',sectionId:'extra:imported-section',text:'Verified imported information',style:{}}]};
   const result=await compileBusiness({business,document:value});
@@ -48,6 +49,8 @@ test('published text, URLs, section color and imported page are rendered before 
   assert.equal(page.querySelector('.hero .actions a').href,'https://example.com/book');
   assert.equal(page.querySelector('.hero').style.backgroundColor,'#123456');
   assert.equal(page.querySelector('.hero').style.backgroundImage,'none');
+  assert.equal(page.querySelector('link[rel~="icon"]').href,value.faviconImageDataUrl);
+  assert.equal(page.querySelector('link[rel~="icon"]').hasAttribute('type'),false);
   assert.ok(page.querySelector('.site-header').compareDocumentPosition(page.querySelector('main')) & 4);
   assert.ok(page.querySelector('main').compareDocumentPosition(page.querySelector('.site-footer')) & 4);
   assert.match(result.pages['/team/history'].html,/Verified imported information/);
