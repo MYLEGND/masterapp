@@ -231,7 +231,7 @@ public sealed class WebsiteContentController : ControllerBase
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
-            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken) },
+            history, signalCatalog = SignalCatalogPayload(), capabilities = new { canPublish = await CanPublishAsync(actor, cancellationToken), canManageDomains = await CanPublishAsync(actor, cancellationToken), canImport = actor.SiteKey == WebsiteEditorSiteKeys.Business, canSchedule = await CanPublishAsync(actor, cancellationToken), canDelete = await CanPublishAsync(actor, cancellationToken) },
             schedule = new { publishUtc = state.ScheduledPublishUtc, error = state.ScheduleError },
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
@@ -273,6 +273,7 @@ public sealed class WebsiteContentController : ControllerBase
         return Ok(await service.GetAsync(actor.CommerceBusinessId.Value, cancellationToken));
     }
     public sealed record PublishRequest(string Ticket, long ExpectedRevision);
+    public sealed record DeleteWebsiteRequest(string Ticket, long ExpectedRevision);
     public sealed record RollbackRequest(string Ticket, long ExpectedRevision, Guid VersionId);
 
     [HttpPost("manage")]
@@ -346,6 +347,39 @@ public sealed class WebsiteContentController : ControllerBase
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { revision = state.Revision, document = Read(state.DraftJson), drafts = drafts.Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
+    }
+
+    [HttpPost("manage/delete")]
+    public async Task<IActionResult> DeleteWebsite([FromBody] DeleteWebsiteRequest request, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
+
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision) return Conflict(new { error = "revision_conflict" });
+
+        state.PublishedVersionId = null;
+        state.DraftJson = JsonSerializer.Serialize(new WebsiteContentDocument(), JsonOptions);
+        state.NamedDraftsJson = "[]";
+        state.ImportReportJson = null;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+
+        return Ok(new
+        {
+            revision = state.Revision,
+            publishedRevision = (long?)null,
+            document = Read(state.DraftJson),
+            drafts = Array.Empty<object>()
+        });
     }
 
     [HttpPost("manage/publish")]
