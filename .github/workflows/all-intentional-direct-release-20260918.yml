@@ -32,6 +32,7 @@ jobs:
       public_only: ${{ steps.live.outputs.public_only }}
       client_only: ${{ steps.live.outputs.client_only }}
       validate_only: ${{ steps.live.outputs.validate_only }}
+      website_routing: ${{ steps.live.outputs.website_routing }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,6 +100,7 @@ jobs:
       PUBLIC_ONLY: ${{ needs.discover-live.outputs.public_only }}
       CLIENT_ONLY: ${{ needs.discover-live.outputs.client_only }}
       VALIDATE_ONLY: ${{ needs.discover-live.outputs.validate_only }}
+      WEBSITE_ROUTING: ${{ needs.discover-live.outputs.website_routing }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -108,6 +110,12 @@ jobs:
         if: env.WEBSITE_ONLY != 'true'
         with:
           dotnet-version: '10.x'
+      - uses: actions/setup-node@v4
+        if: env.WEBSITE_ROUTING == 'true'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Legend-Cloudflare/package-lock.json
       - name: Verify current live base before publication
         id: base
         run: |
@@ -173,6 +181,19 @@ jobs:
           else
             dotnet build MASTERAPP.sln -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
           fi
+      - name: Verify business website routing bridge
+        id: routingchecks
+        if: env.WEBSITE_ROUTING == 'true' && steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
+            --filter 'FullyQualifiedName~WebsiteDomainImportTests' \
+            -p:TreatWarningsAsErrors=true
+          npm ci --prefix Legend-Cloudflare
+          npm --prefix Legend-Cloudflare run test:website-routing
+          npm --prefix Legend-Cloudflare run check:website-routing
       - name: Verify localization retention privacy limits and original delivery
         id: tests
         if: env.PUBLIC_ONLY != 'true' && steps.build.outcome == 'success'
@@ -214,7 +235,7 @@ jobs:
           npm --prefix Legend-Website run check
       - name: Publish exact selected application packages
         id: package
-        if: always() && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') || steps.websitechecks.outcome == 'success')))
+        if: always() && (env.WEBSITE_ROUTING != 'true' || steps.routingchecks.outcome == 'success') && ((env.CLIENT_ONLY == 'true' && steps.build.outcome == 'success' && steps.tests.outcome == 'success' && steps.web.outcome == 'success') || ((env.WEBSITE_ONLY == 'true' || (env.PUBLIC_ONLY == 'true' && steps.build.outcome == 'success') || (steps.tests.outcome == 'success' && steps.web.outcome == 'success')) && (!contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') || steps.websitechecks.outcome == 'success')))
         run: |
           set -euo pipefail
           apps=()
