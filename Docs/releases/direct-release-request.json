@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder approved release after successful favicon deployment. Release the corrected custom-domain verification flow through legend/approved-changes using only affected-app direct deployment.",
+  "authorization": "Founder approved immediate release. Scoped direct-release policy now explicitly permits AgentPortal + ClientApp + Protect Website; deploy only those affected apps.",
   "purpose": "Directly deploy the canonical custom-domain verification repair: automatic Cloudflare HTTP DCV for new and pending domains, explicit provider/network verification errors, and shared website-management status handling. Limit release to AgentPortal, ClientApp, and Protect Website because AgentPortal and ClientApp publish the shared website-management asset and Protect owns the website-domain API/service. Do not deploy LEGEND Website or Parfait.",
-  "requestId": "business-domain-http-dcv-direct-release-20260923-r2",
+  "requestId": "business-domain-http-dcv-direct-release-20260923-r3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
