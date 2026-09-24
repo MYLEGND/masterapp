@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly authorized the precise business website publication encoding correction through legend/approved-changes. Preserve the working CAMO draft, published/domain ownership, Cloudflare routing and diagnostics, AgentPortal, ClientApp, LEGEND Website, Parfait, database schema, and every unrelated working behavior. Deploy only the affected Protect Website application.",
-  "purpose": "Retry the UTF-8 transport release after the safety gate correctly blocked deployment because the first regression asserted renderer placement instead of the actual process-transport output. Keep the exact production fix: explicit strict UTF-8 for WebsitePageCompiler Node stdin, stdout, and stderr. Validate the raw compiled publication payload preserves middle dot, em dash, accented text, registered mark, and curly quotes without mojibake, plus the dedicated CLI process test. No character substitution, no fallback publisher, no CSS/render override, no migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
-  "requestId": "business-publisher-utf8-process-transport-direct-20260924-retry2",
+  "purpose": "Retry the UTF-8 transport release after the safety gate again blocked deployment because the transport test used a legacy top-level element that the business page compiler does not emit into the scoped page payload. Keep the exact production fix unchanged: explicit strict UTF-8 for WebsitePageCompiler Node stdin, stdout, and stderr. Validate authored page title/description Unicode across the actual business publication process using middle dot, em dash, accented text, registered mark, and curly quotes, plus the dedicated CLI process test. No character substitution, no fallback publisher, no CSS/render override, no migrations, no Cloudflare changes, and no deployment of AgentPortal, ClientApp, LEGEND Website, or Parfait.",
+  "requestId": "business-publisher-utf8-process-transport-direct-20260924-retry3",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect"

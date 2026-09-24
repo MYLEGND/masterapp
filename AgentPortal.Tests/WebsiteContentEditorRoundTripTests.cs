@@ -137,7 +137,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
         const string unicode = "Locally Owned · Lynden, WA — Café ® “clean”";
         var document = new WebsiteContentDocument();
-        document.Elements[ElementId] = new WebsiteElementOverride { Text = unicode };
+        document.Pages["/"] = new WebsitePageDocument { Title = unicode, Description = unicode };
         var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
 
         Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
