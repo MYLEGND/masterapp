@@ -265,6 +265,18 @@
         await request('/schedule', { publishUtc: null }); await reload(); overview(); status.textContent = 'Publication schedule canceled.';
       })));
     };
+    const deleteWebsite = () => {
+      section('Delete website');
+      panel.append(el('p', 'This removes the current published website, working draft, named drafts, import state, and scheduled publication for this website scope. It does not delete the account, CRM, analytics, Meta settings, business profile, inquiries, or historical audit versions.'));
+      const confirmation = field('Type DELETE to confirm');
+      panel.append(button('Delete website', () => run(async () => {
+        if (confirmation.value.trim().toUpperCase() !== 'DELETE') throw new Error('Type DELETE to confirm website deletion.');
+        await request('/delete', {});
+        await reload();
+        overview();
+        status.textContent = 'Website deleted. This scope is no longer published.';
+      }), true));
+    };
     const overview = () => {
       panel.replaceChildren(); status.textContent = `Draft revision ${state.revision ?? 0} · Published revision ${state.publishedRevision ?? 'Not published'}`;
       const links = el('div', null, { class: 'wm-row' });
@@ -279,6 +291,7 @@
       if (state.capabilities?.canImport === true) tile('Import content', 'Bring an authorized export into draft', importDraft);
       tile('Website usage', 'Storage, media and publication history', usage);
       tile('Export website', 'Download your structured website content', exportWebsite);
+      if (state.capabilities?.canDelete === true) tile('Delete website', 'Unpublish and clear this scoped website', deleteWebsite);
       if (trigger.dataset.scope === 'business') { if (state.capabilities?.canPublish === true) tile('Marketing & booking', 'Public card, secure Meta destination and scheduler', marketingProfile); tile('Business details', 'Public contact details, services and locations', businessDetails); if (state.capabilities?.canManageDomains === true) tile('Domains', 'Connect and verify your business address', domains); tile('Inquiries', 'Manage customer messages for this business', inquiries); }
       panel.append(grid);
     };
