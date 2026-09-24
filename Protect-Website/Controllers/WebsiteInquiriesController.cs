@@ -240,10 +240,27 @@ public sealed class WebsiteInquiriesController : ControllerBase
     {
         var businessId = await AuthorizedBusinessAsync(ticket, cancellationToken);
         if (businessId is null) return Unauthorized();
-        var inquiries = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
-            .Where(x => x.CommerceBusinessId == businessId)
-            .OrderByDescending(x => x.CreatedUtc).Take(100)
-            .Select(x => new { x.Id, x.Name, x.Email, x.Message, x.SourcePath, x.Status, x.CreatedUtc })
+        var inquiries = await (
+            from inquiry in _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
+            where inquiry.CommerceBusinessId == businessId
+            join lead in _db.WebsiteLeads.AsNoTracking()
+                on inquiry.WebsiteLeadId equals (Guid?)lead.LeadId into linkedLeads
+            from lead in linkedLeads.DefaultIfEmpty()
+            orderby inquiry.CreatedUtc descending
+            select new
+            {
+                inquiry.Id,
+                inquiry.Name,
+                FirstName = lead == null ? null : lead.FirstName,
+                LastName = lead == null ? null : lead.LastName,
+                Phone = lead == null ? null : lead.Phone,
+                Email = lead == null ? inquiry.Email : lead.Email,
+                inquiry.Message,
+                inquiry.SourcePath,
+                inquiry.Status,
+                inquiry.CreatedUtc
+            })
+            .Take(100)
             .ToListAsync(cancellationToken);
         return Ok(new { inquiries });
     }
