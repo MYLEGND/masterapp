@@ -37,10 +37,13 @@ public sealed class AnalyticsController : Controller
         if (input.EventId == Guid.Empty || input.SessionId == Guid.Empty || input.Path is null ||
             input.Path.Length > 160 || !input.Path.StartsWith('/') || input.Path.Contains('?') || input.Path.Contains('#'))
             return BadRequest();
+        var requestHost = WebsiteRequestHostResolver.Resolve(
+            HttpContext,
+            HttpContext.RequestServices.GetRequiredService<IConfiguration>());
         if (!Uri.TryCreate(Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin) ||
             origin.Scheme != "https" || !origin.IsDefaultPort || origin.AbsolutePath != "/" ||
             origin.Query.Length != 0 || origin.Fragment.Length != 0 || origin.UserInfo.Length != 0 ||
-            !origin.IdnHost.Equals(Request.Host.Host, StringComparison.OrdinalIgnoreCase)) return BadRequest();
+            !origin.IdnHost.Equals(requestHost, StringComparison.OrdinalIgnoreCase)) return BadRequest();
         var owner = await domains.ResolveAsync(origin.IdnHost, ct);
         if (owner is null) return NotFound();
         var version = await Infrastructure.WebsiteEditing.WebsiteContentStore.PublishedBusinessAsync(_db, owner.Value, ct);
