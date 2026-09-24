@@ -87,7 +87,11 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
         }
 
         ApplyReceipt(binding, result);
-        if (binding.Status == "active" && !await RoutingConfirmedAsync(binding, ct)) binding.Status = "pending";
+        var routing = string.Equals(binding.CertificateStatus, "active", StringComparison.OrdinalIgnoreCase)
+            ? await ProbeRoutingAsync(binding, ct)
+            : new WebsiteDomainRoutingProof(false, "routing_not_checked", "LEGEND routing proof has not run because HTTPS is not active yet.", null);
+        if (binding.Status == "active" && !routing.Confirmed) binding.Status = "pending";
+        ApplyVerificationDiagnostic(binding, result, routing, CnameTarget);
         binding.LastCheckedUtc = DateTime.UtcNow;
         binding.Version = Guid.NewGuid();
         await db.SaveChangesAsync(ct);
@@ -175,14 +179,26 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
         return !string.Equals(certificateStatus, "active", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<bool> RoutingConfirmedAsync(WebsiteDomainBinding binding, CancellationToken ct)
+    internal sealed record WebsiteDomainRoutingProof(
+        bool Confirmed,
+        string Code,
+        string Message,
+        int? HttpStatus);
+
+    private static async Task<WebsiteDomainRoutingProof> ProbeRoutingAsync(WebsiteDomainBinding binding, CancellationToken ct)
     {
         using var handler = LegendConnectResearchNetworkPolicy.CreatePublicReadOnlyHandler();
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
         try
         {
             using var response = await client.GetAsync("https://" + binding.Hostname + "/.well-known/legend-website", HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode) return false;
+            if (!response.IsSuccessStatusCode)
+                return new WebsiteDomainRoutingProof(
+                    false,
+                    "routing_http_status",
+                    $"LEGEND routing proof reached the hostname, but /.well-known/legend-website returned HTTP {(int)response.StatusCode}.",
+                    (int)response.StatusCode);
+
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
             var buffer = new byte[4097];
             var length = 0;
@@ -192,12 +208,154 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
                 if (read == 0) break;
                 length += read;
             }
-            if (length > 4096) return false;
+
+            if (length > 4096)
+                return new WebsiteDomainRoutingProof(false, "routing_response_too_large", "LEGEND routing proof returned an oversized response instead of the expected binding receipt.", (int)response.StatusCode);
+
             using var json = JsonDocument.Parse(buffer.AsMemory(0, length));
-            return json.RootElement.TryGetProperty("businessId", out var business) && business.TryGetGuid(out var businessId) && businessId == binding.CommerceBusinessId &&
-                json.RootElement.TryGetProperty("bindingId", out var value) && value.TryGetGuid(out var bindingId) && bindingId == binding.Id;
+            if (!json.RootElement.TryGetProperty("businessId", out var business) || !business.TryGetGuid(out var businessId))
+                return new WebsiteDomainRoutingProof(false, "routing_business_missing", "LEGEND routing proof response is missing a valid businessId.", (int)response.StatusCode);
+            if (businessId != binding.CommerceBusinessId)
+                return new WebsiteDomainRoutingProof(false, "routing_business_mismatch", "The hostname is reaching LEGEND, but it resolves to a different business.", (int)response.StatusCode);
+            if (!json.RootElement.TryGetProperty("bindingId", out var value) || !value.TryGetGuid(out var bindingId))
+                return new WebsiteDomainRoutingProof(false, "routing_binding_missing", "LEGEND routing proof response is missing a valid bindingId.", (int)response.StatusCode);
+            if (bindingId != binding.Id)
+                return new WebsiteDomainRoutingProof(false, "routing_binding_mismatch", "The hostname is reaching LEGEND, but it resolves to a different domain binding.", (int)response.StatusCode);
+
+            return new WebsiteDomainRoutingProof(true, "routing_confirmed", "LEGEND routing proof matched this business and domain binding.", (int)response.StatusCode);
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException || ex is OperationCanceledException && !ct.IsCancellationRequested) { return false; }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new WebsiteDomainRoutingProof(false, "routing_timeout", "LEGEND could not complete the HTTPS routing proof within 10 seconds.", null);
+        }
+        catch (HttpRequestException)
+        {
+            return new WebsiteDomainRoutingProof(false, "routing_unreachable", "LEGEND could not reach this hostname over public HTTPS.", null);
+        }
+        catch (JsonException)
+        {
+            return new WebsiteDomainRoutingProof(false, "routing_invalid_json", "The hostname responded, but /.well-known/legend-website did not return a valid LEGEND routing receipt.", null);
+        }
+    }
+
+    internal static void ApplyVerificationDiagnostic(
+        WebsiteDomainBinding binding,
+        JsonElement result,
+        WebsiteDomainRoutingProof routing,
+        string cnameTarget)
+    {
+        var providerStatus = result.TryGetProperty("status", out var provider) ? provider.GetString() ?? "pending" : "pending";
+        var ssl = result.TryGetProperty("ssl", out var sslValue) ? sslValue : default;
+        var certificateStatus = ssl.ValueKind == JsonValueKind.Object && ssl.TryGetProperty("status", out var sslStatus)
+            ? sslStatus.GetString() ?? binding.CertificateStatus
+            : binding.CertificateStatus;
+        var providerErrors = ErrorMessages(result, "verification_errors");
+        var certificateErrors = ssl.ValueKind == JsonValueKind.Object ? ErrorMessages(ssl, "validation_errors") : Array.Empty<string>();
+
+        var summary = BuildDiagnosticSummary(providerStatus, certificateStatus, providerErrors, certificateErrors, routing);
+        var requiredAction = BuildRequiredAction(providerStatus, certificateStatus, routing, cnameTarget);
+
+        binding.VerificationJson = JsonSerializer.Serialize(new
+        {
+            providerStatus,
+            certificateStatus,
+            validationMethod = ssl.ValueKind == JsonValueKind.Object && ssl.TryGetProperty("method", out var method) ? method.GetString() : null,
+            providerErrors,
+            certificateErrors,
+            routing = new
+            {
+                status = routing.Confirmed ? "confirmed" : "failed",
+                routing.Code,
+                routing.Message,
+                routing.HttpStatus
+            },
+            summary,
+            requiredAction
+        });
+    }
+
+    private static string[] ErrorMessages(JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var errors) || errors.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+
+        return errors.EnumerateArray()
+            .Select(error =>
+                error.ValueKind == JsonValueKind.String
+                    ? error.GetString()
+                    : error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var message)
+                        ? message.GetString()
+                        : error.GetRawText())
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Select(message => message!.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(5)
+            .ToArray();
+    }
+
+    private static string BuildDiagnosticSummary(
+        string providerStatus,
+        string certificateStatus,
+        IReadOnlyList<string> providerErrors,
+        IReadOnlyList<string> certificateErrors,
+        WebsiteDomainRoutingProof routing)
+    {
+        if (!string.Equals(providerStatus, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            var detail = providerErrors.FirstOrDefault();
+            return detail is null
+                ? $"Cloudflare hostname status is {providerStatus}; HTTPS is {certificateStatus}; {routing.Message}"
+                : $"Cloudflare hostname status is {providerStatus}: {detail} HTTPS is {certificateStatus}; {routing.Message}";
+        }
+
+        if (!string.Equals(certificateStatus, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            var detail = certificateErrors.FirstOrDefault();
+            return detail is null
+                ? $"Cloudflare hostname is active, but HTTPS is {certificateStatus}."
+                : $"Cloudflare hostname is active, but HTTPS is {certificateStatus}: {detail}";
+        }
+
+        return routing.Confirmed
+            ? "Cloudflare hostname, HTTPS, and LEGEND routing proof are all active."
+            : $"Cloudflare hostname and HTTPS are active, but {routing.Message}";
+    }
+
+    private static string BuildRequiredAction(
+        string providerStatus,
+        string certificateStatus,
+        WebsiteDomainRoutingProof routing,
+        string cnameTarget)
+    {
+        if (!string.Equals(providerStatus, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            if (routing.Confirmed)
+                return "No LEGEND routing change is required. Cloudflare still reports the custom hostname as pending; choose Verify status again after Cloudflare advances the hostname to active.";
+
+            return routing.Code switch
+            {
+                "routing_http_status" or "routing_invalid_json" or "routing_business_missing" or "routing_business_mismatch" or "routing_binding_missing" or "routing_binding_mismatch" or "routing_response_too_large" =>
+                    $"The hostname is reaching a server, but not the expected LEGEND business binding. Ensure the website routing record for this hostname points only to {cnameTarget} and remove conflicting website routing/forwarding records, then choose Verify status.",
+                "routing_timeout" or "routing_unreachable" =>
+                    $"LEGEND cannot reach the hostname over public HTTPS. Confirm the website routing record points to {cnameTarget}, remove conflicting A/AAAA/CNAME or forwarding records for this hostname, then choose Verify status.",
+                _ =>
+                    $"Confirm the website routing record points to {cnameTarget}, then choose Verify status."
+            };
+        }
+
+        if (!string.Equals(certificateStatus, "active", StringComparison.OrdinalIgnoreCase))
+            return "The hostname is active but Cloudflare has not finished HTTPS validation. Follow the certificate validation error shown above, then choose Verify status.";
+
+        return routing.Confirmed
+            ? "No action is required."
+            : routing.Code switch
+            {
+                "routing_http_status" or "routing_invalid_json" or "routing_business_missing" or "routing_business_mismatch" or "routing_binding_missing" or "routing_binding_mismatch" or "routing_response_too_large" =>
+                    $"Cloudflare is active, but the hostname is not reaching this LEGEND business binding. Ensure the website routing record points only to {cnameTarget} and remove conflicting website routing/forwarding records, then choose Verify status.",
+                "routing_timeout" or "routing_unreachable" =>
+                    $"Cloudflare is active, but LEGEND cannot reach the hostname over public HTTPS. Confirm the website routing record points to {cnameTarget}, remove conflicting A/AAAA/CNAME or forwarding records, then choose Verify status.",
+                _ => "Choose Verify status again. If the routing proof still fails, use the routing diagnostic shown above."
+            };
     }
 
     public string CnameTarget => configuration["WebsiteDomains:CnameTarget"] ?? "";
