@@ -661,7 +661,20 @@
     if (text && !isImage) text.value = selected.dataset.cmsExtraField === 'title' ? ov.title ?? selected.textContent ?? '' : ov.text ?? selected.textContent ?? '';
     const serviceCard = businessServiceCardFor(selected);
     const duplicateButton = document.getElementById('legend-cms-duplicate'); if (duplicateButton) duplicateButton.textContent = serviceCard ? 'Duplicate service' : 'Duplicate block';
-    const removeButton = document.getElementById('legend-cms-remove'); if (removeButton) removeButton.textContent = serviceCard ? 'Delete service' : 'Delete selected';
+    const removeButton = document.getElementById('legend-cms-remove');
+    if (removeButton) {
+      const kind = serviceCard ? 'service'
+        : selected.dataset.cmsSection ? 'section'
+        : selected.tagName === 'IMG' ? 'image'
+        : selected.tagName === 'VIDEO' ? 'video'
+        : selected.tagName === 'FORM' ? 'form'
+        : ['INPUT','SELECT','TEXTAREA'].includes(selected.tagName) ? 'field'
+        : ['A','BUTTON'].includes(selected.tagName) ? 'button'
+        : ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ? 'block'
+        : 'element';
+      removeButton.textContent = `Delete ${kind}`;
+      removeButton.disabled = false;
+    }
     if (scale) scale.value = String(ov.style?.fontScale ?? 1);
     if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
     if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
@@ -1131,7 +1144,13 @@
 
 
     const layoutView = tools.querySelector('[data-cms-view="layout"]');
-    ['legend-cms-up','legend-cms-down','legend-cms-reset','legend-cms-remove'].forEach(id => { const button = document.getElementById(id); if (button && layoutView) layoutView.appendChild(button); });
+    ['legend-cms-up','legend-cms-down','legend-cms-reset'].forEach(id => { const button = document.getElementById(id); if (button && layoutView) layoutView.appendChild(button); });
+    const selectedDelete = document.getElementById('legend-cms-remove');
+    if (selectedDelete && content) {
+      selectedDelete.disabled = true;
+      selectedDelete.setAttribute('aria-label', 'Delete selected website element');
+      content.appendChild(selectedDelete);
+    }
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const duplicate = document.createElement('button'); duplicate.id = 'legend-cms-duplicate'; duplicate.type = 'button'; duplicate.textContent = 'Duplicate block'; layoutView.appendChild(duplicate);
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
