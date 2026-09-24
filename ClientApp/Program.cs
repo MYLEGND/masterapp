@@ -54,6 +54,14 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.Bookings.BusinessBookingTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
+builder.Services.AddHttpClient("AgentPortalBusinessBooking", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);

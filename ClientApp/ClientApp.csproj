@@ -47,6 +47,7 @@
     <Content Include="../AgentPortal/Views/Shared/_QuickView*.cshtml" Link="Views/Shared/%(Filename)%(Extension)" />
     <Content Include="../AgentPortal/Views/Workstation/_AdvancedMarketsInputSections.cshtml" Link="Views/Workstation/_AdvancedMarketsInputSections.cshtml" />
     <Content Include="../AgentPortal/wwwroot/css/clients-index.css" Link="wwwroot/css/clients-index.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/css/qv-booking.css" Link="wwwroot/css/qv-booking.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../AgentPortal/wwwroot/js/clients-index.js;../AgentPortal/wwwroot/js/leads-index.js;../AgentPortal/wwwroot/js/dp-*.js;../AgentPortal/wwwroot/js/zoom-quick-popup.js" Link="wwwroot/js/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -704,9 +704,13 @@ public class CalendarController : Controller
         string? clientUserId,
         Guid? clientProfileId,
         string? requestedWorkstationLeadId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? scopedBusinessId = null,
+        string? scopedBookingAgentUserId = null)
     {
-        var currentAgentUserId = GetAgentOidOrThrow();
+        var isBusinessScope = scopedBusinessId.HasValue && scopedBusinessId.Value != Guid.Empty;
+        var currentAgentUserId = isBusinessScope ? Norm(scopedBookingAgentUserId) : GetAgentOidOrThrow();
+        if (string.IsNullOrWhiteSpace(currentAgentUserId)) return null;
         var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
 
         var cleanClientUserId = CleanOptional(clientUserId);
@@ -714,7 +718,7 @@ public class CalendarController : Controller
             CleanOptional(requestedWorkstationLeadId);
 
         ClientProfile? clientProfile = null;
-        if (clientProfileId.HasValue)
+        if (!isBusinessScope && clientProfileId.HasValue)
         {
             clientProfile =
                 await _db.ClientProfiles
@@ -723,7 +727,8 @@ public class CalendarController : Controller
                         cancellationToken);
         }
 
-        if (clientProfile == null &&
+        if (!isBusinessScope &&
+            clientProfile == null &&
             !string.IsNullOrWhiteSpace(cleanClientUserId))
         {
             var normalizedClientUserId =
@@ -756,19 +761,16 @@ public class CalendarController : Controller
             var normalizedLeadLookupId =
                 leadLookupId.Trim().ToLowerInvariant();
 
-            leadProfile =
-                await _db.WorkstationLeadProfiles
-                    .FirstOrDefaultAsync(
-                        x =>
-                            (x.LeadId ?? string.Empty)
-                                .Trim()
-                                .ToLower() ==
-                            normalizedLeadLookupId &&
-                            (x.AgentUserId ?? string.Empty)
-                                .Trim()
-                                .ToLower() ==
-                            currentAgentUserId,
-                        cancellationToken);
+            leadProfile = isBusinessScope
+                ? await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                    x => x.CommerceBusinessId == scopedBusinessId &&
+                         (x.AgentUserId ?? string.Empty) == string.Empty &&
+                         (x.LeadId ?? string.Empty).Trim().ToLower() == normalizedLeadLookupId,
+                    cancellationToken)
+                : await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                    x => (x.LeadId ?? string.Empty).Trim().ToLower() == normalizedLeadLookupId &&
+                         (x.AgentUserId ?? string.Empty).Trim().ToLower() == currentAgentUserId,
+                    cancellationToken);
         }
 
         LeadAppointment? appointment;
@@ -832,19 +834,16 @@ public class CalendarController : Controller
                     .Trim()
                     .ToLowerInvariant();
 
-            leadProfile =
-                await _db.WorkstationLeadProfiles
-                    .FirstOrDefaultAsync(
-                        x =>
-                            (x.LeadId ?? string.Empty)
-                                .Trim()
-                                .ToLower() ==
-                            normalizedAppointmentLeadId &&
-                            (x.AgentUserId ?? string.Empty)
-                                .Trim()
-                                .ToLower() ==
-                            currentAgentUserId,
-                        cancellationToken);
+            leadProfile = isBusinessScope
+                ? await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                    x => x.CommerceBusinessId == scopedBusinessId &&
+                         (x.AgentUserId ?? string.Empty) == string.Empty &&
+                         (x.LeadId ?? string.Empty).Trim().ToLower() == normalizedAppointmentLeadId,
+                    cancellationToken)
+                : await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                    x => (x.LeadId ?? string.Empty).Trim().ToLower() == normalizedAppointmentLeadId &&
+                         (x.AgentUserId ?? string.Empty).Trim().ToLower() == currentAgentUserId,
+                    cancellationToken);
         }
 
         var ownsClient = false;
@@ -873,10 +872,10 @@ public class CalendarController : Controller
 
         var ownsLead =
             leadProfile != null &&
-            (leadProfile.AgentUserId ?? string.Empty)
-                .Trim()
-                .ToLower() ==
-            currentAgentUserId;
+            (isBusinessScope
+                ? leadProfile.CommerceBusinessId == scopedBusinessId &&
+                  string.IsNullOrWhiteSpace(leadProfile.AgentUserId)
+                : (leadProfile.AgentUserId ?? string.Empty).Trim().ToLower() == currentAgentUserId);
 
         var ownsAppointment =
             appointment != null &&
@@ -915,6 +914,8 @@ public class CalendarController : Controller
 
             ownsClient = ownsClient && clientMatchesAppointment;
             ownsLead = ownsLead && leadMatchesAppointment;
+            if (isBusinessScope)
+                ownsAppointment = ownsAppointment && leadMatchesAppointment;
         }
 
         if (!ownsClient && !ownsLead && !ownsAppointment)
@@ -957,19 +958,16 @@ public class CalendarController : Controller
                     .Trim()
                     .ToLowerInvariant();
 
-            leadProfile =
-                await _db.WorkstationLeadProfiles
-                    .FirstOrDefaultAsync(
-                        x =>
-                            (x.LeadId ?? string.Empty)
-                                .Trim()
-                                .ToLower() ==
-                            normalizedResolvedLeadId &&
-                            (x.AgentUserId ?? string.Empty)
-                                .Trim()
-                                .ToLower() ==
-                            currentAgentUserId,
-                        cancellationToken);
+            leadProfile = isBusinessScope
+                ? await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                    x => x.CommerceBusinessId == scopedBusinessId &&
+                         (x.AgentUserId ?? string.Empty) == string.Empty &&
+                         (x.LeadId ?? string.Empty).Trim().ToLower() == normalizedResolvedLeadId,
+                    cancellationToken)
+                : await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                    x => (x.LeadId ?? string.Empty).Trim().ToLower() == normalizedResolvedLeadId &&
+                         (x.AgentUserId ?? string.Empty).Trim().ToLower() == currentAgentUserId,
+                    cancellationToken);
         }
 
         ClientCrmMeta? leadMeta = null;
@@ -1103,6 +1101,8 @@ public class CalendarController : Controller
         public string? Location { get; set; }
         public string? ZoomJoinUrl { get; set; }
         public string? ActivityNote { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public Guid? ScopedBusinessId { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public string? ScopedBookingAgentUserId { get; set; }
     }
 
     public sealed class UpdateAppointmentRequest
@@ -1119,6 +1119,8 @@ public class CalendarController : Controller
         public string? Location { get; set; }
         public string? ZoomJoinUrl { get; set; }
         public string? ActivityNote { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public Guid? ScopedBusinessId { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public string? ScopedBookingAgentUserId { get; set; }
     }
 
     public sealed class CancelAppointmentRequest
@@ -1128,6 +1130,8 @@ public class CalendarController : Controller
         public Guid? ClientProfileId { get; set; }
         public string? WorkstationLeadId { get; set; }
         public string? ActivityNote { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public Guid? ScopedBusinessId { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore] public string? ScopedBookingAgentUserId { get; set; }
     }
 
     private sealed class GraphEventResponse
@@ -1575,9 +1579,11 @@ public class CalendarController : Controller
         try
         {
             var cancellationToken = HttpContext.RequestAborted;
-            var agentOid = GetAgentOidOrThrow();
+            var isBusinessScope = req.ScopedBusinessId.HasValue && req.ScopedBusinessId.Value != Guid.Empty;
+            var agentOid = isBusinessScope ? Norm(req.ScopedBookingAgentUserId) : GetAgentOidOrThrow();
+            if (string.IsNullOrWhiteSpace(agentOid)) return Forbid();
             var clientUserId = CleanOptional(req.ClientUserId);
-            var clientProfileId = req.ClientProfileId;
+            var clientProfileId = isBusinessScope ? null : req.ClientProfileId;
 
             if (!clientProfileId.HasValue && string.IsNullOrWhiteSpace(clientUserId))
                 return BadRequest("Missing client.");
@@ -1589,7 +1595,7 @@ public class CalendarController : Controller
                     .FirstOrDefaultAsync(x => x.Id == clientProfileId.Value, cancellationToken);
             }
 
-            if (profile == null && !string.IsNullOrWhiteSpace(clientUserId))
+            if (!isBusinessScope && profile == null && !string.IsNullOrWhiteSpace(clientUserId))
             {
                 var clientUserIdNorm = clientUserId.Trim().ToLowerInvariant();
                 profile = await _db.ClientProfiles
@@ -1604,9 +1610,15 @@ public class CalendarController : Controller
                     return NotFound("Client/lead not found.");
 
                 var clientUserIdNorm = clientUserId.Trim().ToLowerInvariant();
-                leadProfile = await _db.WorkstationLeadProfiles
-                    .FirstOrDefaultAsync(x => (x.LeadId ?? "").Trim().ToLower() == clientUserIdNorm &&
-                                               (x.AgentUserId ?? "").Trim().ToLower() == agentOid,
+                leadProfile = isBusinessScope
+                    ? await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                        x => x.CommerceBusinessId == req.ScopedBusinessId &&
+                             (x.AgentUserId ?? string.Empty) == string.Empty &&
+                             (x.LeadId ?? string.Empty).Trim().ToLower() == clientUserIdNorm,
+                        cancellationToken)
+                    : await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(
+                        x => (x.LeadId ?? string.Empty).Trim().ToLower() == clientUserIdNorm &&
+                             (x.AgentUserId ?? string.Empty).Trim().ToLower() == agentOid,
                         cancellationToken);
 
                 if (leadProfile == null)
@@ -1691,17 +1703,19 @@ public class CalendarController : Controller
                                 refreshedMeta.Activities));
                     }
 
-                    var refreshedLeadProfile =
-                        await _db.WorkstationLeadProfiles
-                            .AsNoTracking()
-                            .FirstOrDefaultAsync(
-                                x =>
-                                    (x.LeadId ?? string.Empty).Trim().ToLower() ==
-                                    (leadProfile!.LeadId ?? string.Empty).Trim().ToLower() &&
-                                    (x.AgentUserId ?? string.Empty).Trim().ToLower() ==
-                                    ownerAgentUserId.Trim().ToLower(),
-                                cancellationToken)
-                        ?? leadProfile!;
+                    var refreshedLeadProfile = isBusinessScope
+                        ? await _db.WorkstationLeadProfiles.AsNoTracking().FirstOrDefaultAsync(
+                            x => x.CommerceBusinessId == req.ScopedBusinessId &&
+                                 (x.AgentUserId ?? string.Empty) == string.Empty &&
+                                 (x.LeadId ?? string.Empty).Trim().ToLower() ==
+                                 (leadProfile!.LeadId ?? string.Empty).Trim().ToLower(),
+                            cancellationToken) ?? leadProfile!
+                        : await _db.WorkstationLeadProfiles.AsNoTracking().FirstOrDefaultAsync(
+                            x => (x.LeadId ?? string.Empty).Trim().ToLower() ==
+                                 (leadProfile!.LeadId ?? string.Empty).Trim().ToLower() &&
+                                 (x.AgentUserId ?? string.Empty).Trim().ToLower() ==
+                                 ownerAgentUserId.Trim().ToLower(),
+                            cancellationToken) ?? leadProfile!;
 
                     var refreshedLeadMeta =
                         ReadLeadMeta(refreshedLeadProfile);
@@ -2227,7 +2241,9 @@ public class CalendarController : Controller
                     req.ClientUserId,
                     req.ClientProfileId,
                     req.WorkstationLeadId,
-                    cancellationToken);
+                    cancellationToken,
+                    req.ScopedBusinessId,
+                    req.ScopedBookingAgentUserId);
 
             if (context == null)
                 return NotFound("Appointment context not found.");
@@ -2573,7 +2589,9 @@ public class CalendarController : Controller
                     req.ClientUserId,
                     req.ClientProfileId,
                     req.WorkstationLeadId,
-                    cancellationToken);
+                    cancellationToken,
+                    req.ScopedBusinessId,
+                    req.ScopedBookingAgentUserId);
 
             if (context == null)
                 return NotFound("Appointment context not found.");

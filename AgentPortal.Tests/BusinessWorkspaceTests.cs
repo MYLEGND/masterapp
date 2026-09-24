@@ -7,6 +7,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Analytics;
 using Infrastructure.Businesses;
+using Infrastructure.Bookings;
 using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Builder;
@@ -377,6 +378,144 @@ public sealed class BusinessWorkspaceTests
         var viewContext = new ViewContext(actionContext, found.View, viewData, tempData, writer, new HtmlHelperOptions());
         await found.View.RenderAsync(viewContext);
         return writer.ToString();
+    }
+
+    [Fact]
+    public async Task BusinessBookingResolvesOnlyExistingAttachedAgentAndBusinessContact()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "booking-business", DisplayName = "Booking Business" };
+        var otherBusiness = new CommerceBusiness { Key = "booking-other", DisplayName = "Other Business" };
+        var memberProfile = new ClientProfile
+        {
+            ClientUserId = Guid.NewGuid().ToString(),
+            Email = "owner@example.org"
+        };
+        var agent = new AgentProfile
+        {
+            AgentUserId = "booking-agent",
+            AgentUpn = "booking-agent@mylegnd.com",
+            BookingEnabled = true,
+            BookingPageIdOrMailbox = "booking-business-id",
+            CalendarEmail = "booking-agent@mylegnd.com"
+        };
+        var unassignedAgent = new AgentProfile
+        {
+            AgentUserId = "unassigned-agent",
+            AgentUpn = "unassigned@mylegnd.com",
+            BookingEnabled = true,
+            BookingPageIdOrMailbox = "other-booking-id"
+        };
+        var contact = new WorkstationLeadProfile
+        {
+            LeadId = "business-booking-contact",
+            CommerceBusinessId = business.Id,
+            AgentUserId = "",
+            FirstName = "Business",
+            LastName = "Contact",
+            CrmStatus = "Lead"
+        };
+        var foreignContact = new WorkstationLeadProfile
+        {
+            LeadId = "foreign-booking-contact",
+            CommerceBusinessId = otherBusiness.Id,
+            AgentUserId = "",
+            CrmStatus = "Lead"
+        };
+
+        db.AddRange(
+            business,
+            otherBusiness,
+            memberProfile,
+            agent,
+            unassignedAgent,
+            new CommerceBusinessMember
+            {
+                CommerceBusinessId = business.Id,
+                ClientProfileId = memberProfile.Id,
+                Status = "Active"
+            },
+            new AgentClient
+            {
+                AgentUserId = agent.AgentUserId,
+                AgentUpn = agent.AgentUpn,
+                ClientUserId = memberProfile.ClientUserId
+            },
+            contact,
+            foreignContact);
+        await db.SaveChangesAsync();
+
+        var resolvedAgent = await BusinessBookingAccess.ResolveAttachedAgentAsync(
+            db, business.Id, agent.Id, default);
+        Assert.NotNull(resolvedAgent);
+        Assert.Equal(agent.Id, resolvedAgent!.Id);
+        Assert.Null(await BusinessBookingAccess.ResolveAttachedAgentAsync(
+            db, business.Id, unassignedAgent.Id, default));
+        Assert.Null(await BusinessBookingAccess.ResolveAttachedAgentAsync(
+            db, otherBusiness.Id, agent.Id, default));
+
+        Assert.Equal(contact.LeadId,
+            (await BusinessBookingAccess.ResolveBusinessContactAsync(
+                db, business.Id, contact.LeadId, default))!.LeadId);
+        Assert.Null(await BusinessBookingAccess.ResolveBusinessContactAsync(
+            db, business.Id, foreignContact.LeadId, default));
+    }
+
+    [Fact]
+    public void BusinessBookingKeepsAgentPortalAsSingleSchedulerAndSingleUiSource()
+    {
+        string Read(string file) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, file));
+
+        var clientProject = Read("business-booking-clientapp.csproj");
+        var clientLayout = Read("business-booking-client-layout.cshtml");
+        var clientController = Read("business-booking-client-controller.cs");
+        var internalController = Read("business-booking-internal-controller.cs");
+        var calendar = Read("business-booking-calendar-controller.cs");
+        var clientsScript = Read("business-booking-clients-index.js");
+        var leadsScript = Read("business-booking-leads-index.js");
+        var scheduler = Read("business-booking-qv.js");
+        var agentProgram = Read("business-booking-agent-program.cs");
+        var clientProgram = Read("business-booking-client-program.cs");
+
+        Assert.Contains("../AgentPortal/wwwroot/css/qv-booking.css", clientProject, StringComparison.Ordinal);
+        Assert.Contains("~/css/qv-booking.css", clientLayout, StringComparison.Ordinal);
+        Assert.Equal(1, clientProject.Split("../AgentPortal/wwwroot/css/qv-booking.css", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, clientLayout.Split("~/css/qv-booking.css", StringSplitOptions.None).Length - 1);
+
+        foreach (var script in new[] { clientsScript, leadsScript })
+        {
+            Assert.Contains("function crmCalendarRoute(path)", script, StringComparison.Ordinal);
+            Assert.Contains("crmRoute(`/Booking/", script, StringComparison.Ordinal);
+            Assert.Contains("fetchStatus(url, init)", script, StringComparison.Ordinal);
+            Assert.Contains("fetchAvailability(url, options)", script, StringComparison.Ordinal);
+            Assert.Contains("postJson(crmCalendarRoute(url), payload)", script, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("options.fetchStatus", scheduler, StringComparison.Ordinal);
+        Assert.Contains("options.fetchAvailability", scheduler, StringComparison.Ordinal);
+        Assert.Contains("statusTransport(", scheduler, StringComparison.Ordinal);
+        Assert.Contains("busyAvailabilityTransport(", scheduler, StringComparison.Ordinal);
+
+        Assert.Contains("BusinessBookingTicketProtector", clientController, StringComparison.Ordinal);
+        Assert.Contains("AgentPortalBusinessBooking", clientController, StringComparison.Ordinal);
+        Assert.DoesNotContain("GraphServiceClient", clientController, StringComparison.Ordinal);
+        Assert.DoesNotContain("BookingAppointment", clientController, StringComparison.Ordinal);
+        Assert.DoesNotContain("BookingBusinesses", clientController, StringComparison.Ordinal);
+
+        Assert.Contains("CalendarController calendar", internalController, StringComparison.Ordinal);
+        Assert.Contains("calendar.DayAvailability", internalController, StringComparison.Ordinal);
+        Assert.Contains("calendar.CreateEvent", internalController, StringComparison.Ordinal);
+        Assert.Contains("calendar.UpdateAppointment", internalController, StringComparison.Ordinal);
+        Assert.Contains("calendar.CancelAppointment", internalController, StringComparison.Ordinal);
+        Assert.DoesNotContain("new BookingAppointment", internalController, StringComparison.Ordinal);
+        Assert.DoesNotContain("GraphServiceClient", internalController, StringComparison.Ordinal);
+
+        Assert.Contains("JsonIgnore] public Guid? ScopedBusinessId", calendar, StringComparison.Ordinal);
+        Assert.Contains("x.CommerceBusinessId == scopedBusinessId", calendar, StringComparison.Ordinal);
+        Assert.Contains("x.CommerceBusinessId == req.ScopedBusinessId", calendar, StringComparison.Ordinal);
+        Assert.Contains("BusinessBookingTicketProtector.CreateShared", agentProgram, StringComparison.Ordinal);
+        Assert.Contains("BusinessBookingTicketProtector.CreateShared", clientProgram, StringComparison.Ordinal);
+        Assert.Contains("AddHttpClient(\"AgentPortalBusinessBooking\"", clientProgram, StringComparison.Ordinal);
     }
 
     private sealed class PageController(BusinessWorkspaceService service, CommerceBusiness business)

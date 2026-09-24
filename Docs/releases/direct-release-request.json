@@ -1,10 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the exact business-scoped Clients/Leads CRM repair and direct ClientApp deployment through legend/approved-changes. Preserve all unrelated working flows.",
-  "purpose": "Fix the reproduced ClientApp business CRM Razor failures at their canonical source. Remove the orphaned ClientApp/Views/Clients/Index.cshtml duplicate that shadows the linked canonical AgentPortal Clients view and expects the wrong List<ClientProfile> model. Change all top-level Clients and Leads nested partial references to explicit canonical absolute view paths so BusinessWorkspaceController route context cannot redirect relative partial lookup into /Views/BusinessWorkspace. Retain the real Razor render regression tests for both pages. No copied replacement view, no override, no stacked handler, no database migration, and no deployment of AgentPortal, Protect, LEGEND Website, Parfait, or Cloudflare.",
-  "requestId": "business-crm-canonical-razor-resolution-direct-20260924",
+  "authorization": "Founder explicitly authorized the exact business-client CRM booking source-of-truth repair through legend/approved-changes. Preserve the working AgentPortal and Protect booking authority, remove no working booking behavior, add no parallel scheduler, no CSS override, and deploy only the affected AgentPortal and ClientApp.",
+  "purpose": "Repair the business CRM scheduler as an exact shared-source integration. ClientApp publishes and loads the existing AgentPortal qv-booking.css rather than creating CSS. The existing shared qv-booking.js gains only transport hooks so business CRM calendar calls route through authenticated business-scoped adapter endpoints. ClientApp validates business CRM access and the existing attached-agent relationship, then sends a short-lived purpose-scoped server ticket to AgentPortal. AgentPortal revalidates the business, contact, and attached AgentProfile and delegates availability, create, update, status, and cancel to the existing CalendarController. CalendarController remains the sole Microsoft Bookings/Graph scheduling engine and persists the same LeadAppointment/CRM activity records; business contacts remain business-owned WorkstationLeadProfile rows and are never converted into fake agent-owned leads or ClientProfiles. Protect Website remains on its existing PublicBookingResolver reading the same AgentProfile booking configuration. No duplicate booking configuration, no parallel Graph client in ClientApp, no stacked CSS, no database migration, no Protect/LEGEND Website/Parfait/Cloudflare deployment.",
+  "requestId": "business-crm-canonical-booking-direct-20260924",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
     "masterapp-client"
   ],
   "cloudflareWebsiteRouting": false

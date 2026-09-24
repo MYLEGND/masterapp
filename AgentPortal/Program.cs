@@ -97,6 +97,10 @@ builder.Services.AddSingleton(sp =>
     Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
         sp.GetRequiredService<IConfiguration>(),
         sp.GetRequiredService<IHostEnvironment>()));
+builder.Services.AddSingleton(sp =>
+    Infrastructure.Bookings.BusinessBookingTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);

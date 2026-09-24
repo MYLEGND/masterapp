@@ -4,6 +4,10 @@ function crmRoute(path) {
   const base = crmWorkspace?.dataset.crmApiBase;
   return base ? base + path : path;
 }
+function crmCalendarRoute(path) {
+  if (!crmBusinessId || !path.startsWith("/calendar/")) return path;
+  return crmRoute(`/Booking/${path.slice("/calendar/".length)}`);
+}
 // Business writes carry the revision displayed to the user, never a fresh
 // pre-save read that would conceal conflicting edits from another session.
 function businessWritePayload(payload) {
@@ -6920,6 +6924,14 @@ const quickViewBusyCalendar =
       return withDialHeaders(init);
     },
 
+    fetchStatus(url, init){
+      return fetch(crmCalendarRoute(url), init);
+    },
+
+    fetchAvailability(url, init){
+      return fetch(crmCalendarRoute(url), init);
+    },
+
     statusCacheTtlMs:
       typeof CAL_STATUS_TTL_MS === "number"
         ? CAL_STATUS_TTL_MS
@@ -6987,8 +6999,12 @@ window.quickViewCalendarAdapter = {
     };
   },
 
+  fetchAvailability(url, options){
+    return fetch(crmCalendarRoute(url), options);
+  },
+
   request(url, payload){
-    return postJson(url, payload);
+    return postJson(crmCalendarRoute(url), payload);
   },
 
   async applyResult(data, context){
