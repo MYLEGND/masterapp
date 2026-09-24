@@ -241,7 +241,11 @@
       const items = result.inquiries ?? result.items ?? [];
       if (!items.length) panel.append(el('p', 'No inquiries yet. Messages submitted through this business website will appear here.'));
       for (const inquiry of items) {
-        const row = el('div', null, { class: 'wm-row' }); row.append(el('span', `${inquiry.name ?? inquiry.displayName} · ${inquiry.email}\n${inquiry.message}`));
+        const splitName = [inquiry.firstName, inquiry.lastName].filter(Boolean).join(' ').trim();
+        const displayName = splitName || inquiry.name || inquiry.displayName || 'Website visitor';
+        const contact = [inquiry.email, inquiry.phone].filter(Boolean).join(' · ');
+        const row = el('div', null, { class: 'wm-row' });
+        row.append(el('span', `${displayName}${contact ? ' · ' + contact : ''}\n${inquiry.message ?? ''}`));
         const select = el('select', null, { 'aria-label': 'Inquiry status' });
         for (const value of ['New', 'Contacted', 'Closed']) { const option = el('option', value, { value }); option.selected = inquiry.status === value; select.append(option); }
         row.append(select, button('Save status', () => run(async () => {
