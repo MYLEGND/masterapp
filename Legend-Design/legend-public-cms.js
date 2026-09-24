@@ -1693,16 +1693,16 @@
     panelToggle.type = 'button';
     panelToggle.id = 'legend-cms-panel-toggle';
     panelToggle.className = 'legend-cms-editor legend-cms-panel-toggle';
-    panelToggle.textContent = 'Preview full page';
+    panelToggle.textContent = 'Full-page canvas';
     panelToggle.setAttribute('aria-controls', 'legend-cms-heading');
     panelToggle.setAttribute('aria-expanded', 'true');
     panelToggle.addEventListener('click', () => {
       const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
-      panelToggle.textContent = hidden ? 'Open editor' : 'Preview full page';
+      panelToggle.textContent = hidden ? 'Open controls' : 'Full-page canvas';
       panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
-      if (hidden) setSelected(null);
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refreshScaledElements);
-      else refreshScaledElements();
+      const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
+      else refresh();
     });
     document.body.appendChild(panelToggle);
     window.addEventListener('beforeunload', event => {
