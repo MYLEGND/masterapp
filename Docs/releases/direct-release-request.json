@@ -1,12 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested live favicon parity with no overrides: ClientApp follows the published LEGEND website favicon and AgentPortal follows the published Protect website favicon. The prior queued run was cancelled before execution while another approved release held the serialized deployment slot; this request retries the already-approved parity release after that run completed successfully.",
-  "purpose": "Deploy the centralized published-favicon projection service and app-shell parity wiring already committed at 8937389129503e5e0290de99bdb8c9e5524b4a92. Future favicon changes flow from the live published website documents without copying assets or changing app code. Limit deployment to AgentPortal, ClientApp, and Protect Website. Do not deploy LEGEND Website, Parfait, or unrelated targets.",
-  "requestId": "app-shell-live-favicon-parity-retry-20260923",
+  "authorization": "Founder explicitly requested the narrow post-activation client identity recovery repair be directly released after focused regression coverage. Preserve all working billing, subscription, activation, invitation, entitlement, and sign-in behavior.",
+  "purpose": "Deploy only ClientApp with the bounded recovery worker that retries the existing IClientEntraLifecycleService for active client subscriptions whose ExternalIdentityObjectId is still missing after activation. No billing-orchestrator changes, no schema migration, no duplicate identity system, and no unrelated app deployment.",
+  "requestId": "client-post-activation-entra-recovery-20260923",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client",
-    "masterapp-protect"
+    "masterapp-client"
   ]
 }
