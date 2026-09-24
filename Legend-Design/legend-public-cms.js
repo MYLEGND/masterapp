@@ -684,7 +684,7 @@
           pageVariant: SITE_KEY + '_website',
           pageMode: 'site_mode',
           formId: document.querySelector('form[data-form-key]')?.dataset.formKey || '',
-          requiredContactFields: SITE_KEY === 'business' ? ['email'] : []
+          requiredContactFields: SITE_KEY === 'business' ? ['FirstName','LastName','Phone','Email'] : []
         });
       }
     } catch (error) {
