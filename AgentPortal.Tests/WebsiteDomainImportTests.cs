@@ -115,6 +115,97 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Fact]
+    public void WebsiteBridgeOriginalHostRequiresMatchingSecretAndProtectOrigin()
+    {
+        const string secret = "0123456789abcdef0123456789abcdef";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["WebsiteRouting:BridgeSecret"] = secret,
+            ["WebsiteContentApiBaseUrl"] = "https://masterapp-protect.azurewebsites.net"
+        }).Build();
+
+        var accepted = new DefaultHttpContext();
+        accepted.Request.Host = new HostString("masterapp-protect.azurewebsites.net");
+        accepted.Request.Headers[WebsiteRequestHostResolver.OriginalHostHeader] = "Business.Example.Com";
+        accepted.Request.Headers[WebsiteRequestHostResolver.BridgeSecretHeader] = secret;
+        Assert.Equal("business.example.com", WebsiteRequestHostResolver.Resolve(accepted, configuration));
+
+        var rejectedSecret = new DefaultHttpContext();
+        rejectedSecret.Request.Host = new HostString("masterapp-protect.azurewebsites.net");
+        rejectedSecret.Request.Headers[WebsiteRequestHostResolver.OriginalHostHeader] = "business.example.com";
+        rejectedSecret.Request.Headers[WebsiteRequestHostResolver.BridgeSecretHeader] = "wrong";
+        Assert.Equal("masterapp-protect.azurewebsites.net", WebsiteRequestHostResolver.Resolve(rejectedSecret, configuration));
+
+        var rejectedOrigin = new DefaultHttpContext();
+        rejectedOrigin.Request.Host = new HostString("protect.mylegnd.com");
+        rejectedOrigin.Request.Headers[WebsiteRequestHostResolver.OriginalHostHeader] = "business.example.com";
+        rejectedOrigin.Request.Headers[WebsiteRequestHostResolver.BridgeSecretHeader] = secret;
+        Assert.Equal("protect.mylegnd.com", WebsiteRequestHostResolver.Resolve(rejectedOrigin, configuration));
+    }
+
+    [Fact]
+    public async Task BusinessWebsiteMiddlewareServesVerifiedBindingThroughAuthenticatedBridgeHost()
+    {
+        const string secret = "0123456789abcdef0123456789abcdef";
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var business = new CommerceBusiness { Key = "bridged-owner", IsActive = true, Status = "Active" };
+        var state = new WebsiteContentState
+        {
+            SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(business.Id)
+        };
+        var version = new WebsiteContentVersion
+        {
+            StateId = state.Id,
+            CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"<a href='__LEGEND_CANONICAL_URL__'>Home</a>\"}}}"
+        };
+        state.PublishedVersionId = version.Id;
+        var binding = new WebsiteDomainBinding
+        {
+            CommerceBusinessId = business.Id,
+            Hostname = "business.example.com",
+            Status = "active",
+            CertificateStatus = "active",
+            LastCheckedUtc = DateTime.UtcNow
+        };
+        db.AddRange(business, state, version, binding);
+        await db.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["WebsiteRouting:BridgeSecret"] = secret,
+            ["WebsiteContentApiBaseUrl"] = "https://masterapp-protect.azurewebsites.net"
+        }).Build();
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(x => x.EnvironmentName).Returns("Production");
+        var middleware = new BusinessWebsiteMiddleware(
+            _ => throw new InvalidOperationException("Bridged business traffic must not fall through."),
+            environment.Object,
+            configuration);
+        var context = new DefaultHttpContext();
+        context.Request.Host = new HostString("masterapp-protect.azurewebsites.net");
+        context.Request.Method = HttpMethods.Get;
+        context.Request.Path = "/";
+        context.Request.Headers[WebsiteRequestHostResolver.OriginalHostHeader] = binding.Hostname;
+        context.Request.Headers[WebsiteRequestHostResolver.BridgeSecretHeader] = secret;
+        context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(
+            context,
+            db,
+            new WebsiteDomainService(db, Mock.Of<IHttpClientFactory>(), configuration));
+
+        context.Response.Body.Position = 0;
+        var html = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Contains("https://business.example.com/", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("masterapp-protect.azurewebsites.net", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ProviderActiveWithoutActiveCertificateNeverActivates()
     {
         var binding = new WebsiteDomainBinding { Hostname = "example.com", CommerceBusinessId = Guid.NewGuid() };
