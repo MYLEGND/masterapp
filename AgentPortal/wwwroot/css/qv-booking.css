@@ -1,6 +1,6 @@
 /* =========================================================
-   PREMIUM QUICK VIEW BOOKING MODAL — AGENTPORTAL
-   Shared by Leads + Clients Quick View
+   CANONICAL QUICK VIEW BOOKING MODAL
+   Shared by AgentPortal, ClientApp business CRM and mobile booking.
 ========================================================= */
 
 .qv-booking-modal-shell{
@@ -486,48 +486,6 @@
         0 22px 52px rgba(245,158,11,.48),
         0 0 34px rgba(245,158,11,.24),
         inset 0 1px 0 rgba(255,255,255,.78);
-}
-
-/* Responsive */
-@media (max-width:1100px){
-    .qv-booking-layout{ grid-template-columns:1fr; }
-    .qv-booking-foot{ grid-template-columns:1fr; }
-}
-
-@media (max-width:760px){
-    .qv-booking-modal-shell .modal-dialog{
-        width:100vw;
-        height:100vh;
-        margin:0;
-    }
-
-    .qv-booking-modal-shell .modal-content{
-        min-height:100vh;
-        border-radius:0;
-    }
-
-    .qv-booking-head{
-        padding:24px 20px 20px;
-        flex-direction:column;
-    }
-
-    .qv-booking-body{
-        padding:20px;
-    }
-
-    .qv-booking-title{
-        font-size:28px;
-    }
-
-    .qv-book-slots{
-        grid-template-columns:repeat(2, minmax(0,1fr));
-    }
-}
-
-@media (max-width:460px){
-    .qv-book-slots{ grid-template-columns:1fr; }
-    .qv-booking-panel,
-    .qv-booking-slot-card{ padding:18px; }
 }
 
 /* =========================================================
@@ -1171,3 +1129,322 @@ button.qv-booking-launch:focus-visible,
     border-color:rgba(255,240,168,.98) !important;
 }
 
+/* =========================================================
+   CANONICAL RESPONSIVE GEOMETRY
+   Sole tablet/mobile authority. This intentionally appears
+   after every desktop refinement so later desktop rules can
+   never re-expand the scheduler on small viewports.
+========================================================= */
+
+@media (max-width:1100px){
+    .qv-booking-modal-shell .modal-content{
+        overflow-x:hidden;
+        overflow-y:auto;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    .qv-booking-body{
+        height:auto;
+        display:block;
+    }
+
+    .qv-booking-shell,
+    .qv-booking-layout{
+        height:auto;
+        min-height:0;
+    }
+
+    .qv-booking-layout{
+        grid-template-columns:minmax(0,1fr);
+        align-items:start;
+    }
+
+    .qv-booking-sidebar,
+    .qv-booking-main{
+        display:block;
+        min-height:0;
+    }
+
+    .qv-booking-panel-calendar,
+    .qv-booking-slot-card{
+        flex:none;
+    }
+
+    .qv-booking-foot{
+        grid-template-columns:minmax(0,1fr);
+    }
+
+    .qv-book-slots{
+        grid-template-rows:none !important;
+        grid-auto-rows:auto !important;
+        align-content:start !important;
+    }
+
+    .qv-slot-btn.btn,
+    .qv-slot-btn.btn-ghost,
+    .qv-slot-btn{
+        height:auto !important;
+        min-height:52px !important;
+        padding:10px !important;
+    }
+}
+
+@media (max-width:760px){
+    .qv-booking-modal-shell{
+        padding:0 !important;
+    }
+
+    .qv-booking-modal-shell .modal-dialog{
+        width:100%;
+        max-width:none;
+        height:auto;
+        min-height:100dvh;
+        margin:0;
+        align-items:stretch;
+    }
+
+    .qv-booking-modal-shell .modal-content{
+        width:100%;
+        height:auto;
+        min-height:100dvh;
+        max-height:100dvh;
+        overflow-x:hidden;
+        overflow-y:auto;
+        border-radius:0;
+        border-left:0;
+        border-right:0;
+        overscroll-behavior:contain;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    .qv-booking-head{
+        display:grid;
+        grid-template-columns:minmax(0,1fr) auto;
+        align-items:start;
+        gap:12px;
+        padding:
+            calc(14px + env(safe-area-inset-top))
+            14px
+            12px;
+    }
+
+    .qv-booking-head:after{
+        left:14px;
+        right:14px;
+    }
+
+    .qv-booking-title{
+        margin:8px 0 6px;
+        font-size:26px;
+        line-height:1.04;
+    }
+
+    .qv-booking-sub{
+        font-size:13px;
+        line-height:1.35;
+    }
+
+    .qv-booking-close.btn,
+    .qv-booking-close.btn-ghost{
+        width:auto;
+        min-width:0;
+        height:42px;
+        padding:0 14px;
+        border-radius:12px;
+    }
+
+    .qv-booking-body{
+        height:auto;
+        display:block;
+        padding:
+            12px
+            12px
+            max(18px, env(safe-area-inset-bottom));
+    }
+
+    .qv-booking-record{
+        grid-template-columns:44px minmax(0,1fr);
+        column-gap:12px;
+        min-height:64px;
+        padding:10px 12px;
+        margin-bottom:10px;
+        border-radius:14px;
+    }
+
+    .qv-booking-record:before{
+        width:44px;
+        height:44px;
+        font-size:16px;
+    }
+
+    .qv-booking-record-label{
+        margin-bottom:4px;
+    }
+
+    .qv-booking-record-name{
+        margin-top:2px;
+        font-size:20px;
+        line-height:1.15;
+        overflow-wrap:anywhere;
+    }
+
+    .qv-booking-layout{
+        height:auto;
+        gap:10px;
+    }
+
+    .qv-booking-panel,
+    .qv-booking-slot-card{
+        padding:14px;
+        border-radius:14px;
+    }
+
+    .qv-booking-panel-head,
+    .qv-booking-slot-head{
+        margin-bottom:10px;
+    }
+
+    .qv-booking-field{
+        margin:12px 0;
+    }
+
+    .qv-booking-field select{
+        width:100%;
+        min-height:48px;
+        font-size:16px;
+    }
+
+    .qv-booking-calendar-head{
+        gap:8px;
+        margin:8px 0 10px;
+    }
+
+    .qv-booking-calendar-nav.btn,
+    .qv-booking-calendar-nav.btn-ghost{
+        width:44px;
+        height:44px;
+        min-width:44px;
+    }
+
+    .qv-booking-calendar-label{
+        font-size:18px;
+    }
+
+    .qv-booking-calendar-weekdays,
+    .qv-booking-calendar-grid{
+        gap:4px;
+    }
+
+    .qv-booking-calendar-weekdays{
+        margin-bottom:4px;
+    }
+
+    .qv-booking-calendar-weekdays span{
+        font-size:9px;
+        letter-spacing:.04em;
+    }
+
+    .qv-booking-calendar-grid button{
+        min-height:0;
+        aspect-ratio:1 / 1;
+        font-size:13px;
+    }
+
+    .qv-booking-slot-head{
+        display:grid;
+        grid-template-columns:minmax(0,1fr);
+        gap:8px;
+    }
+
+    .qv-booking-slot-focus{
+        justify-self:start;
+        min-height:38px;
+        padding:0 12px;
+    }
+
+    .qv-book-slots{
+        grid-template-columns:repeat(2, minmax(0,1fr));
+        grid-template-rows:none !important;
+        grid-auto-rows:auto !important;
+        gap:8px;
+        margin-top:10px;
+    }
+
+    .qv-slot-btn.btn,
+    .qv-slot-btn.btn-ghost,
+    .qv-slot-btn{
+        height:auto !important;
+        min-height:48px !important;
+        padding:10px 8px !important;
+        white-space:normal;
+    }
+
+    .qv-booking-foot{
+        grid-template-columns:minmax(0,1fr);
+        gap:8px;
+        margin-top:10px;
+    }
+
+    .qv-booking-status{
+        min-height:52px;
+        padding:12px 14px;
+    }
+
+    .qv-booking-submit.btn,
+    .qv-booking-submit.btn-gold{
+        min-height:54px;
+        font-size:16px;
+    }
+}
+
+@media (max-width:380px){
+    .qv-booking-head{
+        padding-left:10px;
+        padding-right:10px;
+    }
+
+    .qv-booking-body{
+        padding-left:10px;
+        padding-right:10px;
+    }
+
+    .qv-booking-panel,
+    .qv-booking-slot-card{
+        padding:12px;
+    }
+
+    .qv-booking-calendar-label{
+        font-size:17px;
+    }
+}
+
+/* Standalone mobile booking reuses the same geometry and components. */
+.mobile-client-booking{
+    min-height:100dvh;
+    margin:0;
+    background:var(--qv-bg-3, #03123f);
+}
+
+.mobile-client-booking .qv-booking-close{
+    display:none;
+}
+
+.mobile-client-booking #mobileClientAppointments{
+    margin-bottom:12px;
+}
+
+.mobile-client-booking .mobile-appointment{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:8px;
+    align-items:center;
+    padding:12px 0;
+}
+
+.mobile-client-booking .mobile-appointment span{
+    grid-column:1 / -1;
+}
+
+.mobile-client-booking .mobile-appointment button{
+    min-height:44px;
+}

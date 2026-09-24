@@ -91,6 +91,12 @@
     <None Include="..\\AgentPortal\\wwwroot\\js\\scheduling\\qv-booking.js"
           Link="business-booking-qv.js"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\wwwroot\\css\\qv-booking.css"
+          Link="business-booking-qv.css"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\Calendar\\MobileBooking.cshtml"
+          Link="business-booking-mobile-view.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\AgentPortal\\Program.cs"
           Link="business-booking-agent-program.cs"
           CopyToOutputDirectory="PreserveNewest" />

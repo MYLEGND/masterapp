@@ -474,6 +474,8 @@ public sealed class BusinessWorkspaceTests
         var clientsScript = Read("business-booking-clients-index.js");
         var leadsScript = Read("business-booking-leads-index.js");
         var scheduler = Read("business-booking-qv.js");
+        var schedulerCss = Read("business-booking-qv.css");
+        var mobileBookingView = Read("business-booking-mobile-view.cshtml");
         var agentProgram = Read("business-booking-agent-program.cs");
         var clientProgram = Read("business-booking-client-program.cs");
 
@@ -516,6 +518,18 @@ public sealed class BusinessWorkspaceTests
         Assert.Contains("BusinessBookingTicketProtector.CreateShared", agentProgram, StringComparison.Ordinal);
         Assert.Contains("BusinessBookingTicketProtector.CreateShared", clientProgram, StringComparison.Ordinal);
         Assert.Contains("AddHttpClient(\"AgentPortalBusinessBooking\"", clientProgram, StringComparison.Ordinal);
+
+        Assert.Contains("CANONICAL RESPONSIVE GEOMETRY", schedulerCss, StringComparison.Ordinal);
+        Assert.True(
+            schedulerCss.IndexOf("CANONICAL RESPONSIVE GEOMETRY", StringComparison.Ordinal) >
+            schedulerCss.IndexOf("VIEWPORT FIT SYSTEM", StringComparison.Ordinal));
+        Assert.Equal(1, schedulerCss.Split("@media (max-width:1100px)", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, schedulerCss.Split("@media (max-width:760px)", StringSplitOptions.None).Length - 1);
+        Assert.Contains("min-height:100dvh", schedulerCss, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns:repeat(2, minmax(0,1fr))", schedulerCss, StringComparison.Ordinal);
+        Assert.Contains(".mobile-client-booking .qv-booking-close", schedulerCss, StringComparison.Ordinal);
+        Assert.Contains("~/css/qv-booking.css", mobileBookingView, StringComparison.Ordinal);
+        Assert.DoesNotContain("mobile-client-booking.css", mobileBookingView, StringComparison.Ordinal);
     }
 
     private sealed class PageController(BusinessWorkspaceService service, CommerceBusiness business)
