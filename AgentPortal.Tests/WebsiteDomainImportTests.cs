@@ -134,6 +134,67 @@ public sealed class WebsiteDomainImportTests
     }
 
     [Fact]
+    public void DomainDiagnosticExplainsProviderPendingWhenRoutingAlreadyMatches()
+    {
+        var binding = new WebsiteDomainBinding { Hostname = "example.com", CommerceBusinessId = Guid.NewGuid() };
+        using var receipt = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            id = "provider-id",
+            hostname = binding.Hostname,
+            status = "pending",
+            ssl = new { status = "active", method = "http" }
+        }));
+
+        WebsiteDomainService.ApplyReceipt(binding, receipt.RootElement);
+        WebsiteDomainService.ApplyVerificationDiagnostic(
+            binding,
+            receipt.RootElement,
+            new WebsiteDomainService.WebsiteDomainRoutingProof(
+                true,
+                "routing_confirmed",
+                "LEGEND routing proof matched this business and domain binding.",
+                200),
+            "sites.mylegnd.com");
+
+        using var diagnostic = JsonDocument.Parse(binding.VerificationJson);
+        Assert.Equal("pending", diagnostic.RootElement.GetProperty("providerStatus").GetString());
+        Assert.Equal("active", diagnostic.RootElement.GetProperty("certificateStatus").GetString());
+        Assert.Equal("confirmed", diagnostic.RootElement.GetProperty("routing").GetProperty("status").GetString());
+        Assert.Contains("Cloudflare hostname status is pending", diagnostic.RootElement.GetProperty("summary").GetString());
+        Assert.Contains("No LEGEND routing change is required", diagnostic.RootElement.GetProperty("requiredAction").GetString());
+    }
+
+    [Fact]
+    public void DomainDiagnosticExplainsRoutingHttpFailureAndRequiredAction()
+    {
+        var binding = new WebsiteDomainBinding { Hostname = "example.com", CommerceBusinessId = Guid.NewGuid() };
+        using var receipt = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            id = "provider-id",
+            hostname = binding.Hostname,
+            status = "active",
+            ssl = new { status = "active", method = "http" }
+        }));
+
+        WebsiteDomainService.ApplyReceipt(binding, receipt.RootElement);
+        WebsiteDomainService.ApplyVerificationDiagnostic(
+            binding,
+            receipt.RootElement,
+            new WebsiteDomainService.WebsiteDomainRoutingProof(
+                false,
+                "routing_http_status",
+                "LEGEND routing proof reached the hostname, but /.well-known/legend-website returned HTTP 404.",
+                404),
+            "sites.mylegnd.com");
+
+        using var diagnostic = JsonDocument.Parse(binding.VerificationJson);
+        Assert.Equal("routing_http_status", diagnostic.RootElement.GetProperty("routing").GetProperty("code").GetString());
+        Assert.Equal(404, diagnostic.RootElement.GetProperty("routing").GetProperty("httpStatus").GetInt32());
+        Assert.Contains("HTTP 404", diagnostic.RootElement.GetProperty("summary").GetString());
+        Assert.Contains("sites.mylegnd.com", diagnostic.RootElement.GetProperty("requiredAction").GetString());
+    }
+
+    [Fact]
     public async Task RefreshCreatesHostnameWithoutCloudflareCustomMetadata()
     {
         await using var db = new MasterAppDbContext(
