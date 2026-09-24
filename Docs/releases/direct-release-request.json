@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested recovery of failed direct release #121 together with the integrated business-domain Worker bridge, as one approved release through legend/approved-changes. Cloudflare deployment secrets are configured. The exact analytics regression is fixed, and the Worker release lane is hardened after the prior first-party smoke raced ClientApp warm-up. Retry on the now-clear serialized lane.",
-  "purpose": "Retry the same approved unified release with no new product behavior: deploy Protect before activating the Cloudflare route, retain the immutable ClientApp ZIP retry, retry first-party Worker smoke through transient app warm-up, and restore the prior Worker deployment through the Cloudflare deployments API if a smoke/proof fails. Keep Portal/Client/Protect as the already-approved unified targets; exclude Parfait and the static LEGEND Website. Preserve domain ownership, billing, analytics semantics, schema, authorization, and unrelated systems.",
-  "requestId": "domain-diagnostics-and-business-routing-unified-release-20260924-retry4",
+  "authorization": "Founder explicitly directed that the successful live AgentPortal, ClientApp, and Protect deployments from the prior unified release must be preserved and must not be redeployed. Continue only the failed Cloudflare business website routing portion through the existing approved direct-release lane, and fail closed before any mutation if those three applications are not all still live at the preserved release revision.",
+  "purpose": "Recover only the Cloudflare business website router after the prior run successfully deployed AgentPortal, ClientApp, and Protect at aa133def829813e43a8c0442f2573d135dd91a96. Verify all three live provenance endpoints still report that exact revision; permit only release-control file differences from that revision; do not rebuild packages, apply migrations, resynchronize application settings, or redeploy any application. Reuse the existing Protect bridge secret read-only, treat an absent first Worker deployment as an expected Cloudflare 404, deploy the shared router, prove camoexterior.com reaches its exact LEGEND business binding, and re-verify the preserved live application revisions before success.",
+  "requestId": "business-routing-preserve-live-recovery-20260924-retry5",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
@@ -10,5 +10,7 @@
     "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com"
+  "websiteRoutingCanaryHost": "camoexterior.com",
+  "preserveLiveTargets": true,
+  "preserveLiveRevision": "aa133def829813e43a8c0442f2573d135dd91a96"
 }
