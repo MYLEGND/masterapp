@@ -56,11 +56,26 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
             result = matches.Length == 1 ? matches[0] : await CallAsync(HttpMethod.Post, "", new
             {
                 hostname = binding.Hostname,
-                ssl = new { method = "txt", type = "dv" },
+                ssl = new { method = "http", type = "dv" },
                 custom_metadata = new { legend_binding_id = binding.Id.ToString("N"), legend_business_id = businessId.ToString("N") }
             }, ct);
         }
         else result = await CallAsync(HttpMethod.Get, "/" + Uri.EscapeDataString(binding.ProviderHostnameId), null, ct);
+
+        // The editor promises a one-record onboarding flow: the customer points the
+        // hostname at the LEGEND SaaS CNAME target and Cloudflare completes DCV.
+        // Migrate older TXT-created pending hostnames and explicitly retrigger HTTP
+        // DCV on user/background refresh so an already-correct CNAME can advance.
+        if (ShouldRetryAutomaticHttpDcv(result))
+        {
+            var providerId = result.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("Missing domain receipt.");
+            result = await CallAsync(HttpMethod.Patch, "/" + Uri.EscapeDataString(providerId), new
+            {
+                ssl = new { method = "http", type = "dv" }
+            }, ct);
+        }
+
         ApplyReceipt(binding, result);
         if (binding.Status == "active" && !await RoutingConfirmedAsync(binding, ct)) binding.Status = "pending";
         binding.LastCheckedUtc = DateTime.UtcNow;
@@ -105,11 +120,29 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
         binding.CertificateStatus = result.GetProperty("ssl").GetProperty("status").GetString() ?? "pending";
         var status = result.GetProperty("status").GetString() ?? "pending";
         binding.Status = status == "active" && binding.CertificateStatus == "active" ? "active" : "pending";
+        var ssl = result.GetProperty("ssl");
         binding.VerificationJson = JsonSerializer.Serialize(new
         {
+            providerStatus = status,
+            certificateStatus = binding.CertificateStatus,
+            validationMethod = ssl.TryGetProperty("method", out var method) ? method.GetString() : null,
+            verificationErrors = result.TryGetProperty("verification_errors", out var verificationErrors) ? verificationErrors : (JsonElement?)null,
+            certificateErrors = ssl.TryGetProperty("validation_errors", out var certificateErrors) ? certificateErrors : (JsonElement?)null,
             ownership = result.TryGetProperty("ownership_verification", out var ownership) ? ownership : (JsonElement?)null,
-            certificate = result.GetProperty("ssl").TryGetProperty("validation_records", out var records) ? records : (JsonElement?)null
+            certificate = ssl.TryGetProperty("validation_records", out var records) ? records : (JsonElement?)null
         });
+    }
+
+    private static bool ShouldRetryAutomaticHttpDcv(JsonElement result)
+    {
+        var status = result.TryGetProperty("status", out var providerStatus) ? providerStatus.GetString() : null;
+        if (!string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(status, "active", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!result.TryGetProperty("ssl", out var ssl)) return false;
+        var certificateStatus = ssl.TryGetProperty("status", out var sslStatus) ? sslStatus.GetString() : null;
+        return !string.Equals(certificateStatus, "active", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<bool> RoutingConfirmedAsync(WebsiteDomainBinding binding, CancellationToken ct)
