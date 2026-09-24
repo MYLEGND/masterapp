@@ -345,7 +345,7 @@
       else override.text = value;
       setContentText(el, value, true);
     }
-    el.removeAttribute('contenteditable');
+    el.removeAttribute?.('contenteditable');
     el.classList.remove('legend-cms-inline-editing');
     if (inlineEditNode === el) inlineEditNode = null;
     inlineEditCheckpointed = false;
@@ -361,16 +361,12 @@
     if (el.dataset.cmsInlineBound === 'true') return;
     el.dataset.cmsInlineBound = 'true';
     el.addEventListener('beforeinput', () => {
-      if (!inlineEditCheckpointed) {
-        checkpoint();
-        inlineEditCheckpointed = true;
-      }
+      checkpoint();
+      inlineEditCheckpointed = true;
     });
     el.addEventListener('input', () => {
-      if (!inlineEditCheckpointed) {
-        checkpoint();
-        inlineEditCheckpointed = true;
-      }
+      if (!inlineEditCheckpointed) checkpoint();
+      inlineEditCheckpointed = false;
       const override = overrideForElement(el);
       if (!override) return;
       const value = inlineTextValue(el);
@@ -826,7 +822,8 @@
       <button type="button" class="legend-cms-resize-handle legend-cms-resize-x" data-cms-gesture="resize-x" aria-label="Resize selected block width" title="Resize width"></button>
       <button type="button" class="legend-cms-resize-handle legend-cms-resize-y" data-cms-gesture="resize-y" aria-label="Resize selected block height" title="Resize height"></button>
       <button type="button" class="legend-cms-resize-handle legend-cms-resize-xy" data-cms-gesture="resize-xy" aria-label="Resize selected block width and height" title="Resize width and height"></button>`;
-    preview.append(gridOverlay, selectionFrame);
+    preview.appendChild(gridOverlay);
+    preview.appendChild(selectionFrame);
 
     const startGesture = event => {
       const handle = event.target.closest?.('[data-cms-gesture]');
@@ -931,7 +928,7 @@
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
     preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
-    window.addEventListener('resize', updateDirectCanvasUi);
+    window.addEventListener('resize', () => { refreshScaledElements(); updateDirectCanvasUi(); });
     updateDirectCanvasUi();
   }
 
