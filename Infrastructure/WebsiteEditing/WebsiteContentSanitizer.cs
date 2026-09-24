@@ -5,6 +5,7 @@ public static class WebsiteContentSanitizer
     private const int MaxElements = 600;
     private const int MaxExtras = 120;
     private const int MaxTextLength = 12000;
+    private const int MaxCodeLength = 100000;
     private const int MaxImageDataUrlLength = 3500000;
     public static WebsiteContentDocument Sanitize(WebsiteContentDocument source)
     {
@@ -34,7 +35,7 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code")) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id,
@@ -43,7 +44,7 @@ public static class WebsiteContentSanitizer
                 Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
                 ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
-                Text = ClampContentText(extra.Text),
+                Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
                 Href = SanitizeUrl(extra.Href), Target = SanitizeTarget(extra.Target),
                 Alt = ClampText(extra.Alt), VideoUrl = SanitizeUrl(extra.VideoUrl, true),
                 Placement = SanitizePlacement(extra.Placement),
@@ -132,7 +133,10 @@ public static class WebsiteContentSanitizer
             PaddingLeft = source.PaddingLeft >= 0 ? source.PaddingLeft : null,
             PaddingRight = source.PaddingRight >= 0 ? source.PaddingRight : null,
             BorderRadius = source.BorderRadius >= 0 ? source.BorderRadius : null,
-            ObjectFit = source.ObjectFit is "cover" or "contain" or "fill" or "none" or "scale-down" ? source.ObjectFit : null
+            ObjectFit = source.ObjectFit is "cover" or "contain" or "fill" or "none" or "scale-down" ? source.ObjectFit : null,
+            HeightPx = source.HeightPx > 0 ? source.HeightPx : null,
+            OffsetXPercent = source.OffsetXPercent,
+            OffsetYPx = source.OffsetYPx
         };
     }
 
@@ -144,6 +148,14 @@ public static class WebsiteContentSanitizer
         return filtered.Length <= MaxTextLength
             ? filtered
             : filtered[..MaxTextLength];
+    }
+
+    private static string? ClampCodeText(string? value)
+    {
+        if (value is null) return null;
+        var normalized = value.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\0", string.Empty);
+        var filtered = new string(normalized.Where(ch => ch is '\n' or '\t' || !char.IsControl(ch)).ToArray());
+        return filtered.Length <= MaxCodeLength ? filtered : filtered[..MaxCodeLength];
     }
 
     private static string? ClampText(string? value)
