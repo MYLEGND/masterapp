@@ -395,7 +395,11 @@
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
     if (!frame) return;
-    frame.srcdoc = extra?.text?.trim() ? extra.text : defaultCodeBlock;
+    const source = extra?.text?.trim() ? extra.text : defaultCodeBlock;
+    // A data document has an opaque origin under this sandbox and does not inherit
+    // the parent page's script policy. This keeps owner code isolated without
+    // weakening the main site's CSP with unsafe-inline/unsafe-eval.
+    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
   }
 
   function mediaUrl(value) {
