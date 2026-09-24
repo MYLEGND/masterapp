@@ -2,10 +2,17 @@
 // same built templates. It never downloads content or accepts submitted HTML.
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import vm from 'node:vm';
 import {parseHTML} from 'linkedom';
 import {businessPages} from '../src/business-content.mjs';
 import {publicApiBase,publicRuntimeAssets} from '../src/runtime-config.mjs';
+
+export function isDirectExecution(argvPath=process.argv[1], moduleUrl=import.meta.url) {
+  if (!argvPath) return false;
+  try { return pathToFileURL(resolve(argvPath)).href === moduleUrl; }
+  catch { return false; }
+}
 
 export async function compileBusiness(input, root=resolve(import.meta.dirname,'..')) {
   if (!input?.business?.id || !input.business.displayName || !input.document) throw new Error('A business and document are required.');
@@ -73,7 +80,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   return {version:1,pages:result};
 }
 
-if(process.argv[1]===new URL(import.meta.url).pathname){
+if(isDirectExecution()){
   let input='';
   for await(const chunk of process.stdin){input+=chunk;if(input.length>8_000_000)throw new Error('Website document too large.');}
   process.stdout.write(JSON.stringify(await compileBusiness(JSON.parse(input))));
