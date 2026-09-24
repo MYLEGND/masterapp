@@ -17,13 +17,16 @@ public sealed class AnalyticsController : Controller
 {
     private readonly MasterAppDbContext _db;
     private readonly ILogger<AnalyticsController> _logger;
+    private readonly IConfiguration? _configuration;
 
     public AnalyticsController(
         MasterAppDbContext db,
-        ILogger<AnalyticsController> logger)
+        ILogger<AnalyticsController> logger,
+        IConfiguration? configuration = null)
     {
         _db = db;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public sealed record BusinessEventRequest(Guid EventId, Guid SessionId, string Path);
@@ -37,9 +40,7 @@ public sealed class AnalyticsController : Controller
         if (input.EventId == Guid.Empty || input.SessionId == Guid.Empty || input.Path is null ||
             input.Path.Length > 160 || !input.Path.StartsWith('/') || input.Path.Contains('?') || input.Path.Contains('#'))
             return BadRequest();
-        var requestHost = WebsiteRequestHostResolver.Resolve(
-            HttpContext,
-            HttpContext.RequestServices.GetRequiredService<IConfiguration>());
+        var requestHost = WebsiteRequestHostResolver.Resolve(HttpContext, _configuration);
         if (!Uri.TryCreate(Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin) ||
             origin.Scheme != "https" || !origin.IsDefaultPort || origin.AbsolutePath != "/" ||
             origin.Query.Length != 0 || origin.Fragment.Length != 0 || origin.UserInfo.Length != 0 ||
