@@ -33,6 +33,7 @@ jobs:
       client_only: ${{ steps.live.outputs.client_only }}
       validate_only: ${{ steps.live.outputs.validate_only }}
       website_routing: ${{ steps.live.outputs.website_routing }}
+      website_routing_canary: ${{ steps.live.outputs.website_routing_canary }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +102,7 @@ jobs:
       CLIENT_ONLY: ${{ needs.discover-live.outputs.client_only }}
       VALIDATE_ONLY: ${{ needs.discover-live.outputs.validate_only }}
       WEBSITE_ROUTING: ${{ needs.discover-live.outputs.website_routing }}
+      WEBSITE_ROUTING_CANARY: ${{ needs.discover-live.outputs.website_routing_canary }}
     steps:
       - uses: actions/checkout@v4
         with:
