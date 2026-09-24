@@ -506,8 +506,23 @@ public sealed class WebsiteContentController : ControllerBase
         var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
-        var binding = await DomainService().RegisterAsync(actor.CommerceBusinessId!.Value, request.Hostname, cancellationToken);
-        return Ok(new { binding, cnameTarget = DomainService().CnameTarget });
+        try
+        {
+            var binding = await DomainService().RegisterAsync(actor.CommerceBusinessId!.Value, request.Hostname, cancellationToken);
+            return Ok(new { binding, cnameTarget = DomainService().CnameTarget });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "invalid_domain", message = ex.Message });
+        }
+        catch (HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "domain_provider_unavailable", message = "LEGEND could not reach the domain verification provider. Your website settings were preserved. Try Verify status again." });
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { error = "domain_provider_timeout", message = "Domain verification timed out. Your website settings were preserved. Try Verify status again." });
+        }
     }
 
     [HttpPost("manage/domains/refresh")]
@@ -516,7 +531,22 @@ public sealed class WebsiteContentController : ControllerBase
         var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
         if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
-        return Ok(await DomainService().RefreshAsync(actor.CommerceBusinessId!.Value, request.BindingId, cancellationToken));
+        try
+        {
+            return Ok(await DomainService().RefreshAsync(actor.CommerceBusinessId!.Value, request.BindingId, cancellationToken));
+        }
+        catch (HttpRequestException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "domain_provider_unavailable", message = "LEGEND could not reach the domain verification provider. The saved DNS instructions are unchanged. Try Verify status again." });
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { error = "domain_provider_timeout", message = "Domain verification timed out. The saved DNS instructions are unchanged. Try Verify status again." });
+        }
+        catch (InvalidOperationException)
+        {
+            return Conflict(new { error = "domain_verification_failed", message = "LEGEND received an invalid domain verification response. No website or DNS settings were changed." });
+        }
     }
 
     [HttpPost("manage/domains/remove")]
