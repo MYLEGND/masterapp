@@ -525,7 +525,7 @@ public sealed class WebsiteContentController : ControllerBase
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor?.SiteKey != WebsiteEditorSiteKeys.Business) return Unauthorized();
         var domains = await _db.Set<WebsiteDomainBinding>().AsNoTracking().Where(d => d.CommerceBusinessId == actor.CommerceBusinessId).ToListAsync(cancellationToken);
-        return Ok(new { domains, cnameTarget = DomainService().CnameTarget });
+        return Ok(new { domains = domains.Select(DomainPayload), cnameTarget = DomainService().CnameTarget });
     }
 
     [HttpPost("manage/domains")]
@@ -537,7 +537,7 @@ public sealed class WebsiteContentController : ControllerBase
         try
         {
             var binding = await DomainService().RegisterAsync(actor.CommerceBusinessId!.Value, request.Hostname, cancellationToken);
-            return Ok(new { binding, cnameTarget = DomainService().CnameTarget });
+            return Ok(new { binding = DomainPayload(binding), cnameTarget = DomainService().CnameTarget });
         }
         catch (ArgumentException ex)
         {
@@ -561,7 +561,8 @@ public sealed class WebsiteContentController : ControllerBase
         if (!await CanPublishAsync(actor, cancellationToken)) return Forbid();
         try
         {
-            return Ok(await DomainService().RefreshAsync(actor.CommerceBusinessId!.Value, request.BindingId, cancellationToken));
+            var binding = await DomainService().RefreshAsync(actor.CommerceBusinessId!.Value, request.BindingId, cancellationToken);
+            return Ok(DomainPayload(binding));
         }
         catch (HttpRequestException)
         {
@@ -575,6 +576,33 @@ public sealed class WebsiteContentController : ControllerBase
         {
             return Conflict(new { error = "domain_verification_failed", message = "LEGEND received an invalid domain verification response. No website or DNS settings were changed." });
         }
+    }
+
+    private static object DomainPayload(WebsiteDomainBinding binding)
+    {
+        JsonElement? diagnostic = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(binding.VerificationJson))
+            {
+                using var json = JsonDocument.Parse(binding.VerificationJson);
+                diagnostic = json.RootElement.Clone();
+            }
+        }
+        catch (JsonException)
+        {
+            // A stale legacy diagnostic must never block domain management.
+        }
+
+        return new
+        {
+            binding.Id,
+            binding.Hostname,
+            binding.Status,
+            binding.CertificateStatus,
+            binding.LastCheckedUtc,
+            diagnostic
+        };
     }
 
     [HttpPost("manage/domains/remove")]
