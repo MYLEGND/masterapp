@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "legend-business-website-router",
+  "main": "src/website-routing/bridge.mjs",
+  "compatibility_date": "2026-09-24",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "*/*",
+      "zone_name": "mylegnd.com"
+    }
+  ],
+  "vars": {
+    "LEGEND_WEBSITE_ORIGIN": "https://masterapp-protect.azurewebsites.net"
+  }
+}
