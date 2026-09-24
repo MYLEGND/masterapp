@@ -79,6 +79,12 @@ def main():
     targets = TARGETS if args.automatic else selected_targets(request)
     if website_routing and tuple(row[0] for row in targets) != ('protect',):
         raise ValueError('Cloudflare website routing releases must target only masterapp-protect')
+    website_routing_canary = ''
+    if website_routing:
+        website_routing_canary = str(request.get('websiteRoutingCanaryHost') or '').strip().lower().rstrip('.')
+        if (not re.fullmatch(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}', website_routing_canary) or
+                website_routing_canary == 'mylegnd.com' or website_routing_canary.endswith('.mylegnd.com')):
+            raise ValueError('websiteRoutingCanaryHost must be an external verified business hostname')
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
         rows = list(pool.map(observe, targets))
     for row in rows:
@@ -97,6 +103,7 @@ def main():
             out.write('portal_only=' + str(len(rows) == 1 and rows[0]['app'] == 'portal').lower() + '\n')
             out.write('validate_only=' + str(release_mode == 'validate-only').lower() + '\n')
             out.write('website_routing=' + str(website_routing).lower() + '\n')
+            out.write('website_routing_canary=' + website_routing_canary + '\n')
 
 
 if __name__ == '__main__':
