@@ -265,9 +265,9 @@ public sealed class WebsiteDomainService(MasterAppDbContext db, IHttpClientFacto
             routing = new
             {
                 status = routing.Confirmed ? "confirmed" : "failed",
-                routing.Code,
-                routing.Message,
-                routing.HttpStatus
+                code = routing.Code,
+                message = routing.Message,
+                httpStatus = routing.HttpStatus
             },
             summary,
             requiredAction
