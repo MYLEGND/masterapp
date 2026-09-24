@@ -1,13 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly requested the scoped favicon upload control be implemented live in every shared website edit flow with no overrides. This retry preserves unrelated approved changes and corrects only the shared favicon runtime compatibility regression found by the release tests.",
-  "purpose": "Directly deploy the canonical scoped favicon editor/runtime support through the existing shared website document, media authority, draft/publish flow, and public renderer after the full existing website test harness passes. Limit release to AgentPortal, ClientApp, Protect Website, and LEGEND Website. Do not deploy Parfait and do not add app-specific overrides.",
-  "requestId": "website-scoped-favicon-runtime-compat-release-20260923",
+  "authorization": "Founder explicitly requested the corrected custom-domain verification flow be released through legend/approved-changes using only affected-app direct deployment. Preserve all unrelated approved changes and do not deploy unaffected applications.",
+  "purpose": "Directly deploy the canonical custom-domain verification repair: automatic Cloudflare HTTP DCV for new and pending domains, explicit provider/network verification errors, and shared website-management status handling. Limit release to AgentPortal, ClientApp, and Protect Website because AgentPortal and ClientApp publish the shared website-management asset and Protect owns the website-domain API/service. Do not deploy LEGEND Website or Parfait.",
+  "requestId": "business-domain-http-dcv-direct-release-20260923",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-portal",
     "masterapp-client",
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-protect"
   ]
 }
