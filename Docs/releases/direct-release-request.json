@@ -1,10 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the surgical business-domain verification repair and direct publication through legend/approved-changes. Deploy only the affected Protect/Business Website backend.",
-  "purpose": "Deploy only masterapp-protect with the existing WebsiteDomainService changed to remove Cloudflare Custom Metadata as a required runtime dependency. Preserve LEGEND WebsiteDomainBinding tenant ownership, domain uniqueness, trusted legacy receipt recovery, fail-closed handling of untrusted pre-existing provider hostnames, HTTP DCV, certificate gating, routing proof, editor behavior, analytics, lead capture, and all unrelated website systems. No overrides, duplicate domain service, schema migration, or unrelated app deployment.",
-  "requestId": "business-domain-custom-hostname-metadata-removal-20260924-release",
+  "authorization": "Founder explicitly authorized the surgical custom-domain diagnostic addition and direct publication through legend/approved-changes. Deploy only the applications that serve or render the Connected Domains verification flow.",
+  "purpose": "Deploy the existing WebsiteDomainService diagnostic enhancement that reports the exact Cloudflare hostname gate, HTTPS/DCV gate, provider validation errors, LEGEND routing-proof result, and the concrete required action instead of the generic pending message. Preserve all domain ownership, Cloudflare hostname/certificate behavior, DNS instructions, website routing, billing, analytics, content, leads, and unrelated application behavior. No overrides, duplicate verifier, schema migration, or unrelated deployment.",
+  "requestId": "business-domain-exact-diagnostics-20260924",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
+    "masterapp-client",
     "masterapp-protect"
   ]
 }
