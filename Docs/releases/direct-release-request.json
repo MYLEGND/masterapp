@@ -1,10 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the shared Cloudflare business website routing bridge and direct publication through legend/approved-changes after the exact validation run passed. Deploy only the affected Protect/Business Website backend and the shared Cloudflare website-routing Worker.",
-  "purpose": "Deploy the validated single-source custom-domain transport. WebsiteDomainBinding remains the only business/domain ownership authority. The Cloudflare Worker only bridges customer vanity hostnames to the existing masterapp-protect Azure origin, preserves the original hostname through an authenticated internal header, leaves all LEGEND-owned mylegnd.com hosts on their existing routes, and fails closed without the shared authority. Reuse or create the one shared bridge secret, deploy the Worker, deploy masterapp-protect, and require camoexterior.com /.well-known/legend-website to return the exact LEGEND binding proof. No per-customer Azure binding, duplicate routing store, schema migration, unrelated app deployment, override, or stacked system.",
-  "requestId": "business-domain-worker-bridge-20260924-release",
+  "authorization": "Founder explicitly requested recovery of failed direct release #121 together with the already-integrated business-domain Worker bridge, as one approved release through legend/approved-changes. The repair/business-domain-worker-bridge-20260924 branch is fully contained in legend/approved-changes and must not be released separately.",
+  "purpose": "One release for the current approved source of truth: redeploy AgentPortal, ClientApp, and Protect so the domain-diagnostics batch from #121 reaches every intended app; deploy the shared Cloudflare business website router from the already-integrated repair branch; and use bounded immutable-ZIP retry for ClientApp so a transient Kudu/OneDeploy extraction failure cannot leave ClientApp behind. Build and test once from the exact approved SHA, reuse the exact packaged bytes on every ClientApp retry, preserve existing migrations/authorization/domain ownership, and require final provenance plus custom-domain bridge verification before success. No unrelated Parfait or LEGEND static website deployment.",
+  "requestId": "domain-diagnostics-and-business-routing-unified-release-20260924",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-portal",
+    "masterapp-client",
     "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": true,

@@ -480,11 +480,29 @@ jobs:
         id: client
         if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-client') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.CLIENT_ONLY == 'true') }}
         continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-client
-          slot-name: Production
-          package: /tmp/clientapp-publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=/tmp/diagnostics-packages/clientapp.zip
+          [ -s "$package" ]
+          unzip -tq "$package" >/dev/null
+
+          # ClientApp is the only target that has reproduced a transient Kudu/OneDeploy
+          # ZIP extraction failure. Deploy the one immutable package through Azure CLI
+          # with a bounded retry; never rebuild or switch artifacts between attempts.
+          for attempt in 1 2 3; do
+            echo "ClientApp immutable ZIP deployment attempt $attempt/3"
+            if az webapp deploy               --resource-group masterapp-rg               --name masterapp-client               --src-path "$package"               --type zip               --clean true               --restart true               --async false               --timeout 600000               --enriched-errors true               --only-show-errors               --output none; then
+              echo "ClientApp ZIP deployment accepted on attempt $attempt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::ClientApp deployment transport failed on attempt $attempt; retrying the exact same immutable ZIP after Kudu settles."
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "::error::ClientApp deployment transport failed after three attempts with the same immutable package."
+          exit 1
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
         if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && steps.package.outcome == 'success' && env.VALIDATE_ONLY != 'true' }}
