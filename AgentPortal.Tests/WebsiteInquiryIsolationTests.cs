@@ -70,6 +70,10 @@ public sealed class WebsiteInquiryIsolationTests
         Assert.Equal(f.VersionId, lead.WebsiteContentVersionId);
         Assert.Equal("business_contact", lead.WebsiteBindingId);
         Assert.Equal("business-session", lead.SessionId);
+        Assert.Equal("Visitor", lead.FirstName);
+        Assert.Equal("Example", lead.LastName);
+        Assert.Equal("(602) 555-0199", lead.Phone);
+        Assert.Equal("visitor@example.org", lead.Email);
         Assert.Null(lead.AgentTrackingProfileId);
         var analytics = Assert.Single(await f.Db.AnalyticsEvents.Where(x => x.EventType == "website_lead_submitted").ToListAsync());
         Assert.Equal(f.BusinessId, analytics.CommerceBusinessId);
@@ -85,6 +89,8 @@ public sealed class WebsiteInquiryIsolationTests
         using var f = new Fixture();
         await f.SeedPublishedAsync();
         Assert.IsType<BadRequestObjectResult>(await f.Controller.Submit(f.Request() with { Consent = false }, CancellationToken.None));
+        Assert.IsType<BadRequestObjectResult>(await f.Controller.Submit(f.Request() with { Phone = "123" }, CancellationToken.None));
+        Assert.IsType<BadRequestObjectResult>(await f.Controller.Submit(f.Request() with { FirstName = "" }, CancellationToken.None));
         Assert.IsType<BadRequestObjectResult>(await f.Controller.Submit(f.Request() with { SourcePath = "/?ticket=private" }, CancellationToken.None));
         Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
     }
