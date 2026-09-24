@@ -39,6 +39,7 @@ export function buildBridgeRequest(request, env) {
   const target = new URL(incoming.pathname + incoming.search, origin);
   const upstream = new Request(target.toString(), request);
   const headers = new Headers(upstream.headers);
+  headers.delete("Host");
   headers.delete("X-Legend-Original-Host");
   headers.delete("X-Legend-Website-Bridge");
   headers.set("X-Legend-Original-Host", incoming.hostname.toLowerCase());
