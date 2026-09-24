@@ -642,8 +642,13 @@ jobs:
           PARFAIT: ${{ steps.parfait.outcome }}
           WEBSITE: ${{ steps.website.outcome }}
           WEBSITECHECKS: ${{ steps.websitechecks.outcome }}
+          ROUTINGCHECKS: ${{ steps.routingchecks.outcome }}
+          ROUTINGSECRET: ${{ steps.routingsecret.outcome }}
+          ROUTINGDEPLOY: ${{ steps.routingdeploy.outcome }}
+          ROUTINGLIVE: ${{ steps.routinglive.outcome }}
           VALIDATE_ONLY: ${{ env.VALIDATE_ONLY }}
           CLIENT_ONLY: ${{ env.CLIENT_ONLY }}
+          WEBSITE_ROUTING: ${{ env.WEBSITE_ROUTING }}
         run: |
           python3 - <<'PYRESULT'
           import json,os
@@ -651,11 +656,19 @@ jobs:
           apps={'masterapp-portal':'PORTAL','masterapp-client':'CLIENT','masterapp-protect':'PROTECT','masterapp-parfait':'PARFAIT','masterapp-website':'WEBSITE'}
           assert selected and len(selected)==len(set(selected)) and all(app in apps for app in selected)
           validate_only=os.environ.get('VALIDATE_ONLY')=='true'
+          website_routing=os.environ.get('WEBSITE_ROUTING')=='true'
+          routing_steps=['ROUTINGCHECKS','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']
           if validate_only:
-              required=['BASE','BUILD','TESTS','WEB','PACKAGE']
+              if website_routing:
+                  required=['BASE','BUILD','ROUTINGCHECKS','PACKAGE']
+                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
+              else:
+                  required=['BASE','BUILD','TESTS','WEB','PACKAGE']
+                  skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
               if 'masterapp-website' in selected:
                   required.append('WEBSITECHECKS')
-              skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH']+list(apps.values())
+              else:
+                  skipped.append('WEBSITECHECKS')
               results={key:os.environ[key] for key in required}
               skipped_results={key:os.environ[key] for key in skipped}
               print(json.dumps({'mode':'validate-only','required':results,'skippedSteps':skipped_results},indent=2))
@@ -672,6 +685,10 @@ jobs:
               else:
                   (excluded if set(selected) <= {'masterapp-protect','masterapp-website'} else required).extend(['TESTS','WEB','MIGRATE'])
               (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
+              if website_routing:
+                  required.extend(routing_steps)
+              else:
+                  excluded.extend(routing_steps)
               results={key:os.environ[key] for key in required}
               skipped={key:os.environ[key] for key in excluded}
               print(json.dumps({'mode':'approved-only','required':results,'unselected':skipped},indent=2))
