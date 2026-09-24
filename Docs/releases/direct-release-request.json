@@ -1,10 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the surgical business-domain verification repair and requested publication through legend/approved-changes. This validation rerun performs no deployment.",
-  "purpose": "Validate the exact approved branch after removing the Cloudflare Custom Metadata runtime dependency from the existing WebsiteDomainService while preserving LEGEND-owned tenant binding, legacy trusted-receipt recovery, fail-closed foreign-hostname handling, HTTP DCV, certificate gating, and all unrelated website behavior.",
-  "requestId": "business-domain-custom-hostname-metadata-removal-20260924-validate-r2",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly authorized the surgical business-domain verification repair and direct publication through legend/approved-changes. Deploy only the affected Protect/Business Website backend.",
+  "purpose": "Deploy only masterapp-protect with the existing WebsiteDomainService changed to remove Cloudflare Custom Metadata as a required runtime dependency. Preserve LEGEND WebsiteDomainBinding tenant ownership, domain uniqueness, trusted legacy receipt recovery, fail-closed handling of untrusted pre-existing provider hostnames, HTTP DCV, certificate gating, routing proof, editor behavior, analytics, lead capture, and all unrelated website systems. No overrides, duplicate domain service, schema migration, or unrelated app deployment.",
+  "requestId": "business-domain-custom-hostname-metadata-removal-20260924-release",
+  "releaseMode": "approved-only",
   "targets": [
-    "masterapp-portal"
+    "masterapp-protect"
   ]
 }
