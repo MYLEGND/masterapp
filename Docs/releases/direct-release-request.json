@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the shared Cloudflare business website routing bridge and requested validation before publication. Validate only; do not deploy.",
+  "authorization": "Founder explicitly authorized the shared Cloudflare business website routing bridge and requested validation before publication. The prior validation trigger was cancelled while the serialized release lane was occupied; the lane is clear now. Validate only; do not deploy.",
   "purpose": "Validate only the single-source business custom-domain Worker bridge and Protect effective-host resolver. Prove that WebsiteDomainBinding remains the ownership authority, Cloudflare is transport only, LEGEND-owned hosts bypass the bridge, spoofed bridge headers are ignored without the shared secret and Protect origin, streamed requests are preserved, the Worker dry-run is valid, and the custom-domain release is scoped only to masterapp-protect. No per-customer Azure binding, no duplicate domain authority, no schema migration, and no unrelated app deployment.",
-  "requestId": "business-domain-worker-bridge-20260924-validate",
+  "requestId": "business-domain-worker-bridge-20260924-validate-r2",
   "releaseMode": "validate-only",
   "targets": [
     "masterapp-protect"
