@@ -316,9 +316,13 @@
     }
     const href = value ? mediaUrl(value) : originalFaviconHref;
     if (href) link.setAttribute('href', href);
-    if (value) link.removeAttribute('type');
+    const clearType = () => {
+      if (typeof link.removeAttribute === 'function') link.removeAttribute('type');
+      else link.setAttribute('type', '');
+    };
+    if (value) clearType();
     else if (originalFaviconType) link.setAttribute('type', originalFaviconType);
-    else link.removeAttribute('type');
+    else clearType();
   }
 
   function syncFaviconControls() {
