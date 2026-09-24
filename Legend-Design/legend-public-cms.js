@@ -1330,6 +1330,20 @@
     }
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
       if (!selected || !selectedSection) return;
+      const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
+      if (sourceExtra?.type === 'code') {
+        checkpoint();
+        const copy = JSON.parse(JSON.stringify(sourceExtra));
+        copy.id = crypto.randomUUID();
+        copy.sectionId = selectedSection.dataset.cmsSection;
+        copy.signals = [];
+        pageState().extras.push(copy);
+        const created = createExtra(copy);
+        if (copy.placement) applyPlacement(created, copy.placement);
+        setSelected(created);
+        markDirty();
+        return;
+      }
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
         const grid = serviceCard.parentElement;
@@ -1431,13 +1445,55 @@
     return null;
   }
 
+  function openCodeEditor() {
+    const block = selected;
+    const extra = block?.dataset?.cmsExtraId ? pageState().extras.find(x => x.id === block.dataset.cmsExtraId) : null;
+    if (!block || extra?.type !== 'code') return;
+    clearTimeout(autoSaveTimer);
+    const dialog = document.createElement('dialog');
+    dialog.className = 'legend-cms-editor legend-cms-code-dialog';
+    const title = document.createElement('h2'); title.textContent = 'Edit code block';
+    const help = document.createElement('p'); help.textContent = 'HTML, CSS, and browser JavaScript run only inside this sandboxed block. Save to preview it on the page before publishing.';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'legend-cms-code-source';
+    textarea.setAttribute('aria-label', 'Code block source');
+    textarea.spellcheck = false;
+    textarea.value = extra.text || defaultCodeBlock;
+    const status = document.createElement('p'); status.setAttribute('role','status');
+    const actions = document.createElement('div'); actions.className = 'legend-cms-code-actions';
+    const saveButton = document.createElement('button'); saveButton.type = 'button'; saveButton.textContent = 'Save & preview';
+    const cancelButton = document.createElement('button'); cancelButton.type = 'button'; cancelButton.textContent = 'Cancel';
+    saveButton.addEventListener('click', () => {
+      if (textarea.value.length > 100000) { status.textContent = 'Code blocks can contain up to 100,000 characters.'; return; }
+      checkpoint();
+      extra.text = textarea.value;
+      renderCodePreview(block, extra);
+      markDirty();
+      dialog.close();
+      updateDirectCanvasUi();
+    });
+    cancelButton.addEventListener('click', () => dialog.close());
+    actions.append(saveButton, cancelButton);
+    dialog.append(title, help, textarea, status, actions);
+    dialog.addEventListener('close', () => { dialog.remove(); if (dirty) autoSaveTimer = setTimeout(() => save(false), 900); });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    textarea.focus();
+  }
+
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
     const action = type === 'button' ? preferredCtaOption() : null;
     if (type === 'button' && !action) { alert('Configure a working website action before adding this button.'); return; }
     checkpoint();
-    const extra = { id: crypto.randomUUID(), type, sectionId: section?.dataset.cmsSection || `${pageKey}.root`, text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : '', style: {} };
+    const extra = {
+      id: crypto.randomUUID(),
+      type,
+      sectionId: section?.dataset.cmsSection || `${pageKey}.root`,
+      text: type === 'button' ? action.defaultText || action.label : type === 'text' ? 'Your text' : type === 'code' ? defaultCodeBlock : '',
+      style: type === 'code' ? { widthPercent: 100, heightPx: 320 } : {}
+    };
     if (type === 'button') {
       extra.href = action.href;
       extra.target = action.openInNewTab ? '_blank' : '_self';
@@ -1446,6 +1502,7 @@
       if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
     }
     pageState().extras.push(extra); const el = createExtra(extra); if (extra.placement) applyPlacement(el, extra.placement); setSelected(el); markDirty();
+    if (type === 'code') openCodeEditor();
   }
   function enhanceEditor(panel, preview) {
     document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
@@ -1457,9 +1514,9 @@
     navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Added to your selected section.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Arrange</h2><p>Drag above or below another block to move it within that layout. Use the column controls to place content in a separate responsive grid.</p><button id="legend-cms-drag">Enable drag</button><label class="legend-cms-group">Destination section<select id="legend-cms-destination"></select></label><label class="legend-cms-group">Column<input id="legend-cms-column" type="number" min="1" max="12" value="1"></label><label class="legend-cms-group">Column span<input id="legend-cms-span" type="number" min="1" max="12" value="12"></label><button id="legend-cms-place">Place block</button><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Position & size</h2><p>Use the Move and resize handles on the page. The canvas shows a 12-column horizontal grid, vertical rhythm lines, and center snap guides while you move or resize.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
@@ -1482,7 +1539,7 @@
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
-    panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => { showPanel(button.dataset.open); if (button.dataset.open === 'layout') { const select = document.getElementById('legend-cms-destination'); select.replaceChildren(); document.querySelectorAll('[data-cms-section]').forEach(section => { const option = document.createElement('option'); option.value = section.dataset.cmsSection; option.textContent = section.querySelector('h1,h2,h3')?.textContent || section.dataset.cmsSection; select.appendChild(option); }); } }));
+    panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
@@ -1502,6 +1559,7 @@
     });
     panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
     document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
+    document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
     panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
@@ -1519,38 +1577,11 @@
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
     document.getElementById('legend-cms-redo').addEventListener('click', () => restoreHistory(redoStack, undoStack));
-    function place(sectionId, column, span, beforeId, containerId, flow = false) { if (!selected || selected.dataset.cmsSection) return; checkpoint(); const ov = selectedOverride(); column = Math.max(1, Math.min(12, Math.round(column) || 1)); span = Math.max(1, Math.min(13-column, Math.round(span) || 12)); ov.placement = { sectionId, column, span, beforeId, containerId, flow };  applyPlacement(selected, ov.placement); selectedSection = currentSectionFor(selected); markDirty(); }
-    document.getElementById('legend-cms-place').addEventListener('click', () => place(document.getElementById('legend-cms-destination').value, Number(document.getElementById('legend-cms-column').value), Number(document.getElementById('legend-cms-span').value)));
-    document.getElementById('legend-cms-drag').addEventListener('click', () => { if (selected && !selected.dataset.cmsSection) { selected.draggable = true; document.getElementById('legend-cms-status').textContent = 'Drag the selected block onto a section'; } });
-    preview.addEventListener('dragstart', event => { const el = event.target.closest('[data-cms-editable="true"]'); if (!el || el.dataset.cmsSection || el.dataset.cmsSignalOnly || el.closest(lockedSelector)) { event.preventDefault(); return; } setSelected(el); event.dataTransfer.setData('text/plain', el.dataset.cmsId); preview.classList.add('legend-cms-dragging'); });
-    preview.addEventListener('dragover', event => { const section = event.target.closest('[data-cms-section]'); if (selected && section && !selected.contains(section)) { event.preventDefault(); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); section.classList.add('legend-cms-drop'); } });
-    preview.addEventListener('drop', event => {
-      event.preventDefault();
-      const section = event.target.closest('[data-cms-section]');
-      const sourceId = event.dataTransfer?.getData('text/plain');
-      if (!section || !selected || sourceId !== selected.dataset.cmsId || selected.contains(section) || selected.dataset.cmsSignalOnly) { clearDrag(); return; }
-      let target = event.target.closest('[data-cms-id]');
-      if (target === selected || selected.contains(target)) { clearDrag(); return; }
-      let container = target?.parentElement;
-      while (container && container !== section && !['DIV','ARTICLE','SECTION','HEADER','FOOTER'].includes(container.tagName)) { target = container; container = container.parentElement; }
-      if (target === section || !container || !section.contains(container)) { container = section; target = null; }
-      if (!container.dataset.cmsId || container.closest(lockedSelector)) { clearDrag(); return; }
-      // The lower half means after the target. Persist the next editable sibling,
-      // not a transient pointer coordinate, so reload and publication agree.
-      let before = target;
-      if (target && event.clientY >= target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2) {
-        before = target.nextElementSibling;
-        while (before && (!before.dataset.cmsId || before === selected)) before = before.nextElementSibling;
-      }
-      place(section.dataset.cmsSection, 1, 12, before?.dataset.cmsId, container.dataset.cmsId, true);
-      clearDrag();
-    });
-    function clearDrag() { preview.classList.remove('legend-cms-dragging'); document.querySelectorAll('.legend-cms-drop').forEach(x => x.classList.remove('legend-cms-drop')); }
-    preview.addEventListener('dragend', clearDrag);
+    installDirectCanvasControls(preview);
     showPanel('content');
   }
 
-  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
+  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}.cms-extra-code{display:block;width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}.cms-extra-code iframe{display:block;width:100%;height:100%;border:0;background:#fff}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
 `; document.head.appendChild(style); }
 
   function injectEditorStyles() {
