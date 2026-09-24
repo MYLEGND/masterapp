@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
@@ -116,8 +117,9 @@ public sealed class WebsiteDomainImportTests
     public void ProviderActiveWithoutActiveCertificateNeverActivates()
     {
         var binding = new WebsiteDomainBinding { Hostname = "example.com", CommerceBusinessId = Guid.NewGuid() };
-        using var receipt = JsonDocument.Parse(JsonSerializer.Serialize(new { id = "provider-id", hostname = binding.Hostname, status = "active", ssl = new { status = "pending_validation" }, custom_metadata = new { legend_binding_id = binding.Id.ToString("N"), legend_business_id = binding.CommerceBusinessId.ToString("N") } }));
+        using var receipt = JsonDocument.Parse(JsonSerializer.Serialize(new { id = "provider-id", hostname = binding.Hostname, status = "active", ssl = new { status = "pending_validation" } }));
         WebsiteDomainService.ApplyReceipt(binding, receipt.RootElement);
+        Assert.Equal("provider-id", binding.ProviderHostnameId);
         Assert.Equal("pending", binding.Status);
     }
 
@@ -128,6 +130,83 @@ public sealed class WebsiteDomainImportTests
         using var receipt = JsonDocument.Parse("{\"id\":\"provider\",\"hostname\":\"example.com\",\"status\":\"active\",\"ssl\":{\"status\":\"active\"},\"custom_metadata\":{\"legend_binding_id\":\"other\",\"legend_business_id\":\"other\"}}");
         Assert.Throws<InvalidOperationException>(() => WebsiteDomainService.ApplyReceipt(binding, receipt.RootElement));
         Assert.Equal("pending", binding.Status);
+    }
+
+    [Fact]
+    public async Task RefreshCreatesHostnameWithoutCloudflareCustomMetadata()
+    {
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var binding = new WebsiteDomainBinding
+        {
+            CommerceBusinessId = Guid.NewGuid(),
+            Hostname = "example.com"
+        };
+        db.Add(binding);
+        await db.SaveChangesAsync();
+
+        var handler = new SequenceHttpMessageHandler(
+            "{\"success\":true,\"result\":[]}",
+            "{\"success\":true,\"result\":{\"id\":\"provider-id\",\"hostname\":\"example.com\",\"status\":\"pending\",\"ssl\":{\"status\":\"pending_validation\",\"method\":\"http\"}}}",
+            "{\"success\":true,\"result\":{\"id\":\"provider-id\",\"hostname\":\"example.com\",\"status\":\"pending\",\"ssl\":{\"status\":\"pending_validation\",\"method\":\"http\"}}}");
+        var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("WebsiteDomains")).Returns(client);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["WebsiteDomains:CloudflareZoneId"] = "zone-id",
+            ["WebsiteDomains:ApiToken"] = "token",
+            ["WebsiteDomains:CnameTarget"] = "sites.mylegnd.com"
+        }).Build();
+
+        var service = new WebsiteDomainService(db, factory.Object, configuration);
+        var refreshed = await service.RefreshAsync(binding.CommerceBusinessId, binding.Id);
+
+        Assert.Equal("provider-id", refreshed.ProviderHostnameId);
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
+        Assert.Equal(HttpMethod.Post, handler.Requests[1].Method);
+        Assert.Equal(HttpMethod.Patch, handler.Requests[2].Method);
+        using var body = JsonDocument.Parse(handler.Requests[1].Body!);
+        Assert.False(body.RootElement.TryGetProperty("custom_metadata", out _));
+        Assert.Equal("example.com", body.RootElement.GetProperty("hostname").GetString());
+    }
+
+    [Fact]
+    public async Task RefreshDoesNotAdoptProviderHostnameWithoutTrustedLegacyReceipt()
+    {
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var binding = new WebsiteDomainBinding
+        {
+            CommerceBusinessId = Guid.NewGuid(),
+            Hostname = "example.com"
+        };
+        db.Add(binding);
+        await db.SaveChangesAsync();
+
+        var handler = new SequenceHttpMessageHandler(
+            "{\"success\":true,\"result\":[{\"id\":\"untrusted-provider-id\",\"hostname\":\"example.com\",\"status\":\"pending\",\"ssl\":{\"status\":\"pending_validation\",\"method\":\"http\"}}]}");
+        var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("WebsiteDomains")).Returns(client);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["WebsiteDomains:CloudflareZoneId"] = "zone-id",
+            ["WebsiteDomains:ApiToken"] = "token",
+            ["WebsiteDomains:CnameTarget"] = "sites.mylegnd.com"
+        }).Build();
+
+        var service = new WebsiteDomainService(db, factory.Object, configuration);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RefreshAsync(binding.CommerceBusinessId, binding.Id));
+
+        Assert.Single(handler.Requests);
+        Assert.True(string.IsNullOrEmpty(binding.ProviderHostnameId));
     }
 
     [Fact]
@@ -185,6 +264,27 @@ public sealed class WebsiteDomainImportTests
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"format\":\"legend-website-v1\",\"draft\":{\"pages\":{\"/contact\":{\"title\":\"Contact\"}}}}"));
         var result = await new WebsiteImportService(null!).PrepareExportAsync(stream, false, new(), true, "owner", "https://example.com");
         Assert.Equal("Contact", result.Document.Pages["/contact"].Title);
+    }
+
+    private sealed class SequenceHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Queue<string> _responses;
+
+        public SequenceHttpMessageHandler(params string[] responses) =>
+            _responses = new Queue<string>(responses);
+
+        public List<(HttpMethod Method, string? Body)> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            Requests.Add((request.Method, body));
+            if (_responses.Count == 0) throw new InvalidOperationException("Unexpected provider request.");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(_responses.Dequeue(), Encoding.UTF8, "application/json")
+            };
+        }
     }
 
 }
