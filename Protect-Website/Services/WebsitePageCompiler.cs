@@ -51,9 +51,13 @@ public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfig
             var input = JsonSerializer.Serialize(new
             {
                 document,
-                business = new { id = business.Id, displayName = business.DisplayName, legalName = business.LegalName,
+                business = new { id = business.Id, key = business.Key, displayName = business.DisplayName, legalName = business.LegalName,
                     businessType = business.BusinessType, contactEmail = facts.ContactEmail, contactPhone = facts.Phone,
                     hours = facts.Hours, locations = facts.Locations, services = facts.Services },
+                commerce = new
+                {
+                    publicBaseUrl = (configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/')
+                },
                 collections = collections.Values
             }, JsonOptions);
             await process.StandardInput.WriteAsync(input.AsMemory(), bounded.Token);

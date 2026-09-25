@@ -132,7 +132,13 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 });
 
 builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
+builder.Services.AddScoped<CommerceBusinessScopeResolver>();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
+builder.Services.AddScoped<CommerceStoreContextService>();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();
 builder.Services.AddScoped<ParfaitOrderService>();
@@ -147,6 +153,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<ParfaitStoragePaths>();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<IParfaitAnalyticsService>(serviceProvider => serviceProvider.GetRequiredService<ParfaitAnalyticsService>());
+builder.Services.AddScoped<Infrastructure.Commerce.CommerceSignalService>();
 builder.Services.AddScoped<ParfaitMetaSignalBridgeService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
