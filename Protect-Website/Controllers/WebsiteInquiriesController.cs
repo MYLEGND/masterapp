@@ -109,8 +109,9 @@ public sealed class WebsiteInquiriesController : ControllerBase
 
         var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path);
         var submissionBinding = ResolvePublishedSubmissionBinding(scope, path, request.SourceFormElementId);
-        if (submissionBinding is not null)
-            lead.WebsiteBindingId = submissionBinding.Id;
+        lead.WebsiteBindingId = submissionBinding?.Id
+            ?? Optional(request.SourceFormElementId, 120)
+            ?? lead.WebsiteBindingId;
 
         return scope.SiteKey switch
         {
@@ -320,7 +321,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             SiteKey = scope.SiteKey,
             CommerceBusinessId = scope.CommerceBusinessId,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
-            WebsiteBindingId = submissionBinding?.Id ?? lead.SourceCtaKey,
+            WebsiteBindingId = submissionBinding?.Id ?? Optional(request.SourceFormElementId, 120) ?? lead.SourceCtaKey,
             EventId = scope.SiteKey + "_lead_" + lead.LeadId.ToString("N"),
             EventName = leadEvent.Name,
             EventCategory = leadEvent.Category,
