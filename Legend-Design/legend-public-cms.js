@@ -1410,6 +1410,93 @@
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
     if (name === 'page') syncPageControls();
+    if (name === 'signals') renderSignalControls();
+    if (name === 'quality') void refreshQualityInspector();
+  }
+
+
+  function liveQualityChecks() {
+    const checks = [];
+    const main = document.querySelector('main');
+    const headings = main ? [...main.querySelectorAll('h1:not([hidden])')] : [];
+    if (headings.length === 0) checks.push({ code:'live_h1_missing', severity:'warning', message:'The rendered page has no visible H1 heading.' });
+    if (headings.length > 1) checks.push({ code:'live_h1_multiple', severity:'warning', message:\`The rendered page has \${headings.length} visible H1 headings.\` });
+
+    const ids = new Map();
+    document.querySelectorAll('[id]').forEach(node => {
+      const id = node.id?.trim();
+      if (!id || node.closest('.legend-cms-editor')) return;
+      ids.set(id, (ids.get(id) || 0) + 1);
+    });
+    for (const [id, count] of ids) if (count > 1)
+      checks.push({ code:'live_duplicate_id', severity:'error', message:\`Duplicate rendered id "\${id}" appears \${count} times.\` });
+
+    document.querySelectorAll('main img:not([hidden])').forEach(image => {
+      if (!image.getAttribute('alt')?.trim())
+        checks.push({ code:'live_image_alt_missing', severity:'warning', message:'A rendered image is missing alternative text.', elementId:image.dataset.cmsId || image.id || null });
+    });
+
+    document.querySelectorAll('main a:not([hidden])').forEach(link => {
+      const href = link.getAttribute('href')?.trim();
+      if (!href || href === '#')
+        checks.push({ code:'live_link_destination_missing', severity:'warning', message:'A rendered link has no working destination.', elementId:link.dataset.cmsId || link.id || null });
+    });
+
+    document.querySelectorAll('main input:not([type="hidden"]),main select,main textarea').forEach(control => {
+      const labelled = !!control.getAttribute('aria-label')?.trim()
+        || !!control.getAttribute('aria-labelledby')?.trim()
+        || !!control.closest('label')
+        || (!!control.id && !!document.querySelector(\`label[for="\${CSS.escape(control.id)}"]\`));
+      if (!labelled)
+        checks.push({ code:'live_control_label_missing', severity:'warning', message:'A rendered form control has no accessible label.', elementId:control.dataset.cmsId || control.id || null });
+    });
+
+    document.querySelectorAll('main [data-cms-editable="true"]').forEach(node => {
+      if (node.hidden) return;
+      if (Number(node.scrollWidth) > Number(node.clientWidth) + 1)
+        checks.push({ code:'live_horizontal_overflow', severity:'warning', message:'Rendered content overflows its visible width.', elementId:node.dataset.cmsId || null });
+    });
+    return checks;
+  }
+
+  function renderQualityChecks(host, checks, emptyMessage) {
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    if (!checks?.length) {
+      const empty=document.createElement('p'); empty.className='legend-cms-quality-ok'; empty.textContent=emptyMessage; host.appendChild(empty); return;
+    }
+    for (const check of checks) {
+      const row=document.createElement('div'); row.className=\`legend-cms-quality-item legend-cms-quality-\${check.severity || 'info'}\`;
+      const badge=document.createElement('strong'); badge.textContent=(check.severity || 'info').toUpperCase();
+      const message=document.createElement('span'); message.textContent=check.message || check.code || 'Quality observation';
+      row.append(badge,message); host.appendChild(row);
+    }
+  }
+
+  async function refreshQualityInspector() {
+    const savedHost=document.getElementById('legend-cms-quality-saved');
+    const liveHost=document.getElementById('legend-cms-quality-live');
+    const savedMeta=document.getElementById('legend-cms-quality-saved-meta');
+    const liveMeta=document.getElementById('legend-cms-quality-live-meta');
+    const liveChecks=liveQualityChecks();
+    renderQualityChecks(liveHost,liveChecks,'No rendered-canvas issues detected by the current checks.');
+    if (liveMeta) liveMeta.textContent=\`Live page checks (rendered canvas) · \${liveChecks.length} observation\${liveChecks.length===1?'':'s'} · not a publish authorization\`;
+    if (!editorTicket || !savedHost) return;
+    savedHost.textContent='Checking the saved server draft…';
+    if (savedMeta) savedMeta.textContent='Saved draft checks (server) · loading';
+    try {
+      const url=new URL(\`\${API_BASE}/api/website-content/manage/quality\`);
+      url.searchParams.set('ticket',editorTicket);
+      const response=await fetch(url,{cache:'no-store'});
+      if(!response.ok) throw new Error(\`Quality check failed (\${response.status})\`);
+      const payload=await response.json();
+      if(payload.source!=='saved_draft_server' || !Array.isArray(payload.checks)) throw new Error('Saved-draft quality response was invalid.');
+      renderQualityChecks(savedHost,payload.checks,'No saved-draft issues detected by the server checks.');
+      if(savedMeta) savedMeta.textContent=\`Saved draft checks (server) · revision \${payload.revision} · \${payload.errorCount||0} errors · \${payload.warningCount||0} warnings\`;
+    } catch(error) {
+      renderQualityChecks(savedHost,[{severity:'error',message:error?.message || 'Unable to inspect the saved draft.'}],'');
+      if(savedMeta) savedMeta.textContent='Saved draft checks (server) · unavailable';
+    }
   }
 
   function elementLabel(el) {
@@ -1675,7 +1762,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -1688,6 +1775,9 @@
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Choose what this interaction means. Draft changes take effect when published.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
+    const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
+    quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
+    tools.appendChild(quality);
 
 
     const layoutView = tools.querySelector('[data-cms-view="layout"]');
@@ -1705,6 +1795,7 @@
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     syncBreakpointControls();
+    document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', () => void refreshQualityInspector());
     document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
     document.getElementById('legend-cms-breakpoint-add')?.addEventListener('click', () => {
       const key=safeId(document.getElementById('legend-cms-breakpoint-key')?.value);
@@ -1824,6 +1915,7 @@
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
+      .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}.legend-cms-move-handle{min-height:38px;padding:8px 12px;top:-44px}.legend-cms-resize-handle{width:34px;height:34px}.legend-cms-resize-x{right:-18px}.legend-cms-resize-y{bottom:-18px}.legend-cms-resize-xy{right:-18px;bottom:-18px}}
     `;
