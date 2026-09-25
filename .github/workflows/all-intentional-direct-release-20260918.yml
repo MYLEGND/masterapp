@@ -764,8 +764,10 @@ jobs:
 
           binding_ok=False
           store_ok=False
+          home_ok=False
           last_binding=None
           last_store=None
+          last_home=None
           for attempt in range(1,9):
               try:
                   status,body,location=request('/.well-known/legend-website','application/json')
@@ -780,6 +782,16 @@ jobs:
                   print(host,'binding',attempt,type(error).__name__)
 
               try:
+                  status,body,location=request('/')
+                  last_home=(status,len(body),location)
+                  print(host,'/',attempt,status,len(body),location or '')
+                  home_ok=status==200 and len(body)>0 and not location
+              except Exception as error:
+                  last_home=(type(error).__name__,0,None)
+                  print(host,'/',attempt,type(error).__name__)
+                  home_ok=False
+
+              try:
                   status,body,location=request('/store')
                   last_store=(status,len(body),location)
                   print(host,'/store',attempt,status,len(body),location or '')
@@ -789,12 +801,14 @@ jobs:
                   print(host,'/store',attempt,type(error).__name__)
                   store_ok=False
 
-              if binding_ok and store_ok:
+              if binding_ok and home_ok and store_ok:
                   break
               time.sleep(5)
 
           if not binding_ok:
               raise SystemExit(f'Custom-domain routing proof did not stabilize: {last_binding}')
+          if not home_ok:
+              raise SystemExit(f'Custom-domain homepage did not stabilize: {last_home}')
           if not store_ok:
               raise SystemExit(f'Custom-domain store proof did not stabilize: {last_store}')
           PYCUSTOM
