@@ -32,6 +32,6 @@ jobs:
       - name: Run focused Website Studio authorities
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
-            --filter 'FullyQualifiedName~BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport|FullyQualifiedName~InvalidNumericDomains_AreDiscardedWithoutInventingReplacementStyles|FullyQualifiedName~TextOnlyEdit_LeavesEveryStyleUnsetAfterPersistence|FullyQualifiedName~BusinessTicket_AllowsLinkedAgentOnlyWhileClientRemainsShared|FullyQualifiedName~MediaLibrary_IsOwnerScopedSearchableAndRejectsInvalidTickets|FullyQualifiedName~WebsiteStudioAiProposal_IsRevisionLockedAndNeverPersistsUntilUserSaves|FullyQualifiedName~SignalDryRun_ValidatesMappingWithoutPersistingAnalyticsMetaOrDraftChanges|FullyQualifiedName~SignalHealth_ReadsOnlyCurrentWebsiteVersionAndBindingHistoryWithoutSecrets|FullyQualifiedName~Collaboration_UsesExistingBusinessMembershipRolesAndNeverMutatesWebsiteDraft|FullyQualifiedName~Collaboration_RepliesStayScopedToCanonicalWebsiteStateAndOneLevelThread|FullyQualifiedName~DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteSignalBindingTests'
+            --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteSignalBindingTests'
       - name: Build LEGEND website
         run: npm --prefix Legend-Website run build
