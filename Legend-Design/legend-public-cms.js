@@ -815,9 +815,7 @@
     syncReusableMemberDom(el, override);
   }
 
-  function createExtra(extra) {
-    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
-    if (!section) return null;
+  function createExtraElement(extra) {
     let el;
     if (extra.type === 'heading') {
       el = document.createElement('h2');
@@ -848,16 +846,27 @@
       el.alt = '';
       el.className = 'cms-extra cms-extra-image';
     } else if (extra.type === 'section') {
-      el = document.createElement('section'); el.dataset.cmsSection = `extra:${extra.id}`; el.className = 'cms-extra cms-extra-section';
+      el = document.createElement('section');
+      el.dataset.cmsSection = `extra:${extra.id}`;
+      el.className = 'cms-extra cms-extra-section';
     } else if (extra.type === 'video') {
-      el = document.createElement('video'); el.controls = true; el.preload = 'metadata'; if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+      el = document.createElement('video');
+      el.controls = true;
+      el.preload = 'metadata';
+      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl);
+      el.className = 'cms-extra';
     } else if (extra.type === 'card') {
-      el = document.createElement('article'); el.className = 'cms-extra card cms-extra-card';
-      const heading = document.createElement('h3'); setContentText(heading, extra.title || 'New service', true);
-      const copy = document.createElement('p'); setContentText(copy, extra.text || '', true);
+      el = document.createElement('article');
+      el.className = 'cms-extra card cms-extra-card';
+      const heading = document.createElement('h3');
+      setContentText(heading, extra.title || 'New service', true);
+      const copy = document.createElement('p');
+      setContentText(copy, extra.text || '', true);
       for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
-        node.dataset.cmsExtraId = extra.id; node.dataset.cmsExtraField = field;
-        node.dataset.cmsId = `extra:${extra.id}:${field}`; node.dataset.cmsEditable = 'true';
+        node.dataset.cmsExtraId = extra.id;
+        node.dataset.cmsExtraField = field;
+        node.dataset.cmsId = `extra:${extra.id}:${field}`;
+        node.dataset.cmsEditable = 'true';
       }
       el.append(heading, copy);
     } else if (extra.type === 'group') {
@@ -865,9 +874,13 @@
       el.className = 'cms-extra cms-extra-group';
       el.setAttribute('role', 'group');
     } else if (extra.type === 'button') {
-      el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+      el = document.createElement('a');
+      el.textContent = extra.text || 'New button';
+      if (safeUrl(extra.href)) el.href = extra.href;
+      el.className = 'cms-extra btn primary';
     } else if (extra.type === 'code') {
-      el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
+      el = document.createElement('div');
+      el.className = 'cms-extra cms-extra-code';
       const frame = document.createElement('iframe');
       frame.dataset.cmsCodeFrame = 'true';
       frame.title = 'Custom code block';
@@ -884,8 +897,100 @@
     el.dataset.cmsExtraId = extra.id;
     el.dataset.cmsId = `extra:${extra.id}`;
     el.dataset.cmsEditable = 'true';
+    return el;
+  }
+
+  function reusableLocalId(value) {
+    const raw = String(value || '');
+    return raw.startsWith('extra:') ? raw.slice('extra:'.length) : raw;
+  }
+
+  function remapReusableNode(node, definitionId, localId, instanceId) {
+    const nodes = [node, ...node.querySelectorAll('[data-cms-editable="true"]')];
+    for (const current of nodes) {
+      delete current.dataset.cmsExtraId;
+      current.dataset.cmsReusableDefinitionId = definitionId;
+      current.dataset.cmsReusableLocalId = localId;
+      current.dataset.cmsReusableInstanceId = instanceId;
+      const field = current.dataset.cmsExtraField || 'root';
+      current.dataset.cmsId = `reusable:${instanceId}:${localId}:${field}`;
+      current.dataset.cmsEditable = 'true';
+    }
+  }
+
+  function placeReusableComponent(node, component, root, nodesById) {
+    const placement = component.placement || {};
+    const container = placement.containerId ? nodesById.get(reusableLocalId(placement.containerId)) : null;
+    const destination = container || root;
+    const before = placement.beforeId ? nodesById.get(reusableLocalId(placement.beforeId)) : null;
+    destination.insertBefore(node, before?.parentElement === destination && before !== node ? before : null);
+    if (placement.flow !== true && placement.column) {
+      node.style.setProperty('--cms-column', String(Math.max(1, Math.min(24, Number(placement.column) || 1))));
+      node.style.setProperty('--cms-span', String(Math.max(1, Math.min(24, Number(placement.span) || 1))));
+    }
+  }
+
+  function renderReusableInstance(wrapper, instance) {
+    const definition = reusableDefinition(instance.reusableDefinitionId);
+    if (!definition) {
+      wrapper.dataset.cmsReusableMissing = 'true';
+      if (editorMode) wrapper.textContent = 'Missing synced component definition';
+      return;
+    }
+
+    wrapper.dataset.cmsReusableDefinitionIdRef = definition.id;
+    wrapper.dataset.cmsReusableName = definition.name || 'Synced component';
+
+    const root = document.createElement('div');
+    root.className = 'cms-reusable-content';
+    root.dataset.cmsReusableDefinitionId = definition.id;
+    root.dataset.cmsReusableLocalId = '__root__';
+    root.dataset.cmsReusableInstanceId = instance.id;
+    root.dataset.cmsId = `reusable:${instance.id}:__root__`;
+    root.dataset.cmsEditable = 'true';
+    root.setAttribute('role', 'group');
+    wrapper.appendChild(root);
+    applyElementOverride(root, definition);
+
+    const nodesById = new Map();
+    for (const component of definition.components || []) {
+      const node = createExtraElement(component);
+      remapReusableNode(node, definition.id, component.id, instance.id);
+      nodesById.set(component.id, node);
+      root.appendChild(node);
+    }
+    for (const component of definition.components || []) {
+      const node = nodesById.get(component.id);
+      if (!node) continue;
+      placeReusableComponent(node, component, root, nodesById);
+      applyElementOverride(node, component);
+      node.querySelectorAll('[data-cms-reusable-definition-id]').forEach(child => {
+        if (child.dataset.cmsExtraField) applyElementOverride(child, component);
+      });
+    }
+  }
+
+  function createExtra(extra) {
+    const section = extra.type === 'section'
+      ? document.querySelector('main')
+      : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
+    if (!section) return null;
+
+    const el = extra.type === 'reusable'
+      ? document.createElement('div')
+      : createExtraElement(extra);
+
+    if (extra.type === 'reusable') {
+      el.className = 'cms-extra cms-extra-reusable';
+      el.dataset.cmsExtraId = extra.id;
+      el.dataset.cmsId = `extra:${extra.id}`;
+      el.dataset.cmsEditable = 'true';
+      el.setAttribute('role', 'group');
+    }
+
     section.appendChild(el);
     applyElementOverride(el, extra);
+    if (extra.type === 'reusable') renderReusableInstance(el, extra);
     return el;
   }
 
