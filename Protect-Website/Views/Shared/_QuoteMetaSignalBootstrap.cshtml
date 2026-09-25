@@ -1,7 +1,7 @@
 @using System.Text.Json
 @using Shared.Analytics
 @using Infrastructure.Analytics
-@inject Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions> MetaSignalOptionsAccessor
+@inject Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions> MetaSignalOptionsAccessor
 
 @{
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
