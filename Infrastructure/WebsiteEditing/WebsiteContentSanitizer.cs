@@ -12,14 +12,16 @@ public static class WebsiteContentSanitizer
         var clean = new WebsiteContentDocument
         {
             Version = 1,
-            FaviconImageDataUrl = SanitizeImage(source.FaviconImageDataUrl)
+            FaviconImageDataUrl = SanitizeImage(source.FaviconImageDataUrl),
+            Breakpoints = SanitizeBreakpoints(source.Breakpoints)
         };
+        var breakpointIds = clean.Breakpoints.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
 
         foreach (var pair in (source.Elements ?? new()).Take(MaxElements))
         {
             var id = SanitizeId(pair.Key);
             if (id.Length == 0 || pair.Value is null) continue;
-            clean.Elements[id] = SanitizeElement(pair.Value);
+            clean.Elements[id] = SanitizeElement(pair.Value, breakpointIds);
         }
 
         foreach (var pair in (source.SectionOrder ?? new()).Take(MaxElements))
@@ -49,7 +51,9 @@ public static class WebsiteContentSanitizer
                 Alt = ClampText(extra.Alt), VideoUrl = SanitizeUrl(extra.VideoUrl, true),
                 Placement = SanitizePlacement(extra.Placement),
                 ImageDataUrl = type == "image" ? SanitizeImage(extra.ImageDataUrl) : null,
-                Style = SanitizeStyle(extra.Style)
+                Style = SanitizeStyle(extra.Style),
+                Layout = SanitizeLayout(extra.Layout),
+                Responsive = SanitizeResponsive(extra.Responsive, breakpointIds)
             });
         }
 
@@ -57,7 +61,7 @@ public static class WebsiteContentSanitizer
         {
             var path = page.Key;
             if (page.Value is null || !path.StartsWith('/') || path.StartsWith("//") || path.Contains('?') || path.Contains('#') || path.Contains("..") || path.Length > 2048) continue;
-            var body = Sanitize(new WebsiteContentDocument { Elements = page.Value.Elements, SectionOrder = page.Value.SectionOrder, Extras = page.Value.Extras });
+            var body = Sanitize(new WebsiteContentDocument { Elements = page.Value.Elements, SectionOrder = page.Value.SectionOrder, Extras = page.Value.Extras, Breakpoints = clean.Breakpoints });
             clean.Pages[path] = new WebsitePageDocument { Title = ClampText(page.Value.Title), Description = ClampText(page.Value.Description), Elements = body.Elements, SectionOrder = body.SectionOrder, Extras = body.Extras };
         }
         clean.Theme = SanitizeTheme(source.Theme);
@@ -65,7 +69,7 @@ public static class WebsiteContentSanitizer
         return clean;
     }
 
-    private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source) => new()
+    private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source, HashSet<string> breakpointIds) => new()
     {
         Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
         ActionKey = SanitizeActionKey(source.ActionKey),
@@ -75,7 +79,9 @@ public static class WebsiteContentSanitizer
         Href = SanitizeUrl(source.Href), Target = SanitizeTarget(source.Target),
         Alt = ClampText(source.Alt), VideoUrl = SanitizeUrl(source.VideoUrl, true),
         Placement = SanitizePlacement(source.Placement),
-        Style = SanitizeStyle(source.Style)
+        Style = SanitizeStyle(source.Style),
+        Layout = SanitizeLayout(source.Layout),
+        Responsive = SanitizeResponsive(source.Responsive, breakpointIds)
     };
 
     private static WebsiteThemeOverride SanitizeTheme(WebsiteThemeOverride? source)
@@ -134,11 +140,103 @@ public static class WebsiteContentSanitizer
             PaddingRight = source.PaddingRight >= 0 ? source.PaddingRight : null,
             BorderRadius = source.BorderRadius >= 0 ? source.BorderRadius : null,
             ObjectFit = source.ObjectFit is "cover" or "contain" or "fill" or "none" or "scale-down" ? source.ObjectFit : null,
-            HeightPx = source.HeightPx > 0 ? source.HeightPx : null,
-            OffsetXPercent = source.OffsetXPercent,
-            OffsetYPx = source.OffsetYPx
+            HeightPx = BoundedPositive(source.HeightPx, 10000),
+            OffsetXPercent = BoundedSigned(source.OffsetXPercent, 500),
+            OffsetYPx = BoundedSigned(source.OffsetYPx, 10000),
+            MinWidthPx = BoundedNonNegative(source.MinWidthPx, 10000),
+            MaxWidthPx = BoundedPositive(source.MaxWidthPx, 10000),
+            MinHeightPx = BoundedNonNegative(source.MinHeightPx, 10000),
+            MaxHeightPx = BoundedPositive(source.MaxHeightPx, 10000),
+            MarginTop = BoundedSigned(source.MarginTop, 2000),
+            MarginRight = BoundedSigned(source.MarginRight, 2000),
+            MarginBottom = BoundedSigned(source.MarginBottom, 2000),
+            MarginLeft = BoundedSigned(source.MarginLeft, 2000),
+            Opacity = source.Opacity is >= 0 and <= 1 ? source.Opacity : null,
+            RotationDeg = BoundedSigned(source.RotationDeg, 3600),
+            ScaleX = BoundedPositive(source.ScaleX, 20),
+            ScaleY = BoundedPositive(source.ScaleY, 20),
+            ZIndex = source.ZIndex is >= -10000 and <= 10000 ? source.ZIndex : null,
+            PositionMode = source.PositionMode is "flow" or "relative" or "absolute" or "sticky" or "fixed" ? source.PositionMode : null,
+            AspectRatio = source.AspectRatio is > 0 and <= 20 ? source.AspectRatio : null
         };
     }
+
+    private static List<WebsiteBreakpointDefinition> SanitizeBreakpoints(IEnumerable<WebsiteBreakpointDefinition>? source)
+    {
+        var values = (source ?? WebsiteBreakpointCatalog.Defaults())
+            .Where(item => item is not null)
+            .Select(item => new WebsiteBreakpointDefinition
+            {
+                Id = SanitizeId(item.Id),
+                Label = ClampText(item.Label) ?? "",
+                MaxWidthPx = Math.Clamp(item.MaxWidthPx, WebsiteBreakpointCatalog.MinBreakpointWidth, WebsiteBreakpointCatalog.MaxBreakpointWidth)
+            })
+            .Where(item => item.Id.Length > 0)
+            .GroupBy(item => item.Id, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .Take(WebsiteBreakpointCatalog.MaxBreakpoints)
+            .OrderByDescending(item => item.MaxWidthPx)
+            .ToList();
+
+        return values.Count == 0 ? WebsiteBreakpointCatalog.Defaults() : values;
+    }
+
+    private static Dictionary<string, WebsiteResponsiveOverride> SanitizeResponsive(
+        Dictionary<string, WebsiteResponsiveOverride>? source,
+        HashSet<string> breakpointIds)
+    {
+        var result = new Dictionary<string, WebsiteResponsiveOverride>(StringComparer.Ordinal);
+        foreach (var pair in source ?? new())
+        {
+            var id = SanitizeId(pair.Key);
+            if (!breakpointIds.Contains(id) || pair.Value is null) continue;
+            result[id] = new WebsiteResponsiveOverride
+            {
+                Hidden = pair.Value.Hidden,
+                Style = SanitizeStyle(pair.Value.Style),
+                Layout = SanitizeLayout(pair.Value.Layout)
+            };
+        }
+        return result;
+    }
+
+    private static WebsiteLayoutOverride SanitizeLayout(WebsiteLayoutOverride? source)
+    {
+        source ??= new WebsiteLayoutOverride();
+        var mode = (source.Mode ?? string.Empty).Trim().ToLowerInvariant();
+        if (mode is not ("flow" or "grid" or "flex" or "stack" or "free")) mode = string.Empty;
+        var direction = (source.Direction ?? string.Empty).Trim().ToLowerInvariant();
+        if (direction is not ("row" or "column")) direction = string.Empty;
+        var align = (source.AlignItems ?? string.Empty).Trim().ToLowerInvariant();
+        if (align is not ("start" or "center" or "end" or "stretch" or "baseline")) align = string.Empty;
+        var justify = (source.JustifyContent ?? string.Empty).Trim().ToLowerInvariant();
+        if (justify is not ("start" or "center" or "end" or "space-between" or "space-around" or "space-evenly")) justify = string.Empty;
+        var overflow = (source.Overflow ?? string.Empty).Trim().ToLowerInvariant();
+        if (overflow is not ("visible" or "hidden" or "clip" or "auto" or "scroll")) overflow = string.Empty;
+
+        return new WebsiteLayoutOverride
+        {
+            Mode = mode.Length == 0 ? null : mode,
+            Columns = source.Columns is >= 1 and <= 24 ? source.Columns : null,
+            Rows = source.Rows is >= 1 and <= 24 ? source.Rows : null,
+            ColumnGap = BoundedNonNegative(source.ColumnGap, 500),
+            RowGap = BoundedNonNegative(source.RowGap, 500),
+            Direction = direction.Length == 0 ? null : direction,
+            AlignItems = align.Length == 0 ? null : align,
+            JustifyContent = justify.Length == 0 ? null : justify,
+            Wrap = source.Wrap,
+            Overflow = overflow.Length == 0 ? null : overflow
+        };
+    }
+
+    private static decimal? BoundedPositive(decimal? value, decimal max) =>
+        value is > 0 && value <= max ? value : null;
+
+    private static decimal? BoundedNonNegative(decimal? value, decimal max) =>
+        value is >= 0 && value <= max ? value : null;
+
+    private static decimal? BoundedSigned(decimal? value, decimal max) =>
+        value.HasValue && value.Value >= -max && value.Value <= max ? value : null;
 
     private static string? ClampContentText(string? value)
     {
