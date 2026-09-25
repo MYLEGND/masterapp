@@ -177,12 +177,12 @@ public class LifeQuoteControllerPublicBookingTests
         captureService
             .Setup(service => service.UpsertAsync(It.IsAny<WebsiteLifeLeadCaptureRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WebsiteLifeLeadCaptureResult(
-                Captured: false,
-                Created: false,
-                WorkstationLeadId: null,
+                Captured: true,
+                Created: true,
+                WorkstationLeadId: "booking-disabled-test-lead",
                 Bucket: "LifeInsurance",
                 AgentUserId: null,
-                Reason: "NoAgentOwner"));
+                Reason: "Captured"));
 
         var metaPixelResolution = new Mock<IMetaPixelResolutionService>();
         metaPixelResolution
