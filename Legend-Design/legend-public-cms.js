@@ -1778,13 +1778,16 @@
     }
     if (!['base', ...(documentState.breakpoints || []).map(item => item.id)].includes(currentDesignBreakpoint)) currentDesignBreakpoint = 'base';
     select.value = currentDesignBreakpoint;
-    select.addEventListener('change', () => {
-      currentDesignBreakpoint = select.value;
-      applyBreakpointPreview(preview);
-      refreshResponsiveOverrides();
-      syncEditorControls();
-      updateDirectCanvasUi();
-    });
+    if (select.dataset.bound !== 'true') {
+      select.dataset.bound = 'true';
+      select.addEventListener('change', () => {
+        currentDesignBreakpoint = select.value;
+        applyBreakpointPreview(preview);
+        refreshResponsiveOverrides();
+        syncEditorControls();
+        updateDirectCanvasUi();
+      });
+    }
     const manage = document.getElementById('legend-cms-manage-breakpoints');
     if (manage && manage.dataset.bound !== 'true') {
       manage.dataset.bound = 'true';
