@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Leads;
@@ -21,16 +22,27 @@ public sealed class WebsiteInquiriesController : ControllerBase
     private readonly MasterAppDbContext _db;
     private readonly WebsiteEditorTicketProtector _tickets;
     private readonly IConfiguration _configuration;
-    private readonly WebsiteDomainService _domains;
+    private readonly PublicWebsiteRuntimeScopeResolver _publicScopes;
     private readonly IWebsiteLifeLeadCaptureService _capture;
+    private readonly WebsiteIntakeRecipientResolver _recipients;
+    private readonly IProtectEmailSender _emailSender;
 
-    public WebsiteInquiriesController(MasterAppDbContext db, WebsiteEditorTicketProtector tickets, IConfiguration configuration, WebsiteDomainService domains, IWebsiteLifeLeadCaptureService capture)
+    public WebsiteInquiriesController(
+        MasterAppDbContext db,
+        WebsiteEditorTicketProtector tickets,
+        IConfiguration configuration,
+        PublicWebsiteRuntimeScopeResolver publicScopes,
+        IWebsiteLifeLeadCaptureService capture,
+        WebsiteIntakeRecipientResolver recipients,
+        IProtectEmailSender emailSender)
     {
         _db = db;
         _tickets = tickets;
         _configuration = configuration;
-        _domains = domains;
+        _publicScopes = publicScopes;
         _capture = capture;
+        _recipients = recipients;
+        _emailSender = emailSender;
     }
 
     public sealed record PublicRequest(
@@ -63,16 +75,9 @@ public sealed class WebsiteInquiriesController : ControllerBase
     [EnableRateLimiting(PlatformRateLimiting.PublicFormPolicy)]
     public async Task<IActionResult> Submit([FromBody] PublicRequest request, CancellationToken cancellationToken)
     {
-        // The browser's verified domain identifies the business. No caller-supplied
-        // business/agent ID, page URL, or insurance lead fallback can choose a recipient.
-        if (!Uri.TryCreate(Request.Headers.Origin.ToString(), UriKind.Absolute, out var origin) ||
-            origin.Scheme != Uri.UriSchemeHttps || !origin.IsDefaultPort ||
-            origin.AbsolutePath != "/" || origin.Query.Length != 0 || origin.Fragment.Length != 0 || origin.UserInfo.Length != 0)
-            return BadRequest(new { error = "verified_website_origin_required" });
-        var businessId = await _domains.ResolveAsync(origin.IdnHost, cancellationToken);
-        if (businessId is null) return NotFound(new { error = "published_business_website_required" });
-        var version = await WebsiteContentStore.PublishedBusinessAsync(_db, businessId.Value, cancellationToken);
-        if (version is null) return NotFound(new { error = "published_business_website_required" });
+        var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, cancellationToken);
+        if (scope is null)
+            return NotFound(new { error = "published_website_required" });
 
         var firstName = request.FirstName?.Trim() ?? "";
         var lastName = request.LastName?.Trim() ?? "";
@@ -81,6 +86,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
         var message = request.Message?.Trim() ?? "";
         var path = request.SourcePath?.Trim() ?? "/";
         var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
+
         if (request.SubmissionId == Guid.Empty || !request.Consent ||
             firstName.Length is < 1 or > 120 || lastName.Length is < 1 or > 120 ||
             phone.Length is < 7 or > 64 || phoneDigits.Length is < 10 or > 15 ||
@@ -88,109 +94,152 @@ public sealed class WebsiteInquiriesController : ControllerBase
             firstName.Any(char.IsControl) || lastName.Any(char.IsControl) || phone.Any(char.IsControl) ||
             email.Any(char.IsControl) || message.Length is < 1 or > 12000 ||
             path.Length > 2048 || !path.StartsWith('/') || path.StartsWith("//") ||
-            path.Contains('?') || path.Contains('#') || path.Contains('\\') || path.Any(char.IsControl))
-            return BadRequest(new { error = "invalid_inquiry", message = "Enter your first name, last name, phone number, email and message, and agree to share them with this business." });
+            path.Contains('?') || path.Contains('#') || path.Contains('\\') || path.Any(char.IsControl) ||
+            !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(scope, path))
+            return BadRequest(new
+            {
+                error = "invalid_inquiry",
+                message = "Enter your first name, last name, phone number, email and message, and agree to share them with this website."
+            });
+
+        var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path);
+
+        return scope.SiteKey switch
+        {
+            WebsiteEditorSiteKeys.Business when scope.CommerceBusinessId.HasValue && scope.PublishedVersion is not null =>
+                await SubmitBusinessAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+            WebsiteEditorSiteKeys.Legend =>
+                await SubmitFounderAsync(scope, request, lead, firstName, lastName, phone, email, message, path, cancellationToken),
+            _ => NotFound(new { error = "published_website_required" })
+        };
+    }
+
+    private WebsiteLead BuildLead(
+        PublicWebsiteRuntimeScope scope,
+        PublicRequest request,
+        string firstName,
+        string lastName,
+        string phone,
+        string email,
+        string message,
+        string path)
+    {
+        var lead = new WebsiteLead
+        {
+            LeadId = Guid.NewGuid(),
+            CommerceBusinessId = scope.CommerceBusinessId,
+            WebsiteContentVersionId = scope.PublishedVersion?.Id,
+            FirstName = firstName,
+            LastName = lastName,
+            Phone = phone,
+            Email = email,
+            Notes = message,
+            SourcePageKey = path.Length <= 120 ? path : scope.SiteKey + "-inquiry",
+            SourceCtaKey = Optional(request.SourceActionKey, 120),
+            WebsiteBindingId = Optional(request.SourceActionKey, 120),
+            InterestType = scope.SiteKey == WebsiteEditorSiteKeys.Business ? "BusinessInquiry" : "LegendInquiry",
+            TermsAccepted = request.Consent,
+            MarketingEmailConsent = request.Consent,
+            CallTextConsent = request.Consent && !string.IsNullOrWhiteSpace(phone),
+            SessionId = Optional(request.SessionId, 128),
+            VisitorId = Optional(request.VisitorId, 128),
+            UtmSource = Optional(request.UtmSource, 160),
+            UtmMedium = Optional(request.UtmMedium, 160),
+            UtmCampaign = Optional(request.UtmCampaign, 160),
+            UtmId = Optional(request.UtmId, 160),
+            Fbclid = Optional(request.Fbclid, 120),
+            Fbp = Optional(request.Fbp, 512),
+            Fbc = Optional(request.Fbc, 512),
+            MetaCampaignId = Optional(request.MetaCampaignId, 200),
+            MetaAdSetId = Optional(request.MetaAdSetId, 200),
+            MetaAdId = Optional(request.MetaAdId, 200),
+            ClientIpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            ClientUserAgent = Request.Headers.UserAgent.ToString(),
+            Host = scope.OriginHost,
+            Environment = EnvironmentLabelResolver.Resolve(),
+            CreatedUtc = DateTime.UtcNow
+        };
+        lead.MetadataJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            SiteKey = scope.SiteKey,
+            SourceActionKey = lead.SourceCtaKey,
+            UtmTerm = Optional(request.UtmTerm, 160),
+            UtmContent = Optional(request.UtmContent, 160),
+            PublishedWebsiteVersionId = scope.PublishedVersion?.Id
+        });
+        lead.LeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
+        return lead;
+    }
+
+    private async Task<IActionResult> SubmitBusinessAsync(
+        PublicWebsiteRuntimeScope scope,
+        PublicRequest request,
+        WebsiteLead lead,
+        string firstName,
+        string lastName,
+        string phone,
+        string email,
+        string message,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var businessId = scope.CommerceBusinessId!.Value;
+        var version = scope.PublishedVersion!;
         var name = $"{firstName} {lastName}".Trim();
 
         var existing = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
             .SingleOrDefaultAsync(x => x.CommerceBusinessId == businessId && x.SubmissionId == request.SubmissionId, cancellationToken);
-        if (existing is not null) return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
+        if (existing is not null)
+            return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
+
         var inquiry = new CommerceWebsiteInquiry
         {
-            CommerceBusinessId = businessId.Value, PublishedVersionId = version.Id,
-            SubmissionId = request.SubmissionId, Name = name, Email = email,
-            Message = message, SourcePath = path
+            CommerceBusinessId = businessId,
+            PublishedVersionId = version.Id,
+            SubmissionId = request.SubmissionId,
+            WebsiteLeadId = lead.LeadId,
+            Name = name,
+            Email = email,
+            Message = message,
+            SourcePath = path
         };
-        var lead = new WebsiteLead
-        {
-            LeadId = Guid.NewGuid(), CommerceBusinessId = businessId.Value, WebsiteContentVersionId = version.Id,
-            FirstName = firstName, LastName = lastName, Phone = phone,
-            Email = email, SourcePageKey = path.Length <= 120 ? path : "business-inquiry",
-            SourceCtaKey = Optional(request.SourceActionKey, 120),
-            WebsiteBindingId = Optional(request.SourceActionKey, 120),
-            InterestType = "BusinessInquiry", TermsAccepted = request.Consent,
-            SessionId = Optional(request.SessionId, 128), VisitorId = Optional(request.VisitorId, 128),
-            UtmSource = Optional(request.UtmSource, 200), UtmMedium = Optional(request.UtmMedium, 200),
-            UtmCampaign = Optional(request.UtmCampaign, 300), UtmId = Optional(request.UtmId, 200),
-            Fbclid = Optional(request.Fbclid, 512), Fbp = Optional(request.Fbp, 512), Fbc = Optional(request.Fbc, 512),
-            MetaCampaignId = Optional(request.MetaCampaignId, 200), MetaAdSetId = Optional(request.MetaAdSetId, 200),
-            MetaAdId = Optional(request.MetaAdId, 200),
-            ClientIpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-            ClientUserAgent = Request.Headers.UserAgent.ToString(),
-            Host = origin.IdnHost, Environment = EnvironmentLabelResolver.Resolve(), CreatedUtc = DateTime.UtcNow
-        };
-        lead.MetadataJson = System.Text.Json.JsonSerializer.Serialize(new
-        {
-            SourceActionKey = lead.SourceCtaKey,
-            UtmTerm = Optional(request.UtmTerm, 200),
-            UtmContent = Optional(request.UtmContent, 300),
-            PublishedWebsiteVersionId = version.Id
-        });
-        inquiry.WebsiteLeadId = WebsiteLeadSubmission.ResolveId(lead, request.SubmissionId.ToString("D"));
-        await using var transaction = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(cancellationToken) : null;
+
+        await using var transaction = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
         _db.Add(inquiry);
+
         try
         {
-            var created = await WebsiteLeadSubmission.TryCreateAsync(_db, lead, request.SubmissionId.ToString("D"), cancellationToken,
+            var created = await WebsiteLeadSubmission.TryCreateAsync(
+                _db,
+                lead,
+                request.SubmissionId.ToString("D"),
+                cancellationToken,
                 async ct =>
                 {
-                    var captured = await _capture.UpsertAsync(new() { WebsiteLeadId = lead.LeadId, SubmittedUtc = lead.CreatedUtc }, ct);
-                    if (!captured.Captured) throw new InvalidOperationException("The business inquiry could not be linked to CRM.");
+                    var captured = await _capture.UpsertAsync(new()
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc
+                    }, ct);
+                    if (!captured.Captured)
+                        throw new InvalidOperationException("The business inquiry could not be linked to CRM.");
                 });
+
             if (created)
             {
-                if (!AnalyticsEventCatalog.TryGet("website_lead_submitted", out var leadEvent))
-                    throw new InvalidOperationException("Canonical lead analytics event is unavailable.");
-                var analytics = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
-                {
-                    SiteKey = WebsiteEditorSiteKeys.Business,
-                    CommerceBusinessId = businessId.Value,
-                    WebsiteContentVersionId = version.Id,
-                    WebsiteBindingId = lead.SourceCtaKey,
-                    EventId = "business_lead_" + lead.LeadId.ToString("N"),
-                    EventName = leadEvent.Name,
-                    EventCategory = leadEvent.Category,
-                    EventUtc = lead.CreatedUtc,
-                    SessionId = lead.SessionId,
-                    VisitorId = lead.VisitorId,
-                    PageKey = lead.SourcePageKey,
-                    FormKey = "business_inquiry",
-                    UtmSource = lead.UtmSource,
-                    UtmMedium = lead.UtmMedium,
-                    UtmCampaign = lead.UtmCampaign,
-                    UtmId = lead.UtmId,
-                    UtmContent = Optional(request.UtmContent, 300),
-                    Fbclid = lead.Fbclid,
-                    Fbp = lead.Fbp,
-                    Fbc = lead.Fbc,
-                    MetaCampaignId = lead.MetaCampaignId,
-                    MetaAdSetId = lead.MetaAdSetId,
-                    MetaAdId = lead.MetaAdId,
-                    UserAgent = lead.ClientUserAgent,
-                    IpAddress = lead.ClientIpAddress,
-                    Host = origin.IdnHost,
-                    Environment = lead.Environment,
-                    IsBrowserSignal = false,
-                    IsServerAuthority = true,
-                    MetaServerAuthorityEligible = true,
-                    Metadata = new
-                    {
-                        LeadId = lead.LeadId,
-                        WebsiteLeadId = lead.LeadId,
-                        SourceActionKey = lead.SourceCtaKey,
-                        Source = "business_website_inquiry_saved"
-                    }
-                });
-                analytics.ClientEventId = lead.LeadId;
-                UnifiedAnalyticsWriter.Write(_db, analytics);
+                WriteLeadAnalytics(scope, lead, request);
+                await _db.SaveChangesAsync(cancellationToken);
             }
-            await _db.SaveChangesAsync(cancellationToken);
-            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 2601 or 2627 })
         {
-            // Concurrent retries are constrained by the database, not an in-process lock.
-            if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.RollbackAsync(cancellationToken);
             _db.Entry(inquiry).State = EntityState.Detached;
             _db.Entry(lead).State = EntityState.Detached;
             existing = await _db.Set<CommerceWebsiteInquiry>().AsNoTracking()
@@ -198,7 +247,137 @@ public sealed class WebsiteInquiriesController : ControllerBase
             if (existing is null) throw;
             return await SubmissionResult(existing, firstName, lastName, phone, email, message, path, cancellationToken);
         }
+
         return Ok(new { accepted = true });
+    }
+
+    private async Task<IActionResult> SubmitFounderAsync(
+        PublicWebsiteRuntimeScope scope,
+        PublicRequest request,
+        WebsiteLead lead,
+        string firstName,
+        string lastName,
+        string phone,
+        string email,
+        string message,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var created = await WebsiteLeadSubmission.TryCreateAsync(
+            _db,
+            lead,
+            request.SubmissionId.ToString("D"),
+            cancellationToken,
+            async ct =>
+            {
+                WriteLeadAnalytics(scope, lead, request);
+                await _db.SaveChangesAsync(ct);
+            });
+
+        if (!created)
+        {
+            var existing = await _db.WebsiteLeads.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.LeadId == lead.LeadId, cancellationToken);
+            if (existing is null ||
+                existing.FirstName != firstName ||
+                (existing.LastName ?? "") != lastName ||
+                (existing.Phone ?? "") != phone ||
+                existing.Email != email ||
+                (existing.Notes ?? "") != message ||
+                existing.SourcePageKey != lead.SourcePageKey)
+                return Conflict(new { error = "submission_id_already_used" });
+            lead = existing;
+        }
+
+        var notificationSent = await TryNotifyFounderAsync(lead, cancellationToken);
+        return Ok(new { accepted = true, notificationSent });
+    }
+
+    private void WriteLeadAnalytics(PublicWebsiteRuntimeScope scope, WebsiteLead lead, PublicRequest request)
+    {
+        if (!AnalyticsEventCatalog.TryGet("website_lead_submitted", out var leadEvent))
+            throw new InvalidOperationException("Canonical lead analytics event is unavailable.");
+
+        var analytics = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            SiteKey = scope.SiteKey,
+            CommerceBusinessId = scope.CommerceBusinessId,
+            WebsiteContentVersionId = scope.PublishedVersion?.Id,
+            WebsiteBindingId = lead.SourceCtaKey,
+            EventId = scope.SiteKey + "_lead_" + lead.LeadId.ToString("N"),
+            EventName = leadEvent.Name,
+            EventCategory = leadEvent.Category,
+            EventUtc = lead.CreatedUtc,
+            SessionId = lead.SessionId,
+            VisitorId = lead.VisitorId,
+            PageKey = lead.SourcePageKey,
+            FormKey = "website_inquiry",
+            UtmSource = lead.UtmSource,
+            UtmMedium = lead.UtmMedium,
+            UtmCampaign = lead.UtmCampaign,
+            UtmId = lead.UtmId,
+            UtmContent = Optional(request.UtmContent, 160),
+            Fbclid = lead.Fbclid,
+            Fbp = lead.Fbp,
+            Fbc = lead.Fbc,
+            MetaCampaignId = lead.MetaCampaignId,
+            MetaAdSetId = lead.MetaAdSetId,
+            MetaAdId = lead.MetaAdId,
+            UserAgent = lead.ClientUserAgent,
+            IpAddress = lead.ClientIpAddress,
+            Host = lead.Host,
+            Environment = lead.Environment,
+            IsBrowserSignal = false,
+            IsServerAuthority = true,
+            MetaServerAuthorityEligible = true,
+            Metadata = new
+            {
+                LeadId = lead.LeadId,
+                WebsiteLeadId = lead.LeadId,
+                SourceActionKey = lead.SourceCtaKey,
+                Source = scope.SiteKey + "_website_inquiry_saved"
+            }
+        });
+        analytics.ClientEventId = lead.LeadId;
+        UnifiedAnalyticsWriter.Write(_db, analytics);
+    }
+
+    private async Task<bool> TryNotifyFounderAsync(WebsiteLead lead, CancellationToken cancellationToken)
+    {
+        if (lead.NotificationSentUtc.HasValue)
+            return true;
+
+        var trackedLead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, cancellationToken);
+        if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, trackedLead, cancellationToken))
+            return trackedLead.NotificationSentUtc.HasValue;
+
+        var recipient = await _recipients.ResolveAsync(MarketingOwnerScope.Founder, cancellationToken);
+        var sent = false;
+        if (!string.IsNullOrWhiteSpace(recipient))
+        {
+            var name = $"{trackedLead.FirstName} {trackedLead.LastName}".Trim();
+            var html =
+                $"<p><strong>{WebUtility.HtmlEncode(name)}</strong></p>" +
+                $"<p>{WebUtility.HtmlEncode(trackedLead.Email)} · {WebUtility.HtmlEncode(trackedLead.Phone)}</p>" +
+                $"<p>{WebUtility.HtmlEncode(trackedLead.Notes).Replace("\n", "<br>")}</p>" +
+                $"<p>Page: {WebUtility.HtmlEncode(trackedLead.SourcePageKey)}</p>";
+            try
+            {
+                sent = await _emailSender.TrySendAsync(
+                    recipient,
+                    "New LEGEND® website inquiry",
+                    html,
+                    replyToEmail: trackedLead.Email,
+                    cancellationToken: cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                sent = false;
+            }
+        }
+
+        await WebsiteLeadSubmission.CompleteNotificationAsync(_db, trackedLead, sent, cancellationToken);
+        return sent;
     }
 
     private static string? Optional(string? value, int max)
