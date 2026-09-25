@@ -78,6 +78,68 @@ public sealed class WebsitePublishingAuthorityTests
     }
 
     [Fact]
+    public async Task OrdinarySaveCannotImplicitlyErasePersistedDraftContent_ButExplicitResetCan()
+    {
+        using var f = new Fixture();
+        var token = f.Token;
+
+        Body(await f.Controller.Save(new(token, Document("persisted"), 0)));
+        var empty = new WebsiteContentDocument();
+
+        var preserved = Body(await f.Controller.Save(new(token, empty, 1)))
+            .GetProperty("document")
+            .GetProperty("elements");
+        Assert.Equal("persisted", preserved.GetProperty("title").GetProperty("text").GetString());
+
+        var explicitlyRemoved = Body(await f.Controller.Save(new(
+            token,
+            new WebsiteContentDocument(),
+            2,
+            DeletedKeys: new[] { "root|element:title" })))
+            .GetProperty("document")
+            .GetProperty("elements");
+        Assert.False(explicitlyRemoved.TryGetProperty("title", out _));
+    }
+
+    [Fact]
+    public void CanonicalInquiryFormBlocksAndServerLeadBindingsSurviveSanitization()
+    {
+        var bindingId = Guid.NewGuid().ToString("N");
+        var doc = new WebsiteContentDocument
+        {
+            Extras =
+            [
+                new WebsiteExtraComponent
+                {
+                    Id = "contact-form",
+                    SectionId = "contact",
+                    Type = "form",
+                    Title = "Contact us",
+                    Text = "Send inquiry",
+                    Signals =
+                    [
+                        new WebsiteSignalBinding
+                        {
+                            Id = bindingId,
+                            Trigger = "submission_saved",
+                            EventName = "Lead",
+                            DeliveryMode = "meta"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var form = Assert.Single(WebsiteContentSanitizer.Sanitize(doc).Extras);
+        Assert.Equal("form", form.Type);
+        var binding = Assert.Single(form.Signals);
+        Assert.Equal(bindingId, binding.Id);
+        Assert.Equal("submission_saved", binding.Trigger);
+        Assert.Equal("Lead", binding.EventName);
+        Assert.Equal("meta", binding.DeliveryMode);
+    }
+
+    [Fact]
     public void ScopeCtaCatalogOnlyOffersConfiguredDynamicActions()
     {
         var business = WebsiteCallToActionCatalog.Build(
