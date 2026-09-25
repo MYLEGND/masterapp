@@ -1,5 +1,5 @@
 name: Resume centralized commerce release 173
-# trigger: parfait-runtime-authority-repair-20260925
+# trigger: parfait-runtime-authority-scope-repair-20260925
 
 on:
   push:
@@ -117,9 +117,10 @@ jobs:
           PY
           storage_name="$(sed -n '1p' "$RUNNER_TEMP/parfait-dp-resources.txt")"
           vault_name="$(sed -n '2p' "$RUNNER_TEMP/parfait-dp-resources.txt")"
-          storage_id="$(az storage account show -g masterapp-rg -n "$storage_name" --query id -o tsv)"
-          vault_id="$(az keyvault show -g masterapp-rg -n "$vault_name" --query id -o tsv)"
-          [ -n "$storage_id" ] && [ -n "$vault_id" ]
+          subscription_id="$(az account show --query id -o tsv)"
+          [ -n "$subscription_id" ]
+          storage_id="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.Storage/storageAccounts/$storage_name"
+          vault_id="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.KeyVault/vaults/$vault_name"
 
           az role assignment create \
             --assignee-object-id "$parfait_pid" \
