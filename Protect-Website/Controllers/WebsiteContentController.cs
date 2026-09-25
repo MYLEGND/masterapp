@@ -260,7 +260,7 @@ public sealed class WebsiteContentController : ControllerBase
         var draft = Read(state.DraftJson);
         IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
             ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
-            : await new WebsiteCollectionProjectionService(_db).LoadAsync(draft, business.Id, cancellationToken);
+            : await new WebsiteCollectionProjectionService(_db).LoadCatalogAsync(business.Id, cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken);
         return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
