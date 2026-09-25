@@ -40,6 +40,7 @@
   let signalCatalog = null;
   let ctaCatalog = [];
   let managementPayload = null;
+  let pendingAiProposal = null;
   let collectionData = new Map();
   let dynamicCollectionItem = renderInput?.dynamicItem || null;
   let selected = null;
@@ -702,6 +703,100 @@
       }
     }
     animationRuntime.set(el, { signature, cleanup:() => cleanups.forEach(cleanup => cleanup()) });
+  }
+
+  function aiOperationLabel(operation) {
+    const kind=String(operation?.kind || '').replaceAll('_',' ');
+    if (operation?.kind==='suggest_image') return `${kind}: ${operation.imagePrompt || 'image direction'}`;
+    if (operation?.kind==='set_text') return `${kind}: ${(operation.text || '').slice(0,120)}`;
+    if (operation?.breakpointKey) return `${kind} · ${operation.breakpointKey}`;
+    return kind || 'website change';
+  }
+
+  function renderAiProposal() {
+    const host=document.getElementById('legend-cms-ai-proposal');
+    const status=document.getElementById('legend-cms-ai-status');
+    const apply=document.getElementById('legend-cms-ai-apply');
+    const discard=document.getElementById('legend-cms-ai-discard');
+    if(!host?.replaceChildren) return;
+    host.replaceChildren();
+    if(!pendingAiProposal){
+      if(status) status.textContent='No proposal generated.';
+      if(apply) apply.disabled=true;
+      if(discard) discard.disabled=true;
+      return;
+    }
+    if(status) status.textContent=`Proposal ready · base revision ${pendingAiProposal.baseRevision}. Review before applying.`;
+    const summary=document.createElement('p'); summary.className='legend-cms-ai-summary'; summary.textContent=pendingAiProposal.summary || 'Website Studio AI proposal'; host.appendChild(summary);
+    for(const operation of pendingAiProposal.operations || []){
+      const row=document.createElement('div'); row.className='legend-cms-ai-operation'; row.textContent=aiOperationLabel(operation); host.appendChild(row);
+    }
+    if(!(pendingAiProposal.operations || []).length){
+      const empty=document.createElement('p'); empty.textContent='The model proposed no document changes.'; host.appendChild(empty);
+    }
+    if(apply) apply.disabled=pendingAiProposal.baseRevision!==revision || !pendingAiProposal.proposedDocument;
+    if(discard) discard.disabled=false;
+  }
+
+  async function requestAiProposal() {
+    const status=document.getElementById('legend-cms-ai-status');
+    const prompt=document.getElementById('legend-cms-ai-prompt')?.value?.trim() || '';
+    const mode=document.getElementById('legend-cms-ai-mode')?.value || 'responsive';
+    if(!prompt){ if(status) status.textContent='Enter what you want the assistant to improve or create.'; return; }
+    if(mode==='responsive' && (!selected || selected.dataset.cmsSignalOnly)){
+      if(status) status.textContent='Select the element or section you want AI to make responsive.';
+      return;
+    }
+    if(dirty){
+      const saved=await save(false);
+      if(!saved || dirty){ if(status) status.textContent='Save the current draft before generating an AI proposal.'; return; }
+    }
+    if(status) status.textContent='Generating a structured proposal…';
+    pendingAiProposal=null;
+    try{
+      const selectedText=selected && !selected.dataset.cmsSection ? inlineTextValue(selected).slice(0,4000) : null;
+      const response=await fetch(`${API_BASE}/api/website-content/manage/ai/propose`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          ticket:editorTicket,
+          expectedRevision:revision,
+          mode,
+          instruction:prompt,
+          pagePath:currentPageRoute(),
+          selectedElementId:selected?.dataset?.cmsId || null,
+          selectedSectionId:selectedSection?.dataset?.cmsSection || null,
+          selectedText
+        })
+      });
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(payload.message || payload.error || `AI proposal failed (${response.status})`);
+      if(payload.source!=='ai_proposal_preview' || payload.persisted!==false || payload.published!==false || !payload.proposedDocument)
+        throw new Error('AI proposal response was invalid.');
+      pendingAiProposal=payload;
+      renderAiProposal();
+    }catch(error){
+      pendingAiProposal=null;
+      if(status) status.textContent=error?.message || 'Unable to generate an AI proposal.';
+      renderAiProposal();
+    }
+  }
+
+  function applyAiProposal() {
+    const status=document.getElementById('legend-cms-ai-status');
+    if(!pendingAiProposal?.proposedDocument) return;
+    if(pendingAiProposal.baseRevision!==revision){
+      if(status) status.textContent='This proposal is stale because the saved draft revision changed. Generate it again.';
+      return;
+    }
+    checkpoint();
+    setSelected(null);
+    applyDocument(pendingAiProposal.proposedDocument);
+    pendingAiProposal=null;
+    markDirty();
+    renderAiProposal();
+    showPanel('ai');
+    if(status) status.textContent='Proposal applied to the local draft. Review the canvas, then save or publish normally.';
   }
 
   function renderMotionControls() {
@@ -1869,6 +1964,7 @@
     if (name === 'media') void refreshMediaLibrary();
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
+    if (name === 'ai') renderAiProposal();
     if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') renderSignalControls();
@@ -2310,7 +2406,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="ai">AI Assist</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -2326,6 +2422,10 @@
     const motion = document.createElement('section'); motion.dataset.cmsView='motion'; motion.hidden=true;
     motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
     tools.appendChild(motion);
+
+    const ai = document.createElement('section'); ai.dataset.cmsView='ai'; ai.hidden=true;
+    ai.innerHTML='<h2>AI creation assistant</h2><p>AI proposes typed changes only. Nothing is saved or published until you apply the proposal and use the normal draft/publish controls.</p><label class="legend-cms-group">Mode<select id="legend-cms-ai-mode"><option value="responsive">Responsive improvement</option><option value="create">Content / section creation</option></select></label><label class="legend-cms-group">Instruction<textarea id="legend-cms-ai-prompt" rows="5" maxlength="2000" placeholder="Example: make this section cleaner on mobile without changing the wording"></textarea></label><button id="legend-cms-ai-generate" type="button">Generate proposal</button><small id="legend-cms-ai-status" role="status">No proposal generated.</small><div id="legend-cms-ai-proposal"></div><div class="legend-cms-row"><button id="legend-cms-ai-apply" type="button" disabled>Apply proposal to draft</button><button id="legend-cms-ai-discard" type="button" disabled>Discard</button></div>';
+    tools.appendChild(ai);
 
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
     quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
