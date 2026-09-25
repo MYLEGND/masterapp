@@ -1,0 +1,19 @@
+name: Central commerce release-policy validation
+on:
+  push:
+    branches:
+      - repair/central-commerce-scoped-release-policy-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release policy and lifecycle
+        run: |
+          python3 scripts/test-release-policy.py
+          python3 scripts/test-release-lifecycle.py
