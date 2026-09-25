@@ -1,12 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the exact business-client CRM booking source-of-truth repair through legend/approved-changes. Preserve the working AgentPortal and Protect booking authority, remove no working booking behavior, add no parallel scheduler, no CSS override, and deploy only the affected AgentPortal and ClientApp.",
-  "purpose": "Replace the broken desktop-on-mobile scheduler geometry at the canonical CSS source. Remove the obsolete early responsive block that was being overwritten by later desktop viewport-fit rules; make one final responsive geometry contract the last scheduler rules in AgentPortal/wwwroot/css/qv-booking.css. ClientApp continues linking that exact stylesheet. Fold the standalone mobile booking geometry into the same canonical stylesheet, remove its second mobile-client-booking.css include and delete that now-dead stylesheet. Preserve the existing shared scheduler JavaScript, AgentProfile booking authority, Protect PublicBookingResolver, signed business booking adapter and CalendarController Microsoft Bookings/Graph engine. No ClientApp-only CSS patch, no stacked stylesheet, no database migration, no Protect/LEGEND Website/Parfait/Cloudflare deployment.",
-  "requestId": "business-crm-canonical-booking-mobile-ui-direct-20260924",
-  "releaseMode": "approved-only",
+  "authorization": "Founder explicitly authorized the shared scoped website management and editing upgrade for validation through legend/approved-changes, followed only after successful validation by direct deployment of the affected Protect Website and LEGEND Website targets. Preserve the centralized website editor/runtime, existing analytics and Meta authorities, CRM/lead ownership, domain scoping, and all unrelated working application flows. No all-target release, no parallel system, no CSS override, and no production publication during this validation phase.",
+  "purpose": "Validate the isolated shared website studio upgrade before publication: one canonical editor/runtime across LEGEND, Protect and business scopes; direct canvas text/geometry editing; layers/delete/duplicate/history controls; page and theme editing; favicon and sandboxed code/embed support; scoped public inquiry identity; website lead/CRM persistence; published-domain analytics scoping; browser form lifecycle integration; and server-authoritative Meta Lead conversion. This validation is intentionally scoped to Protect Website and LEGEND Website and must not deploy any application.",
+  "requestId": "shared-website-studio-validate-20260924",
+  "releaseMode": "validate-only",
   "targets": [
-    "masterapp-portal",
-    "masterapp-client"
+    "masterapp-protect",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false
 }
