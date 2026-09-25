@@ -1319,7 +1319,7 @@ public sealed class WebsiteContentController : ControllerBase
                 ? "member"
                 : row.RoleKey.Trim().ToLowerInvariant();
             var displayName = string.IsNullOrWhiteSpace(row.DisplayName)
-                ? string.Join(' ', new[] { row.FirstName, row.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim()
+                ? string.Join(" ", new[] { row.FirstName, row.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim()
                 : row.DisplayName.Trim();
             return (object)new
             {
