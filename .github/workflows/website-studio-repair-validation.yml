@@ -1,0 +1,28 @@
+name: Website Studio repair validation
+on:
+  push:
+    branches:
+      - repair/website-studio-selection-cta-duplicate-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  website-studio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/website/package-lock.json
+      - name: Install website test dependencies
+        working-directory: tests/website
+        run: npm ci
+      - name: Check shared editor syntax
+        run: node --check Legend-Design/legend-public-cms.js
+      - name: Run shared website regression suite
+        working-directory: tests/website
+        run: npm test
