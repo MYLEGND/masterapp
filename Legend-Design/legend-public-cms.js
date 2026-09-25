@@ -758,15 +758,7 @@
     });
     el.addEventListener('blur', () => {
       if (inlineEditNode !== el) return;
-      const override = contentOverrideForElement(el, false);
-      if (override) {
-        const value = inlineTextValue(el);
-        if (el.dataset.cmsExtraField === 'title') override.title = value;
-        else override.text = value;
-        setContentText(el, value, true);
-      }
-      inlineEditCheckpointed = false;
-      updateDirectCanvasUi();
+      deactivateInlineEditing(el);
     });
   }
 
