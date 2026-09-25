@@ -31,7 +31,12 @@
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
   const originalFaviconHref = initialFaviconLink?.getAttribute('href') || (SITE_KEY === 'protect' ? '/images/favicon/legend-favicon.svg' : '/favicon.svg');
   const originalFaviconType = initialFaviconLink?.getAttribute('type') || '';
-  let documentState = { version: 1, faviconImageDataUrl: null, elements: {}, sectionOrder: {}, extras: [], theme: {} };
+  const defaultBreakpoints = () => [
+    { key: 'mobile', label: 'Mobile', minWidth: 0, maxWidth: 767, isSystem: true },
+    { key: 'tablet', label: 'Tablet', minWidth: 768, maxWidth: 1199, isSystem: true },
+    { key: 'desktop', label: 'Desktop', minWidth: 1200, maxWidth: null, isSystem: true }
+  ];
+  let documentState = { version: 2, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
   let signalCatalog = null;
   let ctaCatalog = [];
   let selected = null;
@@ -46,7 +51,7 @@
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -86,6 +91,20 @@
   const editableInteractiveTags = new Set(['A']);
   const sectionCandidates = 'main > section, main > .section, main > .page-hero, main > .cta, main > .legal-page-wrap, main > .quote-page, main > .container-narrow, main > .training-page';
 
+  function normalizeBreakpoints(input) {
+    const values = defaultBreakpoints();
+    const seen = new Set(values.map(value => value.key));
+    for (const item of Array.isArray(input) ? input : []) {
+      if (!item || item.isSystem || typeof item.key !== 'string' || seen.has(item.key) || values.length >= 8) continue;
+      const minWidth = Number(item.minWidth);
+      const maxWidth = item.maxWidth == null ? null : Number(item.maxWidth);
+      if (!Number.isFinite(minWidth) || minWidth < 0 || (maxWidth != null && (!Number.isFinite(maxWidth) || maxWidth < minWidth))) continue;
+      seen.add(item.key);
+      values.push({ key:item.key, label:typeof item.label === 'string' && item.label.trim() ? item.label.trim() : item.key, minWidth, maxWidth, isSystem:false });
+    }
+    return values;
+  }
+
   function normalizeDocument(input) {
     const pages = {};
     const sourcePages = input?.pages && typeof input.pages === 'object' ? input.pages : {};
@@ -103,11 +122,14 @@
       } : value;
     }
     return {
-      version: 1,
+      version: 2,
       faviconImageDataUrl: typeof input?.faviconImageDataUrl === 'string' ? input.faviconImageDataUrl : null,
+      breakpoints: normalizeBreakpoints(input?.breakpoints),
       elements: input?.elements && typeof input.elements === 'object' ? input.elements : {},
       sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
       extras: Array.isArray(input?.extras) ? input.extras : [],
+      reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
+      collections: input?.collections && typeof input.collections === 'object' ? input.collections : {},
       theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
       pages
     };
@@ -122,12 +144,12 @@
       const elements = Object.fromEntries(Object.entries(documentState.elements).filter(([id]) => belongs(id)));
       const sectionOrder = Object.fromEntries(Object.entries(documentState.sectionOrder).filter(([id]) => belongs(id)));
       const extras = documentState.extras.filter(extra => belongs(extra.sectionId || ''));
-      documentState.pages[routeKey] = { elements, sectionOrder, extras };
+      documentState.pages[routeKey] = { elements, sectionOrder, extras, navigation: { showInNavigation: true, order: 0, isDeleted: false } };
       Object.keys(elements).forEach(id => delete documentState.elements[id]);
       Object.keys(sectionOrder).forEach(id => delete documentState.sectionOrder[id]);
       documentState.extras = documentState.extras.filter(extra => !extras.includes(extra));
     }
-    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= [];
+    const page = documentState.pages[routeKey]; page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= { showInNavigation: true, order: 0, isDeleted: false };
     return page;
   }
 
@@ -272,6 +294,62 @@
     });
   }
 
+  function responsiveViewportWidth() {
+    const previewWidth = editorMode && editorPreview?.clientWidth;
+    if (Number.isFinite(previewWidth) && previewWidth > 0) return previewWidth;
+    const windowWidth = Number(window.innerWidth);
+    if (Number.isFinite(windowWidth) && windowWidth > 0) return windowWidth;
+    return Number(document.documentElement?.clientWidth) || 1200;
+  }
+
+  function activeBreakpoint(width = responsiveViewportWidth()) {
+    const candidates = (documentState.breakpoints || []).filter(value => {
+      const min = Number(value.minWidth) || 0;
+      const max = value.maxWidth == null ? Infinity : Number(value.maxWidth);
+      return width >= min && width <= max;
+    });
+    candidates.sort((a,b) => {
+      const system = Number(!!a.isSystem) - Number(!!b.isSystem);
+      if (system !== 0) return system;
+      const aSpan = (a.maxWidth == null ? 100000 : Number(a.maxWidth)) - Number(a.minWidth || 0);
+      const bSpan = (b.maxWidth == null ? 100000 : Number(b.maxWidth)) - Number(b.minWidth || 0);
+      return aSpan - bSpan;
+    });
+    return candidates[0]?.key || null;
+  }
+
+  function effectiveStyle(override) {
+    const base = override?.style && typeof override.style === 'object' ? override.style : {};
+    const key = activeBreakpoint();
+    const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
+    return responsive ? { ...base, ...responsive } : base;
+  }
+
+  function effectiveLayout(override) {
+    const base = override?.layout && typeof override.layout === 'object' ? override.layout : { mode:'free' };
+    const key = activeBreakpoint();
+    const responsive = key && override?.breakpointLayouts && typeof override.breakpointLayouts[key] === 'object' ? override.breakpointLayouts[key] : null;
+    return responsive ? { ...base, ...responsive } : base;
+  }
+
+  function applyLayout(el, layout) {
+    if (!el) return;
+    const mode = layout?.mode || 'free';
+    if (mode === 'stack' || mode === 'flex') {
+      el.style.display = 'flex';
+      el.style.flexDirection = mode === 'stack' ? 'column' : (layout.direction === 'row' ? 'row' : 'column');
+      if (layout.gapPx != null) el.style.gap = `${Number(layout.gapPx)}px`;
+      if (layout.alignItems) el.style.alignItems = layout.alignItems;
+      if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
+      if (mode === 'flex' && layout.wrap) el.style.flexWrap = layout.wrap;
+    } else if (mode === 'grid') {
+      el.style.display = 'grid';
+      el.style.gridTemplateColumns = `repeat(${Math.max(1, Math.min(12, Number(layout.columns) || 12))},minmax(0,1fr))`;
+      if (layout.gapPx != null) el.style.gap = `${Number(layout.gapPx)}px`;
+      if (layout.alignItems) el.style.alignItems = layout.alignItems;
+      if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
+    }
+  }
   function applyStyle(el, style) {
     if (!el) return;
     const original = rememberOriginal(el);
@@ -458,7 +536,8 @@
     if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
-    applyStyle(el, override.style);
+    applyStyle(el, effectiveStyle(override));
+    applyLayout(el, effectiveLayout(override));
   }
 
   function createExtra(extra) {
@@ -542,6 +621,13 @@
     pageState().extras.filter(x => x.type !== 'section').forEach(createExtra);
     Object.entries(pageState().elements).forEach(([id, ov]) => applyPlacement(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), ov.placement));
     pageState().extras.forEach(extra => applyPlacement(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra.placement));
+  }
+
+  function refreshResponsiveOverrides() {
+    Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), override));
+    pageState().extras.forEach(extra => applyElementOverride(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra));
+    refreshScaledElements();
+    updateDirectCanvasUi();
   }
 
   function bindBusiness(payload) {
@@ -935,7 +1021,7 @@
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
     preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
-    window.addEventListener('resize', () => { refreshScaledElements(); updateDirectCanvasUi(); });
+    window.addEventListener('resize', refreshResponsiveOverrides);
     updateDirectCanvasUi();
   }
 
@@ -1861,7 +1947,7 @@
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
-      window.addEventListener('resize', refreshScaledElements);
+      window.addEventListener('resize', refreshResponsiveOverrides);
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
