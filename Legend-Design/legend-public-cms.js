@@ -3050,6 +3050,256 @@
     return null;
   }
 
+
+  function selectedFormDefinition() {
+    const override = selectedOverride();
+    return override?.type === 'form' ? formDefinition(override.formDefinitionId) : null;
+  }
+
+  function formTypeForRole(role, fallback = 'text') {
+    return ({ firstName:'text', lastName:'text', email:'email', phone:'tel', message:'textarea' })[role] || fallback;
+  }
+
+  function validateFormWorkingCopy(working) {
+    if (!working?.fields?.length) return 'Add at least the required First Name and Email fields.';
+    const roles = working.fields.filter(field => field.role && field.role !== 'custom').map(field => field.role);
+    for (const role of ['firstName','email']) {
+      if (roles.filter(value => value === role).length !== 1)
+        return (role === 'firstName' ? 'First Name' : 'Email') + ' must be mapped exactly once.';
+    }
+    for (const role of ['lastName','phone','message']) {
+      if (roles.filter(value => value === role).length > 1)
+        return role + ' can be mapped only once.';
+    }
+    for (const field of working.fields) {
+      if (!String(field.label || '').trim()) return 'Every field needs a label.';
+      if (!formCatalog?.types?.some(option => option.key === field.type)) return 'A field uses an unsupported type.';
+      if (!formCatalog?.roles?.some(option => option.key === field.role)) return 'A field uses an unsupported identity role.';
+      if (field.role !== 'custom' && field.type !== formTypeForRole(field.role, field.type))
+        return field.label + ' must use the field type required by its identity role.';
+      if (field.type === 'select' && !(field.options || []).some(option => String(option).trim()))
+        return field.label + ' needs at least one dropdown option.';
+    }
+    return null;
+  }
+
+  function openFormEditor() {
+    const definition = selectedFormDefinition();
+    if (!definition || !formCatalog || document.getElementById('legend-cms-form-dialog')) return;
+    clearTimeout(autoSaveTimer);
+
+    const selectedCmsId = selected?.dataset?.cmsId || null;
+    const working = cloneValue(definition);
+    working.fields ||= [];
+    const maxFields = Number(formCatalog.maxFields) || 30;
+    const maxSteps = Number(formCatalog.maxSteps) || 6;
+    const status = document.createElement('p');
+    status.setAttribute('role','status');
+
+    const dialog = document.createElement('dialog');
+    dialog.id = 'legend-cms-form-dialog';
+    dialog.className = 'legend-cms-editor legend-cms-form-dialog';
+    const title = document.createElement('h2'); title.textContent = 'Form Studio';
+    const help = document.createElement('p');
+    help.textContent = 'Identity roles feed the existing WebsiteLead / CRM / Meta authority. Custom fields remain custom metadata and never impersonate identity.';
+    const settings = document.createElement('div');
+    settings.className = 'legend-cms-form-settings';
+
+    const textSetting = (labelText, key, maxLength, multiline = false) => {
+      const label = document.createElement('label');
+      label.className = 'legend-cms-group';
+      label.textContent = labelText;
+      const input = multiline ? document.createElement('textarea') : document.createElement('input');
+      if (multiline) input.rows = 3; else input.type = 'text';
+      input.maxLength = maxLength;
+      input.value = working[key] || '';
+      input.addEventListener('input', () => { working[key] = input.value; });
+      label.appendChild(input);
+      return label;
+    };
+    settings.append(
+      textSetting('Form name','name',100),
+      textSetting('Submit button','submitLabel',80),
+      textSetting('Success message','successMessage',500,true),
+      textSetting('Sharing consent text','consentText',1000,true)
+    );
+
+    const fieldsHost = document.createElement('div');
+    fieldsHost.className = 'legend-cms-form-fields';
+
+    const selectFromCatalog = (catalog, value, onChange) => {
+      const select = document.createElement('select');
+      for (const item of catalog || []) {
+        const option = document.createElement('option');
+        option.value = item.key;
+        option.textContent = item.label || item.key;
+        select.appendChild(option);
+      }
+      select.value = value;
+      select.addEventListener('change', () => onChange(select.value, select));
+      return select;
+    };
+
+    const renderFields = () => {
+      fieldsHost.replaceChildren();
+      working.fields.forEach((field, index) => {
+        const card = document.createElement('article');
+        card.className = 'legend-cms-form-field-card';
+        const heading = document.createElement('div');
+        heading.className = 'legend-cms-form-field-heading';
+        const strong = document.createElement('strong');
+        strong.textContent = (index + 1) + '. ' + (field.label || 'Untitled field');
+        heading.appendChild(strong);
+
+        const roleLabel = document.createElement('label');
+        roleLabel.className = 'legend-cms-group';
+        roleLabel.textContent = 'Data role';
+        const role = selectFromCatalog(formCatalog.roles, field.role || 'custom', value => {
+          const duplicate = value !== 'custom' && working.fields.some((other, otherIndex) => otherIndex !== index && other.role === value);
+          if (duplicate) {
+            status.textContent = 'That identity role is already mapped. Use Custom for additional questions.';
+            renderFields();
+            return;
+          }
+          field.role = value;
+          if (value !== 'custom') {
+            field.type = formTypeForRole(value);
+            if (value === 'firstName' || value === 'email') field.required = true;
+          }
+          status.textContent = '';
+          renderFields();
+        });
+        roleLabel.appendChild(role);
+
+        const labelLabel = document.createElement('label');
+        labelLabel.className = 'legend-cms-group';
+        labelLabel.textContent = 'Field label';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text'; labelInput.maxLength = 160; labelInput.value = field.label || '';
+        labelInput.addEventListener('input', () => {
+          field.label = labelInput.value;
+          strong.textContent = (index + 1) + '. ' + (field.label || 'Untitled field');
+        });
+        labelLabel.appendChild(labelInput);
+
+        const typeLabel = document.createElement('label');
+        typeLabel.className = 'legend-cms-group';
+        typeLabel.textContent = 'Field type';
+        const type = selectFromCatalog(formCatalog.types, field.type || 'text', value => {
+          field.type = value;
+          if (value !== 'select') field.options = [];
+          renderFields();
+        });
+        type.disabled = field.role !== 'custom';
+        typeLabel.appendChild(type);
+
+        const row = document.createElement('div');
+        row.className = 'legend-cms-row';
+        const stepLabel = document.createElement('label');
+        stepLabel.className = 'legend-cms-group'; stepLabel.textContent = 'Step';
+        const step = document.createElement('input');
+        step.type='number'; step.min='1'; step.max=String(maxSteps); step.value=String(field.step || 1);
+        step.addEventListener('input',()=>{field.step=Math.max(1,Math.min(maxSteps,Number(step.value)||1));});
+        stepLabel.appendChild(step);
+        const spanLabel = document.createElement('label');
+        spanLabel.className='legend-cms-group'; spanLabel.textContent='Width / 12';
+        const span=document.createElement('input');
+        span.type='number'; span.min='1'; span.max='12'; span.value=String(field.span || 12);
+        span.addEventListener('input',()=>{field.span=Math.max(1,Math.min(12,Number(span.value)||12));});
+        spanLabel.appendChild(span);
+        row.append(stepLabel,spanLabel);
+
+        const placeholderLabel=document.createElement('label');
+        placeholderLabel.className='legend-cms-group'; placeholderLabel.textContent='Placeholder';
+        const placeholder=document.createElement('input');
+        placeholder.type='text'; placeholder.maxLength=240; placeholder.value=field.placeholder||'';
+        placeholder.addEventListener('input',()=>{field.placeholder=placeholder.value;});
+        placeholderLabel.appendChild(placeholder);
+
+        const requiredLabel=document.createElement('label');
+        const required=document.createElement('input'); required.type='checkbox';
+        required.checked=field.required===true || ['firstName','email'].includes(field.role);
+        required.disabled=['firstName','email'].includes(field.role);
+        required.addEventListener('change',()=>{field.required=required.checked;});
+        requiredLabel.append(required,document.createTextNode(' Required'));
+
+        card.append(heading,roleLabel,labelLabel,typeLabel,row,placeholderLabel,requiredLabel);
+
+        if (field.type === 'select') {
+          const optionsLabel=document.createElement('label');
+          optionsLabel.className='legend-cms-group';
+          optionsLabel.textContent='Dropdown options — one per line';
+          const options=document.createElement('textarea');
+          options.rows=4;
+          options.value=(field.options||[]).join('\n');
+          options.addEventListener('input',()=>{
+            field.options=options.value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean).slice(0,Number(formCatalog.maxOptionsPerField)||50);
+          });
+          optionsLabel.appendChild(options);
+          card.appendChild(optionsLabel);
+        }
+
+        const actions=document.createElement('div');
+        actions.className='legend-cms-row';
+        const up=document.createElement('button'); up.type='button'; up.textContent='Move up'; up.disabled=index===0;
+        up.addEventListener('click',()=>{[working.fields[index-1],working.fields[index]]=[working.fields[index],working.fields[index-1]];renderFields();});
+        const down=document.createElement('button'); down.type='button'; down.textContent='Move down'; down.disabled=index===working.fields.length-1;
+        down.addEventListener('click',()=>{[working.fields[index+1],working.fields[index]]=[working.fields[index],working.fields[index+1]];renderFields();});
+        const remove=document.createElement('button'); remove.type='button'; remove.textContent='Delete field';
+        remove.disabled=['firstName','email'].includes(field.role);
+        remove.addEventListener('click',()=>{working.fields.splice(index,1);renderFields();});
+        actions.append(up,down,remove);
+        card.appendChild(actions);
+        fieldsHost.appendChild(card);
+      });
+    };
+    renderFields();
+
+    const addField=document.createElement('button');
+    addField.type='button'; addField.textContent='Add custom field';
+    addField.addEventListener('click',()=>{
+      if (working.fields.length >= maxFields) { status.textContent='Forms can contain up to ' + maxFields + ' fields.'; return; }
+      working.fields.push({
+        id:'field-' + crypto.randomUUID().replaceAll('-','').slice(0,12),
+        label:'New field',type:'text',role:'custom',required:false,placeholder:'',step:1,span:12,options:[]
+      });
+      status.textContent='';
+      renderFields();
+    });
+
+    const footer=document.createElement('div'); footer.className='legend-cms-code-actions';
+    const saveButton=document.createElement('button'); saveButton.type='button'; saveButton.textContent='Save form';
+    const cancel=document.createElement('button'); cancel.type='button'; cancel.textContent='Cancel';
+    cancel.addEventListener('click',()=>dialog.close());
+    saveButton.addEventListener('click',()=>{
+      working.name=String(working.name||'').trim()||'Lead form';
+      working.submitLabel=String(working.submitLabel||'').trim()||'Send';
+      working.successMessage=String(working.successMessage||'').trim()||'Thanks — your inquiry has been received.';
+      working.consentText=String(working.consentText||'').trim()||'I agree to share this inquiry with this website.';
+      working.requireConsent=true;
+      working.fields.forEach(field=>{
+        if(['firstName','email'].includes(field.role))field.required=true;
+        field.step=Math.max(1,Math.min(maxSteps,Number(field.step)||1));
+        field.span=Math.max(1,Math.min(12,Number(field.span)||12));
+      });
+      const error=validateFormWorkingCopy(working);
+      if(error){status.textContent=error;return;}
+      checkpoint();
+      documentState.forms ||= {};
+      documentState.forms[working.id]=cloneValue(working);
+      applyDocument(documentState);
+      const rebuilt=selectedCmsId ? document.querySelector('[data-cms-id="' + CSS.escape(selectedCmsId) + '"]') : null;
+      setSelected(rebuilt);
+      markDirty();
+      dialog.close();
+    });
+    footer.append(saveButton,cancel);
+    dialog.append(title,help,settings,fieldsHost,addField,status,footer);
+    dialog.addEventListener('close',()=>{dialog.remove();if(dirty)autoSaveTimer=setTimeout(()=>save(false),900);});
+    document.body.appendChild(dialog);
+    dialog.showModal();
+  }
+
   function openCodeEditor() {
     const block = selected;
     const extra = overrideForElement(block, false);
