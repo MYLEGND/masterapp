@@ -1681,6 +1681,87 @@
       : 'Desktop / base · changes become the default for every viewport unless a smaller breakpoint overrides them.';
   }
 
+  function eachWebsiteOverride(callback) {
+    const visitPage = page => {
+      Object.values(page?.elements || {}).forEach(callback);
+      (page?.extras || []).forEach(callback);
+    };
+    Object.values(documentState.elements || {}).forEach(callback);
+    (documentState.extras || []).forEach(callback);
+    Object.values(documentState.pages || {}).forEach(visitPage);
+  }
+
+  function removeBreakpointOverrides(id) {
+    eachWebsiteOverride(override => {
+      if (override?.responsive) delete override.responsive[id];
+    });
+  }
+
+  function openBreakpointManager(preview) {
+    if (document.getElementById('legend-cms-breakpoint-dialog')) return;
+    clearTimeout(autoSaveTimer);
+    const dialog = document.createElement('dialog');
+    dialog.id = 'legend-cms-breakpoint-dialog';
+    dialog.className = 'legend-cms-editor legend-cms-breakpoint-dialog';
+    const title = document.createElement('h2'); title.textContent = 'Responsive breakpoints';
+    const help = document.createElement('p'); help.textContent = 'Base is the desktop/default design. Smaller breakpoints inherit larger rules and only store what you change.';
+    const rows = document.createElement('div'); rows.className = 'legend-cms-breakpoint-list';
+    const working = (documentState.breakpoints || []).map(item => ({...item}));
+
+    const renderRows = () => {
+      rows.replaceChildren();
+      working.sort((a,b) => b.maxWidthPx - a.maxWidthPx).forEach(item => {
+        const row = document.createElement('div'); row.className = 'legend-cms-breakpoint-row';
+        const label = document.createElement('input'); label.type = 'text'; label.maxLength = 80; label.value = item.label || item.id; label.setAttribute('aria-label','Breakpoint label');
+        const width = document.createElement('input'); width.type = 'number'; width.min = '320'; width.max = '2560'; width.step = '1'; width.value = String(item.maxWidthPx); width.setAttribute('aria-label','Maximum viewport width');
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove'; remove.disabled = working.length <= 1;
+        label.addEventListener('input', () => { item.label = label.value.slice(0,80); });
+        width.addEventListener('input', () => { const value=Number(width.value); if(Number.isFinite(value)) item.maxWidthPx=Math.max(320,Math.min(2560,Math.round(value))); });
+        remove.addEventListener('click', () => { const index=working.findIndex(x=>x.id===item.id); if(index>=0&&working.length>1){working.splice(index,1);renderRows();} });
+        row.append(label,width,remove); rows.appendChild(row);
+      });
+    };
+    renderRows();
+
+    const add = document.createElement('button'); add.type='button'; add.textContent='Add breakpoint';
+    add.disabled = working.length >= 6;
+    add.addEventListener('click', () => {
+      if (working.length >= 6) return;
+      const id='custom-' + crypto.randomUUID().replaceAll('-','').slice(0,10);
+      const previous=Math.min(...working.map(x=>Number(x.maxWidthPx)||1024));
+      working.push({id,label:'Custom',maxWidthPx:Math.max(320,previous-120)});
+      renderRows();
+      add.disabled = working.length >= 6;
+    });
+
+    const actions=document.createElement('div');actions.className='legend-cms-code-actions';
+    const saveButton=document.createElement('button');saveButton.type='button';saveButton.textContent='Save breakpoints';
+    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
+    cancel.addEventListener('click',()=>dialog.close());
+    saveButton.addEventListener('click',()=>{
+      const cleaned=working
+        .map(item=>({id:safeId(item.id),label:String(item.label||item.id).trim().slice(0,80)||item.id,maxWidthPx:Math.max(320,Math.min(2560,Math.round(Number(item.maxWidthPx)||640)))}))
+        .filter(item=>item.id)
+        .sort((a,b)=>b.maxWidthPx-a.maxWidthPx);
+      if(!cleaned.length)return;
+      checkpoint();
+      const activeIds=new Set(cleaned.map(item=>item.id));
+      for(const old of documentState.breakpoints||[])if(!activeIds.has(old.id))removeBreakpointOverrides(old.id);
+      documentState.breakpoints=cleaned;
+      if(currentDesignBreakpoint!=='base'&&!activeIds.has(currentDesignBreakpoint))currentDesignBreakpoint='base';
+      markDirty();
+      dialog.close();
+      installBreakpointControls(preview);
+      refreshResponsiveOverrides();
+      syncEditorControls();
+    });
+    actions.append(saveButton,cancel);
+    dialog.append(title,help,rows,add,actions);
+    dialog.addEventListener('close',()=>{dialog.remove();if(dirty)autoSaveTimer=setTimeout(()=>save(false),900);});
+    document.body.appendChild(dialog);
+    dialog.showModal();
+  }
+
   function installBreakpointControls(preview) {
     const select = document.getElementById('legend-cms-breakpoint');
     if (!select) return;
@@ -1704,6 +1785,11 @@
       syncEditorControls();
       updateDirectCanvasUi();
     });
+    const manage = document.getElementById('legend-cms-manage-breakpoints');
+    if (manage && manage.dataset.bound !== 'true') {
+      manage.dataset.bound = 'true';
+      manage.addEventListener('click', () => openBreakpointManager(preview));
+    }
     applyBreakpointPreview(preview);
   }
 
@@ -1922,6 +2008,7 @@
       body.legend-cms-panel-hidden .legend-cms-panel{display:none}
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
+      .legend-cms-breakpoint-dialog{width:min(720px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-breakpoint-dialog::backdrop{background:#000a}.legend-cms-breakpoint-list{display:grid;gap:8px;margin:16px 0}.legend-cms-breakpoint-row{display:grid;grid-template-columns:minmax(0,1fr) 140px auto;gap:8px}.legend-cms-breakpoint-row input,.legend-cms-breakpoint-row button,.legend-cms-breakpoint-dialog>button{min-width:0;padding:10px;border:1px solid #50617e;border-radius:9px;background:#142c50;color:#fff}
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
       .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}.legend-cms-breakpoint-control{position:sticky;top:46px;z-index:3;padding:10px;border:1px solid #344766;border-radius:10px;background:#0b1e3a}.legend-cms-breakpoint-control small{margin:0}.legend-cms-preview[data-cms-breakpoint]:not([data-cms-breakpoint="base"]){box-shadow:0 0 0 1px #d4ad45 inset;background:#eef2f7}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
@@ -1957,7 +2044,7 @@
     panel.setAttribute('aria-labelledby', 'legend-cms-heading');
     panel.innerHTML = `
       <h2 id="legend-cms-heading">Website studio</h2>
-      <label class="legend-cms-group legend-cms-breakpoint-control" for="legend-cms-breakpoint">Responsive canvas<select id="legend-cms-breakpoint"></select><small id="legend-cms-breakpoint-note"></small></label>
+      <label class="legend-cms-group legend-cms-breakpoint-control" for="legend-cms-breakpoint">Responsive canvas<select id="legend-cms-breakpoint"></select><small id="legend-cms-breakpoint-note"></small><button id="legend-cms-manage-breakpoints" type="button">Manage breakpoints</button></label>
       <small id="legend-cms-selected-label">Select content on the page</small>
       <p id="legend-cms-inline-help" class="legend-cms-inline-help" hidden>Type directly on the selected page text. Highlight, replace, or delete words on the canvas; use this panel for controls and actions.</p>
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
