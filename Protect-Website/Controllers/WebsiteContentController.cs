@@ -283,6 +283,89 @@ public sealed class WebsiteContentController : ControllerBase
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
 
+    public sealed record StoreActionRequest(
+        string Ticket,
+        long ExpectedRevision,
+        string? NavigationLabel = null);
+
+    [HttpPost("manage/store/enable")]
+    public async Task<IActionResult> EnableStore(
+        [FromBody] StoreActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict" });
+
+        var scope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
+            .ResolveAsync(actor, state, createIfMissing: true, cancellationToken)
+            ?? throw new InvalidOperationException("The commerce scope could not be created.");
+
+        var document = Read(state.DraftJson);
+        document.Store.Enabled = true;
+        if (!string.IsNullOrWhiteSpace(request.NavigationLabel))
+            document.Store.NavigationLabel = request.NavigationLabel.Trim();
+
+        document = WebsiteContentSanitizer.Sanitize(document);
+        state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+
+        return Ok(new
+        {
+            document,
+            revision = state.Revision,
+            store = StorePayload(document, scope, request.Ticket)
+        });
+    }
+
+    [HttpPost("manage/store/remove")]
+    public async Task<IActionResult> RemoveStore(
+        [FromBody] StoreActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict" });
+
+        var document = Read(state.DraftJson);
+        document.Store.Enabled = false;
+        document = WebsiteContentSanitizer.Sanitize(document);
+        state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
+        state.Revision++;
+        state.UpdatedUtc = DateTime.UtcNow;
+        state.ScheduledPublishUtc = null;
+        state.ScheduledActorJson = null;
+        state.ScheduledRevision = null;
+        state.ScheduleError = null;
+
+        var scope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
+            .ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
+
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+
+        return Ok(new
+        {
+            document,
+            revision = state.Revision,
+            store = StorePayload(document, scope, request.Ticket)
+        });
+    }
+
     public sealed record WebsiteStudioAiRequest(
         string Ticket,
         long ExpectedRevision,
@@ -1709,7 +1792,13 @@ public sealed class WebsiteContentController : ControllerBase
         if (state is not null) return state;
         // Legacy content remains the initial published snapshot, never a second write authority.
         var legacy = await _db.AgentFinanceToolStates.AsNoTracking().SingleOrDefaultAsync(s => s.AgentUserId == actor.OwnerUserId && s.ToolId == ToolId(actor.SiteKey), cancellationToken);
-        state = new WebsiteContentState { OwnerKey = actor.OwnerUserId, SiteKey = actor.SiteKey, DraftJson = legacy?.JsonState ?? "{}" };
+        state = new WebsiteContentState
+        {
+            OwnerKey = actor.OwnerUserId,
+            SiteKey = actor.SiteKey,
+            CommerceBusinessId = actor.SiteKey == WebsiteEditorSiteKeys.Business ? actor.CommerceBusinessId : null,
+            DraftJson = legacy?.JsonState ?? "{}"
+        };
         _db.Set<WebsiteContentState>().Add(state);
         if (legacy is not null)
         {
@@ -1763,6 +1852,67 @@ public sealed class WebsiteContentController : ControllerBase
         }
 
         return profile is null ? null : NormalizeOwner(profile.AgentUserId);
+    }
+
+    private string CommercePublicBaseUrl() =>
+        (_configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/');
+
+    private object StorePayload(
+        WebsiteContentDocument document,
+        WebsiteCommerceScope? scope,
+        string? ticket)
+    {
+        var label = string.IsNullOrWhiteSpace(document.Store.NavigationLabel)
+            ? "Store"
+            : document.Store.NavigationLabel.Trim();
+
+        if (scope is null)
+            return new
+            {
+                enabled = document.Store.Enabled,
+                label,
+                commerceBusinessId = (Guid?)null,
+                businessKey = (string?)null,
+                storefrontUrl = (string?)null,
+                cartUrl = (string?)null,
+                managerUrl = (string?)null
+            };
+
+        var root = CommercePublicBaseUrl() + "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
+        return new
+        {
+            enabled = document.Store.Enabled,
+            label,
+            commerceBusinessId = (Guid?)scope.CommerceBusinessId,
+            businessKey = scope.BusinessKey,
+            storefrontUrl = root,
+            cartUrl = root + "/cart",
+            managerUrl = string.IsNullOrWhiteSpace(ticket)
+                ? null
+                : CommercePublicBaseUrl() + "/commerce/manage/workspace?ticket=" + Uri.EscapeDataString(ticket)
+        };
+    }
+
+    private async Task<WebsiteCommerceScope?> PublishedStoreScopeAsync(
+        string ownerKey,
+        string siteKey,
+        WebsiteContentDocument document,
+        CancellationToken cancellationToken)
+    {
+        if (document.Store?.Enabled != true) return null;
+
+        var state = await _db.Set<WebsiteContentState>().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.OwnerKey == ownerKey && x.SiteKey == siteKey, cancellationToken);
+        if (!state?.CommerceBusinessId.HasValue == true) return null;
+
+        var business = await _db.CommerceBusinesses.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Id == state.CommerceBusinessId.Value &&
+                 x.IsActive &&
+                 x.Status.ToLower() == "active",
+            cancellationToken);
+        return business is null
+            ? null
+            : new WebsiteCommerceScope(business.Id, business.Key, business.DisplayName);
     }
 
     private async Task<CommerceBusiness?> ResolveBusinessAsync(
