@@ -46,6 +46,7 @@ public static class WebsiteContentSanitizer
                 EditorLocked = extra.EditorLocked,
                 EditorLabel = ClampText(extra.EditorLabel),
                 Signals = WebsiteSignalBindingPolicy.Validate(extra.Signals),
+                Interactions = SanitizeInteractions(extra.Interactions),
                 ActionKey = SanitizeActionKey(extra.ActionKey),
                 Title = ClampContentText(extra.Title),
                 Text = type == "code" ? ClampCodeText(extra.Text) : ClampContentText(extra.Text),
@@ -74,6 +75,7 @@ public static class WebsiteContentSanitizer
     private static WebsiteElementOverride SanitizeElement(WebsiteElementOverride source, HashSet<string> breakpointIds) => new()
     {
         Signals = WebsiteSignalBindingPolicy.Validate(source.Signals),
+        Interactions = SanitizeInteractions(source.Interactions),
         ActionKey = SanitizeActionKey(source.ActionKey),
         Text = ClampContentText(source.Text),
         ImageDataUrl = SanitizeImage(source.ImageDataUrl),
@@ -169,6 +171,38 @@ public static class WebsiteContentSanitizer
             InsetBottomPx = BoundedSigned(source.InsetBottomPx, 10000),
             AspectRatio = source.AspectRatio is > 0 and <= 20 ? source.AspectRatio : null
         };
+    }
+
+    private static List<WebsiteMotionInteraction> SanitizeInteractions(IEnumerable<WebsiteMotionInteraction>? source)
+    {
+        var result = new List<WebsiteMotionInteraction>();
+        foreach (var item in (source ?? []).Take(WebsiteMotionCatalog.MaxInteractionsPerElement))
+        {
+            if (item is null ||
+                !WebsiteMotionCatalog.AllowsTrigger(item.Trigger) ||
+                !WebsiteMotionCatalog.AllowsEffect(item.Effect) ||
+                !WebsiteMotionCatalog.AllowsEasing(item.Easing))
+                continue;
+
+            var direction = string.IsNullOrWhiteSpace(item.Direction) ? null : item.Direction.Trim().ToLowerInvariant();
+            if (direction is not null && !WebsiteMotionCatalog.AllowsDirection(direction))
+                direction = null;
+
+            result.Add(new WebsiteMotionInteraction
+            {
+                Id = SanitizeId(item.Id) is { Length: > 0 } id ? id : Guid.NewGuid().ToString("N"),
+                Trigger = item.Trigger,
+                Effect = item.Effect,
+                DurationMs = Math.Clamp(item.DurationMs, 50, 10000),
+                DelayMs = Math.Clamp(item.DelayMs, 0, 10000),
+                Easing = item.Easing,
+                Once = item.Once,
+                Direction = direction,
+                DistancePx = BoundedNonNegative(item.DistancePx, 2000),
+                Amount = item.Amount is >= -20 and <= 20 ? item.Amount : null
+            });
+        }
+        return result;
     }
 
     private static List<WebsiteBreakpointDefinition> SanitizeBreakpoints(IEnumerable<WebsiteBreakpointDefinition>? source)
