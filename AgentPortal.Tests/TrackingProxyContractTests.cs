@@ -20,9 +20,12 @@ public class TrackingProxyContractTests
             .ToList();
 
         // Public website scope is validated and persisted by the shared proxy
-        // before forwarding; the AgentPortal ingest contract has no SiteKey.
-        Assert.Equal(typeof(string), Assert.Single(proxyProperties.Where(x => x.Name == "SiteKey")).PropertyType);
-        proxyProperties.RemoveAll(x => x.Name == "SiteKey");
+        // before forwarding; AgentPortal ingest has neither scope selector.
+        foreach (var scopeField in new[] { "SiteKey", "WebsiteBindingId" })
+        {
+            Assert.Equal(typeof(string), Assert.Single(proxyProperties.Where(x => x.Name == scopeField)).PropertyType);
+            proxyProperties.RemoveAll(x => x.Name == scopeField);
+        }
 
         Assert.Equal(
             ingestProperties.Select(x => x.Name).ToArray(),
