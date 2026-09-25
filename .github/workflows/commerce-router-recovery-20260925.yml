@@ -1,4 +1,4 @@
-name: Recover canonical storefront edge only
+name: Diagnose canonical storefront bridge only
 
 on:
   push:
@@ -19,9 +19,9 @@ env:
   CAMO_HOST: camoexterior.com
 
 jobs:
-  recover-router:
+  diagnose-bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     environment: Production
     steps:
       - name: Checkout exact validated storefront routing source
@@ -30,76 +30,21 @@ jobs:
           ref: fc495d8f6f2d5c477c85c9f32a64fd113d507b8c
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: Legend-Cloudflare/package-lock.json
-
-      - name: Reverify pinned router source only
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm ci --prefix Legend-Cloudflare
-          npm --prefix Legend-Cloudflare run test:website-routing
-          npm --prefix Legend-Cloudflare run check:website-routing
-
-      - name: Prove preserved Protect and Parfait live revision before edge change
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, os, time, urllib.request
-          expected=os.environ['PINNED_APP_SHA']
-          hosts=('masterapp-protect.azurewebsites.net','masterapp-parfait.azurewebsites.net')
-          failures=[]
-          for host in hosts:
-              actual=None
-              for attempt in range(1,7):
-                  try:
-                      req=urllib.request.Request(
-                          f'https://{host}/api/runtime-provenance?edgeRecovery={expected}',
-                          headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-store-edge-recovery/1.0'})
-                      with urllib.request.urlopen(req,timeout=15) as response:
-                          actual=json.load(response).get('sourceRevision')
-                      print(host,attempt,actual)
-                      if actual==expected:
-                          break
-                  except Exception as error:
-                      actual=type(error).__name__
-                      print(host,attempt,actual)
-                  time.sleep(5)
-              else:
-                  failures.append(f'{host}: {actual}')
-          if failures:
-              raise SystemExit('Preserved app revision changed; edge-only recovery blocked: '+'; '.join(failures))
-          PY
-
-      - name: Authenticate to Azure for read-only routing authority lookup
+      - name: Authenticate for read-only routing authority lookup
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Read existing routing authority without mutating apps
+      - name: Read existing bridge authority
         shell: bash
-        env:
-          PRIMARY_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
-          FALLBACK_CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CONFIGURED_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          token="${PRIMARY_CLOUDFLARE_TOKEN:-${FALLBACK_CLOUDFLARE_TOKEN:-}}"
-          [ -n "$token" ] || { echo "::error::Cloudflare Workers credential is unavailable."; exit 1; }
-          echo "::add-mask::$token"
-          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$token" >> "$GITHUB_ENV"
-
           protect=/tmp/protect-routing.json
           parfait=/tmp/parfait-routing.json
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect"
           az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait"
-
           value() {
             local file="$1"; shift
             local key found
@@ -109,139 +54,55 @@ jobs:
             done
             return 1
           }
-
-          zone_id="$(value "$protect" WebsiteDomains__CloudflareZoneId 'WebsiteDomains:CloudflareZoneId')"
-          bridge_secret="$(value "$protect" WebsiteRouting__BridgeSecret 'WebsiteRouting:BridgeSecret')"
+          bridge="$(value "$protect" WebsiteRouting__BridgeSecret 'WebsiteRouting:BridgeSecret')"
           parfait_bridge="$(value "$parfait" WebsiteRouting__BridgeSecret 'WebsiteRouting:BridgeSecret')"
-          parfait_origin="$(value "$parfait" WebsiteRouting__BridgeOriginHost 'WebsiteRouting:BridgeOriginHost')"
+          origin="$(value "$parfait" WebsiteRouting__BridgeOriginHost 'WebsiteRouting:BridgeOriginHost')"
+          [ "${#bridge}" -ge 32 ]
+          [ "$parfait_bridge" = "$bridge" ]
+          [ "$origin" = "masterapp-parfait.azurewebsites.net" ]
+          echo "::add-mask::$bridge"
+          printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge" >> "$GITHUB_ENV"
+          echo "Existing bridge authority matched."
 
-          [[ "$zone_id" =~ ^[A-Fa-f0-9]{32}$ ]] || { echo "::error::Cloudflare SaaS zone ID is invalid."; exit 1; }
-          [ "${#bridge_secret}" -ge 32 ] || { echo "::error::Protect routing bridge authority is invalid."; exit 1; }
-          [ "$parfait_bridge" = "$bridge_secret" ] || { echo "::error::Protect and Parfait routing bridge authorities do not match."; exit 1; }
-          [ "$parfait_origin" = "masterapp-parfait.azurewebsites.net" ] || { echo "::error::Parfait bridge origin is not the validated commerce origin."; exit 1; }
-
-          echo "::add-mask::$zone_id"
-          echo "::add-mask::$bridge_secret"
-          printf 'CLOUDFLARE_ZONE_ID=%s\n' "$zone_id" >> "$GITHUB_ENV"
-          printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge_secret" >> "$GITHUB_ENV"
-
-          account_id="${CONFIGURED_CLOUDFLARE_ACCOUNT_ID:-}"
-          if [ -z "$account_id" ]; then
-            response="$(curl --fail-with-body --silent --show-error               -H "Authorization: Bearer $token"               "https://api.cloudflare.com/client/v4/zones/$zone_id")"
-            account_id="$(printf '%s' "$response" | jq -r 'select(.success == true) | .result.account.id // empty')"
-          fi
-          [[ "$account_id" =~ ^[A-Za-z0-9_-]{16,64}$ ]] || { echo "::error::Cloudflare account ID is invalid."; exit 1; }
-          echo "::add-mask::$account_id"
-          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
-          echo "Existing Protect/Parfait routing authority matched; no app setting was changed."
-
-      - name: Deploy only pinned storefront router and prove canonical domains
+      - name: Probe signed origins and current public CAMO without mutation
         shell: bash
         run: |
           set -euo pipefail
-          cd Legend-Cloudflare
-
-          deployments_file=/tmp/legend-router-deployments.json
-          status="$(curl --silent --show-error             -o "$deployments_file" -w '%{http_code}'             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments?per_page=1")"
-          [ "$status" = 200 ] || { echo "::error::Worker deployment history returned HTTP $status."; exit 1; }
-          previous_version="$(jq -r 'select(.success == true) | .result.deployments[0].versions[0].version_id // empty' "$deployments_file")"
-          [ -n "$previous_version" ] || { echo "::error::No rollback-capable prior Worker version was found."; exit 1; }
-          echo "::add-mask::$previous_version"
-
-          restore_router() {
-            set +e
-            payload="$(jq -cn --arg version "$previous_version" '{strategy:"percentage",versions:[{version_id:$version,percentage:100}],annotations:{"workers/message":"Automatic canonical-store edge recovery rollback"}}')"
-            response="$(curl --silent --show-error -X POST               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"               -H "Content-Type: application/json"               --data "$payload"               "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments")"
-            if [ "$(printf '%s' "$response" | jq -r '.success // false')" = true ]; then
-              echo "Restored previous Cloudflare Worker version."
-              return 0
-            fi
-            echo "::error::Automatic Worker rollback failed."
-            return 1
+          probe() {
+            local label="$1" url="$2"; shift 2
+            local hdr body code
+            hdr="/tmp/${label}.headers"
+            body="/tmp/${label}.body"
+            code="$(curl --silent --show-error --max-time 20 --connect-timeout 10               --dump-header "$hdr" --output "$body" --write-out '%{http_code}'               "$@" "$url" || true)"
+            printf '%s status=%s bytes=%s\n' "$label" "$code" "$(wc -c < "$body" 2>/dev/null || printf 0)"
+            grep -Ei '^(HTTP/|server:|location:|content-type:|cf-ray:|x-powered-by:|x-azure-ref:)' "$hdr" | sed -E 's/[[:cntrl:]]//g' || true
+            python3 - "$body" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1])
+          data=p.read_bytes()[:500] if p.exists() else b''
+          text=data.decode('utf-8','replace').replace('\n',' ').replace('\r',' ')
+          print('body-prefix=',text[:500])
+          PY
           }
 
-          cutover_started=false
-          cleanup() {
-            rc=$?
-            if [ "$rc" -ne 0 ] && [ "$cutover_started" = true ]; then
-              restore_router || true
-            fi
-            exit "$rc"
-          }
-          trap cleanup EXIT
+          signed=(-H "X-Legend-Original-Host: $CAMO_HOST" -H "X-Legend-Website-Bridge: $LEGEND_WEBSITE_BRIDGE_SECRET" -H "Cache-Control: no-cache" -H "User-Agent: LEGEND-bridge-diagnostic/1.0")
 
-          cutover_started=true
-          npx wrangler deploy --config wrangler.website-routing.jsonc
-          printf '%s' "$LEGEND_WEBSITE_BRIDGE_SECRET" | npx wrangler secret put LEGEND_WEBSITE_BRIDGE_SECRET --config wrangler.website-routing.jsonc
+          probe protect_signed_binding "https://masterapp-protect.azurewebsites.net/.well-known/legend-website" "${signed[@]}"
+          probe protect_unsigned_binding "https://masterapp-protect.azurewebsites.net/.well-known/legend-website" -H "Cache-Control: no-cache"
+          probe parfait_signed_store "https://masterapp-parfait.azurewebsites.net/store" "${signed[@]}"
+          probe parfait_unsigned_store "https://masterapp-parfait.azurewebsites.net/store" -H "Cache-Control: no-cache"
+          probe camo_public_binding "https://$CAMO_HOST/.well-known/legend-website" -H "Cache-Control: no-cache"
+          probe camo_public_store "https://$CAMO_HOST/store" -H "Cache-Control: no-cache"
 
           python3 - <<'PY'
-          import http.client, json, os, ssl, time, urllib.request
-          camo=os.environ['CAMO_HOST']
+          import json, os, urllib.request
           expected=os.environ['PINNED_APP_SHA']
-          context=ssl.create_default_context()
-
-          def get(host,path,accept=None):
-              conn=http.client.HTTPSConnection(host,443,timeout=20,context=context)
-              try:
-                  headers={'User-Agent':'LEGEND-canonical-store-proof/1.0','Cache-Control':'no-cache'}
-                  if accept: headers['Accept']=accept
-                  conn.request('GET',path,headers=headers)
-                  response=conn.getresponse()
-                  body=response.read(4097)
-                  return response.status,body,response.getheader('Location')
-              finally:
-                  conn.close()
-
-          for host in ('mylegnd.com','www.mylegnd.com','protect.mylegnd.com','portal.mylegnd.com','client.mylegnd.com'):
-              status,body,location=get(host,'/')
-              print('first-party',host,status,len(body),location or '')
-              if not 200 <= status < 400:
-                  raise SystemExit(f'First-party host smoke failed: {host} HTTP {status}')
-
-          stable=False
-          last=None
-          for attempt in range(1,9):
-              bind_status,bind_body,bind_location=get(camo,'/.well-known/legend-website','application/json')
-              store_status,store_body,store_location=get(camo,'/store')
-              print('camo',attempt,'binding',bind_status,len(bind_body),bind_location or '')
-              print('camo',attempt,'store',store_status,len(store_body),store_location or '')
-              binding_ok=False
-              if bind_status==200 and len(bind_body)<=4096 and not bind_location:
-                  try:
-                      receipt=json.loads(bind_body)
-                      binding_ok=all(isinstance(receipt.get(k),str) and len(receipt.get(k))>=32 for k in ('businessId','bindingId'))
-                  except json.JSONDecodeError:
-                      binding_ok=False
-              store_ok=store_status==200 and not store_location
-              last=(bind_status,store_status,store_location)
-              if binding_ok and store_ok:
-                  stable=True
-                  break
-              time.sleep(5)
-          if not stable:
-              raise SystemExit(f'CAMO binding/store did not stabilize: {last}')
-
-          parfait_status,parfait_body,parfait_location=get('shopparfait.com','/store')
-          print('parfait-root',parfait_status,len(parfait_body),parfait_location or '')
-          if parfait_status!=200 or parfait_location:
-              raise SystemExit('shopparfait.com/store is not the canonical Parfait store')
-
-          legacy_status,legacy_body,legacy_location=get('shopparfait.com','/store/s/camo')
-          print('legacy-camo',legacy_status,len(legacy_body),legacy_location or '')
-          if legacy_status not in (301,302,307,308) or not legacy_location or legacy_location.rstrip('/')!='https://camoexterior.com/store':
-              raise SystemExit('Legacy CAMO scoped URL did not canonicalize to camoexterior.com/store')
-
           for host in ('masterapp-protect.azurewebsites.net','masterapp-parfait.azurewebsites.net'):
-              req=urllib.request.Request(
-                  f'https://{host}/api/runtime-provenance?afterEdge={expected}',
-                  headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-canonical-store-proof/1.0'})
+              req=urllib.request.Request(f'https://{host}/api/runtime-provenance?diag={expected}',headers={'Cache-Control':'no-cache'})
               with urllib.request.urlopen(req,timeout=15) as response:
                   actual=json.load(response).get('sourceRevision')
               print('provenance',host,actual)
               if actual!=expected:
-                  raise SystemExit(f'App revision changed during edge-only recovery: {host}={actual}')
+                  raise SystemExit('Live app revision changed during read-only diagnosis')
           PY
-
-          cutover_started=false
-          trap - EXIT
-          echo "Canonical storefront edge verified without application deployment."
+          echo "Read-only storefront bridge diagnosis complete."
