@@ -206,6 +206,17 @@ public sealed class WebsiteNamedDraft
 }
 
 
+public static class WebsiteLayoutModeCatalog
+{
+    public const string Flow = "flow";
+    public const string Grid = "grid";
+    public const string Flex = "flex";
+    public const string Stack = "stack";
+    public const string Free = "free";
+    public static IReadOnlyList<string> All { get; } = [Flow, Grid, Flex, Stack, Free];
+    public static bool IsAllowed(string? value) => All.Contains(value ?? string.Empty, StringComparer.Ordinal);
+}
+
 public sealed record WebsiteComponentCapability(
     string Type,
     string Label,
@@ -221,12 +232,12 @@ public static class WebsiteComponentCatalog
 {
     public static IReadOnlyList<WebsiteComponentCapability> Options { get; } =
     [
-        new("text", "Text", "Basic", true, false, false, false, ["flow"], ["viewed"]),
+        new("text", "Text", "Basic", true, false, false, false, [WebsiteLayoutModeCatalog.Flow], ["viewed"]),
         new("image", "Image", "Media", false, true, false, false, ["flow"], ["viewed", "click"]),
         new("button", "Button / link", "Basic", true, false, true, false, ["flow"], ["viewed", "click"]),
         new("video", "Video", "Media", false, true, false, false, ["flow"], ["viewed", "click"]),
-        new("card", "Card", "Layout", true, false, false, true, ["flow", "grid", "flex", "stack"], ["viewed", "click"]),
-        new("section", "Section", "Layout", false, false, false, true, ["flow", "grid", "flex", "stack", "free"], ["viewed", "scroll_threshold"]),
+        new("card", "Card", "Layout", true, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack], ["viewed", "click"]),
+        new("section", "Section", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed", "scroll_threshold"]),
         new("code", "Code / embed", "Advanced", false, false, false, false, ["flow"], ["viewed"])
     ];
 
