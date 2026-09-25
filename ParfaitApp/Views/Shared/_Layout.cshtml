@@ -148,6 +148,7 @@
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script>window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
         commerceBusinessId = commerce?.CommerceBusinessId,
+        agentTrackingProfileId = commerce?.AgentTrackingProfileId,
         websiteContentVersionId = commerce?.WebsiteContentVersionId,
         websiteSiteKey = commerce?.WebsiteSiteKey ?? "ParfaitApp",
         businessKey = commerce?.BusinessKey ?? "parfait",
