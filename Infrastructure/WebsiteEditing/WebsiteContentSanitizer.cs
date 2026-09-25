@@ -57,7 +57,8 @@ public static class WebsiteContentSanitizer
                 Layout = SanitizeLayout(extra.Layout),
                 BreakpointLayouts = SanitizeLayoutMap(extra.BreakpointLayouts, breakpointKeys),
                 Animations = SanitizeAnimations(extra.Animations),
-                SyncSourceId = type == "reusable" ? NullIfEmpty(SanitizeId(extra.SyncSourceId)) : NullIfEmpty(SanitizeId(extra.SyncSourceId))
+                SyncSourceId = NullIfEmpty(SanitizeId(extra.SyncSourceId)),
+                DataBinding = SanitizeDataBinding(extra.DataBinding)
             });
         }
 
@@ -112,7 +113,8 @@ public static class WebsiteContentSanitizer
         Layout = SanitizeLayout(source.Layout),
         BreakpointLayouts = SanitizeLayoutMap(source.BreakpointLayouts, breakpointKeys),
         Animations = SanitizeAnimations(source.Animations),
-        SyncSourceId = NullIfEmpty(SanitizeId(source.SyncSourceId))
+        SyncSourceId = NullIfEmpty(SanitizeId(source.SyncSourceId)),
+        DataBinding = SanitizeDataBinding(source.DataBinding)
     };
 
     private sealed class SanitizedPageBody
@@ -159,7 +161,8 @@ public static class WebsiteContentSanitizer
                 Layout = SanitizeLayout(extra.Layout),
                 BreakpointLayouts = SanitizeLayoutMap(extra.BreakpointLayouts, breakpointKeys),
                 Animations = SanitizeAnimations(extra.Animations),
-                SyncSourceId = NullIfEmpty(SanitizeId(extra.SyncSourceId))
+                SyncSourceId = NullIfEmpty(SanitizeId(extra.SyncSourceId)),
+                DataBinding = SanitizeDataBinding(extra.DataBinding)
             });
         }
         return clean;
@@ -261,7 +264,13 @@ public static class WebsiteContentSanitizer
         if (source is null) return null;
         var collectionId = SanitizeId(source.CollectionId);
         var itemKeyField = SanitizeId(source.ItemKeyField);
-        return collectionId.Length == 0 || itemKeyField.Length == 0 ? null : new WebsiteDynamicPageBinding { CollectionId = collectionId, ItemKeyField = itemKeyField };
+        var routePattern = SanitizeDynamicRoutePattern(source.RoutePattern);
+        return collectionId.Length == 0 || itemKeyField.Length == 0 ? null : new WebsiteDynamicPageBinding
+        {
+            CollectionId = collectionId,
+            ItemKeyField = itemKeyField,
+            RoutePattern = routePattern
+        };
     }
 
     private static WebsiteReusableComponentDefinition? SanitizeReusableComponent(WebsiteReusableComponentDefinition source, HashSet<string> breakpointKeys, string id)
@@ -277,13 +286,45 @@ public static class WebsiteContentSanitizer
 
     private static WebsiteCollectionDefinition? SanitizeCollection(WebsiteCollectionDefinition source, string id)
     {
-        if (!string.Equals(source.Source, "business_facts", StringComparison.Ordinal)) return null;
-        var allowed = new HashSet<string>(new[] { "contactEmail", "phone", "hours", "locations", "services" }, StringComparer.Ordinal);
-        var fields = (source.Fields ?? []).Where(allowed.Contains).Distinct(StringComparer.Ordinal).Take(12).ToList();
+        var sourceKey = (source.Source ?? string.Empty).Trim().ToLowerInvariant();
+        HashSet<string> allowed = sourceKey switch
+        {
+            "business_facts" => new(new[] { "contactEmail", "phone", "hours", "locations", "services" }, StringComparer.Ordinal),
+            "commerce_products" => new(new[] { "id", "name", "slug", "description", "priceLabel", "priceCents", "compareAtPriceCents", "badge", "isFeatured", "primaryImageUrl", "primaryImageAlt" }, StringComparer.Ordinal),
+            _ => new(StringComparer.Ordinal)
+        };
+        if (allowed.Count == 0) return null;
+        var fields = (source.Fields ?? []).Where(allowed.Contains).Distinct(StringComparer.Ordinal).Take(20).ToList();
         if (fields.Count == 0) return null;
         var name = ClampText(source.Name) ?? id;
         if (name.Length > 120) name = name[..120];
-        return new WebsiteCollectionDefinition { Id = id, Name = name, Source = "business_facts", Fields = fields };
+        return new WebsiteCollectionDefinition { Id = id, Name = name, Source = sourceKey, Fields = fields };
+    }
+
+    private static WebsiteDataBinding? SanitizeDataBinding(WebsiteDataBinding? source)
+    {
+        if (source is null) return null;
+        var collectionId = SanitizeId(source.CollectionId);
+        var field = SanitizeId(source.Field);
+        return collectionId.Length == 0 || field.Length == 0 ? null : new WebsiteDataBinding
+        {
+            CollectionId = collectionId,
+            Field = field
+        };
+    }
+
+    private static string? SanitizeDynamicRoutePattern(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var pattern = value.Trim().ToLowerInvariant();
+        if (pattern.Length > 160 || !pattern.StartsWith('/') || pattern.StartsWith("//") ||
+            pattern.Contains('?') || pattern.Contains('#') || pattern.Contains("..") || pattern.Contains('\\') ||
+            pattern.Count(c => c == '{') != 1 || pattern.Count(c => c == '}') != 1 ||
+            !pattern.Contains("{item}", StringComparison.Ordinal) ||
+            pattern.Replace("{item}", "sample").Any(c => char.IsControl(c)) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(pattern.Replace("{item}", "sample"), @"^/(?:[a-z0-9_-]+/?)*$"))
+            return null;
+        return pattern;
     }
 
     private static string? SanitizePagePath(string? value)
