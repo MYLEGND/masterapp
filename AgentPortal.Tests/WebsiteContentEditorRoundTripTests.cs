@@ -505,6 +505,101 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public void WebsiteQualityAnalyzer_UsesCanonicalDocumentForSeoAccessibilityAndPerformance()
+    {
+        var document = new WebsiteContentDocument();
+        var home = new WebsitePageDocument { Title = "Shared title", Description = "Shared description" };
+        home.Elements["home.img.hero.1"] = new WebsiteElementOverride
+        {
+            ImageDataUrl = "https://cdn.example.test/hero.webp"
+        };
+        home.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "meaningful-image",
+            Type = "image",
+            SectionId = "home.section.1",
+            ImageDataUrl = "https://cdn.example.test/photo.webp",
+            EditorLabel = "Meaningful image"
+        });
+        home.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "decorative-image",
+            Type = "image",
+            SectionId = "home.section.1",
+            ImageDataUrl = "https://cdn.example.test/decorative.webp",
+            EditorLabel = "Decorative image",
+            IsDecorative = true
+        });
+        home.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "empty-button",
+            Type = "button",
+            SectionId = "home.section.1",
+            Text = ""
+        });
+        home.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "custom-code",
+            Type = "code",
+            SectionId = "home.section.1",
+            Text = "<div>Custom</div>"
+        });
+        document.Pages["/"] = home;
+        document.Pages["/about"] = new WebsitePageDocument
+        {
+            Title = "Shared title",
+            Description = "Shared description"
+        };
+
+        var report = WebsiteQualityAnalyzer.Analyze(document);
+
+        Assert.Contains(report.Issues, issue => issue.Code == "a11y_image_alt_missing" && issue.Scope.Contains("Meaningful image", StringComparison.Ordinal));
+        Assert.Contains(report.Issues, issue => issue.Code == "a11y_image_alt_missing" && issue.Scope.Contains("home.img.hero.1", StringComparison.Ordinal));
+        Assert.DoesNotContain(report.Issues, issue => issue.Code == "a11y_image_alt_missing" && issue.Scope.Contains("Decorative image", StringComparison.Ordinal));
+        Assert.Contains(report.Issues, issue => issue.Code == "a11y_action_name_missing");
+        Assert.Contains(report.Issues, issue => issue.Code == "performance_custom_code_review");
+        Assert.Contains(report.Issues, issue => issue.Code == "seo_title_duplicate");
+        Assert.Contains(report.Issues, issue => issue.Code == "seo_description_duplicate");
+        Assert.True(report.WarningCount > 0);
+        Assert.False(report.HasBlockingIssues);
+    }
+
+    [Fact]
+    public async Task ManageAndSave_ReturnTheSameServerQualityAuthority()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+
+        var managed = Assert.IsType<OkObjectResult>(await fixture.Controller.Manage(ticket));
+        var managedJson = JsonSerializer.Serialize(managed.Value, JsonOptions);
+        Assert.Contains("\"quality\"", managedJson, StringComparison.Ordinal);
+        Assert.Contains("\"readiness\"", managedJson, StringComparison.Ordinal);
+        Assert.Contains("seo_page_metadata_not_initialized", managedJson, StringComparison.Ordinal);
+
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Extras =
+            [
+                new()
+                {
+                    Id = "photo",
+                    Type = "image",
+                    SectionId = "home.section.1",
+                    ImageDataUrl = "https://cdn.example.test/photo.webp"
+                }
+            ]
+        };
+
+        var saved = Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        var savedJson = JsonSerializer.Serialize(saved.Value, JsonOptions);
+        Assert.Contains("\"quality\"", savedJson, StringComparison.Ordinal);
+        Assert.Contains("seo_title_missing", savedJson, StringComparison.Ordinal);
+        Assert.Contains("seo_description_missing", savedJson, StringComparison.Ordinal);
+        Assert.Contains("a11y_image_alt_missing", savedJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CoreComponentRegistry_AcceptsProfessionalPrimitivesWithoutASecondSchema()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
