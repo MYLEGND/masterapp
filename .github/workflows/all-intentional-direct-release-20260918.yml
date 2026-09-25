@@ -210,6 +210,7 @@ jobs:
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
             --filter 'FullyQualifiedName~WebsiteDomainImportTests' \
             -p:TreatWarningsAsErrors=true
+          dotnet build scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --nologo -warnaserror
           npm ci --prefix Legend-Cloudflare
           npm --prefix Legend-Cloudflare run test:website-routing
           npm --prefix Legend-Cloudflare run check:website-routing
@@ -716,6 +717,33 @@ jobs:
                 "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/workers/routes/$route_id" >/dev/null
             done
           }
+
+          portal_connection="$(az webapp config connection-string list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
+          if [ -z "$portal_connection" ] || [ "$portal_connection" = null ]; then
+            portal_connection="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
+          fi
+          protect_settings=/tmp/protect-domain-refresh.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$protect_settings"
+          domain_token="$(jq -r '.[] | select(.name=="WebsiteDomains__ApiToken" or .name=="WebsiteDomains:ApiToken") | .value' "$protect_settings" | head -n 1)"
+          cname_target="$(jq -r '.[] | select(.name=="WebsiteDomains__CnameTarget" or .name=="WebsiteDomains:CnameTarget") | .value' "$protect_settings" | head -n 1)"
+          if [ -z "$portal_connection" ] || [ "$portal_connection" = null ] ||
+             [ -z "$domain_token" ] || [ "$domain_token" = null ] ||
+             [ -z "$cname_target" ] || [ "$cname_target" = null ]; then
+            echo "::error::Shared domain authority configuration is unavailable."
+            restore_router
+            exit 1
+          fi
+          echo "::add-mask::$portal_connection"
+          echo "::add-mask::$domain_token"
+          if ! LEGEND_RELEASE_DOMAIN="$WEBSITE_ROUTING_CANARY" \
+               LEGEND_RELEASE_DB_CONNECTION="$portal_connection" \
+               LEGEND_RELEASE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
+               LEGEND_RELEASE_DOMAIN_TOKEN="$domain_token" \
+               LEGEND_RELEASE_CNAME_TARGET="$cname_target" \
+               dotnet run --project scripts/DomainReleaseRefresh/DomainReleaseRefresh.csproj -c Release --no-restore; then
+            restore_router
+            exit 1
+          fi
 
           if ! python3 - <<'PYCUSTOM'
           import http.client, json, os, ssl, time
