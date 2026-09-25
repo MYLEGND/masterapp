@@ -724,7 +724,7 @@ test('synced component conversion shares content but keeps each instance geometr
     const firstHeading=wrappers[0].querySelector('.cms-extra-heading');
     const secondHeading=wrappers[1].querySelector('.cms-extra-heading');
     assert.ok(firstHeading); assert.ok(secondHeading);
-    f.click('.cms-extra-reusable:first-of-type .cms-extra-heading');
+    firstHeading.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
     f.editSelected('One shared headline');
     assert.equal(firstHeading.textContent,'One shared headline');
     assert.equal(secondHeading.textContent,'One shared headline');
@@ -741,7 +741,7 @@ test('synced component conversion shares content but keeps each instance geometr
     resized=await f.save();
     const instances=resized.pages['/'].extras.filter(item=>item.type==='reusable');
     assert.equal(instances.filter(item=>item.style?.widthPercent===61).length,1);
-    assert.equal(instances.filter(item=>item.style?.widthPercent===61).length,1);
+    assert.equal(instances.filter(item=>item.style?.widthPercent==null).length,1);
     assert.equal(Object.values(resized.reusableComponents)[0].style?.widthPercent,undefined);
 
     const afterResize=[...f.w.document.querySelectorAll('.cms-extra-reusable')];
