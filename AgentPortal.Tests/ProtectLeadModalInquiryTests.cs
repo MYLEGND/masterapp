@@ -20,7 +20,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 using PortalTrackingResolver = AgentPortal.Services.Tracking.AgentTrackingResolver;
-using ProtectTrackingResolver = ProtectWebsite.Services.Tracking.AgentTrackingResolver;
+using ProtectTrackingResolver = Infrastructure.Analytics.AgentTrackingResolver;
 using ProtectWebsite.Controllers;
 
 namespace AgentPortal.Tests;
