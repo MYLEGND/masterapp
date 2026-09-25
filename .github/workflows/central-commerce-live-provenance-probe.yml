@@ -10,17 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Probe selected live provenance endpoints read-only
+      - name: Probe Parfait and selected live endpoints read-only
         shell: bash
         run: |
           set -euo pipefail
-          for url in             https://masterapp-protect.azurewebsites.net/api/runtime-provenance             https://masterapp-parfait.azurewebsites.net/api/runtime-provenance             https://masterapp-website.azurewebsites.net/_deployment-provenance.txt
+          for url in             https://masterapp-parfait.azurewebsites.net/api/runtime-provenance             https://masterapp-parfait.azurewebsites.net/             https://masterapp-parfait.azurewebsites.net/store             https://masterapp-parfait.azurewebsites.net/internal/login             https://shopparfait.com/             https://shopparfait.com/store             https://masterapp-protect.azurewebsites.net/api/runtime-provenance             https://masterapp-website.azurewebsites.net/_deployment-provenance.txt
           do
             body="$(mktemp)"
-            code="$(curl --silent --show-error --location --max-time 30               -H 'Cache-Control: no-cache' -o "$body" -w '%{http_code}' "$url" || true)"
+            code="$(curl --silent --show-error --location --max-time 30               -H 'Cache-Control: no-cache' -H 'User-Agent: LEGEND-readonly-probe/1.0'               -o "$body" -w '%{http_code}' "$url" || true)"
             bytes="$(wc -c < "$body" | tr -d ' ')"
-            printf '%s status=%s bytes=%s\n' "$url" "$code" "$bytes"
-            if [ "$code" = 200 ]; then
+            type="$(file -b --mime-type "$body" 2>/dev/null || true)"
+            printf '%s status=%s bytes=%s type=%s\n' "$url" "$code" "$bytes" "$type"
+            if [ "$code" = 200 ] && [[ "$url" == *"provenance"* || "$url" == *"_deployment-provenance"* ]]; then
               head -c 512 "$body"; printf '\n'
             fi
             rm -f "$body"
