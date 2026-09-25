@@ -55,6 +55,7 @@
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
+  const animationRuntime = new WeakMap();
   const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap', 'display', 'flexDirection', 'gap', 'gridTemplateColumns', 'alignItems', 'justifyContent', 'flexWrap'];
 
   function rememberOriginal(el) {
@@ -632,6 +633,117 @@
     }
     if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) setContentText(el, String(value), true);
   }
+  function prefersReducedMotion() {
+    try { return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true; } catch { return false; }
+  }
+
+  function animationKeyframes(binding) {
+    const distance = Number.isFinite(Number(binding?.distancePx)) ? Number(binding.distancePx) : 24;
+    const effect = binding?.effect || 'fade';
+    if (effect === 'slide-up') return [{ opacity:0, transform:`translateY(${distance}px)` }, { opacity:1, transform:'translateY(0)' }];
+    if (effect === 'slide-down') return [{ opacity:0, transform:`translateY(${-distance}px)` }, { opacity:1, transform:'translateY(0)' }];
+    if (effect === 'slide-left') return [{ opacity:0, transform:`translateX(${distance}px)` }, { opacity:1, transform:'translateX(0)' }];
+    if (effect === 'slide-right') return [{ opacity:0, transform:`translateX(${-distance}px)` }, { opacity:1, transform:'translateX(0)' }];
+    if (effect === 'scale') return [{ opacity:0, transform:'scale(.94)' }, { opacity:1, transform:'scale(1)' }];
+    if (effect === 'rotate') return [{ opacity:0, transform:'rotate(-6deg)' }, { opacity:1, transform:'rotate(0deg)' }];
+    return [{ opacity:0 }, { opacity:1 }];
+  }
+
+  function playAnimation(el, binding) {
+    if (!el || typeof el.animate !== 'function' || prefersReducedMotion()) return null;
+    const duration = Math.max(50, Math.min(5000, Number(binding?.durationMs) || 400));
+    const delay = Math.max(0, Math.min(5000, Number(binding?.delayMs) || 0));
+    const easing = ['linear','ease','ease-in','ease-out','ease-in-out'].includes(binding?.easing) ? binding.easing : 'ease';
+    return el.animate(animationKeyframes(binding), { duration, delay, easing, fill:'none' });
+  }
+
+  function applyAnimations(el, bindings) {
+    if (!el) return;
+    const normalized = Array.isArray(bindings) ? bindings : [];
+    const signature = JSON.stringify(normalized);
+    const current = animationRuntime.get(el);
+    if (current?.signature === signature) return;
+    current?.cleanup?.();
+    animationRuntime.delete(el);
+    if (editorMode || renderInput?.server || normalized.length === 0) return;
+    const cleanups = [];
+    const played = new Set();
+    const invoke = binding => {
+      if (binding?.once && played.has(binding.id)) return;
+      if (binding?.once) played.add(binding.id);
+      playAnimation(el, binding);
+    };
+    for (const binding of normalized) {
+      if (!binding?.id) continue;
+      if (binding.trigger === 'load') {
+        const timer = setTimeout(() => invoke(binding), 0);
+        cleanups.push(() => clearTimeout(timer));
+      } else if (binding.trigger === 'view') {
+        if (typeof IntersectionObserver === 'function') {
+          const observer = new IntersectionObserver(entries => {
+            if (!entries.some(entry => entry.isIntersecting)) return;
+            invoke(binding);
+            if (binding.once) observer.disconnect();
+          }, { threshold:0.15 });
+          observer.observe(el);
+          cleanups.push(() => observer.disconnect());
+        } else {
+          const timer = setTimeout(() => invoke(binding), 0);
+          cleanups.push(() => clearTimeout(timer));
+        }
+      } else if (binding.trigger === 'hover') {
+        const handler = () => invoke(binding);
+        el.addEventListener('mouseenter', handler);
+        cleanups.push(() => el.removeEventListener('mouseenter', handler));
+      } else if (binding.trigger === 'click') {
+        const handler = () => invoke(binding);
+        el.addEventListener('click', handler);
+        cleanups.push(() => el.removeEventListener('click', handler));
+      }
+    }
+    animationRuntime.set(el, { signature, cleanup:() => cleanups.forEach(cleanup => cleanup()) });
+  }
+
+  function renderMotionControls() {
+    const host = document.getElementById('legend-cms-motion-controls');
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    const status = document.getElementById('legend-cms-motion-status');
+    if (!selected || selected.dataset.cmsSignalOnly) { if (status) status.textContent='Select a page element or added block.'; return; }
+    const existing = overrideForElement(selected, false);
+    const bindings = Array.isArray(existing?.animations) ? existing.animations : [];
+    if (status) status.textContent = bindings.length ? `${bindings.length} motion interaction${bindings.length===1?'':'s'} on this element.` : 'No motion interactions on this element.';
+    const selectControl = (labelText, values, value, onChange) => {
+      const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent=labelText;
+      const select=document.createElement('select');
+      for(const [key,text] of values){ const option=document.createElement('option'); option.value=key; option.textContent=text; select.appendChild(option); }
+      select.value=value; select.addEventListener('change',()=>onChange(select.value)); label.appendChild(select); return label;
+    };
+    for (const binding of bindings) {
+      const row=document.createElement('div'); row.className='legend-cms-motion-row';
+      const mutate=action=>{ checkpoint(); action(); markDirty(); renderMotionControls(); };
+      row.appendChild(selectControl('Trigger', [['load','Page load'],['view','Enter viewport'],['hover','Hover'],['click','Click']], binding.trigger, value=>mutate(()=>binding.trigger=value)));
+      row.appendChild(selectControl('Effect', [['fade','Fade'],['slide-up','Slide up'],['slide-down','Slide down'],['slide-left','Slide left'],['slide-right','Slide right'],['scale','Scale'],['rotate','Rotate']], binding.effect, value=>mutate(()=>binding.effect=value)));
+      const timing=document.createElement('div'); timing.className='legend-cms-row';
+      for(const [labelText,key,min,max] of [['Duration ms','durationMs',50,5000],['Delay ms','delayMs',0,5000],['Distance px','distancePx',-2000,2000]]) {
+        const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent=labelText;
+        const input=document.createElement('input'); input.type='number'; input.min=String(min); input.max=String(max); input.step='1'; input.value=binding[key] ?? (key==='distancePx'?24:'');
+        input.addEventListener('change',()=>mutate(()=>binding[key]=input.value===''?null:Number(input.value))); label.appendChild(input); timing.appendChild(label);
+      }
+      row.appendChild(timing);
+      row.appendChild(selectControl('Easing', [['ease','Ease'],['linear','Linear'],['ease-in','Ease in'],['ease-out','Ease out'],['ease-in-out','Ease in/out']], binding.easing || 'ease', value=>mutate(()=>binding.easing=value)));
+      const onceLabel=document.createElement('label'); onceLabel.className='legend-cms-group';
+      const once=document.createElement('input'); once.type='checkbox'; once.checked=binding.once!==false; once.addEventListener('change',()=>mutate(()=>binding.once=once.checked));
+      onceLabel.append(once,document.createTextNode(' Play once per page session')); row.appendChild(onceLabel);
+      const actions=document.createElement('div'); actions.className='legend-cms-row';
+      const preview=document.createElement('button'); preview.type='button'; preview.textContent='Preview effect'; preview.addEventListener('click',()=>playAnimation(selected,binding));
+      const remove=document.createElement('button'); remove.type='button'; remove.textContent='Remove'; remove.addEventListener('click',()=>{ const ov=selectedOverride(); mutate(()=>ov.animations=(ov.animations||[]).filter(item=>item.id!==binding.id)); });
+      actions.append(preview,remove); row.appendChild(actions); host.appendChild(row);
+    }
+    const add=document.createElement('button'); add.type='button'; add.textContent='Add motion interaction'; add.disabled=bindings.length>=8;
+    add.addEventListener('click',()=>{ const ov=selectedOverride(); checkpoint(); ov.animations ||= []; ov.animations.push({id:crypto.randomUUID().replaceAll('-',''),trigger:'view',effect:'fade',durationMs:400,delayMs:0,distancePx:24,easing:'ease',once:true}); markDirty(); renderMotionControls(); });
+    host.appendChild(add);
+  }
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
@@ -657,6 +769,7 @@
     applyDataBinding(el, override.dataBinding);
     applyStyle(el, effectiveStyle(override));
     applyLayout(el, effectiveLayout(override));
+    applyAnimations(el, override.animations);
   }
 
   function buildExtraNode(extra, editable = true, idPrefix = '') {
@@ -713,7 +826,7 @@
         missing.textContent = 'Reusable component is unavailable. Restore its definition or remove this instance.';
         wrapper.appendChild(missing);
       }
-      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance));
+      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
       return;
     }
     const values = Array.isArray(definition.extras) ? definition.extras : [];
@@ -723,8 +836,9 @@
       sectionMap.set(`extra:${root.id}`, wrapper);
       applyStyle(wrapper, { ...effectiveStyle(root), ...effectiveStyle(instance) });
       applyLayout(wrapper, { ...effectiveLayout(root), ...effectiveLayout(instance) });
+      applyAnimations(wrapper, instance.animations);
     } else {
-      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance));
+      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance)); applyAnimations(wrapper, instance.animations);
     }
     for (const item of values.filter(value => value.type === 'section' && value !== root)) {
       const parent = sectionMap.get(item.sectionId) || wrapper;
@@ -1755,6 +1869,7 @@
     if (name === 'media') void refreshMediaLibrary();
     if (name === 'components') renderReusableComponents();
     if (name === 'data') renderDataControls();
+    if (name === 'motion') renderMotionControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') renderSignalControls();
     if (name === 'quality') void refreshQualityInspector();
@@ -2195,7 +2310,7 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
@@ -2208,6 +2323,10 @@
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
     signals.innerHTML = '<h2>Analytics & Meta</h2><p>Choose what this interaction means. Draft changes take effect when published.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
+    const motion = document.createElement('section'); motion.dataset.cmsView='motion'; motion.hidden=true;
+    motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
+    tools.appendChild(motion);
+
     const quality = document.createElement('section'); quality.dataset.cmsView = 'quality'; quality.hidden = true;
     quality.innerHTML = '<h2>Quality inspector</h2><p>Saved draft checks and live canvas checks are different evidence sources. The server remains authoritative for saved state and publication.</p><h3>Saved draft checks (server)</h3><small id="legend-cms-quality-saved-meta">Open Quality to inspect the persisted draft.</small><div id="legend-cms-quality-saved" class="legend-cms-quality-list"></div><h3>Live page checks (rendered canvas)</h3><small id="legend-cms-quality-live-meta">Open Quality to inspect the rendered canvas.</small><div id="legend-cms-quality-live" class="legend-cms-quality-list"></div><button id="legend-cms-quality-refresh" type="button">Run checks again</button>';
     tools.appendChild(quality);
@@ -2397,6 +2516,7 @@
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
+      .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
       @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}.legend-cms-move-handle{min-height:38px;padding:8px 12px;top:-44px}.legend-cms-resize-handle{width:34px;height:34px}.legend-cms-resize-x{right:-18px}.legend-cms-resize-y{bottom:-18px}.legend-cms-resize-xy{right:-18px;bottom:-18px}}
