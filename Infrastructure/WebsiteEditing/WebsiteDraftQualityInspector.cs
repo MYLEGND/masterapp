@@ -56,7 +56,46 @@ public static class WebsiteDraftQualityInspector
         foreach (var extra in document.Extras ?? [])
             if (!string.IsNullOrWhiteSpace(extra.SyncSourceId) && !reusableSyncIds.Contains(extra.SyncSourceId))
                 checks.Add(new("sync_source_missing", extra.Type == "reusable" ? "error" : "warning", "This added block has a sync source that no reusable definition owns.", null, "extra:" + extra.Id));
+
+        InspectDataBindings(document, checks);
         return new WebsiteQualityReport(DateTime.UtcNow, checks);
+    }
+
+    private static void InspectDataBindings(WebsiteContentDocument document, List<WebsiteQualityCheck> checks)
+    {
+        var collections = document.Collections ?? new Dictionary<string, WebsiteCollectionDefinition>(StringComparer.Ordinal);
+        void Check(WebsiteDataBinding? binding, string? pagePath, string elementId)
+        {
+            if (binding is null) return;
+            if (!collections.TryGetValue(binding.CollectionId, out var collection))
+            {
+                checks.Add(new("data_collection_missing", "error", "This content binding points to a collection that is not available.", pagePath, elementId));
+                return;
+            }
+            if (!collection.Fields.Contains(binding.Field, StringComparer.Ordinal))
+                checks.Add(new("data_field_missing", "error", "This content binding points to a field that is not exposed by its collection.", pagePath, elementId));
+        }
+
+        foreach (var (id, value) in document.Elements ?? new Dictionary<string, WebsiteElementOverride>())
+            Check(value.DataBinding, null, id);
+        foreach (var extra in document.Extras ?? [])
+            Check(extra.DataBinding, null, "extra:" + extra.Id);
+        foreach (var (path, page) in document.Pages ?? new Dictionary<string, WebsitePageDocument>())
+        {
+            if (page.Navigation?.IsDeleted == true) continue;
+            foreach (var (id, value) in page.Elements) Check(value.DataBinding, path, id);
+            foreach (var extra in page.Extras) Check(extra.DataBinding, path, "extra:" + extra.Id);
+
+            if (page.DynamicBinding is null) continue;
+            if (!collections.TryGetValue(page.DynamicBinding.CollectionId, out var dynamicCollection))
+                continue; // Existing dynamic_collection_missing check owns this case.
+            if (!dynamicCollection.Fields.Contains(page.DynamicBinding.ItemKeyField, StringComparer.Ordinal))
+                checks.Add(new("dynamic_item_key_missing", "error", "The dynamic page key field is not exposed by its collection.", path));
+            if (!WebsiteCollectionSourcePolicy.TryGet(dynamicCollection.Source, out var source) || !source.IsList)
+                checks.Add(new("dynamic_collection_not_list", "error", "Dynamic pages require a list collection.", path));
+            if (string.IsNullOrWhiteSpace(page.DynamicBinding.RoutePattern))
+                checks.Add(new("dynamic_route_pattern_missing", "error", "Dynamic pages need a route pattern such as /products/{item}.", path));
+        }
     }
 
     private static void InspectElements(
