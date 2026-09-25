@@ -1812,6 +1812,7 @@
     const inlineHelp = document.getElementById('legend-cms-inline-help');
     const imageGroup = document.getElementById('legend-cms-image-group');
     const codeGroup = document.getElementById('legend-cms-code-group');
+    const formGroup = document.getElementById('legend-cms-form-group');
     const scale = document.getElementById('legend-cms-scale');
     const width = document.getElementById('legend-cms-width');
     const height = document.getElementById('legend-cms-height');
@@ -1834,6 +1835,7 @@
       if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
       if (codeGroup) codeGroup.hidden = true;
+      if (formGroup) formGroup.hidden = true;
       if (lockButton) { lockButton.disabled = true; lockButton.textContent = 'Lock selected'; }
       if (renameButton) renameButton.disabled = true;
       if (removeButton) { removeButton.disabled = true; removeButton.textContent = 'Delete selected'; }
@@ -1847,6 +1849,7 @@
       if (inlineHelp) inlineHelp.hidden = true;
       if (imageGroup) imageGroup.hidden = true;
       if (codeGroup) codeGroup.hidden = true;
+      if (formGroup) formGroup.hidden = true;
       if (lockButton) { lockButton.disabled = true; lockButton.textContent = 'Lock selected'; }
       if (renameButton) renameButton.disabled = true;
       if (removeButton) { removeButton.disabled = false; removeButton.textContent = `Delete ${selectionCount} selected`; }
@@ -1863,9 +1866,11 @@
     const extra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
     const selectedCapability = selectedComponentCapability();
     const isCode = selectedCapability?.type === 'code';
+    const isForm = selectedCapability?.type === 'form';
     if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
+    if (formGroup) formGroup.hidden = !isForm;
 
     const ov = selectedOverride() || extra || pageState().elements[selected.dataset.cmsId] || {};
     const variant = editableVariant(ov, false);
@@ -3764,6 +3769,7 @@
       applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     });
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
+    document.getElementById('legend-cms-edit-form')?.addEventListener('click', openFormEditor);
     document.getElementById('legend-cms-quality-refresh')?.addEventListener('click', renderQualityPanel);
     document.getElementById('legend-cms-media-search')?.addEventListener('input', renderMediaLibrary);
     document.getElementById('legend-cms-media-upload')?.addEventListener('change', async event => {
@@ -3906,6 +3912,10 @@
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
         <button id="legend-cms-edit-code" type="button">Edit code in modal</button>
         <small>Custom HTML, CSS, and browser JavaScript are previewed inside a sandboxed block. Resize the block directly on the page.</small>
+      </div>
+      <div id="legend-cms-form-group" class="legend-cms-group" hidden>
+        <button id="legend-cms-edit-form" type="button">Edit form fields & steps</button>
+        <small>Fields, identity mapping, steps, consent, and layout are stored in the shared website form definition.</small>
       </div>
       <div id="legend-cms-image-group" class="legend-cms-group" hidden>
         <label for="legend-cms-image">Replace image</label>
