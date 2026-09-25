@@ -342,6 +342,16 @@ async function metaSignalFixture() {
 }
 
 
+test('public runtime binds autonomous Meta contact tracking to the actual generated inquiry form id',()=>{
+  assert.ok(source.includes("formId: inquiryForm?.id || inquiryForm?.dataset.formKey || ''"));
+  assert.ok(metaSignalSource.includes('function wireContactInputs()'));
+  assert.ok(metaSignalSource.includes("emitSignal('ContactInputStarted'"));
+  assert.ok(metaSignalSource.includes("emitSignal('PhoneFieldCompleted'"));
+  assert.ok(metaSignalSource.includes("emitSignal('RequiredContactFieldsCompleted'"));
+  assert.ok(source.includes('Automatic form analytics + Meta'));
+  assert.ok(source.includes('No mapping is required.'));
+});
+
 test('configured signal runtime suppresses Pixel for analytics-only and allows only Pixel-eligible Meta events',async()=>{
   const f=await metaSignalFixture();
   try{
@@ -963,9 +973,12 @@ test('section deletion preserves child structure, reset restores, global theme r
     const doc=await f.save();assert.equal(doc.pages['/'].elements['section:home.section.1'].hidden,true);
   }finally{f.close();}
 });
-test('inquiry form builder uses canonical fields and Protect event-catalog presets',async()=>{
+test('inquiry form builder is autonomous and exposes no required manual mapping',async()=>{
   const catalog={events:[
     {name:'LeadFormStart',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['form_started']},
+    {name:'ContactInputStarted',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_started']},
+    {name:'PhoneFieldCompleted',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_completed']},
+    {name:'RequiredContactFieldsCompleted',category:'lead',metaEligible:true,requiresServerOutcome:false,triggers:['field_completed']},
     {name:'SubmitAttempt',category:'submit',metaEligible:true,requiresServerOutcome:false,triggers:['submit_attempt']},
     {name:'Lead',category:'conversion',metaEligible:true,requiresServerOutcome:true,triggers:['submission_saved']}
   ],matchingFields:['email','phone','firstName','lastName'],runtimeEnabled:true};
@@ -975,20 +988,29 @@ test('inquiry form builder uses canonical fields and Protect event-catalog prese
     f.click('[data-add="form"]');
     const form=f.w.document.querySelector('form.cms-extra-form[data-website-inquiry]');
     assert.ok(form);
+    assert.ok(form.id.startsWith('website_inquiry_'));
+    assert.equal(form.dataset.formKey,'website_inquiry');
+    assert.equal(form.dataset.preview,'');
+    assert.equal(form.querySelector('fieldset').disabled,true);
     for(const name of ['FirstName','LastName','Phone','Email','Message'])
       assert.ok(form.querySelector(`[name="${name}"]`));
     assert.ok(form.querySelector('[name="consent"]'));
     f.click('[data-open="signals"]');
-    const presets=[...f.w.document.querySelectorAll('.legend-cms-signal-presets button')];
-    assert.equal(presets.length,3);
-    const lead=presets.find(button=>button.textContent.startsWith('Lead · submission saved'));
-    assert.ok(lead); lead.click();
+    const status=f.w.document.querySelector('.legend-cms-signal-presets');
+    assert.ok(status);
+    assert.match(status.textContent,/LeadFormStart/);
+    assert.match(status.textContent,/ContactInputStarted/);
+    assert.match(status.textContent,/PhoneFieldCompleted/);
+    assert.match(status.textContent,/SubmitAttempt/);
+    assert.match(status.textContent,/Lead/);
+    const advanced=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')]
+      .find(button=>button.textContent==='Add advanced custom mapping');
+    assert.ok(advanced);
+    assert.equal(advanced.hidden,true);
     const saved=await f.save();
     const extra=saved.pages['/'].extras.find(value=>value.type==='form');
     assert.ok(extra);
-    const binding=extra.signals.find(value=>value.trigger==='submission_saved');
-    assert.equal(binding.eventName,'Lead');
-    assert.equal(binding.deliveryMode,'meta');
+    assert.deepEqual(extra.signals,[]);
   }finally{f.close();}
 });
 
