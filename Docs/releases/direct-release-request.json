@@ -1,12 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized direct deployment of the exact validated shared scoped website candidate from legend/approved-changes to only Protect Website and LEGEND Website after the surgical compile and test-namespace repairs passed validation. Preserve the centralized website/editor/runtime, analytics, Meta single-truth authority, scoped CRM/lead ownership, domain isolation, and all unrelated working flows. Do not deploy AgentPortal, ClientApp, Parfait, or the Cloudflare router.",
-  "purpose": "Deploy the exact candidate validated by LEGEND approved direct release #154 to Protect Website and LEGEND Website only, with post-deploy provenance verification and fail-closed enforcement.",
-  "requestId": "shared-website-studio-direct-release-20260924-after-validation",
-  "releaseMode": "approved-only",
+  "authorization": "Founder authorized a non-deploying Protect Website-only validation after the exact EF WebsiteStudioComments model-snapshot repair and new pre-Azure pending-model-changes gate. LEGEND Website already deployed successfully in release #155 and must not be redeployed by this recovery. Preserve all unrelated applications and flows.",
+  "purpose": "Validate only the remaining Protect Website candidate, including build, Website Studio contract checks, EF model/snapshot consistency, and immutable package creation. Do not mutate Azure or deploy any application.",
+  "requestId": "protect-only-validate-after-ef-snapshot-repair-20260924",
+  "releaseMode": "validate-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-protect"
   ],
   "cloudflareWebsiteRouting": false
 }
