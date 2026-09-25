@@ -133,8 +133,7 @@ jobs:
                   actual=response.read().decode().strip() if row['project']=='static' else json.load(response)['sourceRevision']
               print(host,actual)
               assert actual == row['revision'], 'Live revision changed; rebuild the release baseline'
-              if ((os.environ['PUBLIC_ONLY'] == 'true' and row['app'] == 'protect') or
-                  (os.environ['CLIENT_ONLY'] == 'true' and row['app'] == 'client')):
+              if os.environ['CLIENT_ONLY'] == 'true' and row['app'] == 'client':
                   subprocess.run(['git','diff','--quiet',row['revision'],'HEAD','--','Infrastructure/Migrations'],check=True)
           PYBASE
       - name: Verify ClientApp browser entry routes
@@ -457,7 +456,7 @@ jobs:
 
       - name: Apply additive diagnostics migrations before restarting apps
         id: migrate
-        if: env.PRESERVE_LIVE_TARGETS != 'true' && env.PUBLIC_ONLY != 'true' && env.CLIENT_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
+        if: env.PRESERVE_LIVE_TARGETS != 'true' && env.CLIENT_ONLY != 'true' && env.WEBSITE_ONLY != 'true' && steps.package.outcome == 'success' && steps.azure.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -524,7 +523,7 @@ jobs:
           exit 1
       - name: Direct deploy Protect
         id: protect
-        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
+        if: ${{ !cancelled() && env.PRESERVE_LIVE_TARGETS != 'true' && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-protect') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.protectauth.outcome == 'success' && steps.migrate.outcome == 'success' }}
         continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
@@ -810,8 +809,11 @@ jobs:
               if os.environ.get('CLIENT_ONLY') == 'true':
                   required.extend(['TESTS','WEB'])
                   excluded.append('MIGRATE')
+              elif set(selected) <= {'masterapp-protect','masterapp-website'}:
+                  excluded.extend(['TESTS','WEB'])
+                  (excluded if selected == ['masterapp-website'] else required).append('MIGRATE')
               else:
-                  (excluded if set(selected) <= {'masterapp-protect','masterapp-website'} else required).extend(['TESTS','WEB','MIGRATE'])
+                  required.extend(['TESTS','WEB','MIGRATE'])
               (required if 'masterapp-website' in selected else excluded).append('WEBSITECHECKS')
               if website_routing:
                   required.extend(routing_steps)
