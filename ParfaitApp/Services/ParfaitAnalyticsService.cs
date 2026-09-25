@@ -19,6 +19,25 @@ public interface IParfaitAnalyticsService
         ParfaitOrderRecord order,
         HttpContext httpContext,
         CancellationToken ct = default);
+
+    Task TrackScopedAsync(
+        Guid commerceBusinessId,
+        Guid? websiteContentVersionId,
+        string siteKey,
+        string reportingOwner,
+        ParfaitAnalyticsEventRequest request,
+        HttpContext httpContext,
+        CancellationToken ct = default);
+
+    Task TrackPurchaseScopedAsync(
+        Guid commerceBusinessId,
+        Guid? websiteContentVersionId,
+        string siteKey,
+        string reportingOwner,
+        string checkoutPath,
+        ParfaitOrderRecord order,
+        HttpContext httpContext,
+        CancellationToken ct = default);
 }
 
 public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
@@ -57,10 +76,30 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         _publicHosts = BuildPublicHosts(configuration);
     }
 
-    public async Task TrackAsync(
+    public Task TrackAsync(
         ParfaitAnalyticsEventRequest request,
         HttpContext httpContext,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        TrackCoreAsync(null, null, SiteKey, ReportingOwner, request, httpContext, ct);
+
+    public Task TrackScopedAsync(
+        Guid commerceBusinessId,
+        Guid? websiteContentVersionId,
+        string siteKey,
+        string reportingOwner,
+        ParfaitAnalyticsEventRequest request,
+        HttpContext httpContext,
+        CancellationToken ct = default) =>
+        TrackCoreAsync(commerceBusinessId, websiteContentVersionId, siteKey, reportingOwner, request, httpContext, ct);
+
+    private async Task TrackCoreAsync(
+        Guid? commerceBusinessId,
+        Guid? websiteContentVersionId,
+        string siteKey,
+        string reportingOwner,
+        ParfaitAnalyticsEventRequest request,
+        HttpContext httpContext,
+        CancellationToken ct)
     {
         var eventName = NormalizeEventName(request.EventName);
         if (eventName is null)
@@ -83,7 +122,7 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         var isInternalTraffic = IsInternalTrafficSource(httpContext, sourceHost, sourcePath);
         var environment = ResolveEnvironment(httpContext, sourceHost, isInternalTraffic);
 
-        var metadata = BuildMetadata(request, httpContext, eventName, eventId, visitorId, sessionId, url, referrer, sourceHost, sourcePath, sourceQuery);
+        var metadata = BuildMetadata(request, httpContext, eventName, eventId, visitorId, sessionId, url, referrer, sourceHost, sourcePath, sourceQuery, siteKey, reportingOwner, commerceBusinessId, websiteContentVersionId);
 
         var analyticsEvent = new AnalyticsEvent();
         Set(analyticsEvent, "EventId", Guid.TryParse(eventId, out var parsedEventId) ? parsedEventId : Guid.NewGuid());
@@ -109,6 +148,8 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         Set(analyticsEvent, "IsInternal", isInternalTraffic);
         Set(analyticsEvent, "Environment", environment);
         Set(analyticsEvent, "SourceApp", "ParfaitApp");
+        Set(analyticsEvent, "CommerceBusinessId", commerceBusinessId);
+        Set(analyticsEvent, "WebsiteContentVersionId", websiteContentVersionId);
         Set(analyticsEvent, "DeviceType", request.DeviceType);
         Set(analyticsEvent, "Browser", request.Browser);
         Set(analyticsEvent, "OperatingSystem", request.OperatingSystem);
@@ -168,6 +209,45 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         }, httpContext, ct);
     }
 
+    public Task TrackPurchaseScopedAsync(
+        Guid commerceBusinessId,
+        Guid? websiteContentVersionId,
+        string siteKey,
+        string reportingOwner,
+        string checkoutPath,
+        ParfaitOrderRecord order,
+        HttpContext httpContext,
+        CancellationToken ct = default) =>
+        TrackScopedAsync(
+            commerceBusinessId,
+            websiteContentVersionId,
+            siteKey,
+            reportingOwner,
+            new ParfaitAnalyticsEventRequest
+            {
+                EventName = "Purchase",
+                OrderNumber = order.OrderNumber,
+                ValueCents = order.TotalCents,
+                Url = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{checkoutPath}",
+                PageKey = $"commerce_{reportingOwner}_checkout",
+                Metadata = new Dictionary<string, string?>
+                {
+                    ["paymentStatus"] = order.PaymentStatus,
+                    ["paymentReferenceId"] = order.PaymentReferenceId,
+                    ["items"] = JsonSerializer.Serialize(order.Items.Select(i => new
+                    {
+                        i.Id,
+                        i.Name,
+                        i.Size,
+                        i.Quantity,
+                        i.UnitPriceCents,
+                        i.LineTotalCents
+                    }))
+                }
+            },
+            httpContext,
+            ct);
+
     private static Dictionary<string, object?> BuildMetadata(
         ParfaitAnalyticsEventRequest request,
         HttpContext httpContext,
@@ -179,13 +259,19 @@ public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
         string referrer,
         string sourceHost,
         string sourcePath,
-        IReadOnlyDictionary<string, string?> sourceQuery)
+        IReadOnlyDictionary<string, string?> sourceQuery,
+        string siteKey,
+        string reportingOwner,
+        Guid? commerceBusinessId,
+        Guid? websiteContentVersionId)
     {
         var metadata = new Dictionary<string, object?>
         {
-            ["siteKey"] = SiteKey,
+            ["siteKey"] = siteKey,
             ["businessType"] = BusinessType,
-            ["reportingOwner"] = ReportingOwner,
+            ["reportingOwner"] = reportingOwner,
+            ["commerceBusinessId"] = commerceBusinessId,
+            ["websiteContentVersionId"] = websiteContentVersionId,
             ["eventName"] = eventName,
             ["eventId"] = eventId,
             ["visitorId"] = visitorId,
