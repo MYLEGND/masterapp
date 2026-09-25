@@ -37,7 +37,7 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(extra.Id);
             var sectionId = SanitizeId(extra.SectionId);
             var type = (extra.Type ?? string.Empty).Trim().ToLowerInvariant();
-            if (id.Length == 0 || sectionId.Length == 0 || type is not ("text" or "image" or "button" or "video" or "section" or "card" or "code")) continue;
+            if (id.Length == 0 || sectionId.Length == 0 || WebsiteComponentCatalog.Find(type) is null) continue;
             clean.Extras.Add(new WebsiteExtraComponent
             {
                 Id = id,
