@@ -1041,7 +1041,7 @@
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
     preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
-    window.addEventListener('resize', () => { refreshScaledElements(); updateDirectCanvasUi(); });
+    window.addEventListener('resize', () => { refreshScaledElements(); refreshResponsiveOverrides(); updateDirectCanvasUi(); });
     updateDirectCanvasUi();
   }
 
@@ -1069,7 +1069,10 @@
       return;
     }
 
-    if (title) title.textContent = elementLabel(selected);
+    if (title) {
+      const breakpoint = currentDesignBreakpoint === 'base' ? 'Desktop / base' : breakpointById(currentDesignBreakpoint)?.label || currentDesignBreakpoint;
+      title.textContent = `${elementLabel(selected)} · ${breakpoint}`;
+    }
     const isImage = selected instanceof HTMLImageElement;
     const extra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
     const isCode = extra?.type === 'code';
@@ -1130,6 +1133,7 @@
     if (selected.tagName === 'A') syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
     if (hidden) hidden.checked = (variant?.hidden ?? resolved.hidden) === true;
+    syncLayoutControls(ov);
   }
 
   function updateSelectedFromControls(event) {
@@ -1815,16 +1819,28 @@
     });
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
-    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
+    panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => {
+      if (!selected) return;
+      const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value;
+      if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return;
+      checkpoint();
+      const ov = selectedOverride();
+      const variant = editableVariant(ov);
+      variant.style ||= {};
+      if (input.value === '') delete variant.style[input.dataset.styleKey];
+      else variant.style[input.dataset.styleKey] = value;
+      applyElementOverride(selected, ov);
+      markDirty();
+    }));
     panel.querySelectorAll('[data-color-hex]').forEach(input => input.addEventListener('change', () => {
       if (!selected) return;
       if (!/^#[a-f0-9]{6}$/i.test(input.value)) { input.setCustomValidity('Enter a six-digit hex color, such as #000000.'); input.reportValidity(); return; }
-      input.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov.style ||= {}; ov.style[input.dataset.colorHex] = input.value.toLowerCase();
-      applyStyle(selected, ov.style); syncEditorControls(); markDirty();
+      input.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); const variant = editableVariant(ov); variant.style ||= {}; variant.style[input.dataset.colorHex] = input.value.toLowerCase();
+      applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     }));
     panel.querySelectorAll('[data-color-reset]').forEach(button => button.addEventListener('click', () => {
-      if (!selected) return; checkpoint(); const ov = selectedOverride(); if (ov.style) delete ov.style[button.dataset.colorReset];
-      applyStyle(selected, ov.style); syncEditorControls(); markDirty();
+      if (!selected) return; checkpoint(); const ov = selectedOverride(); const variant = editableVariant(ov); if (variant.style) delete variant.style[button.dataset.colorReset];
+      applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     }));
     ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; } applyElementOverride(selected, ov); markDirty(); }));
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
