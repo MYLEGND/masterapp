@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
 using Infrastructure.Bookings;
 using Infrastructure.Analytics;
-using Infrastructure.Analytics;
 using ProtectWebsite.Services.Booking;
 using System.IO;
 using System.Linq;
