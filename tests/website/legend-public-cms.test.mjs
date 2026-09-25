@@ -307,7 +307,7 @@ test('canonical public stylesheet preserves authored spaces, tabs and line break
 });
 
 test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
-  assert.ok(businessBuildSource.includes('id="business_inquiry"'));
+  assert.ok(businessBuildSource.includes('id="website_inquiry"'));
   for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
   assert.ok(publicInquirySource.includes("fields.get('FirstName')"));
   assert.ok(publicInquirySource.includes("fields.get('LastName')"));

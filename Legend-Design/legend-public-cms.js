@@ -337,7 +337,11 @@
   }
 
   function deactivateInlineEditing(el = inlineEditNode) {
-    if (!el) return;
+    if (!el || !isInlineEditable(el)) {
+      if (inlineEditNode === el) inlineEditNode = null;
+      inlineEditCheckpointed = false;
+      return;
+    }
     const override = overrideForElement(el, false);
     if (override) {
       const value = inlineTextValue(el);
@@ -760,8 +764,6 @@
       selected.classList.add('legend-cms-selected');
       selected.draggable = false;
       activateInlineEditing(selected);
-    } else if (previous) {
-      deactivateInlineEditing(previous);
     }
     syncEditorControls();
     renderSignalControls();
