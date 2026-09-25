@@ -310,7 +310,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,motionCatalog=motionCatalogFixture,mediaAssets=[],innerWidth=1280,reduceMotion=false,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,motionCatalog=motionCatalogFixture,mediaAssets=[],quality=null,innerWidth=1280,reduceMotion=false,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   Object.defineProperty(w,'innerWidth',{value:innerWidth,writable:true,configurable:true});
@@ -326,7 +326,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
     if(parsed.pathname==='/api/website-content/manage/media' && (!init.method || init.method==='GET'))
       return {ok:!denied,status:denied?401:200,json:async()=>({assets:mediaAssets})};
     const body=typeof init.body==='string'?JSON.parse(init.body):null;
-    return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog},motionCatalog})};
+    return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog},motionCatalog,quality})};
   };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
@@ -769,6 +769,39 @@ test('synced components are library-only and never appear as an empty direct-add
     const library=f.w.document.querySelector('[data-add-reusable="shared"]');
     assert.ok(library);
     assert.equal(library.textContent,'Reusable CTA');
+  } finally { f.close(); }
+});
+
+test('Quality view separates server checks from live canvas checks and decorative image intent is canonical',async()=>{
+  const doc={pages:{'/':{title:'Home',description:'Home description',elements:{},sectionOrder:{},extras:[
+    {id:'hero-photo',type:'image',sectionId:'home.section.1',imageDataUrl:'https://cdn.example.test/photo.webp',style:{}}
+  ]}}};
+  const quality={errorCount:0,warningCount:1,infoCount:0,issues:[
+    {code:'a11y_image_alt_missing',severity:'warning',category:'Accessibility',scope:'/ · image',message:'Add image description text or mark this image decorative.'}
+  ]};
+  const f=await domFixture({doc,quality});
+  try {
+    f.click('[data-open="quality"]');
+    assert.match(f.w.document.querySelector('#legend-cms-quality-server-summary').textContent,/1 warning/);
+    assert.match(f.w.document.querySelector('#legend-cms-quality-server').textContent,/image description/i);
+    assert.match(f.w.document.querySelector('#legend-cms-quality-live-summary').textContent,/warning/);
+
+    const image=f.w.document.querySelector('.cms-extra-image');
+    image.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    const decorative=f.w.document.querySelector('#legend-cms-decorative');
+    decorative.checked=true;
+    decorative.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    assert.equal(image.getAttribute('alt'),'');
+    assert.equal(image.getAttribute('aria-hidden'),'true');
+
+    f.click('[data-open="quality"]');
+    f.click('#legend-cms-quality-refresh');
+    assert.doesNotMatch(f.w.document.querySelector('#legend-cms-quality-live').textContent,/mark this image decorative/i);
+
+    const saved=await f.save();
+    const stored=saved.pages['/'].extras.find(item=>item.id==='hero-photo');
+    assert.equal(stored.isDecorative,true);
+    assert.equal(stored.alt,'');
   } finally { f.close(); }
 });
 
