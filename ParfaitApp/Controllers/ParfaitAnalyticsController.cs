@@ -36,6 +36,7 @@ public sealed class ParfaitAnalyticsController(
 
         await analytics.TrackScopedAsync(
             store.CommerceBusinessId,
+            store.AgentTrackingProfileId,
             store.WebsiteContentVersionId,
             store.WebsiteSiteKey,
             store.BusinessKey,
