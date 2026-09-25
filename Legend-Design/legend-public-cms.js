@@ -31,9 +31,15 @@
   const initialFaviconLink = document.querySelector('link[rel~="icon"]');
   const originalFaviconHref = initialFaviconLink?.getAttribute('href') || (SITE_KEY === 'protect' ? '/images/favicon/legend-favicon.svg' : '/favicon.svg');
   const originalFaviconType = initialFaviconLink?.getAttribute('type') || '';
-  let documentState = { version: 1, faviconImageDataUrl: null, elements: {}, sectionOrder: {}, extras: [], theme: {} };
+  const defaultBreakpoints = [
+    { id: 'tablet', label: 'Tablet', maxWidthPx: 1024 },
+    { id: 'mobile', label: 'Mobile', maxWidthPx: 640 }
+  ];
+  let documentState = { version: 1, faviconImageDataUrl: null, elements: {}, sectionOrder: {}, extras: [], theme: {}, breakpoints: defaultBreakpoints.map(x => ({...x})) };
   let signalCatalog = null;
   let ctaCatalog = [];
+  let componentCatalog = [];
+  let currentDesignBreakpoint = 'base';
   let selected = null;
   let selectedSection = null;
   let editorPreview = null;
@@ -46,7 +52,7 @@
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
-  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'height', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'minWidth', 'overflowWrap'];
+  const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'minWidth', 'height', 'minHeight', 'maxHeight', 'position', 'left', 'top', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'overflowWrap', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'opacity', 'transform', 'zIndex', 'aspectRatio', 'display', 'gridTemplateColumns', 'gridTemplateRows', 'columnGap', 'rowGap', 'flexDirection', 'alignItems', 'justifyContent', 'flexWrap'];
 
   function rememberOriginal(el) {
     if (!originals.has(el)) originals.set(el, {
@@ -109,8 +115,58 @@
       sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
       extras: Array.isArray(input?.extras) ? input.extras : [],
       theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
+      breakpoints: Array.isArray(input?.breakpoints) && input.breakpoints.length
+        ? input.breakpoints
+            .filter(item => item && typeof item.id === 'string' && Number.isFinite(Number(item.maxWidthPx)))
+            .map(item => ({ id: safeId(item.id), label: String(item.label || item.id).slice(0, 80), maxWidthPx: Number(item.maxWidthPx) }))
+            .filter(item => item.id)
+            .sort((a,b) => b.maxWidthPx - a.maxWidthPx)
+        : defaultBreakpoints.map(item => ({...item})),
       pages
     };
+  }
+
+  function breakpointById(id) {
+    return (documentState.breakpoints || []).find(item => item.id === id) || null;
+  }
+
+  function responsiveChain() {
+    const breakpoints = [...(documentState.breakpoints || [])].sort((a,b) => b.maxWidthPx - a.maxWidthPx);
+    const forced = currentDesignBreakpoint !== 'base' ? breakpointById(currentDesignBreakpoint) : null;
+    const width = forced?.maxWidthPx ?? (Number.isFinite(window.innerWidth) ? window.innerWidth : Number.MAX_SAFE_INTEGER);
+    return breakpoints.filter(item => width <= item.maxWidthPx);
+  }
+
+  function resolvedVariant(override) {
+    if (!override) return { style: {}, layout: {}, hidden: undefined };
+    const resolved = {
+      ...override,
+      style: { ...(override.style || {}) },
+      layout: { ...(override.layout || {}) }
+    };
+    for (const breakpoint of responsiveChain()) {
+      const variant = override.responsive?.[breakpoint.id];
+      if (!variant) continue;
+      if (variant.hidden !== undefined && variant.hidden !== null) resolved.hidden = variant.hidden;
+      Object.assign(resolved.style, variant.style || {});
+      Object.assign(resolved.layout, variant.layout || {});
+    }
+    return resolved;
+  }
+
+  function editableVariant(override, create = true) {
+    if (!override) return null;
+    if (currentDesignBreakpoint === 'base') return override;
+    override.responsive ||= {};
+    if (!override.responsive[currentDesignBreakpoint] && create) {
+      override.responsive[currentDesignBreakpoint] = { style: {}, layout: {} };
+    }
+    const variant = override.responsive[currentDesignBreakpoint] || null;
+    if (variant) {
+      variant.style ||= {};
+      variant.layout ||= {};
+    }
+    return variant;
   }
 
   function pageState() {
