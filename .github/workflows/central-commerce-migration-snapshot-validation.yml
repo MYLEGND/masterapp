@@ -1,0 +1,45 @@
+name: Central commerce migration snapshot validation
+on:
+  push:
+    branches:
+      - repair/central-commerce-migration-snapshot-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Build migration startup path
+        run: dotnet build AgentPortal/AgentPortal.csproj -c Release --nologo -warnaserror
+      - name: Verify EF model snapshot is current
+        run: |
+          dotnet tool restore
+          ConnectionStrings__MasterAppDb='Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false' \
+            EF_FORCE_SQLSERVER=true \
+            DOTNET_ENVIRONMENT=Development \
+            ASPNETCORE_ENVIRONMENT=Development \
+            dotnet tool run dotnet-ef migrations has-pending-model-changes \
+              --project Infrastructure/Infrastructure.csproj \
+              --startup-project AgentPortal/AgentPortal.csproj \
+              --context MasterAppDbContext \
+              --configuration Release \
+              --no-build
+      - name: Verify commerce migration is in the canonical chain
+        run: |
+          ConnectionStrings__MasterAppDb='Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false' \
+            EF_FORCE_SQLSERVER=true \
+            DOTNET_ENVIRONMENT=Development \
+            ASPNETCORE_ENVIRONMENT=Development \
+            dotnet tool run dotnet-ef migrations list \
+              --project Infrastructure/Infrastructure.csproj \
+              --startup-project AgentPortal/AgentPortal.csproj \
+              --context MasterAppDbContext \
+              --configuration Release \
+              --no-build | grep 20260925163000_AddWebsiteCommerceScope
