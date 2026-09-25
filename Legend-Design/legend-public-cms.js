@@ -618,51 +618,101 @@
     applyLayout(el, effectiveLayout(override));
   }
 
-  function createExtra(extra) {
-    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
-    if (!section) return null;
+  function buildExtraNode(extra, editable = true, idPrefix = '') {
     let el;
     if (extra.type === 'image') {
       el = document.createElement('img');
-      el.src = mediaUrl(extra.imageDataUrl || '');
-      el.alt = '';
-      el.className = 'cms-extra cms-extra-image';
+      el.src = mediaUrl(extra.imageDataUrl || ''); el.alt = ''; el.className = 'cms-extra cms-extra-image';
     } else if (extra.type === 'section') {
-      el = document.createElement('section'); el.dataset.cmsSection = `extra:${extra.id}`; el.className = 'cms-extra cms-extra-section';
+      el = document.createElement('section');
+      if (editable) el.dataset.cmsSection = `extra:${extra.id}`;
+      el.className = 'cms-extra cms-extra-section';
     } else if (extra.type === 'video') {
-      el = document.createElement('video'); el.controls = true; el.preload = 'metadata'; if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
+      el = document.createElement('video'); el.controls = true; el.preload = 'metadata';
+      if (safeUrl(extra.videoUrl, true)) el.src = mediaUrl(extra.videoUrl); el.className = 'cms-extra';
     } else if (extra.type === 'card') {
       el = document.createElement('article'); el.className = 'cms-extra card cms-extra-card';
       const heading = document.createElement('h3'); setContentText(heading, extra.title || 'New service', true);
       const copy = document.createElement('p'); setContentText(copy, extra.text || '', true);
-      for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
+      if (editable) for (const [node, field] of [[heading, 'title'], [copy, 'text']]) {
         node.dataset.cmsExtraId = extra.id; node.dataset.cmsExtraField = field;
         node.dataset.cmsId = `extra:${extra.id}:${field}`; node.dataset.cmsEditable = 'true';
       }
       el.append(heading, copy);
     } else if (extra.type === 'button') {
-      el = document.createElement('a'); el.textContent = extra.text || 'New button'; if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
+      el = document.createElement('a'); el.textContent = extra.text || 'New button';
+      if (safeUrl(extra.href)) el.href = extra.href; el.className = 'cms-extra btn primary';
     } else if (extra.type === 'code') {
       el = document.createElement('div'); el.className = 'cms-extra cms-extra-code';
-      const frame = document.createElement('iframe');
-      frame.dataset.cmsCodeFrame = 'true';
-      frame.title = 'Custom code block';
+      const frame = document.createElement('iframe'); frame.dataset.cmsCodeFrame = 'true'; frame.title = 'Custom code block';
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals allow-popups');
-      frame.setAttribute('referrerpolicy', 'no-referrer');
-      frame.setAttribute('loading', 'lazy');
-      el.appendChild(frame);
-      renderCodePreview(el, extra);
+      frame.setAttribute('referrerpolicy', 'no-referrer'); frame.setAttribute('loading', 'lazy');
+      el.appendChild(frame); renderCodePreview(el, extra);
     } else {
-      el = document.createElement('p');
-      el.textContent = extra.text || '';
-      el.className = 'cms-extra cms-extra-text';
+      el = document.createElement('p'); el.textContent = extra.text || ''; el.className = 'cms-extra cms-extra-text';
     }
-    el.dataset.cmsExtraId = extra.id;
-    el.dataset.cmsId = `extra:${extra.id}`;
-    el.dataset.cmsEditable = 'true';
-    section.appendChild(el);
-    applyElementOverride(el, extra);
+    if (editable) {
+      el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
+    } else if (idPrefix) el.dataset.cmsReusableChild = `${idPrefix}:${extra.id}`;
     return el;
+  }
+
+  function reusableDefinition(instance) {
+    return instance?.type === 'reusable' && instance.syncSourceId ? documentState.reusableComponents?.[instance.syncSourceId] || null : null;
+  }
+
+  function renderReusableInstance(wrapper, instance) {
+    if (!wrapper || !instance) return;
+    wrapper.replaceChildren();
+    const definition = reusableDefinition(instance);
+    wrapper.dataset.cmsReusableId = instance.syncSourceId || '';
+    if (!definition) {
+      if (editorMode) {
+        const missing = document.createElement('p'); missing.className = 'legend-cms-reusable-missing';
+        missing.textContent = 'Reusable component is unavailable. Restore its definition or remove this instance.';
+        wrapper.appendChild(missing);
+      }
+      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance));
+      return;
+    }
+    const values = Array.isArray(definition.extras) ? definition.extras : [];
+    const root = values.find(value => value.sectionId === 'component.root') || values[0] || null;
+    const sectionMap = new Map([['component.root', wrapper]]);
+    if (definition.kind === 'section' && root?.type === 'section') {
+      sectionMap.set(`extra:${root.id}`, wrapper);
+      applyStyle(wrapper, { ...effectiveStyle(root), ...effectiveStyle(instance) });
+      applyLayout(wrapper, { ...effectiveLayout(root), ...effectiveLayout(instance) });
+    } else {
+      applyStyle(wrapper, effectiveStyle(instance)); applyLayout(wrapper, effectiveLayout(instance));
+    }
+    for (const item of values.filter(value => value.type === 'section' && value !== root)) {
+      const parent = sectionMap.get(item.sectionId) || wrapper;
+      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node); sectionMap.set(`extra:${item.id}`, node);
+      applyStyle(node, effectiveStyle(item)); applyLayout(node, effectiveLayout(item));
+    }
+    const leaves = values.filter(value => value.type !== 'section');
+    for (const item of leaves) {
+      if (definition.kind === 'block' && root && item !== root) continue;
+      const parent = sectionMap.get(item.sectionId) || wrapper;
+      const node = buildExtraNode(item, false, instance.id); node.classList.add('legend-cms-reusable-child');
+      parent.appendChild(node); applyElementOverride(node, item);
+    }
+  }
+
+  function createExtra(extra) {
+    const section = extra.type === 'section' ? document.querySelector('main') : document.querySelector(`[data-cms-section="${CSS.escape(extra.sectionId)}"]`);
+    if (!section) return null;
+    if (extra.type === 'reusable') {
+      const definition = reusableDefinition(extra);
+      const el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
+      el.className = 'cms-extra cms-reusable-instance';
+      el.dataset.cmsExtraId = extra.id; el.dataset.cmsId = `extra:${extra.id}`; el.dataset.cmsEditable = 'true';
+      if (extra.hidden === true) el.hidden = true;
+      section.appendChild(el); renderReusableInstance(el, extra); return el;
+    }
+    const el = buildExtraNode(extra, true);
+    section.appendChild(el); applyElementOverride(el, extra); return el;
   }
 
   function applyDocument(doc) {
@@ -703,7 +753,11 @@
 
   function refreshResponsiveOverrides() {
     Object.entries(pageState().elements).forEach(([id, override]) => applyElementOverride(document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`), override));
-    pageState().extras.forEach(extra => applyElementOverride(document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`), extra));
+    pageState().extras.forEach(extra => {
+      const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`);
+      if (extra.type === 'reusable') renderReusableInstance(node, extra);
+      else applyElementOverride(node, extra);
+    });
     refreshScaledElements();
     updateDirectCanvasUi();
   }
