@@ -493,6 +493,48 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task MediaLibrary_ReturnsOnlyTheAuthorizedWebsiteOwnersAssetsAndNoStorageSecrets()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var own = new WebsiteMediaAsset
+        {
+            Id = Guid.NewGuid(),
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey,
+            SourceUrl = "hero.png",
+            Sha256 = new string('a', 64),
+            StorageKey = "private/own-storage-key",
+            ContentType = "image/png",
+            SizeBytes = 2048,
+            CreatedUtc = DateTime.UtcNow
+        };
+        var other = new WebsiteMediaAsset
+        {
+            Id = Guid.NewGuid(),
+            OwnerKey = "another-website-owner",
+            SourceUrl = "private.png",
+            Sha256 = new string('b', 64),
+            StorageKey = "private/other-storage-key",
+            ContentType = "image/png",
+            SizeBytes = 4096,
+            CreatedUtc = DateTime.UtcNow
+        };
+        fixture.Db.AddRange(own, other);
+        await fixture.Db.SaveChangesAsync();
+
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.MediaLibrary(
+            fixture.Ticket(DateTime.UtcNow.AddMinutes(10))));
+        var json = JsonSerializer.Serialize(result.Value, JsonOptions);
+
+        Assert.Contains(own.Id.ToString(), json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hero.png", json, StringComparison.Ordinal);
+        Assert.DoesNotContain(other.Id.ToString(), json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("private.png", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("StorageKey", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Sha256", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("private/own-storage-key", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task EditorLayerMetadata_RoundTripsWithoutASecondLayerStore()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
