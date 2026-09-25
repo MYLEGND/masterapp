@@ -1889,12 +1889,10 @@
       gridOverlay.classList.remove('legend-cms-snap-x','legend-cms-snap-y');
 
       if (gesture.mode === 'move') {
-        if (cell > 0) {
-          const desiredLeft = gesture.selectedRect.left + dx;
-          const gridLeft = gesture.sectionRect.left + Math.round((desiredLeft - gesture.sectionRect.left) / cell) * cell;
-          snappedDx = gridLeft - gesture.selectedRect.left;
-        }
-        snappedDy = Math.round(dy / verticalStep) * verticalStep;
+        // Movement is free-form inside the selected section. The grid is visual
+        // guidance only; only near-center alignment gets a soft snap.
+        snappedDx = dx;
+        snappedDy = dy;
         const desiredCenterX = gesture.selectedRect.left + snappedDx + gesture.selectedRect.width / 2;
         const sectionCenterX = gesture.sectionRect.left + gesture.sectionRect.width / 2;
         if (Math.abs(desiredCenterX - sectionCenterX) <= Math.max(8, cell * .18)) {
