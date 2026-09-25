@@ -585,7 +585,7 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/legend-business-website-router/deployments?per_page=1")"
           case "$deployments_status" in
             200)
-              previous_version="$(jq -r 'select(.success == true) | .result[0].versions[0].version_id // empty' "$deployments_file")"
+              previous_version="$(jq -r 'select(.success == true) | .result.deployments[0].versions[0].version_id // empty' "$deployments_file")"
               ;;
             404)
               previous_version=""
