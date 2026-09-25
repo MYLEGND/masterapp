@@ -1,12 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the validated Website Studio direct-editing hardening through legend/approved-changes and subsequent production promotion. Deploy only Protect Website and LEGEND Website in the approved direct lane. Preserve all scoped drafts, published versions, tenant ownership, CRM, analytics, Meta, subscriptions, authentication, and unrelated application flows. Do not deploy AgentPortal, ClientApp, Parfait, or Cloudflare routing in the direct lane.",
-  "purpose": "Deploy the validated shared Website Studio hardening: separate select/move/resize/text-edit gestures, exact section-bounded selection, live page-selector labels from current page metadata, removal of obsolete competing drag paths, published and editor mobile viewport containment, and the corrected CMS catalog regression assertion. Use only the existing shared editor/document authority; no parallel state store, page-specific override, or stacked CSS.",
-  "requestId": "website-studio-direct-editing-mobile-hardening-scoped-release-20260925",
+  "authorization": "Founder reported shopparfait.com returning HTTP 500 and explicitly requested a surgical find and fix. Release only the Parfait repair through legend/approved-changes. Preserve every unrelated application, website editor, business workspace, CRM, analytics, authentication, billing, domain-routing, and customer-data flow.",
+  "purpose": "Restore Shop Parfait public rendering after the shared marketing-authority migration made optional Meta settings resolution capable of failing the global storefront layout. Repair a missing canonical MarketingConnection through the existing shared authority and fail open only for optional Meta instrumentation so a marketing lookup can never take the storefront offline.",
+  "requestId": "parfait-public-render-500-repair-20260925",
   "releaseMode": "approved-only",
   "targets": [
-    "masterapp-protect",
-    "masterapp-website"
+    "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false
 }
