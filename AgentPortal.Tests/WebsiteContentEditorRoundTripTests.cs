@@ -418,6 +418,81 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task MotionInteractions_RoundTripThroughTheCanonicalDocumentAndClampUnsafeValues()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.Elements[ElementId] = new WebsiteElementOverride
+        {
+            Interactions =
+            [
+                new()
+                {
+                    Id = "motion-one",
+                    Trigger = "enter-view",
+                    Effect = "slide",
+                    DurationMs = 650,
+                    DelayMs = 120,
+                    Easing = "ease-out",
+                    Once = true,
+                    Direction = "left",
+                    DistancePx = 48
+                },
+                new()
+                {
+                    Id = "bad-motion",
+                    Trigger = "invented-trigger",
+                    Effect = "fade",
+                    DurationMs = 999999,
+                    Easing = "ease-out"
+                }
+            ]
+        };
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        var motion = Assert.Single(saved.Elements[ElementId].Interactions);
+        Assert.Equal("motion-one", motion.Id);
+        Assert.Equal("enter-view", motion.Trigger);
+        Assert.Equal("slide", motion.Effect);
+        Assert.Equal(650, motion.DurationMs);
+        Assert.Equal("left", motion.Direction);
+        Assert.Equal(48m, motion.DistancePx);
+
+        document.Elements[ElementId].Interactions =
+        [
+            new()
+            {
+                Id = "bounded",
+                Trigger = "click",
+                Effect = "rotate",
+                DurationMs = 1,
+                DelayMs = 99999,
+                Easing = "linear",
+                Direction = "diagonal",
+                Amount = 999
+            }
+        ];
+        var bounded = Assert.Single(ReadDocument(await fixture.Controller.Save(new(ticket, document, 1))).Elements[ElementId].Interactions);
+        Assert.Equal(50, bounded.DurationMs);
+        Assert.Equal(10000, bounded.DelayMs);
+        Assert.Null(bounded.Direction);
+        Assert.Null(bounded.Amount);
+    }
+
+    [Fact]
+    public async Task Manage_ExposesOneServerOwnedMotionCatalog()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.Manage(fixture.Ticket(DateTime.UtcNow.AddMinutes(10))));
+        var json = JsonSerializer.Serialize(result.Value, JsonOptions);
+        Assert.Contains("\"motionCatalog\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"enter-view\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"fade\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("motionCatalogV2", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task EditorLayerMetadata_RoundTripsWithoutASecondLayerStore()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
