@@ -361,6 +361,18 @@ class ProductionSyncWorkflowSafety(unittest.TestCase):
         self.assertIn("git merge-base --is-ancestor", verify_block)
 
 
+class ProductionSyncMergeConditionSafety(unittest.TestCase):
+    def test_sync_merge_uses_always_after_intentional_release_security_skip(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/agentportal-production-deploy.yml').read_text()
+        start = workflow.index('  sync-merge:')
+        end = workflow.index('\n  build:', start)
+        sync = workflow[start:end]
+        self.assertIn('always()', sync)
+        self.assertIn("needs.candidate.result == 'success'", sync)
+        self.assertIn("needs.candidate.outputs.sync_only == 'true'", sync)
+        self.assertIn("needs.security.result == 'success'", sync)
+
+
 class StagingSafety(unittest.TestCase):
     def test_hold_blocks_all_automatic_mutations(self):
         from unittest.mock import Mock
