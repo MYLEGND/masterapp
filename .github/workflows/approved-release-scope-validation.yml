@@ -1,0 +1,19 @@
+name: Approved release scope validation
+on:
+  push:
+    branches:
+      - repair/approved-release-scope-dispatch-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  release-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release policy and lifecycle
+        run: |
+          python3 scripts/test-release-policy.py
+          python3 scripts/test-release-lifecycle.py
