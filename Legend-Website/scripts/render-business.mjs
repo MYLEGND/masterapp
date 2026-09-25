@@ -60,7 +60,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
       getComputedStyle:el=>new Proxy(el.style,{get:(style,name)=>name==='fontSize'?'16px':style[name]||''}),
       requestAnimationFrame:()=>0,cancelAnimationFrame(){},setTimeout:()=>0,clearTimeout(){}};
     window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey:'business',apiBase:'https://website.invalid',businessId:input.business.id};
-    window.LEGEND_PUBLIC_CMS_RENDER_INPUT={document:input.document,business:input.business,pageKey:key,server:true};
+    window.LEGEND_PUBLIC_CMS_RENDER_INPUT={document:input.document,business:input.business,collections:input.collections||[],pageKey:key,server:true};
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
     const title=page.title||`${input.business.displayName}${key==='home'?'':' | '+(built?.label||key)}`;
@@ -83,7 +83,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     renderInput.type='application/json';
     renderInput.id='legend-cms-published-document';
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
-    renderInput.textContent=JSON.stringify({document:currentDocument,business:input.business,pageKey:key,server:false,runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}}).replace(/</g,'\\u003c');
+    renderInput.textContent=JSON.stringify({document:currentDocument,business:input.business,collections:input.collections||[],pageKey:key,server:false,runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}}).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
     const form=doc.querySelector('[data-website-inquiry]');
     if(form){
