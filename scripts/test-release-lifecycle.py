@@ -315,6 +315,38 @@ class OrchestrationSafety(unittest.TestCase):
         self.assertIn('head_sha=' + 'b' * 40, api.api.call_args.args[0])
 
 
+class ApprovedDispatchScope(unittest.TestCase):
+    def ready_pr(self):
+        return {
+            'state': 'open',
+            'draft': False,
+            'base': {'ref': m.APPROVED},
+            'head': {'ref': 'release/scoped', 'sha': 'a' * 40, 'repo': {'full_name': 'owner/repo'}},
+            'author_association': 'OWNER'
+        }
+
+    def test_exact_approved_only_request_dispatches_scoped_mode(self):
+        from unittest.mock import Mock
+        api = Mock()
+        api.repo = 'owner/repo'
+        api.api.side_effect = [self.ready_pr(), {'merged': True, 'sha': 'b' * 40}]
+        with patch.object(m, 'direct_only_request', return_value=True) as scoped:
+            result = m.integrate(api, 12)
+        scoped.assert_called_once_with('a' * 40)
+        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'false'})
+        self.assertFalse(result['automaticRelease'])
+
+    def test_ordinary_approved_change_keeps_automatic_all_target_dispatch(self):
+        from unittest.mock import Mock
+        api = Mock()
+        api.repo = 'owner/repo'
+        api.api.side_effect = [self.ready_pr(), {'merged': True, 'sha': 'b' * 40}]
+        with patch.object(m, 'direct_only_request', return_value=False):
+            result = m.integrate(api, 13)
+        api.dispatch.assert_called_once_with(m.DIRECT, {'automatic': 'true'})
+        self.assertTrue(result['automaticRelease'])
+
+
 class StagingSafety(unittest.TestCase):
     def test_hold_blocks_all_automatic_mutations(self):
         from unittest.mock import Mock
