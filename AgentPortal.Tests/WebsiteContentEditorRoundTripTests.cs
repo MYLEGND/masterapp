@@ -241,6 +241,51 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task ResponsiveAnchors_RoundTripAndRejectUnknownAnchorValues()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.Elements[ElementId] = new WebsiteElementOverride
+        {
+            Style = new()
+            {
+                PositionMode = "absolute",
+                HorizontalAnchor = "right",
+                VerticalAnchor = "bottom",
+                InsetRightPx = 24,
+                InsetBottomPx = 36
+            },
+            Responsive = new(StringComparer.Ordinal)
+            {
+                ["mobile"] = new()
+                {
+                    Style = new()
+                    {
+                        HorizontalAnchor = "center",
+                        VerticalAnchor = "top",
+                        InsetTopPx = 18
+                    }
+                }
+            }
+        };
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        Assert.Equal("right", saved.Elements[ElementId].Style.HorizontalAnchor);
+        Assert.Equal(24m, saved.Elements[ElementId].Style.InsetRightPx);
+        Assert.Equal("center", saved.Elements[ElementId].Responsive["mobile"].Style.HorizontalAnchor);
+        Assert.Equal(18m, saved.Elements[ElementId].Responsive["mobile"].Style.InsetTopPx);
+
+        document.Elements[ElementId].Style.HorizontalAnchor = "somewhere";
+        document.Elements[ElementId].Style.VerticalAnchor = "floating";
+        document.Elements[ElementId].Style.InsetLeftPx = 50001;
+        var sanitized = ReadDocument(await fixture.Controller.Save(new(ticket, document, 1))).Elements[ElementId].Style;
+        Assert.Null(sanitized.HorizontalAnchor);
+        Assert.Null(sanitized.VerticalAnchor);
+        Assert.Null(sanitized.InsetLeftPx);
+    }
+
+    [Fact]
     public async Task ResponsiveLayoutSanitizer_DropsUnknownVariantsAndBoundsUnsafeGeometry()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
