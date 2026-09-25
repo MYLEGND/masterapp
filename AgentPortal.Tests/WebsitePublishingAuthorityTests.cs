@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using ProtectWebsite.Controllers;
+using Infrastructure.WebsiteEditing.Controllers;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -21,7 +21,7 @@ public sealed class WebsitePublishingAuthorityTests
         public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         public WebsiteEditorTicketProtector Tickets { get; } = new(new EphemeralDataProtectionProvider());
         public IConfiguration Config { get; } = new ConfigurationBuilder().AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Founder:Oid", "1d43fa52-e36d-4522-9d21-40b3ac260aed") }).Build();
-        public WebsiteContentController Controller => new(Db, Tickets, Config);
+        public WebsitePlatformController Controller => new(Db, Tickets, Config);
         public string Token => Tickets.Protect(new(WebsiteEditorSiteKeys.Legend, WebsiteEditorSiteKeys.GlobalOwnerKey, null, true, DateTime.UtcNow.AddMinutes(10), ActorUserId: "1d43fa52-e36d-4522-9d21-40b3ac260aed"));
         public void Dispose() { Db.Dispose(); Tickets.Dispose(); }
     }
