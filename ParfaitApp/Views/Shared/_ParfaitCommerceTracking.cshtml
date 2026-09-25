@@ -8,9 +8,23 @@
     {
         if (commerce is not null)
         {
-            var connection = await MarketingConnections.GetStatusAsync(
-                Shared.Analytics.MarketingOwnerScope.Business(commerce.CommerceBusinessId),
-                Context.RequestAborted);
+            Shared.Analytics.MarketingOwnerScope owner;
+            if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!commerce.AgentTrackingProfileId.HasValue)
+                    throw new InvalidOperationException("Protect storefront tracking requires the canonical agent marketing owner.");
+                owner = Shared.Analytics.MarketingOwnerScope.Agent(commerce.AgentTrackingProfileId.Value);
+            }
+            else if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
+            {
+                owner = Shared.Analytics.MarketingOwnerScope.Founder;
+            }
+            else
+            {
+                owner = Shared.Analytics.MarketingOwnerScope.Business(commerce.CommerceBusinessId);
+            }
+
+            var connection = await MarketingConnections.GetStatusAsync(owner, Context.RequestAborted);
             if (connection?.DisconnectedUtc is null)
                 metaPixelId = (connection?.PixelId ?? string.Empty).Trim();
         }
