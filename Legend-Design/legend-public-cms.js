@@ -41,6 +41,7 @@
   let componentCatalog = [];
   let motionCatalog = null;
   let mediaLibraryAssets = [];
+  let savedQualityReport = null;
   let currentDesignBreakpoint = 'base';
   let selected = null;
   const selectedElements = new Set();
@@ -856,12 +857,18 @@
 
     if (el instanceof HTMLImageElement) {
       if (override.imageDataUrl) el.src = mediaUrl(override.imageDataUrl);
+      if (override.isDecorative === true) {
+        el.alt = '';
+        el.setAttribute('aria-hidden', 'true');
+      } else {
+        el.removeAttribute('aria-hidden');
+        if (override.alt != null) el.alt = override.alt;
+      }
     } else if (override.text != null && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) {
       setContentText(el, override.text, true);
     }
 
     if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
-    if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
     if (override.type === 'code' && el.querySelector?.('iframe[data-cms-code-frame]')) renderCodePreview(el, override);
     applyStyle(el, resolved.style);
@@ -1658,6 +1665,7 @@
     const offsetY = document.getElementById('legend-cms-offset-y');
     const align = document.getElementById('legend-cms-align');
     const hidden = document.getElementById('legend-cms-hidden');
+    const decorative = document.getElementById('legend-cms-decorative');
     const lockButton = document.getElementById('legend-cms-lock');
     const renameButton = document.getElementById('legend-cms-layer-rename');
     const removeButton = document.getElementById('legend-cms-remove');
@@ -1748,6 +1756,7 @@
     if (scale) scale.disabled = isImage || isCode;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
+    if (decorative) decorative.checked = ov.isDecorative === true;
     document.querySelectorAll('[data-style-key]').forEach(input => {
       const key = input.dataset.styleKey;
       const value = variantStyle[key] ?? resolvedStyle[key];
@@ -3449,7 +3458,7 @@
     ['legend-cms-undo', 'legend-cms-redo'].forEach(id => panel.querySelector('.legend-cms-bar').appendChild(document.getElementById(id)));
     const duplicate = document.createElement('button'); duplicate.id = 'legend-cms-duplicate'; duplicate.type = 'button'; duplicate.textContent = 'Duplicate block'; layoutView.appendChild(duplicate);
     const theme = content.querySelector('.legend-cms-theme'); if (theme) document.getElementById('legend-cms-theme-view').appendChild(theme.parentElement);
-    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
+    const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     renderComponentCatalog();
@@ -3508,7 +3517,17 @@
       if (!selected) return; checkpoint(); const ov = selectedOverride(); const variant = editableVariant(ov); if (variant.style) delete variant.style[button.dataset.colorReset];
       applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     }));
-    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; } applyElementOverride(selected, ov); markDirty(); }));
+    ['href','videoUrl','alt'].forEach(key => document.getElementById(`legend-cms-${key}`).addEventListener('input', event => { if (!selected) return; const value = event.target.value; if (key !== 'alt' && !safeUrl(value, key === 'videoUrl')) { event.target.setCustomValidity('Enter a supported URL.'); return; } event.target.setCustomValidity(''); checkpoint(); const ov = selectedOverride(); ov[key] = value; if (key === 'alt' && value.trim()) ov.isDecorative = false; if (key === 'href') { delete ov.actionKey; const action = document.getElementById('legend-cms-action'); if (action) action.value = 'custom'; const custom = document.getElementById('legend-cms-custom-link'); if (custom) custom.hidden = false; } applyElementOverride(selected, ov); syncEditorControls(); markDirty(); }));
+    document.getElementById('legend-cms-decorative')?.addEventListener('change', event => {
+      if (!selected || !(selected instanceof HTMLImageElement)) return;
+      checkpoint();
+      const ov = selectedOverride(); if (!ov) return;
+      ov.isDecorative = event.target.checked;
+      if (ov.isDecorative) ov.alt = '';
+      applyElementOverride(selected, ov);
+      syncEditorControls();
+      markDirty();
+    });
     document.getElementById('legend-cms-video-file').addEventListener('change', async event => { const video = selected; if (video?.tagName !== 'VIDEO') return; const url = await uploadMedia(event.target.files?.[0]); if (!url || selected !== video) return; checkpoint(); const ov = selectedOverride(); ov.videoUrl = url; applyElementOverride(video, ov); syncEditorControls(); markDirty(); });
     document.getElementById('legend-cms-target').addEventListener('input', event => { if (!selected) return; checkpoint(); const ov = selectedOverride(); ov.target = event.target.checked ? '_blank' : '_self'; ov.href ||= rememberOriginal(selected).href; applyElementOverride(selected, ov); markDirty(); });
     document.getElementById('legend-cms-undo').addEventListener('click', () => restoreHistory(undoStack, redoStack));
@@ -3606,6 +3625,8 @@
       <div id="legend-cms-image-group" class="legend-cms-group" hidden>
         <label for="legend-cms-image">Replace image</label>
         <input id="legend-cms-image" type="file" accept="image/jpeg,image/png,image/webp">
+        <label for="legend-cms-alt">Image description<input id="legend-cms-alt" type="text" maxlength="500" placeholder="Describe meaningful image content"></label>
+        <label><input id="legend-cms-decorative" type="checkbox"> Decorative image — intentionally ignored by screen readers</label>
       </div>
       <div class="legend-cms-row">
         <div class="legend-cms-group"><label for="legend-cms-scale">Text scale</label><input id="legend-cms-scale" type="number" min="0" step="any" value="1"></div>
