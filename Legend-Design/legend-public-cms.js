@@ -1695,10 +1695,14 @@
     selectionFrame.className = 'legend-cms-selection-frame';
     selectionFrame.hidden = true;
     selectionFrame.innerHTML = `
-      <button type="button" class="legend-cms-move-handle" data-cms-gesture="move" aria-label="Move selected block on grid" title="Move on grid">Move</button>
-      <button type="button" class="legend-cms-resize-handle legend-cms-resize-x" data-cms-gesture="resize-x" aria-label="Resize selected block width" title="Resize width"></button>
-      <button type="button" class="legend-cms-resize-handle legend-cms-resize-y" data-cms-gesture="resize-y" aria-label="Resize selected block height" title="Resize height"></button>
-      <button type="button" class="legend-cms-resize-handle legend-cms-resize-xy" data-cms-gesture="resize-xy" aria-label="Resize selected block width and height" title="Resize width and height"></button>`;
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-top" data-cms-gesture="resize-y" data-cms-edge="top" aria-label="Resize selected content upward or downward"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-right" data-cms-gesture="resize-x" data-cms-edge="right" aria-label="Resize selected content left or right"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-bottom" data-cms-gesture="resize-y" data-cms-edge="bottom" aria-label="Resize selected content upward or downward"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-edge-left" data-cms-gesture="resize-x" data-cms-edge="left" aria-label="Resize selected content left or right"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-nw" data-cms-gesture="resize-xy" data-cms-edge="top-left" aria-label="Resize selected content diagonally"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-ne" data-cms-gesture="resize-xy" data-cms-edge="top-right" aria-label="Resize selected content diagonally"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-se" data-cms-gesture="resize-xy" data-cms-edge="bottom-right" aria-label="Resize selected content diagonally"></button>
+      <button type="button" class="legend-cms-edge-handle legend-cms-corner-sw" data-cms-gesture="resize-xy" data-cms-edge="bottom-left" aria-label="Resize selected content diagonally"></button>`;
     preview.appendChild(gridOverlay);
     preview.appendChild(selectionFrame);
 
@@ -1706,7 +1710,7 @@
       const handle = event.target.closest?.('[data-cms-gesture]');
       if (!handle || !selected || selected.dataset.cmsSignalOnly) return;
       const mode = handle.dataset.cmsGesture;
-      if (mode === 'move' && selected.dataset.cmsSection) return;
+      const edge = handle.dataset.cmsEdge || '';
       const section = selectedSection || currentSectionFor(selected);
       const parent = selected.parentElement;
       if (!section || !parent) return;
@@ -1718,7 +1722,7 @@
       const gestureStyle = editingStyle(override, true);
       checkpoint();
       directGesture = {
-        mode, target: selected, section, parent,
+        mode, edge, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
         selectedRect, sectionRect, parentRect,
         startWidthPercent: positiveNumber(gestureStyle.widthPercent) ? Number(gestureStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
@@ -1776,12 +1780,23 @@
         style.offsetYPx = Math.round((gesture.startOffsetYPx + snappedDy) * 1000) / 1000;
       } else {
         if (gesture.mode === 'resize-x' || gesture.mode === 'resize-xy') {
-          const rawWidth = gesture.startWidthPercent + dx / parentWidth * 100;
+          const fromLeft = gesture.edge.includes('left');
+          const widthDelta = (fromLeft ? -dx : dx) / parentWidth * 100;
+          const rawWidth = gesture.startWidthPercent + widthDelta;
           const snappedWidth = cell > 0 ? Math.round((rawWidth / 100 * parentWidth) / cell) * cell / parentWidth * 100 : rawWidth;
-          style.widthPercent = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
+          const nextWidth = Math.max(5, Math.min(100, Math.round(snappedWidth * 1000) / 1000));
+          style.widthPercent = nextWidth;
+          if (fromLeft) {
+            style.offsetXPercent = Math.round((gesture.startOffsetXPercent + dx / parentWidth * 100) * 1000) / 1000;
+          }
         }
         if (gesture.mode === 'resize-y' || gesture.mode === 'resize-xy') {
-          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + dy) / verticalStep) * verticalStep);
+          const fromTop = gesture.edge.includes('top');
+          const heightDelta = fromTop ? -dy : dy;
+          style.heightPx = Math.max(24, Math.round((gesture.startHeightPx + heightDelta) / verticalStep) * verticalStep);
+          if (fromTop) {
+            style.offsetYPx = Math.round((gesture.startOffsetYPx + dy) * 1000) / 1000;
+          }
         }
       }
       gesture.changed = true;
@@ -2954,23 +2969,24 @@
   function injectEditorStyles() {
     const style = document.createElement('style');
     style.textContent = `
-      .legend-cms-selected{outline:3px solid #f0cf78;outline-offset:4px}
+      .legend-cms-selected{outline:none}
       [data-cms-editable="true"]{cursor:pointer}
       .legend-cms-inline-editing{cursor:text;user-select:text;caret-color:currentColor}
       .legend-cms-preview .cms-extra-code iframe{pointer-events:none}
-      .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad45a0;background-image:linear-gradient(to right,#d4ad454d 1px,transparent 1px),linear-gradient(to bottom,#d4ad4538 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px;box-shadow:inset 0 0 0 1px #081a3a24}
-      .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;background:#4cc9f0b8}
-      .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px)}
-      .legend-cms-grid-overlay::after{top:50%;left:0;right:0;height:2px;transform:translateY(-1px)}
-      .legend-cms-grid-overlay.legend-cms-snap-x::before,.legend-cms-grid-overlay.legend-cms-snap-y::after{background:#f0cf78;box-shadow:0 0 0 2px #081a3a99}
-      .legend-cms-selection-frame{position:absolute;z-index:2147482500;pointer-events:none;border:2px solid #d4ad45;box-shadow:0 0 0 1px #081a3a80}
-      .legend-cms-move-handle,.legend-cms-resize-handle{position:absolute;pointer-events:auto;touch-action:none;border:1px solid #d4ad45;background:#081a3a;color:#fff;box-shadow:0 3px 12px #0005}
-      .legend-cms-move-handle{left:0;top:-38px;min-height:32px;padding:6px 10px;border-radius:9px;font:700 12px/1 Inter,system-ui,sans-serif;cursor:move}
-      .legend-cms-selection-frame[data-section-selected="true"] .legend-cms-move-handle{display:none}
-      .legend-cms-resize-handle{width:28px;height:28px;padding:0;border-radius:50%}
-      .legend-cms-resize-x{right:-15px;top:50%;transform:translateY(-50%);cursor:ew-resize}
-      .legend-cms-resize-y{left:50%;bottom:-15px;transform:translateX(-50%);cursor:ns-resize}
-      .legend-cms-resize-xy{right:-15px;bottom:-15px;cursor:nwse-resize}
+      .legend-cms-grid-overlay{position:absolute;z-index:2147482000;pointer-events:none;border:1px solid #d4ad454d;background-color:#081a3a08;background-image:linear-gradient(to right,#d4ad4526 1px,transparent 1px),linear-gradient(to bottom,#d4ad4517 1px,transparent 1px);background-size:calc(100% / 12) 100%,100% 24px}
+      .legend-cms-grid-overlay::before,.legend-cms-grid-overlay::after{content:"";position:absolute;pointer-events:none;opacity:0;background:#f0cf78;box-shadow:0 0 0 1px #081a3a66}
+      .legend-cms-grid-overlay::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-.5px)}
+      .legend-cms-grid-overlay::after{top:50%;left:0;right:0;height:1px;transform:translateY(-.5px)}
+      .legend-cms-grid-overlay.legend-cms-snap-x::before,.legend-cms-grid-overlay.legend-cms-snap-y::after{opacity:1}
+      .legend-cms-selection-frame{position:absolute;z-index:2147482500;pointer-events:none;border:1px solid #d4ad45;box-shadow:0 0 0 1px #081a3a26}
+      .legend-cms-edge-handle{position:absolute;pointer-events:auto;touch-action:none;margin:0;padding:0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;min-height:0!important}
+      .legend-cms-edge-top,.legend-cms-edge-bottom{left:10px;right:10px;height:12px;cursor:ns-resize}
+      .legend-cms-edge-top{top:-6px}.legend-cms-edge-bottom{bottom:-6px}
+      .legend-cms-edge-left,.legend-cms-edge-right{top:10px;bottom:10px;width:12px;cursor:ew-resize}
+      .legend-cms-edge-left{left:-6px}.legend-cms-edge-right{right:-6px}
+      .legend-cms-corner-nw,.legend-cms-corner-ne,.legend-cms-corner-se,.legend-cms-corner-sw{width:14px;height:14px}
+      .legend-cms-corner-nw{left:-7px;top:-7px;cursor:nwse-resize}.legend-cms-corner-ne{right:-7px;top:-7px;cursor:nesw-resize}.legend-cms-corner-se{right:-7px;bottom:-7px;cursor:nwse-resize}.legend-cms-corner-sw{left:-7px;bottom:-7px;cursor:nesw-resize}
+      .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
       .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
