@@ -359,7 +359,7 @@ public static class WebsiteStudioAiProposalPolicy
         if (string.IsNullOrWhiteSpace(value)) return null;
         var route = value.Trim();
         if (!route.StartsWith('/') || route.StartsWith("//") || route.Contains('?') ||
-            route.Contains('#') || route.Contains("..") || route.Contains('\') ||
+            route.Contains('#') || route.Contains("..") || route.Contains('\\') ||
             route.Any(char.IsControl) || route.Length > 160)
             return null;
         return route.Length > 1 ? route.TrimEnd('/') : route;

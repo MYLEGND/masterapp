@@ -17,7 +17,7 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
   class Element {
     constructor(tag = 'div') {
       this.tagName = tag.toUpperCase(); this.dataset = {}; this.children = [];
-      this.textContent = ''; this.listeners = new Map(); this.attributes = {}; this.clientWidth = 1000; this.className = ''; this.baseFontSize = 64;
+      this.textContent = ''; this.listeners = new Map(); this.attributes = {}; this.clientWidth = 1000; this.className = ''; this.baseFontSize = 64; this.scrollLeft = 0; this.scrollTop = 0;
       this.style = { removeProperty: key => { delete this.style[key]; }, setProperty: (key, value) => { this.style[key] = value; } };
       this.classList = {
         add: name => { if (!this.className.split(' ').includes(name)) this.className = (this.className + ' ' + name).trim(); },
@@ -32,6 +32,10 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
     insertBefore(child, before) { if (!before) return this.appendChild(child); this.children.splice(this.children.indexOf(before), 0, child); child.parentElement = this; return child; }
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(x => x !== this); }
     get firstChild() { return this.children[0]; }
+    get options() { return this.children.filter(child => child.tagName === 'OPTION'); }
+    getBoundingClientRect() { return { left:0, top:0, right:this.clientWidth, bottom:40, width:this.clientWidth, height:40 }; }
+    scrollIntoView() {}
+    setPointerCapture() {}
     setAttribute(key, value) { this.attributes[key] = value; }
     showModal() {}
     focus() {}
