@@ -37,6 +37,7 @@ public sealed class WebsiteContentDocument
     public WebsiteThemeOverride Theme { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteBreakpointCatalog.Defaults();
     public Dictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, WebsiteFormDefinition> Forms { get; set; } = new(StringComparer.Ordinal);
     public DateTime? UpdatedUtc { get; set; }
 }
 
@@ -166,6 +167,7 @@ public sealed class WebsiteExtraComponent
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
     public string? ReusableDefinitionId { get; set; }
+    public string? FormDefinitionId { get; set; }
     public bool? EditorLocked { get; set; }
     public string? EditorLabel { get; set; }
     public string? ActionKey { get; set; }
@@ -222,6 +224,77 @@ public sealed class WebsitePageDocument
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
+}
+
+public sealed class WebsiteFormDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "Lead form";
+    public string SubmitLabel { get; set; } = "Send";
+    public string SuccessMessage { get; set; } = "Thanks — your inquiry has been received.";
+    public string ConsentText { get; set; } = "I agree to share this inquiry with this website.";
+    public bool RequireConsent { get; set; } = true;
+    public List<WebsiteFormFieldDefinition> Fields { get; set; } = new();
+}
+
+public sealed class WebsiteFormFieldDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Label { get; set; } = "";
+    public string Type { get; set; } = "text";
+    public string Role { get; set; } = "custom";
+    public bool Required { get; set; }
+    public string? Placeholder { get; set; }
+    public int Step { get; set; } = 1;
+    public int Span { get; set; } = 12;
+    public List<string> Options { get; set; } = new();
+}
+
+public sealed record WebsiteFormCatalogOption(string Key, string Label);
+
+public static class WebsiteFormFieldCatalog
+{
+    public const int MaxFields = 30;
+    public const int MaxOptionsPerField = 50;
+    public const int MaxSteps = 6;
+    public static IReadOnlyList<WebsiteFormCatalogOption> Types { get; } =
+    [
+        new("text", "Short text"),
+        new("email", "Email"),
+        new("tel", "Phone"),
+        new("textarea", "Long text"),
+        new("select", "Dropdown"),
+        new("checkbox", "Checkbox"),
+        new("date", "Date"),
+        new("number", "Number"),
+        new("url", "Website / URL")
+    ];
+    public static IReadOnlyList<WebsiteFormCatalogOption> Roles { get; } =
+    [
+        new("firstName", "First Name"),
+        new("lastName", "Last Name"),
+        new("email", "Email"),
+        new("phone", "Phone"),
+        new("message", "Message / Notes"),
+        new("custom", "Custom field")
+    ];
+
+    public static bool AllowsType(string? value) => Types.Any(option => option.Key == value);
+    public static bool AllowsRole(string? value) => Roles.Any(option => option.Key == value);
+
+    public static WebsiteFormDefinition DefaultLeadForm(string id, string name = "Lead form") => new()
+    {
+        Id = id,
+        Name = name,
+        Fields =
+        [
+            new() { Id = "first-name", Label = "First Name", Type = "text", Role = "firstName", Required = true, Step = 1, Span = 6 },
+            new() { Id = "last-name", Label = "Last Name", Type = "text", Role = "lastName", Step = 1, Span = 6 },
+            new() { Id = "phone", Label = "Phone Number", Type = "tel", Role = "phone", Step = 1, Span = 6 },
+            new() { Id = "email", Label = "Email", Type = "email", Role = "email", Required = true, Step = 1, Span = 6 },
+            new() { Id = "message", Label = "Message", Type = "textarea", Role = "message", Step = 1, Span = 12 }
+        ]
+    };
 }
 
 public sealed class WebsiteReusableComponentDefinition
@@ -343,6 +416,7 @@ public static class WebsiteComponentCatalog
         new("card", "Card", "Layout", true, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack], ["viewed", "click"]),
         new("group", "Group", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed"]),
         new("reusable", "Synced component", "Reusable", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed"], DirectAdd: false),
+        new("form", "Lead form", "Business", false, false, false, false, [WebsiteLayoutModeCatalog.Flow], ["viewed", "form_started", "submit_attempt", "submission_saved"]),
         new("section", "Section", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed", "scroll_threshold"]),
         new("code", "Code / embed", "Advanced", false, false, false, false, [WebsiteLayoutModeCatalog.Flow], ["viewed"])
     ];
