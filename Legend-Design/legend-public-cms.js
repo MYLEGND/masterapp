@@ -675,6 +675,7 @@
       await loadRuntimeScript(context.trackingAsset || '/legend-public-tracking.js');
       await loadRuntimeScript(context.metaSignalAsset || '/legend-public-meta-signal-intelligence.js');
       if (meta.enabled && window.metaSignalIntelligence?.createLandingSession) {
+        const inquiryForm = document.querySelector('form[data-website-inquiry][data-form-key]');
         window.LEGEND_PUBLIC_META_SESSION = window.metaSignalIntelligence.createLandingSession({
           ...meta,
           siteKey: SITE_KEY,
@@ -683,8 +684,8 @@
           effectivePageKey: pageKey,
           pageVariant: SITE_KEY + '_website',
           pageMode: 'site_mode',
-          formId: document.querySelector('form[data-form-key]')?.dataset.formKey || '',
-          requiredContactFields: SITE_KEY === 'business' ? ['FirstName','LastName','Phone','Email'] : []
+          formId: inquiryForm?.dataset.formKey || '',
+          requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
         });
       }
     } catch (error) {
