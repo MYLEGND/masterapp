@@ -22,6 +22,11 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
     public static bool HasValidPublicOrigin(HttpContext context) =>
         TryOrigin(context.Request.Headers.Origin.ToString(), out _);
 
+    public Task<PublicWebsiteRuntimeScope?> ResolveInquiryAsync(
+        HttpContext context,
+        CancellationToken cancellationToken) =>
+        ResolveInquiryAsync(context, sourcePath: null, cancellationToken);
+
     public async Task<PublicWebsiteRuntimeScope?> ResolveInquiryAsync(
         HttpContext context,
         string? sourcePath = null,
@@ -35,6 +40,12 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         if (protect is not null) return protect;
         return await ResolveAsync(context, WebsiteEditorSiteKeys.Business, sourcePath, cancellationToken);
     }
+
+    public Task<PublicWebsiteRuntimeScope?> ResolveAsync(
+        HttpContext context,
+        string? requestedSiteKey,
+        CancellationToken cancellationToken) =>
+        ResolveAsync(context, requestedSiteKey, sourcePath: null, cancellationToken);
 
     public async Task<PublicWebsiteRuntimeScope?> ResolveAsync(
         HttpContext context,
