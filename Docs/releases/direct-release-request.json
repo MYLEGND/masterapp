@@ -1,12 +1,11 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the already-validated centralized website commerce addition. Final scoped deployment after release-policy and EF migration-snapshot validation. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Final scoped release of centralized Store capability. Apply the validated additive WebsiteContentState.CommerceBusinessId migration and deploy only Protect Website, Parfait, and LEGEND Website. No mirrored storefront, no duplicate product/order store, no second Meta sender, no stacked website override system.",
-  "requestId": "centralized-website-commerce-final-scoped-20260925",
+  "authorization": "Founder authorized the validated MasterApp platform ownership refactor after isolated architecture validation succeeded. Deploy only Protect Website and LEGEND Website. Preserve AgentPortal, ClientApp, Parfait, Cloudflare routing, CRM, website drafts/published versions, database state, authentication, billing authorities, marketing connections, and unrelated systems.",
+  "purpose": "Scoped runtime release of the centralized MasterApp ownership refactor. Protect remains the thin host/adapter while website management, publishing, runtime, shared frontend authority, Meta runtime authorities, and public booking authority are owned by MasterApp Infrastructure/SHARED. No behavior rewrite, no duplicate service, no parallel data path, and no unrelated deployment.",
+  "requestId": "masterapp-platform-ownership-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
-    "masterapp-parfait",
     "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false
