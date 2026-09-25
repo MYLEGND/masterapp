@@ -2148,10 +2148,16 @@
   }
 
   function elementLabel(el) {
-    const kind = el.dataset.cmsSection ? 'Section' : ({ A: 'Link', IMG: 'Image', VIDEO: 'Video', H1: 'Heading', H2: 'Heading', H3: 'Heading', P: 'Text' }[el.tagName] || 'Block');
+    const pageExtra = el.dataset.cmsExtraId ? pageState().extras.find(item => item.id === el.dataset.cmsExtraId) : null;
+    const definition = el.dataset.cmsReusableDefinitionId ? reusableDefinition(el.dataset.cmsReusableDefinitionId)
+      : pageExtra?.type === 'reusable' ? reusableDefinition(pageExtra.reusableDefinitionId) : null;
+    const kind = pageExtra?.type === 'reusable' ? 'Synced'
+      : el.dataset.cmsReusableDefinitionId ? 'Synced member'
+      : el.dataset.cmsSection ? 'Section'
+      : ({ A: 'Link', IMG: 'Image', VIDEO: 'Video', H1: 'Heading', H2: 'Heading', H3: 'Heading', P: 'Text' }[el.tagName] || 'Block');
     const override = overrideForElement(el, false);
     const custom = String(override?.editorLabel || '').trim().slice(0,64);
-    const label = custom || (el.getAttribute('alt') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 64);
+    const label = definition?.name || custom || (el.getAttribute('alt') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 64);
     return label ? `${kind} · ${label}` : kind;
   }
 
@@ -2784,7 +2790,7 @@
     }
     let group = '';
     for (const item of componentCatalog) {
-      if (!item?.type || !item?.label) continue;
+      if (!item?.type || !item?.label || item.directAdd === false) continue;
       if (item.group && item.group !== group) {
         group = item.group;
         const heading = document.createElement('small');
@@ -2803,6 +2809,25 @@
         button.addEventListener('click', () => addBlock(item.type));
       }
       host.appendChild(button);
+    }
+
+    const definitions = Object.values(documentState.reusableComponents || {})
+      .filter(definition => definition?.id && definition?.name)
+      .sort((a,b) => String(a.name).localeCompare(String(b.name)));
+    if (definitions.length) {
+      const heading = document.createElement('small');
+      heading.className = 'legend-cms-component-group';
+      heading.textContent = 'Synced components';
+      host.appendChild(heading);
+      for (const definition of definitions) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.addReusable = definition.id;
+        button.textContent = definition.name;
+        button.title = 'Insert a synced instance. Shared edits update every instance; placement stays local.';
+        button.addEventListener('click', () => insertReusableComponent(definition.id));
+        host.appendChild(button);
+      }
     }
   }
 
@@ -2937,7 +2962,12 @@
   function selectedComponentCapability() {
     if (!selected || !Array.isArray(componentCatalog)) return null;
     let type = null;
-    if (selected.dataset.cmsExtraId) {
+    if (selected.dataset.cmsReusableDefinitionId) {
+      const definition = reusableDefinition(selected.dataset.cmsReusableDefinitionId);
+      if (selected.dataset.cmsReusableLocalId === '__root__') type = definition?.rootType || 'group';
+      else type = reusableMember(selected.dataset.cmsReusableDefinitionId, selected.dataset.cmsReusableLocalId)?.type || null;
+    }
+    if (!type && selected.dataset.cmsExtraId) {
       type = pageState().extras.find(item => item.id === selected.dataset.cmsExtraId)?.type || null;
     }
     type ||= selected.dataset.cmsSection ? 'section'
@@ -2945,7 +2975,7 @@
       : selected.tagName === 'VIDEO' ? 'video'
       : ['A','BUTTON'].includes(selected.tagName) ? 'button'
       : selected.tagName === 'ARTICLE' ? 'card'
-      : ['DIV','HEADER','FOOTER'].includes(selected.tagName) ? 'section'
+      : ['DIV','HEADER','FOOTER'].includes(selected.tagName) ? 'container'
       : 'text';
     return componentCatalog.find(item => item.type === type) || null;
   }
