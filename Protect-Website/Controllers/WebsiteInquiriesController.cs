@@ -143,8 +143,9 @@ public sealed class WebsiteInquiriesController : ControllerBase
             WebsiteBindingId = Optional(request.SourceActionKey, 120),
             InterestType = scope.SiteKey == WebsiteEditorSiteKeys.Business ? "BusinessInquiry" : "LegendInquiry",
             TermsAccepted = request.Consent,
-            MarketingEmailConsent = request.Consent,
-            CallTextConsent = request.Consent && !string.IsNullOrWhiteSpace(phone),
+            // Sharing an inquiry is not separate marketing or call/text permission.
+            MarketingEmailConsent = false,
+            CallTextConsent = false,
             SessionId = Optional(request.SessionId, 128),
             VisitorId = Optional(request.VisitorId, 128),
             UtmSource = Optional(request.UtmSource, 160),
