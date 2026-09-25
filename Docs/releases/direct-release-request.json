@@ -1,13 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the centralized website commerce addition after isolated validation. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Release the centralized Store capability: Website Studio Add/Remove Store and editable Store/Shop navigation, scoped cart and Parfait-hosted storefront, shared product/order/inventory/discount/checkout authorities, Parfait-style Manage Store workspace, compiled business Store navigation, and canonical analytics/Meta routing. No mirrored storefront, no duplicate product/order store, no second Meta sender, and no stacked website override system.",
-  "requestId": "centralized-website-commerce-20260925",
+  "authorization": "Founder explicitly authorized the already-validated centralized website commerce addition. Retry deployment after the scoped release-policy repair. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
+  "purpose": "Deploy the centralized Store capability already merged at the approved source: Website Studio Add/Remove Store and editable Store/Shop navigation, scoped cart and Parfait-hosted storefront, shared product/order/inventory/discount/checkout authorities, Parfait-style Manage Store workspace, compiled business Store navigation, and canonical analytics/Meta routing. Apply only the additive WebsiteContentState CommerceBusinessId migration. No mirrored storefront, no duplicate product/order store, no second Meta sender, and no stacked website override system.",
+  "requestId": "centralized-website-commerce-retry-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
-    "masterapp-website",
-    "masterapp-parfait"
+    "masterapp-parfait",
+    "masterapp-website"
   ],
   "cloudflareWebsiteRouting": false
 }
