@@ -267,7 +267,8 @@ public sealed class WebsiteContentController : ControllerBase
                 roles = WebsiteFormFieldCatalog.Roles,
                 maxFields = WebsiteFormFieldCatalog.MaxFields,
                 maxOptionsPerField = WebsiteFormFieldCatalog.MaxOptionsPerField,
-                maxSteps = WebsiteFormFieldCatalog.MaxSteps
+                maxSteps = WebsiteFormFieldCatalog.MaxSteps,
+                defaultDefinition = WebsiteFormFieldCatalog.DefaultLeadForm("__new__")
             },
             motionCatalog = new
             {
