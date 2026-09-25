@@ -3,26 +3,127 @@ on:
   push:
     branches:
       - diagnose/central-commerce-live-provenance-20260925
+
 permissions:
   contents: read
+  id-token: write
+
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
+    environment: Production
     steps:
-      - name: Probe Parfait and selected live endpoints read-only
+      - name: Probe Parfait public and Azure hosts read-only
         shell: bash
         run: |
           set -euo pipefail
-          for url in             https://masterapp-parfait.azurewebsites.net/api/runtime-provenance             https://masterapp-parfait.azurewebsites.net/             https://masterapp-parfait.azurewebsites.net/store             https://masterapp-parfait.azurewebsites.net/internal/login             https://shopparfait.com/             https://shopparfait.com/store             https://masterapp-protect.azurewebsites.net/api/runtime-provenance             https://masterapp-website.azurewebsites.net/_deployment-provenance.txt
+          for url in \
+            "https://masterapp-parfait.azurewebsites.net/api/runtime-provenance" \
+            "https://masterapp-parfait.azurewebsites.net/" \
+            "https://masterapp-parfait.azurewebsites.net/store" \
+            "https://masterapp-parfait.azurewebsites.net/internal/login" \
+            "https://shopparfait.com/" \
+            "https://shopparfait.com/store"
           do
             body="$(mktemp)"
-            code="$(curl --silent --show-error --location --max-time 30               -H 'Cache-Control: no-cache' -H 'User-Agent: LEGEND-readonly-probe/1.0'               -o "$body" -w '%{http_code}' "$url" || true)"
+            code="$(curl --silent --show-error --location --max-time 20 \
+              -H 'Cache-Control: no-cache' -H 'User-Agent: LEGEND-readonly-probe/1.0' \
+              -o "$body" -w '%{http_code}' "$url" || true)"
             bytes="$(wc -c < "$body" | tr -d ' ')"
-            type="$(file -b --mime-type "$body" 2>/dev/null || true)"
-            printf '%s status=%s bytes=%s type=%s\n' "$url" "$code" "$bytes" "$type"
-            if [ "$code" = 200 ] && [[ "$url" == *"provenance"* || "$url" == *"_deployment-provenance"* ]]; then
-              head -c 512 "$body"; printf '\n'
-            fi
+            printf '%s status=%s bytes=%s\n' "$url" "$code" "$bytes"
             rm -f "$body"
           done
+
+      - name: Authenticate to Azure for read-only diagnostics
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Inspect Parfait startup prerequisites without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          settings="$RUNNER_TEMP/parfait-settings.json"
+          strings="$RUNNER_TEMP/parfait-connection-strings.json"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$settings"
+          az webapp config connection-string list -g masterapp-rg -n masterapp-parfait -o json > "$strings"
+          az webapp show -g masterapp-rg -n masterapp-parfait \
+            --query '{state:state,availabilityState:availabilityState,httpsOnly:httpsOnly,enabled:enabled}' -o json
+          SETTINGS_FILE="$settings" STRINGS_FILE="$strings" python3 - <<'PY'
+          import json, os, re
+          settings = {row.get("name"): row.get("value") for row in json.load(open(os.environ["SETTINGS_FILE"], encoding="utf-8"))}
+          connections = {row.get("name") for row in json.load(open(os.environ["STRINGS_FILE"], encoding="utf-8"))}
+          def first(*names):
+              for name in names:
+                  value = settings.get(name)
+                  if value is not None and str(value).strip():
+                      return str(value).strip()
+              return ""
+          founder = first("FOUNDER_OID", "FounderOid", "Founder__Oid", "Founder:Oid")
+          dp_blob = first("DataProtection__BlobUri", "DataProtection:BlobUri")
+          dp_key = first("DataProtection__KeyVaultKeyId", "DataProtection:KeyVaultKeyId")
+          owner = first("OWNER_EMAIL", "OwnerEmail")
+          owners = first("OWNER_EMAILS", "OwnerEmails")
+          print({
+              "founder_oid_present": bool(founder),
+              "founder_oid_guid_shape": bool(re.fullmatch(r"[0-9a-fA-F-]{36}", founder)),
+              "data_protection_blob_present": bool(dp_blob),
+              "data_protection_key_present": bool(dp_key),
+              "owner_identity_present": bool(owner or owners),
+              "masterapp_db_connection_named": "MasterAppDb" in connections,
+          })
+          PY
+          rm -f "$settings" "$strings"
+
+      - name: Download and sanitize Parfait App Service diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/parfait-logs.zip"
+          extract="$RUNNER_TEMP/parfait-logs"
+          mkdir -p "$extract"
+          if ! az webapp log download -g masterapp-rg -n masterapp-parfait --log-file "$archive" >/dev/null 2>&1; then
+            echo "log_download=unavailable"
+            exit 0
+          fi
+          unzip -q "$archive" -d "$extract"
+          LOG_ROOT="$extract" python3 - <<'PY'
+          import os, pathlib, re
+          root = pathlib.Path(os.environ["LOG_ROOT"])
+          patterns = re.compile(
+              r"(Unhandled exception|Application startup exception|fail(?:ed|ure)?|fatal|"
+              r"InvalidOperationException|ArgumentException|Azure|KeyVault|DataProtection|"
+              r"FOUNDER_OID|MasterAppDb|connection string|startup|host terminated|"
+              r"Could not load|FileNotFound|TypeLoad|SqlException)",
+              re.I)
+          url = re.compile(r"https?://[^\s\"']+")
+          email = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+          guid = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b", re.I)
+          secretish = re.compile(r"(?i)(password|pwd|secret|token|key|connectionstring)\s*[=:]\s*[^\s;,]+")
+          longtoken = re.compile(r"\b[A-Za-z0-9_\-+/=]{48,}\b")
+          emitted = 0
+          candidates = sorted(p for p in root.rglob("*") if p.is_file() and p.stat().st_size <= 20_000_000)
+          for path in candidates:
+              try:
+                  data = path.read_text(encoding="utf-8", errors="replace")
+              except Exception:
+                  continue
+              for line in data.splitlines():
+                  if not patterns.search(line):
+                      continue
+                  line = url.sub("[url]", line)
+                  line = email.sub("[email]", line)
+                  line = guid.sub("[guid]", line)
+                  line = secretish.sub(lambda m: m.group(1) + "=[redacted]", line)
+                  line = longtoken.sub("[token]", line)
+                  print(f"{path.name}: {line[:1200]}")
+                  emitted += 1
+                  if emitted >= 160:
+                      raise SystemExit
+          if emitted == 0:
+              print("sanitized_exception_lines=0")
+          PY
+          rm -rf "$archive" "$extract"
