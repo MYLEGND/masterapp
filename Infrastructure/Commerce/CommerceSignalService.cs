@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
 
@@ -9,6 +10,7 @@ namespace Infrastructure.Commerce;
 
 public sealed record CommerceSignalContext(
     Guid CommerceBusinessId,
+    Guid? AgentTrackingProfileId,
     Guid? WebsiteContentVersionId,
     string SiteKey,
     string BusinessKey,
@@ -68,14 +70,18 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         var dedupe = $"commerce:{context.CommerceBusinessId:N}:{eventName.ToLowerInvariant()}:{identity}";
         if (dedupe.Length > 220) dedupe = dedupe[..220];
 
-        if (await db.MetaSignalEvents.AsNoTracking()
-            .AnyAsync(x => x.EventName == eventName &&
-                           x.CommerceBusinessId == context.CommerceBusinessId &&
-                           x.MetaDeduplicationKey == dedupe, ct))
-            return false;
-
         var eventId = "commerce_" + StableToken(dedupe);
+        if (await db.MetaSignalEvents.AsNoTracking()
+            .AnyAsync(x => x.EventId == eventId || x.MetaDeduplicationKey == dedupe, ct))
+            return false;
         if (eventId.Length > 120) eventId = eventId[..120];
+
+        var isProtectOwner = string.Equals(context.SiteKey, WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase);
+        var isLegendOwner = string.Equals(context.SiteKey, WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase);
+        var typedBusinessId = isProtectOwner || isLegendOwner ? (Guid?)null : context.CommerceBusinessId;
+        var typedAgentId = isProtectOwner ? context.AgentTrackingProfileId : null;
+        if (isProtectOwner && !typedAgentId.HasValue)
+            throw new InvalidOperationException("A Protect commerce signal requires the canonical agent marketing owner.");
 
         var payload = new
         {
@@ -83,6 +89,8 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             businessType = "Ecommerce",
             reportingOwner = context.BusinessKey,
             commerceBusinessId = context.CommerceBusinessId,
+            analyticsOwnerCommerceBusinessId = typedBusinessId,
+            analyticsOwnerAgentTrackingProfileId = typedAgentId,
             websiteContentVersionId = context.WebsiteContentVersionId,
             sourceUrl = context.EventSourceUrl,
             sourceHost = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var sourceUri) ? sourceUri.Host : null,
@@ -160,7 +168,8 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
             FbpPresent = !string.IsNullOrWhiteSpace(context.Fbp),
             Referrer = NormalizeNullable(context.Referrer),
             UserAgent = NormalizeNullable(context.UserAgent),
-            CommerceBusinessId = context.CommerceBusinessId,
+            CommerceBusinessId = typedBusinessId,
+            AgentTrackingProfileId = typedAgentId,
             WebsiteContentVersionId = context.WebsiteContentVersionId,
             Environment = ResolveEnvironment(context.EventSourceUrl),
             Host = Uri.TryCreate(context.EventSourceUrl, UriKind.Absolute, out var uri) ? uri.Host : null,
@@ -186,9 +195,7 @@ public sealed class CommerceSignalService(MasterAppDbContext db)
         {
             db.Entry(row).State = EntityState.Detached;
             if (await db.MetaSignalEvents.AsNoTracking()
-                .AnyAsync(x => x.EventName == eventName &&
-                               x.CommerceBusinessId == context.CommerceBusinessId &&
-                               (x.MetaDeduplicationKey == dedupe || x.EventId == eventId), ct))
+                .AnyAsync(x => x.MetaDeduplicationKey == dedupe || x.EventId == eventId, ct))
                 return false;
             throw;
         }
