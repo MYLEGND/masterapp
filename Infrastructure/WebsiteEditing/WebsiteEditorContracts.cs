@@ -215,6 +215,9 @@ public sealed class WebsiteReusableComponentDefinition
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
+    public string RootType { get; set; } = "group";
+    public List<WebsiteSignalBinding> Signals { get; set; } = new();
+    public List<WebsiteMotionInteraction> Interactions { get; set; } = new();
     public WebsiteStyleOverride Style { get; set; } = new();
     public WebsiteLayoutOverride Layout { get; set; } = new();
     public Dictionary<string, WebsiteResponsiveOverride> Responsive { get; set; } = new(StringComparer.Ordinal);
