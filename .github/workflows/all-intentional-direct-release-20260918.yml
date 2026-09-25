@@ -787,6 +787,9 @@ jobs:
               if website_routing:
                   required=['BASE','BUILD','ROUTINGCHECKS','PACKAGE']
                   skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH','ROUTINGSECRET','ROUTINGDEPLOY','ROUTINGLIVE']+list(apps.values())
+              elif set(selected) <= {'masterapp-protect','masterapp-website'}:
+                  required=['BASE','BUILD','PACKAGE']
+                  skipped=['TESTS','WEB','AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
               else:
                   required=['BASE','BUILD','TESTS','WEB','PACKAGE']
                   skipped=['AZURE','MIGRATE','LIVE','PROTECTAUTH']+routing_steps+list(apps.values())
