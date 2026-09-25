@@ -48,8 +48,14 @@ public static class WebsiteDraftQualityInspector
                     checks.Add(new("sync_source_missing", "warning", "This block has a sync source that no reusable definition owns.", path, id));
             foreach (var extra in page.Extras)
                 if (!string.IsNullOrWhiteSpace(extra.SyncSourceId) && !reusableSyncIds.Contains(extra.SyncSourceId))
-                    checks.Add(new("sync_source_missing", "warning", "This added block has a sync source that no reusable definition owns.", path, "extra:" + extra.Id));
+                    checks.Add(new("sync_source_missing", extra.Type == "reusable" ? "error" : "warning", "This added block has a sync source that no reusable definition owns.", path, "extra:" + extra.Id));
         }
+        foreach (var (id, value) in document.Elements ?? new Dictionary<string, WebsiteElementOverride>())
+            if (!string.IsNullOrWhiteSpace(value.SyncSourceId) && !reusableSyncIds.Contains(value.SyncSourceId))
+                checks.Add(new("sync_source_missing", "warning", "This block has a sync source that no reusable definition owns.", null, id));
+        foreach (var extra in document.Extras ?? [])
+            if (!string.IsNullOrWhiteSpace(extra.SyncSourceId) && !reusableSyncIds.Contains(extra.SyncSourceId))
+                checks.Add(new("sync_source_missing", extra.Type == "reusable" ? "error" : "warning", "This added block has a sync source that no reusable definition owns.", null, "extra:" + extra.Id));
         return new WebsiteQualityReport(DateTime.UtcNow, checks);
     }
 
