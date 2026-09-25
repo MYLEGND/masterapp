@@ -424,7 +424,11 @@ jobs:
 
   sync-merge:
     needs: [candidate, security]
-    if: needs.candidate.outputs.sync_only == 'true' && needs.security.result == 'success'
+    if: >
+      always() &&
+      needs.candidate.result == 'success' &&
+      needs.candidate.outputs.sync_only == 'true' &&
+      needs.security.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
