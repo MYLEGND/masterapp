@@ -259,6 +259,14 @@ public sealed class WebsiteContentController : ControllerBase
             facts,
             ctaCatalog = new { options = ctaOptions },
             componentCatalog = new { options = WebsiteComponentCatalog.Options },
+            formCatalog = new
+            {
+                types = WebsiteFormFieldCatalog.Types,
+                roles = WebsiteFormFieldCatalog.Roles,
+                maxFields = WebsiteFormFieldCatalog.MaxFields,
+                maxOptionsPerField = WebsiteFormFieldCatalog.MaxOptionsPerField,
+                maxSteps = WebsiteFormFieldCatalog.MaxSteps
+            },
             motionCatalog = new
             {
                 triggers = WebsiteMotionCatalog.Triggers,
