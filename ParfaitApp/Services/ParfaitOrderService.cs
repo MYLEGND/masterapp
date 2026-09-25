@@ -28,9 +28,11 @@ public sealed class ParfaitOrderService
         _db = db;
     }
 
-    public IReadOnlyList<ParfaitOrderRecord> GetAllOrders()
+    public IReadOnlyList<ParfaitOrderRecord> GetAllOrders() =>
+        GetAllOrders(GetBusinessId());
+
+    public IReadOnlyList<ParfaitOrderRecord> GetAllOrders(Guid businessId)
     {
-        var businessId = GetBusinessId();
         return _db.CommerceOrders
             .AsNoTracking()
             .Include(x => x.Lines)
@@ -43,9 +45,11 @@ public sealed class ParfaitOrderService
             .ToList();
     }
 
-    public ParfaitOrderRecord? GetOrder(string orderNumber)
+    public ParfaitOrderRecord? GetOrder(string orderNumber) =>
+        GetOrder(GetBusinessId(), orderNumber);
+
+    public ParfaitOrderRecord? GetOrder(Guid businessId, string orderNumber)
     {
-        var businessId = GetBusinessId();
         var cleaned = Clean(orderNumber);
 
         var order = _db.CommerceOrders
@@ -65,11 +69,24 @@ public sealed class ParfaitOrderService
         int discountCents,
         int shippingCents,
         int taxCents,
+        HttpContext httpContext) =>
+        CreatePendingOrder(GetBusinessId(), customer, items, subtotalCents, discountCode, discountLabel,
+            discountCents, shippingCents, taxCents, httpContext);
+
+    public ParfaitOrderRecord CreatePendingOrder(
+        Guid businessId,
+        ParfaitCheckoutCustomerRequest customer,
+        IReadOnlyList<ParfaitValidatedCartItem> items,
+        int subtotalCents,
+        string? discountCode,
+        string? discountLabel,
+        int discountCents,
+        int shippingCents,
+        int taxCents,
         HttpContext httpContext)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var now = DateTime.UtcNow;
             var record = CreatePendingOrderRecord(
                 GenerateOrderNumber(now),
@@ -104,6 +121,21 @@ public sealed class ParfaitOrderService
         int discountCents,
         int shippingCents,
         int taxCents,
+        HttpContext httpContext) =>
+        BeginCheckoutPayment(GetBusinessId(), checkoutAttemptId, customer, items, subtotalCents,
+            discountCode, discountLabel, discountCents, shippingCents, taxCents, httpContext);
+
+    public CheckoutPaymentStartResult BeginCheckoutPayment(
+        Guid businessId,
+        string checkoutAttemptId,
+        ParfaitCheckoutCustomerRequest customer,
+        IReadOnlyList<ParfaitValidatedCartItem> items,
+        int subtotalCents,
+        string? discountCode,
+        string? discountLabel,
+        int discountCents,
+        int shippingCents,
+        int taxCents,
         HttpContext httpContext)
     {
         var normalizedAttemptId = Clean(checkoutAttemptId);
@@ -112,7 +144,6 @@ public sealed class ParfaitOrderService
 
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var now = DateTime.UtcNow;
 
             var order = _db.CommerceOrders
@@ -183,11 +214,13 @@ public sealed class ParfaitOrderService
         }
     }
 
-    public void MarkPaymentCaptured(string orderNumber, string? paymentReferenceId)
+    public void MarkPaymentCaptured(string orderNumber, string? paymentReferenceId) =>
+        MarkPaymentCaptured(GetBusinessId(), orderNumber, paymentReferenceId);
+
+    public void MarkPaymentCaptured(Guid businessId, string orderNumber, string? paymentReferenceId)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var cleaned = Clean(orderNumber);
 
             var order = _db.CommerceOrders
@@ -210,11 +243,13 @@ public sealed class ParfaitOrderService
         }
     }
 
-    public void MarkPaymentFailed(string orderNumber, string safeFailureSummary)
+    public void MarkPaymentFailed(string orderNumber, string safeFailureSummary) =>
+        MarkPaymentFailed(GetBusinessId(), orderNumber, safeFailureSummary);
+
+    public void MarkPaymentFailed(Guid businessId, string orderNumber, string safeFailureSummary)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var cleaned = Clean(orderNumber);
 
             var order = _db.CommerceOrders
@@ -235,11 +270,13 @@ public sealed class ParfaitOrderService
         }
     }
 
-    public bool UpdateOrder(ParfaitOrderAdminUpdateRequest request)
+    public bool UpdateOrder(ParfaitOrderAdminUpdateRequest request) =>
+        UpdateOrder(GetBusinessId(), request);
+
+    public bool UpdateOrder(Guid businessId, ParfaitOrderAdminUpdateRequest request)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var cleaned = Clean(request.OrderNumber);
 
             var order = _db.CommerceOrders

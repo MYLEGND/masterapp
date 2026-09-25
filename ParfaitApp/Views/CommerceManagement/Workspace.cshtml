@@ -1,0 +1,458 @@
+@model ParfaitApp.Models.CommerceManagementWorkspaceViewModel
+@using ParfaitApp.Models
+@{
+    Layout = null;
+    var ticket = Model.Ticket;
+    var store = Model.Store;
+    var settings = Model.CommerceSettings ?? new ParfaitCommerceSettingsViewModel();
+    var globalDiscount = settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel();
+    var storefront = Model.StorefrontSettings;
+    static string Money(int cents) => "$" + (Math.Max(0, cents) / 100m).ToString("0.00");
+    static string Dollars(int cents) => cents <= 0 ? "" : (cents / 100m).ToString("0.00");
+    static string Tone(string tone) => tone switch
+    {
+        "danger" => "is-danger",
+        "warning" => "is-warning",
+        "info" => "is-info",
+        "muted" => "is-muted",
+        _ => "is-success"
+    };
+}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Manage @store.NavigationLabel · @store.StoreName</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+</head>
+<body class="pf-internal-body pf-commerce-manager-body">
+<div class="pf-commerce-workspace" data-commerce-workspace>
+    <aside class="pf-commerce-sidebar" id="commerceSidebar">
+        <div class="pf-commerce-sidebar-head">
+            <button type="button" class="pf-commerce-rail-toggle" id="commerceRailToggle" aria-controls="commerceSidebar" aria-expanded="true" title="Collapse management navigation">☰</button>
+            <div class="pf-commerce-sidebar-brand">
+                <small>Commerce</small>
+                <strong>@store.StoreName</strong>
+            </div>
+        </div>
+        <nav class="pf-commerce-nav" aria-label="Store management">
+            <a href="@Url.Action("Workspace", "CommerceManagement", new { ticket, tab = "products" })" class="@(Model.ActiveTab == "products" ? "is-active" : "")">
+                <span>Catalog</span><small>@Model.Products.Count products</small>
+            </a>
+            <a href="@Url.Action("Workspace", "CommerceManagement", new { ticket, tab = "orders" })" class="@(Model.ActiveTab == "orders" ? "is-active" : "")">
+                <span>Orders</span><small>@Model.OpenFulfillmentCount open</small>
+            </a>
+            <a href="@Url.Action("Workspace", "CommerceManagement", new { ticket, tab = "settings" })" class="@(Model.ActiveTab == "settings" ? "is-active" : "")">
+                <span>Store Settings</span><small>Commerce setup</small>
+            </a>
+        </nav>
+        <div class="pf-commerce-sidebar-foot">
+            <a href="@Url.Action("Preview", "CommerceManagement", new { ticket })" target="commercePreview" class="pf-secondary-action">Live Draft Preview</a>
+            <small>CRM and Website Analytics stay in their existing scoped workspaces.</small>
+        </div>
+    </aside>
+
+    <main class="pf-commerce-workspace-main">
+        <header class="pf-command-head pf-commerce-workspace-head">
+            <div class="pf-command-copy">
+                <p class="pf-commerce-eyebrow">@store.NavigationLabel management</p>
+                <h1 class="pf-command-title">@store.StoreName</h1>
+                <p class="pf-command-text">The same centralized commerce catalog, orders, inventory, discounts and checkout authority used by Parfait.</p>
+            </div>
+            <div class="pf-command-meta">
+                <span class="pf-command-badge is-success">@Model.ActiveProductCount live</span>
+                <span class="pf-command-badge @(Model.LowStockCount > 0 ? "is-warning" : "is-success")">@Model.LowStockCount low-stock sizes</span>
+                <span class="pf-command-badge is-info">@Model.PaidOrderCount paid orders</span>
+                <span class="pf-command-badge is-success">@Money(Model.NetRevenueCents) net revenue</span>
+            </div>
+        </header>
+
+        @if (TempData["CommerceStatus"] is string commerceStatus)
+        {
+            <div class="pf-alert-success">@commerceStatus</div>
+        }
+
+        @if (Model.ActiveTab == "products")
+        {
+            <section class="pf-commerce-panel">
+                <div class="pf-commerce-panel-head">
+                    <div><h2>Product Management</h2><p>Products, inventory, images, visibility and product-level offers.</p></div>
+                    <button type="button" class="pf-secondary-action" data-open-product="new">Add Product</button>
+                </div>
+
+                <div class="pf-commerce-product-order" id="commerceProductOrder">
+                    <form method="post" action="/commerce/manage/products/reorder" id="commerceReorderForm">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ticket" value="@ticket" />
+                        <div id="commerceProductOrderInputs">
+                            @foreach (var product in Model.Products)
+                            {
+                                <input type="hidden" name="productIds" value="@product.Id" data-order-id="@product.Id" />
+                            }
+                        </div>
+                        <button type="submit" class="pf-secondary-action">Save Product Order</button>
+                    </form>
+                </div>
+
+                <details class="pf-product-accordion pf-commerce-create" id="commerceNewProduct">
+                    <summary>
+                        <div class="pf-product-accordion-copy"><strong>Add Product</strong><span>Uses the same catalog authority as Parfait</span></div>
+                    </summary>
+                    <div class="pf-product-accordion-body">
+                        <form method="post" action="/commerce/manage/product" class="pf-product-create-form" data-commerce-product-form>
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ticket" value="@ticket" />
+                            <input type="hidden" name="Id" value="@Guid.NewGuid().ToString("N")" />
+                            <input type="hidden" name="PriceLabel" value="Auto" />
+                            <input type="hidden" name="PriceCents" value="0" data-price-cents />
+                            <input type="hidden" name="CompareAtPriceCents" value="0" data-compare-cents />
+                            <div class="pf-product-create-grid">
+                                <label>Name<input class="form-control" name="Name" required /></label>
+                                <label>Slug<input class="form-control" name="Slug" placeholder="auto-from-name" /></label>
+                                <label>Price<input class="form-control" type="number" min="0" step="0.01" data-money-input data-money-target="PriceCents" /></label>
+                                <label>Compare-at price<input class="form-control" type="number" min="0" step="0.01" data-money-input data-money-target="CompareAtPriceCents" /></label>
+                                <label>Badge<input class="form-control" name="Badge" /></label>
+                                <label class="pf-check"><input type="checkbox" name="IsActive" value="true" checked /> Live</label>
+                                <label class="pf-check"><input type="checkbox" name="IsFeatured" value="true" /> Featured</label>
+                                <label class="pf-full">Description<textarea class="form-control" name="Description" rows="4" required></textarea></label>
+                            </div>
+                            <details class="pf-product-accordion" open>
+                                <summary><div class="pf-product-accordion-copy"><strong>Size Inventory</strong><span>Stock is committed by the same paid-order authority</span></div></summary>
+                                <div class="pf-product-accordion-body">
+                                    <div class="pf-variant-list">
+                                    @for (var i = 0; i < ParfaitProductCatalogDefaults.StandardSizes.Length; i++)
+                                    {
+                                        var size = ParfaitProductCatalogDefaults.StandardSizes[i];
+                                        <div class="pf-variant-row">
+                                            <input type="hidden" name="InventoryBySize[@i].Id" value="@Guid.NewGuid().ToString("N")" />
+                                            <input type="hidden" name="InventoryBySize[@i].DisplayOrder" value="@((i + 1) * 10)" />
+                                            <label>Size<input class="form-control" name="InventoryBySize[@i].Size" value="@size" readonly /></label>
+                                            <label>Units<input class="form-control" type="number" min="0" name="InventoryBySize[@i].StockQuantity" value="0" /></label>
+                                            <label>Low stock at<input class="form-control" type="number" min="1" name="InventoryBySize[@i].LowStockThreshold" value="20" /></label>
+                                            <label class="pf-check"><input type="checkbox" name="InventoryBySize[@i].IsEnabled" value="true" checked /> Enabled</label>
+                                        </div>
+                                    }
+                                    </div>
+                                </div>
+                            </details>
+                            <div class="pf-product-create-actions">
+                                <button type="submit" class="pf-primary-action">Create Product</button>
+                            </div>
+                        </form>
+                    </div>
+                </details>
+
+                <div class="pf-commerce-catalog-list" data-commerce-product-list>
+                @foreach (var product in Model.Products)
+                {
+                    var primary = product.Images.OrderBy(image => image.DisplayOrder).FirstOrDefault(image => image.IsPrimary)
+                        ?? product.Images.OrderBy(image => image.DisplayOrder).FirstOrDefault();
+                    <article class="pf-commerce-product-card" data-product-card="@product.Id">
+                        <div class="pf-commerce-product-summary">
+                            <div class="pf-commerce-product-media">
+                                @if (primary is not null)
+                                {
+                                    <img src="@primary.ImageUrl" alt="@product.Name" />
+                                }
+                                else
+                                {
+                                    <div class="pf-commerce-product-placeholder">No image</div>
+                                }
+                            </div>
+                            <div class="pf-commerce-product-copy">
+                                <small>@(product.IsActive ? "LIVE" : "DRAFT") @(product.IsFeatured ? " · FEATURED" : "")</small>
+                                <h3>@product.Name</h3>
+                                <p>@product.Description</p>
+                                <div class="pf-command-meta">
+                                    <span class="pf-command-badge @Tone(product.InventoryTone)">@product.InventoryLabel</span>
+                                    <span class="pf-command-badge is-info">@Money(product.PriceCents)</span>
+                                    <span class="pf-command-badge is-warning">@product.ActiveDiscountCount offers</span>
+                                    <span class="pf-command-badge is-info">@product.Images.Count images</span>
+                                </div>
+                            </div>
+                            <div class="pf-commerce-product-actions">
+                                <button type="button" class="pf-secondary-action" data-move-product="up" data-product-id="@product.Id">↑</button>
+                                <button type="button" class="pf-secondary-action" data-move-product="down" data-product-id="@product.Id">↓</button>
+                                <button type="button" class="pf-secondary-action" data-toggle-product="@product.Id">Edit</button>
+                            </div>
+                        </div>
+
+                        <div class="pf-commerce-product-editor" data-product-editor="@product.Id" hidden>
+                            <form method="post" action="/commerce/manage/product" class="pf-product-edit-form" data-commerce-product-form>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ticket" value="@ticket" />
+                                <input type="hidden" name="Id" value="@product.Id" />
+                                <input type="hidden" name="PriceLabel" value="@product.PriceLabel" />
+                                <input type="hidden" name="DisplayOrder" value="@product.DisplayOrder" />
+                                <input type="hidden" name="PriceCents" value="@product.PriceCents" data-price-cents />
+                                <input type="hidden" name="CompareAtPriceCents" value="@product.CompareAtPriceCents" data-compare-cents />
+                                <div class="pf-editor-grid">
+                                    <label>Name<input class="form-control" name="Name" value="@product.Name" required /></label>
+                                    <label>Slug<input class="form-control" name="Slug" value="@product.Slug" required /></label>
+                                    <label>Price<input class="form-control" type="number" min="0" step="0.01" value="@Dollars(product.PriceCents)" data-money-input data-money-target="PriceCents" /></label>
+                                    <label>Compare-at<input class="form-control" type="number" min="0" step="0.01" value="@Dollars(product.CompareAtPriceCents)" data-money-input data-money-target="CompareAtPriceCents" /></label>
+                                    <label>Badge<input class="form-control" name="Badge" value="@product.Badge" /></label>
+                                    <label class="pf-check"><input type="checkbox" name="IsActive" value="true" @(product.IsActive ? "checked" : "") /> Live</label>
+                                    <label class="pf-check"><input type="checkbox" name="IsFeatured" value="true" @(product.IsFeatured ? "checked" : "") /> Featured</label>
+                                    <label class="pf-full">Description<textarea class="form-control" name="Description" rows="4" required>@product.Description</textarea></label>
+                                </div>
+
+                                <details class="pf-product-accordion">
+                                    <summary><div class="pf-product-accordion-copy"><strong>Inventory</strong><span>@product.TotalTrackedStock tracked units</span></div></summary>
+                                    <div class="pf-product-accordion-body"><div class="pf-variant-list">
+                                    @for (var i = 0; i < product.InventoryBySize.Count; i++)
+                                    {
+                                        var size = product.InventoryBySize[i];
+                                        <div class="pf-variant-row @Tone(size.StatusTone)">
+                                            <input type="hidden" name="InventoryBySize[@i].Id" value="@size.Id" />
+                                            <input type="hidden" name="InventoryBySize[@i].DisplayOrder" value="@size.DisplayOrder" />
+                                            <label>Size<input class="form-control" name="InventoryBySize[@i].Size" value="@size.Size" /></label>
+                                            <label>Units<input class="form-control" type="number" min="0" name="InventoryBySize[@i].StockQuantity" value="@size.StockQuantity" /></label>
+                                            <label>Low stock at<input class="form-control" type="number" min="1" name="InventoryBySize[@i].LowStockThreshold" value="@size.LowStockThreshold" /></label>
+                                            <label class="pf-check"><input type="checkbox" name="InventoryBySize[@i].IsEnabled" value="true" @(size.IsEnabled ? "checked" : "") /> Enabled</label>
+                                            <span class="pf-command-badge @Tone(size.StatusTone)">@size.StatusLabel</span>
+                                        </div>
+                                    }
+                                    </div></div>
+                                </details>
+
+                                <details class="pf-product-accordion">
+                                    <summary><div class="pf-product-accordion-copy"><strong>Discount Codes</strong><span>@product.ActiveDiscountCount active</span></div></summary>
+                                    <div class="pf-product-accordion-body">
+                                        <div class="pf-discount-list" data-discount-list>
+                                        @for (var i = 0; i < product.DiscountCodes.Count; i++)
+                                        {
+                                            var code = product.DiscountCodes[i];
+                                            <div class="pf-discount-row">
+                                                <input type="hidden" name="DiscountCodes[@i].Id" value="@code.Id" />
+                                                <label>Code<input class="form-control" name="DiscountCodes[@i].Code" value="@code.Code" /></label>
+                                                <label>Type<select class="form-select" name="DiscountCodes[@i].DiscountType"><option value="Percent" selected="@string.Equals(code.DiscountType,"Percent",StringComparison.OrdinalIgnoreCase)">Percent</option><option value="Fixed" selected="@string.Equals(code.DiscountType,"Fixed",StringComparison.OrdinalIgnoreCase)">Fixed</option></select></label>
+                                                <label>Amount<input class="form-control" type="number" min="0" step="0.01" name="DiscountCodes[@i].Amount" value="@code.Amount.ToString("0.##")" /></label>
+                                                <label class="pf-check"><input type="checkbox" name="DiscountCodes[@i].IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
+                                            </div>
+                                        }
+                                        </div>
+                                        @if (product.DiscountCodes.Count == 0)
+                                        {
+                                            <p class="pf-command-text">No product-level offers. Use Store Settings for a store-wide offer.</p>
+                                        }
+                                    </div>
+                                </details>
+
+                                <div class="pf-product-create-actions">
+                                    <button type="submit" class="pf-primary-action">Save Product</button>
+                                </div>
+                            </form>
+
+                            <details class="pf-product-accordion">
+                                <summary><div class="pf-product-accordion-copy"><strong>Product Images</strong><span>@product.Images.Count images</span></div></summary>
+                                <div class="pf-product-accordion-body">
+                                    <form method="post" enctype="multipart/form-data" action="/commerce/manage/product/images/upload" class="pf-commerce-upload-form">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="ticket" value="@ticket" />
+                                        <input type="hidden" name="productId" value="@product.Id" />
+                                        <input class="form-control" type="file" name="images" multiple accept="image/jpeg,image/png,image/webp,image/gif" />
+                                        <button type="submit" class="pf-secondary-action">Upload Images</button>
+                                    </form>
+                                    <div class="pf-commerce-image-grid">
+                                    @foreach (var image in product.Images.OrderBy(image => image.DisplayOrder))
+                                    {
+                                        <article class="pf-commerce-image-card">
+                                            <img src="@image.ImageUrl" alt="@image.AltText" />
+                                            <form method="post" action="/commerce/manage/product/images/display">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="ticket" value="@ticket" />
+                                                <input type="hidden" name="productId" value="@product.Id" />
+                                                <input type="hidden" name="imageId" value="@image.Id" />
+                                                <label>Fit<select class="form-select" name="objectFit"><option value="cover" selected="@string.Equals(image.ObjectFit,"cover",StringComparison.OrdinalIgnoreCase)">Cover</option><option value="contain" selected="@string.Equals(image.ObjectFit,"contain",StringComparison.OrdinalIgnoreCase)">Contain</option></select></label>
+                                                <label>X<input class="form-control" type="number" min="0" max="100" name="objectPositionX" value="@image.ObjectPositionX" /></label>
+                                                <label>Y<input class="form-control" type="number" min="0" max="100" name="objectPositionY" value="@image.ObjectPositionY" /></label>
+                                                <label>Zoom<input class="form-control" type="number" min="1" max="2.5" step=".05" name="zoom" value="@image.Zoom.ToString("0.##")" /></label>
+                                                <button type="submit" class="pf-secondary-action">Save Image</button>
+                                            </form>
+                                            <form method="post" action="/commerce/manage/product/images/delete" onsubmit="return confirm('Remove this product image?')">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="ticket" value="@ticket" />
+                                                <input type="hidden" name="productId" value="@product.Id" />
+                                                <input type="hidden" name="imageId" value="@image.Id" />
+                                                <button type="submit" class="pf-text-button is-danger">Remove Image</button>
+                                            </form>
+                                        </article>
+                                    }
+                                    </div>
+                                </div>
+                            </details>
+
+                            <form method="post" action="/commerce/manage/product/delete" onsubmit="return confirm('Delete this product? This removes it from the shared catalog for this store.')">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ticket" value="@ticket" />
+                                <input type="hidden" name="id" value="@product.Id" />
+                                <button type="submit" class="pf-text-button is-danger">Delete Product</button>
+                            </form>
+                        </div>
+                    </article>
+                }
+                </div>
+            </section>
+        }
+        else if (Model.ActiveTab == "orders")
+        {
+            <section class="pf-commerce-panel">
+                <div class="pf-commerce-panel-head"><div><h2>Orders & Fulfillment</h2><p>Paid orders and fulfillment remain scoped to @store.StoreName.</p></div><span>@Model.Orders.Count orders</span></div>
+                @if (Model.Orders.Count == 0)
+                {
+                    <div class="pf-automation-empty">No orders yet.</div>
+                }
+                <div class="pf-commerce-order-list">
+                @foreach (var order in Model.Orders)
+                {
+                    <article class="pf-commerce-order-card">
+                        <div class="pf-commerce-order-head">
+                            <div><small>@order.CreatedUtc.ToString("MMM d, yyyy")</small><h3>@order.OrderNumber</h3><p>@order.CustomerName · @order.Email</p></div>
+                            <div class="pf-command-meta"><span class="pf-command-badge is-success">@Money(order.TotalCents)</span><span class="pf-command-badge is-info">@order.PaymentStatus</span><span class="pf-command-badge @(order.IsFulfillmentOpen ? "is-warning" : "is-success")">@order.FulfillmentStatus</span></div>
+                        </div>
+                        <details class="pf-product-accordion">
+                            <summary><div class="pf-product-accordion-copy"><strong>Manage Order</strong><span>@order.Items.Count line items</span></div></summary>
+                            <div class="pf-product-accordion-body">
+                                <div class="pf-commerce-order-lines">
+                                @foreach (var item in order.Items)
+                                {
+                                    <div><strong>@item.Name</strong><span>@item.Size · Qty @item.Quantity · @Money(item.LineTotalCents)</span></div>
+                                }
+                                </div>
+                                <form method="post" action="/commerce/manage/order" class="pf-editor-grid">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="ticket" value="@ticket" />
+                                    <input type="hidden" name="OrderNumber" value="@order.OrderNumber" />
+                                    <label>Payment<select class="form-select" name="PaymentStatus">@foreach (var value in new[]{"Pending","Paid","Failed","Refunded"}){<option value="@value" selected="@string.Equals(order.PaymentStatus,value,StringComparison.OrdinalIgnoreCase)">@value</option>}</select></label>
+                                    <label>Fulfillment<select class="form-select" name="FulfillmentStatus">@foreach (var value in new[]{"Unfulfilled","Processing","Packed","Shipped","Fulfilled","On Hold","Cancelled","Returned"}){<option value="@value" selected="@string.Equals(order.FulfillmentStatus,value,StringComparison.OrdinalIgnoreCase)">@value</option>}</select></label>
+                                    <label>Return<select class="form-select" name="ReturnStatus">@foreach (var value in new[]{"None","Requested","Approved","Received","Refunded","Closed"}){<option value="@value" selected="@string.Equals(order.ReturnStatus,value,StringComparison.OrdinalIgnoreCase)">@value</option>}</select></label>
+                                    <label>Carrier<input class="form-control" name="TrackingCarrier" value="@order.TrackingCarrier" /></label>
+                                    <label>Tracking<input class="form-control" name="TrackingNumber" value="@order.TrackingNumber" /></label>
+                                    <label>Refunded cents<input class="form-control" type="number" min="0" max="@order.TotalCents" name="RefundedCents" value="@order.RefundedCents" /></label>
+                                    <label class="pf-full">Admin notes<textarea class="form-control" name="AdminNotes" rows="3">@order.AdminNotes</textarea></label>
+                                    <button type="submit" class="pf-primary-action">Save Order</button>
+                                </form>
+                            </div>
+                        </details>
+                    </article>
+                }
+                </div>
+            </section>
+        }
+        else
+        {
+            <section class="pf-commerce-panel">
+                <div class="pf-commerce-panel-head"><div><h2>Store Settings</h2><p>Store presentation follows the Website Studio theme. These settings control commerce-specific copy and checkout rules.</p></div></div>
+
+                <section class="pf-commerce-settings-strip">
+                    <form method="post" action="/commerce/manage/settings/storefront" class="pf-commerce-settings-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ticket" value="@ticket" />
+                        <div class="pf-commerce-settings-grid">
+                            <label class="pf-full">Store headline<input class="form-control" name="BrandHeadline" value="@storefront.BrandHeadline" /></label>
+                            <label class="pf-full">Store subheadline<textarea class="form-control" name="BrandSubheadline" rows="3">@storefront.BrandSubheadline</textarea></label>
+                            <label>Status<select class="form-select" name="StorefrontStatus"><option value="Active" selected="@string.Equals(storefront.StorefrontStatus,"Active",StringComparison.OrdinalIgnoreCase)">Active</option><option value="Draft" selected="@string.Equals(storefront.StorefrontStatus,"Draft",StringComparison.OrdinalIgnoreCase)">Draft</option></select></label>
+                        </div>
+                        <button type="submit" class="pf-secondary-action">Save Store Presentation</button>
+                    </form>
+                </section>
+
+                <section class="pf-commerce-settings-strip">
+                    <form method="post" action="/commerce/manage/settings/commerce" class="pf-commerce-settings-form" data-commerce-money-form>
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ticket" value="@ticket" />
+                        <input type="hidden" name="ShippingFeeCents" value="@settings.ShippingFeeCents" data-price-cents />
+                        <input type="hidden" name="GlobalDiscount.Id" value="@globalDiscount.Id" />
+                        <div class="pf-commerce-settings-summary">
+                            <span class="pf-command-badge is-info">Shipping @Money(settings.ShippingFeeCents)</span>
+                            <span class="pf-command-badge is-warning">@settings.TaxPercent.ToString("0.##")% tax</span>
+                            <span class="pf-command-badge @(settings.HasActiveGlobalDiscount ? "is-success" : "is-muted")">@(settings.HasActiveGlobalDiscount ? globalDiscount.Code : "No global promo")</span>
+                        </div>
+                        <div class="pf-commerce-settings-grid">
+                            <label>Shipping fee<input class="form-control" type="number" min="0" step=".01" value="@Dollars(settings.ShippingFeeCents)" data-money-input data-money-target="ShippingFeeCents" /></label>
+                            <label>Tax percent<input class="form-control" name="TaxPercent" type="number" min="0" max="100" step=".01" value="@settings.TaxPercent.ToString("0.##")" /></label>
+                            <label>Global code<input class="form-control" name="GlobalDiscount.Code" value="@globalDiscount.Code" /></label>
+                            <label>Discount type<select class="form-select" name="GlobalDiscount.DiscountType"><option value="Percent" selected="@string.Equals(globalDiscount.DiscountType,"Percent",StringComparison.OrdinalIgnoreCase)">Percent</option><option value="Fixed" selected="@string.Equals(globalDiscount.DiscountType,"Fixed",StringComparison.OrdinalIgnoreCase)">Fixed</option></select></label>
+                            <label>Amount<input class="form-control" name="GlobalDiscount.Amount" type="number" min="0" step=".01" value="@globalDiscount.Amount.ToString("0.##")" /></label>
+                            <label class="pf-check"><input type="checkbox" name="GlobalDiscount.IsActive" value="true" @(globalDiscount.IsActive ? "checked" : "") /> Global promo active</label>
+                        </div>
+                        <button type="submit" class="pf-secondary-action">Save Commerce Settings</button>
+                    </form>
+                </section>
+
+                <section class="pf-commerce-authority-note">
+                    <strong>Centralized authorities</strong>
+                    <p>Products, inventory, discounts, orders and checkout are shared commerce authorities. Website theme, CRM, analytics and Meta destinations remain in their existing scoped authorities. No duplicate CRM or analytics system is created here.</p>
+                </section>
+            </section>
+        }
+
+        <section class="pf-commerce-preview-drawer" id="commercePreviewDrawer" hidden>
+            <div class="pf-commerce-preview-head"><strong>Store Preview</strong><button type="button" id="closeCommercePreview">Close</button></div>
+            <iframe name="commercePreview" title="Store draft preview" src="@Url.Action("Preview","CommerceManagement",new { ticket })"></iframe>
+        </section>
+    </main>
+</div>
+
+<script>
+(() => {
+    const workspace = document.querySelector('[data-commerce-workspace]');
+    const rail = document.getElementById('commerceSidebar');
+    const toggle = document.getElementById('commerceRailToggle');
+    toggle?.addEventListener('click', () => {
+        const collapsed = workspace?.classList.toggle('is-rail-collapsed') === true;
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        toggle.title = collapsed ? 'Open management navigation' : 'Collapse management navigation';
+    });
+
+    document.querySelectorAll('[data-toggle-product]').forEach(button => {
+        button.addEventListener('click', () => {
+            const editor = document.querySelector('[data-product-editor="' + CSS.escape(button.dataset.toggleProduct || '') + '"]');
+            if (!editor) return;
+            editor.hidden = !editor.hidden;
+            button.textContent = editor.hidden ? 'Edit' : 'Close';
+        });
+    });
+    document.querySelector('[data-open-product="new"]')?.addEventListener('click', () => {
+        const panel = document.getElementById('commerceNewProduct');
+        if (panel) { panel.open = true; panel.scrollIntoView({ behavior:'smooth', block:'start' }); }
+    });
+
+    document.querySelectorAll('[data-money-input]').forEach(input => {
+        const form = input.closest('form');
+        const target = form?.querySelector('[name="' + CSS.escape(input.dataset.moneyTarget || '') + '"]');
+        const sync = () => { if (target) target.value = String(Math.max(0, Math.round((Number(input.value) || 0) * 100))); };
+        input.addEventListener('input', sync); input.addEventListener('change', sync); sync();
+    });
+
+    const orderHost = document.querySelector('[data-commerce-product-list]');
+    const orderInputs = document.getElementById('commerceProductOrderInputs');
+    const syncOrder = () => {
+        if (!orderHost || !orderInputs) return;
+        orderInputs.replaceChildren(...[...orderHost.querySelectorAll('[data-product-card]')].map(card => {
+            const input = document.createElement('input'); input.type='hidden'; input.name='productIds'; input.value=card.dataset.productCard; return input;
+        }));
+    };
+    document.querySelectorAll('[data-move-product]').forEach(button => button.addEventListener('click', () => {
+        const card = orderHost?.querySelector('[data-product-card="' + CSS.escape(button.dataset.productId || '') + '"]');
+        if (!card || !orderHost) return;
+        if (button.dataset.moveProduct === 'up' && card.previousElementSibling) orderHost.insertBefore(card, card.previousElementSibling);
+        if (button.dataset.moveProduct === 'down' && card.nextElementSibling) orderHost.insertBefore(card.nextElementSibling, card);
+        syncOrder();
+    }));
+
+    const preview = document.getElementById('commercePreviewDrawer');
+    const openPreview = event => {
+        const link = event.target.closest('a[target="commercePreview"]');
+        if (!link || !preview) return;
+        preview.hidden = false;
+    };
+    document.addEventListener('click', openPreview);
+    document.getElementById('closeCommercePreview')?.addEventListener('click', () => { if(preview) preview.hidden = true; });
+})();
+</script>
+</body>
+</html>

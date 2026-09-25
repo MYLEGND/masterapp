@@ -26,10 +26,17 @@ public sealed record WebsiteEditorTicket(
     string? ActorEmail = null,
     Guid? ActorClientProfileId = null);
 
+public sealed class WebsiteStoreSettings
+{
+    public bool Enabled { get; set; }
+    public string NavigationLabel { get; set; } = "Store";
+}
+
 public sealed class WebsiteContentDocument
 {
     public int Version { get; set; } = WebsiteStudioContract.CurrentDocumentVersion;
     public string? FaviconImageDataUrl { get; set; }
+    public WebsiteStoreSettings Store { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteStudioContract.DefaultBreakpoints();
     public Dictionary<string, WebsitePageDocument> Pages { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);

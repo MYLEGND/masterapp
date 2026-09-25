@@ -1,18 +1,46 @@
 @inject ParfaitApp.Services.IParfaitBusinessProfileService BusinessProfileService
+@inject Infrastructure.Analytics.MarketingConnectionStore MarketingConnections
 @inject Microsoft.Extensions.Logging.ILoggerFactory LoggerFactory
 @{
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var isManagementPreview = Context.Request.Path.StartsWithSegments("/commerce/manage");
     string metaPixelId = string.Empty;
     try
     {
-        var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
-        metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
+        if (!isManagementPreview && commerce is not null)
+        {
+            Shared.Analytics.MarketingOwnerScope owner;
+            if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!commerce.AgentTrackingProfileId.HasValue)
+                    throw new InvalidOperationException("Protect storefront tracking requires the canonical agent marketing owner.");
+                owner = Shared.Analytics.MarketingOwnerScope.Agent(commerce.AgentTrackingProfileId.Value);
+            }
+            else if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend, StringComparison.OrdinalIgnoreCase))
+            {
+                owner = Shared.Analytics.MarketingOwnerScope.Founder;
+            }
+            else
+            {
+                owner = Shared.Analytics.MarketingOwnerScope.Business(commerce.CommerceBusinessId);
+            }
+
+            var connection = await MarketingConnections.GetStatusAsync(owner, Context.RequestAborted);
+            if (connection?.DisconnectedUtc is null)
+                metaPixelId = (connection?.PixelId ?? string.Empty).Trim();
+        }
+        else if (!isManagementPreview)
+        {
+            var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
+            metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
+        }
     }
     catch (Exception ex)
     {
         // Marketing instrumentation is optional to rendering. A transient analytics or
-        // migration fault must never make the public Parfait storefront return HTTP 500.
+        // migration fault must never take a storefront offline.
         LoggerFactory.CreateLogger("ParfaitCommerceTracking")
-            .LogError(ex, "Parfait marketing settings lookup failed; rendering storefront without Meta pixel.");
+            .LogError(ex, "Commerce marketing settings lookup failed; rendering storefront without Meta pixel.");
     }
 
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
@@ -37,9 +65,10 @@
 <script>
 (() => {
     const pathLower = location.pathname.toLowerCase();
-    if (pathLower.startsWith("/internal") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
+    if (pathLower.startsWith("/internal") || pathLower.startsWith("/commerce/manage") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
 
-    const trackingVersion = "parfait-commerce-tracking-v3";
+    const commerce = window.PARFAIT_COMMERCE_CONTEXT || {};
+    const trackingVersion = "legend-commerce-tracking-v4";
     const sessionTtlMs = 30 * 60 * 1000;
     const pageStartMs = Date.now();
     const scrollThresholds = [25, 50, 75, 90, 100];
@@ -85,28 +114,30 @@
     const currentPath = () => location.pathname || "/store";
     const currentProductSlug = () => {
         const parts = currentPath().split("/").filter(Boolean);
-        return parts.length >= 3 && parts[1] === "product" ? parts.at(-1) : "";
+        const productIndex = parts.findIndex(part => part.toLowerCase() === "product");
+        return productIndex >= 0 && parts.length > productIndex + 1 ? parts[productIndex + 1] : "";
     };
 
     const currentPageKey = () => {
         const path = currentPath().toLowerCase().replace(/\/+$/, "");
-        if (!path || path === "/") return "parfait_home";
-        if (path === "/store") return "parfait_store_home";
-        if (path === "/store/cart") return "parfait_cart";
-        if (path === "/store/checkout") return "parfait_checkout";
-        if (path === "/store/success") return "parfait_checkout_success";
-        if (path.startsWith("/store/product/")) return `parfait_product_${normalizeKey(currentProductSlug())}`;
-        return `parfait_${normalizeKey(path.replaceAll("/", "_"))}`;
+        const prefix = commerce.isParfait === false ? `commerce_${normalizeKey(commerce.businessKey)}` : "parfait";
+        if (!path || path === "/") return `${prefix}_home`;
+        if (path === String(commerce.storeRootPath || "/store").toLowerCase()) return `${prefix}_store_home`;
+        if (path === String(commerce.cartPath || "/store/cart").toLowerCase()) return `${prefix}_cart`;
+        if (path === String(commerce.checkoutPath || "/store/checkout").toLowerCase()) return `${prefix}_checkout`;
+        if (path === String(commerce.successPath || "/store/success").toLowerCase()) return `${prefix}_checkout_success`;
+        if (currentProductSlug()) return `${prefix}_product_${normalizeKey(currentProductSlug())}`;
+        return `${prefix}_${normalizeKey(path.replaceAll("/", "_"))}`;
     };
 
     const currentPageType = () => {
-        const path = currentPath().toLowerCase();
+        const path = currentPath().toLowerCase().replace(/\/+$/, "");
+        if (path === String(commerce.storeRootPath || "/store").toLowerCase()) return "store_index";
+        if (path === String(commerce.cartPath || "/store/cart").toLowerCase()) return "cart";
+        if (path === String(commerce.checkoutPath || "/store/checkout").toLowerCase()) return "checkout";
+        if (path === String(commerce.successPath || "/store/success").toLowerCase()) return "success";
+        if (currentProductSlug()) return "product_detail";
         if (path === "/") return "marketing_home";
-        if (path === "/store") return "store_index";
-        if (path === "/store/cart") return "cart";
-        if (path === "/store/checkout") return "checkout";
-        if (path === "/store/success") return "success";
-        if (path.startsWith("/store/product/")) return "product_detail";
         return "marketing_page";
     };
 
@@ -180,21 +211,17 @@
 
     touchSession();
 
-    const readCart = () => {
-        try {
-            return JSON.parse(localStorage.getItem("parfaitCart") || "[]");
-        } catch {
-            return [];
-        }
-    };
+    const readCart = () => window.ParfaitStorefront?.readCart?.() || [];
 
     const cartValueCents = cart => cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
     const cartQuantity = cart => cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
     const baseMetadata = () => ({
-        siteKey: "ParfaitApp",
+        siteKey: commerce.websiteSiteKey || "ParfaitApp",
         businessType: "Ecommerce",
-        reportingOwner: "ParfaitApp",
+        reportingOwner: commerce.businessKey || "parfait",
+        commerceBusinessId: commerce.commerceBusinessId || null,
+        websiteContentVersionId: commerce.websiteContentVersionId || null,
         pageType: currentPageType(),
         pageKey: currentPageKey(),
         pageTitle: document.title || "",
@@ -278,16 +305,17 @@
             }
         };
 
+        const analyticsEndpoint = commerce.analyticsEndpoint || "/parfait-analytics/track";
         try {
             const sent = navigator.sendBeacon(
-                "/parfait-analytics/track",
+                analyticsEndpoint,
                 new Blob([JSON.stringify(body)], { type: "application/json" })
             );
             if (sent) return;
         } catch {
         }
 
-        fetch("/parfait-analytics/track", {
+        fetch(analyticsEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -299,12 +327,12 @@
 
     send("page_view");
 
-    if (location.pathname.toLowerCase() === "/store") {
+    if (currentPageType() === "store_index") {
         send("ViewContent", { metadata: { pageType: "store_index" } });
-        sendBrowserMeta("ViewContent", { productName: "Parfait Store" });
+        sendBrowserMeta("ViewContent", { productName: commerce.storeName || "Store" });
     }
 
-    if (location.pathname.toLowerCase().includes("/store/product/")) {
+    if (currentPageType() === "product_detail") {
         const name = document.querySelector("h1")?.textContent?.trim() || "";
         send("ProductViewed", {
             productName: name,
@@ -317,7 +345,7 @@
         });
     }
 
-    if (location.pathname.toLowerCase() === "/store/checkout") {
+    if (currentPageType() === "checkout") {
         const cart = readCart();
         const firstItem = cart.length ? cart[0] : null;
         const totalQuantity = cartQuantity(cart);
@@ -343,13 +371,6 @@
             }
         });
 
-        sendBrowserMeta("InitiateCheckout", {
-            productId: firstItem?.id || null,
-            productName: firstItem?.name || "Parfait Checkout",
-            productSlug: firstItem?.slug || null,
-            quantity: totalQuantity,
-            valueCents: total
-        });
     }
 
     document.addEventListener("click", event => {
@@ -396,7 +417,6 @@
             };
 
             send("AddToCart", payload);
-            sendBrowserMeta("AddToCart", payload);
         }, 150);
     }, true);
 

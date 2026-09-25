@@ -4,6 +4,9 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
+    var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
+    var storeName = commerce?.StoreName ?? "Parfait";
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 }
@@ -22,11 +25,11 @@
                         <span class="sp-stock-pill is-success">@Model.Order.PaymentStatus</span>
                         <span class="sp-stock-pill is-info">@Model.Order.OrderNumber</span>
                     </div>
-                    <p class="sp-transaction-kicker">Parfait Receipt</p>
+                    <p class="sp-transaction-kicker">@storeName Receipt</p>
                     <h1>Order Confirmed</h1>
                 </div>
                 <div class="sp-transaction-actions">
-                    <a class="sp-button sp-button--ghost" href="/store">Back To Shop</a>
+                    <a class="sp-button sp-button--ghost" href="@storeRoot">Back To Shop</a>
                 </div>
             </header>
         }
@@ -39,7 +42,7 @@
                     <p>We could not find the order details for this confirmation page.</p>
 
                     <div class="sp-success-actions">
-                        <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
+                        <a class="sp-button sp-button--primary" href="@storeRoot">Back to Shop</a>
                     </div>
                 </div>
             }
@@ -109,8 +112,8 @@
                         </div>
 
                         <div class="sp-success-actions">
-                            <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
-                            <a class="sp-button sp-button--ghost" href="/">Public Site</a>
+                            <a class="sp-button sp-button--primary" href="@storeRoot">Back to Shop</a>
+                            <a class="sp-button sp-button--ghost" href="@(commerce?.IsParfait == false ? commerce.StoreRootPath : "/")">Public Site</a>
                         </div>
                     </div>
                 </section>

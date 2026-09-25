@@ -4,6 +4,9 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
+    var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
+    var storeCart = ViewData["StoreCartPath"] as string ?? "/store/cart";
+    var previewMode = ViewData["StorePreviewMode"] as bool? == true;
 
     static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
     {
@@ -130,7 +133,7 @@
         </section>
 
         <section class="sp-product-info-panel sp-surface">
-            <a class="sp-back-link sp-product-back-link" href="/store">← Back to collection</a>
+            <a class="sp-back-link sp-product-back-link" href="@storeRoot">← Back to collection</a>
             @if (!string.IsNullOrWhiteSpace(Model.Badge))
             {
                 <div class="sp-product-kicker sp-product-badge">@Model.Badge</div>
@@ -228,10 +231,13 @@
                             data-product-price-label="@Model.DisplayPriceLabel"
                             data-product-badge="@Model.Badge"
                             data-product-image="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
-                            @(defaultSize?.CanPurchase == true ? null : "disabled")>
-                        @(defaultSize?.CanPurchase == true ? "Add to Cart" : "Sold Out")
+                            @((previewMode || defaultSize?.CanPurchase != true) ? "disabled" : null)>
+                        @(previewMode ? "Preview" : defaultSize?.CanPurchase == true ? "Add to Cart" : "Sold Out")
                     </button>
-                    <a class="sp-button sp-button--ghost" href="/store/cart">View Cart</a>
+                    @if (!previewMode)
+                    {
+                        <a class="sp-button sp-button--ghost" href="@storeCart">View Cart</a>
+                    }
                 }
                 else
                 {

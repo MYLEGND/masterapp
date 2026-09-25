@@ -2399,6 +2399,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.DraftJson).IsRequired();
             e.Property(x => x.Revision).IsConcurrencyToken();
             e.HasIndex(x => new { x.OwnerKey, x.SiteKey }).IsUnique();
+            e.HasIndex(x => x.CommerceBusinessId);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<WebsiteContentVersion>(e =>
         {

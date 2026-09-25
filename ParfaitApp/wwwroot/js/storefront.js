@@ -1,6 +1,9 @@
 window.ParfaitStorefront = (() => {
-    const storageKey = "parfaitCart";
-    const discountStorageKey = "parfaitDiscountCode";
+    const context = window.PARFAIT_COMMERCE_CONTEXT || {};
+    const storageKey = String(context.cartStorageKey || "parfaitCart");
+    const discountStorageKey = storageKey === "parfaitCart"
+        ? "parfaitDiscountCode"
+        : storageKey + ":discount";
 
     const readJson = key => {
         try {
@@ -13,6 +16,7 @@ window.ParfaitStorefront = (() => {
 
     const emitCartUpdated = () => {
         window.dispatchEvent(new Event("parfait-cart-updated"));
+        window.dispatchEvent(new Event("legend-commerce-cart-updated"));
     };
 
     const writeCart = cart => {
@@ -79,7 +83,7 @@ window.ParfaitStorefront = (() => {
                 compareAtPriceCents: Number(item.compareAtPriceCents || 0),
                 priceLabel: item.priceLabel,
                 imageUrl: item.imageUrl,
-                badge: item.badge || "Parfait",
+                badge: item.badge || context.storeName || "",
                 size: item.size,
                 quantity
             });
@@ -111,6 +115,7 @@ window.ParfaitStorefront = (() => {
     };
 
     return {
+        context,
         storageKey,
         discountStorageKey,
         readCart,
