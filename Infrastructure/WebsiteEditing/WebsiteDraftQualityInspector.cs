@@ -40,10 +40,7 @@ public static class WebsiteDraftQualityInspector
         InspectElements(document.Elements, document.Extras, checks, null);
 
         var reusableSyncIds = (document.ReusableComponents ?? new Dictionary<string, WebsiteReusableComponentDefinition>())
-            .Values.SelectMany(component => component.Elements.Values.Select(x => x.SyncSourceId)
-                .Concat(component.Extras.Select(x => x.SyncSourceId)))
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToHashSet(StringComparer.Ordinal);
+            .Keys.ToHashSet(StringComparer.Ordinal);
         foreach (var (path, page) in document.Pages ?? new Dictionary<string, WebsitePageDocument>())
         {
             foreach (var (id, value) in page.Elements)
@@ -79,6 +76,8 @@ public static class WebsiteDraftQualityInspector
                 checks.Add(new("image_alt_missing", "warning", "Add alternative text for this image.", pagePath, "extra:" + extra.Id));
             if (extra.Type == "button" && string.IsNullOrWhiteSpace(extra.ActionKey) && string.IsNullOrWhiteSpace(extra.Href))
                 checks.Add(new("button_destination_missing", "error", "Added buttons need a working action or destination.", pagePath, "extra:" + extra.Id));
+            if (extra.Type == "reusable" && string.IsNullOrWhiteSpace(extra.SyncSourceId))
+                checks.Add(new("reusable_component_missing", "error", "Reusable component instances must reference a component definition.", pagePath, "extra:" + extra.Id));
         }
     }
 }
