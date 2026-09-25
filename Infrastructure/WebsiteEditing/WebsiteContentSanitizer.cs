@@ -204,7 +204,7 @@ public static class WebsiteContentSanitizer
     {
         source ??= new WebsiteLayoutOverride();
         var mode = (source.Mode ?? string.Empty).Trim().ToLowerInvariant();
-        if (mode is not ("flow" or "grid" or "flex" or "stack" or "free")) mode = string.Empty;
+        if (!WebsiteLayoutModeCatalog.IsAllowed(mode)) mode = string.Empty;
         var direction = (source.Direction ?? string.Empty).Trim().ToLowerInvariant();
         if (direction is not ("row" or "column")) direction = string.Empty;
         var align = (source.AlignItems ?? string.Empty).Trim().ToLowerInvariant();
