@@ -212,6 +212,7 @@ public sealed class WebsiteDataBinding
 {
     public string CollectionId { get; set; } = "";
     public string Field { get; set; } = "";
+    public string Target { get; set; } = "text";
 }
 
 public sealed class WebsiteDynamicPageBinding
