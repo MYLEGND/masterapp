@@ -50,6 +50,7 @@ jobs:
           python3 scripts/approved-release-baseline.py "${args[@]}" --output "$GITHUB_OUTPUT"
   preserve-rollback:
     needs: discover-live
+    if: needs.discover-live.outputs.preserve_live_targets != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
