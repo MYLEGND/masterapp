@@ -723,6 +723,20 @@ jobs:
                       raise SystemExit(f'Custom-domain routing proof missing {key}')
           finally:
               conn.close()
+
+          conn=http.client.HTTPSConnection(host,443,timeout=30,context=ssl.create_default_context())
+          try:
+              conn.request('GET','/store',headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'})
+              response=conn.getresponse()
+              body=response.read(4097)
+              location=response.getheader('Location')
+              print(host,'/store',response.status,len(body),location or '')
+              if response.status != 200:
+                  raise SystemExit(f'Custom-domain store proof failed: HTTP {response.status}')
+              if location:
+                  raise SystemExit('Custom-domain store must not redirect away from the registered domain')
+          finally:
+              conn.close()
           PYCUSTOM
           then
             restore_router
