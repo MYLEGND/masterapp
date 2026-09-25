@@ -16,6 +16,7 @@ const componentCatalogFixture = [
   {type:'button',label:'Button / link',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:true,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
   {type:'video',label:'Video',group:'Media',inlineText:false,supportsMedia:true,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
   {type:'card',label:'Card',group:'Layout',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack'],triggers:['viewed','click']},
+  {type:'group',label:'Group',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed']},
   {type:'section',label:'Section',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed','scroll_threshold']},
   {type:'code',label:'Code / embed',group:'Advanced',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']}
 ];
@@ -489,6 +490,60 @@ test('drag marquee uses the same transient multi-selection and ignores nested in
     assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.multiSelected,'true');
     assert.equal(f.w.document.querySelector('#legend-cms-group-selection').disabled,false);
     assert.equal(span.classList.contains('legend-cms-multi-selected'),false);
+  } finally { f.close(); }
+});
+
+test('multi-delete hides template elements and removes added groups without orphan placements',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('main h1');
+    f.click('main a',{shiftKey:true});
+    f.click('#legend-cms-group-selection');
+    const group=f.w.document.querySelector('.cms-extra-group');
+    assert.ok(group);
+    f.click('main h1',{shiftKey:true});
+    // Select the group itself only, then delete it; its template descendants must not retain the removed container.
+    f.click('.cms-extra-group');
+    f.click('#legend-cms-remove');
+    saved=await f.save();
+    assert.equal(saved.pages['/'].extras.some(item=>item.type==='group'),false);
+    const orphaned=Object.values(saved.pages['/'].elements).filter(item=>item.placement?.containerId?.startsWith('extra:'));
+    assert.equal(orphaned.length,0);
+  } finally { f.close(); }
+});
+
+test('professional keyboard shortcuts select siblings group ungroup delete and nudge only in Free Canvas',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    const section=f.w.document.querySelector('main section');
+    const heading=f.w.document.querySelector('main h1');
+    const link=f.w.document.querySelector('main a');
+    section.getBoundingClientRect=()=>({left:0,top:0,width:1000,height:500,right:1000,bottom:500});
+    heading.getBoundingClientRect=()=>({left:100,top:100,width:200,height:60,right:300,bottom:160});
+    link.getBoundingClientRect=()=>({left:340,top:120,width:180,height:50,right:520,bottom:170});
+
+    f.click('main h1');
+    f.click('#legend-cms-container');
+    f.input('#legend-cms-layout-mode','free');
+    f.click('main h1');
+
+    f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'a',metaKey:true,bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.multiSelected,'true');
+
+    f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'g',metaKey:true,bubbles:true,cancelable:true}));
+    assert.ok(f.w.document.querySelector('.cms-extra-group'));
+    f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'g',metaKey:true,shiftKey:true,bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.cms-extra-group'),null);
+
+    f.click('main h1');
+    f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'ArrowRight',shiftKey:true,bubbles:true,cancelable:true}));
+    saved=await f.save();
+    const moved=Object.values(saved.pages['/'].elements).find(item=>item.style?.positionMode==='absolute');
+    assert.ok(moved);
+    assert.equal(moved.style.offsetXPercent,11);
+
+    f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').hidden,true);
   } finally { f.close(); }
 });
 
