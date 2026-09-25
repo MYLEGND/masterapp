@@ -26,10 +26,11 @@ public sealed class ParfaitProductService
 
     private string UploadRoot => _storagePaths.UploadRoot;
 
-    public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts()
-    {
-        var businessId = GetBusinessId();
+    public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts() =>
+        GetAllProducts(GetBusinessId());
 
+    public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts(Guid businessId)
+    {
         return _db.CommerceProducts
             .AsNoTracking()
             .Include(x => x.Images)
@@ -46,11 +47,14 @@ public sealed class ParfaitProductService
             .ToList();
     }
 
-    public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts()
-    {
-        var settings = GetCommerceSettings();
+    public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts() =>
+        GetActiveStoreProducts(GetBusinessId());
 
-        return GetAllProducts()
+    public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts(Guid businessId)
+    {
+        var settings = GetCommerceSettings(businessId);
+
+        return GetAllProducts(businessId)
             .Where(product => product.IsActive)
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Name)
@@ -58,22 +62,31 @@ public sealed class ParfaitProductService
             .ToList();
     }
 
-    public ParfaitStoreProductViewModel? GetActiveStoreProductBySlug(string slug)
+    public ParfaitStoreProductViewModel? GetActiveStoreProductBySlug(string slug) =>
+        GetActiveStoreProductBySlug(GetBusinessId(), slug);
+
+    public ParfaitStoreProductViewModel? GetActiveStoreProductBySlug(Guid businessId, string slug)
     {
-        return GetActiveStoreProducts()
+        return GetActiveStoreProducts(businessId)
             .FirstOrDefault(product => string.Equals(product.Slug, slug, StringComparison.OrdinalIgnoreCase));
     }
 
-    public ParfaitStoreProductViewModel? GetActiveStoreProductById(string id)
+    public ParfaitStoreProductViewModel? GetActiveStoreProductById(string id) =>
+        GetActiveStoreProductById(GetBusinessId(), id);
+
+    public ParfaitStoreProductViewModel? GetActiveStoreProductById(Guid businessId, string id)
     {
-        return GetActiveStoreProducts()
+        return GetActiveStoreProducts(businessId)
             .FirstOrDefault(product => string.Equals(product.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
-    public ParfaitCartQuoteResponse QuoteCart(IReadOnlyList<ParfaitCheckoutItemRequest> cartItems, string? discountCode)
+    public ParfaitCartQuoteResponse QuoteCart(IReadOnlyList<ParfaitCheckoutItemRequest> cartItems, string? discountCode) =>
+        QuoteCart(GetBusinessId(), cartItems, discountCode);
+
+    public ParfaitCartQuoteResponse QuoteCart(Guid businessId, IReadOnlyList<ParfaitCheckoutItemRequest> cartItems, string? discountCode)
     {
-        var settings = GetCommerceSettings();
-        var products = GetAllProducts()
+        var settings = GetCommerceSettings(businessId);
+        var products = GetAllProducts(businessId)
             .Where(product => product.IsActive)
             .ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
 
@@ -237,9 +250,11 @@ public sealed class ParfaitProductService
         return quote;
     }
 
-    public ParfaitCommerceSettingsViewModel GetCommerceSettings()
+    public ParfaitCommerceSettingsViewModel GetCommerceSettings() =>
+        GetCommerceSettings(GetBusinessId());
+
+    public ParfaitCommerceSettingsViewModel GetCommerceSettings(Guid businessId)
     {
-        var businessId = GetBusinessId();
         var settings = _db.CommerceBusinessSettings.AsNoTracking().SingleOrDefault(x => x.CommerceBusinessId == businessId);
 
         return NormalizeCommerceSettings(settings is null
@@ -258,11 +273,13 @@ public sealed class ParfaitProductService
             });
     }
 
-    public void SaveCommerceSettings(ParfaitCommerceSettingsViewModel settings)
+    public void SaveCommerceSettings(ParfaitCommerceSettingsViewModel settings) =>
+        SaveCommerceSettings(GetBusinessId(), settings);
+
+    public void SaveCommerceSettings(Guid businessId, ParfaitCommerceSettingsViewModel settings)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var normalized = NormalizeCommerceSettings(settings);
 
             var entity = _db.CommerceBusinessSettings.SingleOrDefault(x => x.CommerceBusinessId == businessId);
@@ -284,12 +301,13 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void SaveProduct(ParfaitProductEditorViewModel product)
+    public void SaveProduct(ParfaitProductEditorViewModel product) =>
+        SaveProduct(GetBusinessId(), product);
+
+    public void SaveProduct(Guid businessId, ParfaitProductEditorViewModel product)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
-
             var existing = _db.CommerceProducts
                 .Include(x => x.Images)
                 .Include(x => x.InventoryItems)
@@ -335,11 +353,13 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void DeleteProduct(string id)
+    public void DeleteProduct(string id) =>
+        DeleteProduct(GetBusinessId(), id);
+
+    public void DeleteProduct(Guid businessId, string id)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var product = _db.CommerceProducts
                 .Include(x => x.Images)
                 .Include(x => x.InventoryItems)
@@ -358,11 +378,13 @@ public sealed class ParfaitProductService
         }
     }
 
-    public void ReorderProducts(IReadOnlyList<string> productIds)
+    public void ReorderProducts(IReadOnlyList<string> productIds) =>
+        ReorderProducts(GetBusinessId(), productIds);
+
+    public void ReorderProducts(Guid businessId, IReadOnlyList<string> productIds)
     {
         lock (Lock)
         {
-            var businessId = GetBusinessId();
             var products = _db.CommerceProducts
                 .Where(x => x.CommerceBusinessId == businessId)
                 .ToList();
