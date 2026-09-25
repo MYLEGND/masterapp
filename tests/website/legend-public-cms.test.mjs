@@ -88,6 +88,7 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
   return { calls, alerts, errors, document, heading, ids, events, windowEvents,
     select() { events.get('click')({ target: heading, preventDefault() {}, stopPropagation() {} }); },
     async editText(value) {
+      await ids.get('legend-cms-edit-text')?.click();
       heading.textContent = value;
       await heading.listeners.get('beforeinput')?.({ target: heading });
       await heading.listeners.get('input')?.({ target: heading });
@@ -172,7 +173,7 @@ for (const siteKey of ['legend', 'protect']) {
   test(`${siteKey}: selection populates actual defaults and text-only edit preserves original layout`, async () => {
     const f = fixture({ context: { siteKey, apiBase: '' }, search: '?legendEdit=ticket' });
     await f.ready(); f.select();
-    assert.equal(f.heading.attributes.contenteditable, 'plaintext-only');
+    assert.equal(f.heading.attributes.contenteditable, undefined);
     assert.equal(f.ids.get('legend-cms-scale').value, '1');
     assert.equal(f.ids.get('legend-cms-width').value, '72');
     assert.equal(f.ids.get('legend-cms-padding-top').value, '24');
@@ -308,7 +309,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const click=selector=>w.document.querySelector(selector).dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));
   const input=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
-  const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
+  const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);const edit=w.document.querySelector('#legend-cms-edit-text');if(edit&&!edit.hidden)edit.click();el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
 }
@@ -1101,7 +1102,7 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     assert.equal(f.w.document.querySelector('#legend-cms-place'),null);
     assert.ok(f.w.document.querySelector('.legend-cms-selection-frame'));
     assert.ok(f.w.document.querySelector('.legend-cms-grid-overlay'));
-    assert.equal(f.w.document.querySelectorAll('[data-cms-gesture]').length,8);
+    assert.equal(f.w.document.querySelectorAll('[data-cms-gesture]').length,9);
     f.input('#legend-cms-width','50');
     f.input('#legend-cms-height','240');
     f.input('#legend-cms-offset-x','25');
@@ -1126,7 +1127,8 @@ test('selected content drag preserves free-form placement instead of forcing gri
     heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
     section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
     preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
-    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    const move=f.w.document.querySelector('.legend-cms-move-handle');
+    move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
     const saved=await f.save();
@@ -1147,13 +1149,80 @@ test('selected content can be pointer-dragged and is clamped inside its section 
     heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
     section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
     preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
-    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    const move=f.w.document.querySelector('.legend-cms-move-handle');
+    move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:1000,clientY:700,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:1000,clientY:700,button:0}));
     const saved=await f.save();
     const style=Object.values(saved.pages['/'].elements)[0].style;
     assert.equal(style.offsetXPercent,58.333);
     assert.equal(style.offsetYPx,310);
+  }finally{f.close();}
+});
+
+test('selection movement resizing and text editing use separate non-competing gestures',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    const heading=f.w.document.querySelector('main h1');
+    const section=heading.closest('[data-cms-section]');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+
+    assert.equal(heading.getAttribute('contenteditable'),null);
+    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:110,clientY:110,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:180,clientY:150,button:0}));
+    let saved=await f.save();
+    const first=Object.values(saved.pages['/'].elements)[0] || {};
+    assert.equal(first.style?.offsetXPercent,undefined);
+    assert.equal(first.style?.offsetYPx,undefined);
+
+    f.click('main h1');
+    heading.dispatchEvent(new f.w.MouseEvent('dblclick',{bubbles:true,cancelable:true}));
+    assert.equal(heading.getAttribute('contenteditable'),'plaintext-only');
+    heading.dispatchEvent(new f.w.Event('blur',{bubbles:false}));
+
+    f.click('main h1');
+    const move=f.w.document.querySelector('.legend-cms-move-handle');
+    move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:130,clientY:112,button:0}));
+    saved=await f.save();
+    const moved=Object.values(saved.pages['/'].elements)[0];
+    assert.equal(moved.style.offsetXPercent,5);
+    assert.equal(moved.style.offsetYPx,12);
+
+    f.click('main h1');
+    const right=f.w.document.querySelector('.legend-cms-edge-right');
+    right.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:300,clientY:120,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:360,clientY:120,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:360,clientY:120,button:0}));
+    saved=await f.save();
+    const resized=Object.values(saved.pages['/'].elements)[0];
+    assert.ok(resized.style.widthPercent>33);
+    assert.equal(resized.style.offsetXPercent,5);
+    assert.equal(resized.style.offsetYPx,12);
+  }finally{f.close();}
+});
+
+test('generic template wrappers are not direct selections and blank-area selection stays inside the exact section',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section id="first"><div class="outer"><div class="inner"></div><h2>First</h2></div></section><section id="second"><div class="other"></div><h2>Second</h2></section></main></body></html>';
+  const f=await domFixture({html});
+  try{
+    const outer=f.w.document.querySelector('.outer');
+    const first=f.w.document.querySelector('#first');
+    const second=f.w.document.querySelector('#second');
+    assert.equal(outer.dataset.cmsEditable,undefined);
+    f.click('.outer');
+    const selected=f.w.document.querySelector('.legend-cms-selected');
+    assert.equal(selected,first);
+    assert.notEqual(selected,second);
+    assert.equal(selected.dataset.cmsSection,first.dataset.cmsSection);
+    assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.sectionSelected,'true');
+    assert.match(source,/data-section-selected="true"\] \.legend-cms-move-handle\{display:none\}/);
   }finally{f.close();}
 });
 
@@ -1166,7 +1235,7 @@ test('editing current page preserves independent page content',async()=>{
 test('undo and redo restore content and leave other page drafts intact',async()=>{
  const f=await domFixture();try{f.click('main h1');f.editSelected('First edit');f.editSelected('Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
 });
-test('selected blocks use one sharp border with invisible directional resize zones and a quiet snap grid',async()=>{
+test('selected blocks expose a dedicated move control plus independent resize zones and a quiet snap grid',async()=>{
  const f=await domFixture();try {
   f.click('main h1');
   const heading=f.w.document.querySelector('main h1');
@@ -1174,9 +1243,9 @@ test('selected blocks use one sharp border with invisible directional resize zon
   const frame=f.w.document.querySelector('.legend-cms-selection-frame');
   assert.ok(frame);
   assert.equal(frame.querySelectorAll('.legend-cms-edge-handle').length,8);
-  assert.equal(frame.querySelector('.legend-cms-move-handle'),null);
+  assert.ok(frame.querySelector('.legend-cms-move-handle'));
   assert.equal(frame.querySelector('.legend-cms-resize-handle'),null);
-  assert.equal(source.includes('.legend-cms-move-handle{'),false);
+  assert.ok(source.includes('.legend-cms-move-handle{'));
   assert.equal(source.includes('.legend-cms-resize-handle{'),false);
   assert.match(source,/\.legend-cms-selection-frame\{[^}]*border:1px solid #d4ad45/);
   assert.match(source,/\.legend-cms-edge-right\{right:-6px\}/);
@@ -1570,6 +1639,27 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   finally {f.close();}
  });
 }
+test('page selector updates immediately from edited page metadata instead of keeping template labels',async()=>{
+ const f=await domFixture({siteKey:'legend',pages:[{path:'/',label:'Hard coded home'},{path:'/about',label:'Hard coded about'}],doc:{pages:{'/':{title:'Live Home',elements:{},extras:[],navigation:{showInNavigation:true}},'/about':{title:'Live About',elements:{},extras:[],navigation:{showInNavigation:true}}}}});
+ try{
+   let home=[...f.w.document.querySelector('#legend-cms-page-select').options].find(o=>o.value==='/');
+   assert.equal(home.textContent,'Live Home');
+   f.input('#legend-cms-page-title','Renamed Live Home');
+   home=[...f.w.document.querySelector('#legend-cms-page-select').options].find(o=>o.value==='/');
+   assert.equal(home.textContent,'Renamed Live Home');
+ }finally{f.close();}
+});
+
+test('business navigation-label edits immediately repaint the shared page selector',async()=>{
+ const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Template Home'}],doc:{pages:{'/':{title:'Home title',elements:{},extras:[],navigation:{label:'Home',showInNavigation:true}}}}});
+ try{
+   f.click('[data-open="page"]');
+   f.input('#legend-cms-page-nav-label','Start Here');
+   const home=[...f.w.document.querySelector('#legend-cms-page-select').options].find(o=>o.value==='/');
+   assert.equal(home.textContent,'Start Here');
+ }finally{f.close();}
+});
+
 test('business selector includes imported custom routes from only the authorized draft',async()=>{
  const f=await domFixture({siteKey:'business',business:{id:'business-test',displayName:'Business'},pages:[{path:'/',label:'Home'}],doc:{pages:{'/special-offer':{title:'Special offer',elements:{},extras:[]}}}});
  try {assert.ok([...f.w.document.querySelector('#legend-cms-page-select').options].some(o=>o.value==='/special-offer'&&o.textContent==='Special offer'));}finally{f.close();}
