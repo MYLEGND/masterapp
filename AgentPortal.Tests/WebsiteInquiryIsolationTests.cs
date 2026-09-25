@@ -132,6 +132,110 @@ public sealed class WebsiteInquiryIsolationTests
     }
 
     [Fact]
+    public async Task BusinessCustomFormUsesPublishedSchemaAndExistingCrmInquiryAuthority()
+    {
+        using var f = new Fixture();
+        await f.SeedPublishedAsync();
+
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.SubmitCustomForm(f.CustomFormRequest("/"), CancellationToken.None));
+        var inquiry = Assert.Single(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+
+        Assert.Equal(f.BusinessId, inquiry.CommerceBusinessId);
+        Assert.Equal(lead.LeadId, inquiry.WebsiteLeadId);
+        Assert.Equal(f.BusinessId, lead.CommerceBusinessId);
+        Assert.Null(lead.AgentTrackingProfileId);
+        Assert.Equal("WebsiteForm", lead.InterestType);
+        Assert.StartsWith("form:", lead.WebsiteBindingId);
+        Assert.Contains("Growth", lead.MetadataJson ?? "", StringComparison.Ordinal);
+        Assert.Contains("Primary goal: Growth", lead.Notes ?? "", StringComparison.Ordinal);
+        Assert.False(lead.MarketingEmailConsent);
+        Assert.False(lead.CallTextConsent);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents.Where(row => row.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(f.BusinessId, analytics.CommerceBusinessId);
+        Assert.Contains("website_form:", analytics.FormKey ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FounderCustomFormUsesFounderOwnerWithoutCommerceDuplication()
+    {
+        using var f = new Fixture("https://www.mylegnd.com");
+        await f.SeedLegendPublishedAsync();
+
+        Assert.IsType<OkObjectResult>(await f.Controller.SubmitCustomForm(f.CustomFormRequest("/contact"), CancellationToken.None));
+
+        Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Null(lead.CommerceBusinessId);
+        Assert.Null(lead.AgentTrackingProfileId);
+        Assert.Equal("WebsiteForm", lead.InterestType);
+        Assert.Equal("www.mylegnd.com", lead.Host);
+        Assert.Contains("Growth", lead.MetadataJson ?? "", StringComparison.Ordinal);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "founder@example.org",
+            It.Is<string>(subject => subject.Contains("LEGEND", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProtectCustomFormResolvesOnlyTheAgentFromVerifiedPublicSlug()
+    {
+        using var f = new Fixture("https://protect.mylegnd.com");
+        await f.SeedProtectPublishedAsync();
+
+        Assert.IsType<OkObjectResult>(await f.Controller.SubmitCustomForm(
+            f.CustomFormRequest("/a/agent-one/Contact"),
+            CancellationToken.None));
+
+        Assert.Empty(await f.Db.Set<CommerceWebsiteInquiry>().ToListAsync());
+        var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
+        Assert.Null(lead.CommerceBusinessId);
+        Assert.Equal(f.AgentProfileId, lead.AgentTrackingProfileId);
+        Assert.Equal("agent-one", lead.AgentSlug);
+        Assert.Equal("WebsiteForm", lead.InterestType);
+        Assert.Equal("protect.mylegnd.com", lead.Host);
+        Assert.False(lead.MarketingEmailConsent);
+        Assert.False(lead.CallTextConsent);
+
+        var analytics = Assert.Single(await f.Db.AnalyticsEvents.Where(row => row.EventType == "website_lead_submitted").ToListAsync());
+        Assert.Equal(f.AgentProfileId, analytics.AgentTrackingProfileId);
+        Assert.Equal("agent-one", analytics.AgentSlug);
+
+        f.EmailSender.Verify(sender => sender.TrySendAsync(
+            "agent@example.org",
+            It.Is<string>(subject => subject.Contains("protection", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            "visitor@example.org",
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CustomFormRejectsUnknownSchemaFieldsMissingConsentAndCrossAgentPaths()
+    {
+        using var business = new Fixture();
+        await business.SeedPublishedAsync();
+        Assert.IsType<BadRequestObjectResult>(await business.Controller.SubmitCustomForm(
+            business.CustomFormRequest("/") with { Consent = false }, CancellationToken.None));
+        var unknownFields = business.CustomFormRequest("/");
+        unknownFields.Fields["invented-owner-id"] = "should-not-route";
+        Assert.IsType<BadRequestObjectResult>(await business.Controller.SubmitCustomForm(unknownFields, CancellationToken.None));
+
+        using var protect = new Fixture("https://protect.mylegnd.com");
+        await protect.SeedProtectPublishedAsync();
+        Assert.IsType<NotFoundObjectResult>(await protect.Controller.SubmitCustomForm(
+            protect.CustomFormRequest("/a/other-agent/Contact"), CancellationToken.None));
+        Assert.Empty(await protect.Db.WebsiteLeads.ToListAsync());
+    }
+
+    [Fact]
     public async Task ConsentRequiredAndSourceCannotContainPrivateQuery()
     {
         using var f = new Fixture();
@@ -230,6 +334,7 @@ public sealed class WebsiteInquiryIsolationTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         public Guid BusinessId { get; } = Guid.NewGuid();
         public Guid VersionId { get; } = Guid.NewGuid();
+        public Guid AgentProfileId { get; } = Guid.NewGuid();
         public WebsiteInquiriesController Controller { get; }
         public Mock<IProtectEmailSender> EmailSender { get; } = new();
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
@@ -237,7 +342,8 @@ public sealed class WebsiteInquiryIsolationTests
         {
             var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
             {
-                new System.Collections.Generic.KeyValuePair<string, string?>("Contact:RecipientEmail", "founder@example.org")
+                new System.Collections.Generic.KeyValuePair<string, string?>("Contact:RecipientEmail", "founder@example.org"),
+                new System.Collections.Generic.KeyValuePair<string, string?>("Founder:Upn", "founder@example.org")
             }).Build();
             var domains = new WebsiteDomainService(Db, Mock.Of<IHttpClientFactory>(), config);
             var scopes = new PublicWebsiteRuntimeScopeResolver(Db, domains, config);
@@ -266,6 +372,43 @@ public sealed class WebsiteInquiryIsolationTests
             Guid.NewGuid(), "Visitor", "Example", "(602) 555-0199", "visitor@example.org", "Please contact me.", "/contact", true,
             SourceActionKey: "business_contact", SessionId: "business-session", VisitorId: "business-visitor",
             UtmSource: "meta", UtmCampaign: "campaign-one", Fbclid: "fbclid-one");
+        public WebsiteInquiriesController.CustomFormRequest CustomFormRequest(string path)
+        {
+            var fields = new Dictionary<string, string?>
+            {
+                ["first-name"] = "Visitor",
+                ["last-name"] = "Example",
+                ["phone"] = "(602) 555-0199",
+                ["email"] = "visitor@example.org",
+                ["message"] = "Please contact me.",
+                ["goal"] = "Growth"
+            };
+            return new WebsiteInquiriesController.CustomFormRequest(
+                Guid.NewGuid(), "lead-form", fields, path, true,
+                SourceActionKey: "custom_form", SessionId: "form-session", VisitorId: "form-visitor",
+                UtmSource: "meta", UtmCampaign: "form-campaign", Fbclid: "form-fbclid");
+        }
+
+        private static string PublishedFormJson()
+        {
+            var document = new WebsiteContentDocument();
+            var form = WebsiteFormFieldCatalog.DefaultLeadForm("lead-form", "Consultation");
+            form.Fields.Add(new()
+            {
+                Id = "goal",
+                Label = "Primary goal",
+                Type = "select",
+                Role = "custom",
+                Required = true,
+                Step = 2,
+                Span = 12,
+                Options = ["Growth", "Protection", "Other"]
+            });
+            document.Forms[form.Id] = form;
+            return System.Text.Json.JsonSerializer.Serialize(
+                WebsiteContentSanitizer.Sanitize(document),
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        }
         public async Task SeedLegendPublishedAsync()
         {
             var state = new WebsiteContentState
@@ -275,7 +418,33 @@ public sealed class WebsiteInquiryIsolationTests
                 PublishedVersionId = VersionId
             };
             Db.Add(state);
-            Db.Add(new WebsiteContentVersion { Id = VersionId, StateId = state.Id });
+            Db.Add(new WebsiteContentVersion { Id = VersionId, StateId = state.Id, DocumentJson = PublishedFormJson() });
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task SeedProtectPublishedAsync()
+        {
+            Db.Add(new AgentTrackingProfile
+            {
+                Id = AgentProfileId,
+                AgentUserId = "agent-user-one",
+                AgentUpn = "agent@example.org",
+                Slug = "agent-one",
+                Status = "active"
+            });
+            var state = new WebsiteContentState
+            {
+                OwnerKey = "agent-user-one",
+                SiteKey = WebsiteEditorSiteKeys.Protect,
+                PublishedVersionId = VersionId
+            };
+            Db.Add(state);
+            Db.Add(new WebsiteContentVersion
+            {
+                Id = VersionId,
+                StateId = state.Id,
+                DocumentJson = PublishedFormJson()
+            });
             await Db.SaveChangesAsync();
         }
 
@@ -286,7 +455,13 @@ public sealed class WebsiteInquiryIsolationTests
             Db.Add(new WebsiteDomainBinding { CommerceBusinessId = BusinessId, Hostname = "business.example", Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
             var state = new WebsiteContentState { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(BusinessId), SiteKey = WebsiteEditorSiteKeys.Business, PublishedVersionId = VersionId };
             Db.Add(state);
-            Db.Add(new WebsiteContentVersion { Id = VersionId, StateId = state.Id });
+            Db.Add(new WebsiteContentVersion
+            {
+                Id = VersionId,
+                StateId = state.Id,
+                DocumentJson = PublishedFormJson(),
+                CompiledPagesJson = "{\"pages\":{\"/\":{\"html\":\"test\"},\"/contact\":{\"html\":\"test\"}}}"
+            });
             await Db.SaveChangesAsync();
         }
         public string Ticket(ClientProfile profile) => _tickets.Protect(new WebsiteEditorTicket(
