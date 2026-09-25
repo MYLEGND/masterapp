@@ -34,7 +34,7 @@ jobs:
       - name: Run focused commerce and website authority tests
         run: |
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
-            --filter 'FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~ParfaitAnalyticsTrafficQualityTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests'
+            --filter 'FullyQualifiedName~ParfaitCheckoutBillingCutoverTests|FullyQualifiedName~ParfaitAnalyticsTrafficQualityTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessWorkspaceTests|FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~CentralizedWebsiteCommerceTests'
       - name: Build centralized Parfait commerce host
         run: dotnet build ParfaitApp/ParfaitApp.csproj -c Release --nologo -warnaserror
       - name: Build Protect website authority
