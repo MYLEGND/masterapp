@@ -1,9 +1,10 @@
 # Shared website studio implementation map
 
-Status: active shared-editor implementation, not a release or production completion certificate.
-Current baseline: `legend/approved-changes` at `3c24960ee32af2fb9bcd7f4ec04d60558659f879`.
-Current isolated branch: `feature/shared-website-studio-fluid-editing-20260924`.
-Prior 2026-09-23 implementation and validation history remains documented below.
+Status: active professional Website Studio implementation, isolated and not a release or production completion certificate.
+Approved-changes baseline for this program: `legend/approved-changes` at `3c24960ee32af2fb9bcd7f4ec04d60558659f879`.
+Preserved direct-canvas/contact branch: `feature/shared-website-studio-fluid-editing-20260924`.
+Current professional implementation branch: `feature/legend-website-studio-pro-20260924`.
+Prior implementation and validation history remains documented below.
 
 ## Implemented in this branch
 
@@ -11,7 +12,23 @@ The existing `Legend-Design/legend-public-cms.js` remains the only editor/runtim
 
 Draft page keys now use route paths accepted by `WebsiteContentSanitizer`. Legacy template keys migrate into the same document; canonical values win conflicts and unrelated elements are retained. New sections have a nonempty parent marker even on an empty page. Deleting an added block removes it from the draft rather than persisting an unsupported `hidden` field. Existing section deletion remains reversible through Layers.
 
-This is an editor foundation, not the requested completed website-building platform. Arbitrary page creation/navigation, responsive breakpoint overrides, reusable section patterns, a media library browser, visual event bindings, marketing destination generalization, and business CRM/analytics are not implemented here.
+This remains an in-progress platform program rather than a completion certificate. The professional branch now implements canonical responsive breakpoints, Flow/Grid/Flex/Stack/Free Canvas layouts, direct multi-selection and grouping, reusable synced components, typed motion, expanded component primitives, and an owner-scoped Media Library browser on the existing media authority. Larger remaining platform layers include full arbitrary page/navigation management, broader production component families, CMS/dynamic collections, advanced forms/workflows, SEO/accessibility/performance tooling, collaboration, and AI design workflows.
+
+## Professional Website Studio invariants — isolated pro branch
+
+These rules define the architecture for the Wix/Squarespace-class Studio work:
+
+- **One persisted design model:** responsive behavior is part of `WebsiteContentDocument`, never a separate mobile/tablet store. Base/desktop values are inherited by ordered `WebsiteBreakpointDefinition` variants, and each `WebsiteResponsiveOverride` stores only the smaller-breakpoint differences.
+- **One layout authority:** `WebsiteLayoutModeCatalog` defines Flow, Grid, Flex, Stack, and Free Canvas. `WebsiteComponentCatalog` determines which modes each component can use, and `WebsiteContentSanitizer` consumes those same catalogs instead of maintaining parallel allowlists.
+- **Professional geometry stays typed:** sizing constraints, margins, offsets, position mode, opacity, transforms, z-index, aspect ratio, edge/center/stretch anchors, and insets all live in `WebsiteStyleOverride` and are bounded by the sanitizer. No responsive CSS patch store is introduced.
+- **Selection is transient; design is persistent:** click/multi-select/marquee selection exists only in editor memory. Grouping uses the existing `WebsiteExtraComponent` + `WebsitePlacement.ContainerId` relationship. Align/distribute/nudge writes canonical breakpoint geometry only when the parent is explicitly Free Canvas.
+- **Layers are metadata on the real element:** editor lock and human layer label live on the same element/extra records. Z-order uses the canonical breakpoint style. There is no separate layer database.
+- **Reusable/synced components use the document:** reusable definitions live in `WebsiteContentDocument.ReusableComponents`; instances use the registered `reusable` component type and the existing Extra/component policies. Definition members continue through the shared signal, motion, style, layout, responsive, and sanitizer authorities instead of storing serialized HTML.
+- **One component registry:** Heading, Text, Quote, Divider, Spacer, Shape, Container, Image, Button, Video, Card, Group, Reusable, Section, and Code are registered through `WebsiteComponentCatalog`. The Add panel is rendered from the authenticated server catalog, not a copied browser list.
+- **One motion system:** `WebsiteMotionCatalog` defines typed triggers/effects/easings/directions; `WebsiteMotionInteraction` is stored on the real element/component; the shared runtime interprets it with the Web Animations API and respects `prefers-reduced-motion`. Page-specific animation scripts are not a supported implementation path.
+- **One media authority:** Studio Media Library lists and reuses the existing owner-scoped `WebsiteMediaAsset` records and existing upload/storage transport. It exposes public/editor media URLs and safe filenames only—not `StorageKey` or SHA values. Physical deletion is intentionally deferred until revision/reference-safe deletion can guarantee that rollback/history cannot be broken.
+- **Backward compatibility:** legacy placement and documents without breakpoint/reusable/motion data remain readable. New features are additive extensions of the same document and renderer.
+- **No integration shortcut:** this branch must not be merged to `legend/approved-changes` until executable Node/.NET regression, renderer/build checks, latest-head reconciliation, and representative browser/mobile verification have passed.
 
 ## 2026-09-24 direct-canvas and public-form invariants
 
@@ -25,7 +42,7 @@ These are shared platform rules, not site-specific patches:
 - **Shared public contact form authority:** Founder/LEGEND and Business use the same `publicInquiryForm()` markup contract and `Legend-Design/legend-public-inquiry.js` browser runtime. The former Founder mailto contact card, hard-coded `legend_email` editor action, and business-only inquiry runtime are removed. The browser posts only inquiry fields/attribution; verified Origin is resolved server-side by `PublicWebsiteRuntimeScopeResolver` to Founder or Business.
 - **Contact identity matches Protect:** the shared form uses exact field names `FirstName`, `LastName`, `Phone`, and `Email`, plus `Message`. They persist into the existing `WebsiteLead` fields. Business CRM capture, analytics, the existing Meta server dispatcher, inquiry notifications, and the authorized business inquiry-management projection consume that same lead. Founder inquiries use the same `WebsiteLead` and analytics authority, resolve the Founder recipient through `WebsiteIntakeRecipientResolver`, and use the existing shared email sender; they do not create a fake `CommerceWebsiteInquiry` or a parallel inbox.
 - **Consent stays literal:** the form's checkbox authorizes sharing the submitted inquiry with the scoped website owner. It sets the existing inquiry/terms acceptance only; it does not silently create marketing-email or call/text consent.
-- **Published business form activation stays canonical:** `Legend-Website/scripts/render-business.mjs` removes the preview marker, re-enables the form, removes preview-only notice text, and loads the existing `business-inquiry.js`. Preview/editor sessions do not submit production inquiries.
+- **Published business form activation stays canonical:** `Legend-Website/scripts/render-business.mjs` removes the preview marker, re-enables the shared form, and removes preview-only notice text. Founder and Business both load the single `Legend-Design/legend-public-inquiry.js` runtime from the shared website shell; the former business-only inquiry script was deleted. Preview/editor sessions do not submit production inquiries.
 - **Shared mobile navigation:** the canonical public stylesheet opens mobile navigation as a compact grid, with four columns in the broader mobile range and three columns at narrow mobile widths. Do not reintroduce scope-specific vertical-menu overrides.
 - **CSS rule:** replace authoritative shared rules in place. Do not append emergency overrides, stacked selectors, or page-only fixes to reproduce these behaviors.
 
@@ -83,9 +100,12 @@ The other repair checkout had uncommitted changes in business ownership/membersh
 
 The baseline build uses `/tmp/masterapp` by default for all checkouts. For independent validation pass `-p:MasterAppArtifactsRoot=<unique-path>` and disable shared compiler/node reuse as needed. The initial test attempt encountered shared generated Razor artifacts; subsequent validation uses this workspace's own artifact root.
 
-## Validation for the current 2026-09-24 branch
+## Validation for the current isolated professional branch
 
-- The current branch is isolated from `legend/approved-changes`; no deployment or merge has been performed.
+- The professional branch is isolated on `feature/legend-website-studio-pro-20260924` above the preserved direct-canvas/contact branch; no deployment or merge to `legend/approved-changes` has been performed.
+- Source-level parser/structural checkpoints have remained clean after responsive layout, component registry, layers/multi-select/grouping, anchors, reusable components, typed motion, and Media Library changes.
+- Focused JS and .NET regression cases have been added for breakpoint inheritance/sanitization, component capability authority, Free Canvas alignment/grouping, lock/z-order, anchor constraints, reusable definition policies, motion/reduced-motion behavior, and owner-scoped media projection/reuse.
+- These added tests are definitions until an actual Node/.NET execution runs; source parsing alone is not treated as an executable pass.
 - Shared editor JavaScript parses successfully in source-level validation.
 - Business inquiry browser adapter parses successfully.
 - LEGEND build/test modules parse successfully after normalizing module-only `import.meta` tokens for the parser check.
