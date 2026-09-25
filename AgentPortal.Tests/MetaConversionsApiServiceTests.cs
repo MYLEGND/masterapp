@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using ProtectWebsite.Services.Meta;
+using Infrastructure.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
