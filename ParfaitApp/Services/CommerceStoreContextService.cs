@@ -152,6 +152,9 @@ public sealed class CommerceStoreContextService(
         return IsParfaitHost(host);
     }
 
+    public string ResolveEffectivePublicHost(HttpContext context) =>
+        WebsiteRequestHostResolver.Resolve(context, configuration, allowLegendCommerceHost: true);
+
     public async Task<string?> ResolveCanonicalPublicRootAsync(
         CommerceStoreContext store,
         CancellationToken ct = default)
