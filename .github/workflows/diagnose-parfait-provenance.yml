@@ -1,0 +1,33 @@
+name: Diagnose Parfait provenance
+on:
+  push:
+    branches:
+      - diagnose/parfait-provenance-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe Parfait public and Azure hosts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in \
+            "https://masterapp-parfait.azurewebsites.net/api/runtime-provenance?release=3d1ebdb82561a12716d0d9c3f3daa927a1bfa803" \
+            "https://shopparfait.com/api/runtime-provenance?release=3d1ebdb82561a12716d0d9c3f3daa927a1bfa803" \
+            "https://masterapp-parfait.azurewebsites.net/" \
+            "https://shopparfait.com/"; do
+            echo "=== $url ==="
+            body="$(mktemp)"
+            headers="$(mktemp)"
+            status="$(curl -sS --max-time 30 -D "$headers" -o "$body" -w '%{http_code}' "$url" || true)"
+            echo "HTTP $status"
+            sed -n '1,20p' "$headers"
+            echo "--- body ---"
+            head -c 4096 "$body" || true
+            echo
+          done
