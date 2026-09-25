@@ -276,6 +276,27 @@ public sealed class WebsiteContentController : ControllerBase
         return Ok(SignalCatalogPayload());
     }
 
+    [HttpGet("manage/quality")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> DraftQuality([FromQuery] string ticket, CancellationToken cancellationToken)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var state = await StateAsync(actor, cancellationToken);
+        var document = Read(state.DraftJson);
+        var report = WebsiteDraftQualityInspector.Inspect(document);
+        return Ok(new
+        {
+            source = "saved_draft_server",
+            revision = state.Revision,
+            report.CheckedUtc,
+            report.ErrorCount,
+            report.WarningCount,
+            report.Checks
+        });
+    }
+
     [HttpGet("manage/profile")]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> BusinessProfile([FromQuery] string ticket, CancellationToken cancellationToken)
