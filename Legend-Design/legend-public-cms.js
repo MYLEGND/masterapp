@@ -1186,7 +1186,7 @@
 
   function captureReusableDefinition(name, existingId = null) {
     const source = selectedAddedExtra();
-    if (!source || source.type === 'reusable') return null;
+    if (!source || source.type === 'reusable' || source.type === 'form') return null;
     const componentId = existingId || crypto.randomUUID().replaceAll('-', '');
     const sourceIds = new Set([source.id]);
     if (source.type === 'section') {
