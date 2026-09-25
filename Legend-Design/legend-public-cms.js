@@ -2742,6 +2742,268 @@
     textarea.focus();
   }
 
+  const reusableInstanceGeometryKeys = new Set([
+    'widthPercent','heightPx','offsetXPercent','offsetYPx',
+    'minWidthPx','maxWidthPx','minHeightPx','maxHeightPx',
+    'marginTop','marginRight','marginBottom','marginLeft',
+    'zIndex','positionMode','horizontalAnchor','verticalAnchor',
+    'insetLeftPx','insetRightPx','insetTopPx','insetBottomPx','aspectRatio'
+  ]);
+
+  function cloneValue(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function splitReusableStyle(style) {
+    const shared = {}, instance = {};
+    for (const [key, value] of Object.entries(style || {})) {
+      (reusableInstanceGeometryKeys.has(key) ? instance : shared)[key] = cloneValue(value);
+    }
+    return { shared, instance };
+  }
+
+  function splitReusableResponsive(responsive) {
+    const shared = {}, instance = {};
+    for (const [breakpoint, variant] of Object.entries(responsive || {})) {
+      const split = splitReusableStyle(variant?.style);
+      const sharedVariant = { style: split.shared, layout: cloneValue(variant?.layout || {}) };
+      const instanceVariant = { style: split.instance, layout: {} };
+      if (variant?.hidden !== undefined) instanceVariant.hidden = variant.hidden;
+      if (Object.keys(sharedVariant.style).length || Object.keys(sharedVariant.layout).length) shared[breakpoint] = sharedVariant;
+      if (Object.keys(instanceVariant.style).length || instanceVariant.hidden !== undefined) instance[breakpoint] = instanceVariant;
+    }
+    return { shared, instance };
+  }
+
+  function extraDescendantIds(rootId) {
+    const result = new Set();
+    const queue = [`extra:${rootId}`];
+    while (queue.length) {
+      const containerId = queue.shift();
+      for (const extra of pageState().extras) {
+        if (result.has(extra.id) || extra.placement?.containerId !== containerId) continue;
+        result.add(extra.id);
+        queue.push(`extra:${extra.id}`);
+      }
+    }
+    return result;
+  }
+
+  function hasBaselineDescendants(rootId, extraIds) {
+    const validContainers = new Set([`extra:${rootId}`, ...[...extraIds].map(id => `extra:${id}`)]);
+    return Object.values(pageState().elements).some(override => validContainers.has(override?.placement?.containerId));
+  }
+
+  function cloneDefinitionComponents(rootId, descendantIds) {
+    const source = pageState().extras.filter(extra => descendantIds.has(extra.id));
+    const idMap = new Map(source.map(extra => [extra.id, crypto.randomUUID()]));
+    return source.map(extra => {
+      const copy = cloneValue(extra);
+      copy.id = idMap.get(extra.id);
+      copy.sectionId = '__reusable__';
+      delete copy.reusableDefinitionId;
+      copy.placement ||= {};
+      copy.placement.sectionId = '__reusable__';
+      const oldContainer = copy.placement.containerId;
+      if (oldContainer === `extra:${rootId}`) copy.placement.containerId = null;
+      else if (oldContainer?.startsWith('extra:')) {
+        const mapped = idMap.get(oldContainer.slice('extra:'.length));
+        copy.placement.containerId = mapped ? `extra:${mapped}` : null;
+      }
+      if (copy.placement.beforeId) {
+        const before = reusableLocalId(copy.placement.beforeId);
+        const mappedBefore = idMap.get(before);
+        copy.placement.beforeId = mappedBefore ? `extra:${mappedBefore}` : null;
+      }
+      return copy;
+    });
+  }
+
+  function openSaveReusableDialog() {
+    const rootEl = selected;
+    const root = rootEl?.dataset.cmsExtraId ? pageState().extras.find(item => item.id === rootEl.dataset.cmsExtraId) : null;
+    if (!root || !['group','container'].includes(root.type)) {
+      alert('Select an added Group or Container to save it as a synced component.');
+      return;
+    }
+    const descendantIds = extraDescendantIds(root.id);
+    if (hasBaselineDescendants(root.id, descendantIds)) {
+      alert('This container includes template-owned content. Convert or duplicate that content into added components before saving it as a synced component.');
+      return;
+    }
+    if (document.getElementById('legend-cms-reusable-dialog')) return;
+    clearTimeout(autoSaveTimer);
+
+    const dialog = document.createElement('dialog');
+    dialog.id = 'legend-cms-reusable-dialog';
+    dialog.className = 'legend-cms-editor legend-cms-draft-dialog';
+    const title = document.createElement('h2'); title.textContent = 'Save synced component';
+    const help = document.createElement('p'); help.textContent = 'Content, design, layout, motion, and signals stay synced. Each inserted instance keeps its own page placement and size.';
+    const label = document.createElement('label'); label.textContent = 'Component name';
+    const input = document.createElement('input'); input.type = 'text'; input.maxLength = 100; input.required = true; input.value = root.editorLabel || 'Reusable component'; label.appendChild(input);
+    const feedback = document.createElement('p'); feedback.setAttribute('role','status');
+    const actions = document.createElement('div'); actions.className = 'legend-cms-code-actions';
+    const saveButton = document.createElement('button'); saveButton.type='button'; saveButton.textContent='Save synced component';
+    const cancel = document.createElement('button'); cancel.type='button'; cancel.textContent='Cancel'; cancel.addEventListener('click',()=>dialog.close());
+    saveButton.addEventListener('click',()=>{
+      const name=input.value.trim();
+      if(!name){input.reportValidity();return;}
+      const ok=saveSelectedAsReusable(name, descendantIds);
+      if(ok)dialog.close(); else feedback.textContent='This selection could not be converted safely.';
+    });
+    actions.append(saveButton,cancel);
+    dialog.append(title,help,label,feedback,actions);
+    dialog.addEventListener('close',()=>{dialog.remove();if(dirty)autoSaveTimer=setTimeout(()=>save(false),900);});
+    document.body.appendChild(dialog);dialog.showModal();input.focus();
+  }
+
+  function saveSelectedAsReusable(name, knownDescendantIds = null) {
+    const rootEl = selected;
+    const root = rootEl?.dataset.cmsExtraId ? pageState().extras.find(item => item.id === rootEl.dataset.cmsExtraId) : null;
+    if (!root || !['group','container'].includes(root.type)) return false;
+    const descendantIds = knownDescendantIds || extraDescendantIds(root.id);
+    if (hasBaselineDescendants(root.id, descendantIds)) return false;
+
+    checkpoint();
+    const definitionId = crypto.randomUUID();
+    const split = splitReusableStyle(root.style);
+    const responsive = splitReusableResponsive(root.responsive);
+    const definition = {
+      id: definitionId,
+      name: String(name || 'Reusable component').trim().slice(0,100),
+      rootType: root.type,
+      signals: cloneValue(root.signals || []),
+      interactions: cloneValue(root.interactions || []),
+      style: split.shared,
+      layout: cloneValue(root.layout || {}),
+      responsive: responsive.shared,
+      components: cloneDefinitionComponents(root.id, descendantIds),
+      updatedUtc: new Date().toISOString()
+    };
+    documentState.reusableComponents ||= {};
+    documentState.reusableComponents[definitionId] = definition;
+
+    const instance = {
+      id: root.id,
+      type: 'reusable',
+      reusableDefinitionId: definitionId,
+      sectionId: root.sectionId,
+      editorLocked: root.editorLocked,
+      editorLabel: definition.name,
+      placement: cloneValue(root.placement || null),
+      style: split.instance,
+      layout: {},
+      responsive: responsive.instance,
+      signals: [],
+      interactions: []
+    };
+    const rootIndex = pageState().extras.findIndex(item => item.id === root.id);
+    pageState().extras = pageState().extras.filter(item => !descendantIds.has(item.id));
+    const replacementIndex = pageState().extras.findIndex(item => item.id === root.id);
+    if (replacementIndex >= 0) pageState().extras[replacementIndex] = instance;
+    else pageState().extras.splice(Math.max(0, rootIndex), 0, instance);
+
+    applyDocument(documentState);
+    renderComponentCatalog();
+    const rebuilt = document.querySelector(`[data-cms-id="extra:${CSS.escape(instance.id)}"]`);
+    setSelected(rebuilt);
+    markDirty();
+    return true;
+  }
+
+  function insertReusableComponent(definitionId) {
+    const definition = reusableDefinition(definitionId);
+    if (!definition) return;
+    const section = selectedSection || document.querySelector('[data-cms-section]');
+    if (!section) return;
+    checkpoint();
+    const extra = {
+      id: crypto.randomUUID(),
+      type: 'reusable',
+      reusableDefinitionId: definitionId,
+      sectionId: section.dataset.cmsSection,
+      editorLabel: definition.name,
+      style: {},
+      layout: {},
+      responsive: {},
+      signals: [],
+      interactions: []
+    };
+    const canUseSelectedContainer = selected && !selected.dataset.cmsReusableDefinitionId && !selected.closest?.('.cms-extra-reusable');
+    const container = canUseSelectedContainer ? selectedFlowContainer(section) : null;
+    if (container) extra.placement = { sectionId: section.dataset.cmsSection, containerId: container.dataset.cmsId, beforeId: null, flow: true, column: 1, span: 12 };
+    pageState().extras.push(extra);
+    const el=createExtra(extra);
+    if(extra.placement)applyPlacement(el,extra.placement);
+    setSelected(el);
+    markDirty();
+  }
+
+  function mergeReusableResponsive(definitionResponsive, instanceResponsive) {
+    const result = cloneValue(definitionResponsive || {});
+    for (const [breakpoint, variant] of Object.entries(instanceResponsive || {})) {
+      result[breakpoint] ||= { style:{}, layout:{} };
+      result[breakpoint].style = { ...(result[breakpoint].style || {}), ...(variant?.style || {}) };
+      result[breakpoint].layout = { ...(result[breakpoint].layout || {}), ...(variant?.layout || {}) };
+      if (variant?.hidden !== undefined) result[breakpoint].hidden = variant.hidden;
+    }
+    return result;
+  }
+
+  function detachReusableInstance() {
+    const instanceEl=selected?.dataset.cmsExtraId ? selected : selected?.closest?.('.cms-extra-reusable');
+    const instance=instanceEl?.dataset.cmsExtraId ? pageState().extras.find(item=>item.id===instanceEl.dataset.cmsExtraId) : null;
+    if(instance?.type!=='reusable')return;
+    const definition=reusableDefinition(instance.reusableDefinitionId);
+    if(!definition)return;
+    checkpoint();
+
+    const root={
+      id:instance.id,
+      type:['group','container'].includes(definition.rootType)?definition.rootType:'group',
+      sectionId:instance.sectionId,
+      editorLocked:instance.editorLocked,
+      editorLabel:instance.editorLabel || definition.name,
+      placement:cloneValue(instance.placement||null),
+      style:{...(cloneValue(definition.style||{})),...(cloneValue(instance.style||{}))},
+      layout:cloneValue(definition.layout||{}),
+      responsive:mergeReusableResponsive(definition.responsive,instance.responsive),
+      signals:cloneValue(definition.signals||[]),
+      interactions:cloneValue(definition.interactions||[])
+    };
+
+    const idMap=new Map((definition.components||[]).map(component=>[component.id,crypto.randomUUID()]));
+    const clones=(definition.components||[]).map(component=>{
+      const copy=cloneValue(component);
+      const oldId=component.id;
+      copy.id=idMap.get(oldId);
+      copy.sectionId=instance.sectionId;
+      copy.placement=cloneValue(component.placement||{});
+      copy.placement.sectionId=instance.sectionId;
+      const oldContainer=copy.placement.containerId;
+      if(!oldContainer) {
+        copy.placement.containerId=`extra:${root.id}`;
+        copy.placement.flow=true;
+      } else if(oldContainer.startsWith('extra:')) {
+        const mapped=idMap.get(oldContainer.slice('extra:'.length));
+        copy.placement.containerId=mapped?`extra:${mapped}`:`extra:${root.id}`;
+      }
+      if(copy.placement.beforeId){
+        const mappedBefore=idMap.get(reusableLocalId(copy.placement.beforeId));
+        copy.placement.beforeId=mappedBefore?`extra:${mappedBefore}`:null;
+      }
+      return copy;
+    });
+
+    const index=pageState().extras.findIndex(item=>item.id===instance.id);
+    if(index<0)return;
+    pageState().extras.splice(index,1,root,...clones);
+    applyDocument(documentState);
+    const rebuilt=document.querySelector(`[data-cms-id="extra:${CSS.escape(root.id)}"]`);
+    setSelected(rebuilt);
+    markDirty();
+  }
+
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
