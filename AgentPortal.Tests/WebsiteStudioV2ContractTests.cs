@@ -1,3 +1,5 @@
+using System.Linq;
+using System;
 using Infrastructure.WebsiteEditing;
 using Xunit;
 
