@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
 using Infrastructure.Data;
