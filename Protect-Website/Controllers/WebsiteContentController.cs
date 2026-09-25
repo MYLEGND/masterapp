@@ -1026,7 +1026,7 @@ public sealed class WebsiteContentController : ControllerBase
         {
             var collections = await new WebsiteCollectionProjectionService(_db)
                 .LoadAsync(document, business.Id, cancellationToken);
-            var compiler = HttpContext.RequestServices.GetRequiredService<ProtectWebsite.Services.WebsitePageCompiler>();
+            var compiler = HttpContext.RequestServices.GetRequiredService<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
             version.CompiledPagesJson = await compiler.CompileAsync(document, business, facts!, collections, cancellationToken);
         }
         _db.Set<WebsiteContentVersion>().Add(version);

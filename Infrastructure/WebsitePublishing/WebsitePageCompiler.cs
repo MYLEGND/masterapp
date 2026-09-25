@@ -4,7 +4,7 @@ using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.WebsiteEditing;
 
-namespace ProtectWebsite.Services;
+namespace Infrastructure.WebsitePublishing;
 
 /// <summary>Compiles immutable public pages through the same JavaScript renderer used by the editor.</summary>
 public sealed class WebsitePageCompiler(IWebHostEnvironment environment, IConfiguration configuration)

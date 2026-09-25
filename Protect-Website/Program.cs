@@ -52,7 +52,7 @@ builder.Services.AddScoped<Infrastructure.WebsiteEditing.PublicWebsiteRuntimeSco
 builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioningService, Infrastructure.Businesses.CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
-builder.Services.AddSingleton<ProtectWebsite.Services.WebsitePageCompiler>();
+builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
 builder.Services.AddHostedService<ProtectWebsite.Services.WebsitePublishWorker>();
 var publicWebsiteOrigins = new[]
 {
@@ -228,7 +228,7 @@ app.UseHttpsRedirection();
 // Agent slug routing / context must run before routing so rewritten paths are routed correctly
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
-app.UseMiddleware<ProtectWebsite.Services.BusinessWebsiteMiddleware>();
+app.UseMiddleware<Infrastructure.WebsiteRuntime.BusinessWebsiteMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
