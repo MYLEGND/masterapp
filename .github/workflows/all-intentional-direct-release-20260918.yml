@@ -183,6 +183,17 @@ jobs:
             dotnet build Protect-Website/ProtectWebsite.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
             node --test --test-name-pattern='publication compiler process consumes stdin and returns compiled pages' Legend-Website/scripts/render-business.test.mjs
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests.BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport'
+            dotnet tool restore
+            ConnectionStrings__MasterAppDb='Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false' \
+              EF_FORCE_SQLSERVER=true \
+              DOTNET_ENVIRONMENT=Development \
+              ASPNETCORE_ENVIRONMENT=Development \
+              dotnet tool run dotnet-ef migrations has-pending-model-changes \
+                --project Infrastructure/Infrastructure.csproj \
+                --startup-project AgentPortal/AgentPortal.csproj \
+                --context MasterAppDbContext \
+                --configuration Release \
+                --no-build
           elif [ "$PORTAL_ONLY" = true ]; then
             dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo -warnaserror -p:SourceRevisionId="$RELEASE_SHA"
           else
