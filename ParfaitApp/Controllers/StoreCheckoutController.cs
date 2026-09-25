@@ -24,6 +24,7 @@ public sealed class StoreCheckoutController : Controller
     private readonly ParfaitMetaSignalBridgeService? _legacyMetaSignalBridge;
     private readonly bool _legacyCompatibility;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public StoreCheckoutController(
         SquareBillingOptions squareOptions,
         ParfaitProductService products,
