@@ -147,12 +147,18 @@
 
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script>window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+        commerceBusinessId = commerce?.CommerceBusinessId,
+        websiteContentVersionId = commerce?.WebsiteContentVersionId,
+        websiteSiteKey = commerce?.WebsiteSiteKey ?? "ParfaitApp",
         businessKey = commerce?.BusinessKey ?? "parfait",
         storeName,
         storeRootPath = storeRoot,
         cartPath = storeCart,
         checkoutPath = commerce?.CheckoutPath ?? "/store/checkout",
         successPath = commerce?.SuccessPath ?? "/store/success",
+        analyticsEndpoint = commerce?.IsParfait == false
+            ? $"/parfait-analytics/s/{Uri.EscapeDataString(commerce.BusinessKey)}/track"
+            : "/parfait-analytics/track",
         cartStorageKey = commerce?.CartStorageKey ?? "parfaitCart",
         isParfait = commerce?.IsParfait ?? true
     }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));</script>
