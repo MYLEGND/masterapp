@@ -12,6 +12,12 @@ const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/
 const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
 const componentCatalogFixture = [
   {type:'text',label:'Text',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
+  {type:'heading',label:'Heading',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
+  {type:'quote',label:'Quote',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
+  {type:'divider',label:'Divider',group:'Basic',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
+  {type:'spacer',label:'Spacer',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
+  {type:'shape',label:'Shape',group:'Design',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
+  {type:'container',label:'Container',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed']},
   {type:'image',label:'Image',group:'Media',inlineText:false,supportsMedia:true,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
   {type:'button',label:'Button / link',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:true,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
   {type:'video',label:'Video',group:'Media',inlineText:false,supportsMedia:true,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
@@ -324,6 +330,24 @@ test('Add panel is rendered from the authenticated component capability catalog'
     assert.equal(f.w.document.querySelector('#legend-cms-new-image')?.textContent,'Image');
     assert.equal(source.includes('<button data-add="text">Text</button>'),false);
     assert.ok(editorContractsSource.includes('WebsiteComponentCatalog'));
+  } finally { f.close(); }
+});
+
+test('professional primitive components come from the shared registry and persist through the same Extras model',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('main h1');
+    for (const type of ['heading','quote','divider','spacer','shape','container']) f.click(`[data-add="${type}"]`);
+    saved=await f.save();
+    const types=new Set(saved.pages['/'].extras.map(item=>item.type));
+    for (const type of ['heading','quote','divider','spacer','shape','container']) assert.equal(types.has(type),true);
+    const container=saved.pages['/'].extras.find(item=>item.type==='container');
+    assert.equal(container.layout.mode,'flow');
+    assert.equal(container.style.minHeightPx,160);
+    const spacer=saved.pages['/'].extras.find(item=>item.type==='spacer');
+    assert.equal(spacer.style.heightPx,48);
+    const shape=saved.pages['/'].extras.find(item=>item.type==='shape');
+    assert.equal(shape.style.widthPercent,25);
   } finally { f.close(); }
 });
 
