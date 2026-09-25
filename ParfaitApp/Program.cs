@@ -133,6 +133,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 
 builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<CommerceBusinessScopeResolver>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
 builder.Services.AddSingleton(sp =>
     Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
         sp.GetRequiredService<IConfiguration>(),
