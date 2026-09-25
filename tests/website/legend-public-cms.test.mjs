@@ -517,6 +517,43 @@ test('autosave persists edits before domain connection and panel can collapse to
     assert.equal(toggle.textContent,'Full-page canvas');
   } finally { f.close(); }
 });
+test('breakpoint editor writes responsive style and layout without replacing base geometry',async()=>{
+  const f=await domFixture();
+  try {
+    f.click('main h1');
+    f.click('[data-open="layout"]');
+    f.change('#legend-cms-breakpoint','mobile');
+    f.input('#legend-cms-width','55');
+    f.input('#legend-cms-layout-mode','stack');
+    f.input('#legend-cms-layout-gap','16');
+    const saved=await f.save();
+    const override=Object.values(saved.pages['/'].elements).find(value=>value.breakpointStyles?.mobile?.widthPercent===55);
+    assert.ok(override);
+    assert.equal(override.style?.widthPercent,undefined);
+    assert.equal(override.breakpointStyles.mobile.widthPercent,55);
+    assert.equal(override.breakpointLayouts.mobile.mode,'stack');
+    assert.equal(override.breakpointLayouts.mobile.gapPx,16);
+  } finally { f.close(); }
+});
+
+test('custom breakpoint can be added used and removed without leaving hidden responsive state',async()=>{
+  const f=await domFixture();
+  try {
+    f.click('main h1');
+    f.click('[data-open="layout"]');
+    f.input('#legend-cms-breakpoint-label','Large tablet');
+    f.input('#legend-cms-breakpoint-key','large-tablet');
+    f.input('#legend-cms-breakpoint-min','900');
+    f.input('#legend-cms-breakpoint-max','1100');
+    f.click('#legend-cms-breakpoint-add');
+    assert.equal(f.w.document.querySelector('#legend-cms-breakpoint').value,'large-tablet');
+    f.input('#legend-cms-width','66');
+    f.click('#legend-cms-breakpoint-remove');
+    const saved=await f.save();
+    assert.equal(saved.breakpoints.some(value=>value.key==='large-tablet'),false);
+    assert.equal(Object.values(saved.pages['/'].elements).some(value=>value.breakpointStyles?.['large-tablet']),false);
+  } finally { f.close(); }
+});
 test('section deletion preserves child structure, reset restores, global theme remains separate',async()=>{
   const f=await domFixture();try {f.click('main h1');f.click('#legend-cms-container'); f.click('#legend-cms-remove');
     assert.equal(f.w.document.querySelector('main section').hidden,true);assert.ok(f.w.document.querySelector('main section h1'));
