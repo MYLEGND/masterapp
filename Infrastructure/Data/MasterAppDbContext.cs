@@ -2409,6 +2409,7 @@ public class MasterAppDbContext : DbContext
         });
         modelBuilder.Entity<WebsiteStudioComment>(e =>
         {
+            e.ToTable("WebsiteStudioComments");
             e.HasKey(x => x.Id);
             e.Property(x => x.PagePath).HasMaxLength(160).IsRequired();
             e.Property(x => x.ElementId).HasMaxLength(200);
