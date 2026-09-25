@@ -777,7 +777,7 @@ test('shared CTA dropdown creates a styled live button and keeps its label indep
     {key:'business_contact',group:'Contact',label:'Contact form',defaultText:'Contact Us',href:'/contact',openInNewTab:false},
     {key:'business_call',group:'Contact',label:'Call the business',defaultText:'Call Now',href:'tel:+16025550199',openInNewTab:false}
   ];
-  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions});
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},ctaCatalog:actions,signalCatalog:{events:[],matchingFields:[],runtimeEnabled:true}});
   try {
     f.click('main h1'); f.click('[data-add="button"]');
     const button=f.w.document.querySelector('[data-cms-extra-id]');
