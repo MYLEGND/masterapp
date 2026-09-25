@@ -309,7 +309,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,motionCatalog=motionCatalogFixture,innerWidth=1280,reduceMotion=false,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,motionCatalog=motionCatalogFixture,mediaAssets=[],innerWidth=1280,reduceMotion=false,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   Object.defineProperty(w,'innerWidth',{value:innerWidth,writable:true,configurable:true});
@@ -319,7 +319,14 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog},motionCatalog})}; };
+  w.fetch=async(url,init={})=> {
+    const href=String(url); calls.push({url:href,...init});
+    const parsed=new URL(href,w.location.origin);
+    if(parsed.pathname==='/api/website-content/manage/media' && (!init.method || init.method==='GET'))
+      return {ok:!denied,status:denied?401:200,json:async()=>({assets:mediaAssets})};
+    const body=typeof init.body==='string'?JSON.parse(init.body):null;
+    return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog},motionCatalog})};
+  };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -399,6 +406,41 @@ test('reduced motion suppresses public playback while preserving the configured 
   try {
     await new Promise(resolve=>setTimeout(resolve,5));
     assert.equal(f.animations.length,0);
+  } finally { f.close(); }
+});
+
+test('Media Library reuses existing owner assets through the canonical Extra without a second asset record',async()=>{
+  const asset={id:'11111111-1111-1111-1111-111111111111',url:'https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111',contentType:'image/png',sizeBytes:2048,sourceName:'hero.png',createdUtc:'2026-09-25T00:00:00Z'};
+  const f=await domFixture({mediaAssets:[asset]}); let saved;
+  try {
+    f.click('main h1');
+    f.click('[data-open="media"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(f.w.document.querySelector('#legend-cms-media-status').textContent,/1 of 1 asset/);
+    assert.equal(f.w.document.querySelector('.legend-cms-media-card strong').textContent,'hero.png');
+    assert.match(f.w.document.querySelector('.legend-cms-media-preview').src,/ticket/);
+    f.click('.legend-cms-media-card button');
+    saved=await f.save();
+    const extra=saved.pages['/'].extras.find(item=>item.type==='image');
+    assert.ok(extra);
+    assert.equal(extra.imageDataUrl,asset.url);
+    assert.equal(extra.alt,'hero.png');
+    assert.equal(f.calls.filter(call=>new URL(call.url).pathname==='/api/website-content/manage/media').length,1);
+  } finally { f.close(); }
+});
+
+test('Media Library replaces a selected image through its existing canonical override',async()=>{
+  const asset={id:'22222222-2222-2222-2222-222222222222',url:'https://site.example/api/website-content/media/22222222-2222-2222-2222-222222222222',contentType:'image/webp',sizeBytes:4096,sourceName:'replacement.webp',createdUtc:'2026-09-25T00:00:00Z'};
+  const f=await domFixture({mediaAssets:[asset]}); let saved;
+  try {
+    f.click('main img');
+    f.click('[data-open="media"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    f.click('.legend-cms-media-card button');
+    saved=await f.save();
+    const replacement=Object.values(saved.pages['/'].elements).find(item=>item.imageDataUrl===asset.url);
+    assert.ok(replacement);
+    assert.equal(saved.pages['/'].extras.filter(item=>item.type==='image').length,0);
   } finally { f.close(); }
 });
 
