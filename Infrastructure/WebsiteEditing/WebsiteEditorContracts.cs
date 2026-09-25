@@ -94,6 +94,7 @@ public sealed class WebsiteElementOverride
     public string? Href { get; set; }
     public string? Target { get; set; }
     public string? Alt { get; set; }
+    public bool? IsDecorative { get; set; }
     public string? VideoUrl { get; set; }
     public WebsitePlacement? Placement { get; set; }
     public WebsiteStyleOverride Style { get; set; } = new();
@@ -171,6 +172,7 @@ public sealed class WebsiteExtraComponent
     public string? Href { get; set; }
     public string? Target { get; set; }
     public string? Alt { get; set; }
+    public bool? IsDecorative { get; set; }
     public string? VideoUrl { get; set; }
     public WebsitePlacement? Placement { get; set; }
     public string? Title { get; set; }
