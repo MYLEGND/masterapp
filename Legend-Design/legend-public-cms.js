@@ -598,6 +598,14 @@
     return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
   }
 
+  function applyReusableMemberElement(el, override) {
+    if (!el || !override) return;
+    const field = el.dataset.cmsExtraField;
+    if (field === 'title') { setContentText(el, override.title || '', true); return; }
+    if (field === 'text') { setContentText(el, override.text || '', true); return; }
+    applyElementOverride(el, override);
+  }
+
   function syncReusableMemberDom(el, override) {
     if (!editorMode || !el?.dataset?.cmsReusableDefinitionId || el.dataset.cmsReusableSyncing === 'true') return;
     const definitionId = el.dataset.cmsReusableDefinitionId;
@@ -611,8 +619,7 @@
         return;
       other.dataset.cmsReusableSyncing = 'true';
       try {
-        if (field === 'title' || field === 'text') setContentText(other, override?.[field] || '', true);
-        else applyElementOverride(other, override);
+        applyReusableMemberElement(other, override);
       } finally {
         delete other.dataset.cmsReusableSyncing;
       }
@@ -1013,7 +1020,7 @@
       placeReusableComponent(node, component, root, nodesById);
       applyElementOverride(node, component);
       node.querySelectorAll('[data-cms-reusable-definition-id]').forEach(child => {
-        if (child.dataset.cmsExtraField) applyElementOverride(child, component);
+        if (child.dataset.cmsExtraField) applyReusableMemberElement(child, component);
       });
     }
   }
@@ -1087,7 +1094,7 @@
     });
     document.querySelectorAll('[data-cms-reusable-definition-id]').forEach(el => {
       const override = overrideForElement(el, false);
-      if (override) applyElementOverride(el, override);
+      if (override) applyReusableMemberElement(el, override);
     });
     updateDirectCanvasUi();
   }
