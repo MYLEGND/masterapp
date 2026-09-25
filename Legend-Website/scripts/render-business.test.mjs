@@ -130,6 +130,58 @@ test('published reusable component resolves from one definition without copying 
   assert.equal(embedded.reusableComponents['shared-callout'].extras[0].text,'One synchronized message');
 });
 
+
+test('dynamic product collection expands scoped item routes and binds each item without using the first row globally',async()=>{
+  const value=document();
+  value.collections={
+    products:{id:'products',name:'Products',source:'commerce_products',fields:['slug','name','description']}
+  };
+  value.pages['/catalog']={
+    title:'Catalog template',
+    navigation:{label:'Catalog',showInNavigation:false,order:50},
+    dynamicBinding:{collectionId:'products',itemKeyField:'slug',routePattern:'/products/{item}'},
+    elements:{},sectionOrder:{},
+    extras:[
+      {id:'catalog-section',type:'section',sectionId:'catalog.root',style:{}},
+      {id:'product-name',type:'text',sectionId:'extra:catalog-section',text:'Product name',dataBinding:{collectionId:'products',field:'name',target:'text'},style:{}},
+      {id:'product-description',type:'text',sectionId:'extra:catalog-section',text:'Product description',dataBinding:{collectionId:'products',field:'description',target:'text'},style:{}}
+    ]
+  };
+  const collections=[{
+    id:'products',source:'commerce_products',isList:true,
+    items:[
+      {key:'red-shirt',fields:{slug:'red-shirt',name:'Red Shirt',description:'Red product'}},
+      {key:'blue-shirt',fields:{slug:'blue-shirt',name:'Blue Shirt',description:'Blue product'}}
+    ]
+  }];
+  const result=await compileBusiness({business,document:value,collections});
+  assert.ok(result.pages['/products/red-shirt']);
+  assert.ok(result.pages['/products/blue-shirt']);
+  assert.match(result.pages['/products/red-shirt'].html,/Red Shirt/);
+  assert.match(result.pages['/products/red-shirt'].html,/Red product/);
+  assert.doesNotMatch(result.pages['/products/red-shirt'].html,/Blue product/);
+  assert.match(result.pages['/products/blue-shirt'].html,/Blue Shirt/);
+  assert.equal(result.manifest.find(page=>page.route==='/products/red-shirt').dynamic,true);
+  assert.equal(result.manifest.find(page=>page.route==='/products/red-shirt').showInNavigation,false);
+});
+
+test('dynamic route compilation fails closed on unavailable collection invalid key or route collision',async()=>{
+  const base=document();
+  base.collections={products:{id:'products',name:'Products',source:'commerce_products',fields:['slug','name']}};
+  base.pages['/catalog']={title:'Catalog',navigation:{showInNavigation:false},dynamicBinding:{collectionId:'products',itemKeyField:'slug',routePattern:'/products/{item}'},elements:{},sectionOrder:{},extras:[]};
+  await assert.rejects(()=>compileBusiness({business,document:base,collections:[]}),/Dynamic website collection is unavailable/);
+
+  await assert.rejects(()=>compileBusiness({business,document:base,collections:[{
+    id:'products',source:'commerce_products',isList:true,items:[{key:'bad',fields:{slug:'bad/slug',name:'Bad'}}]
+  }]}),/Dynamic website route key is invalid/);
+
+  const collision=structuredClone(base);
+  collision.pages['/products/red']={title:'Static collision',elements:{},sectionOrder:{},extras:[]};
+  await assert.rejects(()=>compileBusiness({business,document:collision,collections:[{
+    id:'products',source:'commerce_products',isList:true,items:[{key:'red',fields:{slug:'red',name:'Red'}}]
+  }]}),/Dynamic website route conflicts/);
+});
+
 test('untrusted business facts remain text and unsafe page routes reject publication',async()=>{
   const result=await compileBusiness({business:{...business,displayName:'</script><script>alert(1)</script>'},document:document()});
   const dom=parseHTML(result.pages['/'].html).document;
