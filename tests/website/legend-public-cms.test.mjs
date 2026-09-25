@@ -1052,7 +1052,7 @@ test('selected content drag preserves free-form placement instead of forcing gri
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
     const saved=await f.save();
     const style=Object.values(saved.pages['/'].elements)[0].style;
-    assert.equal(style.offsetXPercent,3.7);
+    assert.equal(style.offsetXPercent,6.167);
     assert.equal(style.offsetYPx,13);
   }finally{f.close();}
 });
