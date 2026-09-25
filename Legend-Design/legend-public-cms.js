@@ -1285,6 +1285,97 @@
     });
   }
 
+  function installPublishedSignalBindings() {
+    if (editorMode || renderInput?.server) return;
+    const session = window.LEGEND_PUBLIC_META_SESSION;
+    if (!session || typeof session.trackConfiguredEvent !== 'function') return;
+
+    const allowedTriggers = new Set([
+      'viewed', 'click', 'form_started', 'submit_attempt',
+      'field_started', 'validation_failed', 'field_completed', 'scroll_threshold'
+    ]);
+    const page = pageState();
+    const candidates = [
+      ...Object.entries(page.elements || {}).map(([id, override]) => ({ id, override, node: document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`) })),
+      ...(page.extras || []).map(extra => ({ id: `extra:${extra.id}`, override: extra, node: document.querySelector(`[data-cms-id="extra:${CSS.escape(extra.id)}"]`) }))
+    ];
+    const cleanups = [];
+
+    const emit = (binding, elementId) => {
+      if (!binding || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) return;
+      const onceKey = binding.oncePerSession ? `website-binding:${binding.id}` : null;
+      session.trackConfiguredEvent(binding.eventName, {
+        deliveryMode: binding.deliveryMode,
+        onceKey,
+        metadata: {
+          websiteBindingId: binding.id,
+          elementId,
+          trigger: binding.trigger,
+          deliveryMode: binding.deliveryMode,
+          pagePath: currentPageRoute(),
+          source: 'website_signal_binding'
+        }
+      });
+    };
+
+    const observe = (node, binding, elementId, threshold) => {
+      if (typeof IntersectionObserver !== 'function') {
+        emit(binding, elementId);
+        return;
+      }
+      const observer = new IntersectionObserver(entries => {
+        if (!entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= threshold)) return;
+        emit(binding, elementId);
+        if (binding.oncePerSession) observer.disconnect();
+      }, { threshold });
+      observer.observe(node);
+      cleanups.push(() => observer.disconnect());
+    };
+
+    for (const candidate of candidates) {
+      if (!candidate.node || !Array.isArray(candidate.override?.signals)) continue;
+      for (const binding of candidate.override.signals) {
+        if (!binding?.id || !binding.eventName || binding.deliveryMode === 'off' || !allowedTriggers.has(binding.trigger)) continue;
+        const fire = () => emit(binding, candidate.id);
+        switch (binding.trigger) {
+          case 'viewed':
+            observe(candidate.node, binding, candidate.id, 0.25);
+            break;
+          case 'scroll_threshold':
+            observe(candidate.node, binding, candidate.id, 0.5);
+            break;
+          case 'click':
+            candidate.node.addEventListener('click', fire);
+            cleanups.push(() => candidate.node.removeEventListener('click', fire));
+            break;
+          case 'form_started':
+            candidate.node.addEventListener('focusin', fire);
+            cleanups.push(() => candidate.node.removeEventListener('focusin', fire));
+            break;
+          case 'submit_attempt':
+            candidate.node.addEventListener('submit', fire, true);
+            cleanups.push(() => candidate.node.removeEventListener('submit', fire, true));
+            break;
+          case 'field_started':
+            candidate.node.addEventListener('focus', fire);
+            cleanups.push(() => candidate.node.removeEventListener('focus', fire));
+            break;
+          case 'validation_failed':
+            candidate.node.addEventListener('invalid', fire, true);
+            cleanups.push(() => candidate.node.removeEventListener('invalid', fire, true));
+            break;
+          case 'field_completed':
+            candidate.node.addEventListener('change', fire);
+            cleanups.push(() => candidate.node.removeEventListener('change', fire));
+            break;
+        }
+      }
+    }
+
+    window.__legendWebsiteSignalBindingsCleanup?.();
+    window.__legendWebsiteSignalBindingsCleanup = () => cleanups.forEach(cleanup => cleanup());
+  }
+
   async function startPublicRuntime() {
     if (publicRuntimeStarted || editorMode || renderInput?.server) return;
     if (!['legend','business'].includes(SITE_KEY)) return;
@@ -1325,6 +1416,7 @@
           formId: inquiryForm?.dataset.formKey || '',
           requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
         });
+        installPublishedSignalBindings();
       }
     } catch (error) {
       console.error('[legend-public-runtime]', error);
