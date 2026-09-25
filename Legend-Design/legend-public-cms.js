@@ -42,6 +42,7 @@
   let selected = null;
   let selectedSection = null;
   let editorPreview = null;
+  let editorBreakpointKey = 'base';
   let selectionFrame = null;
   let gridOverlay = null;
   let directGesture = null;
@@ -303,6 +304,10 @@
   }
 
   function activeBreakpoint(width = responsiveViewportWidth()) {
+    if (editorMode) {
+      if (editorBreakpointKey === 'base') return null;
+      if ((documentState.breakpoints || []).some(value => value.key === editorBreakpointKey)) return editorBreakpointKey;
+    }
     const candidates = (documentState.breakpoints || []).filter(value => {
       const min = Number(value.minWidth) || 0;
       const max = value.maxWidth == null ? Infinity : Number(value.maxWidth);
@@ -349,6 +354,65 @@
       if (layout.alignItems) el.style.alignItems = layout.alignItems;
       if (layout.justifyContent) el.style.justifyContent = layout.justifyContent;
     }
+  }
+  function editingStyle(override, create = false) {
+    if (!override) return null;
+    if (editorBreakpointKey === 'base') {
+      if (create) override.style ||= {};
+      return override.style || {};
+    }
+    if (create) { override.breakpointStyles ||= {}; override.breakpointStyles[editorBreakpointKey] ||= {}; }
+    return override.breakpointStyles?.[editorBreakpointKey] || {};
+  }
+
+  function editingLayout(override, create = false) {
+    if (!override) return null;
+    if (editorBreakpointKey === 'base') {
+      if (create) override.layout ||= { mode:'free', direction:'column' };
+      return override.layout || { mode:'free', direction:'column' };
+    }
+    if (create) { override.breakpointLayouts ||= {}; override.breakpointLayouts[editorBreakpointKey] ||= {}; }
+    return override.breakpointLayouts?.[editorBreakpointKey] || {};
+  }
+
+  function forEachDocumentOverride(action) {
+    Object.values(documentState.elements || {}).forEach(action);
+    (documentState.extras || []).forEach(action);
+    Object.values(documentState.pages || {}).forEach(page => {
+      Object.values(page?.elements || {}).forEach(action);
+      (page?.extras || []).forEach(action);
+    });
+    Object.values(documentState.reusableComponents || {}).forEach(component => {
+      Object.values(component?.elements || {}).forEach(action);
+      (component?.extras || []).forEach(action);
+    });
+  }
+
+  function syncBreakpointControls() {
+    const select = document.getElementById('legend-cms-breakpoint');
+    const remove = document.getElementById('legend-cms-breakpoint-remove');
+    if (!select) return;
+    select.replaceChildren();
+    const base = document.createElement('option'); base.value='base'; base.textContent='Base · all sizes'; select.appendChild(base);
+    for (const breakpoint of documentState.breakpoints || []) {
+      const option = document.createElement('option'); option.value=breakpoint.key; option.textContent=`${breakpoint.label || breakpoint.key} · ${breakpoint.minWidth}px${breakpoint.maxWidth == null ? '+' : '–'+breakpoint.maxWidth+'px'}`; select.appendChild(option);
+    }
+    if (![...select.options].some(option => option.value === editorBreakpointKey)) editorBreakpointKey='base';
+    select.value=editorBreakpointKey;
+    const current=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
+    if (remove) remove.disabled=!current || !!current.isSystem;
+  }
+
+  function applyBreakpointPreview() {
+    if (!editorPreview) return;
+    const breakpoint=(documentState.breakpoints || []).find(value=>value.key===editorBreakpointKey);
+    if (!breakpoint) { editorPreview.style.width=''; editorPreview.style.maxWidth=''; editorPreview.style.justifySelf=''; }
+    else {
+      const representative = breakpoint.maxWidth == null ? Math.max(Number(breakpoint.minWidth)||1200,1440) : Math.max(320,Math.round(((Number(breakpoint.minWidth)||0)+Number(breakpoint.maxWidth))/2));
+      editorPreview.style.width='100%'; editorPreview.style.maxWidth=`${representative}px`; editorPreview.style.justifySelf='center';
+    }
+    refreshResponsiveOverrides();
+    syncEditorControls();
   }
   function applyStyle(el, style) {
     if (!el) return;
@@ -931,16 +995,16 @@
       const parentRect = parent.getBoundingClientRect();
       const override = selectedOverride();
       if (!override) return;
-      override.style ||= {};
+      const gestureStyle = editingStyle(override, true);
       checkpoint();
       directGesture = {
         mode, target: selected, section, parent,
         startX: event.clientX, startY: event.clientY,
         selectedRect, sectionRect, parentRect,
-        startWidthPercent: positiveNumber(override.style.widthPercent) ? Number(override.style.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
-        startHeightPx: positiveNumber(override.style.heightPx) ? Number(override.style.heightPx) : Math.max(selectedRect.height, 24),
-        startOffsetXPercent: Number.isFinite(Number(override.style.offsetXPercent)) ? Number(override.style.offsetXPercent) : 0,
-        startOffsetYPx: Number.isFinite(Number(override.style.offsetYPx)) ? Number(override.style.offsetYPx) : 0,
+        startWidthPercent: positiveNumber(gestureStyle.widthPercent) ? Number(gestureStyle.widthPercent) : (parentRect.width > 0 ? selectedRect.width / parentRect.width * 100 : 100),
+        startHeightPx: positiveNumber(gestureStyle.heightPx) ? Number(gestureStyle.heightPx) : Math.max(selectedRect.height, 24),
+        startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
+        startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
         changed: false
       };
       gridOverlay.hidden = false;
@@ -960,7 +1024,7 @@
       const override = selectedOverride();
       if (!override) return;
       override.style ||= {};
-      const style = override.style;
+      const style = gestureStyle;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
       const cell = sectionWidth / 12;
@@ -1001,7 +1065,7 @@
         }
       }
       gesture.changed = true;
-      applyStyle(selected, style);
+      applyElementOverride(selected, override);
       updateDirectCanvasUi();
       event.preventDefault();
     }, { passive: false });
@@ -1058,6 +1122,8 @@
     if (codeGroup) codeGroup.hidden = !isCode;
 
     const ov = extra || pageState().elements[selected.dataset.cmsId] || {};
+    const editStyle = editingStyle(ov, false);
+    const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
     const parentStyle = selected.parentElement ? getComputedStyle(selected.parentElement) : null;
     const parentWidth = selected.parentElement
@@ -1082,22 +1148,30 @@
       removeButton.textContent = `Delete ${kind}`;
       removeButton.disabled = false;
     }
-    if (scale) scale.value = String(ov.style?.fontScale ?? 1);
-    if (width) width.value = displayNumber(ov.style?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
-    if (height) height.value = ov.style?.heightPx != null ? displayNumber(ov.style.heightPx) : '';
-    if (top) top.value = displayNumber(ov.style?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
-    if (bottom) bottom.value = displayNumber(ov.style?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
-    if (offsetX) offsetX.value = displayNumber(ov.style?.offsetXPercent ?? 0);
-    if (offsetY) offsetY.value = displayNumber(ov.style?.offsetYPx ?? 0);
-    if (align) align.value = ov.style?.textAlign ?? computed.textAlign ?? '';
+    if (scale) scale.value = String(editStyle?.fontScale ?? 1);
+    if (width) width.value = displayNumber(editStyle?.widthPercent ?? (Number.isFinite(actualWidth) ? actualWidth : 100));
+    if (height) height.value = editStyle?.heightPx != null ? displayNumber(editStyle.heightPx) : '';
+    if (top) top.value = displayNumber(editStyle?.paddingTop ?? (parseFloat(computed.paddingTop) || 0));
+    if (bottom) bottom.value = displayNumber(editStyle?.paddingBottom ?? (parseFloat(computed.paddingBottom) || 0));
+    if (offsetX) offsetX.value = displayNumber(editStyle?.offsetXPercent ?? 0);
+    if (offsetY) offsetY.value = displayNumber(editStyle?.offsetYPx ?? 0);
+    if (align) align.value = editStyle?.textAlign ?? computed.textAlign ?? '';
     if (scale) scale.disabled = isImage || isCode;
     const values = { href: ov.href ?? rememberOriginal(selected).href ?? '', alt: ov.alt ?? selected.getAttribute('alt') ?? '', videoUrl: ov.videoUrl ?? selected.getAttribute('src') ?? '' };
     Object.entries(values).forEach(([key,value]) => { const input = document.getElementById(`legend-cms-${key}`); if(input) input.value = value; });
-    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(ov.style?.[key] || computed[key]) : ov.style?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
-    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(ov.style?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
+    document.querySelectorAll('[data-style-key]').forEach(input => { const key = input.dataset.styleKey; input.value = ['color','backgroundColor'].includes(key) ? colorHex(editStyle?.[key] || computed[key]) : editStyle?.[key] ?? (input.type === 'number' ? parseFloat(computed[key]) || '' : computed[key] || ''); });
+    document.querySelectorAll('[data-color-hex]').forEach(input => { input.value = colorHex(editStyle?.[input.dataset.colorHex] || computed[input.dataset.colorHex]); });
     const linkGroup = document.getElementById('legend-cms-link-group'); if (linkGroup) linkGroup.hidden = selected.tagName !== 'A';
     if (selected.tagName === 'A') syncCtaControls(ov, values.href);
     const videoGroup = document.getElementById('legend-cms-video-group'); if (videoGroup) videoGroup.hidden = selected.tagName !== 'VIDEO';
+    const layoutMode = document.getElementById('legend-cms-layout-mode'); if (layoutMode) layoutMode.value = editLayout?.mode || 'free';
+    const layoutDirection = document.getElementById('legend-cms-layout-direction'); if (layoutDirection) layoutDirection.value = editLayout?.direction || 'column';
+    const layoutGap = document.getElementById('legend-cms-layout-gap'); if (layoutGap) layoutGap.value = editLayout?.gapPx ?? '';
+    const layoutColumns = document.getElementById('legend-cms-layout-columns'); if (layoutColumns) layoutColumns.value = editLayout?.columns ?? '';
+    const layoutMin = document.getElementById('legend-cms-layout-min'); if (layoutMin) layoutMin.value = editLayout?.minItemWidthPx ?? '';
+    const layoutAlign = document.getElementById('legend-cms-layout-align'); if (layoutAlign) layoutAlign.value = editLayout?.alignItems || '';
+    const layoutJustify = document.getElementById('legend-cms-layout-justify'); if (layoutJustify) layoutJustify.value = editLayout?.justifyContent || '';
+    const layoutWrap = document.getElementById('legend-cms-layout-wrap'); if (layoutWrap) layoutWrap.value = editLayout?.wrap || '';
     if (hidden) hidden.checked = ov.hidden === true || selected.hidden;
   }
 
@@ -1132,15 +1206,15 @@
       ov.hidden = control.checked;
       selected.hidden = control.checked;
     } else {
-      ov.style ||= {};
+      const style = editingStyle(ov, true);
       if (field) {
-        if (control.value === '') delete ov.style[field];
-        else ov.style[field] = Number(control.value);
+        if (control.value === '') delete style[field];
+        else style[field] = Number(control.value);
       } else if (control.id === 'legend-cms-align') {
-        if (control.value) ov.style.textAlign = control.value;
-        else delete ov.style.textAlign;
+        if (control.value) style.textAlign = control.value;
+        else delete style.textAlign;
       } else return;
-      applyStyle(selected, ov.style);
+      applyElementOverride(selected, ov);
     }
     updateDirectCanvasUi();
     markDirty();
@@ -1606,7 +1680,7 @@
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Position & size</h2><p>Use the Move and resize handles on the page. The canvas shows a 12-column horizontal grid, vertical rhythm lines, and center snap guides while you move or resize.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Use the Move and resize handles on the page for Free Canvas positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
@@ -1630,6 +1704,36 @@
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
+    syncBreakpointControls();
+    document.getElementById('legend-cms-breakpoint')?.addEventListener('change', event => { editorBreakpointKey=event.target.value; applyBreakpointPreview(); syncBreakpointControls(); });
+    document.getElementById('legend-cms-breakpoint-add')?.addEventListener('click', () => {
+      const key=safeId(document.getElementById('legend-cms-breakpoint-key')?.value);
+      const label=(document.getElementById('legend-cms-breakpoint-label')?.value || key).trim();
+      const min=Number(document.getElementById('legend-cms-breakpoint-min')?.value);
+      const maxRaw=document.getElementById('legend-cms-breakpoint-max')?.value;
+      const max=maxRaw === '' ? null : Number(maxRaw);
+      if (!key || (documentState.breakpoints||[]).some(value=>value.key===key) || !Number.isFinite(min) || min<0 || (max!=null && (!Number.isFinite(max) || max<min))) { alert('Enter a unique breakpoint key and a valid minimum/maximum width.'); return; }
+      checkpoint(); documentState.breakpoints ||= defaultBreakpoints(); documentState.breakpoints.push({key,label:label||key,minWidth:min,maxWidth:max,isSystem:false}); editorBreakpointKey=key; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
+    });
+    document.getElementById('legend-cms-breakpoint-remove')?.addEventListener('click', () => {
+      const current=(documentState.breakpoints||[]).find(value=>value.key===editorBreakpointKey); if (!current || current.isSystem) return;
+      checkpoint(); const key=current.key; documentState.breakpoints=documentState.breakpoints.filter(value=>value.key!==key);
+      forEachDocumentOverride(override=>{ if(override?.breakpointStyles) delete override.breakpointStyles[key]; if(override?.breakpointLayouts) delete override.breakpointLayouts[key]; });
+      editorBreakpointKey='base'; syncBreakpointControls(); applyBreakpointPreview(); markDirty();
+    });
+    const layoutHandlers={
+      'legend-cms-layout-mode':['mode',value=>value],
+      'legend-cms-layout-direction':['direction',value=>value],
+      'legend-cms-layout-gap':['gapPx',value=>value===''?null:Number(value)],
+      'legend-cms-layout-columns':['columns',value=>value===''?null:Number(value)],
+      'legend-cms-layout-min':['minItemWidthPx',value=>value===''?null:Number(value)],
+      'legend-cms-layout-align':['alignItems',value=>value||null],
+      'legend-cms-layout-justify':['justifyContent',value=>value||null],
+      'legend-cms-layout-wrap':['wrap',value=>value||null]
+    };
+    Object.entries(layoutHandlers).forEach(([id,[field,convert]])=>document.getElementById(id)?.addEventListener('input',event=>{
+      if(!selected) return; checkpoint(); const override=selectedOverride(); if(!override) return; const layout=editingLayout(override,true); const value=convert(event.target.value); if(value==null) delete layout[field]; else layout[field]=value; applyElementOverride(selected,override); updateDirectCanvasUi(); markDirty();
+    }));
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
