@@ -221,6 +221,7 @@ public sealed class WebsitePageDocument
 {
     public string? Title { get; set; }
     public string? Description { get; set; }
+    public string? TemplatePath { get; set; }
     public WebsitePageNavigation Navigation { get; set; } = new();
     public WebsiteDynamicPageBinding? DynamicBinding { get; set; }
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
