@@ -11,30 +11,9 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     environment: Production
     steps:
-      - name: Probe Parfait public and Azure hosts read-only
-        shell: bash
-        run: |
-          set -euo pipefail
-          for url in \
-            "https://masterapp-parfait.azurewebsites.net/api/runtime-provenance" \
-            "https://masterapp-parfait.azurewebsites.net/" \
-            "https://masterapp-parfait.azurewebsites.net/store" \
-            "https://masterapp-parfait.azurewebsites.net/internal/login" \
-            "https://shopparfait.com/" \
-            "https://shopparfait.com/store"
-          do
-            body="$(mktemp)"
-            code="$(curl --silent --show-error --location --max-time 20 \
-              -H 'Cache-Control: no-cache' -H 'User-Agent: LEGEND-readonly-probe/1.0' \
-              -o "$body" -w '%{http_code}' "$url" || true)"
-            bytes="$(wc -c < "$body" | tr -d ' ')"
-            printf '%s status=%s bytes=%s\n' "$url" "$code" "$bytes"
-            rm -f "$body"
-          done
-
       - name: Authenticate to Azure for read-only diagnostics
         uses: azure/login@v2
         with:
@@ -42,88 +21,76 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Inspect Parfait startup prerequisites without exposing values
+      - name: Compare Parfait identity and Data Protection RBAC with Portal
         shell: bash
         run: |
           set -euo pipefail
-          settings="$RUNNER_TEMP/parfait-settings.json"
-          strings="$RUNNER_TEMP/parfait-connection-strings.json"
-          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$settings"
-          az webapp config connection-string list -g masterapp-rg -n masterapp-parfait -o json > "$strings"
-          az webapp show -g masterapp-rg -n masterapp-parfait \
-            --query '{state:state,availabilityState:availabilityState,httpsOnly:httpsOnly,enabled:enabled}' -o json
-          SETTINGS_FILE="$settings" STRINGS_FILE="$strings" python3 - <<'PY'
-          import json, os, re
-          settings = {row.get("name"): row.get("value") for row in json.load(open(os.environ["SETTINGS_FILE"], encoding="utf-8"))}
-          connections = {row.get("name") for row in json.load(open(os.environ["STRINGS_FILE"], encoding="utf-8"))}
-          def first(*names):
-              for name in names:
-                  value = settings.get(name)
-                  if value is not None and str(value).strip():
-                      return str(value).strip()
-              return ""
-          founder = first("FOUNDER_OID", "FounderOid", "Founder__Oid", "Founder:Oid")
-          dp_blob = first("DataProtection__BlobUri", "DataProtection:BlobUri")
-          dp_key = first("DataProtection__KeyVaultKeyId", "DataProtection:KeyVaultKeyId")
-          owner = first("OWNER_EMAIL", "OwnerEmail")
-          owners = first("OWNER_EMAILS", "OwnerEmails")
-          print({
-              "founder_oid_present": bool(founder),
-              "founder_oid_guid_shape": bool(re.fullmatch(r"[0-9a-fA-F-]{36}", founder)),
-              "data_protection_blob_present": bool(dp_blob),
-              "data_protection_key_present": bool(dp_key),
-              "owner_identity_present": bool(owner or owners),
-              "masterapp_db_connection_named": "MasterAppDb" in connections,
-          })
-          PY
-          rm -f "$settings" "$strings"
+          portal_settings="$RUNNER_TEMP/portal-settings.json"
+          parfait_settings="$RUNNER_TEMP/parfait-settings.json"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal_settings"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
 
-      - name: Download and sanitize Parfait App Service diagnostics
-        shell: bash
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/parfait-logs.zip"
-          extract="$RUNNER_TEMP/parfait-logs"
-          mkdir -p "$extract"
-          if ! az webapp log download -g masterapp-rg -n masterapp-parfait --log-file "$archive" >/dev/null 2>&1; then
-            echo "log_download=unavailable"
-            exit 0
-          fi
-          unzip -q "$archive" -d "$extract"
-          LOG_ROOT="$extract" python3 - <<'PY'
-          import os, pathlib, re
-          root = pathlib.Path(os.environ["LOG_ROOT"])
-          patterns = re.compile(
-              r"(Unhandled exception|Application startup exception|fail(?:ed|ure)?|fatal|"
-              r"InvalidOperationException|ArgumentException|Azure|KeyVault|DataProtection|"
-              r"FOUNDER_OID|MasterAppDb|connection string|startup|host terminated|"
-              r"Could not load|FileNotFound|TypeLoad|SqlException)",
-              re.I)
-          url = re.compile(r"https?://[^\s\"']+")
-          email = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
-          guid = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b", re.I)
-          secretish = re.compile(r"(?i)(password|pwd|secret|token|key|connectionstring)\s*[=:]\s*[^\s;,]+")
-          longtoken = re.compile(r"\b[A-Za-z0-9_\-+/=]{48,}\b")
-          emitted = 0
-          candidates = sorted(p for p in root.rglob("*") if p.is_file() and p.stat().st_size <= 20_000_000)
-          for path in candidates:
-              try:
-                  data = path.read_text(encoding="utf-8", errors="replace")
-              except Exception:
-                  continue
-              for line in data.splitlines():
-                  if not patterns.search(line):
-                      continue
-                  line = url.sub("[url]", line)
-                  line = email.sub("[email]", line)
-                  line = guid.sub("[guid]", line)
-                  line = secretish.sub(lambda m: m.group(1) + "=[redacted]", line)
-                  line = longtoken.sub("[token]", line)
-                  print(f"{path.name}: {line[:1200]}")
-                  emitted += 1
-                  if emitted >= 160:
-                      raise SystemExit
-          if emitted == 0:
-              print("sanitized_exception_lines=0")
+          resolve_value() {
+            local file="$1"; shift
+            for key in "$@"; do
+              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
+            done
+            return 1
+          }
+
+          blob="$(resolve_value "$portal_settings" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$portal_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          portal_founder="$(resolve_value "$portal_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
+          parfait_blob="$(resolve_value "$parfait_settings" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+          parfait_keyvault="$(resolve_value "$parfait_settings" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
+          parfait_founder="$(resolve_value "$parfait_settings" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+          [ -n "$blob" ] && [ -n "$keyvault" ] && [ -n "$portal_founder" ]
+
+          portal_identity="$(az webapp show -g masterapp-rg -n masterapp-portal --query identity -o json)"
+          parfait_identity="$(az webapp show -g masterapp-rg -n masterapp-parfait --query identity -o json)"
+          portal_pid="$(jq -r '.principalId // empty' <<<"$portal_identity")"
+          parfait_pid="$(jq -r '.principalId // empty' <<<"$parfait_identity")"
+          portal_type="$(jq -r '.type // "None"' <<<"$portal_identity")"
+          parfait_type="$(jq -r '.type // "None"' <<<"$parfait_identity")"
+
+          BLOB_URI="$blob" KEY_URI="$keyvault" python3 - <<'PY' > "$RUNNER_TEMP/resource-names.txt"
+          import os, urllib.parse
+          blob = urllib.parse.urlparse(os.environ["BLOB_URI"])
+          key = urllib.parse.urlparse(os.environ["KEY_URI"])
+          print(blob.hostname.split(".")[0] if blob.hostname else "")
+          print(key.hostname.split(".")[0] if key.hostname else "")
           PY
-          rm -rf "$archive" "$extract"
+          storage_name="$(sed -n '1p' "$RUNNER_TEMP/resource-names.txt")"
+          vault_name="$(sed -n '2p' "$RUNNER_TEMP/resource-names.txt")"
+          storage_id="$(az storage account list --query "[?name=='$storage_name'].id | [0]" -o tsv)"
+          vault_id="$(az keyvault list --query "[?name=='$vault_name'].id | [0]" -o tsv)"
+
+          echo "portal_identity_type=$portal_type"
+          echo "parfait_identity_type=$parfait_type"
+          echo "portal_identity_present=$([ -n "$portal_pid" ] && echo true || echo false)"
+          echo "parfait_identity_present=$([ -n "$parfait_pid" ] && echo true || echo false)"
+          echo "parfait_dp_blob_matches_portal=$([ "$parfait_blob" = "$blob" ] && echo true || echo false)"
+          echo "parfait_dp_key_matches_portal=$([ "$parfait_keyvault" = "$keyvault" ] && echo true || echo false)"
+          echo "parfait_founder_matches_portal=$([ -n "$parfait_founder" ] && [ "$parfait_founder" = "$portal_founder" ] && echo true || echo false)"
+          echo "storage_scope_resolved=$([ -n "$storage_id" ] && echo true || echo false)"
+          echo "vault_scope_resolved=$([ -n "$vault_id" ] && echo true || echo false)"
+
+          if [ -n "$portal_pid" ] && [ -n "$storage_id" ]; then
+            echo "portal_storage_roles=$(az role assignment list --assignee "$portal_pid" --scope "$storage_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
+          fi
+          if [ -n "$parfait_pid" ] && [ -n "$storage_id" ]; then
+            echo "parfait_storage_roles=$(az role assignment list --assignee "$parfait_pid" --scope "$storage_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
+          else
+            echo "parfait_storage_roles="
+          fi
+          if [ -n "$portal_pid" ] && [ -n "$vault_id" ]; then
+            echo "portal_vault_roles=$(az role assignment list --assignee "$portal_pid" --scope "$vault_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
+          fi
+          if [ -n "$parfait_pid" ] && [ -n "$vault_id" ]; then
+            echo "parfait_vault_roles=$(az role assignment list --assignee "$parfait_pid" --scope "$vault_id" --include-inherited --query '[].roleDefinitionName' -o tsv | sort -u | paste -sd ',' -)"
+          else
+            echo "parfait_vault_roles="
+          fi
+
+          rm -f "$portal_settings" "$parfait_settings" "$RUNNER_TEMP/resource-names.txt"
