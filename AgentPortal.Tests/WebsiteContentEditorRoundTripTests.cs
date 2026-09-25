@@ -391,6 +391,120 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task SyncedComponents_RoundTripThroughTheSameDocumentAndKeepInstancesLocal()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.ReusableComponents["hero-shared"] = new WebsiteReusableComponentDefinition
+        {
+            Id = "hero-shared",
+            Name = "Shared hero",
+            RootType = "group",
+            Style = new() { BackgroundColor = "#102b62", BorderRadius = 18 },
+            Layout = new() { Mode = WebsiteLayoutModeCatalog.Stack, RowGap = 12 },
+            Components =
+            [
+                new()
+                {
+                    Id = "headline",
+                    Type = "heading",
+                    SectionId = "__reusable__",
+                    Text = "Shared headline",
+                    Style = new() { FontSize = 52 }
+                },
+                new()
+                {
+                    Id = "copy",
+                    Type = "text",
+                    SectionId = "__reusable__",
+                    Text = "Shared copy",
+                    Placement = new() { SectionId = "__reusable__", BeforeId = null, ContainerId = null, Flow = true, Column = 1, Span = 12 }
+                }
+            ]
+        };
+        document.Extras.Add(new()
+        {
+            Id = "hero-instance-a",
+            Type = "reusable",
+            ReusableDefinitionId = "hero-shared",
+            SectionId = "home.section.1",
+            Style = new() { WidthPercent = 80, MarginTop = 12 }
+        });
+        document.Extras.Add(new()
+        {
+            Id = "hero-instance-b",
+            Type = "reusable",
+            ReusableDefinitionId = "hero-shared",
+            SectionId = "home.section.2",
+            Style = new() { WidthPercent = 55, MarginTop = 40 }
+        });
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        var definition = Assert.Single(saved.ReusableComponents).Value;
+
+        Assert.Equal("Shared hero", definition.Name);
+        Assert.Equal("group", definition.RootType);
+        Assert.Equal(2, definition.Components.Count);
+        Assert.Equal("Shared headline", definition.Components.Single(x => x.Id == "headline").Text);
+        Assert.Equal(WebsiteLayoutModeCatalog.Stack, definition.Layout.Mode);
+
+        var instances = saved.Extras.Where(x => x.Type == "reusable").OrderBy(x => x.Id).ToArray();
+        Assert.Equal(2, instances.Length);
+        Assert.All(instances, x => Assert.Equal("hero-shared", x.ReusableDefinitionId));
+        Assert.Equal(80m, instances[0].Style.WidthPercent);
+        Assert.Equal(55m, instances[1].Style.WidthPercent);
+
+        fixture.Db.ChangeTracker.Clear();
+        var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket));
+        Assert.Equal("Shared headline", reloaded.ReusableComponents["hero-shared"].Components.Single(x => x.Id == "headline").Text);
+        Assert.Equal(12m, reloaded.Extras.Single(x => x.Id == "hero-instance-a").Style.MarginTop);
+        Assert.Equal(40m, reloaded.Extras.Single(x => x.Id == "hero-instance-b").Style.MarginTop);
+    }
+
+    [Fact]
+    public async Task SyncedComponentSanitizer_RejectsMissingNestedAndPageSectionDefinitions()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.ReusableComponents["safe"] = new WebsiteReusableComponentDefinition
+        {
+            Id = "safe",
+            Name = "Safe",
+            RootType = "container",
+            Components =
+            [
+                new() { Id = "copy", Type = "text", SectionId = "__reusable__", Text = "Allowed" },
+                new() { Id = "nested", Type = "reusable", ReusableDefinitionId = "other", SectionId = "__reusable__" },
+                new() { Id = "section", Type = "section", SectionId = "__reusable__" }
+            ]
+        };
+        document.Extras.Add(new()
+        {
+            Id = "valid-instance", Type = "reusable", ReusableDefinitionId = "safe", SectionId = "home.section.1"
+        });
+        document.Extras.Add(new()
+        {
+            Id = "missing-instance", Type = "reusable", ReusableDefinitionId = "does-not-exist", SectionId = "home.section.1"
+        });
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        var definition = saved.ReusableComponents["safe"];
+        var component = Assert.Single(definition.Components);
+        Assert.Equal("copy", component.Id);
+        Assert.Equal("text", component.Type);
+        Assert.Single(saved.Extras);
+        Assert.Equal("valid-instance", saved.Extras[0].Id);
+        Assert.Equal("safe", saved.Extras[0].ReusableDefinitionId);
+
+        var reusableCapability = WebsiteComponentCatalog.Find("reusable");
+        Assert.NotNull(reusableCapability);
+        Assert.False(reusableCapability!.DirectAdd);
+    }
+
+    [Fact]
     public async Task CoreComponentRegistry_AcceptsProfessionalPrimitivesWithoutASecondSchema()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
