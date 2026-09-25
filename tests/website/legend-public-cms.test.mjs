@@ -10,6 +10,14 @@ const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-pub
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
+const motionCatalogFixture = {
+  triggers:[{key:'load',label:'Page load'},{key:'enter-view',label:'Enter viewport'},{key:'hover',label:'Hover'},{key:'click',label:'Click'}],
+  effects:[{key:'fade',label:'Fade'},{key:'slide',label:'Slide'},{key:'scale',label:'Scale'},{key:'rotate',label:'Rotate'},{key:'blur',label:'Blur'}],
+  easings:[{key:'linear',label:'Linear'},{key:'ease',label:'Ease'},{key:'ease-in',label:'Ease in'},{key:'ease-out',label:'Ease out'},{key:'ease-in-out',label:'Ease in/out'}],
+  directions:[{key:'up',label:'Up'},{key:'down',label:'Down'},{key:'left',label:'Left'},{key:'right',label:'Right'}],
+  maxInteractionsPerElement:8
+};
+
 const componentCatalogFixture = [
   {type:'text',label:'Text',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
   {type:'heading',label:'Heading',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
@@ -301,14 +309,17 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,innerWidth=1280,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,motionCatalog=motionCatalogFixture,innerWidth=1280,reduceMotion=false,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   Object.defineProperty(w,'innerWidth',{value:innerWidth,writable:true,configurable:true});
+  const animations=[];
+  w.matchMedia=()=>({matches:reduceMotion,addEventListener(){},removeEventListener(){}});
+  w.Element.prototype.animate=function(keyframes,options){animations.push({element:this,keyframes,options});return {cancel(){}};};
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog}})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog},motionCatalog})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -317,7 +328,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
-  return {w,calls,click,input,change,editSelected,save,close:()=>w.close()};
+  return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
 }
 test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
@@ -348,6 +359,46 @@ test('professional primitive components come from the shared registry and persis
     assert.equal(spacer.style.heightPx,48);
     const shape=saved.pages['/'].extras.find(item=>item.type==='shape');
     assert.equal(shape.style.widthPercent,25);
+  } finally { f.close(); }
+});
+
+test('Motion inspector persists typed interactions from the server catalog and previews them without page-specific code',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('main h1');
+    f.click('[data-open="motion"]');
+    f.click('#legend-cms-motion-controls button:last-child');
+    const preview=[...f.w.document.querySelectorAll('#legend-cms-motion-controls button')].find(button=>button.textContent==='Preview');
+    assert.ok(preview); preview.click();
+    assert.equal(f.animations.length,1);
+    saved=await f.save();
+    const interaction=Object.values(saved.pages['/'].elements).find(item=>item.interactions?.length)?.interactions?.[0];
+    assert.ok(interaction);
+    assert.equal(interaction.trigger,'load');
+    assert.equal(interaction.effect,'fade');
+    assert.equal(interaction.durationMs,500);
+  } finally { f.close(); }
+});
+
+test('public typed load motion plays once and responsive refresh does not rebind the same definition',async()=>{
+  const doc={pages:{'/':{elements:{'home.h1.template-title.1':{interactions:[{id:'fade-one',trigger:'load',effect:'fade',durationMs:400,delayMs:0,easing:'ease-out',once:true}]}},sectionOrder:{},extras:[]}}};
+  const f=await domFixture({doc,search:''});
+  try {
+    await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.animations.length,1);
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.animations.length,1);
+    assert.equal(f.animations[0].options.duration,400);
+  } finally { f.close(); }
+});
+
+test('reduced motion suppresses public playback while preserving the configured interaction',async()=>{
+  const doc={pages:{'/':{elements:{'home.h1.template-title.1':{interactions:[{id:'slide-one',trigger:'load',effect:'slide',durationMs:500,delayMs:0,easing:'ease-out',once:true,direction:'up',distancePx:40}]}},sectionOrder:{},extras:[]}}};
+  const f=await domFixture({doc,search:'',reduceMotion:true});
+  try {
+    await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.animations.length,0);
   } finally { f.close(); }
 });
 
