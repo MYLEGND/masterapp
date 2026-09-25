@@ -467,7 +467,7 @@ test('signal editor private test saves draft first but sends no production signa
   try{
     f.click('main h1');
     f.click('[data-open="signals"]');
-    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add interaction mapping');
+    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add advanced custom mapping');
     assert.ok(add); add.click();
     const send=f.w.document.querySelector('#legend-cms-signal-controls select');
     send.value='analytics'; send.dispatchEvent(new f.w.Event('change',{bubbles:true}));
