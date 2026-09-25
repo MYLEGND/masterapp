@@ -108,6 +108,28 @@ test('template route can be renamed by tombstoning the old path and publishing t
   assert.match(result.pages['/work'].html,/Renamed services content/);
 });
 
+
+test('published reusable component resolves from one definition without copying component content into page extras',async()=>{
+  const value=document();
+  value.reusableComponents={
+    'shared-callout':{
+      id:'shared-callout',name:'Shared callout',kind:'block',elements:{},sectionOrder:{},
+      extras:[{id:'root',type:'text',sectionId:'component.root',text:'One synchronized message',style:{widthPercent:80}}]
+    }
+  };
+  value.pages['/']={
+    title:'Home',navigation:{label:'Home',showInNavigation:true,order:0},elements:{},sectionOrder:{},
+    extras:[{id:'callout-instance',type:'reusable',sectionId:'home.section.1',syncSourceId:'shared-callout',style:{widthPercent:100}}]
+  };
+  const result=await compileBusiness({business,document:value});
+  const home=parseHTML(result.pages['/'].html).document;
+  assert.match(home.querySelector('.cms-reusable-instance').textContent,/One synchronized message/);
+  const embedded=JSON.parse(home.querySelector('#legend-cms-published-document').textContent).document;
+  assert.equal(embedded.pages['/'].extras.filter(extra=>extra.type==='reusable').length,1);
+  assert.equal(embedded.pages['/'].extras.some(extra=>extra.text==='One synchronized message'),false);
+  assert.equal(embedded.reusableComponents['shared-callout'].extras[0].text,'One synchronized message');
+});
+
 test('untrusted business facts remain text and unsafe page routes reject publication',async()=>{
   const result=await compileBusiness({business:{...business,displayName:'</script><script>alert(1)</script>'},document:document()});
   const dom=parseHTML(result.pages['/'].html).document;
