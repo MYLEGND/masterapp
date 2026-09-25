@@ -260,7 +260,9 @@ public static class WebsiteContentSanitizer
             SubmitLabel = ClampLimitedText(source.SubmitLabel, 80) ?? "Send",
             SuccessMessage = ClampLimitedText(source.SuccessMessage, 500) ?? "Thanks — your inquiry has been received.",
             ConsentText = ClampLimitedText(source.ConsentText, 1000) ?? "I agree to share this inquiry with this website.",
-            RequireConsent = source.RequireConsent,
+            // A WebsiteFormDefinition is a governed lead intake. Sharing consent is
+            // mandatory; marketing email/call consent remains a separate authority.
+            RequireConsent = true,
             Fields = fields.OrderBy(field => field.Step).ToList()
         };
     }
