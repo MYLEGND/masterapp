@@ -3950,6 +3950,7 @@
 
   if (renderInput) {
     bindBusiness(renderInput);
+    storeContext = renderInput.store || null;
     prepareDom();
     injectContentStyles();
     applyDocument(renderInput.document || {});
