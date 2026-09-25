@@ -385,6 +385,13 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      - name: Checkout canonical history for synchronization proof
+        if: needs.candidate.outputs.sync_only == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+
       - name: Verify canonical branch synchronization is history-only
         if: needs.candidate.outputs.sync_only == 'true'
         env:
