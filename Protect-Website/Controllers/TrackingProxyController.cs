@@ -29,14 +29,14 @@ public sealed class TrackingProxyController : ControllerBase
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _config;
     private readonly ILogger<TrackingProxyController> _logger;
-    private readonly Services.Tracking.AgentTrackingResolver _resolver;
+    private readonly Infrastructure.Analytics.AgentTrackingResolver _resolver;
     private readonly string _founderUpn;
 
     public TrackingProxyController(
         IHttpClientFactory httpClientFactory,
         IConfiguration config,
         ILogger<TrackingProxyController> logger,
-        Services.Tracking.AgentTrackingResolver resolver)
+        Infrastructure.Analytics.AgentTrackingResolver resolver)
     {
         _httpClientFactory = httpClientFactory;
         _config = config;
