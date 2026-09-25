@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Infrastructure.Analytics;
 using System.Globalization;
 using System.Security.Cryptography;
