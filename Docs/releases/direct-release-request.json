@@ -1,13 +1,15 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly corrected the centralized commerce routing contract. Deploy only Protect Website, Parfait, and the existing Cloudflare business website router required to keep each storefront on its canonical public host. Preserve AgentPortal, ClientApp, LEGEND static website deployment, CRM, website drafts and published versions, database state, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Replace public business and LEGEND storefront URLs that incorrectly expose shopparfait.com/store/s/{businessKey}. Business websites must use their verified registered host at /store, LEGEND must use mylegnd.com/store, Parfait remains shopparfait.com/store, and Protect remains the sole shared-host scoped exception at protect.mylegnd.com/store/s/{businessKey}. Reuse the single Parfait commerce product/order/checkout authority through the existing authenticated Cloudflare website-routing bridge; do not create a duplicate storefront, duplicate product/order system, or app-specific website runtime.",
-  "requestId": "commerce-custom-domain-store-routing-20260925",
+  "authorization": "Founder authorized completion of the canonical storefront routing release. Preserve the already-successful Protect and Parfait deployments at fc495d8f6f2d5c477c85c9f32a64fd113d507b8c; recover only the existing Cloudflare business website router and verify the registered-domain /store canary. Do not rebuild, redeploy, migrate, or mutate unrelated applications or production data.",
+  "purpose": "Complete the failed edge cutover after Protect and Parfait already deployed successfully. Fix only the Cloudflare Worker deployment-history parsing failure, deploy the existing website router so business custom domains serve their central Parfait-backed storefront at /store, and verify camoexterior.com/store remains on the registered domain.",
+  "requestId": "commerce-custom-domain-store-routing-recovery-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
     "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": true,
-  "websiteRoutingCanaryHost": "camoexterior.com"
+  "websiteRoutingCanaryHost": "camoexterior.com",
+  "preserveLiveTargets": true,
+  "preserveLiveRevision": "fc495d8f6f2d5c477c85c9f32a64fd113d507b8c"
 }
