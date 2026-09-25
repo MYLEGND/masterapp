@@ -1625,6 +1625,140 @@
     pageState().extras.push(extra); const el = createExtra(extra); if (extra.placement) applyPlacement(el, extra.placement); setSelected(el); markDirty();
     if (type === 'code') openCodeEditor();
   }
+  function renderComponentCatalog() {
+    const host = document.getElementById('legend-cms-add-components');
+    if (!host) return;
+    host.replaceChildren();
+    if (!Array.isArray(componentCatalog) || !componentCatalog.length) {
+      const unavailable = document.createElement('p');
+      unavailable.textContent = 'Component catalog unavailable. Reopen the editor.';
+      host.appendChild(unavailable);
+      return;
+    }
+    let group = '';
+    for (const item of componentCatalog) {
+      if (!item?.type || !item?.label) continue;
+      if (item.group && item.group !== group) {
+        group = item.group;
+        const heading = document.createElement('small');
+        heading.className = 'legend-cms-component-group';
+        heading.textContent = group;
+        host.appendChild(heading);
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = item.label;
+      if (item.type === 'image') {
+        button.id = 'legend-cms-new-image';
+        button.addEventListener('click', () => document.getElementById('legend-cms-extra-image')?.click());
+      } else {
+        button.dataset.add = item.type;
+        button.addEventListener('click', () => addBlock(item.type));
+      }
+      host.appendChild(button);
+    }
+  }
+
+  function applyBreakpointPreview(preview) {
+    if (!preview) return;
+    const breakpoint = currentDesignBreakpoint === 'base' ? null : breakpointById(currentDesignBreakpoint);
+    preview.style.width = breakpoint ? `min(100%, ${breakpoint.maxWidthPx}px)` : '100%';
+    preview.style.maxWidth = breakpoint ? `${breakpoint.maxWidthPx}px` : '';
+    preview.style.marginInline = breakpoint ? 'auto' : '';
+    preview.dataset.cmsBreakpoint = breakpoint?.id || 'base';
+    const note = document.getElementById('legend-cms-breakpoint-note');
+    if (note) note.textContent = breakpoint
+      ? `${breakpoint.label} · ≤ ${breakpoint.maxWidthPx}px · inherits larger layouts until you override them`
+      : 'Desktop / base · changes become the default for every viewport unless a smaller breakpoint overrides them.';
+  }
+
+  function installBreakpointControls(preview) {
+    const select = document.getElementById('legend-cms-breakpoint');
+    if (!select) return;
+    select.replaceChildren();
+    const base = document.createElement('option');
+    base.value = 'base';
+    base.textContent = 'Desktop / base';
+    select.appendChild(base);
+    for (const breakpoint of documentState.breakpoints || []) {
+      const option = document.createElement('option');
+      option.value = breakpoint.id;
+      option.textContent = `${breakpoint.label} (≤ ${breakpoint.maxWidthPx}px)`;
+      select.appendChild(option);
+    }
+    if (!['base', ...(documentState.breakpoints || []).map(item => item.id)].includes(currentDesignBreakpoint)) currentDesignBreakpoint = 'base';
+    select.value = currentDesignBreakpoint;
+    select.addEventListener('change', () => {
+      currentDesignBreakpoint = select.value;
+      applyBreakpointPreview(preview);
+      refreshResponsiveOverrides();
+      syncEditorControls();
+      updateDirectCanvasUi();
+    });
+    applyBreakpointPreview(preview);
+  }
+
+  function syncLayoutControls(override) {
+    const variant = editableVariant(override, false);
+    const resolved = resolvedVariant(override);
+    const own = variant?.layout || {};
+    const layout = resolved.layout || {};
+    const values = {
+      'legend-cms-layout-mode': own.mode ?? layout.mode ?? 'flow',
+      'legend-cms-layout-columns': own.columns ?? layout.columns ?? 12,
+      'legend-cms-layout-rows': own.rows ?? layout.rows ?? '',
+      'legend-cms-layout-column-gap': own.columnGap ?? layout.columnGap ?? '',
+      'legend-cms-layout-row-gap': own.rowGap ?? layout.rowGap ?? '',
+      'legend-cms-layout-direction': own.direction ?? layout.direction ?? 'row',
+      'legend-cms-layout-align': own.alignItems ?? layout.alignItems ?? 'stretch',
+      'legend-cms-layout-justify': own.justifyContent ?? layout.justifyContent ?? 'start',
+      'legend-cms-layout-overflow': own.overflow ?? layout.overflow ?? 'visible'
+    };
+    for (const [id, value] of Object.entries(values)) {
+      const control = document.getElementById(id);
+      if (control) control.value = String(value);
+    }
+    const wrap = document.getElementById('legend-cms-layout-wrap');
+    if (wrap) wrap.checked = own.wrap ?? layout.wrap ?? true;
+    const isContainer = !!selected && (
+      selected.dataset.cmsSection ||
+      ['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName) ||
+      !!selected.querySelector?.('*')
+    );
+    document.querySelectorAll('[data-layout-control]').forEach(control => { control.disabled = !isContainer; });
+  }
+
+  function updateLayoutFromControls(event) {
+    if (!selected) return;
+    const base = selectedOverride();
+    if (!base) return;
+    const variant = editableVariant(base);
+    variant.layout ||= {};
+    const layout = variant.layout;
+    const control = event.target;
+    checkpoint();
+    const map = {
+      'legend-cms-layout-mode': 'mode',
+      'legend-cms-layout-columns': 'columns',
+      'legend-cms-layout-rows': 'rows',
+      'legend-cms-layout-column-gap': 'columnGap',
+      'legend-cms-layout-row-gap': 'rowGap',
+      'legend-cms-layout-direction': 'direction',
+      'legend-cms-layout-align': 'alignItems',
+      'legend-cms-layout-justify': 'justifyContent',
+      'legend-cms-layout-overflow': 'overflow'
+    };
+    const key = map[control.id];
+    if (control.id === 'legend-cms-layout-wrap') layout.wrap = control.checked;
+    else if (key) {
+      if (control.value === '') delete layout[key];
+      else layout[key] = ['columns','rows','columnGap','rowGap'].includes(key) ? Number(control.value) : control.value;
+    } else return;
+    applyElementOverride(selected, base);
+    updateDirectCanvasUi();
+    markDirty();
+  }
+
   function enhanceEditor(panel, preview) {
     document.querySelectorAll('[data-cms-id]').forEach(el => baselineNodes.set(el.dataset.cmsId, { el, parent: el.parentElement, next: el.nextSibling }));
     const content = document.createElement('div'); content.dataset.cmsView = 'content';
@@ -1635,9 +1769,9 @@
     navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
-      <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
+      <section data-cms-view="add" hidden><h2>Add a component</h2><p>The available components come from the shared server capability registry. Add one, then position and resize it directly on the page.</p><div id="legend-cms-add-components" class="legend-cms-menu"></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
-      <section data-cms-view="layout" hidden><h2>Position & size</h2><p>Use the Move and resize handles on the page. The canvas shows a 12-column horizontal grid, vertical rhythm lines, and center snap guides while you move or resize.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
+      <section data-cms-view="layout" hidden><h2>Position & layout</h2><p>Move and resize on the canvas. For containers, choose Flow, Grid, Flex, Stack, or Free Canvas here. Layout changes are saved at the active breakpoint.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><label class="legend-cms-group">Container layout<select id="legend-cms-layout-mode" data-layout-control><option value="flow">Flow / template</option><option value="grid">Grid</option><option value="flex">Flex</option><option value="stack">Stack</option><option value="free">Free Canvas</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Columns<input id="legend-cms-layout-columns" data-layout-control type="number" min="1" max="24" value="12"></label><label class="legend-cms-group">Rows<input id="legend-cms-layout-rows" data-layout-control type="number" min="1" max="24" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Column gap<input id="legend-cms-layout-column-gap" data-layout-control type="number" min="0" max="500" step="any"></label><label class="legend-cms-group">Row gap<input id="legend-cms-layout-row-gap" data-layout-control type="number" min="0" max="500" step="any"></label></div><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction" data-layout-control><option value="row">Row</option><option value="column">Column</option></select></label><label class="legend-cms-group">Align items<select id="legend-cms-layout-align" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option><option value="baseline">Baseline</option></select></label><label class="legend-cms-group">Distribute<select id="legend-cms-layout-justify" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label><label><input id="legend-cms-layout-wrap" data-layout-control type="checkbox" checked> Wrap children</label><label class="legend-cms-group">Overflow<select id="legend-cms-layout-overflow" data-layout-control><option value="visible">Visible</option><option value="hidden">Hidden</option><option value="clip">Clip</option><option value="auto">Auto</option><option value="scroll">Scroll</option></select></label><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
@@ -1661,6 +1795,7 @@
     const links = document.createElement('div'); links.innerHTML = `<div id="legend-cms-link-group" class="legend-cms-group" hidden><label for="legend-cms-action">Button action</label><select id="legend-cms-action"></select><small>Select a working action already connected to this website. You can edit the button wording in Content at any time.</small><div id="legend-cms-custom-link"><label for="legend-cms-href">Custom destination</label><input id="legend-cms-href" type="url" placeholder="https://…"></div><label><input id="legend-cms-target" type="checkbox"> Open in a new tab</label></div><div id="legend-cms-video-group" class="legend-cms-group" hidden><label for="legend-cms-videoUrl">HTTPS video URL</label><input id="legend-cms-videoUrl" type="url"><label for="legend-cms-video-file">Upload video</label><input id="legend-cms-video-file" type="file" accept="video/mp4,video/webm"></div><label class="legend-cms-group">Image description<input id="legend-cms-alt" type="text"></label>`;
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
+    renderComponentCatalog();
     installStudioControls(panel);
     document.getElementById('legend-cms-action').addEventListener('change', event => {
       if (!selected || selected.tagName !== 'A') return;
@@ -1678,8 +1813,6 @@
       if (selected.dataset.cmsExtraId) { ov.text = option.defaultText || option.label; setContentText(selected, ov.text, true); }
       applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     });
-    panel.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => addBlock(button.dataset.add)));
-    document.getElementById('legend-cms-new-image').addEventListener('click', () => document.getElementById('legend-cms-extra-image').click());
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
     document.getElementById('legend-cms-container').addEventListener('click', () => { if (selectedSection) setSelected(selectedSection); });
     panel.querySelectorAll('[data-style-key]').forEach(input => input.addEventListener('input', () => { if (!selected) return; const value = input.type === 'number' || input.dataset.styleKey === 'fontWeight' ? Number(input.value) : input.value; if (input.type === 'number' && input.value !== '' && (!Number.isFinite(value) || (input.dataset.styleKey !== 'letterSpacing' && value < 0) || (['fontSize','lineHeight'].includes(input.dataset.styleKey) && value === 0))) return; checkpoint(); const ov = selectedOverride(); ov.style ||= {}; if (input.value === '') delete ov.style[input.dataset.styleKey]; else ov.style[input.dataset.styleKey] = value; applyStyle(selected, ov.style); markDirty(); }));
