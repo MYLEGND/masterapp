@@ -285,9 +285,10 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
+  Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
@@ -302,6 +303,42 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
   return {w,calls,click,input,change,editSelected,save,close:()=>w.close()};
 }
+test('responsive V2 runtime inherits base style and switches breakpoint style and layout on resize',async()=>{
+  const doc={
+    breakpoints:[
+      {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
+      {key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},
+      {key:'desktop',label:'Desktop',minWidth:1200,maxWidth:null,isSystem:true}
+    ],
+    elements:{
+      'home.h1.template-title.1':{
+        text:'Responsive heading',
+        style:{widthPercent:80},
+        breakpointStyles:{mobile:{widthPercent:100,fontScale:0.75},desktop:{widthPercent:60}}
+      },
+      'section:home.section.1':{
+        layout:{mode:'grid',columns:3,gapPx:24},
+        breakpointLayouts:{mobile:{mode:'stack',direction:'column',gapPx:12}}
+      }
+    }
+  };
+  const f=await domFixture({doc,search:'',viewportWidth:500});
+  try {
+    const heading=f.w.document.querySelector('main h1');
+    const section=f.w.document.querySelector('main section');
+    assert.equal(heading.textContent,'Responsive heading');
+    assert.equal(heading.style.width,'100%');
+    assert.equal(section.style.display,'flex');
+    assert.equal(section.style.flexDirection,'column');
+    assert.equal(section.style.gap,'12px');
+    f.w.innerWidth=1400;
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    assert.equal(heading.style.width,'60%');
+    assert.equal(section.style.display,'grid');
+    assert.equal(section.style.gridTemplateColumns,'repeat(3,minmax(0,1fr))');
+    assert.equal(section.style.gap,'24px');
+  } finally { f.close(); }
+});
 test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
 });
