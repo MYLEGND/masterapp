@@ -26,7 +26,7 @@ using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
 
