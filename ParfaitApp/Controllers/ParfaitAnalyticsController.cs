@@ -82,6 +82,7 @@ public sealed class ParfaitAnalyticsController(
             stableIdentity,
             new CommerceSignalContext(
                 store.CommerceBusinessId,
+                store.AgentTrackingProfileId,
                 store.WebsiteContentVersionId,
                 store.WebsiteSiteKey,
                 store.BusinessKey,
