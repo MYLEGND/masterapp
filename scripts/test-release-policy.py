@@ -12,6 +12,29 @@ from release_policy import read_request, staging_only
 ROOT = Path(__file__).resolve().parent
 
 
+class ReleaseScopeSelection(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('baseline_scope', ROOT / 'approved-release-baseline.py')
+        self.baseline = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.baseline)
+
+    def test_centralized_commerce_scope_is_reviewed_and_supported(self):
+        selected = self.baseline.selected_targets({
+            'releaseMode': 'approved-only',
+            'targets': ['masterapp-protect', 'masterapp-parfait', 'masterapp-website']
+        })
+        self.assertEqual(
+            [row[0] for row in selected],
+            ['protect', 'parfait', 'website'])
+
+    def test_unreviewed_scope_still_fails_closed(self):
+        with self.assertRaises(ValueError):
+            self.baseline.selected_targets({
+                'releaseMode': 'approved-only',
+                'targets': ['masterapp-client', 'masterapp-parfait']
+            })
+
+
 class ReleasePolicy(unittest.TestCase):
     def test_hold_survives_descendant_until_explicit_release(self):
         with tempfile.TemporaryDirectory() as directory:
