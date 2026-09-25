@@ -484,10 +484,10 @@ public sealed class StoreCheckoutController : Controller
         $"{store.SuccessPath}?orderNumber={Uri.EscapeDataString(orderNumber)}";
 
     private static string BuildPaymentIdempotencyKey(CommerceStoreContext store, ParfaitOrderRecord order) =>
-        $"{store.BusinessKey}:{order.OrderNumber}";
+        store.IsParfait ? order.OrderNumber : $"{store.BusinessKey}:{order.OrderNumber}";
 
     private static string BuildPaymentCorrelationId(CommerceStoreContext store, ParfaitOrderRecord order) =>
-        $"CommerceCheckout:{store.BusinessKey}:{order.OrderNumber}";
+        store.IsParfait ? $"ParfaitCheckout:{order.OrderNumber}" : $"CommerceCheckout:{store.BusinessKey}:{order.OrderNumber}";
 
     private static int ResolvePaymentFailureStatusCode(ExecuteCommerceOneTimePaymentResult result)
     {
