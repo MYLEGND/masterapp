@@ -72,6 +72,40 @@ test('published text, URLs, section color and imported page are rendered before 
   assert.ok(!parseHTML(result.pages['/team/history'].html).document.querySelector('main .hero'));
 });
 
+
+test('route manifest honors navigation order visibility nesting deletion and custom routes',async()=>{
+  const value=document();
+  value.pages['/']={title:'Home',navigation:{label:'Start',showInNavigation:true,order:20},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/about']={title:'About',navigation:{label:'About us',showInNavigation:false,order:10},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/services']={title:'Services',navigation:{label:'Work',showInNavigation:true,order:30,isDeleted:true},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/team']={title:'Team',navigation:{label:'Team',showInNavigation:true,parentPath:'/about',order:15},elements:{},sectionOrder:{},extras:[{id:'team-section',type:'section',sectionId:'home.root',style:{}},{id:'team-text',type:'text',sectionId:'extra:team-section',text:'Our team',style:{}}]};
+  const result=await compileBusiness({business,document:value});
+  assert.equal(result.version,2);
+  assert.deepEqual(Object.keys(result.pages),['/','/about','/contact','/team']);
+  assert.deepEqual(result.manifest.map(page=>page.route),['/contact','/about','/team','/']);
+  assert.equal(result.manifest.find(page=>page.route==='/team').parentPath,'/about');
+  assert.equal(result.manifest.some(page=>page.route==='/services'),false);
+  const home=parseHTML(result.pages['/'].html).document;
+  const links=[...home.querySelectorAll('.nav a')];
+  assert.deepEqual(links.map(link=>link.textContent),['Contact','Team','Start']);
+  assert.equal(links.find(link=>link.textContent==='Team').getAttribute('data-nav-parent'),'/about');
+  assert.equal(links.some(link=>link.textContent==='About us'),false);
+  assert.equal(result.pages['/services'],undefined);
+  assert.match(result.pages['/team'].html,/Our team/);
+});
+
+test('template route can be renamed by tombstoning the old path and publishing the new path',async()=>{
+  const value=document();
+  value.pages['/services']={navigation:{isDeleted:true},elements:{},sectionOrder:{},extras:[]};
+  value.pages['/work']={title:'Our work',navigation:{label:'Our work',showInNavigation:true,order:5},elements:{},sectionOrder:{},extras:[{id:'work-section',type:'section',sectionId:'home.root',style:{}},{id:'work-text',type:'text',sectionId:'extra:work-section',text:'Renamed services content',style:{}}]};
+  const result=await compileBusiness({business,document:value});
+  assert.equal(result.pages['/services'],undefined);
+  assert.ok(result.pages['/work']);
+  assert.equal(result.manifest.some(page=>page.route==='/services'),false);
+  assert.equal(result.manifest.some(page=>page.route==='/work'),true);
+  assert.match(result.pages['/work'].html,/Renamed services content/);
+});
+
 test('untrusted business facts remain text and unsafe page routes reject publication',async()=>{
   const result=await compileBusiness({business:{...business,displayName:'</script><script>alert(1)</script>'},document:document()});
   const dom=parseHTML(result.pages['/'].html).document;
