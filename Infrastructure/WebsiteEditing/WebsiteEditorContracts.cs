@@ -36,6 +36,7 @@ public sealed class WebsiteContentDocument
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
     public WebsiteThemeOverride Theme { get; set; } = new();
     public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteBreakpointCatalog.Defaults();
+    public Dictionary<string, WebsiteReusableComponentDefinition> ReusableComponents { get; set; } = new(StringComparer.Ordinal);
     public DateTime? UpdatedUtc { get; set; }
 }
 
@@ -163,6 +164,7 @@ public sealed class WebsiteExtraComponent
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string SectionId { get; set; } = "";
     public string Type { get; set; } = "text";
+    public string? ReusableDefinitionId { get; set; }
     public bool? EditorLocked { get; set; }
     public string? EditorLabel { get; set; }
     public string? ActionKey { get; set; }
@@ -207,6 +209,17 @@ public sealed class WebsitePageDocument
     public Dictionary<string, WebsiteElementOverride> Elements { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
+}
+
+public sealed class WebsiteReusableComponentDefinition
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "";
+    public WebsiteStyleOverride Style { get; set; } = new();
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteResponsiveOverride> Responsive { get; set; } = new(StringComparer.Ordinal);
+    public List<WebsiteExtraComponent> Components { get; set; } = new();
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class WebsiteNamedDraft
@@ -294,7 +307,8 @@ public sealed record WebsiteComponentCapability(
     bool SupportsAction,
     bool CanContainChildren,
     IReadOnlyList<string> LayoutModes,
-    IReadOnlyList<string> Triggers);
+    IReadOnlyList<string> Triggers,
+    bool DirectAdd = true);
 
 public static class WebsiteComponentCatalog
 {
@@ -312,6 +326,7 @@ public static class WebsiteComponentCatalog
         new("video", "Video", "Media", false, true, false, false, [WebsiteLayoutModeCatalog.Flow], ["viewed", "click"]),
         new("card", "Card", "Layout", true, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack], ["viewed", "click"]),
         new("group", "Group", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed"]),
+        new("reusable", "Synced component", "Reusable", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed"], DirectAdd: false),
         new("section", "Section", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed", "scroll_threshold"]),
         new("code", "Code / embed", "Advanced", false, false, false, false, [WebsiteLayoutModeCatalog.Flow], ["viewed"])
     ];
