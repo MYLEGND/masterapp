@@ -810,6 +810,7 @@
     if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
+    if (override.type === 'code' && el.querySelector?.('iframe[data-cms-code-frame]')) renderCodePreview(el, override);
     applyStyle(el, resolved.style);
     applyLayout(el, resolved.layout);
     bindMotion(el, override.interactions);
@@ -1643,7 +1644,8 @@
     }
     const isImage = selected instanceof HTMLImageElement;
     const extra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
-    const isCode = extra?.type === 'code';
+    const selectedCapability = selectedComponentCapability();
+    const isCode = selectedCapability?.type === 'code';
     if (inlineHelp) inlineHelp.hidden = !isInlineEditable(selected);
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
@@ -1653,8 +1655,9 @@
     const resolved = resolvedVariant(ov);
     const variantStyle = variant?.style || {};
     const resolvedStyle = resolved.style || {};
+    const reusableRoot = selected.dataset.cmsReusableDefinitionId && selected.dataset.cmsReusableLocalId === '__root__';
     if (lockButton) {
-      lockButton.disabled = false;
+      lockButton.disabled = !!reusableRoot;
       lockButton.textContent = ov.editorLocked === true ? 'Unlock selected' : 'Lock selected';
     }
     if (renameButton) renameButton.disabled = false;
@@ -2440,9 +2443,14 @@
     const editable = commonSelectionIsEditable();
     const group = document.getElementById('legend-cms-group-selection');
     const ungroup = document.getElementById('legend-cms-ungroup-selection');
+    const saveReusable = document.getElementById('legend-cms-save-reusable');
+    const detachReusable = document.getElementById('legend-cms-detach-reusable');
     if (group) group.disabled = !(items.length >= 2 && parent && editable);
     const selectedExtra = selected?.dataset.cmsExtraId ? pageState().extras.find(item => item.id === selected.dataset.cmsExtraId) : null;
     if (ungroup) ungroup.disabled = !(items.length === 1 && selectedExtra?.type === 'group');
+    if (saveReusable) saveReusable.disabled = !(items.length === 1 && ['group','container'].includes(selectedExtra?.type) && !selected?.dataset.cmsReusableDefinitionId);
+    const reusableWrapper = selected?.closest?.('.cms-extra-reusable');
+    if (detachReusable) detachReusable.disabled = !(items.length === 1 && (selectedExtra?.type === 'reusable' || reusableWrapper?.dataset.cmsExtraId));
     const canAlign = items.length >= 2 && parent && editable && freeCanvasParent(parent);
     document.querySelectorAll('[data-align-selection]').forEach(button => {
       const distribute = button.dataset.alignSelection?.startsWith('distribute');
@@ -2709,7 +2717,7 @@
 
   function openCodeEditor() {
     const block = selected;
-    const extra = block?.dataset?.cmsExtraId ? pageState().extras.find(x => x.id === block.dataset.cmsExtraId) : null;
+    const extra = overrideForElement(block, false);
     if (!block || extra?.type !== 'code') return;
     clearTimeout(autoSaveTimer);
     const dialog = document.createElement('dialog');
@@ -2730,6 +2738,7 @@
       checkpoint();
       extra.text = textarea.value;
       renderCodePreview(block, extra);
+      syncReusableMemberDom(block, extra);
       markDirty();
       dialog.close();
       updateDirectCanvasUi();
@@ -3640,10 +3649,23 @@
     document.getElementById('legend-cms-layer-rename')?.addEventListener('click', () => {
       if (!selected) return;
       const current = selectedOverride(); if (!current) return;
-      const next = window.prompt?.('Layer name', current.editorLabel || elementLabel(selected).replace(/^[^·]+·\s*/,'')) ?? null;
+      const isReusableRoot = selected.dataset.cmsReusableDefinitionId && selected.dataset.cmsReusableLocalId === '__root__';
+      const initial = isReusableRoot ? reusableDefinition(selected.dataset.cmsReusableDefinitionId)?.name : current.editorLabel;
+      const next = window.prompt?.('Layer name', initial || elementLabel(selected).replace(/^[^·]+·\s*/,'')) ?? null;
       if (next === null) return;
       checkpoint();
-      current.editorLabel = String(next).trim().slice(0,80) || null;
+      const clean = String(next).trim().slice(0,80);
+      if (isReusableRoot) {
+        const definition = reusableDefinition(selected.dataset.cmsReusableDefinitionId);
+        if (definition) {
+          definition.name = clean || 'Reusable component';
+          definition.updatedUtc = new Date().toISOString();
+          renderComponentCatalog();
+          document.querySelectorAll(`[data-cms-reusable-definition-id-ref="${CSS.escape(definition.id)}"]`).forEach(wrapper => {
+            wrapper.dataset.cmsReusableName = definition.name;
+          });
+        }
+      } else current.editorLabel = clean || null;
       syncEditorControls(); refreshLayers(); markDirty();
     });
     document.querySelectorAll('[data-z-action]').forEach(button => button.addEventListener('click', () => adjustSelectedZ(button.dataset.zAction)));
@@ -3658,7 +3680,7 @@
         const ov = selectedOverride();
         if (!ov) return;
         ov.imageDataUrl = dataUrl;
-        selected.src = mediaUrl(dataUrl);
+        applyElementOverride(imageTarget, ov);
         markDirty();
       });
     });
