@@ -3,10 +3,11 @@
 @inject Microsoft.Extensions.Logging.ILoggerFactory LoggerFactory
 @{
     var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
+    var isManagementPreview = Context.Request.Path.StartsWithSegments("/commerce/manage");
     string metaPixelId = string.Empty;
     try
     {
-        if (commerce is not null)
+        if (!isManagementPreview && commerce is not null)
         {
             Shared.Analytics.MarketingOwnerScope owner;
             if (string.Equals(commerce.WebsiteSiteKey, Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect, StringComparison.OrdinalIgnoreCase))
@@ -28,7 +29,7 @@
             if (connection?.DisconnectedUtc is null)
                 metaPixelId = (connection?.PixelId ?? string.Empty).Trim();
         }
-        else
+        else if (!isManagementPreview)
         {
             var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
             metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
@@ -64,7 +65,7 @@
 <script>
 (() => {
     const pathLower = location.pathname.toLowerCase();
-    if (pathLower.startsWith("/internal") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
+    if (pathLower.startsWith("/internal") || pathLower.startsWith("/commerce/manage") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
 
     const commerce = window.PARFAIT_COMMERCE_CONTEXT || {};
     const trackingVersion = "legend-commerce-tracking-v4";
