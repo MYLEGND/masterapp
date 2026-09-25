@@ -1228,6 +1228,26 @@ test('generic template wrappers are not direct selections and blank-area selecti
   }finally{f.close();}
 });
 
+test('mobile runtime clamps inherited desktop geometry and contains every page section inside the viewport',async()=>{
+  const doc={
+    breakpoints:[
+      {key:'mobile',label:'Mobile',minWidth:0,maxWidth:767,isSystem:true},
+      {key:'tablet',label:'Tablet',minWidth:768,maxWidth:1199,isSystem:true},
+      {key:'desktop',label:'Desktop',minWidth:1200,maxWidth:null,isSystem:true}
+    ],
+    pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:180,offsetXPercent:75}}},extras:[],sectionOrder:{},navigation:{showInNavigation:true}}}
+  };
+  const f=await domFixture({doc,search:'',viewportWidth:390});
+  try{
+    const heading=f.w.document.querySelector('main h1');
+    assert.equal(heading.style.width,'100%');
+    assert.equal(heading.style.left,'0%');
+    assert.match(source,/html,body\{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none\}/);
+    assert.match(source,/main,main>section,[^}]*overflow-x:clip/);
+    assert.match(source,/body\{touch-action:pan-y pinch-zoom\}/);
+  }finally{f.close();}
+});
+
 test('mobile editor preview is horizontally locked to the viewport and cannot pan into blank canvas space',async()=>{
   const f=await domFixture({viewportWidth:390});
   try{
