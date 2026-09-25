@@ -1,7 +1,7 @@
 using Domain.Entities;
 using Infrastructure.Data;
 
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 public static class UnifiedAnalyticsWriter
 {
