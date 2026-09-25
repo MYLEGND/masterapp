@@ -766,7 +766,7 @@
     const entry=websitePageEntries(true).find(value=>value.route===route);
     const url=new URL(location.origin);
     if (SITE_KEY==='business') {
-      const nativeTemplate=templates.has(route) && !entry?.templatePath;
+      const nativeTemplate=templates.has(route) && (!entry?.templatePath || entry.templatePath===route);
       url.pathname='/business-preview/' + (nativeTemplate ? route.replace(/^\//,'') : '');
       url.searchParams.set('businessId',BUSINESS_ID);
       if (!nativeTemplate) url.searchParams.set('cmsPage',route);
