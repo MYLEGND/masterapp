@@ -1765,8 +1765,8 @@
     updateDirectCanvasUi();
   }
 
-  function selectedOverride() {
-    return overrideForElement(selected);
+  function selectedOverride(create = true) {
+    return overrideForElement(selected, create);
   }
 
   function previewRelativeRect(el) {
@@ -2006,7 +2006,7 @@
     if (imageGroup) imageGroup.hidden = !isImage;
     if (codeGroup) codeGroup.hidden = !isCode;
 
-    const ov = selectedOverride() || {};
+    const ov = selectedOverride(false) || {};
     const editStyle = editingStyle(ov, false);
     const editLayout = editingLayout(ov, false);
     const computed = getComputedStyle(selected);
@@ -3010,7 +3010,7 @@
     const customOption = document.createElement('option'); customOption.value = 'custom'; customOption.textContent = 'Custom destination…'; select.appendChild(customOption);
 
     const byKey = override?.actionKey ? options.find(option => option.key === override.actionKey) : null;
-    const byHref = !byKey ? options.find(option => option.href === currentHref && option.managed) || options.find(option => option.href === currentHref) : null;
+    const byHref = !byKey ? options.find(option => option.href === currentHref && !option.managed) || options.find(option => option.href === currentHref) : null;
     const selectedOption = byKey || byHref || null;
     select.value = selectedOption?.key || 'custom';
     if (custom) custom.hidden = select.value !== 'custom';
