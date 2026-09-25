@@ -286,7 +286,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,signalTestPayload=null,signalHealthPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,signalTestPayload=null,signalHealthPayload=null,collaborationPayload=null,commentPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -295,7 +295,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; if(parsed.pathname.endsWith('/manage/collaboration') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>collaborationPayload || {source:'website_studio_collaboration',revision:'r1',role:{roleKey:'founder',label:'Founder',canPublish:true},collaborators:[{roleKey:'founder',displayName:'Founder',canPublish:true}],comments:[]}}; if(parsed.pathname.endsWith('/manage/collaboration/comments') || parsed.pathname.endsWith('/manage/collaboration/comments/status')) return {ok:!denied,status:denied?401:200,json:async()=>commentPayload || {source:'website_studio_collaboration',comment:{id:'comment-1',status:'open'}}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -505,6 +505,47 @@ test('signal editor delivery health renders existing authoritative evidence with
     assert.match(host.textContent,/Meta signal/);
     assert.doesNotMatch(host.textContent,/token|ciphertext/i);
   } finally { f.close(); }
+});
+
+test('Collaboration reads canonical roles and posts private selection-anchored comments',async()=>{
+  const collaborationPayload={
+    source:'website_studio_collaboration',revision:'r1',
+    role:{roleKey:'owner',label:'Owner',canComment:true,canResolveAll:true,canPublish:true},
+    collaborators:[
+      {roleKey:'owner',displayName:'Business Owner',canManageStorefront:true,canPublish:true},
+      {roleKey:'member',displayName:'Website Editor',canManageStorefront:true,canPublish:false}
+    ],
+    comments:[]
+  };
+  const f=await domFixture({siteKey:'business',business:{id:'business-id',displayName:'Fixture business'},collaborationPayload});
+  try{
+    f.click('main h1');
+    f.click('[data-open="collaboration"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(f.w.document.querySelector('#legend-cms-collaboration-role').textContent,/Owner · can publish/);
+    assert.match(f.w.document.querySelector('#legend-cms-collaboration-roster').textContent,/Business Owner/);
+    assert.match(f.w.document.querySelector('#legend-cms-collaboration-roster').textContent,/Website Editor/);
+    f.input('#legend-cms-collaboration-body','Review this hero before publishing.');
+    f.click('#legend-cms-collaboration-add');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const call=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname.endsWith('/manage/collaboration/comments'));
+    assert.ok(call);
+    const body=JSON.parse(call.body);
+    assert.equal(body.ticket,'ticket');
+    assert.equal(body.expectedRevision,'r1');
+    assert.equal(body.pagePath,'/');
+    assert.equal(body.elementId,'home.h1.template-title.1');
+    assert.equal(body.body,'Review this hero before publishing.');
+    assert.equal(body.parentCommentId,null);
+    assert.equal(JSON.stringify(body).includes('document'),false);
+  }finally{f.close();}
+});
+
+test('Collaboration source remains private management metadata and never joins published document serialization',()=>{
+  assert.ok(source.includes('/manage/collaboration/comments'));
+  assert.ok(source.includes('/manage/collaboration/comments/status'));
+  assert.equal(source.includes('documentState.comments'),false);
+  assert.equal(source.includes('pageState().comments'),false);
 });
 
 test('AI Assist generates a review-only proposal then uses normal save authority after explicit apply', async()=>{
@@ -748,6 +789,60 @@ test('manual destination remains available and intentionally leaves managed CTA 
   } finally { f.close(); }
 });
 
+test('new section inserts directly after the selected section and survives save reload ordering',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section><h2>First</h2></section><section><h2>Middle</h2></section><section><h2>Last</h2></section></main></body></html>';
+  const f=await domFixture({html}); let saved;
+  try{
+    const middle=f.w.document.querySelectorAll('main > section')[1];
+    f.click('main > section:nth-of-type(2) h2');
+    f.click('[data-add="section"]');
+    const sections=[...f.w.document.querySelectorAll('main > section')];
+    assert.equal(sections.length,4);
+    const added=f.w.document.querySelector('.cms-extra-section');
+    assert.ok(added);
+    assert.equal(sections.indexOf(added),2);
+    assert.equal(sections[1],middle);
+    saved=await f.save();
+    assert.equal(saved.pages['/'].sectionOrder[middle.dataset.cmsSection],1);
+    assert.equal(saved.pages['/'].sectionOrder[added.dataset.cmsSection],2);
+  }finally{f.close();}
+  const loaded=await domFixture({html,doc:saved,search:''});
+  try{
+    const sections=[...loaded.w.document.querySelectorAll('main > section')];
+    const added=loaded.w.document.querySelector('.cms-extra-section');
+    assert.ok(added);
+    assert.equal(sections.indexOf(added),2);
+    assert.match(sections[1].textContent,/Middle/);
+    assert.match(sections[3].textContent,/Last/);
+  }finally{loaded.close();}
+});
+
+test('Layers lists and reorders only whole sections, never individual fields or actions',async()=>{
+  const html='<!doctype html><html><body data-page-key="home"><main><section><h2>First</h2><form><input name="Email"><button>Send</button></form></section><section><h2>Second</h2><a href="/contact">Contact</a></section></main></body></html>';
+  const f=await domFixture({html});
+  try{
+    f.click('[data-open="layers"]');
+    let rows=[...f.w.document.querySelectorAll('.legend-cms-section-layer')];
+    assert.equal(rows.length,2);
+    assert.doesNotMatch(f.w.document.querySelector('#legend-cms-layers').textContent,/Email|Send|Contact/);
+    assert.ok(rows.every(row=>row.draggable===true));
+    const transfer={value:'',setData(_type,value){this.value=value;},getData(){return this.value;}};
+    const start=new f.w.Event('dragstart',{bubbles:true,cancelable:true});
+    Object.defineProperty(start,'dataTransfer',{value:transfer});
+    rows[1].dispatchEvent(start);
+    const over=new f.w.Event('dragover',{bubbles:true,cancelable:true});
+    rows[0].dispatchEvent(over);
+    const drop=new f.w.Event('drop',{bubbles:true,cancelable:true});
+    Object.defineProperty(drop,'dataTransfer',{value:transfer});
+    rows[0].dispatchEvent(drop);
+    const sections=[...f.w.document.querySelectorAll('main > section')];
+    assert.match(sections[0].textContent,/Second/);
+    const saved=await f.save();
+    assert.equal(saved.pages['/'].sectionOrder[sections[0].dataset.cmsSection],0);
+    assert.equal(saved.pages['/'].sectionOrder[sections[1].dataset.cmsSection],1);
+  }finally{f.close();}
+});
+
 test('new button goes to the bottom of the selected container and persists that flow placement',async()=>{
   const html='<!doctype html><html><body data-page-key="home"><main><section><div class="chosen"><h1>Headline</h1><p>Copy</p></div><div class="other"><p>Other</p></div></section></main></body></html>';
   const f=await domFixture({html});
@@ -868,7 +963,7 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     assert.equal(f.w.document.querySelector('#legend-cms-place'),null);
     assert.ok(f.w.document.querySelector('.legend-cms-selection-frame'));
     assert.ok(f.w.document.querySelector('.legend-cms-grid-overlay'));
-    assert.equal(f.w.document.querySelectorAll('[data-cms-gesture]').length,4);
+    assert.equal(f.w.document.querySelectorAll('[data-cms-gesture]').length,8);
     f.input('#legend-cms-width','50');
     f.input('#legend-cms-height','240');
     f.input('#legend-cms-offset-x','25');
@@ -892,13 +987,22 @@ test('editing current page preserves independent page content',async()=>{
 test('undo and redo restore content and leave other page drafts intact',async()=>{
  const f=await domFixture();try{f.click('main h1');f.editSelected('First edit');f.editSelected('Second edit');f.click('#legend-cms-undo');assert.equal(f.w.document.querySelector('main h1').textContent,'First edit');f.click('#legend-cms-redo');assert.equal(f.w.document.querySelector('main h1').textContent,'Second edit');}finally{f.close();}
 });
-test('selected blocks disable legacy HTML drag and expose snap-grid handles',async()=>{
+test('selected blocks use one sharp border with invisible directional resize zones and a quiet snap grid',async()=>{
  const f=await domFixture();try {
   f.click('main h1');
   const heading=f.w.document.querySelector('main h1');
   assert.equal(heading.draggable,false);
-  assert.equal(f.w.document.querySelector('.legend-cms-move-handle').getAttribute('title'),'Move on grid');
+  const frame=f.w.document.querySelector('.legend-cms-selection-frame');
+  assert.ok(frame);
+  assert.equal(frame.querySelectorAll('.legend-cms-edge-handle').length,8);
+  assert.equal(frame.querySelector('.legend-cms-move-handle'),null);
+  assert.equal(frame.querySelector('.legend-cms-resize-handle'),null);
+  assert.match(source,/\.legend-cms-selection-frame\{[^}]*border:1px solid #d4ad45/);
+  assert.match(source,/\.legend-cms-edge-right\{right:-6px\}/);
+  assert.match(source,/\.legend-cms-corner-ne\{[^}]*cursor:nesw-resize/);
+  assert.equal(source.includes('border-radius:50%'),false);
   assert.match(source,/background-size:calc\(100% \/ 12\) 100%,100% 24px/);
+  assert.match(source,/legend-cms-grid-overlay::before[^}]*opacity:0/);
   assert.equal(f.w.document.querySelector('#legend-cms-drag'),null);
  }finally{f.close();}
 });
@@ -939,9 +1043,10 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 14);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 15);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
+      assert.ok(f.w.document.querySelector('[data-open="collaboration"]'));
       f.click('[data-open="page"]');
       assert.equal(f.w.document.querySelector('#legend-cms-page-title').disabled, false);
       f.input('#legend-cms-page-title', 'A title <with text>');
