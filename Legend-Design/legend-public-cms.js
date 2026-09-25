@@ -700,14 +700,56 @@
 
   const defaultCodeBlock = '<div style="font:600 18px/1.5 system-ui;padding:24px">Edit this code block to build custom content.</div>';
 
+  function safeCodeThemeValue(value, fallback) {
+    const candidate = String(value || '').trim();
+    return candidate && !/[<>{};\r\n]/.test(candidate) ? candidate : fallback;
+  }
+
+  function codeThemeCss() {
+    const computed = getComputedStyle(document.documentElement);
+    const pick = (key, cssVar, fallback) => safeCodeThemeValue(
+      documentState.theme?.[key] || computed.getPropertyValue(cssVar),
+      fallback
+    );
+    const fontSize = Number(documentState.theme?.fontSize);
+    const radius = Number(documentState.theme?.borderRadius);
+    const values = {
+      navy: pick('navy', '--web-navy', '#081a3a'),
+      navyDeep: pick('navyDeep', '--web-navy-deep', '#06152f'),
+      gold: pick('gold', '--web-gold', '#d4ad45'),
+      goldStrong: pick('goldStrong', '--web-gold-strong', '#b88922'),
+      surface: pick('surface', '--web-surface', '#ffffff'),
+      text: pick('text', '--web-ink', '#14203d'),
+      muted: pick('muted', '--web-muted', '#596985'),
+      font: pick('fontFamily', '--web-font', 'system-ui'),
+      fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize + 'px' : 'inherit',
+      radius: Number.isFinite(radius) && radius >= 0 ? radius + 'px' : '24px'
+    };
+    return `:root{--web-navy:${values.navy};--web-navy-deep:${values.navyDeep};--web-gold:${values.gold};--web-gold-strong:${values.goldStrong};--web-surface:${values.surface};--web-ink:${values.text};--web-muted:${values.muted};--web-font:${values.font};--theme-primary:var(--web-navy);--theme-primary-deep:var(--web-navy-deep);--theme-accent:var(--web-gold);--theme-accent-strong:var(--web-gold-strong);--theme-surface:var(--web-surface);--theme-text:var(--web-ink);--theme-muted:var(--web-muted);--theme-font:var(--web-font);--theme-font-size:${values.fontSize};--theme-radius:${values.radius}}html,body{background:transparent}`;
+  }
+
+  function codeThemeDocument(source) {
+    const themeStyle = `<style data-legend-code-theme>${codeThemeCss()}</style>`;
+    return /<\/head\s*>/i.test(source)
+      ? source.replace(/<\/head\s*>/i, themeStyle + '</head>')
+      : themeStyle + source;
+  }
+
   function renderCodePreview(el, extra) {
     const frame = el?.querySelector?.('iframe[data-cms-code-frame]');
     if (!frame) return;
     const source = extra?.text?.trim() ? extra.text : defaultCodeBlock;
     // A data document has an opaque origin under this sandbox and does not inherit
-    // the parent page's script policy. This keeps owner code isolated without
-    // weakening the main site's CSP with unsafe-inline/unsafe-eval.
-    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(source);
+    // the parent page's script policy. The shared renderer injects only sanitized
+    // public theme values into the isolated document; it never grants parent DOM access.
+    frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(codeThemeDocument(source));
+  }
+
+  function refreshCodeBlockThemes() {
+    document.querySelectorAll('.cms-extra-code[data-cms-extra-id]').forEach(block => {
+      const extra = pageState().extras.find(value => value.id === block.dataset.cmsExtraId);
+      if (extra?.type === 'code') renderCodePreview(block, extra);
+    });
   }
 
   function mediaUrl(value) {
@@ -3027,7 +3069,7 @@
     showPanel('content');
   }
 
-  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}.cms-extra-code{display:block;width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}.cms-extra-code iframe{display:block;width:100%;height:100%;border:0;background:#fff}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
+  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}.cms-extra-code{display:block;width:100%;height:320px;min-height:72px;overflow:hidden;background:transparent}.cms-extra-code iframe{display:block;width:100%;height:100%;border:0;background:transparent;color-scheme:normal}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
 `; document.head.appendChild(style); }
 
   function injectEditorStyles() {
@@ -3240,6 +3282,7 @@
         checkpoint();
         documentState.theme[key] = input.value;
         applyTheme(documentState.theme);
+        refreshCodeBlockThemes();
         markDirty();
       });
     });
