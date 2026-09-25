@@ -180,7 +180,7 @@ public sealed class WebsitePublishingAuthorityTests
         {
             Extras = [new() { Id = "managed", SectionId = "home.section.1", Type = "button", Text = "Talk", ActionKey = "legend_contact", Href = "#" }]
         };
-        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1))).GetProperty("revision").GetInt32());
+        Assert.Equal(2, Body(await f.Controller.Save(new(token, managed, 1, DeletedKeys: new[] { "root|extra:dead" }))).GetProperty("revision").GetInt32());
         Assert.IsType<OkObjectResult>(await f.Controller.Publish(new(token, 2)));
         var published = Body(await f.Controller.Public("legend"));
         Assert.Equal("/contact", published.GetProperty("document").GetProperty("extras")[0].GetProperty("href").GetString());
