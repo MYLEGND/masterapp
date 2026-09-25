@@ -535,7 +535,18 @@
     const base = override?.style && typeof override.style === 'object' ? override.style : {};
     const key = activeBreakpoint();
     const responsive = key && override?.breakpointStyles && typeof override.breakpointStyles[key] === 'object' ? override.breakpointStyles[key] : null;
-    return responsive ? { ...base, ...responsive } : base;
+    const style = responsive ? { ...base, ...responsive } : { ...base };
+    // Mobile may inherit desktop geometry, but it must never create a canvas
+    // wider than the mobile viewport or position content beyond its right edge.
+    if (key === 'mobile') {
+      const width = positiveNumber(style.widthPercent) ? Math.min(100, Number(style.widthPercent)) : null;
+      if (width != null) style.widthPercent = width;
+      if (style.offsetXPercent != null && Number.isFinite(Number(style.offsetXPercent))) {
+        const maxOffset = Math.max(0, 100 - (width ?? 100));
+        style.offsetXPercent = Math.max(0, Math.min(maxOffset, Number(style.offsetXPercent)));
+      }
+    }
+    return style;
   }
 
   function effectiveLayout(override) {
@@ -3307,7 +3318,25 @@
     showPanel('content');
   }
 
-  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `      [data-cms-id][hidden]{display:none}.cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0}.cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}.cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px}.cms-extra video,video.cms-extra{max-width:100%;height:auto}.cms-extra-code{display:block;width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}.cms-extra-code iframe{display:block;width:100%;height:100%;border:0;background:#fff}@media(max-width:600px){.cms-layout-frame>*{grid-column:1 / -1}}
+  function injectContentStyles() { const style = document.createElement('style'); style.textContent = `
+      html,body{max-width:100%}
+      body{overflow-x:clip}
+      main,main>*{min-width:0;max-width:100%;box-sizing:border-box}
+      main img,main video,main iframe,main form{max-width:100%}
+      [data-cms-id][hidden]{display:none}
+      .cms-layout-frame{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:clamp(8px,2vw,24px);width:100%;min-width:0;max-width:100%}
+      .cms-layout-frame>*{grid-column:var(--cms-column,1) / span var(--cms-span,12);max-width:100%;min-width:0;overflow-wrap:anywhere}
+      .cms-extra-section{padding:clamp(24px,5vw,64px);min-height:120px;max-width:100%;overflow-x:clip}
+      .cms-extra video,video.cms-extra{max-width:100%;height:auto}
+      .cms-extra-code{display:block;width:100%;max-width:100%;height:320px;min-height:72px;overflow:hidden;background:#fff}
+      .cms-extra-code iframe{display:block;width:100%;max-width:100%;height:100%;border:0;background:#fff}
+      @media(max-width:767px){
+        html,body{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none}
+        body{touch-action:pan-y pinch-zoom}
+        main,main>section,main>.section,main>.page-hero,main>.cta,main>.legal-page-wrap,main>.quote-page,main>.container-narrow,main>.training-page{width:100%;max-width:100%;min-width:0;overflow-x:clip}
+        main *{max-width:100%;box-sizing:border-box}
+        .cms-layout-frame>*{grid-column:1 / -1}
+      }
 `; document.head.appendChild(style); }
 
   function injectEditorStyles() {
