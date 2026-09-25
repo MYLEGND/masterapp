@@ -42,15 +42,15 @@
   </ItemGroup>
 
     <ItemGroup>
-    <Content Include="..\Legend-Design\legend-public-web.css"
+    <Content Include="..\SHARED\WebsitePlatform\legend-public-web.css"
              Link="wwwroot\design\legend-public-web.css"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\Legend-Design\legend-public-web.js"
+    <Content Include="..\SHARED\WebsitePlatform\legend-public-web.js"
              Link="wwwroot\design\legend-public-web.js"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\Legend-Design\legend-public-cms.js"
+    <Content Include="..\SHARED\WebsitePlatform\legend-public-cms.js"
              Link="wwwroot\design\legend-public-cms.js"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
