@@ -39,6 +39,7 @@
   let signalCatalog = null;
   let ctaCatalog = [];
   let componentCatalog = [];
+  let formCatalog = null;
   let motionCatalog = null;
   let mediaLibraryAssets = [];
   let savedQualityReport = null;
@@ -123,6 +124,7 @@
       extras: Array.isArray(input?.extras) ? input.extras : [],
       theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
       reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
+      forms: input?.forms && typeof input.forms === 'object' ? input.forms : {},
       breakpoints: Array.isArray(input?.breakpoints) && input.breakpoints.length
         ? input.breakpoints
             .filter(item => item && typeof item.id === 'string' && Number.isFinite(Number(item.maxWidthPx)))
@@ -578,6 +580,10 @@
     else el.appendChild(document.createTextNode(text));
   }
 
+
+  function formDefinition(id) {
+    return id ? documentState.forms?.[id] || null : null;
+  }
 
   function reusableDefinition(id) {
     return id ? documentState.reusableComponents?.[id] || null : null;
@@ -3977,6 +3983,8 @@
       bindBusiness(payload);
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       componentCatalog = Array.isArray(payload.componentCatalog?.options) ? payload.componentCatalog.options : [];
+      formCatalog = payload.formCatalog && Array.isArray(payload.formCatalog.types) && Array.isArray(payload.formCatalog.roles)
+        ? payload.formCatalog : null;
       motionCatalog = payload.motionCatalog && Array.isArray(payload.motionCatalog.triggers) && Array.isArray(payload.motionCatalog.effects)
         ? payload.motionCatalog : null;
       if (customPage) {
