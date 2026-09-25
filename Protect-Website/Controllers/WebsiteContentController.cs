@@ -1877,6 +1877,7 @@ public sealed class WebsiteContentController : ControllerBase
                 businessKey = (string?)null,
                 storefrontUrl = (string?)null,
                 cartUrl = (string?)null,
+                previewUrl = (string?)null,
                 managerUrl = (string?)null
             };
 
@@ -1889,6 +1890,9 @@ public sealed class WebsiteContentController : ControllerBase
             businessKey = scope.BusinessKey,
             storefrontUrl = root,
             cartUrl = root + "/cart",
+            previewUrl = string.IsNullOrWhiteSpace(ticket)
+                ? null
+                : CommercePublicBaseUrl() + "/commerce/manage/preview?ticket=" + Uri.EscapeDataString(ticket),
             managerUrl = string.IsNullOrWhiteSpace(ticket)
                 ? null
                 : CommercePublicBaseUrl() + "/commerce/manage/workspace?ticket=" + Uri.EscapeDataString(ticket)
