@@ -391,6 +391,33 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task CoreComponentRegistry_AcceptsProfessionalPrimitivesWithoutASecondSchema()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        foreach (var type in new[] { "heading", "quote", "divider", "spacer", "shape", "container" })
+        {
+            document.Extras.Add(new WebsiteExtraComponent
+            {
+                Id = type + "-one",
+                Type = type,
+                SectionId = "home.section.1",
+                Text = type is "heading" or "quote" ? "Sample" : null,
+                Style = type == "spacer" ? new() { HeightPx = 48 } : new(),
+                Layout = type == "container" ? new() { Mode = WebsiteLayoutModeCatalog.Grid, Columns = 4 } : new()
+            });
+        }
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        Assert.Equal(6, saved.Extras.Count);
+        Assert.Equal("Sample", saved.Extras.Single(x => x.Type == "heading").Text);
+        Assert.Equal(48m, saved.Extras.Single(x => x.Type == "spacer").Style.HeightPx);
+        Assert.Equal(WebsiteLayoutModeCatalog.Grid, saved.Extras.Single(x => x.Type == "container").Layout.Mode);
+        Assert.Equal(4, saved.Extras.Single(x => x.Type == "container").Layout.Columns);
+    }
+
+    [Fact]
     public async Task EditorLayerMetadata_RoundTripsWithoutASecondLayerStore()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
