@@ -233,10 +233,11 @@ public sealed class WebsiteInquiriesController : ControllerBase
                 });
 
             if (created)
-            {
                 WriteLeadAnalytics(scope, lead, request);
-                await _db.SaveChangesAsync(cancellationToken);
-            }
+
+            // The inquiry row is durable independently of whether an idempotent
+            // WebsiteLead already existed from the same scoped submission.
+            await _db.SaveChangesAsync(cancellationToken);
 
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
