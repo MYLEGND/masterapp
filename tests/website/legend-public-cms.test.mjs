@@ -939,7 +939,8 @@ test('duplicated service child owns independent drag geometry while the card rem
     card.getBoundingClientRect=()=>({left:80,top:80,right:480,bottom:240,width:400,height:160});
     section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
     preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
-    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    const move=f.w.document.querySelector('.legend-cms-move-handle');
+    move.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:140,clientY:120,button:0}));
     f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:140,clientY:120,button:0}));
     f.editSelected('Duplicated service title');
@@ -1223,6 +1224,28 @@ test('generic template wrappers are not direct selections and blank-area selecti
     assert.equal(selected.dataset.cmsSection,first.dataset.cmsSection);
     assert.equal(f.w.document.querySelector('.legend-cms-selection-frame').dataset.sectionSelected,'true');
     assert.match(source,/data-section-selected="true"\] \.legend-cms-move-handle\{display:none\}/);
+  }finally{f.close();}
+});
+
+test('mobile editor preview is horizontally locked to the viewport and cannot pan into blank canvas space',async()=>{
+  const f=await domFixture({viewportWidth:390});
+  try{
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    assert.ok(preview);
+    assert.equal(f.w.getComputedStyle(preview).overflowX,'hidden');
+    assert.equal(f.w.getComputedStyle(preview).maxWidth,'100%');
+    preview.scrollLeft=140;
+    preview.dispatchEvent(new f.w.Event('scroll'));
+    assert.equal(preview.scrollLeft,0);
+    f.w.innerWidth=1200;
+    preview.scrollLeft=60;
+    preview.dispatchEvent(new f.w.Event('scroll'));
+    assert.equal(preview.scrollLeft,60);
+    f.w.innerWidth=390;
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    assert.equal(preview.scrollLeft,0);
+    assert.match(source,/\.legend-cms-preview\{width:100%;max-width:100%;[^}]*overflow-x:hidden/);
+    assert.match(source,/@media\(max-width:800px\)[\s\S]*touch-action:pan-y/);
   }finally{f.close();}
 });
 
