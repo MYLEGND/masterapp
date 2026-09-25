@@ -285,14 +285,14 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],qualityPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],qualityPayload=null,mediaPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -639,7 +639,7 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 9);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 10);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       f.click('[data-open="page"]');
@@ -750,6 +750,42 @@ test('LEGEND and Protect Pages views do not advertise arbitrary route creation b
       assert.equal(f.w.document.querySelector('#legend-cms-page-fixed-notice').hidden,false);
     } finally { f.close(); }
   }
+});
+
+
+test('media library reuses scoped image asset without persisting editor ticket', async()=>{
+  const assetUrl='https://site.example/api/website-content/media/11111111-1111-1111-1111-111111111111';
+  const f=await domFixture({mediaPayload:{assets:[{id:'11111111-1111-1111-1111-111111111111',name:'team-logo.png',url:assetUrl,contentType:'image/png',sizeBytes:2048,createdUtc:'2026-09-24T00:00:00Z'}]}});
+  try{
+    f.click('main img');
+    f.click('[data-open="media"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(f.w.document.querySelector('#legend-cms-media-status').textContent,/1 asset/);
+    const preview=f.w.document.querySelector('.legend-cms-media-card img');
+    assert.equal(new URL(preview.src).searchParams.get('ticket'),'ticket');
+    f.click('.legend-cms-media-card button');
+    const saved=await f.save();
+    const imageOverride=Object.values(saved.pages['/'].elements).find(value=>value.imageDataUrl===assetUrl);
+    assert.ok(imageOverride);
+    assert.equal(JSON.stringify(saved).includes('ticket='),false);
+    assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/media')));
+  } finally { f.close(); }
+});
+
+test('media library inserts existing video into selected section through Extras', async()=>{
+  const assetUrl='https://site.example/api/website-content/media/22222222-2222-2222-2222-222222222222';
+  const f=await domFixture({mediaPayload:{assets:[{id:'22222222-2222-2222-2222-222222222222',name:'intro.mp4',url:assetUrl,contentType:'video/mp4',sizeBytes:8192,createdUtc:'2026-09-24T00:00:00Z'}]}});
+  try{
+    f.click('main h1');
+    f.click('[data-open="media"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    f.click('.legend-cms-media-card button');
+    const saved=await f.save();
+    const video=saved.pages['/'].extras.find(extra=>extra.type==='video');
+    assert.ok(video);
+    assert.equal(video.videoUrl,assetUrl);
+    assert.equal(JSON.stringify(saved).includes('ticket='),false);
+  } finally { f.close(); }
 });
 
 test('quality inspector keeps saved-server checks separate from rendered-canvas checks', async () => {
