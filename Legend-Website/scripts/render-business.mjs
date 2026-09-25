@@ -79,6 +79,14 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted)
     .sort((a,b)=>a.order-b.order||a.route.localeCompare(b.route));
   const navEntries=manifest.filter(page=>page.showInNavigation);
+  const commerceBase=String(input?.commerce?.publicBaseUrl||'https://shopparfait.com').replace(/\/$/,'');
+  const storeEnabled=input.document?.store?.enabled===true && !!input.business?.key;
+  const storeLabel=String(input.document?.store?.navigationLabel||'Store').trim().slice(0,40)||'Store';
+  const storeRoot=storeEnabled?`${commerceBase}/store/s/${encodeURIComponent(input.business.key)}`:null;
+  const storeContext=storeEnabled?{
+    enabled:true,label:storeLabel,commerceBusinessId:input.business.id,businessKey:input.business.key,
+    storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
+  }:null;
 
   for(const entry of manifest) {
     const {route,sourceRoute,dynamicItem}=entry;
@@ -116,7 +124,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
       document:currentDocument,business:input.business,collections:input.collections||[],
-      dynamicItem,pageKey:renderPageKey,server:true
+      store:storeContext,dynamicItem,pageKey:renderPageKey,server:true
     };
     vm.runInNewContext(cms,sandbox,{timeout:3000,filename:'legend-public-cms.js'});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
@@ -144,7 +152,7 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     renderInput.type='application/json';
     renderInput.id='legend-cms-published-document';
     renderInput.textContent=JSON.stringify({
-      document:currentDocument,business:input.business,collections:input.collections||[],dynamicItem,
+      document:currentDocument,business:input.business,collections:input.collections||[],store:storeContext,dynamicItem,
       pageKey:renderPageKey,server:false,
       runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}
     }).replace(/</g,'\\u003c');
