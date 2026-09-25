@@ -39,6 +39,7 @@
   let signalCatalog = null;
   let ctaCatalog = [];
   let componentCatalog = [];
+  let motionCatalog = null;
   let currentDesignBreakpoint = 'base';
   let selected = null;
   const selectedElements = new Set();
@@ -55,6 +56,7 @@
   let autoSaveTimer = null;
   const originals = new WeakMap();
   const scaledElements = new Map();
+  const motionBindings = new WeakMap();
   const styleProperties = ['textAlign', 'fontSize', 'width', 'maxWidth', 'minWidth', 'height', 'minHeight', 'maxHeight', 'position', 'left', 'right', 'top', 'bottom', 'overflow', 'paddingTop', 'paddingBottom', 'objectPosition', 'color', 'backgroundColor', 'backgroundImage', 'fontFamily', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingLeft', 'paddingRight', 'borderRadius', 'objectFit', 'gridColumn', 'overflowWrap', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'opacity', 'transform', 'zIndex', 'aspectRatio', 'display', 'gridTemplateColumns', 'gridTemplateRows', 'columnGap', 'rowGap', 'flexDirection', 'alignItems', 'justifyContent', 'flexWrap'];
 
   function rememberOriginal(el) {
@@ -571,6 +573,102 @@
     if (remove) remove.disabled = !current;
   }
 
+  function prefersReducedMotion() {
+    try { return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true; }
+    catch { return false; }
+  }
+
+  function motionKeyframes(interaction) {
+    const distance = positiveNumber(Number(interaction?.distancePx)) ? Number(interaction.distancePx) : 32;
+    const amount = Number(interaction?.amount);
+    if (interaction?.effect === 'slide') {
+      const direction = interaction.direction || 'up';
+      const start = direction === 'up' ? `translateY(${distance}px)`
+        : direction === 'down' ? `translateY(-${distance}px)`
+        : direction === 'left' ? `translateX(${distance}px)`
+        : `translateX(-${distance}px)`;
+      return [{ opacity: .001, transform: start }, { opacity: 1, transform: 'translate(0,0)' }];
+    }
+    if (interaction?.effect === 'scale') {
+      const start = Number.isFinite(amount) && amount > 0 && amount <= 5 ? amount : .92;
+      return [{ opacity: .001, transform: `scale(${start})` }, { opacity: 1, transform: 'scale(1)' }];
+    }
+    if (interaction?.effect === 'rotate') {
+      const degrees = Number.isFinite(amount) ? amount : -8;
+      return [{ opacity: .001, transform: `rotate(${degrees}deg)` }, { opacity: 1, transform: 'rotate(0deg)' }];
+    }
+    if (interaction?.effect === 'blur') {
+      const pixels = Number.isFinite(amount) && amount >= 0 ? amount : 12;
+      return [{ opacity: .001, filter: `blur(${pixels}px)` }, { opacity: 1, filter: 'blur(0px)' }];
+    }
+    return [{ opacity: .001 }, { opacity: 1 }];
+  }
+
+  function playMotion(el, interaction) {
+    if (!el || prefersReducedMotion() || typeof el.animate !== 'function') return null;
+    try {
+      return el.animate(motionKeyframes(interaction), {
+        duration: Math.max(50, Math.min(10000, Number(interaction.durationMs) || 500)),
+        delay: Math.max(0, Math.min(10000, Number(interaction.delayMs) || 0)),
+        easing: interaction.easing || 'ease-out',
+        fill: 'none'
+      });
+    } catch { return null; }
+  }
+
+  function clearMotionBinding(el) {
+    const current = motionBindings.get(el);
+    if (!current) return;
+    for (const cleanup of current.cleanups || []) {
+      try { cleanup(); } catch {}
+    }
+    motionBindings.delete(el);
+  }
+
+  function bindMotion(el, interactions) {
+    if (!el || editorMode || renderInput?.server) return;
+    const items = Array.isArray(interactions) ? interactions : [];
+    const signature = JSON.stringify(items);
+    const existing = motionBindings.get(el);
+    if (existing?.signature === signature) return;
+    clearMotionBinding(el);
+    if (!items.length || prefersReducedMotion()) return;
+
+    const cleanups = [];
+    for (const interaction of items) {
+      if (!interaction?.trigger || !interaction?.effect) continue;
+      if (interaction.trigger === 'load') {
+        const timer = setTimeout(() => playMotion(el, interaction), 0);
+        cleanups.push(() => clearTimeout(timer));
+      } else if (interaction.trigger === 'hover') {
+        const handler = () => playMotion(el, interaction);
+        el.addEventListener('mouseenter', handler);
+        cleanups.push(() => el.removeEventListener('mouseenter', handler));
+      } else if (interaction.trigger === 'click') {
+        const handler = () => playMotion(el, interaction);
+        el.addEventListener('click', handler);
+        cleanups.push(() => el.removeEventListener('click', handler));
+      } else if (interaction.trigger === 'enter-view') {
+        if (typeof IntersectionObserver === 'function') {
+          let observer = null;
+          observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              playMotion(el, interaction);
+              if (interaction.once !== false) observer?.unobserve(el);
+            }
+          }, { threshold: .15 });
+          observer.observe(el);
+          cleanups.push(() => observer.disconnect());
+        } else {
+          const timer = setTimeout(() => playMotion(el, interaction), 0);
+          cleanups.push(() => clearTimeout(timer));
+        }
+      }
+    }
+    motionBindings.set(el, { signature, cleanups });
+  }
+
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
@@ -600,6 +698,7 @@
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
     applyStyle(el, resolved.style);
     applyLayout(el, resolved.layout);
+    bindMotion(el, override.interactions);
   }
 
   function createExtra(extra) {
@@ -2964,6 +3063,8 @@
       bindBusiness(payload);
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       componentCatalog = Array.isArray(payload.componentCatalog?.options) ? payload.componentCatalog.options : [];
+      motionCatalog = payload.motionCatalog && Array.isArray(payload.motionCatalog.triggers) && Array.isArray(payload.motionCatalog.effects)
+        ? payload.motionCatalog : null;
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
         if (!pages[customPage]) throw new Error('This page is not part of the authorized website draft.');
