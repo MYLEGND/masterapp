@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using System.Globalization;
 using System.Text.Json;
 using Domain.Entities;
