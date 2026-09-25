@@ -8,300 +8,44 @@
     var subject = Uri.EscapeDataString("Legend Legacy Protection Inquiry");
     var body = Uri.EscapeDataString("Hi Legend Legacy Protection,\n\nName:\nBest number:\nQuestion:\n\nThank you!");
     var mailto = $"mailto:{contactEmail}?subject={subject}&body={body}";
-    var serializedEmail = System.Text.Json.JsonSerializer.Serialize(contactEmail);
 }
+<section class="page-hero">
+    <p class="eyebrow">CONTACT LEGEND LEGACY PROTECTION</p>
+    <h1>Clear questions deserve clear next steps.</h1>
+    <p>Ask about protection planning, an existing review, available coverage paths, or what to do next. We’ll help you understand the next step without pressure.</p>
+</section>
 
-<div class="contact-clarity">
-    <div class="contact-clarity__card" aria-label="Contact Legend">
-        <div class="contact-clarity__header">
-            <div class="contact-clarity__brand-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="M3.75 7.5 12 13.5l8.25-6" />
-                    <rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2.5" />
-                </svg>
-            </div>
-
-            <div class="contact-clarity__header-copy">
-                <h1 class="contact-clarity__title">Contact Us</h1>
-                <p class="contact-clarity__subtitle">Questions, support, and next steps.</p>
-            </div>
-        </div>
-
-        <div class="contact-clarity__inbox">
-            <span class="contact-clarity__inbox-label">Email</span>
-            <a class="contact-clarity__email" href="@mailto">@contactEmail</a>
-        </div>
-
-        <div class="contact-clarity__actions">
-            <a class="contact-clarity__button contact-clarity__button--primary"
-               href="@mailto"
-               data-cta="contact_email">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M4 6.75h16v10.5H4z" />
-                    <path d="m5 8 7 5 7-5" />
-                </svg>
-                <span>Email</span>
-            </a>
-
-            <button class="contact-clarity__button contact-clarity__button--secondary"
-                    type="button"
-                    id="copyEmailBtn"
-                    data-email="@contactEmail"
-                    data-cta="contact_copy_email"
-                    aria-label="Copy email address">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <rect x="8" y="8" width="10" height="10" rx="2" />
-                    <path d="M6.5 15.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-                </svg>
-                <span>Copy</span>
-            </button>
-        </div>
-
+<section class="section">
+    <div class="section-head">
+        <p class="eyebrow">START A CONVERSATION</p>
+        <h2>Reach the protection team directly.</h2>
+        <p class="lead">Send a message with what you are trying to solve and we’ll respond with the most relevant next step.</p>
     </div>
-</div>
+    <div class="contact-grid">
+        <a class="contact-card" href="@mailto" data-cta="contact_email">
+            <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
+            </span>
+            <p class="eyebrow">EMAIL</p>
+            <h2>@contactEmail</h2>
+            <p>Best for questions, planning context, and requests that benefit from a written response.</p>
+            <span>Send email →</span>
+        </a>
+        <a class="contact-card" href="/RiskAssessment" data-cta="contact_assessment">
+            <span class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 10-4.6-2-8-5-8-10V6l8-3Z"/><path d="M9 12l2 2 4-5"/></svg>
+            </span>
+            <p class="eyebrow">PREFER STRUCTURE?</p>
+            <h2>Start with the risk assessment.</h2>
+            <p>Organize income, obligations, existing protection, and priorities before discussing products.</p>
+            <span>Start assessment →</span>
+        </a>
+    </div>
+</section>
 
-<script>
-(() => {
-    const btn = document.getElementById('copyEmailBtn');
-    if (!btn) return;
-
-    const email = btn.dataset.email || @Html.Raw(serializedEmail);
-    const label = btn.querySelector('span');
-    const defaultLabel = label?.textContent || 'Copy';
-
-    const setCopiedState = () => {
-        if (label) label.textContent = 'Copied';
-        btn.classList.add('is-copied');
-
-        window.setTimeout(() => {
-            if (label) label.textContent = defaultLabel;
-            btn.classList.remove('is-copied');
-        }, 1400);
-    };
-
-    const legacyCopy = (value) => {
-        const area = document.createElement('textarea');
-        area.value = value;
-        area.setAttribute('readonly', '');
-        area.style.position = 'fixed';
-        area.style.top = '-9999px';
-        area.style.left = '-9999px';
-        document.body.appendChild(area);
-        area.focus();
-        area.select();
-        area.setSelectionRange(0, area.value.length);
-        let copied = false;
-        try { copied = document.execCommand('copy'); } catch (err) { copied = false; }
-        document.body.removeChild(area);
-        return copied;
-    };
-
-    btn.addEventListener('click', async () => {
-        if (!email) return;
-
-        try {
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(email);
-                setCopiedState();
-                return;
-            }
-        } catch (err) {
-        }
-
-        if (legacyCopy(email)) {
-            setCopiedState();
-            return;
-        }
-
-        window.prompt('Copy email address:', email);
-    });
-})();
-</script>
-
-<style>
-.contact-clarity{
-    --contact-royal:#162b63;
-    --contact-royal-deep:#0d1b43;
-    --contact-royal-ink:#0a1431;
-    --contact-gold:#c79931;
-    --contact-gold-deep:#a77b22;
-    --contact-border:rgba(199,153,49,.34);
-    --contact-text:#f8fbff;
-    --contact-muted:#d0daf0;
-    max-width: 760px;
-    margin: 0 auto;
-    padding: 2.2rem 1rem 4rem;
-}
-
-.contact-clarity__card{
-    padding: clamp(1.25rem, 3vw, 1.9rem);
-    border-radius: 30px;
-    border: 1px solid var(--contact-border);
-    background:
-        radial-gradient(circle at top right, rgba(199,153,49,.10), transparent 20%),
-        linear-gradient(180deg, rgba(22,43,99,.98), rgba(13,27,67,1));
-    box-shadow:
-        0 30px 76px rgba(7, 14, 33, .22),
-        inset 0 1px 0 rgba(255,255,255,.04);
-    color: var(--contact-text);
-}
-
-.contact-clarity__header{
-    display:grid;
-    grid-template-columns:auto minmax(0, 1fr);
-    gap:1rem;
-    align-items:center;
-    margin-bottom:1.15rem;
-}
-
-.contact-clarity__brand-mark{
-    width:64px;
-    height:64px;
-    border-radius:20px;
-    border:1px solid var(--contact-border);
-    background:linear-gradient(180deg, rgba(199,153,49,.18), rgba(199,153,49,.06));
-    display:grid;
-    place-items:center;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-}
-
-.contact-clarity__brand-mark svg{
-    width:28px;
-    height:28px;
-    fill:none;
-    stroke:var(--contact-gold);
-    stroke-width:1.8;
-    stroke-linecap:round;
-    stroke-linejoin:round;
-}
-
-.contact-clarity__title{
-    margin:0;
-    color:var(--contact-text);
-    font-size:clamp(2.2rem, 4vw, 3.3rem);
-    line-height:1;
-    letter-spacing:-.05em;
-}
-
-.contact-clarity__subtitle{
-    margin:.38rem 0 0;
-    color:var(--contact-muted);
-    font-size:1rem;
-    line-height:1.5;
-}
-
-.contact-clarity__inbox{
-    margin-bottom:1rem;
-    padding:1.15rem 1.2rem;
-    border-radius:24px;
-    border:1px solid rgba(255,255,255,.08);
-    background:linear-gradient(180deg, rgba(12,24,59,.86), rgba(18,43,98,.95));
-}
-
-.contact-clarity__inbox-label{
-    display:block;
-    margin-bottom:.4rem;
-    color:var(--contact-gold);
-    font-size:.8rem;
-    font-weight:900;
-    letter-spacing:.18em;
-    text-transform:uppercase;
-}
-
-.contact-clarity__email{
-    color:var(--contact-text);
-    font-size:clamp(1.55rem, 3vw, 2.4rem);
-    font-weight:900;
-    letter-spacing:-.04em;
-    text-decoration:none;
-    word-break:break-word;
-}
-
-.contact-clarity__email:hover{
-    color:#ffffff;
-}
-
-.contact-clarity__actions{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:.85rem;
-}
-
-.contact-clarity__button{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    gap:.7rem;
-    min-height:60px;
-    padding:0 1rem;
-    border-radius:18px;
-    border:1px solid var(--contact-border);
-    font-size:1rem;
-    font-weight:900;
-    letter-spacing:-.02em;
-    text-decoration:none;
-    transition:transform .16s ease, background-color .16s ease, color .16s ease, border-color .16s ease;
-    cursor:pointer;
-}
-
-.contact-clarity__button svg{
-    width:20px;
-    height:20px;
-    fill:none;
-    stroke:currentColor;
-    stroke-width:1.85;
-    stroke-linecap:round;
-    stroke-linejoin:round;
-}
-
-.contact-clarity__button:hover{
-    transform:translateY(-1px);
-}
-
-.contact-clarity__button--primary{
-    background:linear-gradient(180deg, #ddb650, var(--contact-gold));
-    color:var(--contact-royal-ink);
-}
-
-.contact-clarity__button--secondary{
-    background:rgba(255,255,255,.04);
-    color:var(--contact-text);
-}
-
-.contact-clarity__button--secondary.is-copied{
-    background:rgba(199,153,49,.18);
-    color:#fff4d6;
-    border-color:rgba(199,153,49,.52);
-}
-
-@@media (max-width: 640px){
-    .contact-clarity{
-        padding: 1.3rem .85rem 3rem;
-    }
-
-    .contact-clarity__card{
-        padding: 1rem;
-        border-radius: 24px;
-    }
-
-    .contact-clarity__header{
-        grid-template-columns:1fr;
-    }
-
-    .contact-clarity__brand-mark{
-        width:58px;
-        height:58px;
-        border-radius:18px;
-    }
-
-    .contact-clarity__actions{
-        grid-template-columns:1fr;
-    }
-}
-
-@@media (prefers-reduced-motion: reduce){
-    .contact-clarity__button{
-        transition:none;
-    }
-}
-</style>
+<section class="cta">
+    <p class="eyebrow">LEGEND ECOSYSTEM</p>
+    <h2>Protection is one part of a stronger life.</h2>
+    <p>For the broader LEGEND community, personal growth, wellness, and stewardship experience, visit the main LEGEND website.</p>
+    <div class="actions"><a class="btn primary" href="https://www.mylegnd.com/">Visit LEGEND</a></div>
+</section>

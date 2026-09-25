@@ -1,0 +1,545 @@
+{
+  "approvedSha": "de25d8058d8f4e107fde5031b62f25a1adfdaf4c",
+  "productionSha": "d411d2e2e6195f5d2b28a396433b86fc724f07ee",
+  "branches": [
+    {
+      "branch": "appointment-sync-terminal-fix",
+      "sha": "4a305b3d71c4502aa25cdb6128a50115e56de1a7",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "builder/legend-general-reasoning-20260827",
+      "sha": "8404bf2b9b002536ae770580566699f7c29ccf42",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 9
+    },
+    {
+      "branch": "chore/repository-hygiene-20260831",
+      "sha": "7680cff83e8f5e7463059274080342862ed4ca11",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 13
+    },
+    {
+      "branch": "cleanup/remove-legacy-security-ci-20260826",
+      "sha": "40e0524fb5c83934a08bd1aca769cd79844c8264",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "codex/rg5-authoritative-repair",
+      "sha": "58843bb58c070d74163829eeac3c06bfa0f0f55e",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "codex/rg5-complete-prerequisite",
+      "sha": "38283e926859caed3af761a2a98f9f618482e2c7",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 7
+    },
+    {
+      "branch": "copilot/codexrg5-complete-prerequisite",
+      "sha": "7c34c2712afe926ff6188dd7c3098713c1d6823c",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 7
+    },
+    {
+      "branch": "copilot/fixlegend-rg5-discourse-first-option-20260903",
+      "sha": "809cb8714c44dbcab1c6fb5b9c43b7fe56b74ce4",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 8
+    },
+    {
+      "branch": "copilot/masterapp-deployment-issues",
+      "sha": "e3b5304a898280fac9a6da4e2e32243b7ac5e5d0",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "copilot/restore-legend-ai-operation",
+      "sha": "6759dfedf4c995db1d593b6c183a98c04639df8e",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 40
+    },
+    {
+      "branch": "copilot/restore-legend-system-coherence",
+      "sha": "828d7d4dac786c9d2f534a78b18914f94cb2c4d7",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "copilot/rg-5-persist-replacement-identity",
+      "sha": "c08245d792eaf4a4231c5a02b633a39b71de26e6",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 7
+    },
+    {
+      "branch": "copilot/verify-draft-pr-91",
+      "sha": "cd76870b5da7b43846b19d1a999e32a34386e5d2",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 10
+    },
+    {
+      "branch": "copilot/verify-replacement-occurrence-prerequisite",
+      "sha": "022970c00a7d92ebe7550dc482d20f7a43a85559",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 9
+    },
+    {
+      "branch": "copilot/verify-rg-5-candidate-9eeaf6d",
+      "sha": "2b6cc2e83f020761f901e187378c849394f82533",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "deploy/all-webapps-shared-mobile-20260917",
+      "sha": "d633273aca32bee6b4093be586d6afeb95adfad7",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 10
+    },
+    {
+      "branch": "deploy/protect-design-force-20260917",
+      "sha": "dd4280761669b653815a6f087a2c660a6ebe6c8c",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "deploy/protect-design-force-async-20260917",
+      "sha": "ba54d1db252b3f84645b772f87f95bd65f91b9d8",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "deploy/public-website-editor-final-20260918",
+      "sha": "e8ef237d7393d6140efc03876317121969f77dc0",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "deploy/subscription-activation-20260917",
+      "sha": "4240d3ae2670f245013b1dbde63de35df8e43409",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "diagnostic/clientapp-startup-20260917",
+      "sha": "3323134d33bbe74f340b96ef7d8726e17faebff2",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 5
+    },
+    {
+      "branch": "diagnostic/website-domain-cutover-20260917",
+      "sha": "71b15130b84c4ec55c99c8489f054493136f8aeb",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "feature/public-website-editor-20260918",
+      "sha": "c3009bfb346a0b08f718f4a245ec89d7259d5071",
+      "inApproved": true,
+      "inProduction": false,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "fix/all-webapps-shared-mobile-authority-20260917",
+      "sha": "b2cbc1ed4255ebd469b80d8911f2aa080200b167",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 9
+    },
+    {
+      "branch": "fix/android-build-integrity-20260831",
+      "sha": "8f949a522ad4129fd98fe967fb43917d337b86fb",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 14
+    },
+    {
+      "branch": "fix/clientapp-oidc-state-unprotect-20260917",
+      "sha": "bacdf6fad6ff13c6b38582b041ec0453aa8abe88",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "fix/founder-ai-diagnostic-mobile-20260825",
+      "sha": "a0ccdc3da277feec0f3d95b02743be5fad4db3e7",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "fix/founder-ai-full-diagnostic-access-20260825",
+      "sha": "f23a642884b0760ff1fd52784640934ddb015443",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 11
+    },
+    {
+      "branch": "fix/founder-governed-remediation-v21",
+      "sha": "1f3270c060da48cbf5caf249456948de37b0e65a",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "fix/founder-remediation-bounded-large-file-patches",
+      "sha": "bdf7772b2ac4ce7569bca1f420f0a878d30f62c1",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "fix/founder-teacher-comprehensive-inspection-20260825",
+      "sha": "99afa263c6253f783980e3794d466cbbe4a2cb63",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 7
+    },
+    {
+      "branch": "fix/ios-mobile-web-authority-20260917",
+      "sha": "e6c8ca82010ba238665045689bf1767803d70228",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 149
+    },
+    {
+      "branch": "fix/legend-founder-intelligence-20260819",
+      "sha": "7f11600e5db4aa7cbba47741fb62328d7e54adf8",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "fix/legend-founder-live-diagnostics-20260908",
+      "sha": "f8e789a133f5bcbeab992bca6cf12ec816dc3bf8",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "fix/legend-founder-openai-role-learning-validation-20260824",
+      "sha": "cd104f37660cfef2125febd201b8067b653385c6",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 15
+    },
+    {
+      "branch": "fix/legend-founder-provider-contract-20260819",
+      "sha": "9b14b21c921e156cae8e6c4d801eda727750dd41",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "fix/legend-governed-reasoning-executor-20260827",
+      "sha": "2aedddca2bc66deda134478cf2e57e3f079162b0",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 3
+    },
+    {
+      "branch": "fix/legend-native-articulation-20260826",
+      "sha": "32c99e451d985c39b31c13e12743f00ce7ab139a",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "fix/legend-native-context-reasoning-20260827",
+      "sha": "9f22e3c255ded69a011efcb47b7f9f76e169a051",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "fix/legend-openai-diagnostic-teacher-retention-20260824",
+      "sha": "71e7a74d42d253b28f2c68c4a7edc027ad7fb3d0",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "fix/legend-production-convergence-20260824",
+      "sha": "f32359341169bf69d9a2531e07dde99da4227f0b",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 3
+    },
+    {
+      "branch": "fix/legend-production-convergence-validate-20260824",
+      "sha": "ac9340f94b4c042c3b59046692a667ccd2937ddb",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "fix/legend-production-proof-scale-and-native-eligibility-20260829",
+      "sha": "449ce653e4fef783875199e47a63784acd824681",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 5
+    },
+    {
+      "branch": "fix/legend-ranked-evidence-articulation-20260828",
+      "sha": "a7abc7de5a21b31f56405ae10888db55027f0fff",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 10
+    },
+    {
+      "branch": "fix/legend-terminal-retirement-reasons-20260824",
+      "sha": "6410adaa9fae627c7d83b077deff6e3688aebc87",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "fix/mobile-web-native-parity-20260917",
+      "sha": "04739acd01bd20e9e4d9c6061a1ceaac5ba4cd0c",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 139
+    },
+    {
+      "branch": "fix/mobile-web-native-parity-validated-20260917",
+      "sha": "a01e5b826dea9d6e371e3588055bd0e67d01cce3",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 80
+    },
+    {
+      "branch": "fix/native-general-reasoning-20260903",
+      "sha": "c9365bec5effc14e8ce39a0bde24cedf63645dfc",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 6
+    },
+    {
+      "branch": "fix/protect-shared-mobile-authority-20260917",
+      "sha": "9c02c7c40e7b253f39416999b91785e835486b49",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 5
+    },
+    {
+      "branch": "fix/protect-use-legend-website-authority-20260917",
+      "sha": "31e89dd5e4f867f1530e2eaa84353ac33d5035a3",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 11
+    },
+    {
+      "branch": "fix/protect-website-design-unification-20260917",
+      "sha": "dd4280761669b653815a6f087a2c660a6ebe6c8c",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "fix/recover-github-actions-queues-v2",
+      "sha": "3c641b933a0aade1ecea5625b3d8e37a1fd359b2",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "founder-repair/20260825/445647e240f24f76908fdaab110313d3",
+      "sha": "af44e67e9d84d35c0ab0e8d06c7ff03bcc469c87",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "hotfix/messaging-on-latest-diagnostics-20260918",
+      "sha": "326865c41244f3945147a793a01e6fda08248298",
+      "inApproved": true,
+      "inProduction": false,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "hotfix/messaging-translation-fail-open-20260918",
+      "sha": "64e651ec59bac430b0068ec19a494a863b73c654",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "hotfix/messaging-translation-failopen-20260918",
+      "sha": "f89aebb42f51f30b2bb5f33bcef8cbf568b70929",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 5
+    },
+    {
+      "branch": "implement/founder-diagnostics-20260918",
+      "sha": "83b95aaaf7967c83c3c16a4ca0529c502a11b30f",
+      "inApproved": true,
+      "inProduction": false,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "implement/legend-pretrained-20260912",
+      "sha": "f79750e6f3da94aed5067ca8257d2482bfee4d1e",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "legend/approved-changes",
+      "sha": "de25d8058d8f4e107fde5031b62f25a1adfdaf4c",
+      "inApproved": true,
+      "inProduction": false,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "main",
+      "sha": "45dccc9a45938ad51854381275939c7b2cdf51e0",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "meta-authority-cleanup",
+      "sha": "bb998d71601316e2af9274296c3aee50e5b300fa",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "ops/website-custom-domain-tls-20260917",
+      "sha": "9af9a0306808381218db0de1278c5e6ab82c2b32",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 3
+    },
+    {
+      "branch": "production",
+      "sha": "d411d2e2e6195f5d2b28a396433b86fc724f07ee",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "release/subscription-activation-20260917",
+      "sha": "fa2563642064378bf7b4bde6b30bec470da70297",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "release/trigger-android-internal-3-20260903",
+      "sha": "2d004cd0d0217245522aa42c9ab712534a3576be",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "repair-pending-production-migrations",
+      "sha": "d7f7ff10df6bb07f713467392e605a7b1948e946",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "repair/legend-integrated-20260910",
+      "sha": "af2c289db4d11baea9b36f09bf05f76d52deaca2",
+      "inApproved": true,
+      "inProduction": true,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "repair/protect-editor-origin-20260918",
+      "sha": "930f34dfa2d27ddd01372e886207623481dbf0fb",
+      "inApproved": true,
+      "inProduction": false,
+      "uniqueToApproved": 0
+    },
+    {
+      "branch": "repair/translation-completion-20260917",
+      "sha": "35944105f55b282fb5da2755dc625a93e3a27bb8",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 9
+    },
+    {
+      "branch": "stabilization/marketing-platform-health",
+      "sha": "73930edbc679e1eee16da228f52ef25cdf0aef0a",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "training/legend-120x120-20260827",
+      "sha": "ab7d1ee003a813b73535901dead7401f0a899507",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 5
+    },
+    {
+      "branch": "validation/legend-founder-provider-runtime-20260819",
+      "sha": "1c0e89627953e8a2d25336652dd89bb14bf2a4fd",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "validation/legend-heldout-conversation-20260827",
+      "sha": "782a2bb55a18dbc8070e0ad992b7302754ea1f81",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 1
+    },
+    {
+      "branch": "validation/legend-native-pr97-aa696ed",
+      "sha": "cf9a35173fefdbc3d40513fc6c894f3fc24e75a2",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 4
+    },
+    {
+      "branch": "validation/legend-native-proof-scale-fix-20260829",
+      "sha": "449ce653e4fef783875199e47a63784acd824681",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 5
+    },
+    {
+      "branch": "validation/legend-native-rg5-occurrence-exact-20260903",
+      "sha": "0d281af6728828f85d969a3f7cf3194011fc65c8",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 2
+    },
+    {
+      "branch": "validation/legend-native-translation-inventory-20260918",
+      "sha": "5726e019f45708ebe236381c2f7b81b816d51b81",
+      "inApproved": false,
+      "inProduction": false,
+      "uniqueToApproved": 10
+    }
+  ]
+}

@@ -15,6 +15,31 @@ namespace Infrastructure.Analytics;
 
 public sealed class AnalyticsQueryService : IAnalyticsQueryService
 {
+    public async Task<List<AnalyticsEvent>> LoadAttributedEventsAsync(TimeRangeRequest range, ScopeContext scope,
+        TrafficType trafficType = TrafficType.All, CancellationToken ct = default)
+    {
+        var ids = await ResolveScopedAgentIdsAsync(scope);
+        var events = await LoadFilteredEventsAsync(range, scope, ids, ct);
+        return FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType).Select(x => x.Event).ToList();
+    }
+
+    public async Task<List<MetaSignalEvent>> LoadScopedMetaEventsAsync(TimeRangeRequest range, ScopeContext scope,
+        IReadOnlyCollection<AnalyticsEvent> events, CancellationToken ct = default)
+    {
+        var ids = await ResolveScopedAgentIdsAsync(scope);
+        var query = _db.MetaSignalEvents.AsNoTracking().ApplySiteScope(scope)
+            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
+        if (scope.ScopeType == ScopeType.Agent)
+        {
+            var allowed = ids is { Length: > 0 } ? ids : new[] { scope.AgentTrackingProfileId ?? Guid.Empty };
+            query = query.Where(x => x.AgentTrackingProfileId.HasValue && allowed.Contains(x.AgentTrackingProfileId.Value));
+        }
+        var sessions = events.Select(x => x.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+        var visitors = events.Select(x => x.VisitorId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+        return await query.Where(x => (!string.IsNullOrWhiteSpace(x.SessionId) && sessions.Contains(x.SessionId)) ||
+            (string.IsNullOrWhiteSpace(x.SessionId) && !string.IsNullOrWhiteSpace(x.VisitorId) && visitors.Contains(x.VisitorId))).ToListAsync(ct);
+    }
+
     private const int LowSampleThreshold = 20;
     private const int MarketingHealthRecentTrackingErrorLimit = 10;
     private const double PageDwellHardCapMs = 30 * 60 * 1000;       // 30 minutes
@@ -56,12 +81,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ApplySiteScope(scope)
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
-    private async Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
+    public async Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
         TimeRangeRequest range,
         ScopeContext scope,
-        Guid[]? scopedAgentIds = null)
+        Guid[]? scopedAgentIds = null,
+        System.Threading.CancellationToken cancellationToken = default)
     {
-        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync();
+        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync(cancellationToken);
         return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode);
     }
 
@@ -226,6 +252,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     // Always resolve scope through ResolveScopeAsync before query execution.
     private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.ScopeType == ScopeType.Business)
+            return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
+                scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return e => false;
+
         if (scope.HasSiteScope)
             return e => true;
 
@@ -244,6 +277,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.ScopeType == ScopeType.Business)
+            return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
+                scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;
+        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
+            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
+            return e => false;
+
         if (scope.HasSiteScope)
             return l => false;
 
@@ -251,10 +291,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         {
             if (scopedAgentIds != null && scopedAgentIds.Length > 0)
             {
-                return l => l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
+                return l => l.CommerceBusinessId == null && l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
             }
             var agentId = scope.AgentTrackingProfileId.Value;
-            return l => l.AgentTrackingProfileId == agentId;
+            return l => l.CommerceBusinessId == null && l.AgentTrackingProfileId == agentId;
         }
         return l => true;
     }

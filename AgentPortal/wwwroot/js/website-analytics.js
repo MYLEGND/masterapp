@@ -115,30 +115,32 @@
   let summaryRequestId = 0;
   let openModalRefreshTimer = null;
 
+  const analyticsBase = shell?.dataset.analyticsBase || '/WebsiteAnalytics';
+  const analyticsEndpoint = path => analyticsBase + path;
   const endpoints = {
-    summary: '/WebsiteAnalytics/summary',
-    traffic: '/WebsiteAnalytics/traffic',
-    pagePerf: '/WebsiteAnalytics/page-performance',
-    ctaPerf: '/WebsiteAnalytics/cta-performance',
-    quote: '/WebsiteAnalytics/quote-funnel',
-    marketingHealth: '/WebsiteAnalytics/marketing-health',
-    conversions: '/WebsiteAnalytics/conversions',
-    leads: '/WebsiteAnalytics/leads',
-    metaSignal: '/WebsiteAnalytics/meta-signal',
-    metaSignalHealth: '/WebsiteAnalytics/meta-signal-health',
-    deleteLead: '/WebsiteAnalytics/DeleteLead',
-    agentPerf: '/WebsiteAnalytics/agent-performance',
-    metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
-    metaConnect: '/WebsiteAnalytics/meta-connect',
-    metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
-    metaDisconnect: '/WebsiteAnalytics/meta-disconnect',
-    behaviorSummary: '/WebsiteAnalytics/behavior/summary',
-    behaviorTime: '/WebsiteAnalytics/behavior/time-on-page',
-    behaviorExit: '/WebsiteAnalytics/behavior/exit-analysis',
-    behaviorJourney: '/WebsiteAnalytics/behavior/journey',
-    behaviorSources: '/WebsiteAnalytics/behavior/source-performance',
-    quoteFunnelAbandonment: '/WebsiteAnalytics/quote-funnel/abandonment',
-    aiReviewSnapshot: '/WebsiteAnalytics/ai-review-snapshot'
+    summary: analyticsEndpoint('/summary'),
+    traffic: analyticsEndpoint('/traffic'),
+    pagePerf: analyticsEndpoint('/page-performance'),
+    ctaPerf: analyticsEndpoint('/cta-performance'),
+    quote: analyticsEndpoint('/quote-funnel'),
+    marketingHealth: analyticsEndpoint('/marketing-health'),
+    conversions: analyticsEndpoint('/conversions'),
+    leads: analyticsEndpoint('/leads'),
+    metaSignal: analyticsEndpoint('/meta-signal'),
+    metaSignalHealth: analyticsEndpoint('/meta-signal-health'),
+    deleteLead: analyticsEndpoint('/DeleteLead'),
+    agentPerf: analyticsEndpoint('/agent-performance'),
+    metaCampaigns: analyticsEndpoint('/meta-campaigns'),
+    metaConnect: analyticsEndpoint('/meta-connect'),
+    metaConnectionStatus: analyticsEndpoint('/meta-connection-status'),
+    metaDisconnect: analyticsEndpoint('/meta-disconnect'),
+    behaviorSummary: analyticsEndpoint('/behavior/summary'),
+    behaviorTime: analyticsEndpoint('/behavior/time-on-page'),
+    behaviorExit: analyticsEndpoint('/behavior/exit-analysis'),
+    behaviorJourney: analyticsEndpoint('/behavior/journey'),
+    behaviorSources: analyticsEndpoint('/behavior/source-performance'),
+    quoteFunnelAbandonment: analyticsEndpoint('/quote-funnel/abandonment'),
+    aiReviewSnapshot: analyticsEndpoint('/ai-review-snapshot')
   };
 
   function normalizeQualityModeKey(value) {
@@ -661,14 +663,15 @@
       trafficMeta.textContent = dir ? `Traffic ${dir} · ${hint}` : hint;
     }
     const tp = document.getElementById('mod-page-meta');
-    if (tp && data.topPage) tp.textContent = `Top page: ${data.topPage}`;
+    if (tp) tp.textContent = data.topPage ? `Top page: ${data.topPage}` : 'Top pages and conversions';
     const tc = document.getElementById('mod-cta-meta');
-    if (tc && data.topCta) tc.textContent = `Top CTA: ${data.topCta}`;
+    if (tc) tc.textContent = data.topCta ? `Top CTA: ${data.topCta}` : 'Clicks by CTA';
   }
 
   function calculateMarketingHealthScore(data) {
     if (!data) return 0;
-    let score = 100;
+    let score = data.metaHealthStatus === 'Critical' ? 70 :
+      ['Unavailable', 'Unverified'].includes(data.metaHealthStatus) ? 80 : data.metaHealthStatus === 'Watch' ? 89 : 100;
     score -= Math.min(30, Number(data.clientTrackingErrors || 0) * 5);
     score -= Math.min(20, Number(data.inferredFormStarts || 0) * 4);
     score -= Math.min(20, Number(data.workstationCaptureFailures || 0) * 6);
@@ -680,6 +683,8 @@
 
   function marketingHealthVerdict(score, data) {
     if (!data) return 'Unknown';
+    if (data.metaHealthStatus === 'Critical') return 'Critical';
+    if (['Unavailable', 'Unverified'].includes(data.metaHealthStatus)) return 'Unverified';
     if ((data.clientTrackingErrors || 0) > 0 || (data.workstationCaptureFailures || 0) > 0 || (data.inferredFormStarts || 0) > 0) {
       return score >= 80 ? 'Stabilize' : 'Critical';
     }
@@ -2905,10 +2910,9 @@ function escapeHtml(value) {
       setSummaryRefreshStatus('', false);
       renderSummary(data);
 
-      if (!state.cache.marketingHealthLoaded) {
-        state.cache.marketingHealthLoaded = true;
-        void loadMarketingHealth();
-      }
+      // Health uses the same current range, quality and scope as the summary.
+      // Refresh it whenever the summary does, including filter changes.
+      void loadMarketingHealth();
     } catch (err) {
       if (requestId !== summaryRequestId) return;
 
@@ -3408,14 +3412,14 @@ function escapeHtml(value) {
         note: 'Lead records captured in the currently selected diagnostic range.'
       },
       {
-        label: 'Meta Server Sent',
+        label: 'Meta Server Reported Sent',
         value: pipeline.metaServerSentCount ?? 0,
-        note: 'Rows marked as server-sent to Meta.'
+        note: 'Stored server-send results. New dispatches require Meta acceptance; historical flags may lack acknowledgement details.'
       },
       {
-        label: 'Meta Browser Sent',
+        label: 'Browser Pixel Invoked',
         value: pipeline.metaBrowserSentCount ?? 0,
-        note: 'Rows already marked as browser pixel sent.'
+        note: 'Browser reported an fbq invocation. Meta receipt is not verified by this count.'
       },
       {
         label: 'Bridge Eligible',
@@ -3487,11 +3491,11 @@ function escapeHtml(value) {
   function renderMetaSignalHealthEventFlags(row) {
     const flags = [
       row?.metaBrowserSent
-        ? renderMetaSignalHealthFlag('Browser Sent', 'is-browser-good')
-        : renderMetaSignalHealthFlag('Browser Missing', 'is-browser-missing'),
+        ? renderMetaSignalHealthFlag('Browser Invoked', 'is-browser-good')
+        : renderMetaSignalHealthFlag(`Browser ${formatEventName(row?.browserDispatchStatus || 'unverified')}`, ['pixel_unavailable', 'invocation_failed'].includes(row?.browserDispatchStatus) ? 'is-browser-missing' : 'is-neutral'),
       row?.metaServerSent
         ? renderMetaSignalHealthFlag('Server Sent', 'is-server-good')
-        : renderMetaSignalHealthFlag(formatEventName(row?.metaServerStatus || 'Server Pending'), 'is-server-pending'),
+        : renderMetaSignalHealthFlag(formatEventName(row?.metaServerStatus || (row?.dispatcherStatus === 'Not Required' ? 'Server Not Required' : 'Server Pending')), 'is-server-pending'),
       renderMetaSignalHealthFlag(`Dispatcher ${formatEventName(row?.dispatcherStatus || 'Unknown')}`, row?.dispatcherStatus === 'Sent' ? 'is-server-good' : row?.dispatcherStatus === 'Pending' ? 'is-risk' : 'is-neutral'),
       renderMetaSignalHealthFlag(`Authority ${formatEventName(row?.authorityStatus || 'Unknown')}`, row?.authorityStatus === 'Blocked' ? 'is-critical' : row?.authorityStatus === 'Allowed' ? 'is-healthy' : 'is-neutral')
     ];
@@ -4204,13 +4208,17 @@ function escapeHtml(value) {
   }
 
   function downloadCsv(filename, rows, columns) {
-    if (!rows || !rows.length) return;
-    const header = columns.map(c => `"${c.header}"`).join(',');
-    const body = rows.map(r => columns.map(c => {
-      const val = typeof c.selector === 'function' ? c.selector(r) : (r[c.selector] ?? '');
-      return `"${String(val).replace(/\"/g,'\"\"')}"`;
-    }).join(',')).join('\\n');
-    const blob = new Blob([header + '\\n' + body], { type: 'text/csv;charset=utf-8;' });
+    const encode = value => {
+      let text = String(value ?? '');
+      // Spreadsheet exports must preserve text without executing user-supplied formulas.
+      if (/^[\s]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const lines = [columns.map(c => encode(c.header)).join(',')];
+    for (const row of rows || []) {
+      lines.push(columns.map(c => encode(typeof c.selector === 'function' ? c.selector(row) : row[c.selector])).join(','));
+    }
+    const blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
@@ -4361,7 +4369,7 @@ function escapeHtml(value) {
         const params = rangeParams({ modal: 'convModal' });
         params.recentTake = 5000;
         const data = await fetchJson('export-conv', endpoints.conversions, params);
-        if (!data || !data.recent || !data.recent.length) return;
+        if (!data || !Array.isArray(data.recent)) return;
         downloadCsv('conversions.csv', data.recent, [
           { header: 'WhenUtc', selector: r => toUtcIso(r.eventUtc) },
           { header: 'ReportTimezone', selector: () => 'UTC' },
@@ -4387,7 +4395,7 @@ function escapeHtml(value) {
         const params = rangeParams({ modal: 'leadsModal' });
         params.limit = 5000;
         const data = await fetchJson('export-leads', endpoints.leads, params);
-        if (!data || !data.leads || !data.leads.length) return;
+        if (!data || !Array.isArray(data.leads)) return;
         downloadCsv('leads.csv', data.leads, [
           { header: 'CreatedUtc', selector: r => toUtcIso(r.createdUtc) },
           { header: 'ReportTimezone', selector: () => 'UTC' },
@@ -4444,7 +4452,7 @@ function escapeHtml(value) {
       exportBehavior.textContent = 'Exporting…';
       try {
         const data = await fetchJson('export-behavior', endpoints.behaviorSources, rangeParams({ modal: 'behaviorModal' }));
-        if (!data || !data.rows || !data.rows.length) return;
+        if (!data || !Array.isArray(data.rows)) return;
         downloadCsv('behavior-sources.csv', data.rows, [
           { header: 'ViewerTimezone', selector: () => viewerTz.id || 'Local Time' },
           { header: 'Source', selector: 'source' },
@@ -5005,7 +5013,7 @@ function escapeHtml(value) {
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `/WebsiteAnalytics/DeviceIntelligence?${currentRangeParams().toString()}`;
+    const deviceUrl = `${analyticsEndpoint("/DeviceIntelligence")}?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));

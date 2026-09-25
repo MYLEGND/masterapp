@@ -1,10 +1,10 @@
 :root {
-    --dash-gold: #d4aa47;
+    --dash-gold: var(--web-gold, #d4aa47);
     --dash-gold-deep: #8f6a1d;
     --dash-gold-soft: rgba(212, 170, 71, 0.18);
-    --dash-royal-950: #091225;
+    --dash-royal-950: var(--web-navy-deep, #091225);
     --dash-royal-925: #0d1c38;
-    --dash-royal-900: #10254c;
+    --dash-royal-900: var(--web-navy, #10254c);
     --dash-royal-860: #17356d;
     --dash-royal-820: #21448d;
     --dash-line: rgba(150, 182, 255, 0.16);
@@ -50,8 +50,86 @@ html[data-legend-modal-region] body .modal .modal-body {
     overscroll-behavior: contain;
 }
 
+/* Shared native-style mobile sheet. Feature CSS owns desktop presentation. */
+.legend-mobile-sheet-handle {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet] {
+        top: auto;
+        right: 0;
+        bottom: var(--legend-modal-area-end);
+        left: 0;
+        width: 100%;
+        max-width: none;
+        height: var(--legend-modal-safe-height);
+        max-height: var(--legend-modal-safe-height);
+        margin: 0;
+        border-radius: 30px 30px 0 0;
+        border-bottom: 0;
+        display: block;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+        transform: translate3d(0, 100%, 0);
+        transform-origin: bottom center;
+        transition: transform .28s cubic-bezier(.22, .78, .22, 1), opacity .18s ease;
+        will-change: transform;
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet].open[data-legend-sheet-snap="full"] {
+        transform: translate3d(0, var(--legend-mobile-sheet-drag-y, 0px), 0);
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet].open[data-legend-sheet-snap="half"] {
+        transform: translate3d(0, calc(46% + var(--legend-mobile-sheet-drag-y, 0px)), 0);
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet][data-legend-mobile-sheet][data-legend-sheet-dragging] {
+        transition: none;
+        user-select: none;
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet] [data-legend-sheet-scroll] {
+        min-height: 0;
+        overflow: visible;
+        overscroll-behavior: auto;
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet] > .legend-mobile-sheet-handle {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 28px;
+        padding: 10px 0 8px;
+        cursor: grab;
+        touch-action: none;
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet] > .legend-mobile-sheet-handle:active {
+        cursor: grabbing;
+    }
+
+    html[data-legend-modal-region] body [data-legend-mobile-sheet] > .legend-mobile-sheet-handle::before {
+        content: "";
+        width: 42px;
+        height: 5px;
+        border-radius: 999px;
+        background: rgba(214, 224, 244, .48);
+        box-shadow: 0 1px 0 rgba(255, 255, 255, .08);
+    }
+}
+
 .dashboard-page-shell {
-    padding: 1.35rem 0.95rem 2.4rem;
+    padding: 0;
     color: var(--dash-text);
     background:
         radial-gradient(circle at top, rgba(49, 89, 191, 0.1), transparent 34%),
@@ -61,7 +139,7 @@ html[data-legend-modal-region] body .modal .modal-body {
 .dashboard-command-center-panel,
 .dashboard-analytics-panel,
 .dashboard-page-shell .category-container {
-    width: min(1480px, 100%);
+    width: 100%;
     margin: 0 auto 1.4rem;
 }
 
@@ -1509,7 +1587,6 @@ html[data-legend-modal-region] body .modal .modal-body {
     max-height: min(320px, calc(100vh - 120px));
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
     padding: 0.4rem;
     border: 1px solid rgba(212, 170, 71, 0.3);
     border-radius: 18px;
@@ -1517,23 +1594,6 @@ html[data-legend-modal-region] body .modal .modal-body {
     box-shadow:
         0 26px 46px rgba(5, 11, 28, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(244, 220, 147, 0.52) rgba(9, 19, 38, 0.55);
-}
-
-.search-input-wrap .autocomplete-list::-webkit-scrollbar {
-    width: 10px;
-}
-
-.search-input-wrap .autocomplete-list::-webkit-scrollbar-track {
-    background: rgba(9, 19, 38, 0.62);
-    border-radius: 999px;
-}
-
-.search-input-wrap .autocomplete-list::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, rgba(244, 220, 147, 0.94), rgba(212, 170, 71, 0.8));
-    border-radius: 999px;
-    border: 2px solid rgba(9, 19, 38, 0.62);
 }
 
 .dashboard-page-shell .autocomplete-item {
@@ -2657,10 +2717,6 @@ textarea.client-create-notes {
         padding-right: 0.55rem;
     }
 
-    .home-command-page .home-tools-grid {
-        grid-template-columns: 1fr;
-    }
-
     .client-create-panel,
     .client-create-section-shell {
         border-radius: 18px;
@@ -3635,6 +3691,13 @@ textarea.client-create-notes {
         padding: 1rem 0.75rem 2rem;
     }
 
+    /* Shared mobile/tablet tool-grid authority for AgentPortal + ClientApp. */
+    .dashboard-page-shell .centered-tools,
+    .home-command-page .home-tools-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.72rem;
+    }
+
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
@@ -3787,13 +3850,23 @@ textarea.client-create-notes {
         grid-column: auto;
     }
 
-    .dashboard-page-shell .centered-tools {
-        grid-template-columns: 1fr;
+    .dashboard-page-shell .dashboard-tool {
+        min-height: 108px;
+        height: 108px;
+        padding: 0.62rem 0.5rem;
     }
 
-    .dashboard-page-shell .dashboard-tool {
-        min-height: 122px;
-        height: 122px;
+    .dashboard-page-shell .dashboard-tool img {
+        width: 78px;
+        height: 48px;
+        min-width: 78px;
+        min-height: 48px;
+        padding: 0.32rem 0.48rem;
+    }
+
+    .dashboard-page-shell .dashboard-tool .tool-name {
+        font-size: 0.78rem;
+        line-height: 1.12;
     }
 
     .legend-connect-page .legend-connect-metrics--three,
@@ -3933,9 +4006,9 @@ body.messaging-command-center-open {
  * the account pill follows the AgentPortal design.
  */
 .legend-global-nav {
-    --legend-nav-navy: #0e1b3d;
-    --legend-nav-navy-deep: #0b1530;
-    --legend-nav-gold: #c79931;
+    --legend-nav-navy: var(--web-navy, #10254c);
+    --legend-nav-navy-deep: var(--web-navy-deep, #091225);
+    --legend-nav-gold: var(--web-gold, #d4aa47);
     --legend-nav-line: rgba(166, 128, 35, 0.42);
     --legend-nav-line-strong: rgba(199, 153, 49, 0.95);
     position: relative;
@@ -3943,11 +4016,12 @@ body.messaging-command-center-open {
     display: flex;
     min-height: 110px;
     max-height: none;
-    padding: 0.5rem 1.5rem 2rem;
+    padding: 1rem var(--app-gutter, 24px) 2.4rem;
     overflow: visible;
-    border: 2px solid var(--legend-nav-line-strong) !important;
-    border-radius: 18px;
-    background: linear-gradient(160deg, var(--legend-nav-navy), var(--legend-nav-navy-deep)) !important;
+    border: 0;
+    border-bottom: 1px solid var(--legend-nav-line-strong);
+    border-radius: 0;
+    background: linear-gradient(160deg, var(--legend-nav-navy), var(--legend-nav-navy-deep));
     box-shadow: 0 22px 42px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
@@ -4306,86 +4380,185 @@ header .legend-global-nav .container-fluid {
 @media (max-width: 840px) {
     .legend-global-nav {
         min-height: 0;
-        padding: 10px 12px;
-        border-radius: 16px;
+        padding: 10px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
+        border-radius: 0;
     }
 
+    /*
+     * Mobile header contract: one permanent top row.
+     * Logo | Life HAC motto | menu toggle never reflows when the menu opens.
+     * The two expandable groups occupy full-width rows underneath.
+     */
     header .legend-global-nav .container-fluid {
-        display: flex !important;
-        flex-wrap: wrap;
+        display: grid !important;
+        grid-template-columns: minmax(54px, 72px) minmax(0, 1fr) minmax(44px, 64px);
+        grid-template-areas:
+            "brand motto toggle"
+            "left left left"
+            "right right right";
         align-items: center !important;
-        gap: 0.5rem;
+        gap: 0.5rem 0.6rem;
+        width: 100%;
+        padding: 0;
+    }
+
+    .legend-global-nav .navbar-brand {
+        grid-area: brand;
+        justify-self: start;
+        min-width: 0;
     }
 
     .legend-global-nav .navbar-brand img {
-        max-height: 64px;
+        width: auto;
+        max-width: 100%;
+        max-height: 58px;
     }
 
-    .legend-global-nav .navbar-right {
-        flex-direction: column;
-        flex-wrap: nowrap;
-        align-items: stretch;
+    .legend-global-nav .header-psalms {
+        grid-area: motto;
+        justify-self: stretch;
+        align-self: center;
     }
 
     .legend-global-nav .nav-toggle {
+        grid-area: toggle;
         display: inline-flex;
+        justify-self: end;
+    }
+
+    .legend-global-nav .navbar-left {
+        grid-area: left;
+    }
+
+    .legend-global-nav .navbar-right {
+        grid-area: right;
     }
 
     .legend-global-nav .navbar-left,
     .legend-global-nav .navbar-right {
         display: none;
         width: 100%;
-        margin-top: 0.65rem;
-        padding: 8px 10px;
+        min-width: 0;
+        margin: 0;
+        padding: 0.55rem;
         border: 1.4px solid rgba(199, 153, 49, 0.55);
         border-radius: 14px;
         background: linear-gradient(175deg, #0b1224, #0c142a);
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
 
-    .legend-global-nav.mobile-open .navbar-left {
-        display: flex;
-    }
-
+    .legend-global-nav.mobile-open .navbar-left,
     .legend-global-nav.mobile-open .navbar-right {
-        display: flex;
+        display: grid;
     }
 
-    .legend-global-nav .navbar-left .nav-row {
-        flex-direction: column;
-        flex-wrap: nowrap;
-        align-items: stretch;
+    .legend-global-nav .navbar-left .nav-rows-grid {
+        display: grid;
+        gap: 0.5rem;
         width: 100%;
-        gap: 0.35rem;
+        min-width: 0;
+    }
+
+    /*
+     * Mobile navigation density is owned here globally.
+     * The primary row is four compact equal tracks so the common four actions
+     * occupy one row. Utility actions share the second row. The profile control
+     * is forced onto its own third row.
+     */
+    .legend-global-nav .navbar-left .nav-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 0.4rem;
+        width: 100%;
+    }
+
+    .legend-global-nav .navbar-right {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 0.4rem;
+    }
+
+    .legend-global-nav .navbar-left .nav-item,
+    .legend-global-nav .navbar-left .nav-item-explore,
+    .legend-global-nav .navbar-right > * {
+        min-width: 0;
+        margin: 0;
     }
 
     .legend-global-nav .navbar-left .nav-link,
     .legend-global-nav .navbar-right .nav-link,
-    .legend-global-nav .navbar-right .btn-link {
+    .legend-global-nav .navbar-right .btn-link,
+    .legend-global-nav .navbar-left .explore-trigger {
         width: 100%;
-        padding: 0.55rem 0.95rem;
-        border-radius: 12px;
-        text-align: left;
+        min-width: 0;
+        min-height: 40px;
+        margin: 0;
+        padding: 0.4rem 0.28rem;
+        border-radius: 11px;
+        justify-content: center;
+        text-align: center;
+        font-size: clamp(0.76rem, 3.4vw, 0.92rem);
+        line-height: 1.08;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
-    .legend-global-nav .nav-context-row,
+    .legend-global-nav .navbar-left .explore-trigger {
+        height: 40px;
+    }
+
+    .legend-global-nav .nav-context-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem;
+        width: 100%;
+    }
+
     .legend-global-nav .nav-context-pill,
-    .legend-global-nav .nav-context-exit,
-    .legend-global-nav .profile-chip {
+    .legend-global-nav .nav-context-exit {
         width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .legend-global-nav .navbar-right .dropdown {
+        width: 100%;
+        min-width: 0;
         max-width: 100%;
     }
 
-    .legend-global-nav .dropdown,
-    .legend-global-nav .dropdown-menu-centered,
-    .legend-global-nav .dropdown-menu {
-        width: 100%;
+    .legend-global-nav .navbar-right > .dropdown:last-child {
+        grid-column: 1 / -1;
+        justify-self: start;
+        width: auto;
         max-width: 100%;
+    }
+
+    .legend-global-nav .profile-chip {
+        width: auto;
+        max-width: 100%;
+        min-width: 0;
+        min-height: 40px;
+        padding: 0.32rem 0.52rem;
+    }
+
+    .legend-global-nav .profile-avatar {
+        width: 34px;
+        height: 34px;
+    }
+
+    .legend-global-nav .profile-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .legend-global-nav .dropdown-menu-centered,
     .legend-global-nav .dropdown-menu {
         position: static;
+        width: 100%;
+        max-width: 100%;
         margin-top: 0.35rem;
     }
 }
@@ -4445,15 +4618,23 @@ header .legend-global-nav .container-fluid {
 
 @media (max-width: 840px) {
     .header-psalms {
+        position: static;
         display: flex;
         width: 100%;
         max-width: 100%;
-        justify-content: center;
+        min-width: 0;
+        min-height: 42px;
         align-items: center;
-        margin-top: 0.35rem;
-        position: static;
+        justify-content: center;
+        margin: 0;
+        padding: 0.45rem clamp(0.45rem, 2vw, 0.8rem);
+        overflow: hidden;
+        font-size: clamp(0.76rem, 3.1vw, 1rem);
+        letter-spacing: clamp(0.35px, 0.18vw, 0.8px);
+        line-height: 1;
         text-align: center;
-        white-space: normal;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         transform: none;
     }
 
@@ -4461,12 +4642,6 @@ header .legend-global-nav .container-fluid {
     .header-psalms:focus-visible,
     .header-psalms:active {
         transform: none;
-    }
-}
-
-@media (max-width: 576px) {
-    .header-psalms {
-        font-size: 1.08rem;
     }
 }
 
@@ -5246,8 +5421,6 @@ header .legend-global-nav .container-fluid {
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(212, 170, 71, 0.42) transparent;
 }
 
 .messaging-journey-profile-form {
@@ -5259,17 +5432,6 @@ header .legend-global-nav .container-fluid {
     align-content: start;
     gap: 0.8rem;
     padding-right: 0.35rem;
-}
-
-.messaging-journey-profile-form::-webkit-scrollbar,
-.messaging-journey-results::-webkit-scrollbar {
-    width: 5px;
-}
-
-.messaging-journey-profile-form::-webkit-scrollbar-thumb,
-.messaging-journey-results::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: rgba(212, 170, 71, 0.42);
 }
 
 .messaging-journey-privacy-source {
@@ -5632,7 +5794,8 @@ header .legend-global-nav .container-fluid {
     .messaging-journey-content {
         grid-template-columns: 1fr;
         overflow: visible;
-    }
+        scrollbar-width: none;
+}
 
     .messaging-journey-profile-form,
     .messaging-journey-results {
@@ -5805,11 +5968,6 @@ header .legend-global-nav .container-fluid {
     overflow-y: auto;
     -ms-overflow-style: none;
     scrollbar-width: none;
-}
-
-.messaging-conversation-list::-webkit-scrollbar,
-.messaging-messages::-webkit-scrollbar {
-    display: none;
 }
 
 .messaging-conversation-item {
@@ -6401,11 +6559,6 @@ header .legend-global-nav .container-fluid {
         grid-template-columns: 1fr;
         overflow-y: auto;
         -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-
-    .messaging-journey-content::-webkit-scrollbar {
-        display: none;
     }
 
     .messaging-journey-profile-form,
@@ -6503,7 +6656,7 @@ header .legend-global-nav .container-fluid {
 .membership-billing-page {
     display: grid;
     gap: 0.85rem;
-    width: min(1180px, 100%);
+    width: 100%;
     margin: 0 auto;
 }
 
@@ -7025,3 +7178,12 @@ header .legend-global-nav .container-fluid {
 .legend-calling-preferences { max-width: min(32rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid var(--dash-line-strong); border-radius: 1rem; color: var(--dash-text); background: var(--dash-royal-950); }
 .legend-calling-preferences form { display: grid; gap: .75rem; }
 .legend-calling-preferences select { padding: .75rem; border-radius: .5rem; color: var(--dash-text); background: var(--dash-royal-860); }
+
+.messaging-conversation-list::-webkit-scrollbar,
+.messaging-messages::-webkit-scrollbar {
+    display: none;
+}
+
+.messaging-journey-content::-webkit-scrollbar {
+        display: none;
+    }

@@ -1,4 +1,5 @@
 @model AgentPortal.Models.ManageAgentProfileViewModel
+
 @{
     ViewData["Title"] = "Manage Profile";
 
@@ -35,7 +36,7 @@
 
 <style>
     .profile-shell {
-        max-width: 1100px;
+        width: 100%;
         margin: 0 auto;
         padding: 0.7rem 0.9rem 1.5rem;
     }
@@ -636,6 +637,7 @@
                     </div>
                     <div class="profile-field profile-field-full">
                         <label asp-for="MetaPixelId" class="profile-label"></label>
+                        <input asp-for="MarketingRevision" type="hidden" />
                         <input asp-for="MetaPixelId" class="profile-input" autocomplete="off" inputmode="numeric" placeholder="Numeric Meta Pixel ID" />
                         <span asp-validation-for="MetaPixelId" class="profile-validation"></span>
                     </div>
@@ -684,6 +686,10 @@
             </div>
         </form>
 
+        @if (TempData["ProfileWebsiteError"] is string websiteError)
+        {
+            <p role="alert">@websiteError</p>
+        }
         <section class="profile-panel profile-section">
             <div class="profile-section-head">
                 <h2 class="profile-section-title">Account Access</h2>
@@ -731,5 +737,6 @@
 </div>
 
 @section Scripts {
+
     <partial name="_ValidationScriptsPartial" />
 }

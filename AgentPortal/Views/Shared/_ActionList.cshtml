@@ -68,8 +68,8 @@
                             {
                                 <button type="button" class="action-inline-btn action-complete-btn" data-action-id="@item.Id">Complete</button>
                             }
-                            <a class="action-inline-btn" href="/Actions/Edit/@item.Id">Edit</a>
-                            <form method="post" action="/Actions/Delete/@item.Id" class="action-delete-form action-inline-form">
+                            <a class="action-inline-btn" href="@((ViewData["CrmApiBase"] as string ?? "") + "/Actions/Edit/" + item.Id)">Edit</a>
+                            <form method="post" action="@((ViewData["CrmApiBase"] as string ?? "") + "/Actions/Delete/" + item.Id)" class="action-delete-form action-inline-form">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="action-inline-btn action-inline-danger" onclick="return confirm('Delete this action?');">Delete</button>
                             </form>

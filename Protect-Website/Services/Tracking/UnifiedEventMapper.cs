@@ -21,6 +21,8 @@ public static class UnifiedEventMapper
             PipelineStamp = UnifiedAnalyticsWriter.PipelineStamp,
             EventType = ctx.EventName ?? "unknown",
             PageKey = ctx.PageKey,
+            ElementKey = ctx.ElementKey,
+            ButtonLabel = ctx.ButtonLabel,
             FormKey = string.IsNullOrWhiteSpace(ctx.FormKey) && !string.IsNullOrWhiteSpace(ctx.PageKey)
                 ? $"{ctx.PageKey}_form"
                 : ctx.FormKey,
@@ -40,7 +42,10 @@ public static class UnifiedEventMapper
 
             Fbclid = ctx.Fbclid,
             AgentSlug = ctx.AgentSlug,
-            AgentTrackingProfileId = ctx.AgentTrackingProfileId,
+            AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
+            CommerceBusinessId = ctx.CommerceBusinessId,
+            WebsiteContentVersionId = ctx.WebsiteContentVersionId,
+            WebsiteBindingId = ctx.WebsiteBindingId,
 
             IsInternal = ctx.IsInternal ?? false,
             Environment = ctx.Environment,
@@ -80,7 +85,7 @@ public static class UnifiedEventMapper
                 ctx.EventName,
                 leadId: null,
                 ctx.SessionId,
-                BuildAnalyticsMetadata(ctx.Metadata),
+                BuildAnalyticsMetadata(ctx),
                 isBrowserSignal: ctx.IsBrowserSignal == true,
                 isServerAuthority: ctx.IsServerAuthority == true,
                 metaServerAuthorityEligible: ctx.MetaServerAuthorityEligible == true,
@@ -140,18 +145,23 @@ public static class UnifiedEventMapper
             TimeZone = ctx.TimeZone,
 
             AgentSlug = ctx.AgentSlug,
-            AgentTrackingProfileId = ctx.AgentTrackingProfileId,
+            AgentTrackingProfileId = ctx.CommerceBusinessId.HasValue ? null : ctx.AgentTrackingProfileId,
+            CommerceBusinessId = ctx.CommerceBusinessId,
+            WebsiteContentVersionId = ctx.WebsiteContentVersionId,
+            WebsiteBindingId = ctx.WebsiteBindingId,
 
             Environment = null,
             Host = null
         };
     }
 
-    private static object BuildAnalyticsMetadata(object? metadata) => new
+    private static object BuildAnalyticsMetadata(UnifiedEventContext ctx) => new
     {
-        siteKey = SiteKey,
-        businessType = BusinessType,
-        reportingOwner = ReportingOwner,
-        payload = metadata
+        siteKey = string.IsNullOrWhiteSpace(ctx.SiteKey)
+            ? (ctx.CommerceBusinessId.HasValue ? "BusinessWebsite" : SiteKey)
+            : ctx.SiteKey,
+        businessType = ctx.CommerceBusinessId.HasValue ? "Business" : BusinessType,
+        reportingOwner = ctx.CommerceBusinessId.HasValue ? "Business" : ReportingOwner,
+        payload = ctx.Metadata
     };
 }

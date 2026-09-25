@@ -8,6 +8,10 @@ namespace ProtectWebsite.Services.Tracking;
 /// </summary>
 public sealed record UnifiedEventContext
 {
+    public string? SiteKey { get; init; }
+    public Guid? CommerceBusinessId { get; init; }
+    public Guid? WebsiteContentVersionId { get; init; }
+    public string? WebsiteBindingId { get; init; }
     // =========================
     // CORE EVENT IDENTITY
     // =========================
@@ -33,6 +37,8 @@ public sealed record UnifiedEventContext
     public string? PageVariant { get; init; }
     public string? PageMode { get; init; }
     public string? FormKey { get; init; }
+    public string? ElementKey { get; init; }
+    public string? ButtonLabel { get; init; }
 
     // =========================
     // CLIENT CONTEXT (BROWSER)

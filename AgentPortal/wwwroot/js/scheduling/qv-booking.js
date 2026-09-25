@@ -1024,6 +1024,16 @@
                     ? options.wrapRequest
                     : init => init;
 
+            const statusTransport =
+                typeof options.fetchStatus === "function"
+                    ? options.fetchStatus
+                    : fetch;
+
+            const busyAvailabilityTransport =
+                typeof options.fetchAvailability === "function"
+                    ? options.fetchAvailability
+                    : fetch;
+
             const statusCacheTtlMs =
                 Number.isFinite(options.statusCacheTtlMs)
                     ? Math.max(0, options.statusCacheTtlMs)
@@ -1120,7 +1130,7 @@
                 }
 
                 try {
-                    const response = await fetch(
+                    const response = await statusTransport(
                         "/calendar/status",
                         wrapRequest({
                             credentials: "include"
@@ -1399,7 +1409,7 @@
                 );
 
                 try {
-                    const response = await fetch(
+                    const response = await busyAvailabilityTransport(
                         `/calendar/day-availability?date=${
                             encodeURIComponent(nextDate)
                         }`,

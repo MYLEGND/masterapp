@@ -1,24 +1,23 @@
 name: Validate, merge, and deploy AgentPortal to production
+run-name: LEGEND rigorous PR ${{ inputs.pull_request || github.event.pull_request.number }}
 
 # One fail-closed path for every production change:
 # validate once on the PR merge candidate, package that exact tree, merge only
 # after validation succeeds, verify the merged tree is identical, then migrate
 # and deploy the already-built artifact.
 #
-# Synchronizing code to an already-open production PR is the one and only
-# release trigger. Opening, reopening, marking ready, pushing production,
-# manual dispatch, and diagnostic workflows cannot compete with this path.
-# No other event is supported by this workflow.
+# Ready production PRs and automatic promotions use the same gates below.
+# Dispatch resolves the exact PR merge candidate before any validation executes.
 on:
   pull_request:
-    branches:
-      - production
-    types:
-      - synchronize
-    paths-ignore:
-      - 'Legend-Website/**'
-      - '.github/workflows/legend-website-production-deploy.yml'
-      - '.github/workflows/agentportal-production-deploy.yml'
+    branches: [production]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Ready production PR to validate, merge and release through every gate
+        required: true
+        type: string
 
 # Both hosts and the database are shared production resources. A later PR
 # must wait until the current release and its verification finish; it must
@@ -49,9 +48,69 @@ env:
   LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: lai-027-029-v1
 
 jobs:
-  # Keep this job name stable: it is the protected production required check.
-  security:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+  candidate:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      head: ${{ steps.resolve.outputs.head }}
+      base: ${{ steps.resolve.outputs.base }}
+      number: ${{ steps.resolve.outputs.number }}
+      sync_only: ${{ steps.resolve.outputs.sync_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+      - name: Resolve trusted exact production candidate without executing PR code
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request || github.event.pull_request.number }}
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+          PROMOTION_ONLY: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_policy.py --require-release
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.ref }}" = "legend/approved-changes" ]; then
+            pr_json="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+            state="$(printf '%s' "$pr_json" | jq -r '.state')"
+            base_ref="$(printf '%s' "$pr_json" | jq -r '.base.ref')"
+            head_ref="$(printf '%s' "$pr_json" | jq -r '.head.ref')"
+            head_sha="$(printf '%s' "$pr_json" | jq -r '.head.sha')"
+            base_sha="$(printf '%s' "$pr_json" | jq -r '.base.sha')"
+
+            test "$state" = "open"
+            test "$base_ref" = "production"
+            test "$head_ref" = "legend/approved-changes"
+            test "$head_sha" = "$EXPECTED_SOURCE"
+
+            git fetch --no-tags origin \
+              '+refs/heads/production:refs/remotes/origin/production' \
+              '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+            git merge-base --is-ancestor "$base_sha" "$head_sha"
+
+            echo "sha=$head_sha" >> "$GITHUB_OUTPUT"
+            echo "head=$head_sha" >> "$GITHUB_OUTPUT"
+            echo "base=$base_sha" >> "$GITHUB_OUTPUT"
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "sync_only=true" >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/release-lifecycle.py resolve-production --pr "$PR_NUMBER" --expected-head "$EXPECTED_SOURCE" --dispatch "$PROMOTION_ONLY"
+            echo "sync_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release-security:
+    needs: candidate
+    if: >
+      needs.candidate.outputs.sync_only != 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.ref != 'hotfix/staging-batch' && !startsWith(github.event.pull_request.head.ref, 'hotfix/staging-batch/') &&
+       github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment:
@@ -64,8 +123,23 @@ jobs:
       - name: Checkout exact PR merge candidate
         uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.candidate.outputs.sha }}
           fetch-depth: 0
+
+      - name: Require candidate to be retained in approved changes
+        env:
+          CANDIDATE_HEAD: ${{ needs.candidate.outputs.head }}
+        run: |
+          git fetch --no-tags origin refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes
+          git merge-base --is-ancestor "$CANDIDATE_HEAD" refs/remotes/origin/legend/approved-changes
+
+      - name: Discover candidate project impact without skipping release gates
+        env:
+          IMPACT_BASE: ${{ needs.candidate.outputs.base }}
+          IMPACT_HEAD: ${{ needs.candidate.outputs.sha }}
+        run: |
+          python3 scripts/diagnostic-project-impact.py --base "$IMPACT_BASE" --head "$IMPACT_HEAD" --output diagnostic-project-impact.json
+          python3 scripts/test-diagnostic-project-impact.py
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6.0.0
@@ -145,7 +219,7 @@ jobs:
 
       - name: Test full suite including security regressions
         env:
-          LEGEND_BASELINE_PRODUCTION_BASE: ${{ github.event.pull_request.base.sha }}
+          LEGEND_BASELINE_PRODUCTION_BASE: ${{ needs.candidate.outputs.base }}
         run: |
           set -euo pipefail
           results_dir="$RUNNER_TEMP/legend-full-regression-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -212,7 +286,7 @@ jobs:
 
       - name: Database migration validation
         env:
-          DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          DB_BASE_REF: ${{ needs.candidate.outputs.base }}
           DB_BUILD_CONFIGURATION: Release
         run: ./scripts/db.sh validate-artifacts
 
@@ -297,8 +371,143 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Keep this job name stable: it is the protected production required check.
+  # For canonical branch parity it performs ancestry/integrity checks only.
+  security:
+    needs: [candidate, release-security]
+    if: >
+      always() &&
+      needs.candidate.result == 'success' &&
+      (needs.candidate.outputs.sync_only == 'true' || needs.release-security.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout canonical history for synchronization proof
+        if: needs.candidate.outputs.sync_only == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+
+      - name: Verify canonical branch synchronization is history-only
+        if: needs.candidate.outputs.sync_only == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.candidate.outputs.number }}
+          EXPECTED_HEAD: ${{ needs.candidate.outputs.head }}
+          EXPECTED_BASE: ${{ needs.candidate.outputs.base }}
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          test "$(printf '%s' "$pr_json" | jq -r '.state')" = "open"
+          test "$(printf '%s' "$pr_json" | jq -r '.base.ref')" = "production"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.ref')" = "legend/approved-changes"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$EXPECTED_HEAD"
+          test "$(printf '%s' "$pr_json" | jq -r '.base.sha')" = "$EXPECTED_BASE"
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+
+          test "$(git rev-parse refs/remotes/origin/production)" = "$EXPECTED_BASE"
+          test "$(git rev-parse refs/remotes/origin/legend/approved-changes)" = "$EXPECTED_HEAD"
+          git merge-base --is-ancestor "$EXPECTED_BASE" "$EXPECTED_HEAD"
+
+          echo "History-only parity check passed. No build, migration, Azure login, publish, deployment, or live restart is authorized." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Confirm full release security completed
+        if: needs.candidate.outputs.sync_only != 'true'
+        run: echo "Full release security gate completed successfully."
+
+  sync-merge:
+    needs: [candidate, security]
+    if: >
+      always() &&
+      needs.candidate.result == 'success' &&
+      needs.candidate.outputs.sync_only == 'true' &&
+      needs.security.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      merge_sha: ${{ steps.merge.outputs.merge_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+
+      - name: Recheck exact canonical refs before merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.candidate.outputs.number }}
+          EXPECTED_HEAD: ${{ needs.candidate.outputs.head }}
+          EXPECTED_BASE: ${{ needs.candidate.outputs.base }}
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          test "$(printf '%s' "$pr_json" | jq -r '.state')" = "open"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$EXPECTED_HEAD"
+          test "$(printf '%s' "$pr_json" | jq -r '.base.sha')" = "$EXPECTED_BASE"
+
+          current_production="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/production" --jq '.object.sha')"
+          current_approved="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')"
+          test "$current_production" = "$EXPECTED_BASE"
+          test "$current_approved" = "$EXPECTED_HEAD"
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+          git merge-base --is-ancestor "$EXPECTED_BASE" "$EXPECTED_HEAD"
+          python3 scripts/release_policy.py --sha "$EXPECTED_HEAD" --require-release
+
+      - name: Merge history-only synchronization PR
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.candidate.outputs.number }}
+          EXPECTED_HEAD: ${{ needs.candidate.outputs.head }}
+        run: |
+          set -euo pipefail
+          response="$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge" \
+            -f merge_method=merge \
+            -f sha="$EXPECTED_HEAD")"
+          test "$(printf '%s' "$response" | jq -r '.merged')" = "true"
+          merge_sha="$(printf '%s' "$response" | jq -r '.sha')"
+          test -n "$merge_sha"
+          echo "merge_sha=$merge_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Fast-forward approved changes to exact production merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+          EXPECTED_HEAD: ${{ needs.candidate.outputs.head }}
+        run: |
+          set -euo pipefail
+          production_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/production" --jq '.object.sha')"
+          test "$production_sha" = "$MERGE_SHA"
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+          git merge-base --is-ancestor "$EXPECTED_HEAD" "$MERGE_SHA"
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/legend/approved-changes" \
+            -f sha="$MERGE_SHA" \
+            -F force=false >/dev/null
+
+          approved_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')"
+          test "$approved_sha" = "$MERGE_SHA"
+          echo "production and legend/approved-changes are identical at $MERGE_SHA. No application deployment was performed." >> "$GITHUB_STEP_SUMMARY"
+
   build:
-    needs: security
+    needs: [security, candidate]
+    if: needs.candidate.outputs.sync_only != 'true'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -310,7 +519,7 @@ jobs:
       - name: Checkout exact validated merge candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.candidate.outputs.sha }}
           fetch-depth: 0
           lfs: true
 
@@ -419,12 +628,16 @@ jobs:
 
   merge:
     needs:
+      - candidate
       - security
       - build
     if: >
+      needs.candidate.outputs.sync_only != 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.ref != 'hotfix/staging-batch' && !startsWith(github.event.pull_request.head.ref, 'hotfix/staging-batch/') &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -433,10 +646,24 @@ jobs:
       merge_sha: ${{ steps.merge.outputs.merge_sha }}
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+      - name: Recheck candidate against all live revisions before merging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.candidate.outputs.number }}
+          EXPECTED_HEAD: ${{ needs.candidate.outputs.head }}
+          PROMOTION_ONLY: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$EXPECTED_HEAD"
+          python3 scripts/release-lifecycle.py resolve-production --pr "$PR_NUMBER" --expected-head "$EXPECTED_HEAD" --dispatch "$PROMOTION_ONLY"
+
       - name: Verify production base has not moved
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_BASE_SHA: ${{ needs.candidate.outputs.base }}
         run: |
           current_base=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/production" --jq '.object.sha')
           if [ "$current_base" != "$EXPECTED_BASE_SHA" ]; then
@@ -448,8 +675,8 @@ jobs:
         id: merge
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ needs.candidate.outputs.number }}
+          EXPECTED_HEAD_SHA: ${{ needs.candidate.outputs.head }}
         run: |
           response=$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge" \
             -f merge_method=merge \
@@ -476,6 +703,36 @@ jobs:
           merged_tree=$(git rev-parse 'HEAD^{tree}')
           if [ "$merged_tree" != "$TESTED_TREE" ]; then
             echo "::error::Merged production tree differs from the tree that passed validation."
+            exit 1
+          fi
+
+      - name: Fast-forward approved changes to exact production merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        run: |
+          set -euo pipefail
+          approved_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')
+          if [ "$approved_sha" = "$MERGE_SHA" ]; then
+            exit 0
+          fi
+
+          git fetch --no-tags origin \
+            '+refs/heads/production:refs/remotes/origin/production' \
+            '+refs/heads/legend/approved-changes:refs/remotes/origin/legend/approved-changes'
+
+          if ! git merge-base --is-ancestor "$approved_sha" "$MERGE_SHA"; then
+            echo "::error::Approved changes is not an ancestor of the exact production merge. Refusing force-push, reset, rebase, or overwrite."
+            exit 1
+          fi
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/legend/approved-changes" \
+            -f sha="$MERGE_SHA" \
+            -F force=false >/dev/null
+
+          synchronized_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')
+          if [ "$synchronized_sha" != "$MERGE_SHA" ]; then
+            echo "::error::Approved changes did not converge to the exact production merge SHA."
             exit 1
           fi
 
@@ -893,6 +1150,7 @@ jobs:
 
   verify-legend-native-sql:
     needs:
+      - candidate
       - build
       - merge
       - deploy
@@ -940,7 +1198,7 @@ jobs:
           foreach ($identity in @($candidateSha, $deployedSha, $mergeSha, $candidateTree)) {
             if ($identity -notmatch '^[0-9a-f]{40}$') { throw 'A required immutable production proof identity is unavailable or malformed.' }
           }
-          if ($candidateSha -ne '${{ github.sha }}') { throw 'Downloaded tested binaries are not bound to the exact workflow candidate SHA.' }
+          if ($candidateSha -ne '${{ needs.candidate.outputs.sha }}') { throw 'Downloaded tested binaries are not bound to the exact workflow candidate SHA.' }
           if ($deployedSha -ne $mergeSha) { throw 'The deployed SHA differs from the immutable production merge SHA.' }
           [ordered]@{
             Authority = 'agentportal-production-deploy.yml/verify-legend-native-sql'

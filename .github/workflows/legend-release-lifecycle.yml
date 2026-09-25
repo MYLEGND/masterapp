@@ -1,0 +1,88 @@
+name: LEGEND release branch lifecycle
+
+on:
+  pull_request_target:
+    branches: [legend/approved-changes]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows:
+      - LEGEND approved direct release
+      - Validate, merge, and deploy AgentPortal to production
+    types: [completed]
+  push:
+    branches: [legend/approved-changes]
+    paths:
+      - .github/workflows/legend-release-lifecycle.yml
+      - scripts/release-lifecycle.py
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: legend-release-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    # Never grant this job to a fork, draft, or untrusted PR author.
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      # Source branches are never checked out or executed with this token.
+      - uses: actions/checkout@v4
+        with:
+          ref: legend/approved-changes
+          fetch-depth: 0
+      - name: Check lifecycle safety contracts
+        run: |
+          python3 scripts/test-release-policy.py
+          python3 scripts/test-release-lifecycle.py
+      - name: Integrate ready approved change and start direct release
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/release-lifecycle.py integrate --pr "$PR_NUMBER"
+      - name: Resume ready changes and corrections on retained branches
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-lifecycle.py pending-updates
+      - name: Refresh after automatically integrated corrections
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: git fetch --no-tags --prune origin
+      - name: Reconcile successful releases through existing production gates
+        if: github.event_name != 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          args=()
+          if [ -n "$RELEASE_RUN" ]; then args+=(--run "$RELEASE_RUN"); fi
+          python3 scripts/release-lifecycle.py reconcile "${args[@]}"
+      - name: Refresh references after synchronization
+        run: git fetch --no-tags --prune origin
+      - name: Retire only preserved successfully deployed branches
+        if: github.event_name != 'pull_request_target' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-lifecycle.py cleanup --apply --output "$RUNNER_TEMP/branch-cleanup.json"
+      - name: Retain exact cleanup decisions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-cleanup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/branch-cleanup.json
+          retention-days: 30
+          if-no-files-found: warn

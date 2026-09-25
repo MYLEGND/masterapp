@@ -15,7 +15,10 @@
   // Extraction target: tracking-core.js
   // ============================================================
 
-  const INGEST_URL = '/api/tracking/ingest';
+  const ANALYTICS_CONFIG = window.LEGEND_ANALYTICS_CONFIG || {};
+  const INGEST_URL = typeof ANALYTICS_CONFIG.endpoint === 'string' && ANALYTICS_CONFIG.endpoint.trim()
+    ? ANALYTICS_CONFIG.endpoint.trim()
+    : '/api/tracking/ingest';
   const PAGE_KEY = document.body.dataset.pageKey || '';
   const PAGE_VARIANT = document.body.dataset.pageVariant || '';
   const PAGE_MODE = document.body.dataset.pageMode || '';
@@ -23,7 +26,6 @@
   const PAGE_QUOTE_TYPE = document.body.dataset.quoteType || '';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
-  const ANALYTICS_CONFIG = window.LEGEND_ANALYTICS_CONFIG || {};
   const DEBUG_TRACKING =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
@@ -208,7 +210,7 @@
       return;
     }
 
-    if (stageRank(nextStage) < stageRank(previousStage)) {
+    if (nextStage !== 'submitted' && stageRank(nextStage) < stageRank(previousStage)) {
       return;
     }
 
@@ -579,6 +581,8 @@
     return {
       SchemaVersion: payload.SchemaVersion || payload.schemaVersion || TRACKING_SCHEMA_VERSION,
       TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
+      SiteKey: payload.SiteKey || ANALYTICS_CONFIG.siteKey || null,
+      WebsiteBindingId: payload.WebsiteBindingId || null,
       ClientEventId: uuid(),
       EventType: payload.EventType,
       PageKey: payload.PageKey || PAGE_KEY,
@@ -999,6 +1003,7 @@
         break;
       case 'form_submit_attempt':
       case 'life_step2_submit_attempt':
+        if (['error', 'failure', 'failed'].includes(String(payload.SubmitOutcome || '').toLowerCase())) state.nativeSubmissionPending = false;
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
         break;
@@ -1006,6 +1011,7 @@
         transitionFormState(state, 'submitted', 'lead_form_submit_success');
         break;
       case 'lead_form_submit_failure':
+        state.nativeSubmissionPending = false;
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
         break;
@@ -1021,7 +1027,6 @@
   let _activeStart = document.visibilityState === 'visible' ? Date.now() : null;
   let _exitFired = false;
 
-let _formAbandonCallbacks = [];
 
 function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   const normalizedFormKey = (formKey || '').trim();
@@ -1182,16 +1187,9 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   function ensureFormTrackState(formKey) {
     if (!formKey) return null;
-
-    window.__legendFormTrackState = window.__legendFormTrackState || {};
-
-    if (!window.__legendFormTrackState[formKey]) {
-      window.__legendFormTrackState[formKey] = {
-        errorsSeen: new Set()
-      };
-    }
-
-    return window.__legendFormTrackState[formKey];
+    if (!_formTrackStateByKey.has(formKey))
+      _formTrackStateByKey.set(formKey, createFormTrackState(formKey, PAGE_QUOTE_TYPE));
+    return _formTrackStateByKey.get(formKey);
   }
 
   function clearTrackedFieldError(formKey, fieldName) {
@@ -1221,13 +1219,20 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
     firePageExit(lifecycleSource || 'pagehide', event);
 
-    _formAbandonCallbacks.forEach(function (cb) {
-      try {
-        cb(lifecycleSource || 'pagehide');
-      } catch {
-        /* swallow */
-      }
-    });
+    // Only an actual non-BFCache page exit can establish abandonment.
+    if (lifecycleSource === 'pagehide') {
+      _formTrackStateByKey.forEach(state => {
+        if (!state.started || state.submitted || state.nativeSubmissionPending || state.abandonedAt) return;
+        const previousStage = state.currentStage;
+        transitionFormState(state, 'abandoned', 'pagehide');
+        beaconSend(buildBody({
+          EventType: 'form_abandon', FormKey: state.formKey,
+          MetadataJson: JSON.stringify({ reason: 'pagehide', stage: previousStage,
+            durationMilliseconds: Math.max(0, Date.now() - (state.startedAt || Date.now())),
+            lastFocusedField: state.lastFocusedField || null })
+        }));
+      });
+    }
   }
 
 
@@ -1756,20 +1761,98 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     });
   }
 
-  function wireFormStart(selector, formKey) {
-    const form = document.querySelector(selector);
-    if (!form) return;
-    const handler = () => {
+  function syncFormAttribution(form) {
+    const attr = getAttribution() || {};
+    const values = {
+      SessionId: getSessionId(), VisitorId: getVisitorId(),
+      UtmSource: attr.utmSource, UtmMedium: attr.utmMedium, UtmCampaign: attr.utmCampaign,
+      UtmId: attr.utmId, UtmTerm: attr.utmTerm, UtmContent: attr.utmContent,
+      MetaCampaignId: attr.metaCampaignId, MetaAdSetId: attr.metaAdSetId, MetaAdId: attr.metaAdId,
+      Fbclid: attr.fbclid, ReferrerUrl: document.referrer || '', LandingPageUrl: window.location.href
+    };
+    Object.entries(values).forEach(([name, value]) => {
+      const field = form.elements.namedItem(name);
+      if (field instanceof HTMLInputElement && field.type === 'hidden') field.value = value || '';
+    });
+  }
+
+  function installManagedWebsiteActionTracking() {
+    document.addEventListener('click', event => {
+      const target = event.target?.closest?.('[data-website-action-key]');
+      if (!target || target.closest?.('.legend-cms-editor')) return;
+      // Protect's original template CTAs retain their existing explicit data-cta
+      // wiring. Managed editor-created actions use this central contract.
+      if (target.hasAttribute?.('data-cta') && !target.classList?.contains('cms-extra')) return;
+      const actionKey = target.dataset.websiteActionKey || '';
+      const eventType = target.dataset.websiteAnalyticsEvent || 'cta_click';
+      if (!actionKey || !allowedEvents.has(eventType)) return;
+      try { sessionStorage.setItem('legend_last_website_action_key', actionKey); } catch {}
+      window.LEGEND_LAST_WEBSITE_ACTION_KEY = actionKey;
+      sendEvent({
+        EventType: eventType,
+        ElementKey: actionKey,
+        WebsiteBindingId: target.dataset.websiteBindingId || actionKey,
+        ButtonLabel: target.textContent?.trim() || null,
+        MetadataJson: JSON.stringify({
+          actionKey,
+          href: target.getAttribute?.('href') || null,
+          automaticActionContract: true
+        })
+      });
+      const metaIntent = target.dataset.websiteMetaIntent;
+      const meta = window.LEGEND_PUBLIC_META_SESSION;
+      if (metaIntent === 'ContactStepReached' && meta?.trackContactStepReached) {
+        Promise.resolve(meta.trackContactStepReached({ actionKey, automaticActionContract: true })).catch(() => {});
+      } else if (metaIntent === 'LeadFormStart' && meta?.trackLeadFormStart) {
+        Promise.resolve(meta.trackLeadFormStart({ actionKey, automaticActionContract: true })).catch(() => {});
+      }
+    }, true);
+  }
+
+  function wireFormStart(form, formKey) {
+    if (!form || form._legendTrackingBound) return;
+    form._legendTrackingBound = true;
+    const state = ensureFormTrackState(formKey);
+    syncFormAttribution(form);
+    const handler = event => {
+      state.lastFocusedField = event.target?.name || null;
       fireTrackedFormStartOnce(formKey);
     };
     form.addEventListener('focusin', handler);
     form.addEventListener('change', handler);
+    let submitRevision = 0;
+    const isAjax = form.dataset.ajaxSubmit === 'true';
+    form._trackSubmitAttempt = (valid, errorCount = 0) => {
+      submitRevision++;
+      syncFormAttribution(form);
+      state.nativeSubmissionPending = Boolean(valid) && !isAjax;
+      sendEvent({ EventType: 'form_submit_attempt', FormKey: formKey,
+        MetadataJson: JSON.stringify({ valid: Boolean(valid), errorCount: Number(errorCount) || 0 }) });
+      if (window.LEGEND_PUBLIC_META_SESSION?.trackSubmitAttempt) {
+        Promise.resolve(window.LEGEND_PUBLIC_META_SESSION.trackSubmitAttempt({
+          formId: formKey, valid: Boolean(valid), errorCount: Number(errorCount) || 0
+        })).catch(() => {});
+      }
+    };
+    form.addEventListener('submit', event => {
+      const initialRevision = submitRevision;
+      syncFormAttribution(form);
+      queueMicrotask(() => {
+        if (!event.defaultPrevented && !isAjax) {
+          if (submitRevision === initialRevision) form._trackSubmitAttempt(true, 0);
+          state.nativeSubmissionPending = true;
+        } else {
+          state.nativeSubmissionPending = false;
+        }
+      });
+    }, true);
   }
 
   const _trackedFormStartFlags = new Set();
 
   function fireTrackedFormStartOnce(formKey) {
     if (!formKey) return false;
+    transitionFormState(ensureFormTrackState(formKey), 'started', 'form_interaction');
     const currentSessionId = getSessionId();
     const sessionFlag = `form_started_${currentSessionId}_${window.location.pathname}_${formKey}`;
 
@@ -1802,7 +1885,24 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       clientContext: window.LegendAnalytics?.getClientContext?.() || {},
       EventType: 'lead_form_start', FormKey: formKey });
     }
+    if (window.LEGEND_PUBLIC_META_SESSION?.trackLeadFormStart) {
+      Promise.resolve(window.LEGEND_PUBLIC_META_SESSION.trackLeadFormStart({
+        formId: formKey, startSource: 'shared_form_interaction'
+      })).catch(() => {});
+    }
 
+    return true;
+  }
+
+  function markTrackedFormSubmitted(formKey, source = 'server_confirmed') {
+    const normalizedFormKey = (formKey || '').trim();
+    if (!normalizedFormKey) return false;
+
+    const state = ensureFormTrackState(normalizedFormKey);
+    if (!state) return false;
+
+    state.nativeSubmissionPending = false;
+    transitionFormState(state, 'submitted', source || 'server_confirmed');
     return true;
   }
 
@@ -1820,6 +1920,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   void flushQueuedEvents('page_load');
   trackPageView();
   installQuotePrimaryCtaTracking();
+  installManagedWebsiteActionTracking();
 
   wireClick('[data-cta="hero_start_assessment"]',    'hero_start_assessment',    'cta_click');
   wireClick('[data-cta="hero_book_call"]',           'hero_book_call',           'cta_click');
@@ -1842,7 +1943,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   document.querySelectorAll('form[data-form-key]').forEach(f => {
     const key = f.getAttribute('data-form-key');
     if (!key) return;
-    wireFormStart(`form[data-form-key="${key}"]`, key);
+    wireFormStart(f, key);
   });
 
 
@@ -1856,7 +1957,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   // ============================================================
 
   // Expose existing tracking helpers for legacy/on-page scripts and diagnostics.
-  window._formAbandonCallbacks = window._formAbandonCallbacks || _formAbandonCallbacks;
   window.trackCustomFieldError = window.trackCustomFieldError || trackCustomFieldError;
 
   window.legendTrack = (payload) => {
@@ -1890,6 +1990,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     trackFieldError: trackCustomFieldError,
     clearFieldError: clearTrackedFieldError,
     trackStart: fireTrackedFormStartOnce,
+    markSubmitted: markTrackedFormSubmitted,
   };
   window.legendQuoteTracking = {
     ...(window.legendQuoteTracking || {}),

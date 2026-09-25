@@ -1,3 +1,4 @@
+using Infrastructure.Diagnostics;
 using Infrastructure.DailyScripture;
 using Infrastructure.Data;
 using Infrastructure.Billing;
@@ -6,6 +7,7 @@ using Infrastructure.Messaging;
 using Infrastructure.Social;
 using Infrastructure.Identity;
 using Infrastructure.Households;
+using Infrastructure.Businesses;
 using ClientApp.Infrastructure;
 using ClientApp.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -24,6 +26,9 @@ using Shared.Diagnostics;
 using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<Infrastructure.Analytics.IAnalyticsQueryService, Infrastructure.Analytics.AnalyticsQueryService>();
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
 
 // ------------------------------------------------------------
 // MVC + DI
@@ -49,17 +54,27 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.Bookings.BusinessBookingTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
+builder.Services.AddHttpClient("AgentPortalBusinessBooking", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddMasterAppMessaging(builder.Configuration);
 builder.Services.AddMasterAppSocial(builder.Configuration, enableMediaProcessing: false);
+builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddScoped<ClientProfileImageLegacyBackfillService>();
 builder.Services.AddHostedService<ClientProfileImageLegacyBackfillHostedService>();
 builder.Services.AddScoped<IMessagingActorContextResolver, ClientAppMessagingActorContextResolver>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IClientEntraLifecycleService, ClientEntraLifecycleService>();
+builder.Services.AddHostedService<ClientEntraProvisioningRecoveryHostedService>();
 builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
 builder.Services.AddScoped<IHouseholdMembershipService, HouseholdMembershipService>();
 builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
@@ -377,6 +392,8 @@ async Task CompleteClientSignInAsync(TokenValidatedContext context)
         $"/Account/ActivationRequired?returnUrl={Uri.EscapeDataString(returnUrlNormalizer.Normalize(completion.ReturnUrl))}&message={Uri.EscapeDataString(completion.SanitizedMessage ?? "The client sign-in could not be completed.")}");
 }
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 
 // ------------------------------------------------------------
@@ -412,7 +429,7 @@ else
     app.UseDeveloperExceptionPage();
 }
 
-app.UseLegendFailureDiagnostics("ClientApp");
+app.UseLegendFailureDiagnostics();
 app.UseStatusCodePagesWithReExecute("/Home/ErrorStatus", "?statusCode={0}");
 
 app.UseHttpsRedirection();

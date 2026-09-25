@@ -91,6 +91,7 @@ namespace Protect_Website.Controllers
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
             // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLifeLeadCaptureResult? capturedSubmission = null;
             WebsiteLead lead;
             try
             {
@@ -148,8 +149,42 @@ namespace Protect_Website.Controllers
                         CorrelationId = correlationId,
                     })
                 };
-                _db.WebsiteLeads.Add(lead);
-                await _db.SaveChangesAsync();
+                if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead,
+                        HttpContext?.Request is { HasFormContentType: true } submissionRequest ? submissionRequest.Form["SubmissionId"].FirstOrDefault() : null,
+                        HttpContext?.RequestAborted ?? CancellationToken.None, async ct =>
+                        {
+                            capturedSubmission = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = "commercial",
+                        OfferKey = "commercial",
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.State,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                            if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
+                                throw new InvalidOperationException("The advisor handoff could not be completed.");
+await TryWriteLeadEventAsync(
+                "lead_persisted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "commercial_insurance" },
+                lead.CreatedUtc);
+await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                lead.CreatedUtc);
+                        }))
+                {
+                    TempData["QuoteType"] = lead.InterestType;
+                    return RedirectToAction("Index", "ThankYou");
+                }
                 _logger.LogInformation(
                     "CommercialQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
                     correlationId, lead.LeadId);
@@ -176,6 +211,7 @@ namespace Protect_Website.Controllers
                 }
                 catch (Exception analyticsEx)
                 {
+                    if (eventType is "lead_persisted" or "website_lead_submitted") throw;
                     if (analyticsEvent != null)
                     {
                         var entry = _db.Entry(analyticsEvent);
@@ -192,10 +228,7 @@ namespace Protect_Website.Controllers
                 }
             }
 
-            await TryWriteLeadEventAsync(
-                "lead_persisted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "commercial_insurance" },
-                lead.CreatedUtc);
+
 
             try
             {
@@ -203,23 +236,7 @@ namespace Protect_Website.Controllers
                     "workstation_capture_attempt",
                     new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "commercial", OfferKey = "commercial" });
 
-                var captureResult = await _websiteLeadCapture.UpsertAsync(
-                    new WebsiteLifeLeadCaptureRequest
-                    {
-                        WebsiteLeadId = lead.LeadId,
-                        SubmittedUtc = lead.CreatedUtc,
-                        ProductType = "commercial",
-                        OfferKey = "commercial",
-                        FirstName = lead.FirstName,
-                        LastName = lead.LastName,
-                        Email = lead.Email,
-                        Phone = lead.Phone,
-                        State = model.State,
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug = agentSlug,
-                        RecipientEmail = leadRecipientEmail
-                    },
-                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var captureResult = capturedSubmission!;
 
                 if (captureResult.Captured)
                 {
@@ -291,7 +308,7 @@ namespace Protect_Website.Controllers
                 });
 
 
-            
+
             var subjectName = $"{model.InsuredFirstName} {model.InsuredLastName}".Trim();
             if (string.IsNullOrWhiteSpace(subjectName))
                 subjectName = "Unknown";
@@ -441,10 +458,7 @@ namespace Protect_Website.Controllers
             }
 
             // ── 3. Write analytics event ─────────────────────────────────────────
-            await TryWriteLeadEventAsync(
-                "website_lead_submitted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId },
-                lead.CreatedUtc);
+
 
             TempData["QuoteType"] = "Commercial";
             TempData["MetaLeadEventId"] = metaLeadEventId;

@@ -62,7 +62,7 @@
         if (s.rangeParams) {
             const params = new URLSearchParams(s.rangeParams());
             params.set('metric', metric);
-            params.set('trafficType', 'All');
+
             return params.toString();
         }
 
@@ -158,6 +158,7 @@
         if (Number.isNaN(parsed.getTime())) return escHtml(String(value));
 
         return escHtml(parsed.toLocaleString('en-US', {
+            timeZone: new URLSearchParams(buildParams('visitors')).get('timezoneId') || undefined,
             month: 'numeric',
             day: 'numeric',
             hour: 'numeric',
@@ -332,7 +333,7 @@
         activeFetchController = new AbortController();
 
         const qs = buildParams(metric);
-        const res = await fetch(`/website-analytics/kpi-detail?${qs}`, {
+        const res = await fetch(`${document.querySelector(".fa-shell")?.dataset.analyticsBase || "/website-analytics"}/kpi-detail?${qs}`, {
             signal: activeFetchController.signal
         });
 
@@ -484,7 +485,8 @@
     async function openVisitorTimelineModal(visitorId, sessionId) {
         if (!visitorId && !sessionId) return;
 
-        const params = new URLSearchParams();
+        const params = new URLSearchParams(buildParams('visitors'));
+        params.delete('metric');
 
         if (visitorId)
             params.set('visitorId', visitorId);
@@ -492,10 +494,10 @@
         if (sessionId)
             params.set('sessionId', sessionId);
 
-        params.set('preset', window.currentPreset || 'today');
+
 
         const response = await fetch(
-            `/WebsiteAnalytics/visitor-timeline?${params.toString()}`
+            `${document.querySelector(".fa-shell")?.dataset.analyticsBase || "/WebsiteAnalytics"}/visitor-timeline?${params.toString()}`
         );
 
         if (!response.ok)

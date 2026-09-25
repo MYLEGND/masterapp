@@ -33,9 +33,14 @@ public interface IFounderSoftwareRemediationService
     Task<object> InspectRepositoryAsync(string? path, string? gitReference, CancellationToken cancellationToken);
     Task<object> PrepareAsync(string actorMode, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
+    Task<object> GetCandidateValidationReviewAsync(int pullRequestNumber, string headSha, string baseSha, string patchSha256, string trustedWorkflowSha, CancellationToken cancellationToken);
+    Task<object> RequestCandidateValidationAsync(string actorMode, int pullRequestNumber, string headSha, string baseSha, string patchSha256, string trustedWorkflowSha, string approvalActionDigest, CancellationToken cancellationToken);
+    Task<object> GetCandidateValidationAsync(long runId, string headSha, CancellationToken cancellationToken);
     Task<object> RequestReleaseAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> ReleaseApprovedAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken);
+    Task<object> ReconcileBatchAsync(CancellationToken cancellationToken);
+    Task<object> ArchiveDeployedBatchAsync(int pullRequestNumber, string headSha, string expectedRevision, CancellationToken cancellationToken);
 }
 
 public sealed record FounderSoftwareRepairChange(string Path, string Content);
@@ -46,7 +51,7 @@ public sealed record FounderSoftwareRepairProposal(
     string Summary,
     IReadOnlyList<FounderSoftwareRepairChange> Changes);
 
-public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediationService
+public sealed partial class FounderSoftwareRemediationService : IFounderSoftwareRemediationService
 {
     private const int MaximumChanges = 6;
     private const int MaximumPathLength = 260;
@@ -94,7 +99,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     {
     }
 
-    private FounderSoftwareRemediationService(
+    internal FounderSoftwareRemediationService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<FounderSoftwareRemediationService> logger,
@@ -210,80 +215,145 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     {
         var options = ReadOptions();
         var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
-        if (unavailable is not null)
-            return unavailable;
-
-        if (!string.IsNullOrWhiteSpace(path) && !IsAllowedPath(path))
-            return Failure("repository_path_not_allowed", "The requested path is outside the bounded source and test allow-list.");
-
-        if (!string.IsNullOrWhiteSpace(gitReference) && !IsGitReference(gitReference))
+        if (unavailable is not null) return unavailable;
+        if (!string.IsNullOrWhiteSpace(path) && !IsInspectableSourcePath(path))
+            return Failure("repository_path_not_allowed", "The requested path is outside the bounded non-sensitive source and test allow-list.");
+        if (!string.IsNullOrWhiteSpace(gitReference) &&
+            (!IsGitReference(gitReference) || gitReference.Contains("..", StringComparison.Ordinal) || gitReference.StartsWith('/')))
             return Failure("invalid_git_reference", "Repository inspection accepts only a branch name or immutable Git SHA.");
 
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
-            var client = await CreateGitHubClientAsync(options, cancellationToken);
-            using var repository = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}", null, cancellationToken);
-            if (!repository.IsSuccessStatusCode)
-                return GitHubFailure("repository_inspection_failed", repository.StatusCode);
-
+            using var client = await CreateGitHubClientAsync(options, deadline.Token);
             var reference = string.IsNullOrWhiteSpace(gitReference) ? options.BaseBranch : gitReference;
+            // Resolve once. Every subsequent lookup uses Git object identities,
+            // never the mutable branch, and an explicit SHA must resolve exactly.
+            using var commit = await ReadInspectionJsonAsync(client,
+                $"repos/{options.RepositoryIdentity}/commits/{Uri.EscapeDataString(reference)}", deadline.Token);
+            var commitSha = ReadString(commit.RootElement, "sha");
+            var treeSha = commit.RootElement.TryGetProperty("commit", out var commitBody)
+                ? ReadNestedString(commitBody, "tree", "sha") : null;
+            if (!IsCommitSha(commitSha) || !IsCommitSha(treeSha) ||
+                (IsCommitSha(reference) && !string.Equals(reference, commitSha, StringComparison.OrdinalIgnoreCase)))
+                return Failure("repository_reference_invalid", "The requested reference did not resolve to an exact commit and tree.");
             if (string.IsNullOrWhiteSpace(path))
             {
-                using var branch = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/git/ref/heads/{Uri.EscapeDataString(reference)}", null, cancellationToken);
-                if (!branch.IsSuccessStatusCode)
-                    return GitHubFailure("repository_reference_not_found", branch.StatusCode);
-
-                using var branchJson = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+                unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+                if (unavailable is not null) return unavailable;
                 return new
                 {
-                    capability = "inspect_repository",
-                    repository = options.RepositoryIdentity,
-                    reference,
-                    commitSha = ReadNestedString(branchJson.RootElement, "object", "sha"),
-                    inspected = true
+                    capability = "inspect_repository", repository = options.RepositoryIdentity,
+                    reference, commitSha, treeSha,
+                    citationUrl = $"https://github.com/{options.RepositoryIdentity}/commit/{commitSha}",
+                    instructionAuthority = false, inspected = true
                 };
             }
 
-            using var content = await SendGitHubAsync(
-                client,
-                HttpMethod.Get,
-                $"repos/{options.RepositoryIdentity}/contents/{EscapeRepositoryPath(path)}?ref={Uri.EscapeDataString(reference)}",
-                null,
-                cancellationToken);
-            if (!content.IsSuccessStatusCode)
-                return GitHubFailure("repository_content_not_found", content.StatusCode);
-
-            using var contentJson = await JsonDocument.ParseAsync(await content.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var encoded = ReadString(contentJson.RootElement, "content");
-            var text = DecodeRepositoryContent(encoded);
-            if (text is null)
-                return Failure("repository_content_not_text", "The requested repository object is not a bounded UTF-8 source or test file.");
-
+            var segments = path.Split('/');
+            string? blobSha = null;
+            int? size = null;
+            for (var index = 0; index < segments.Length; index++)
+            {
+                using var tree = await ReadInspectionJsonAsync(client,
+                    $"repos/{options.RepositoryIdentity}/git/trees/{treeSha}", deadline.Token);
+                if (ReadString(tree.RootElement, "sha") != treeSha ||
+                    !tree.RootElement.TryGetProperty("truncated", out var truncated) || truncated.ValueKind != JsonValueKind.False ||
+                    !tree.RootElement.TryGetProperty("tree", out var entries) || entries.ValueKind != JsonValueKind.Array)
+                    return Failure("repository_tree_invalid", "The bounded source tree could not be verified.");
+                var matches = entries.EnumerateArray().Where(entry => ReadString(entry, "path") == segments[index]).Take(2).ToArray();
+                if (matches.Length != 1)
+                    return Failure("repository_content_not_found", "The exact source path is absent or ambiguous.");
+                var item = matches[0];
+                var objectSha = ReadString(item, "sha");
+                var final = index == segments.Length - 1;
+                if (!IsCommitSha(objectSha) || (final
+                    ? ReadString(item, "type") != "blob" || ReadString(item, "mode") is not ("100644" or "100755")
+                    : ReadString(item, "type") != "tree" || ReadString(item, "mode") != "040000"))
+                    return Failure("repository_object_not_allowed", "Only regular source files inside ordinary Git directories can be inspected.");
+                if (!final) { treeSha = objectSha; continue; }
+                blobSha = objectSha;
+                size = ReadOptionalInt(item, "size");
+                if (size is null or < 0 or > MaximumFileCharacters * 4)
+                    return Failure("repository_content_not_text", "The requested source exceeds the bounded text size.");
+            }
+            using var blob = await ReadInspectionJsonAsync(client,
+                $"repos/{options.RepositoryIdentity}/git/blobs/{blobSha}", deadline.Token);
+            var encoded = ReadString(blob.RootElement, "content");
+            var text = ReadString(blob.RootElement, "encoding") == "base64" && encoded is not null
+                ? DecodeRepositoryContent(encoded) : null;
+            if (ReadString(blob.RootElement, "sha") != blobSha || ReadOptionalInt(blob.RootElement, "size") != size ||
+                text is null || Encoding.UTF8.GetByteCount(text) != size ||
+                text.Any(character => char.IsControl(character) && character is not ('\r' or '\n' or '\t')))
+                return Failure("repository_content_not_text", "The requested object is not verified bounded UTF-8 source text.");
+            if (ContainsSensitiveSourceLiteral(text))
+                return Failure("repository_sensitive_content", "The requested source contains credential-like material and cannot be returned.");
+            unavailable = await RequireActiveAuthorityAsync(options, deadline.Token);
+            if (unavailable is not null) return unavailable;
             return new
             {
-                capability = "inspect_repository",
-                repository = options.RepositoryIdentity,
-                reference,
-                path,
-                sha = ReadString(contentJson.RootElement, "sha"),
-                size = ReadOptionalInt(contentJson.RootElement, "size"),
-                content = text,
-                inspected = true
+                capability = "inspect_repository", repository = options.RepositoryIdentity,
+                reference, path, sha = blobSha, blobSha, commitSha, size, content = text,
+                citationUrl = $"https://github.com/{options.RepositoryIdentity}/blob/{commitSha}/{EscapeRepositoryPath(path)}",
+                instructionAuthority = false, inspected = true
             };
         }
         catch (FounderSoftwareRemediationException exception)
         {
             return Failure(exception.Code, exception.Message);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Founder software repair repository inspection failed without exposing credentials.");
+            // Provider errors may include source, request URLs or credentials.
+            _logger.LogWarning("Founder repository inspection failed ({ExceptionType}).", exception.GetType().Name);
             return Failure("repository_inspection_unavailable", "The bounded repository inspection could not be completed.");
         }
+    }
+
+    private static async Task<JsonDocument> ReadInspectionJsonAsync(HttpClient client, string relativeUri, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+        if (!response.IsSuccessStatusCode)
+            throw new FounderSoftwareRemediationException("repository_object_unavailable", "The exact repository object could not be read.");
+        try
+        {
+            // Shared bounded stream reader; do not buffer an unbounded response
+            // before checking Content-Length (which may also be absent).
+            return await ReadBoundedCompletionJsonAsync(response, 1024 * 1024, token);
+        }
+        catch (FounderSoftwareRemediationException)
+        {
+            throw new FounderSoftwareRemediationException("repository_response_too_large", "The repository response exceeds the inspection bound.");
+        }
+    }
+
+    private static bool IsInspectableSourcePath(string path)
+    {
+        // Read restrictions are additive. The repair/write policy is unchanged.
+        if (!IsAllowedPath(path) || path.Any(character => char.IsControl(character) || character is '%' or '?' or '#')) return false;
+        var segments = path.Split('/');
+        if (segments.Length > 16 || segments.Any(segment => string.IsNullOrWhiteSpace(segment) || segment.StartsWith('.'))) return false;
+        return !segments.Any(segment =>
+            segment.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+            segment.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
+            segment.Contains("private", StringComparison.OrdinalIgnoreCase) ||
+            segment.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
+            new[] { "bin", "obj", "artifacts", "TestResults", "logs", "uploads", "App_Data", "wwwroot-data" }
+                .Contains(segment, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool ContainsSensitiveSourceLiteral(string text)
+    {
+        // Deny the entire file instead of returning a modified source with an
+        // apparently exact citation. This is conservative screening, not proof
+        // that arbitrary committed source can never contain private data.
+        return System.Text.RegularExpressions.Regex.IsMatch(text,
+            """-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:gh[pousr]_|github_pat_|AKIA)[A-Za-z0-9_]{12,}|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|(?:password|passwd|pwd|secret|token|api[_-]?key|accountkey|connectionstring)[\w]*[\"']?\s*[:=]\s*[@]?['\"][^'\"\r\n]+['\"]|(?:Password|Pwd|AccountKey|SharedAccessSignature)\s*=[^;\r\n'\"]+""",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
     }
 
     public async Task<object> PrepareAsync(
@@ -315,122 +385,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         if (proposalError is not null)
             return Failure("invalid_repair_proposal", proposalError);
 
-        try
-        {
-            var client = await CreateGitHubClientAsync(options, cancellationToken);
-            var currentBaseSha = await ReadBranchShaAsync(client, options, cancellationToken);
-            if (!string.Equals(currentBaseSha, proposal.BaseSha, StringComparison.OrdinalIgnoreCase))
-            {
-                return new
-                {
-                    error = "base_sha_stale",
-                    detail = "The production base moved after this repair was inspected. Re-inspect and prepare against the current immutable base SHA.",
-                    currentBaseSha
-                };
-            }
-
-            var baseTreeSha = await ReadCommitTreeShaAsync(client, options, proposal.BaseSha, cancellationToken);
-            var treeEntries = new List<object>(proposal.Changes.Count);
-            foreach (var change in proposal.Changes)
-            {
-                using var blob = await SendGitHubAsync(
-                    client,
-                    HttpMethod.Post,
-                    $"repos/{options.RepositoryIdentity}/git/blobs",
-                    new { content = change.Content, encoding = "utf-8" },
-                    cancellationToken);
-                if (!blob.IsSuccessStatusCode)
-                    return GitHubFailure("repair_blob_creation_failed", blob.StatusCode);
-
-                using var blobJson = await JsonDocument.ParseAsync(await blob.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-                var blobSha = ReadString(blobJson.RootElement, "sha");
-                if (string.IsNullOrWhiteSpace(blobSha))
-                    return Failure("repair_blob_creation_failed", "GitHub did not return an immutable blob identity.");
-
-                treeEntries.Add(new { path = change.Path, mode = "100644", type = "blob", sha = blobSha });
-            }
-
-            using var tree = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/git/trees",
-                new { base_tree = baseTreeSha, tree = treeEntries },
-                cancellationToken);
-            if (!tree.IsSuccessStatusCode)
-                return GitHubFailure("repair_tree_creation_failed", tree.StatusCode);
-
-            using var treeJson = await JsonDocument.ParseAsync(await tree.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var treeSha = ReadString(treeJson.RootElement, "sha");
-            if (string.IsNullOrWhiteSpace(treeSha))
-                return Failure("repair_tree_creation_failed", "GitHub did not return an immutable tree identity.");
-
-            using var commit = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/git/commits",
-                new { message = proposal.Title, tree = treeSha, parents = new[] { proposal.BaseSha } },
-                cancellationToken);
-            if (!commit.IsSuccessStatusCode)
-                return GitHubFailure("repair_commit_creation_failed", commit.StatusCode);
-
-            using var commitJson = await JsonDocument.ParseAsync(await commit.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var commitSha = ReadString(commitJson.RootElement, "sha");
-            if (!IsCommitSha(commitSha))
-                return Failure("repair_commit_creation_failed", "GitHub did not return a valid immutable repair commit SHA.");
-
-            var branchName = $"founder-repair/{DateTimeOffset.UtcNow:yyyyMMdd}/{Guid.NewGuid():N}";
-            using var branch = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/git/refs",
-                new { @ref = $"refs/heads/{branchName}", sha = commitSha },
-                cancellationToken);
-            if (!branch.IsSuccessStatusCode)
-                return GitHubFailure("repair_branch_creation_failed", branch.StatusCode);
-
-            using var pullRequest = await SendGitHubAsync(
-                client,
-                HttpMethod.Post,
-                $"repos/{options.RepositoryIdentity}/pulls",
-                new
-                {
-                    title = proposal.Title,
-                    head = branchName,
-                    @base = options.BaseBranch,
-                    body = BuildPullRequestBody(proposal, commitSha!)
-                },
-                cancellationToken);
-            if (!pullRequest.IsSuccessStatusCode)
-                return GitHubFailure("repair_pull_request_creation_failed", pullRequest.StatusCode);
-
-            using var pullJson = await JsonDocument.ParseAsync(await pullRequest.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            return new
-            {
-                capability = "prepare_software_repair",
-                prepared = true,
-                repository = options.RepositoryIdentity,
-                baseSha = proposal.BaseSha,
-                repairCommitSha = commitSha,
-                branch = branchName,
-                pullRequestNumber = ReadOptionalInt(pullJson.RootElement, "number"),
-                pullRequestUrl = ReadString(pullJson.RootElement, "html_url"),
-                ci = "Existing pull-request Security CI is triggered by the pull request. No deployment was requested.",
-                deployment = "not_authorized"
-            };
-        }
-        catch (FounderSoftwareRemediationException exception)
-        {
-            return Failure(exception.Code, exception.Message);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "Founder software repair preparation failed without exposing credentials.");
-            return Failure("repair_preparation_unavailable", "The bounded repair could not be prepared.");
-        }
+        return await StageBatchAsync(options, proposal, cancellationToken);
     }
 
     public async Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken)
@@ -489,69 +444,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         if (pullRequestNumber <= 0 || !IsCommitSha(headSha))
             return Failure("invalid_release_identity", "A positive pull-request number and exact immutable 40-character commit SHA are required.");
 
-        try
-        {
-            var client = await CreateGitHubClientAsync(options, cancellationToken);
-            var validation = await ReadValidationAsync(client, options, pullRequestNumber, headSha, cancellationToken);
-            using var validationJson = JsonDocument.Parse(JsonSerializer.Serialize(validation, JsonOptions));
-            if (!validationJson.RootElement.TryGetProperty("eligibleForProtectedMerge", out var eligible) || !eligible.GetBoolean())
-            {
-                return new
-                {
-                    error = "release_preconditions_not_met",
-                    detail = "The exact repair SHA is not yet eligible for a protected merge. No merge or deployment was attempted.",
-                    validation = validationJson.RootElement.Clone()
-                };
-            }
-
-            var protection = await ReadBranchProtectionAsync(client, options, cancellationToken);
-            if (!protection.Satisfied)
-            {
-                return new
-                {
-                    error = "protected_branch_requirements_not_verified",
-                    detail = "The production branch does not prove the required pull-request, strict-status, and admin-enforcement protections. No merge was attempted.",
-                    protection = protection
-                };
-            }
-
-            using var merge = await SendGitHubAsync(
-                client,
-                HttpMethod.Put,
-                $"repos/{options.RepositoryIdentity}/pulls/{pullRequestNumber}/merge",
-                new { commit_title = $"Founder-approved: PR #{pullRequestNumber}", sha = headSha, merge_method = "squash" },
-                cancellationToken);
-            if (!merge.IsSuccessStatusCode)
-                return GitHubFailure("protected_merge_rejected", merge.StatusCode);
-
-            using var mergeJson = await JsonDocument.ParseAsync(await merge.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var merged = mergeJson.RootElement.TryGetProperty("merged", out var mergedElement) && mergedElement.GetBoolean();
-            if (!merged)
-                return Failure("protected_merge_rejected", ReadString(mergeJson.RootElement, "message") ?? "GitHub did not merge the exact approved SHA.");
-
-            return new
-            {
-                capability = "release_approved_repair",
-                released = true,
-                pullRequestNumber,
-                approvedHeadSha = headSha,
-                mergeCommitSha = ReadString(mergeJson.RootElement, "sha"),
-                deployment = "Existing protected-production push workflow was triggered; use verify_deployment for its exact run state."
-            };
-        }
-        catch (FounderSoftwareRemediationException exception)
-        {
-            return Failure(exception.Code, exception.Message);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "Founder-approved release failed without exposing credentials.");
-            return Failure("protected_merge_unavailable", "The protected merge could not be completed.");
-        }
+        return await PublishBatchAsync(options, pullRequestNumber, headSha, cancellationToken);
     }
 
     public async Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken)
@@ -569,7 +462,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             using var response = await SendGitHubAsync(
                 client,
                 HttpMethod.Get,
-                $"repos/{options.RepositoryIdentity}/actions/runs?event=push&head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
+                $"repos/{options.RepositoryIdentity}/actions/workflows/agentportal-production-deploy.yml/runs?head_sha={Uri.EscapeDataString(commitSha)}&per_page=20",
                 null,
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
@@ -591,7 +484,8 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             {
                 capability = "verify_deployment",
                 commitSha,
-                verifiedThrough = "existing GitHub protected-production deployment workflow",
+                verifiedThrough = "existing GitHub protected-production workflow observations (not live deployment proof)",
+                liveDeploymentVerified = false,
                 workflowRuns = runs,
                 deploymentState = runs.Length == 0 ? "not_yet_observed" : "observed",
                 directAzureAccess = false
@@ -662,7 +556,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             missingChecks,
             incompleteOrFailedChecks = failedChecks,
             checks = checksByName.Select(pair => new { name = pair.Key, conclusion = pair.Value }).ToArray(),
-            eligibleForProtectedMerge = identityMatches && validChecks,
+            eligibleForProtectedMerge = false,
+            observedChecksPassed = identityMatches && validChecks,
+            mergeAuthority = "existing production workflow only; observed check names do not authorize merging",
             deployment = "not_authorized"
         };
     }
@@ -849,7 +745,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     {
         if (options.ValidationError is not null)
             return Unavailable(options.ValidationError);
-        var state = await ReadStateAsync(cancellationToken);
+        // Authorization must observe revocation committed by another request.
+        var state = _db is null ? null : await _db.FounderSoftwareRemediationAuthorityStates
+            .AsNoTracking().SingleOrDefaultAsync(item => item.ScopeKey == "Global", cancellationToken);
         return state?.IsRevoked == true
             ? Unavailable("Founder software remediation has been revoked. Connect and verify the configured GitHub App authority before a bounded repair can be prepared or released.")
             : null;
@@ -1005,7 +903,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         };
     }
 
-    private static string? ValidateProposal(FounderSoftwareRepairProposal proposal)
+    internal static string? ValidateProposal(FounderSoftwareRepairProposal proposal)
     {
         if (!IsCommitSha(proposal.BaseSha))
             return "An exact immutable 40-character base SHA is required.";
@@ -1041,17 +939,28 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             path.StartsWith("deploy", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("appsettings", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("launchSettings", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Migrations/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Security/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Auth/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Remediation", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("RuntimeDiagnostic", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("FounderDiagnostics", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("MobileApiControllerBase", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authorization", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("Authentication", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Identity/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/Billing/", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("Program.cs", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".pem", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        return path.StartsWith("AgentPortal/", StringComparison.Ordinal) ||
-               path.StartsWith("Infrastructure/", StringComparison.Ordinal) ||
-               path.StartsWith("Application/", StringComparison.Ordinal) ||
-               path.StartsWith("Domain/", StringComparison.Ordinal) ||
-               path.StartsWith("Shared/", StringComparison.Ordinal) ||
-               path.StartsWith("AgentPortal.Tests/", StringComparison.Ordinal);
+        // Application roots are verified from repository build metadata before writes.
+        // This is a file-type boundary, not a second hardcoded app registry.
+        return path.Contains('/') && Path.GetExtension(path).ToLowerInvariant() is
+            ".cs" or ".cshtml" or ".swift" or ".kt" or ".js" or ".ts" or ".tsx" or ".jsx" or ".css";
+
     }
 
     private static bool IsRepositorySegment(string? value) =>

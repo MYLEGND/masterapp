@@ -5531,8 +5531,8 @@ body.life-landing:not(.life-quote-started) .lq-contact-first-hero-image {
 
 body.life-landing:not(.life-quote-started) .lq-hero-banner-wrap {
     position: relative;
-    max-width: 1040px;
-    margin: 0 auto 18px;
+    max-width: 720px;
+    margin: 0 auto 14px;
     border-radius: 18px;
     border: 1.7px solid rgba(218,155,39,0.92);
     box-shadow:
@@ -6112,6 +6112,7 @@ input:checked + .lq-answer-card {
     </div>
 <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
         @Html.AntiForgeryToken()
+        <input type="hidden" name="SubmissionId" value="@(Context?.Request is { HasFormContentType: true } submissionRequest && Guid.TryParse(submissionRequest.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
         @if (!string.IsNullOrWhiteSpace(agentSlug))
         {
             <input type="hidden" name="AgentSlug" value="@agentSlug" />
@@ -8591,47 +8592,6 @@ const contactFieldProgress = new Map();
     contactStepViewTracked = true;
     trackEvent('contact_step_view', metadata);
   }
-
-  let lifeFormSubmitSucceeded = false;
-  let lifeFormAbandonTracked = false;
-
-  function shouldTrackLifeFormAbandon() {
-    return quoteStartTracked && !lifeFormSubmitSucceeded && !postSubmitSuccessActive;
-  }
-
-  function trackLifeFormAbandon(reason = 'unknown') {
-    if (lifeFormAbandonTracked || !shouldTrackLifeFormAbandon()) {
-      return;
-    }
-
-    lifeFormAbandonTracked = true;
-    const contactSnapshot = getContactCompletionSnapshot();
-
-    trackEvent('form_abandon', {
-      reason,
-      pageVariant,
-      pageMode,
-      quoteType: 'life',
-      contactStepReached: Boolean(contactSnapshot.contactStepReached),
-      contactFocusedCount: contactSnapshot.contactFocusedCount,
-      contactCompletedCount: contactSnapshot.contactCompletedCount,
-      lastContactFieldFocused: contactSnapshot.lastContactFieldFocused || '',
-      lastContactFieldCompleted: contactSnapshot.lastContactFieldCompleted || '',
-      requiredContactFieldsComplete: Boolean(contactSnapshot.requiredContactFieldsComplete)
-    });
-  }
-
-  ['pagehide', 'beforeunload'].forEach((eventName) => {
-    window.addEventListener(eventName, () => {
-      trackLifeFormAbandon(eventName);
-    });
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      trackLifeFormAbandon('visibility_hidden');
-    }
-  });
 
   function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
     return safeTrackingCall(`track:form_submit:${submitOutcome}`, () => window.LegendAnalytics?.trackEvent?.(
@@ -11732,7 +11692,6 @@ const contactFieldProgress = new Map();
       const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
       const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
       metaSignalApi?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
-      lifeFormSubmitSucceeded = true;
       form._trackSubmitSuccess?.();
       if (tracksContactFirstFlow) {
         await flushContactFirstSuccessTracking(leadId, metaLeadEventId);
@@ -11993,14 +11952,14 @@ main.layout-content,
     width: 100%;
     max-width: 1180px;
     margin: 0 auto;
-    padding: 28px 20px 34px !important;
+    padding: 22px 20px 64px !important;
 }
 
 body.life-landing .lq-hero-shell,
 .lq-hero-shell {
     width: min(100%, 980px) !important;
     max-width: 980px !important;
-    margin: 12px auto 22px !important;
+    margin: 18px auto 56px !important;
     padding: clamp(22px, 3vw, 34px) !important;
     border-radius: 28px !important;
     border: 1.4px solid var(--lq-border) !important;
@@ -12441,7 +12400,7 @@ body.life-final-step-active .lq-hero-shell {
     .lq-hero-shell {
         width: calc(100vw - 12px) !important;
         max-width: calc(100vw - 12px) !important;
-        margin: 6px auto 14px !important;
+        margin: 14px auto 28px !important;
         padding: 14px 12px 16px !important;
         border-radius: 22px !important;
     }

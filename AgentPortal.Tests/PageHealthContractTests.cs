@@ -13,6 +13,8 @@ public sealed class PageHealthContractTests
     [InlineData("AgentPortal", "Views", "Shared", "_Layout.cshtml")]
     [InlineData("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml")]
     [InlineData("ClientApp", "Views", "Shared", "_Layout.cshtml")]
+    [InlineData("ParfaitApp", "Views", "Shared", "_Layout.cshtml")]
+    [InlineData("Protect-Website", "Views", "Shared", "_Layout.cshtml")]
     public void RenderedLayouts_LoadOneSharedPageHealthSystemBeforePageContent(params string[] path)
     {
         var source = Read(path);
@@ -23,30 +25,31 @@ public sealed class PageHealthContractTests
     }
 
     [Fact]
-    public void SharedPageHealth_ProvidesTheSinglePageDiagnosticsAuthority()
+    public void SharedPageHealth_PreservesOneObserverWithoutPublicDiagnosticsOrPrivateStorage()
     {
         var source = Read("SHARED", "wwwroot", "js", "page-health.js");
         var host = Read("SHARED", "Views", "Diagnostics", "_PageHealth.cshtml");
         var stylesheet = Read("SHARED", "wwwroot", "css", "page-health.css");
 
-        Assert.Equal(1, CountOccurrences(host, "~/_content/Shared/css/page-health.css"));
+        Assert.DoesNotContain("~/_content/Shared/css/page-health.css", host, StringComparison.Ordinal);
         Assert.Equal(1, CountOccurrences(host, "~/_content/Shared/js/page-health.js"));
+        Assert.Contains("GetAndStoreTokens(Context)", host, StringComparison.Ordinal);
+        Assert.Contains("data-csrf=", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("AgentPortal.", host, StringComparison.Ordinal);
         Assert.Contains("window.LegendPageHealth = Object.freeze({ current });", source, StringComparison.Ordinal);
         Assert.Contains("window.addEventListener(\"error\"", source, StringComparison.Ordinal);
         Assert.Contains("window.addEventListener(\"unhandledrejection\"", source, StringComparison.Ordinal);
         Assert.Contains("window.fetch = async function", source, StringComparison.Ordinal);
-        // Recovery now includes HTTP failures and respects overlapping request order.
-        // Cancellation, recovery, and ordering behavior is exercised in tests/layout/page-health.test.mjs.
-        Assert.Contains("function resolveNetworkFailures(url, method, sequence)", source, StringComparison.Ordinal);
-        Assert.Contains("function pruneTransientNetworkKnowledge()", source, StringComparison.Ordinal);
-        Assert.Contains("if (!payload.isTransientNetworkFailure) updateKnowledge(event);", source, StringComparison.Ordinal);
-        Assert.Contains("if (response.ok)", source, StringComparison.Ordinal);
-        Assert.Contains("resolveNetworkFailures(url, method, sequence);", source, StringComparison.Ordinal);
-        Assert.Contains("Page Health", source, StringComparison.Ordinal);
-        Assert.Contains("box-sizing: border-box", stylesheet, StringComparison.Ordinal);
-        Assert.Contains("legend-page-health-bottom-reserved", stylesheet, StringComparison.Ordinal);
-        Assert.Contains("ResizeObserver", source, StringComparison.Ordinal);
-        Assert.Contains("function syncPlacement()", source, StringComparison.Ordinal);
+        // Behavior, bounded retries and private-content exclusion are executed in
+        // tests/layout/page-health.test.mjs. Classification belongs to the server.
+        Assert.Equal(1, CountOccurrences(source, "window.fetch = async function"));
+        Assert.Contains("/api/runtime-diagnostics", source, StringComparison.Ordinal);
+        Assert.Contains("RequestVerificationToken", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("localStorage.getItem", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("localStorage.setItem", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("createElement", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend-page-health-bottom-reserved", stylesheet, StringComparison.Ordinal);
+        Assert.DoesNotContain("explorePageHealth", Read("AgentPortal", "Views", "Shared", "_Layout.cshtml"), StringComparison.Ordinal);
     }
 
     [Theory]

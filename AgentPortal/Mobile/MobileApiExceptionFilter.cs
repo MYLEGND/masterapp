@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Shared.Diagnostics;
 
 namespace AgentPortal.Mobile;
 
@@ -12,14 +13,11 @@ public sealed class MobileApiExceptionFilter : IAsyncExceptionFilter
         _logger = logger;
     }
 
-    public Task OnExceptionAsync(ExceptionContext context)
+    public async Task OnExceptionAsync(ExceptionContext context)
     {
         var correlationId = context.HttpContext.TraceIdentifier;
-        _logger.LogError(
-            context.Exception,
-            "Unhandled mobile API request failure. CorrelationId={CorrelationId} Path={Path}",
-            correlationId,
-            context.HttpContext.Request.Path);
+        await LegendFailureDiagnosticsExtensions.CaptureExceptionAsync(
+            context.HttpContext, context.Exception, logger: _logger);
 
         context.Result = new ObjectResult(new MobileApiErrorResponse(
             "mobile_request_failed",
@@ -32,6 +30,5 @@ public sealed class MobileApiExceptionFilter : IAsyncExceptionFilter
         };
         context.HttpContext.Response.Headers["X-Correlation-ID"] = correlationId;
         context.ExceptionHandled = true;
-        return Task.CompletedTask;
     }
 }

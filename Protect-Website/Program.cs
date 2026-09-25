@@ -1,3 +1,5 @@
+using Infrastructure.Diagnostics;
+using Shared.Diagnostics;
 using Infrastructure.DailyScripture;
 using ProtectWebsite.Services.Communication;
 using Azure.Identity;
@@ -12,6 +14,7 @@ using System.IO;
 using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 // Enable app-level logs in Azure log stream so Meta CAPI send/skip/fail results are visible.
 builder.Logging.AddConsole();
@@ -34,8 +37,36 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 }
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
+builder.Services.AddScoped<ProtectWebsite.Services.IWebsiteStudioAiProposalService, ProtectWebsite.Services.WebsiteStudioAiProposalService>();
+Infrastructure.Social.SocialServiceCollectionExtensions.AddMasterAppMediaStorage(builder.Services);
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.PublicWebsiteRuntimeScopeResolver>();
+builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
+builder.Services.AddSingleton<ProtectWebsite.Services.WebsitePageCompiler>();
+builder.Services.AddHostedService<ProtectWebsite.Services.WebsitePublishWorker>();
+var publicWebsiteOrigins = new[]
+{
+    "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com",
+    "https://portal.mylegnd.com", "https://client.mylegnd.com"
+};
+builder.Services.AddRuntimeDiagnosticPublicWebsiteTransport(publicWebsiteOrigins);
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PublicWebsiteEditor", policy =>
+        policy.WithOrigins(publicWebsiteOrigins)
+            .AllowAnyHeader()
+            .WithMethods("GET", "POST"));
+});
+
+builder.Services.AddScoped<Microsoft.AspNetCore.Cors.Infrastructure.ICorsPolicyProvider, Infrastructure.WebsiteEditing.WebsiteCorsPolicyProvider>();
 
 // DbContext for tracking resolution
 static bool IsSqlServerConn(string? cs) =>
@@ -72,6 +103,8 @@ else
 }
 
 builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
+builder.Services.AddScoped<BusinessInquiryNotificationService>();
+builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
@@ -122,6 +155,8 @@ builder.Services.AddSession(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
+
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
 
@@ -186,12 +221,18 @@ else
     app.UseHsts();
 }
 
+app.UseLegendFailureDiagnostics();
 app.UseHttpsRedirection();
 // Agent slug routing / context must run before routing so rewritten paths are routed correctly
 app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
+app.UseMiddleware<ProtectWebsite.Services.BusinessWebsiteMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
+    diagnostics => diagnostics.UseCors(RuntimeDiagnosticsExtensions.PublicWebsiteCorsPolicy));
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/runtime-diagnostics"),
+    editor => editor.UseCors("PublicWebsiteEditor"));
 app.UseRateLimiter();
 
 // 🔹 Enable session BEFORE MVC

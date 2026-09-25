@@ -52,6 +52,35 @@ public sealed class AgentTrackingResolver
         }
     }
 
+    public async Task<ResolveResult> ResolveByIdAsync(Guid profileId, CancellationToken ct = default)
+    {
+        try
+        {
+            var profile = await _db.AgentTrackingProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == profileId, ct);
+
+            if (profile == null)
+            {
+                _logger.LogInformation("SlugResolution: unknown profile id {ProfileId}", profileId);
+                return ResolveResult.NotFound;
+            }
+
+            var canonical = await _db.AgentTrackingAliases
+                .AsNoTracking()
+                .Where(a => a.AgentTrackingProfileId == profileId && a.IsCanonical)
+                .Select(a => a.Slug)
+                .FirstOrDefaultAsync(ct) ?? profile.Slug;
+
+            return new ResolveResult(profile, canonical, canonical, true, Found: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SlugResolution: DB resolve failed for profile id {ProfileId}", profileId);
+            return ResolveResult.NotFound;
+        }
+    }
+
     public async Task<ResolveResult> ResolveByUpnAsync(string upn, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(upn)) return ResolveResult.NotFound;

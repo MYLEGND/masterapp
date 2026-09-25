@@ -1,0 +1,770 @@
+{
+  "schemaVersion": "independent-language-review-v1",
+  "reviewedAtUtc": "2026-09-18T15:35:21.363335+00:00",
+  "reviewProvenance": {
+    "reviewerAgent": "/root/translation_language_review",
+    "reviewerType": "AI assistant",
+    "exactModelIdentity": "Unavailable in reviewer-visible system metadata; no exact model claimed.",
+    "independentOfArtifactAuthors": true,
+    "authoredTranslations": false,
+    "onlyWrittenFile": "Docs/legend-connect/translation-admission-20260918/language-review.json",
+    "humanVerified": false,
+    "humanApprovalGranted": false,
+    "externalTranslationOrProviderApiUsed": false,
+    "method": "Read every English/translation pair in all eleven artifacts, not sampling. Checked naturalness, meaning, accessibility wording, insurance qualifications, numbers, placeholders and branding. Sent precise findings to respective authors, then read their revised entries. Performed independent canonical identity and inventory checks."
+  },
+  "repository": {
+    "branch": "repair/translation-admission-20260918",
+    "initialInspectedBaseSha": "fd22853357d4005269a0bf73ae88602c949d8995",
+    "headAtReport": "5fbf5c94d44dd9ddf33796058bfbe2b84db969e1",
+    "binding": "Artifact SHA-256 hashes below are authoritative for this language review. This is not exact-commit release approval; final text deltas/report may be uncommitted.",
+    "deployedSha": "UNVERIFIED"
+  },
+  "catalogVersion": "application-copy-v1-359c3319a219c821",
+  "catalogEntryCount": 5878,
+  "counts": {
+    "mainByLanguage": {
+      "es": 670,
+      "fr": 670,
+      "ht": 656
+    },
+    "newPublicByLanguage": {
+      "es": 33,
+      "fr": 33,
+      "ht": 33
+    },
+    "pendingByLanguage": {
+      "ht": 6,
+      "es": 6,
+      "fr": 6
+    },
+    "reviewedByLanguage": {
+      "es": 709,
+      "fr": 709,
+      "ht": 695
+    },
+    "reviewedTotal": 2113,
+    "admissibleByLanguage": {
+      "es": 703,
+      "fr": 703,
+      "ht": 689
+    },
+    "admissibleTotal": 2095,
+    "pendingTotal": 18
+  },
+  "artifacts": [
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/es-part-01.json",
+      "sha256": "3b0a27a7837a57d97c844acac1d1c98516026f4976f74d9a0d02284542e5158e",
+      "entryCount": 250,
+      "reviewedEntryCount": 250,
+      "countsByLanguage": {
+        "es": 250
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/es-part-02.json",
+      "sha256": "9693da1d56d215742dbc4ddc37ac8bddc8dee2365b2b867196c1e55a10df7b1f",
+      "entryCount": 250,
+      "reviewedEntryCount": 250,
+      "countsByLanguage": {
+        "es": 250
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/es-part-03.json",
+      "sha256": "86ed636e8083c899b2615d8c1be6c8f70a30b97ad417ef21502eba6c0978f7e9",
+      "entryCount": 170,
+      "reviewedEntryCount": 170,
+      "countsByLanguage": {
+        "es": 170
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/fr-part-01.json",
+      "sha256": "da6a5648352544ebfeb3c708391bbb8cf8572e7a4e8a2130d20fb26f3f4224a7",
+      "entryCount": 250,
+      "reviewedEntryCount": 250,
+      "countsByLanguage": {
+        "fr": 250
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/fr-part-02.json",
+      "sha256": "58f30f87b38936822d844ea80a67b504caca4d45f2efde481e894c538a41bea7",
+      "entryCount": 250,
+      "reviewedEntryCount": 250,
+      "countsByLanguage": {
+        "fr": 250
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/fr-part-03.json",
+      "sha256": "0aad8c77d0a564e14420b5b0ebf3b3227afaeb98405ed6f1424b7a435357a6e0",
+      "entryCount": 170,
+      "reviewedEntryCount": 170,
+      "countsByLanguage": {
+        "fr": 170
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/ht-part-01.json",
+      "sha256": "d19a301f86cc897b065d10422e64651c55825e38c50016bfeda2c45f7142ab07",
+      "entryCount": 250,
+      "reviewedEntryCount": 250,
+      "countsByLanguage": {
+        "ht": 250
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/ht-part-02.json",
+      "sha256": "5517e3b53168b652406ac59ea2f16fc585de59f615489958a7903dbf0e3923b8",
+      "entryCount": 250,
+      "reviewedEntryCount": 250,
+      "countsByLanguage": {
+        "ht": 250
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/ht-part-03.json",
+      "sha256": "a7c43349a744618aa5ad1560175d758a0f793375e62e24526f8c3099ba071512",
+      "entryCount": 156,
+      "reviewedEntryCount": 156,
+      "countsByLanguage": {
+        "ht": 156
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/new-public-copy.json",
+      "sha256": "10d4e8ef23c5a9be454bbcf78058631f12d121b1f9e22c2e35ff8cb6358904f9",
+      "entryCount": 99,
+      "reviewedEntryCount": 99,
+      "countsByLanguage": {
+        "ht": 33,
+        "es": 33,
+        "fr": 33
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/approved-only-pending.json",
+      "sha256": "b9d0197a0564e29ae963608fa2bfcf650162b9fbcf1457accb1abd743a8e2d56",
+      "entryCount": 18,
+      "reviewedEntryCount": 18,
+      "countsByLanguage": {
+        "ht": 6,
+        "es": 6,
+        "fr": 6
+      },
+      "catalogVersion": "application-copy-v1-359c3319a219c821",
+      "reviewMethod": "Every entry read against English source; subsequently changed translations reread."
+    }
+  ],
+  "sourceEvidence": [
+    {
+      "path": "Legend-Design/legend-application-copy.json",
+      "sha256": "4f5abf66355d736373eec746b0b54ef272cdff53aec05015471bd13d24bce7f9"
+    },
+    {
+      "path": "Docs/legend-connect/translation-admission-20260918/before-public-copy-inventory.json",
+      "sha256": "336fc6dea086d8d26fc6dc2a2204e708f7f1be43bc0c1edb889ee2c6e85441a6"
+    }
+  ],
+  "contextEvidence": [
+    ".github/copilot-instructions.md",
+    ".github/agents/masterapp-verification-engineer.agent.md",
+    "ClientApp/Views/Dashboard/Index.cshtml: partner link",
+    "ClientApp/Views/ProtectionSnapshot/Index.cshtml: household, retirement priority and nextReviewUtc date input",
+    "ClientApp/Controllers/ProtectionSnapshotController.cs: Protection Peak life stage",
+    "ClientApp/Views/Home/Index.cshtml: Life Risk description",
+    "AgentPortal/Views/LegendConnect/Index.cshtml: protected acquisition estimate",
+    "Infrastructure/Messaging/LegendConnectCapacity.cs: safe acquisition capacity"
+  ],
+  "resolvedFindings": [
+    {
+      "finding": "partner-action",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Action opens a partner website, not the partner as a person.",
+      "originalExamples": [
+        "Abrir socio",
+        "Ouvrir le partenaire",
+        "Louvri Patnè"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.5ee2f0acaa64e47841d46fca",
+          "source": "Launch Partner",
+          "reviewedFinalText": "Abrir sitio del socio"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.5ee2f0acaa64e47841d46fca",
+          "source": "Launch Partner",
+          "reviewedFinalText": "Ouvrir le site du partenaire"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.5ee2f0acaa64e47841d46fca",
+          "source": "Launch Partner",
+          "reviewedFinalText": "Louvri sit patnè a"
+        }
+      ]
+    },
+    {
+      "finding": "managed-account-label",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Label precedes managed client name; noun-only translation did not fit the UI phrase.",
+      "originalExamples": [
+        "Gestión",
+        "Gestion",
+        "Jesyon"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.141387155218dc424ab0c63c",
+          "source": "Managing",
+          "reviewedFinalText": "Gestionando"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.141387155218dc424ab0c63c",
+          "source": "Managing",
+          "reviewedFinalText": "Gestion de"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.141387155218dc424ab0c63c",
+          "source": "Managing",
+          "reviewedFinalText": "Ap jere"
+        }
+      ]
+    },
+    {
+      "finding": "household-position",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Card describes household life stage and financial circumstances, not a person’s position within the household.",
+      "originalExamples": [
+        "Posición en el hogar",
+        "Pozisyon nan Fwaye a"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.e22e7c78eff9a5da88e340cb",
+          "source": "Household Position",
+          "reviewedFinalText": "Situación del hogar"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.e22e7c78eff9a5da88e340cb",
+          "source": "Household Position",
+          "reviewedFinalText": "Sitiyasyon Fwaye a"
+        }
+      ]
+    },
+    {
+      "finding": "life-stage-protection-peak",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Protection Peak is a household life stage, age 50–64 in controller, not a numerical maximum.",
+      "originalExamples": [
+        "Máximo de protección",
+        "Sommet de protection",
+        "Somè Pwoteksyon"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.09ecd1152e55d14834828886",
+          "source": "Protection Peak",
+          "reviewedFinalText": "Etapa de máxima protección"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.09ecd1152e55d14834828886",
+          "source": "Protection Peak",
+          "reviewedFinalText": "Phase de protection maximale"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.09ecd1152e55d14834828886",
+          "source": "Protection Peak",
+          "reviewedFinalText": "Etap pwoteksyon maksimòm"
+        }
+      ]
+    },
+    {
+      "finding": "review-target-is-date",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Input is type=date, so goal/objective alone was misleading.",
+      "originalExamples": [
+        "Objetivo de la próxima revisión",
+        "Objectif de la prochaine revue"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.200ee346b18e375773dcb116",
+          "source": "Next review target",
+          "reviewedFinalText": "Fecha prevista de la próxima revisión"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.200ee346b18e375773dcb116",
+          "source": "Next review target",
+          "reviewedFinalText": "Date prévue de la prochaine revue"
+        }
+      ]
+    },
+    {
+      "finding": "life-risk-scope",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Life Risk card includes income/life-event disruptions; translated as broad risks of life.",
+      "originalExamples": [
+        "Riesgo de vida",
+        "Risque de décès"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.2ea29c2ff9cf6ec0032714f7",
+          "source": "Life Risk",
+          "reviewedFinalText": "Riesgos de la vida"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.2ea29c2ff9cf6ec0032714f7",
+          "source": "Life Risk",
+          "reviewedFinalText": "Risques de la vie"
+        }
+      ]
+    },
+    {
+      "finding": "life-insurance-scope",
+      "evidenceClass": "CONFIRMED",
+      "issue": "French death-only terminology narrowed life-insurance scope despite living-benefit context.",
+      "originalExamples": [
+        "Décès",
+        "Assurance décès en place",
+        "Les garanties décès et invalidité"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "fr",
+          "id": "application.copy.4afafd15c7ae4215fc3b16ca",
+          "source": "Life",
+          "reviewedFinalText": "Assurance vie"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.45d75e8ba5de657dfec31a5d",
+          "source": "Life insurance in place",
+          "reviewedFinalText": "Assurance vie en place"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.bc1d0d30e7124c50e174089c",
+          "source": "Life and disability coverage keep income and goals intact after unexpected events.",
+          "reviewedFinalText": "Les garanties d’assurance vie et d’invalidité préservent les revenus et les objectifs après des événements imprévus."
+        }
+      ]
+    },
+    {
+      "finding": "sequential-sections",
+      "evidenceClass": "CONFIRMED",
+      "issue": "One section at a time does not mean participants taking turns.",
+      "originalExamples": [
+        "Nous parcourrons chaque section à tour de rôle"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "fr",
+          "id": "application.copy.b5a29a1247689976a2ed9071",
+          "source": "We will walk this one section at a time in plain language.",
+          "reviewedFinalText": "Nous avancerons une section à la fois, en termes simples."
+        }
+      ]
+    },
+    {
+      "finding": "view-not-life",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Haitian Creole Vi means life and was misleading for a UI view.",
+      "originalExamples": [
+        "Vi Ajan an",
+        "Vi ajan an",
+        "Kite Vi a"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "ht",
+          "id": "application.copy.71cb84a3bc665a48a9568df8",
+          "source": "Agent View",
+          "reviewedFinalText": "Afichaj Ajan an"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.ee4c0d133d061b7022f74545",
+          "source": "Agent view",
+          "reviewedFinalText": "Afichaj ajan an"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.d5e3d2052b096a832e55c17e",
+          "source": "Exit View",
+          "reviewedFinalText": "Soti nan afichaj la"
+        }
+      ]
+    },
+    {
+      "finding": "membership-status",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Distinguished membership/status from the member as a person.",
+      "originalExamples": [
+        "Rezime manm nan",
+        "Konfime manm nan"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "ht",
+          "id": "application.copy.7a45ecb00c58ef7c849f629c",
+          "source": "Membership summary",
+          "reviewedFinalText": "Rezime estati manm nan"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.8288e7e7b59681745eab5b80",
+          "source": "Confirm membership",
+          "reviewedFinalText": "Konfime estati manm nan"
+        }
+      ]
+    },
+    {
+      "finding": "upload-direction",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Distinguished uploading with Voye from Download/Telechaje.",
+      "originalExamples": [
+        "Telechaje used for both directions"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "ht",
+          "id": "application.copy.4bb620f7f05f24db33d77728",
+          "source": "Upload policy documents",
+          "reviewedFinalText": "Voye dokiman kontra asirans yo"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.152293e53f107f70e851a80a",
+          "source": "No policy documents have been uploaded yet.",
+          "reviewedFinalText": "Poko gen dokiman kontra asirans ki voye."
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.5ce025cd65b403de2f68d30f",
+          "source": "Upload by policy type, keep files grouped by year, and filter the vault instantly by selected policy type.",
+          "reviewedFinalText": "Voye fichye yo selon kalite kontra asirans, kenbe yo gwoupe pa ane, epi filtre kòf la tousuit selon kalite kontra asirans ou chwazi a."
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.c732f70e45a84dfc743b1741",
+          "source": "Upload policy",
+          "reviewedFinalText": "Voye kontra asirans"
+        }
+      ]
+    },
+    {
+      "finding": "crisis-resource-comprehension",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Added localized explanation while preserving official name and 988.",
+      "originalExamples": [
+        "988 Suicide & Crisis Lifeline without localized description"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "fr",
+          "id": "application.copy.18b0932642403a1427a67c46",
+          "source": "988 Suicide & Crisis Lifeline",
+          "reviewedFinalText": "988 Suicide & Crisis Lifeline (aide en cas de crise ou de risque suicidaire)"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.18b0932642403a1427a67c46",
+          "source": "988 Suicide & Crisis Lifeline",
+          "reviewedFinalText": "988 Suicide & Crisis Lifeline (liy asistans pou kriz ak prevansyon swisid)"
+        }
+      ]
+    },
+    {
+      "finding": "domestic-violence-resource-comprehension",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Added localized hotline explanation while preserving official name.",
+      "originalExamples": [
+        "National Domestic Violence Hotline without localized description"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "ht",
+          "id": "application.copy.9317a65d9c92f57d86d12544",
+          "source": "National Domestic Violence Hotline",
+          "reviewedFinalText": "National Domestic Violence Hotline (liy nasyonal asistans pou vyolans domestik)"
+        }
+      ]
+    },
+    {
+      "finding": "domestic-partnership-category",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Avoided silently equating a US partnership category with unregistered cohabitation.",
+      "originalExamples": [
+        "Union libre"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "fr",
+          "id": "application.copy.989a908c70c429e2372b9535",
+          "source": "Domestic Partnership",
+          "reviewedFinalText": "Partenariat domestique"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.1cc0c825911e8caaae165356",
+          "source": "Required for Married and Domestic Partnership records.",
+          "reviewedFinalText": "Obligatoire pour les dossiers indiquant un mariage ou un partenariat domestique."
+        }
+      ]
+    },
+    {
+      "finding": "equity-term-consistency",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Aligned title to net-value terminology used by the explanation.",
+      "originalExamples": [
+        "Plan pwoteksyon kapital nèt"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "ht",
+          "id": "application.copy.3aaa7120195231f07f891dd9",
+          "source": "Equity protection plan",
+          "reviewedFinalText": "Plan pwoteksyon valè nèt"
+        }
+      ]
+    },
+    {
+      "finding": "life-coverage-hedge",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Author removed added help hedge to match English assertion; this is translation fidelity, not certification of the assertion.",
+      "originalExamples": [
+        "ede prezève"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "ht",
+          "id": "application.copy.bc1d0d30e7124c50e174089c",
+          "source": "Life and disability coverage keep income and goals intact after unexpected events.",
+          "reviewedFinalText": "Pwoteksyon asirans vi ak enkapasite prezève revni ak objektif apre evènman ou pa t prevwa."
+        }
+      ]
+    },
+    {
+      "finding": "retirement-flow-context",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Aligned to financial-priority context; income-stream interpretation remains an explicitly recorded inference.",
+      "originalExamples": [
+        "Flujo de jubilación",
+        "Pakou retrèt"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.4a62df57b81f1843e83dd38d",
+          "source": "Retirement flow",
+          "reviewedFinalText": "Flujo de ingresos en la jubilación"
+        },
+        {
+          "languageCode": "ht",
+          "id": "application.copy.4a62df57b81f1843e83dd38d",
+          "source": "Retirement flow",
+          "reviewedFinalText": "Revni pandan retrèt"
+        }
+      ]
+    },
+    {
+      "finding": "pending-script-readability",
+      "evidenceClass": "CONFIRMED",
+      "issue": "Spanish opening made conversational; localized ALS acronyms added alongside English acronym. Draft remains pending authorized approval.",
+      "originalExamples": [
+        "Entiendo, ¿supongo que...",
+        "ALS alone after translated disease name"
+      ],
+      "resolution": "Author corrected; reviewer reread final text.",
+      "entries": [
+        {
+          "languageCode": "es",
+          "id": "application.copy.ca76b154c13e4519f4d40db2",
+          "source": "Gotcha, I’m assuming you were looking for coverage on the living side as well? So God forbid something ever happened where you became seriously ill and it affected your ability to work or continue handling the bills, your family would still have financial protection in place. The number one reason families look into life insurance is because of death. The second is because of a serious health event that creates financial strain while they’re still living. With the living benefits included in this policy, if you qualify for coverage and later experience a qualifying critical, chronic, or terminal illness, you may be able to access a portion of the death benefit while you’re still living. So for example, if you were ever diagnosed with a qualifying condition such as cancer, heart attack, stroke, organ failure, ALS, blindness, or a terminal illness where a physician determines you have a limited life expectancy, the policy can allow you to accelerate a portion of the death benefit early. Depending on the carrier and policy terms, those funds are typically paid directly to you in a lump sum, and most families use that money to help cover things like mortgage payments, household bills, medical-related expenses, or time away from work. Does that make sense so far?",
+          "reviewedFinalText": "Entiendo. Supongo que también buscabas una cobertura que te proteja en vida, ¿verdad? Así, si, Dios no lo quiera, llegaras a enfermar gravemente y eso afectara tu capacidad para trabajar o seguir pagando las cuentas, tu familia seguiría contando con protección financiera. La principal razón por la que las familias consideran un seguro de vida es el fallecimiento. La segunda es un problema de salud grave que genera dificultades económicas mientras la persona sigue con vida. Con los beneficios en vida incluidos en esta póliza, si cumples los requisitos para obtener cobertura y más adelante sufres una enfermedad crítica, crónica o terminal que reúna las condiciones exigidas, podrías acceder a una parte del beneficio por fallecimiento mientras sigues con vida. Por ejemplo, si alguna vez te diagnosticaran una afección que reúna esas condiciones, como cáncer, un infarto, un accidente cerebrovascular, insuficiencia orgánica, esclerosis lateral amiotrófica (ELA en español; ALS en inglés), ceguera o una enfermedad terminal por la que un médico determine que tienes una esperanza de vida limitada, la póliza puede permitirte recibir por adelantado una parte del beneficio por fallecimiento. Según la aseguradora y las condiciones de la póliza, esos fondos suelen pagarse directamente a ti en un solo desembolso, y la mayoría de las familias los utilizan para ayudar a cubrir gastos como los pagos de la hipoteca, las cuentas del hogar, los gastos médicos o el tiempo sin trabajar. ¿Se entiende hasta aquí?"
+        },
+        {
+          "languageCode": "fr",
+          "id": "application.copy.ca76b154c13e4519f4d40db2",
+          "source": "Gotcha, I’m assuming you were looking for coverage on the living side as well? So God forbid something ever happened where you became seriously ill and it affected your ability to work or continue handling the bills, your family would still have financial protection in place. The number one reason families look into life insurance is because of death. The second is because of a serious health event that creates financial strain while they’re still living. With the living benefits included in this policy, if you qualify for coverage and later experience a qualifying critical, chronic, or terminal illness, you may be able to access a portion of the death benefit while you’re still living. So for example, if you were ever diagnosed with a qualifying condition such as cancer, heart attack, stroke, organ failure, ALS, blindness, or a terminal illness where a physician determines you have a limited life expectancy, the policy can allow you to accelerate a portion of the death benefit early. Depending on the carrier and policy terms, those funds are typically paid directly to you in a lump sum, and most families use that money to help cover things like mortgage payments, household bills, medical-related expenses, or time away from work. Does that make sense so far?",
+          "reviewedFinalText": "Je comprends, je suppose que vous recherchiez aussi une couverture de votre vivant ? Ainsi, si, à Dieu ne plaise, vous tombiez gravement malade et que cela affectait votre capacité à travailler ou à continuer de payer vos factures, votre famille bénéficierait toujours d’une protection financière. La première raison pour laquelle les familles s’intéressent à l’assurance vie est le décès. La deuxième est un problème de santé grave qui crée des difficultés financières alors que la personne est encore en vie. Avec les prestations du vivant incluses dans ce contrat, si vous remplissez les conditions pour être couvert et que vous êtes ensuite atteint d’une maladie grave, chronique ou terminale répondant aux critères du contrat, vous pourriez accéder à une partie du capital décès de votre vivant. Par exemple, si l’on vous diagnostiquait une affection répondant à ces critères, comme un cancer, une crise cardiaque, un accident vasculaire cérébral, une défaillance d’organe, une sclérose latérale amyotrophique (SLA, ou ALS en anglais), une cécité ou une maladie terminale pour laquelle un médecin détermine que votre espérance de vie est limitée, le contrat peut vous permettre de recevoir par anticipation une partie du capital décès. Selon l’assureur et les conditions du contrat, ces fonds vous sont généralement versés directement en une seule fois, et la plupart des familles les utilisent pour contribuer à couvrir des dépenses telles que les remboursements du prêt immobilier, les factures du foyer, les frais médicaux ou une période sans travailler. Est-ce clair jusqu’ici ?"
+        }
+      ]
+    }
+  ],
+  "uncertainties": [
+    {
+      "ids": [
+        "application.copy.4a62df57b81f1843e83dd38d"
+      ],
+      "languages": [
+        "es",
+        "fr",
+        "ht"
+      ],
+      "classification": "INFERENCE",
+      "severity": "nonblocking",
+      "reason": "Retirement flow is a financial-priority chip. Income-stream interpretation is plausible and consistent across translations, but English product phrase does not define flow explicitly."
+    },
+    {
+      "ids": [
+        "application.copy.989a908c70c429e2372b9535",
+        "application.copy.1cc0c825911e8caaae165356"
+      ],
+      "languages": [
+        "es",
+        "fr",
+        "ht"
+      ],
+      "classification": "UNVERIFIED",
+      "severity": "nonblocking",
+      "reason": "Domestic Partnership is a US relationship category. Translations are language labels, not declarations of jurisdiction-specific legal equivalence."
+    },
+    {
+      "ids": [
+        "application.copy.904faac3b6cf1075f1231922"
+      ],
+      "languages": [
+        "es",
+        "fr",
+        "ht"
+      ],
+      "classification": "INFERENCE",
+      "severity": "nonblocking",
+      "reason": "Protected acquisition estimate refers to safe remaining translation-acquisition capacity. Literal technical terminology preserves the short English label; product glossary may improve future clarity."
+    }
+  ],
+  "pendingApproval": {
+    "status": "HOLD",
+    "ids": [
+      "application.copy.43bbceaaa0fe755d4f4bb4b9",
+      "application.copy.516f5386734993eee5c163b6",
+      "application.copy.a7099ee2894fae8c2ec5971c",
+      "application.copy.ca76b154c13e4519f4d40db2",
+      "application.copy.cabf217cd400db0780e1d319",
+      "application.copy.f04161e9c367d50f112d03c1"
+    ],
+    "entryCount": 18,
+    "reason": "ApprovedOnly entries are assistant-generated drafts. Independent model review is not human verification or authorized approval. All remain pending_review, humanVerified=false, trainingEligible=false.",
+    "qualificationReview": "Read all 18 drafts. Living benefits retain qualifying-condition and eligibility requirements, may/potential access, carrier/policy-term dependency and physician determination. Retention exceptions, inability to undo deletion in app, and legally required record conservation remain. No legal, clinical or insurance compliance certification is asserted."
+  },
+  "sourceManifestObservations": [
+    {
+      "ids": [
+        "application.copy.7a4ac6d8aee28b504a2e5b37",
+        "application.copy.c500b7fe7b34157a05681725"
+      ],
+      "classification": "CONFIRMED",
+      "disposition": "Code-looking English sources preserved exactly in each language; do not invent natural-language meaning. Manifest source cleanup is outside this review."
+    },
+    {
+      "ids": [
+        "application.copy.a7610b03efea08823a4851a7"
+      ],
+      "classification": "CONFIRMED",
+      "disposition": "HTML entity &nbsp; intentionally preserved."
+    }
+  ],
+  "verification": {
+    "environment": "Local repository artifact inspection; no production/service/provider execution",
+    "checks": [
+      {
+        "name": "Every-entry independent language assessment",
+        "status": "EXECUTED_PASS",
+        "count": 2113,
+        "evidence": "All eleven artifact source/translation pairs read; final author corrections and final18 UI entries reread."
+      },
+      {
+        "name": "Canonical metadata, exact inventory ID sets, global pair uniqueness, batch<=250, current catalog, numeric tokens, placeholders, protected brands, policy and pending flags",
+        "status": "EXECUTED_PASS",
+        "count": 2113,
+        "exitCode": 0,
+        "errors": [],
+        "command": "Inline Python loaded the manifest, before inventory and all eleven artifacts; compared canonical fields, expected pending IDs and token arrays; asserted policy/pending flags and final Spanish context corrections."
+      },
+      {
+        "name": "Human translation or legal approval",
+        "status": "NOT_CONFIGURED",
+        "count": 0
+      },
+      {
+        "name": "Rendered layout, screen-reader and device verification",
+        "status": "SKIPPED_EXPLICIT",
+        "count": 0,
+        "reason": "Reviewer assignment is source/translation artifact assessment; runtime verification is separate."
+      },
+      {
+        "name": "Authenticated production import and persistence proof",
+        "status": "SKIPPED_EXPLICIT",
+        "count": 0,
+        "reason": "Outside independent language-review assignment."
+      }
+    ],
+    "durationSecondsFinalStructuralPass": 0.105
+  },
+  "verdict": {
+    "publicCopy": "PASS_FOR_RELEASE_REVIEW",
+    "scope": "2095 public AzureAllowed translations at the exact artifact hashes; model-language assessment only.",
+    "approvedOnly": "HOLD_PENDING_AUTHORIZED_APPROVAL",
+    "blockingLanguageFindings": 0,
+    "productionReady": "UNVERIFIED",
+    "stopCondition": "Any source/translation change requires review of affected entries; any artifact byte change invalidates its recorded hash. Preserve all pending approval and provenance restrictions."
+  }
+}

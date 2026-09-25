@@ -144,6 +144,9 @@
   }
 
   const surfaces = new WeakSet();
+  const mobileSheets = new WeakSet();
+  const pageScrollLockOwners = new Set();
+  let pageScrollState = null;
   let header;
   let footer;
   let content;
@@ -217,6 +220,141 @@
     root.setAttribute('data-legend-modal-region', '');
   }
 
+
+  function lockPageScroll(owner = "legend-modal"){
+    const key = String(owner || "legend-modal");
+    if (pageScrollLockOwners.has(key)) return;
+    pageScrollLockOwners.add(key);
+    if (pageScrollLockOwners.size !== 1) return;
+    const body = document.body;
+    if (!body) return;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    pageScrollState = {
+      scrollY,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overflow: body.style.overflow
+    };
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+  }
+
+  function unlockPageScroll(owner = "legend-modal"){
+    const key = String(owner || "legend-modal");
+    if (!pageScrollLockOwners.delete(key) || pageScrollLockOwners.size) return;
+    const body = document.body;
+    const state = pageScrollState;
+    pageScrollState = null;
+    if (!body || !state) return;
+    body.style.position = state.position;
+    body.style.top = state.top;
+    body.style.left = state.left;
+    body.style.right = state.right;
+    body.style.width = state.width;
+    body.style.overflow = state.overflow;
+    window.scrollTo(0, state.scrollY);
+  }
+
+  function setMobileSheetSnap(sheet, snap){
+    if (!sheet) return;
+    sheet.dataset.legendSheetSnap = snap === "half" ? "half" : "full";
+    sheet.style.removeProperty("--legend-mobile-sheet-drag-y");
+    sheet.removeAttribute("data-legend-sheet-dragging");
+  }
+
+  function requestMobileSheetClose(sheet){
+    const close = sheet?.querySelector?.("[data-legend-sheet-close]");
+    if (close) close.click();
+    else sheet?.dispatchEvent?.(new CustomEvent("legend:mobile-sheet-close", { bubbles: true }));
+  }
+
+  function syncMobileSheetState(sheet){
+    if (!sheet || !sheet.matches?.("[data-legend-mobile-sheet]")) return;
+    const isOpen = sheet.classList.contains("open");
+    const wasOpen = sheet.dataset.legendSheetOpen === "true";
+    if (isOpen && !wasOpen){
+      sheet.scrollTop = 0;
+      setMobileSheetSnap(sheet, "full");
+    } else if (!isOpen && wasOpen) {
+      setMobileSheetSnap(sheet, "full");
+    }
+    sheet.dataset.legendSheetOpen = isOpen ? "true" : "false";
+  }
+
+  function registerMobileSheet(sheet){
+    if (!sheet || !sheet.matches?.("[data-legend-mobile-sheet]")) return;
+    if (!mobileSheets.has(sheet)){
+      mobileSheets.add(sheet);
+      let handle = sheet.querySelector(":scope > .legend-mobile-sheet-handle");
+      if (!handle){
+        handle = document.createElement("div");
+        handle.className = "legend-mobile-sheet-handle";
+        handle.setAttribute("role", "button");
+        handle.setAttribute("tabindex", "0");
+        handle.setAttribute("aria-label", "Resize quick view panel");
+        sheet.prepend(handle);
+      }
+      let gesture = null;
+      const finishGesture = (event) => {
+        if (!gesture) return;
+        const state = gesture;
+        const delta = state.lastY - state.startY;
+        const elapsed = Math.max(1, performance.now() - state.startedAt);
+        const velocity = delta / elapsed;
+        gesture = null;
+        try { handle.releasePointerCapture?.(event.pointerId); } catch {}
+        sheet.style.removeProperty("--legend-mobile-sheet-drag-y");
+        sheet.removeAttribute("data-legend-sheet-dragging");
+        if (state.snap === "half"){
+          if (delta < -64 || velocity < -.45) setMobileSheetSnap(sheet, "full");
+          else if (delta > 96 || velocity > .55) requestMobileSheetClose(sheet);
+          else setMobileSheetSnap(sheet, "half");
+        } else if (delta > 72 || velocity > .45) {
+          setMobileSheetSnap(sheet, "half");
+        } else {
+          setMobileSheetSnap(sheet, "full");
+        }
+      };
+      handle.addEventListener("pointerdown", (event) => {
+        if (!window.matchMedia?.("(max-width: 900px)")?.matches || !sheet.classList.contains("open")) return;
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        gesture = { startY:event.clientY, lastY:event.clientY, startedAt:performance.now(), snap:sheet.dataset.legendSheetSnap === "half" ? "half" : "full" };
+        sheet.setAttribute("data-legend-sheet-dragging", "");
+        handle.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
+      handle.addEventListener("pointermove", (event) => {
+        if (!gesture) return;
+        gesture.lastY = event.clientY;
+        const height = Math.max(1, sheet.getBoundingClientRect().height || window.innerHeight);
+        const delta = Math.max(-height * .46, Math.min(height * .56, gesture.lastY - gesture.startY));
+        sheet.style.setProperty("--legend-mobile-sheet-drag-y", `${delta}px`);
+        event.preventDefault();
+      });
+      handle.addEventListener("pointerup", finishGesture);
+      handle.addEventListener("pointercancel", finishGesture);
+      handle.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        setMobileSheetSnap(sheet, sheet.dataset.legendSheetSnap === "half" ? "full" : "half");
+      });
+    }
+    syncMobileSheetState(sheet);
+  }
+
+  function registerMobileSheets(root){
+    if (!root || root.nodeType !== 1) return;
+    if (root.matches?.("[data-legend-mobile-sheet]")) registerMobileSheet(root);
+    root.querySelectorAll?.("[data-legend-mobile-sheet]").forEach(registerMobileSheet);
+  }
+
   function observeContentRegion(){
     header = document.querySelector('body > header');
     footer = document.querySelector('body > footer.footer');
@@ -224,6 +362,7 @@
     impersonation = document.querySelector('body > .impersonation-banner');
     if (!header) return;
     registerDialogs(document.body);
+    registerMobileSheets(document.body);
     syncViewportOffsets();
     if (window.ResizeObserver){
       const observer = new ResizeObserver(scheduleViewportOffsets);
@@ -233,10 +372,16 @@
       let changed = false;
       for (const record of records){
         if (record.type === 'childList'){
-          record.addedNodes.forEach(node => { registerDialogs(node); });
+          record.addedNodes.forEach(node => {
+            registerDialogs(node);
+            registerMobileSheets(node);
+          });
           if (surfaces.has(record.target)) registerDialog(record.target);
           changed = changed || record.addedNodes.length > 0 || record.removedNodes.length > 0;
-        } else if (surfaces.has(record.target)) changed = true;
+        } else {
+          if (surfaces.has(record.target)) changed = true;
+          if (record.target?.matches?.("[data-legend-mobile-sheet]")) syncMobileSheetState(record.target);
+        }
       }
       if (changed) scheduleViewportOffsets();
     });
@@ -317,6 +462,9 @@
   }
 
   api.ensureInBody = ensureInBody;
+  api.lockPageScroll = lockPageScroll;
+  api.unlockPageScroll = unlockPageScroll;
+  api.registerMobileSheet = registerMobileSheet;
   api.bind = bind;
   api.refreshViewportOffsets = syncViewportOffsets;
   api.reconcile = reconcile;

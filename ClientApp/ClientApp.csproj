@@ -25,12 +25,49 @@
 
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.Web" />
   <ItemGroup>
+    <Content Include="../Legend-Design/legend-web-foundation.css" Link="wwwroot/design/legend-web-foundation.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-favicon.svg" Link="wwwroot/images/favicon/legend-favicon.svg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-app-shell.css" Link="wwwroot/design/legend-app-shell.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-website-management.css" Link="wwwroot/design/legend-website-management.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-website-management.js" Link="wwwroot/design/legend-website-management.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../Legend-Design/legend-design.tokens.json"
              Link="wwwroot/design/legend-design.tokens.json"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../Legend-Design/legend-reaction-emoji.json"
              Link="wwwroot/design/legend-reaction-emoji.json"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The CRM and quick-view sources are shared with AgentPortal, not copied. -->
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/Clients/Index.cshtml" Link="Views/Clients/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/Clients/_Client*.cshtml" Link="Views/Clients/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Leads/Index.cshtml" Link="Views/Leads/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/Leads/_Lead*.cshtml" Link="Views/Leads/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Shared/_QuickView*.cshtml" Link="Views/Shared/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Workstation/_AdvancedMarketsInputSections.cshtml" Link="Views/Workstation/_AdvancedMarketsInputSections.cshtml" />
+    <Content Include="../AgentPortal/wwwroot/css/clients-index.css" Link="wwwroot/css/clients-index.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/css/qv-booking.css" Link="wwwroot/css/qv-booking.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/clients-index.js;../AgentPortal/wwwroot/js/leads-index.js;../AgentPortal/wwwroot/js/dp-*.js;../AgentPortal/wwwroot/js/zoom-quick-popup.js" Link="wwwroot/js/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../AgentPortal/wwwroot/js/scheduling/qv-*.js" Link="wwwroot/js/scheduling/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/billing/qv-billing-management.js" Link="wwwroot/js/billing/qv-billing-management.js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/Leads/_ActionsTab.cshtml;../AgentPortal/Views/Leads/_CommitmentsTab.cshtml" Link="Views/Leads/%(Filename)%(Extension)" />
+    <Content Include="../AgentPortal/Views/Shared/_ActionList.cshtml" Link="Views/Shared/_ActionList.cshtml" />
+    <Content Include="../AgentPortal/Views/Actions/Edit.cshtml" Link="Views/Actions/Edit.cshtml" />
+  </ItemGroup>
+
+  <!-- Compile and publish the canonical analytics view/assets; no business copy. -->
+  <ItemGroup>
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/Index.cshtml" Link="Views/WebsiteAnalytics/Index.cshtml" />
+    <Content Include="../AgentPortal/Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" Link="Views/WebsiteAnalytics/_AnalyticsIncidentModal.cshtml" />
+    <Content Include="../AgentPortal/wwwroot/css/website-analytics.css" Link="wwwroot/css/website-analytics.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../AgentPortal/wwwroot/js/website-analytics*.js" Link="wwwroot/js/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Belt + suspenders: explicitly remove any accidental inclusion of these artifacts -->

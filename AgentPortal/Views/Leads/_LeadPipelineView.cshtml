@@ -4,6 +4,10 @@
     var search = (string)(ViewBag.Search ?? "");
     var hasSearch = !string.IsNullOrWhiteSpace(search);
     var searchResultCount = Model?.Count ?? 0;
+    var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
+    var listUrl = businessWorkspace is null
+        ? (Url.Action("Index", "Leads") ?? "/Leads")
+        : $"/business/{businessWorkspace.BusinessId}/leads";
 }
 
 <section class="cards navy-shell" id="cardsView" aria-label="Pipeline CRM workspace">
@@ -52,7 +56,7 @@
         </div>
         <div class="pipeline-command-dock" id="legendBar">
             <div class="pipeline-command-row pipeline-command-row-search">
-                <form method="get" asp-action="Index" autocomplete="off" id="clientSearchForm" class="pipeline-command-form">
+                <form method="get" action="@listUrl" autocomplete="off" id="clientSearchForm" class="pipeline-command-form">
                     <div class="field pipeline-command-field" title="Search (/)">
                         <span class="pipeline-command-icon" aria-hidden="true">🔎</span>
                         <input name="search"
@@ -74,7 +78,7 @@
                         <span class="pipeline-inline-stat-label">Search</span>
                         <strong>@searchResultCount</strong>
                     </span>
-                    <a asp-action="Index" class="btn btn-ghost pipeline-mini-btn">Back To Full List</a>
+                    <a href="@listUrl" class="btn btn-ghost pipeline-mini-btn">Back To Full List</a>
                 }
             </div>
 

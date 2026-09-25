@@ -1,5 +1,6 @@
 using ClientApp.Models;
 using ClientApp.Services;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -13,15 +14,18 @@ public sealed class SubscriptionActivationController : Controller
     private readonly SubscriptionActivationService _activationService;
     private readonly ClientIdentityContinuationService _continuationService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
+    private readonly IClientEntraLifecycleService _entraLifecycle;
 
     public SubscriptionActivationController(
         SubscriptionActivationService activationService,
         ClientIdentityContinuationService continuationService,
-        ClientAppReturnUrlNormalizer returnUrlNormalizer)
+        ClientAppReturnUrlNormalizer returnUrlNormalizer,
+        IClientEntraLifecycleService entraLifecycle)
     {
         _activationService = activationService;
         _continuationService = continuationService;
         _returnUrlNormalizer = returnUrlNormalizer;
+        _entraLifecycle = entraLifecycle;
     }
 
     [HttpGet("/activate/{token}")]
@@ -42,6 +46,18 @@ public sealed class SubscriptionActivationController : Controller
         }
 
         var activation = await _activationService.ActivateAsync(token, input, HttpContext.RequestAborted);
+        if (!activation.Success &&
+            activation.Context.Subscription?.Status == Domain.Billing.ClientSubscriptionStatus.Active)
+        {
+            return View("Unavailable", new SubscriptionActivationNoticeViewModel
+            {
+                Title = "Membership Active — Sign-In Setup Pending",
+                Message = activation.SanitizedMessage
+                    ?? "Your membership is active. Secure sign-in setup is still completing. Do not submit another payment.",
+                ReturnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl)
+            });
+        }
+
         if (!activation.Success || string.IsNullOrWhiteSpace(activation.ProtectedContinuationState))
         {
             if (activation.Context.Availability == SubscriptionActivationAvailability.Ready)
@@ -74,6 +90,9 @@ public sealed class SubscriptionActivationController : Controller
             activation.ProtectedContinuationState,
             activation.ContinuationExpiresUtc ?? DateTime.UtcNow.AddMinutes(20));
 
+        if (!string.IsNullOrWhiteSpace(activation.IdentityRedemptionUrl))
+            return Redirect(activation.IdentityRedemptionUrl);
+
         return RedirectToAction("AzureLogin", "Account", new { returnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl) });
     }
 
@@ -81,9 +100,12 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Status(string token)
     {
         var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
+        var isActivated = context.Availability == SubscriptionActivationAvailability.AlreadyActivated &&
+            context.Subscription?.Status == Domain.Billing.ClientSubscriptionStatus.Active;
         return Json(new
         {
-            ok = context.Availability == SubscriptionActivationAvailability.Ready,
+            ok = context.Availability == SubscriptionActivationAvailability.Ready || isActivated,
+            activated = isActivated,
             state = context.Availability.ToString(),
             message = context.Message,
             subscriptionStatus = context.Subscription?.Status.ToString(),
@@ -106,7 +128,28 @@ public sealed class SubscriptionActivationController : Controller
             });
         }
 
+        ClientEntraIdentitySynchronizationResult identity;
+        try
+        {
+            identity = await _entraLifecycle.SynchronizeClientIdentityAsync(
+                validation.Continuation.ClientProfileId,
+                HttpContext.RequestAborted);
+        }
+        catch
+        {
+            return View("Unavailable", new SubscriptionActivationNoticeViewModel
+            {
+                Title = "Membership Active — Sign-In Setup Pending",
+                Message = "Your membership is active. Microsoft sign-in setup is still completing. Do not submit another payment. Try member sign-in again shortly.",
+                ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
+            });
+        }
+
         _continuationService.StoreCookie(Response, protectedContinuationState, validation.Continuation.ExpiresUtc);
+
+        if (identity.RequiresRedemption && !string.IsNullOrWhiteSpace(identity.RedemptionUrl))
+            return Redirect(identity.RedemptionUrl);
+
         return RedirectToAction("AzureLogin", "Account", new { returnUrl = _returnUrlNormalizer.Normalize(returnUrl) });
     }
 

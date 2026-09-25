@@ -57,7 +57,11 @@ public class MasterAppDbContext : DbContext
     public DbSet<AppointmentSyncLog> AppointmentSyncLogs => Set<AppointmentSyncLog>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
     public DbSet<AnalyticsDriftAlert> AnalyticsDriftAlerts => Set<AnalyticsDriftAlert>();
+    public DbSet<RuntimeDiagnosticIncident> RuntimeDiagnosticIncidents => Set<RuntimeDiagnosticIncident>();
+    public DbSet<FounderSoftwareRepairBatch> FounderSoftwareRepairBatches => Set<FounderSoftwareRepairBatch>();
+    public DbSet<FounderAiActionAuthorization> FounderAiActionAuthorizations => Set<FounderAiActionAuthorization>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
+    public DbSet<MarketingConnection> MarketingConnections => Set<MarketingConnection>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -182,6 +186,75 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.ApplyConfiguration(new MarketingConnectionConfiguration());
+        modelBuilder.Entity<FounderAiActionAuthorization>(entity =>
+        {
+            entity.ToTable("FounderAiActionAuthorizations");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.ActionDigest).IsRequired().HasMaxLength(64);
+            entity.HasIndex(row => row.ActionDigest).IsUnique();
+            entity.Property(row => row.ScopeDigest).IsRequired().HasMaxLength(64);
+            entity.Property(row => row.AccountId).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.TenantId).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(row => row.SessionId).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.Environment).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.AuthorizationVersion).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.ToolName).IsRequired().HasMaxLength(128);
+            entity.Property(row => row.AuthorizationKind).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.CanonicalArgumentsJson).IsRequired().HasMaxLength(32768);
+            entity.Property(row => row.ReviewBindingJson).HasMaxLength(4096);
+            entity.HasIndex(row => row.ParentProposalId).IsUnique().HasFilter("[ParentProposalId] IS NOT NULL");
+            entity.Property(row => row.State).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.IdempotencyKey).HasMaxLength(64);
+            entity.Property(row => row.ResultJson).HasMaxLength(32768);
+            entity.Property(row => row.Revision).IsRequired().HasMaxLength(32).IsConcurrencyToken();
+            entity.HasIndex(row => new { row.UserId, row.RequestId });
+            entity.HasIndex(row => row.ExpiresUtc);
+            entity.HasOne<MessageConversation>().WithMany().HasForeignKey(row => row.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<FounderSoftwareRepairBatch>(entity =>
+        {
+            entity.ToTable("FounderSoftwareRepairBatches");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.Id).HasMaxLength(32);
+            entity.Property(row => row.BaseSha).IsRequired().HasMaxLength(40);
+            entity.Property(row => row.PreviewBranch).IsRequired().HasMaxLength(80).HasDefaultValue("hotfix/staging-batch");
+            entity.Property(row => row.ReviewedHeadSha).HasMaxLength(40);
+            entity.Property(row => row.HeadSha).HasMaxLength(40);
+            entity.Property(row => row.State).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.OperationId).HasMaxLength(64);
+            entity.Property(row => row.Revision).IsRequired().HasMaxLength(32).IsConcurrencyToken();
+            entity.Property(row => row.MergedSha).HasMaxLength(40);
+            entity.Property(row => row.DeployedTreeSha).HasMaxLength(40);
+            entity.Property(row => row.DeploymentEvidenceJson).HasMaxLength(16000);
+            entity.Property(row => row.CandidateValidationEvidenceJson).HasMaxLength(16000);
+            entity.HasIndex(row => row.CompletionVerifiedUtc);
+        });
+        modelBuilder.Entity<RuntimeDiagnosticIncident>(entity =>
+        {
+            entity.ToTable("RuntimeDiagnosticIncidents");
+            entity.HasKey(row => row.Id);
+            entity.Property(row => row.DeduplicationKey).IsRequired().HasMaxLength(64);
+            entity.HasIndex(row => row.DeduplicationKey).IsUnique();
+            entity.Property(row => row.AppIdentifier).IsRequired().HasMaxLength(64);
+            entity.Property(row => row.Platform).IsRequired().HasMaxLength(16);
+            entity.Property(row => row.Route).IsRequired().HasMaxLength(256);
+            entity.Property(row => row.ErrorName).IsRequired().HasMaxLength(80);
+            entity.Property(row => row.Summary).IsRequired().HasMaxLength(256);
+            entity.Property(row => row.Category).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.GitCommitHash).HasMaxLength(40);
+            entity.Property(row => row.AppVersion).HasMaxLength(80);
+            entity.Property(row => row.SourceFilePath).HasMaxLength(180);
+            entity.Property(row => row.StackTrace).HasMaxLength(2300);
+            entity.Property(row => row.CorrelationId).HasMaxLength(32);
+            entity.Property(row => row.Disposition).IsRequired().HasMaxLength(32);
+            entity.Property(row => row.ReviewVersion).IsConcurrencyToken();
+            entity.HasIndex(row => row.LastSeenUtc);
+            entity.HasIndex(row => row.ExpiresUtc);
+        });
+
         modelBuilder.Entity<LegendCallSignal>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -535,6 +608,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceBusiness>(e =>
         {
+            e.Property(x => x.UpdatedUtc).IsConcurrencyToken();
             e.HasKey(x => x.Id);
             e.Property(x => x.Key).IsRequired().HasMaxLength(80);
             e.Property(x => x.DisplayName).IsRequired().HasMaxLength(160);
@@ -563,6 +637,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceBusinessMember>(e =>
         {
+            e.Property(x => x.OwnershipPercentage).HasPrecision(5, 2);
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).IsRequired().HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).IsRequired().HasMaxLength(320);
@@ -596,6 +671,14 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceBusinessStorefrontSettings>(e =>
         {
+            e.Property(x => x.ShortBio).HasMaxLength(2000);
+            e.Property(x => x.BookingEmbedUrl).HasMaxLength(2048);
+            e.Property(x => x.BookingFallbackUrl).HasMaxLength(2048);
+            e.Property(x => x.BookingMailboxId).HasMaxLength(320);
+            e.Property(x => x.BookingCalendarEmail).HasMaxLength(320);
+            e.Property(x => x.GlobalStoreCheckoutUrl).HasMaxLength(2048);
+            e.Property(x => x.Revision).IsConcurrencyToken();
+
             e.HasKey(x => x.Id);
             e.Property(x => x.BrandHeadline).IsRequired().HasMaxLength(180);
             e.Property(x => x.BrandSubheadline).IsRequired().HasMaxLength(300);
@@ -917,10 +1000,18 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
             e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
             e.Property(x => x.ReturnUrl).HasMaxLength(2048).IsRequired();
+            e.Property(x => x.ActorUserId).HasMaxLength(450);
+            e.Property(x => x.ActorEmail).HasMaxLength(320);
 
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => new { x.ClientProfileId, x.ExpiresUtc });
             e.HasIndex(x => new { x.ClientProfileId, x.ConsumedUtc });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.Purpose, x.ExpiresUtc });
+
+            e.HasOne<CommerceBusiness>()
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             e.HasOne(x => x.ClientProfile)
                 .WithMany()
@@ -1347,6 +1438,9 @@ public class MasterAppDbContext : DbContext
         // ==========================================================
         modelBuilder.Entity<AnalyticsEvent>(e =>
         {
+            e.Property(x => x.WebsiteBindingId).HasMaxLength(120);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.EventUtc });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
             e.Property(x => x.EventId).IsRequired();
             e.Property(x => x.EventType).IsRequired().HasMaxLength(80);
@@ -1438,6 +1532,9 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<MetaSignalEvent>(e =>
         {
+            e.Property(x => x.WebsiteBindingId).HasMaxLength(120);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
             e.Property(x => x.CreatedUtc).IsRequired();
             e.Property(x => x.EventId).IsRequired().HasMaxLength(120);
@@ -1512,6 +1609,10 @@ public class MasterAppDbContext : DbContext
         // WEBSITE LEADS
         modelBuilder.Entity<WebsiteLead>(e =>
         {
+            e.Property(x => x.WebsiteBindingId).HasMaxLength(120);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.LeadId).IsUnique();
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
             e.HasIndex(x => x.CreatedUtc);
@@ -1525,6 +1626,8 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
         {
+            e.HasIndex(x => x.CommerceBusinessId);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.Id);
             e.Property(x => x.WorkstationLeadId).IsRequired().HasMaxLength(64);
             e.Property(x => x.AgentUserId).IsRequired().HasMaxLength(180);
@@ -1681,6 +1784,8 @@ public class MasterAppDbContext : DbContext
             // NormalizedEmail is the enforced uniqueness guardrail (configured above).
         modelBuilder.Entity<WorkstationLeadProfile>(e =>
         {
+            e.HasIndex(x => x.CommerceBusinessId);
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
             e.HasKey(x => x.LeadId);
             e.ToTable("WorkstationLeadProfiles");
             e.Property(x => x.LeadId).HasMaxLength(64);
@@ -2276,6 +2381,80 @@ public class MasterAppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<WebsiteMediaAsset>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(200).IsRequired();
+            e.Property(x => x.SourceUrl).HasMaxLength(2000);
+            e.Property(x => x.Sha256).HasMaxLength(64).IsRequired();
+            e.Property(x => x.StorageKey).HasMaxLength(512).IsRequired();
+            e.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+            e.HasIndex(x => new { x.OwnerKey, x.Sha256 }).IsUnique();
+        });
+        modelBuilder.Entity<WebsiteContentState>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerKey).HasMaxLength(450).IsRequired();
+            e.Property(x => x.SiteKey).HasMaxLength(40).IsRequired();
+            e.Property(x => x.DraftJson).IsRequired();
+            e.Property(x => x.Revision).IsConcurrencyToken();
+            e.HasIndex(x => new { x.OwnerKey, x.SiteKey }).IsUnique();
+        });
+        modelBuilder.Entity<WebsiteContentVersion>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ActorUserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(x => new { x.StateId, x.Revision }).IsUnique();
+            e.HasOne<WebsiteContentState>().WithMany().HasForeignKey(x => x.StateId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<WebsiteStudioComment>(e =>
+        {
+            e.ToTable("WebsiteStudioComments");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.PagePath).HasMaxLength(160).IsRequired();
+            e.Property(x => x.ElementId).HasMaxLength(200);
+            e.Property(x => x.Body).HasMaxLength(4000).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(24).IsRequired();
+            e.Property(x => x.AuthorUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.AuthorEmail).HasMaxLength(320);
+            e.Property(x => x.AuthorRole).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ResolvedByUserId).HasMaxLength(450);
+            e.HasIndex(x => new { x.WebsiteContentStateId, x.PagePath, x.Status, x.CreatedUtc });
+            e.HasIndex(x => new { x.WebsiteContentStateId, x.ElementId, x.Status });
+            e.HasIndex(x => x.ParentCommentId);
+            e.HasOne<WebsiteContentState>().WithMany().HasForeignKey(x => x.WebsiteContentStateId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WebsiteContentVersion>().WithMany().HasForeignKey(x => x.WebsiteContentVersionId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WebsiteStudioComment>().WithMany().HasForeignKey(x => x.ParentCommentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<WebsiteDomainBinding>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Hostname).HasMaxLength(253).IsRequired();
+            e.Property(x => x.ProviderHostnameId).HasMaxLength(64);
+            e.Property(x => x.Status).HasMaxLength(40);
+            e.Property(x => x.CertificateStatus).HasMaxLength(40);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => x.Hostname).IsUnique();
+            e.HasOne<CommerceBusiness>().WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CommerceWebsiteInquiry>(e =>
+        {
+            e.Property(x => x.NotificationStatus).HasMaxLength(32);
+            e.Property(x => x.NotificationRevision).IsConcurrencyToken();
+            e.HasIndex(x => new { x.NotificationStatus, x.NotificationNextAttemptUtc });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(160);
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.Message).HasMaxLength(12000);
+            e.Property(x => x.SourcePath).HasMaxLength(2048);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.SubmissionId }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasOne(x => x.CommerceBusiness).WithMany().HasForeignKey(x => x.CommerceBusinessId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WebsiteContentVersion>().WithMany().HasForeignKey(x => x.PublishedVersionId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CommerceBusinessMember>().HasIndex(x => new { x.ClientProfileId, x.CommerceBusinessId });
+
         modelBuilder.Entity<AgentFinanceToolState>(e =>
         {
             e.HasKey(x => x.Id);
@@ -2509,6 +2688,7 @@ public class MasterAppDbContext : DbContext
         // ==========================================================
         modelBuilder.Entity<WebsiteLead>(e =>
         {
+            e.HasIndex(x => x.LeadId).IsUnique();
             e.HasKey(x => x.Id);
             e.Property(x => x.LeadId).IsRequired();
             e.Property(x => x.FirstName).IsRequired().HasMaxLength(120);

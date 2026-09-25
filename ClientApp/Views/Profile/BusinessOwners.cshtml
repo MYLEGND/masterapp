@@ -1,0 +1,151 @@
+@model List<Domain.Entities.CommerceBusinessMember>
+@{
+    ViewData["Title"] = "Business owners";
+    var ownerNames = ViewBag.OwnerNames as IReadOnlyDictionary<Guid, string[]> ?? new Dictionary<Guid, string[]>();
+    var businessProfileEmail = ViewBag.BusinessProfileEmail as string ?? string.Empty;
+    var ownerLookupUrl = $"/profile/business/{ViewBag.BusinessId}/owner-lookup";
+}
+<main class="dashboard-page-shell client-create-page client-edit-page">
+<div class="client-create-shell">
+<section class="client-create-panel" aria-labelledby="businessOwnersTitle">
+    <div class="client-create-header">
+        <div>
+            <div class="dashboard-eyebrow">Business profile</div>
+            <h1 id="businessOwnersTitle" class="client-create-title">@ViewBag.EntityName</h1>
+            <p class="client-create-subtitle">Manage your business name and linked owners.</p>
+        </div>
+        <a class="client-create-button client-create-button-secondary" href="/profile">Back to profile</a>
+    </div>
+    <div class="client-create-body">
+@if (TempData["BusinessWebsiteNotice"] is string notice)
+{
+    <p class="client-edit-note" role="status">@notice</p>
+}
+@if (TempData["BusinessWebsiteWarning"] is string warning)
+{
+    <p class="client-create-validation" role="alert">@warning</p>
+}
+<form method="post" action="/profile/business/@ViewBag.BusinessId/owners">
+    @Html.AntiForgeryToken()
+    <div><label class="client-create-label" for="entityName">Entity Name</label>
+    <input class="client-create-input" id="entityName" name="entityName" value="@ViewBag.EntityName" required maxlength="160" /></div>
+    <div>
+        <label class="client-create-label" for="businessProfileEmail">Business Profile Email</label>
+        <input class="client-create-input" id="businessProfileEmail" type="email" value="@businessProfileEmail" readonly aria-readonly="true" />
+        <p class="client-edit-note">This email controls the business profile. It stays separate from the personal client emails linked as owners.</p>
+    </div>
+    <p class="client-edit-note" id="ownershipHelp">Each owner must have an existing personal client account. Enter the personal client email; first and last name are resolved from that account and cannot be edited here. Shares must total 100%.</p>
+    <div id="businessOwners" class="client-edit-child-list" aria-describedby="ownershipHelp" data-owner-lookup-url="@ownerLookupUrl">
+    @for (var i = 0; i < Model.Count; i++)
+    {
+        var profileId = Model[i].ClientProfileId;
+        var names = profileId.HasValue && ownerNames.TryGetValue(profileId.Value, out var resolvedNames)
+            ? resolvedNames
+            : new[] { string.Empty, string.Empty };
+        <fieldset class="client-edit-child-card" data-business-owner><legend class="client-edit-child-title">Owner @(i + 1)</legend>
+            <div class="client-create-grid">
+            <input type="hidden" name="owners[@i].ClientProfileId" value="@profileId" data-owner-field="ClientProfileId" />
+            <div><label class="client-create-label" for="ownerEmail-@i">Personal account email</label><input class="client-create-input" id="ownerEmail-@i" name="owners[@i].Email" type="email" value="@Model[i].Email" required data-owner-field="Email" data-owner-email /></div>
+            <div><label class="client-create-label" for="ownerFirstName-@i">First name</label><input class="client-create-input" id="ownerFirstName-@i" type="text" value="@names[0]" readonly aria-readonly="true" data-owner-first-name /></div>
+            <div><label class="client-create-label" for="ownerLastName-@i">Last name</label><input class="client-create-input" id="ownerLastName-@i" type="text" value="@names[1]" readonly aria-readonly="true" data-owner-last-name /></div>
+            <div><label class="client-create-label" for="ownerShare-@i">Ownership (%)</label><input class="client-create-input" id="ownerShare-@i" name="owners[@i].Percentage" type="number" min="0.01" max="100" step="0.01" value="@Model[i].OwnershipPercentage" required data-owner-field="Percentage" /></div>
+            </div>
+            <p class="client-edit-note" data-owner-status aria-live="polite">Linked client verified.</p>
+            <div class="client-create-actions"><button class="client-create-button client-create-button-secondary" type="button" data-remove-owner>Remove owner</button></div>
+        </fieldset>
+    }
+    </div>
+    <div class="client-create-actions"><button class="client-create-button client-create-button-secondary" type="button" id="addBusinessOwner">Add linked owner</button>
+    <button class="client-create-button client-create-button-primary" type="submit">Save entity and ownership</button></div>
+</form>
+</div>
+</section>
+</div>
+</main>
+<script>
+(() => {
+ const container = document.getElementById('businessOwners');
+ const lookupUrl = container?.dataset.ownerLookupUrl || '';
+ let index = @Model.Count;
+
+ const clearIdentity = (row, message) => {
+   const id = row.querySelector('[data-owner-field="ClientProfileId"]');
+   const first = row.querySelector('[data-owner-first-name]');
+   const last = row.querySelector('[data-owner-last-name]');
+   const status = row.querySelector('[data-owner-status]');
+   if (id) id.value = '';
+   if (first) first.value = '';
+   if (last) last.value = '';
+   if (status) status.textContent = message || '';
+ };
+
+ const resolveOwner = async row => {
+   const email = row.querySelector('[data-owner-email]')?.value?.trim() || '';
+   if (!email || !lookupUrl) { clearIdentity(row, ''); return; }
+   clearIdentity(row, 'Checking linked client…');
+   try {
+     const response = await fetch(`${lookupUrl}?${new URLSearchParams({ email })}`, {
+       method: 'GET', credentials: 'same-origin', headers: { Accept: 'application/json' }
+     });
+     if (!response.ok) { clearIdentity(row, 'No eligible linked client was found for this email.'); return; }
+     const owner = await response.json();
+     row.querySelector('[data-owner-field="ClientProfileId"]').value = owner.clientProfileId || owner.ClientProfileId || '';
+     row.querySelector('[data-owner-first-name]').value = owner.firstName || owner.FirstName || '';
+     row.querySelector('[data-owner-last-name]').value = owner.lastName || owner.LastName || '';
+     row.querySelector('[data-owner-status]').textContent = 'Linked client verified.';
+   } catch {
+     clearIdentity(row, 'Owner lookup could not be completed.');
+   }
+ };
+
+ const renumber = () => {
+   Array.from(container.children).forEach((row, i) => {
+     row.querySelector('legend').textContent = `Owner ${i + 1}`;
+     row.querySelectorAll('[data-owner-field]').forEach(input => {
+       input.name = `owners[${i}].${input.dataset.ownerField}`;
+     });
+     row.querySelectorAll('input[id]').forEach(input => {
+       const label = row.querySelector(`label[for="${input.id}"]`);
+       const suffix = input.id.split('-').pop();
+       input.id = `owner-${i}-${suffix}`;
+       if (label) label.htmlFor = input.id;
+     });
+   });
+   index = container.children.length;
+ };
+
+ container.addEventListener('change', event => {
+   const email = event.target.closest('[data-owner-email]');
+   if (email) void resolveOwner(email.closest('[data-business-owner]'));
+ });
+ container.addEventListener('click', event => {
+   if (!event.target.matches('[data-remove-owner]')) return;
+   event.target.closest('[data-business-owner]').remove();
+   renumber();
+ });
+
+ document.getElementById('addBusinessOwner').addEventListener('click', () => {
+   if (index >= 20) return;
+   const row = document.createElement('fieldset');
+   row.className = 'client-edit-child-card';
+   row.dataset.businessOwner = '';
+   row.innerHTML = `<legend class="client-edit-child-title">Owner ${index + 1}</legend>
+     <div class="client-create-grid">
+       <input type="hidden" data-owner-field="ClientProfileId">
+       <div><label class="client-create-label" for="owner-${index}-Email">Personal account email</label><input class="client-create-input" id="owner-${index}-Email" type="email" required data-owner-field="Email" data-owner-email></div>
+       <div><label class="client-create-label" for="owner-${index}-FirstName">First name</label><input class="client-create-input" id="owner-${index}-FirstName" type="text" readonly aria-readonly="true" data-owner-first-name></div>
+       <div><label class="client-create-label" for="owner-${index}-LastName">Last name</label><input class="client-create-input" id="owner-${index}-LastName" type="text" readonly aria-readonly="true" data-owner-last-name></div>
+       <div><label class="client-create-label" for="owner-${index}-Percentage">Ownership (%)</label><input class="client-create-input" id="owner-${index}-Percentage" type="number" min="0.01" max="100" step="0.01" required data-owner-field="Percentage"></div>
+     </div>
+     <p class="client-edit-note" data-owner-status aria-live="polite"></p>
+     <div class="client-create-actions"><button class="client-create-button client-create-button-secondary" type="button" data-remove-owner>Remove owner</button></div>`;
+   container.append(row);
+   renumber();
+ });
+
+ container.querySelectorAll('[data-business-owner]').forEach(row => {
+   if (row.querySelector('[data-owner-email]')?.value && !row.querySelector('[data-owner-first-name]')?.value)
+     void resolveOwner(row);
+ });
+})();
+</script>

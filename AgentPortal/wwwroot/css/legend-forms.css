@@ -9,7 +9,7 @@
 }
 
 .legend-shell {
-    max-width: 1180px;
+    width: 100%;
     margin: 16px auto 32px;
     padding: 0 18px;
 }

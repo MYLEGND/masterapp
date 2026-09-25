@@ -221,12 +221,13 @@ public sealed class FounderSubscribersService
                     .FirstOrDefault()
             }).ToListAsync(cancellationToken);
 
+        var subscriptionLabels = await Infrastructure.Businesses.BusinessIdentityProjection.LoadLabelsAsync(_db, subscriptionSourceRows.Select(x => x.ClientProfileId), cancellationToken);
         var subscriptionRows = subscriptionSourceRows.Select(row => new FounderSubscriberRecord
         {
             RecordId = row.SubscriptionId.ToString(),
             ClientProfileId = row.ClientProfileId,
             ClientUserId = row.ClientUserId,
-            Customer = BuildCustomerName(row.FirstName, row.LastName, row.Email),
+            Customer = (subscriptionLabels.TryGetValue(row.ClientProfileId, out var entityName) ? entityName + " — " : "") + BuildCustomerName(row.FirstName, row.LastName, row.Email),
             AgentOwner = BuildAgentName(row.AgentName, row.AgentUpn, row.OwnerAgentUserId),
             AgentUserId = row.OwnerAgentUserId,
             MonthlyAmountCents = row.MonthlyAmountCents,
@@ -274,6 +275,7 @@ public sealed class FounderSubscribersService
                 offer.MonthlyAmountCents,
                 offer.Currency,
                 InvitationStatus = invitation.Status,
+                invitation.ExpiresUtc,
                 invitation.CreatedUtc,
                 ClientAppStatus = _db.ClientEntitlements
                     .AsNoTracking()
@@ -283,17 +285,19 @@ public sealed class FounderSubscribersService
                     .FirstOrDefault()
             }).ToListAsync(cancellationToken);
 
+        var invitationLabels = await Infrastructure.Businesses.BusinessIdentityProjection.LoadLabelsAsync(_db, invitationSourceRows.Select(x => x.ClientProfileId), cancellationToken);
         var invitationRows = invitationSourceRows.Select(row => new FounderSubscriberRecord
         {
             RecordId = row.InvitationId.ToString(),
             ClientProfileId = row.ClientProfileId,
             ClientUserId = row.ClientUserId,
-            Customer = BuildCustomerName(row.FirstName, row.LastName, row.Email),
+            Customer = (invitationLabels.TryGetValue(row.ClientProfileId, out var entityName) ? entityName + " — " : "") + BuildCustomerName(row.FirstName, row.LastName, row.Email),
             AgentOwner = BuildAgentName(row.AgentName, row.AgentUpn, row.OwnerAgentUserId),
             AgentUserId = row.OwnerAgentUserId,
             MonthlyAmountCents = row.MonthlyAmountCents,
             Currency = row.Currency,
-            Status = MapInvitationStatus(row.InvitationStatus),
+            Status = MapInvitationStatus(row.ExpiresUtc <= nowUtc
+                ? SubscriptionActivationInvitationStatus.Expired : row.InvitationStatus),
             CreatedUtc = row.CreatedUtc,
             Provider = "—",
             CurrentPlan = "Activation invitation",

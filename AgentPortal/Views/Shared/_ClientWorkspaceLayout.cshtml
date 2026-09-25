@@ -7,9 +7,11 @@
 @using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @inject MasterAppDbContext Db
 
 @{
+    ViewData["RuntimeDiagnosticsFounder"] = AgentPortal.Security.FounderGuard.IsFounder(User);
     var routeClientUserId = ViewContext.RouteData.Values["clientUserId"]?.ToString() ?? "";
     var queryClientUserId = Context.Request.Query["clientUserId"].ToString() ?? "";
     var bagClientUserId = (string?)ViewBag.ClientUserId ?? "";
@@ -30,6 +32,9 @@
 
     var currentAction =
         (ViewContext.ActionDescriptor as ControllerActionDescriptor)?.ActionName ?? "";
+    var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
+        WebsiteConfiguration,
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect);
 
     var isAssistant = Context.Items.TryGetValue("IsAssistant", out var assistantValue) &&
         assistantValue is bool assistant && assistant;
@@ -89,6 +94,8 @@
     <meta http-equiv="expires" content="0" />
 
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/AgentPortal.styles.css" asp-append-version="true" />
     @if (string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase))
@@ -99,10 +106,9 @@
     @await RenderSectionAsync("Styles", required: false)
 
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
+    <link rel="icon" href="@applicationFaviconUrl" />
 
     <style>
-        body { background-color: #fff; color: #000; font-family: 'Inter', sans-serif; }
 
         .workspace-actions-group{
             display:flex;
@@ -180,260 +186,6 @@
             box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
         }
 
-        .explore-overlay{
-            position: fixed;
-            inset: 0;
-            z-index: 1098;
-            background: transparent;
-            display: none;
-        }
-        .explore-overlay.open{ display:block; }
-
-        .explore-trigger{
-            position: fixed;
-            left: 18px;
-            top: 185px;
-            z-index: 1100;
-            width: 54px;
-            height: 54px;
-            border-radius: 16px;
-            border: 1.5px solid rgba(166,128,35,.78);
-            background: #ffffff;
-            box-shadow:
-                0 16px 34px rgba(64,47,11,.14),
-                inset 0 0 0 1px rgba(255,255,255,.86);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all .2s ease;
-        }
-
-        .explore-trigger:hover{
-            transform: translateY(-2px) scale(1.01);
-            border-color: rgba(166,128,35,.94);
-            box-shadow:
-                0 20px 42px rgba(64,47,11,.18),
-                inset 0 0 0 1px rgba(255,255,255,.88);
-        }
-
-        .explore-bars{
-            width: 18px;
-            height: 14px;
-            display: grid;
-            gap: 3px;
-        }
-
-        .explore-bars span{
-            display:block;
-            height: 2.5px;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #a68023, #ddb457);
-            transition: all .2s ease;
-            opacity: 1;
-        }
-
-        .explore-trigger:hover .explore-bars span{
-            background: linear-gradient(90deg, #b38422, #efc866);
-        }
-
-        .explore-drawer{
-            position: fixed;
-            left: 78px;
-            top: 185px;
-            z-index: 1099;
-            width: 320px;
-            max-width: calc(100vw - 36px);
-            transform: translateX(-140%);
-            transition: transform .25s ease;
-            pointer-events: none;
-        }
-
-        .explore-drawer.open{
-            transform: translateX(0);
-            pointer-events: auto;
-        }
-
-        .explore-drawer:not(.open) .explore-card{
-            box-shadow:none;
-        }
-
-        .explore-card{
-            background: #ffffff;
-            border: 1.5px solid rgba(166,128,35,.86);
-            border-radius: 18px;
-            box-shadow:
-                0 22px 48px rgba(64,47,11,.16),
-                inset 0 0 0 1px rgba(255,255,255,.78);
-            overflow: hidden;
-            position: relative;
-        }
-
-        .explore-card::before{
-            content:"";
-            position:absolute;
-            left:0;
-            right:0;
-            top:0;
-            height:4px;
-            background: linear-gradient(90deg, #a68023, #c79931 26%, #efc866 54%, #c79931 80%, #a68023);
-        }
-
-        .explore-header{
-            padding: 18px 18px 12px 18px;
-            border-bottom: 1px solid rgba(166,128,35,.22);
-            display:flex;
-            align-items:center;
-            justify-content: space-between;
-            gap: 10px;
-            background: #ffffff;
-        }
-
-        .explore-title{
-            font-weight: 1000;
-            letter-spacing: 1.2px;
-            color: #a68023;
-            font-size: 1rem;
-            white-space: nowrap;
-        }
-
-        .explore-pill{
-            font-size: .74rem;
-            font-weight: 900;
-            color: #a68023;
-            background: #ffffff;
-            border: 1px solid rgba(166,128,35,.42);
-            padding: 6px 11px;
-            border-radius: 999px;
-            white-space: nowrap;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.72);
-        }
-
-        .explore-search{
-            padding: 14px 18px 10px 18px;
-        }
-
-        .explore-search input{
-            width:100%;
-            border-radius:999px;
-            border:1.5px solid rgba(166,128,35,.42);
-            padding:11px 15px;
-            outline:none;
-            font-weight:800;
-            transition:all .2s ease;
-            background: #ffffff;
-            color:#201507;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.88);
-        }
-
-        .explore-search input:focus{
-            border-color: rgba(166,128,35,.94);
-            box-shadow: 0 0 0 4px rgba(166,128,35,.14), 0 12px 24px rgba(64,47,11,.08);
-        }
-
-        .explore-list{
-            max-height: calc(100vh - 330px);
-            overflow:auto;
-            padding: 8px 12px 16px 12px;
-        }
-
-        .explore-item{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:10px;
-            padding:12px 14px;
-            border-radius:16px;
-            text-decoration:none;
-            color:#1a1a1a;
-            font-weight:900;
-            transition:all .2s ease;
-            margin:6px 6px;
-            border:1px solid rgba(166,128,35,.18);
-            background: #ffffff;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
-        }
-
-        .explore-item:hover{
-            color:#a68023;
-            background: #fffdf8;
-            transform: translateY(-2px);
-            border-color: rgba(166,128,35,.56);
-            box-shadow: 0 14px 28px rgba(64,47,11,.12);
-        }
-
-        .explore-item span{
-            display:block;
-            font-size:.98rem;
-            letter-spacing:.18px;
-        }
-
-        .explore-item small{
-            font-weight: 900;
-            white-space: nowrap;
-            padding: 5px 10px;
-            border-radius: 999px;
-            border: 1px solid rgba(26,26,26,.12);
-            background: #fff;
-            color: rgba(26,26,26,.72);
-            letter-spacing: .35px;
-            text-transform: uppercase;
-            font-size: .67rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
-        }
-
-        .explore-item[data-tone="crm"] small{
-            color:#2457c5;
-            border-color:rgba(36,87,197,.28);
-            background:linear-gradient(180deg, #f4f8ff, #e9f1ff);
-        }
-
-        .explore-item[data-tone="finance"] small{
-            color:#0d7d73;
-            border-color:rgba(13,125,115,.24);
-            background:linear-gradient(180deg, #f1fcfa, #e7f8f5);
-        }
-
-        .explore-item[data-tone="ops"] small{
-            color:#1f8b49;
-            border-color:rgba(31,139,73,.24);
-            background:linear-gradient(180deg, #f3fbf6, #e8f7ed);
-        }
-
-        .explore-item[data-tone="library"] small{
-            color:#a05d12;
-            border-color:rgba(160,93,18,.24);
-            background:linear-gradient(180deg, #fff8ef, #fff0dd);
-        }
-
-        .explore-item[data-tone="growth"] small{
-            color:#9d4edd;
-            border-color:rgba(157,78,221,.24);
-            background:linear-gradient(180deg, #faf4ff, #f1e6ff);
-        }
-
-        footer.footer {
-            background: #ffffff !important;
-            color: #1a1a1a !important;
-            border-top: 1.5px solid rgba(166,128,35,.30) !important;
-            font-weight: 700;
-            font-size: 0.95rem;
-        }
-
-        .footer-link{
-            color: #a68023;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all .2s ease;
-        }
-
-        .footer-link:hover{
-            color: #a68023;
-            text-decoration: underline;
-        }
-
-        .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
-
         @@media (max-width: 576px) {
             .client-workspace-context {
                 position: static;
@@ -448,15 +200,6 @@
                 white-space: normal;
             }
 
-            .explore-trigger{
-                top: 215px;
-                left: 12px;
-            }
-
-            .explore-drawer{
-                top: 215px;
-                left: 70px;
-            }
         }
 
         @@media (min-width: 577px) and (max-width: 992px) {
@@ -476,7 +219,7 @@
     <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 </head>
 
-<body class="d-flex flex-column min-vh-100">
+<body class="legend-app d-flex flex-column min-vh-100">
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-light legend-global-nav" data-legend-global-nav>
@@ -493,6 +236,14 @@
             <div class="navbar-left">
                 <div class="nav-rows-grid">
                     <ul class="navbar-nav nav-row">
+                        <li class="nav-item nav-item-explore">
+                            <button id="exploreTrigger" type="button" class="explore-trigger"
+                                    aria-label="Open Explore" aria-controls="exploreDrawer" aria-expanded="false">
+                                <div class="explore-bars" aria-hidden="true">
+                                    <span></span><span></span><span></span>
+                                </div>
+                            </button>
+                        </li>
                         <li class="nav-item">
                             <a class="nav-link @(ActiveClientsProfile())"
                                asp-controller="Clients"
@@ -679,19 +430,6 @@
 
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
 
-<button id="exploreTrigger"
-        type="button"
-        class="explore-trigger"
-        aria-label="Open Explore"
-        aria-controls="exploreDrawer"
-        aria-expanded="false">
-    <div class="explore-bars" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
-    </div>
-</button>
-
 <aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
     <div class="explore-card">
         <div class="explore-header">
@@ -751,14 +489,14 @@
     </div>
 </aside>
 
-<div class="container layout-content flex-grow-1">
+<div class="legend-app-content layout-content flex-grow-1">
     <main role="main">
         @RenderBody()
     </main>
 </div>
 
 <footer class="footer mt-auto py-3">
-    <div class="container text-center">
+    <div class="legend-app-footer text-center">
         &copy; 2025 - MYLEGND, LLC. All rights reserved.
         <br />
         <a href="https://protect.mylegnd.com/Terms" target="_blank" rel="noopener" class="footer-link">Terms</a>

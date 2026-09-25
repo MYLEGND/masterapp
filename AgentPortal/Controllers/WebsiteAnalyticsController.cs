@@ -338,7 +338,8 @@ namespace AgentPortal.Controllers;
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetMarketingHealthAsync(range, scope, trafficType);
+        var result = await MarketingHealthProjection.LoadAsync(_analytics, _metaSignalAnalytics,
+            range, scope, trafficType, _logger, HttpContext.RequestAborted);
         return Json(result);
     }
 
@@ -889,7 +890,9 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> VisitorTimeline(
         string visitorId,
         string? sessionId = null,
-        string preset = "today")
+        string preset = "today", DateTime? fromUtc = null, DateTime? toUtc = null,
+        Guid? agentProfileId = null, bool team = false,
+        TrafficType trafficType = TrafficType.All, TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         visitorId = (visitorId ?? "").Trim();
         sessionId = (sessionId ?? "").Trim();
@@ -903,82 +906,11 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var key = (preset ?? "today").Trim().ToLowerInvariant();
-
-        var fromUtc = key switch
-        {
-            "7d" or "last7" or "last_7_days" => nowUtc.AddDays(-7),
-            "30d" or "last30" or "last_30_days" => nowUtc.AddDays(-30),
-            "90d" or "last90" or "last_90_days" => nowUtc.AddDays(-90),
-            "yesterday" => nowUtc.Date.AddDays(-1),
-            _ => nowUtc.Date
-        };
-
-        var toUtc = key == "yesterday"
-            ? nowUtc.Date
-            : nowUtc;
-
-        var query = _db.AnalyticsEvents
-            .AsNoTracking()
-            .Where(x => x.EventUtc >= fromUtc &&
-                        x.EventUtc <= toUtc);
-
-        if (!string.IsNullOrWhiteSpace(visitorId))
-            query = query.Where(x => x.VisitorId == visitorId);
-
-        if (!string.IsNullOrWhiteSpace(sessionId))
-            query = query.Where(x => x.SessionId == sessionId);
-
-        var events = await query
-            .OrderBy(x => x.EventUtc)
-            .Take(500)
-            .ToListAsync();
-
-        var eventVisitorIds = events
-            .Select(x => x.VisitorId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var eventSessionIds = events
-            .Select(x => x.SessionId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var metaSignals = await _db.MetaSignalEvents
-            .AsNoTracking()
-            .Where(x => x.CreatedUtc >= fromUtc && x.CreatedUtc <= toUtc)
-            .Where(x =>
-                (!string.IsNullOrWhiteSpace(x.VisitorId) && eventVisitorIds.Contains(x.VisitorId!)) ||
-                (!string.IsNullOrWhiteSpace(x.SessionId) && eventSessionIds.Contains(x.SessionId!)))
-            .ToListAsync();
-
-        var trust = _visitorTrustScoringService.Calculate(events, metaSignals);
-
-        return Ok(new
-        {
-            visitorId,
-            sessionId,
-            trustScore = trust.TrustScore,
-            trustTier = trust.TrustTier,
-            signals = trust.Signals,
-            totalEvents = trust.TotalEvents,
-            sessions = trust.Sessions,
-            maxScroll = trust.MaxScroll,
-            formStarts = trust.FormStarts,
-            ctaClicks = trust.CtaClicks,
-            averageSecondsBetweenEvents = trust.AverageSecondsBetweenEvents,
-            burstEventCount = trust.BurstEventCount,
-            humanConfidence = trust.HumanConfidence,
-            behaviorScore = trust.BehaviorScore,
-            intentScore = trust.IntentScore,
-            engagementScore = trust.EngagementScore,
-            frictionScore = trust.FrictionScore,
-            leadReadinessScore = trust.LeadReadinessScore,
-            events
-        });
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var projection = new AnalyticsDetailProjection(_analytics, _kpiDetailBreakdownService);
+        return Ok(await projection.VisitorTimelineAsync(visitorId, sessionId, range, scope, trafficType,
+            _visitorTrustScoringService, HttpContext.RequestAborted));
     }
 
 
@@ -1002,154 +934,9 @@ namespace AgentPortal.Controllers;
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
 
-        var span = range.ToUtc - range.FromUtc;
-        var prevFrom = range.FromUtc - span;
-        var prevTo = range.ToUtc - span;
-        var prevRange = new TimeRangeRequest
-        {
-            FromUtc = prevFrom,
-            ToUtc = prevTo,
-            Grouping = range.Grouping,
-            Label = range.Label,
-            Preset = range.Preset,
-            ViewerTimeZone = range.ViewerTimeZone,
-            QualityMode = range.QualityMode
-        };
-
-        // Pull the data we need — reuse existing service methods, no duplication
-        var traffic = await _analytics.GetTrafficAsync(range, scope, trafficType);
-        var prevTraffic = await _analytics.GetTrafficAsync(prevRange, scope, trafficType);
-
-        int total, prevTotal;
-        List<TrendPointDto> series;
-
-        switch (metric)
-        {
-            case "pageviews":
-                total = traffic.PageViewTrend.Sum(p => p.Value);
-                prevTotal = prevTraffic.PageViewTrend.Sum(p => p.Value);
-                series = traffic.PageViewTrend;
-                break;
-            case "visitors":
-                total = traffic.VisitorTrend.Sum(p => p.Value);
-                prevTotal = prevTraffic.VisitorTrend.Sum(p => p.Value);
-                series = traffic.VisitorTrend;
-                break;
-            case "sessions":
-                total = traffic.SessionTrend.Sum(p => p.Value);
-                prevTotal = prevTraffic.SessionTrend.Sum(p => p.Value);
-                series = traffic.SessionTrend;
-                break;
-            case "leads":
-                var leads = await _analytics.GetLeadsAsync(range, scope, trafficType, 5000);
-                var prevLeads = await _analytics.GetLeadsAsync(prevRange, scope, trafficType, 5000);
-                total = leads.Total;
-                prevTotal = prevLeads.Total;
-                series = BuildLeadDailySeries(leads, range);
-                break;
-            default:
-                total = 0; prevTotal = 0; series = new List<TrendPointDto>();
-                break;
-        }
-
-        var deltaCount = total - prevTotal;
-        var deltaPct = prevTotal > 0 ? Math.Round((decimal)deltaCount / prevTotal * 100, 1) : 0;
-        var localStart = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.FromUtc, DateTimeKind.Utc), range.ViewerTimeZone).Date;
-        var localEnd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.ToUtc, DateTimeKind.Utc), range.ViewerTimeZone).Date;
-        var days = Math.Max(1, (localEnd - localStart).TotalDays + 1);
-        var avgPerDay = Math.Round((decimal)total / (decimal)days, 1);
-
-        // Build breakdown
-        var breakdown = new Models.Analytics.KpiDetailBreakdownDto();
-
-        switch (metric)
-        {
-            case "pageviews":
-                breakdown.TopPages = traffic.TopPages.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-                breakdown.TopSources = traffic.TopSources.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-                breakdown.TopCampaigns = traffic.TopCampaigns.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-                break;
-
-            case "visitors":
-                breakdown.TopLandingPages = traffic.EntryPages.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-
-                breakdown.TopSources = traffic.TopSources.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-
-                breakdown.VisitorConcentration =
-                    await LoadVisitorConcentrationSafelyAsync(range, scope, HttpContext.RequestAborted);
-
-                break;
-
-            case "sessions":
-                breakdown.TopLandingPages = traffic.EntryPages.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-                breakdown.TopSources = traffic.TopSources.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-                breakdown.TopCampaigns = traffic.TopCampaigns.Take(10)
-                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-                break;
-
-            case "leads":
-                var leadsForBreakdown = await _analytics.GetLeadsAsync(range, scope, trafficType, 5000);
-                breakdown = _kpiDetailBreakdownService.BuildLeadBreakdown(leadsForBreakdown);
-                break;
-        }
-
-        var metricLabel = metric switch
-        {
-            "pageviews" => "Page Views",
-            "visitors" => "Unique Visitors",
-            "sessions" => "Sessions",
-            "leads" => "Leads",
-            _ => metric
-        };
-
-        var result = new Models.Analytics.KpiDetailDto
-        {
-            Metric = metric,
-            Label = metricLabel,
-            StartDateLocal = localStart.ToString("MMM d, yyyy"),
-            EndDateLocal = localEnd.ToString("MMM d, yyyy"),
-            Totals = new Models.Analytics.KpiDetailTotalsDto
-            {
-                Total = total,
-                PreviousTotal = prevTotal,
-                DeltaCount = deltaCount,
-                DeltaPct = deltaPct,
-                AvgPerDay = avgPerDay
-            },
-            Series = series,
-            Breakdown = breakdown
-        };
-
-        return Json(result);
-    }
-
-    private static List<TrendPointDto> BuildLeadDailySeries(LeadSnapshotDto leads, TimeRangeRequest range)
-    {
-        var tz = range.ViewerTimeZone;
-        var start = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.FromUtc, DateTimeKind.Utc), tz).Date;
-        var end = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.ToUtc, DateTimeKind.Utc), tz).Date;
-        var grouped = leads.Leads
-            .GroupBy(l => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(l.CreatedUtc, DateTimeKind.Utc), tz).Date)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var series = new List<TrendPointDto>();
-        for (var day = start; day <= end; day = day.AddDays(1))
-        {
-            series.Add(new TrendPointDto
-            {
-                Label = day.ToString("yyyy-MM-dd"),
-                Value = grouped.TryGetValue(day, out var value) ? value : 0
-            });
-        }
-
-        return series;
+        var projection = new AnalyticsDetailProjection(_analytics, _kpiDetailBreakdownService);
+        return Json(await projection.KpiAsync(metric, range, scope, trafficType,
+            LoadVisitorConcentrationSafelyAsync, HttpContext.RequestAborted));
     }
 
     [HttpGet("meta-campaigns")]
@@ -1207,7 +994,6 @@ namespace AgentPortal.Controllers;
         try
         {
             var record = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
-            await SaveMetaCapiTokenToAgentProfileAsync(record, HttpContext.RequestAborted);
             return Redirect($"{target}?meta=connected");
         }
         catch (InvalidOperationException ex)
@@ -1221,39 +1007,6 @@ namespace AgentPortal.Controllers;
             return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Meta connection failed unexpectedly. Please try again.")}");
         }
     }
-
-    private async Task SaveMetaCapiTokenToAgentProfileAsync(MetaAdsConnectionRecord record, CancellationToken cancellationToken)
-    {
-        if (record.AgentTrackingProfileId == Guid.Empty || string.IsNullOrWhiteSpace(record.AccessToken))
-            return;
-
-        var trackingProfile = await _db.AgentTrackingProfiles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == record.AgentTrackingProfileId, cancellationToken);
-
-        if (trackingProfile == null || string.IsNullOrWhiteSpace(trackingProfile.AgentUserId))
-        {
-            _logger.LogWarning("Meta CAPI token bridge skipped because tracking profile was not found. agentTrackingProfileId={AgentTrackingProfileId}", record.AgentTrackingProfileId);
-            return;
-        }
-
-        var agentProfile = await _db.AgentProfiles
-            .FirstOrDefaultAsync(x => x.AgentUserId == trackingProfile.AgentUserId, cancellationToken);
-
-        if (agentProfile == null)
-        {
-            _logger.LogWarning("Meta CAPI token bridge skipped because agent profile was not found. agentTrackingProfileId={AgentTrackingProfileId} agentUserId={AgentUserId}", record.AgentTrackingProfileId, trackingProfile.AgentUserId);
-            return;
-        }
-
-        agentProfile.MetaCapiAccessToken = _metaCapiCredentialProtector.Protect(record.AccessToken);
-        agentProfile.UpdatedUtc = DateTime.UtcNow;
-
-        await _db.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Meta CAPI token securely configured from Meta OAuth connection. agentTrackingProfileId={AgentTrackingProfileId} agentUserId={AgentUserId}", record.AgentTrackingProfileId, trackingProfile.AgentUserId);
-    }
-
 
     [HttpGet("meta-connection-status")]
     public async Task<IActionResult> MetaConnectionStatus([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
@@ -1314,146 +1067,18 @@ namespace AgentPortal.Controllers;
         return Json(new { ok = true });
     }
 
-    private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
-    {
-        var isFounder = FounderGuard.IsFounder(User);
+    private Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false) =>
+        new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger)
+            .ResolveAsync(HttpContext, requestedAgentId, team);
 
-        // Effective agent (includes View-as-Agent)
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        var effectiveProfileId = effectiveProfile?.Id;
-
-        if (team && !isFounder)
-        {
-            _logger.LogWarning("WebsiteAnalytics denied team scope elevation for non-founder caller.");
-        }
-        else if (team && isFounder)
-        {
-            return ScopeContext.Global;
-        }
-
-        // Founder default on Website Analytics is founder personal unless Global/team is explicitly selected.
-        if (isFounder)
-        {
-            if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
-            if (_effectiveContext.IsViewingAsAgent)
-            {
-                return await ResolveEffectiveImpersonatedAgentScopeAsync();
-            }
-
-            var founderProfile = await GetCallerProfileAsync();
-            if (founderProfile != null)
-            {
-                return ScopeContext.ForAgent(founderProfile.Id);
-            }
-
-            return ScopeContext.Global;
-        }
-
-        // If founder is impersonating an agent, analytics must scope to that agent.
-        // Never fall back to founder scope for view-as-agent requests.
-        if (_effectiveContext.IsViewingAsAgent)
-        {
-            return await ResolveEffectiveImpersonatedAgentScopeAsync();
-        }
-
-        // Agent (or assistant) uses effective profile
-        if (effectiveProfileId.HasValue)
-        {
-            return ScopeContext.ForAgent(effectiveProfileId.Value);
-        }
-
-        _logger.LogWarning("Scope resolution: no agent profile for caller; returning empty scope (no data)");
-        return ScopeContext.ForAgent(Guid.Empty); // will match nothing
-    }
-
-    private async Task<ScopeContext> ResolveEffectiveImpersonatedAgentScopeAsync()
-    {
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        var effectiveProfileId = effectiveProfile?.Id;
-        if (effectiveProfileId.HasValue)
-        {
-            return ScopeContext.ForAgent(effectiveProfileId.Value);
-        }
-
-        var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
-        if (!string.IsNullOrWhiteSpace(effectiveOid))
-        {
-            // Fallback path: if a tracking profile is missing, provision one from AgentProfile metadata.
-            var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
-            if (byOid != null)
-            {
-                return ScopeContext.ForAgent(byOid.Id);
-            }
-
-            var oidLower = effectiveOid.ToLowerInvariant();
-            var agentProfile = await _db.AgentProfiles.AsNoTracking()
-                .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
-                .OrderByDescending(a => a.UpdatedUtc)
-                .FirstOrDefaultAsync();
-
-            var upn = agentProfile?.AgentUpn
-                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
-            var displayName = agentProfile?.FullName
-                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
-
-            if (!string.IsNullOrWhiteSpace(upn))
-            {
-                var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
-                return ScopeContext.ForAgent(ensured.Id);
-            }
-        }
-
-        _logger.LogWarning(
-            "WebsiteAnalytics scope resolution failed for impersonated agent. effectiveOid={EffectiveOid}. Returning empty scope.",
-            _effectiveContext.EffectiveAgentOid ?? "(null)");
-        return ScopeContext.ForAgent(Guid.Empty);
-    }
-
-    private async Task<Domain.Entities.AgentTrackingProfile?> GetCallerProfileAsync()
-    {
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        if (effectiveProfile != null) return effectiveProfile;
-
-        var upn = _effectiveContext.ActualUserUpn;
-        if (!string.IsNullOrWhiteSpace(upn))
-        {
-            return await _tracking.GetByUpnAsync(upn);
-        }
-        return null;
-    }
+    private Task<Domain.Entities.AgentTrackingProfile?> GetCallerProfileAsync() =>
+        new WebsiteAnalyticsScopeResolver(_effectiveContext, _tracking, _db, _logger).GetCallerProfileAsync();
 
     private async Task<Guid?> ResolveMetaConnectionAgentIdAsync(Guid? requestedAgentId = null, bool team = false)
     {
-        if (team)
-            return null;
-
-        if (requestedAgentId.HasValue && requestedAgentId.Value != Guid.Empty)
-        {
-            var exists = await _db.AgentTrackingProfiles.AsNoTracking()
-                .AnyAsync(p => p.Id == requestedAgentId.Value);
-            return exists ? requestedAgentId.Value : null;
-        }
-
-        if (_effectiveContext.IsViewingAsAgent)
-        {
-            var impersonatedScope = await ResolveEffectiveImpersonatedAgentScopeAsync();
-            if (impersonatedScope.ScopeType == ScopeType.Agent &&
-                impersonatedScope.AgentTrackingProfileId.HasValue &&
-                impersonatedScope.AgentTrackingProfileId.Value != Guid.Empty)
-            {
-                return impersonatedScope.AgentTrackingProfileId.Value;
-            }
-        }
-
-        if (FounderGuard.IsFounder(User))
-            return null;
-
-        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
-        if (effectiveProfile?.Id is Guid effectiveProfileId && effectiveProfileId != Guid.Empty)
-            return effectiveProfileId;
-
-        var caller = await GetCallerProfileAsync();
-        return caller?.Id;
+        var scope = await ResolveScopeAsync(requestedAgentId, team);
+        return scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId != Guid.Empty
+            ? scope.AgentTrackingProfileId : null;
     }
 
     private async Task<string> ResolveScopeLabelAsync(ScopeContext scope, bool team)

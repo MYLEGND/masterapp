@@ -248,6 +248,11 @@ public static class UploadValidator
             content[8] == 0x57 && content[9] == 0x45 && content[10] == 0x42 && content[11] == 0x50)
             return "image/webp";
 
+        // WebM: EBML container signature with an explicit WebM document type.
+        if (content.Length >= 12 && content[0] == 0x1A && content[1] == 0x45 && content[2] == 0xDF && content[3] == 0xA3 &&
+            content.AsSpan(4, Math.Min(content.Length - 4, 4096)).IndexOf(new byte[] { 0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6D }) >= 0)
+            return "video/webm";
+
         // MP4 / MOV / other ISO base media: bytes 4..8 == "ftyp"
         if (content.Length >= 12 &&
             content[4] == 0x66 && content[5] == 0x74 && content[6] == 0x79 && content[7] == 0x70)
@@ -266,6 +271,7 @@ public static class UploadValidator
             "image/webp" => extension is ".webp",
             "application/pdf" => extension is ".pdf",
             "video/mp4" => extension is ".mp4" or ".m4v" or ".mov",
+            "video/webm" => extension is ".webm",
             _ => true
         };
     }

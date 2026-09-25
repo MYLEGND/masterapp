@@ -114,13 +114,11 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             try
             {
                 var bridgeRow = await TryBuildBridgeRowAsync(db, analyticsEvent, cancellationToken);
-                _watermark = analyticsEvent.Id;
-
-                if (bridgeRow == null)
+                if (bridgeRow == null || await AlreadyDerivedAsync(db, bridgeRow, cancellationToken))
+                {
+                    _watermark = analyticsEvent.Id;
                     continue;
-
-                if (await AlreadyDerivedAsync(db, bridgeRow, cancellationToken))
-                    continue;
+                }
 
                 db.MetaSignalEvents.Add(bridgeRow);
 
@@ -134,6 +132,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     if (entry.State != EntityState.Detached)
                         entry.State = EntityState.Detached;
 
+                    _watermark = analyticsEvent.Id;
                     _logger.LogDebug(
                         ex,
                         "MetaSignalAnalyticsBridge ignored duplicate derived row sourceAnalyticsEventId={AnalyticsId} eventName={EventName}",
@@ -142,6 +141,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     continue;
                 }
 
+                _watermark = analyticsEvent.Id;
                 _logger.LogInformation(
                     "MetaSignalBridge processed event {EventType} for Lead {LeadId}",
                     bridgeRow.EventName,
@@ -154,7 +154,9 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                     "MetaSignalAnalyticsBridge failed sourceAnalyticsEventId={AnalyticsId} sourceEventType={EventType}",
                     analyticsEvent.Id,
                     analyticsEvent.EventType);
-                _watermark = analyticsEvent.Id;
+                // The scoped context is disposed before the next poll. Keep the
+                // watermark behind the failed row so its stable event ID is retried.
+                return false;
             }
         }
 
@@ -234,13 +236,15 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return new MetaSignalEvent
         {
             CreatedUtc = eventUtc,
-            EventId = !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
-                ? leadDispatchState.MetaEventId!
-                : !string.IsNullOrWhiteSpace(upstreamMetaEventId)
-                    ? upstreamMetaEventId!
-                : analyticsEvent.EventId == Guid.Empty
-                    ? $"analytics_bridge_{analyticsEvent.Id}"
-                    : analyticsEvent.EventId.ToString("N"),
+            EventId = ScopeEventId(
+                analyticsEvent.CommerceBusinessId,
+                !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
+                    ? leadDispatchState.MetaEventId!
+                    : !string.IsNullOrWhiteSpace(upstreamMetaEventId)
+                        ? upstreamMetaEventId!
+                        : analyticsEvent.EventId == Guid.Empty
+                            ? $"analytics_bridge_{analyticsEvent.Id}"
+                            : analyticsEvent.EventId.ToString("N")),
             EventName = mapping.MetaEventName,
             EventCategory = mapping.EventCategory,
             LeadId = leadId,
@@ -280,8 +284,15 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             Referrer = Normalize(analyticsEvent.Referrer),
             UserAgentHash = SafeHash(Normalize(analyticsEvent.UserAgent) ?? Normalize(resolvedLead?.ClientUserAgent)),
             IpHash = SafeHash(Normalize(analyticsEvent.IpAddress) ?? Normalize(resolvedLead?.ClientIpAddress)),
-            AgentTrackingProfileId = analyticsEvent.AgentTrackingProfileId ?? resolvedLead?.AgentTrackingProfileId,
-            AgentSlug = Normalize(analyticsEvent.AgentSlug) ?? Normalize(resolvedLead?.AgentSlug),
+            AgentTrackingProfileId = analyticsEvent.CommerceBusinessId.HasValue
+                ? null
+                : analyticsEvent.AgentTrackingProfileId ?? resolvedLead?.AgentTrackingProfileId,
+            CommerceBusinessId = analyticsEvent.CommerceBusinessId,
+            WebsiteContentVersionId = analyticsEvent.WebsiteContentVersionId,
+            WebsiteBindingId = Normalize(analyticsEvent.WebsiteBindingId),
+            AgentSlug = analyticsEvent.CommerceBusinessId.HasValue
+                ? null
+                : Normalize(analyticsEvent.AgentSlug) ?? Normalize(resolvedLead?.AgentSlug),
             Environment = Normalize(analyticsEvent.Environment),
             Host = Normalize(analyticsEvent.Host),
             MetadataJson = MetaSignalAnalyticsBridgeMetadata.Build(
@@ -330,6 +341,11 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                 x.ReceivedUtc >= windowStartUtc &&
                 x.ReceivedUtc <= windowEndUtc &&
                 (x.EventType == "capi_event_success" || x.EventType == "capi_event_failure"));
+
+        if (analyticsEvent.CommerceBusinessId.HasValue)
+            query = query.Where(x => x.CommerceBusinessId == analyticsEvent.CommerceBusinessId);
+        else if (analyticsEvent.AgentTrackingProfileId.HasValue)
+            query = query.Where(x => x.CommerceBusinessId == null && x.AgentTrackingProfileId == analyticsEvent.AgentTrackingProfileId);
 
         if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
         {
@@ -394,7 +410,10 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.LeadId == metadataLeadId.Value, cancellationToken);
 
-            if (directLead != null)
+            if (directLead != null &&
+                directLead.CommerceBusinessId == analyticsEvent.CommerceBusinessId &&
+                (!analyticsEvent.CommerceBusinessId.HasValue ||
+                 (!directLead.AgentTrackingProfileId.HasValue && string.IsNullOrWhiteSpace(directLead.AgentSlug))))
                 return directLead;
         }
 
@@ -405,7 +424,13 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
             var query = db.WebsiteLeads
                 .AsNoTracking()
-                .Where(x => x.CreatedUtc >= windowStartUtc && x.CreatedUtc <= windowEndUtc);
+                .Where(x => x.CreatedUtc >= windowStartUtc && x.CreatedUtc <= windowEndUtc &&
+                            x.CommerceBusinessId == analyticsEvent.CommerceBusinessId);
+
+            if (analyticsEvent.CommerceBusinessId.HasValue)
+                query = query.Where(x => x.AgentTrackingProfileId == null && (x.AgentSlug == null || x.AgentSlug == ""));
+            else if (analyticsEvent.AgentTrackingProfileId.HasValue)
+                query = query.Where(x => x.AgentTrackingProfileId == analyticsEvent.AgentTrackingProfileId);
 
             if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
             {
@@ -437,7 +462,10 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         MetaSignalEvent candidate,
         CancellationToken cancellationToken)
     {
-        if (await db.MetaSignalEvents.AsNoTracking().AnyAsync(x => x.EventId == candidate.EventId, cancellationToken))
+        if (await db.MetaSignalEvents.AsNoTracking().AnyAsync(x =>
+                x.EventId == candidate.EventId &&
+                x.CommerceBusinessId == candidate.CommerceBusinessId &&
+                (!candidate.CommerceBusinessId.HasValue || x.AgentTrackingProfileId == null), cancellationToken))
             return true;
 
         var roundedMinute = RoundToNearestMinute(candidate.CreatedUtc);
@@ -449,7 +477,15 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             .Where(x =>
                 x.EventName == candidate.EventName &&
                 x.CreatedUtc >= windowStart &&
-                x.CreatedUtc < windowEnd);
+                x.CreatedUtc < windowEnd &&
+                x.CommerceBusinessId == candidate.CommerceBusinessId);
+
+        if (candidate.CommerceBusinessId.HasValue)
+            query = query.Where(x => x.AgentTrackingProfileId == null && (x.AgentSlug == null || x.AgentSlug == ""));
+        else if (candidate.AgentTrackingProfileId.HasValue)
+            query = query.Where(x => x.AgentTrackingProfileId == candidate.AgentTrackingProfileId);
+        else if (!string.IsNullOrWhiteSpace(candidate.AgentSlug))
+            query = query.Where(x => x.AgentSlug == candidate.AgentSlug);
 
         if (candidate.LeadId.HasValue)
         {
@@ -842,6 +878,11 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             return "Direct";
         return "Unknown";
     }
+
+    private static string ScopeEventId(Guid? commerceBusinessId, string eventId) =>
+        commerceBusinessId.HasValue && commerceBusinessId != Guid.Empty
+            ? $"business:{commerceBusinessId.Value:N}:{eventId}"
+            : eventId;
 
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

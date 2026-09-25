@@ -53,7 +53,7 @@
     }
 
     #legendWrap{
-        max-width: 1540px;
+        width: 100%;
         margin: 0 auto;
         padding: 12px 12px 56px 12px;
     }
@@ -1083,20 +1083,6 @@
         margin-top: 6px;
         overflow-x: auto;
         padding: 0 8px 10px 8px;
-        scrollbar-color: #a68023 rgba(0,0,0,.08);
-        scrollbar-width: thin;
-    }
-
-    #tableView::-webkit-scrollbar{
-        height: 10px;
-    }
-    #tableView::-webkit-scrollbar-track{
-        background: rgba(0,0,0,.04);
-        border-radius: 999px;
-    }
-    #tableView::-webkit-scrollbar-thumb{
-        background: linear-gradient(180deg, #a68023, #d1a642);
-        border-radius: 999px;
     }
 
     /* Hybrid mode tweaks: keep both views visible and comfortably spaced */
@@ -5360,10 +5346,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     filter:brightness(1.04);
 }
 
-.pipeline-command-dock .btn:disabled{
-    opacity:.48 !important;
-    box-shadow:none !important;
-}
+
 
 @media (max-width: 980px){
     .pipeline-head-actions{
@@ -7621,19 +7604,9 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .drawer.crm-qv-shell .drawer-top-actions{
-        grid-template-columns:1fr;
-    }
-
     .drawer.crm-qv-shell .qv-billing-header{
         align-items:stretch;
         flex-direction:column;
-    }
-
-    .drawer.crm-qv-shell{
-        width:calc(100vw - 20px);
-        max-height:min(92vh, calc(var(--legend-modal-safe-height, 100vh) - 12px));
-        border-radius:22px;
     }
 
     .drawer.crm-qv-shell .dhead{
@@ -8284,7 +8257,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 /* ===== Queue workspace refresh (Clients + Leads My Day redirects) ===== */
 .queue-workspace-page{
-    max-width:1540px;
+    width:100%;
     padding-top:18px !important;
     padding-bottom:64px !important;
 }
@@ -8629,5 +8602,261 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     .queue-workspace-page .queue-record-actions .btn,
     .queue-workspace-page .queue-record-footer .btn{
         width:100%;
+    }
+}
+
+
+/* ===== CLIENT ARCHIVE COMPACT CARDS =====
+   Archive-specific presentation only. Shared mobile density/actions are owned
+   by Legend-Design/legend-app-shell.css. */
+.archive-page{
+    display:grid;
+    gap:.85rem;
+    width:100%;
+    min-width:0;
+}
+.archive-page-head{
+    display:flex;
+    align-items:center;
+    gap:.85rem;
+    flex-wrap:wrap;
+    padding:.15rem 0;
+}
+.archive-back{
+    flex:0 0 auto;
+}
+.archive-heading-copy{
+    display:grid;
+    gap:.15rem;
+    min-width:0;
+}
+.archive-heading-copy h1{
+    margin:0;
+    color:#0f172a;
+    font-size:clamp(1.55rem,4vw,2.15rem);
+    line-height:1;
+}
+.archive-heading-copy p{
+    margin:0;
+    color:#334155;
+    font-weight:650;
+    line-height:1.35;
+}
+.archive-flash,
+.archive-empty{
+    margin:0;
+    padding:.72rem .82rem;
+    border-radius:12px;
+}
+.archive-bulk-form{
+    display:grid;
+    gap:.75rem;
+}
+.archive-toolbar{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(180px,.75fr) auto;
+    align-items:end;
+    gap:.65rem;
+    padding:.72rem;
+    border:1px solid rgba(166,128,35,.42);
+    border-radius:15px;
+    background:linear-gradient(180deg,#102552,#0b1b3c);
+    color:#f8fbff;
+    box-shadow:0 10px 24px rgba(7,16,34,.16);
+}
+.archive-select-controls{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:.5rem .7rem;
+}
+.archive-select-all,
+.archive-card-select{
+    display:flex;
+    align-items:center;
+    gap:.5rem;
+    cursor:pointer;
+}
+.archive-select-all{
+    font-weight:850;
+}
+.archive-selected-count{
+    color:#d5e4ff;
+    font-size:.8rem;
+    font-weight:780;
+}
+.archive-confirm{
+    display:grid;
+    gap:.28rem;
+    min-width:0;
+    color:#dce9ff;
+    font-size:.72rem;
+    font-weight:760;
+}
+.archive-confirm input{
+    width:100%;
+    min-height:38px;
+    padding:.45rem .6rem;
+    border:1px solid rgba(184,211,255,.28);
+    border-radius:9px;
+    background:#f8fbff;
+    color:#0f172a;
+    font-weight:850;
+}
+.archive-actions{
+    min-width:min(100%,310px);
+}
+.archive-erase-button{
+    border:1px solid #f0a3a3;
+    background:linear-gradient(180deg,#7f1d1d,#611515);
+    color:#fff;
+    font-weight:900;
+    box-shadow:0 8px 18px rgba(89,18,18,.24);
+}
+.archive-erase-button:disabled{
+    opacity:.48;
+}
+.archive-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));
+    gap:.72rem;
+}
+.archive-card{
+    display:grid;
+    align-content:start;
+    gap:.62rem;
+    min-width:0;
+    padding:.78rem;
+    border:1px solid rgba(212,170,71,.78);
+    border-radius:16px;
+    background:
+        radial-gradient(circle at top right,rgba(55,103,197,.13),transparent 34%),
+        linear-gradient(180deg,#10284f,#0c1f3e);
+    color:#f8fbff;
+    box-shadow:0 10px 22px rgba(7,16,34,.15);
+}
+.archive-card.is-pending{
+    opacity:.76;
+}
+.archive-card-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.6rem;
+    min-width:0;
+}
+.archive-card-select{
+    min-width:0;
+    flex:1 1 auto;
+}
+.archive-card-select input{
+    width:18px;
+    height:18px;
+    margin:0;
+    accent-color:#d4aa47;
+    flex:0 0 auto;
+}
+.archive-client-name{
+    min-width:0;
+    color:#fff;
+    font-size:1rem;
+    font-weight:920;
+    line-height:1.15;
+    overflow-wrap:anywhere;
+}
+.archive-state{
+    flex:0 0 auto;
+    padding:.2rem .48rem;
+    border:1px solid rgba(244,220,147,.34);
+    border-radius:999px;
+    color:#f0d991;
+    font-size:.66rem;
+    font-weight:900;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+}
+.archive-details{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:.48rem .72rem;
+    margin:0;
+}
+.archive-detail{
+    display:grid;
+    gap:.08rem;
+    min-width:0;
+}
+.archive-detail-wide{
+    grid-column:1 / -1;
+}
+.archive-detail dt{
+    margin:0;
+    color:#f0d991;
+    font-size:.66rem;
+    font-weight:900;
+    letter-spacing:.055em;
+    text-transform:uppercase;
+}
+.archive-detail dd{
+    min-width:0;
+    margin:0;
+    color:#f5f8ff;
+    font-size:.84rem;
+    font-weight:670;
+    line-height:1.28;
+    overflow-wrap:anywhere;
+}
+.archive-detail a{
+    color:#8fc0ff;
+    text-underline-offset:.14em;
+}
+.archive-card-note{
+    margin:0;
+    color:#cbd9ee;
+    font-size:.76rem;
+    line-height:1.35;
+}
+
+@media(max-width:768px){
+    .archive-page{
+        gap:var(--app-mobile-block-gap);
+    }
+    .archive-page-head{
+        align-items:flex-start;
+        padding:0 var(--app-mobile-card-pad);
+    }
+    .archive-heading-copy{
+        flex:1 1 220px;
+    }
+    .archive-heading-copy p{
+        font-size:.82rem;
+    }
+    .archive-toolbar{
+        grid-template-columns:minmax(0,1fr);
+        gap:var(--app-mobile-control-gap);
+        padding:var(--app-mobile-card-pad);
+        border-radius:0;
+        border-left:0;
+        border-right:0;
+    }
+    .archive-select-controls{
+        justify-content:space-between;
+    }
+    .archive-actions{
+        min-width:0;
+        width:100%;
+    }
+    .archive-grid{
+        gap:var(--app-mobile-block-gap);
+    }
+    .archive-card{
+        padding:var(--app-mobile-card-pad);
+        border-radius:14px;
+    }
+    .archive-details{
+        gap:.42rem .62rem;
+    }
+    .archive-detail dd{
+        font-size:.8rem;
     }
 }

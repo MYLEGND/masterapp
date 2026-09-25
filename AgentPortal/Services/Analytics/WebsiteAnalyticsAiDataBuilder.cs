@@ -86,7 +86,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             () => new FormAbandonmentDto { RangeLabel = range.Label }, warnings);
 
         var marketingHealth = await SafeLoadAsync("MarketingHealth",
-            () => _analytics.GetMarketingHealthAsync(range, scope, trafficType),
+            () => MarketingHealthProjection.LoadAsync(_analytics, _metaSignalAnalytics, range, scope, trafficType, _logger, ct),
             () => new MarketingHealthDto { RangeLabel = range.Label, TrafficType = trafficType }, warnings);
 
         var metaCampaigns = await SafeLoadAsync("MetaAds",
@@ -101,6 +101,9 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         {
             warnings.Add(metaSignal.LearningScopeNote);
         }
+
+        if (summary.Sessions > 0 && summary.PageViews == 0)
+            warnings.Add("Sessions exist but this same scope, range and traffic filter has zero page views. Reconcile capture and event definitions before treating funnel or page performance as complete; paid inactivity does not explain this by itself.");
 
         foreach (var healthWarning in marketingHealth.Warnings ?? new List<string>())
         {
@@ -122,6 +125,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             Warnings = warnings,
 
             // (e) Unique Visitors + Lead data
+            PageViews             = summary.PageViews,
             UniqueVisitors        = summary.UniqueVisitors,
             Sessions              = summary.Sessions,
             VerifiedLeads         = summary.VerifiedLeads,
@@ -250,6 +254,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
 
             MarketingHealth = new MarketingHealthAiPayload
             {
+                MetaHealthStatus = marketingHealth.MetaHealthStatus,
                 ClientTrackingErrors = marketingHealth.ClientTrackingErrors,
                 ClientTrackingErrorSessions = marketingHealth.ClientTrackingErrorSessions,
                 InferredFormStarts = marketingHealth.InferredFormStarts,
@@ -268,7 +273,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
 
             // Intentionally omitted (non-conversion breakdowns):
             // TopPages, TopSources, TopCampaigns, EntryPages, CtaPerformance,
-            // TotalConversions, TopDwellPages, IntentConversionRate, PageViews
+            // TotalConversions, TopDwellPages, IntentConversionRate
         };
     }
 

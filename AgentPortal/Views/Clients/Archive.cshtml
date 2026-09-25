@@ -1,38 +1,249 @@
 @using Domain.Entities
 @using AgentPortal.Services
+@using AgentPortal.Security
 @model List<ClientProfile>
 @{
     ViewData["Title"] = "Client Archive";
     var restorable = ViewData["RestorableClientIds"] as HashSet<Guid> ?? new HashSet<Guid>();
+    var purgeable = ViewData["PurgeableClientIds"] as HashSet<Guid> ?? new HashSet<Guid>();
+    var busy = ViewData["BusyClientIds"] as HashSet<Guid> ?? new HashSet<Guid>();
+    var isFounder = FounderGuard.IsFounder(User);
 }
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
-<div class="wrap density-comfort clients-crm">
-    <a class="btn btn-gold" asp-action="Index">Back to clients</a>
-    <h1>Archive / Deleted</h1>
-    <p>Restore a saved client account to your CRM. Cancelled subscriptions remain cancelled.</p>
-    @if (TempData["Created"] is string message) { <div class="flash" role="status">@message</div> }
-    @if (Model.Count == 0) { <p>No archived client accounts.</p> }
-    @foreach (var client in Model)
+
+<div class="archive-page legend-mobile-compact clients-crm">
+    <header class="archive-page-head">
+        <a class="btn btn-gold archive-back" asp-action="Index">Back to clients</a>
+        <div class="archive-heading-copy">
+            <h1>Archive / Deleted</h1>
+            <p>Restore retained client profiles or permanently erase completed archived accounts. Cancelled subscriptions remain cancelled.</p>
+        </div>
+    </header>
+
+    @if (TempData["Created"] is string message)
     {
-        var contact = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
-        <section class="card navy-shell-clients">
-            <h2>@client.FirstName @client.LastName</h2>
-            <dl>
-                <dt>Email</dt><dd><a href="mailto:@client.Email">@client.Email</a></dd>
-                <dt>Phone</dt><dd><a href="tel:@client.Phone">@client.Phone</a></dd>
-                <dt>Additional phone</dt><dd>@contact?.Phone2</dd>
-                <dt>Address</dt><dd>@contact?.AddressLine @contact?.City @contact?.State @contact?.ZipCode</dd>
-                <dt>Birth date</dt><dd>@client.DOB?.ToString("MMM d, yyyy")</dd>
-                <dt>Agent notes</dt><dd>@client.AgentNotes</dd>
-            </dl>
-            @if (restorable.Contains(client.Id))
-            {
-                <form asp-action="Restore" method="post">
-                    <input type="hidden" name="profileId" value="@client.Id" />
-                    <button type="submit" class="btn btn-gold">Restore client account</button>
-                </form>
-            }
-            else { <p>Restoration is unavailable while closure is pending or after information has been permanently erased.</p> }
-        </section>
+        <div class="flash archive-flash" role="status">@message</div>
+    }
+
+    @if (Model.Count == 0)
+    {
+        <div class="archive-empty">No archived client accounts.</div>
+    }
+    else
+    {
+        <form method="post" class="archive-bulk-form" id="archiveBulkForm">
+            @Html.AntiForgeryToken()
+
+            <section class="archive-toolbar" aria-label="Archive actions">
+                <div class="archive-select-controls">
+                    <label class="archive-select-all">
+                        <input type="checkbox" id="archiveSelectAll" />
+                        <span>Select all available</span>
+                    </label>
+                    <span class="archive-selected-count" id="archiveSelectedCount">0 selected</span>
+                </div>
+
+                @if (isFounder)
+                {
+                    <label class="archive-confirm">
+                        <span>Type <strong>ERASE</strong> for permanent deletion</span>
+                        <input type="text"
+                               name="confirmation"
+                               id="archiveEraseConfirmation"
+                               autocomplete="off"
+                               inputmode="text"
+                               spellcheck="false"
+                               placeholder="ERASE" />
+                    </label>
+                }
+
+                <div class="archive-actions legend-mobile-action-grid">
+                    <button type="submit"
+                            class="btn btn-gold"
+                            id="archiveRestoreSelected"
+                            formaction="@Url.Action("RestoreSelected")"
+                            disabled>
+                        Restore selected
+                    </button>
+                    @if (isFounder)
+                    {
+                        <button type="submit"
+                                class="btn archive-erase-button"
+                                id="archiveEraseSelected"
+                                formaction="@Url.Action("PurgeSelected")"
+                                disabled>
+                            Permanently erase
+                        </button>
+                    }
+                </div>
+            </section>
+
+            <div class="archive-grid legend-mobile-card-grid">
+                @foreach (var client in Model)
+                {
+                    var contact = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
+                    var displayName = string.Join(" ", new[] { client.FirstName, client.LastName }.Where(value => !string.IsNullOrWhiteSpace(value)));
+                    if (string.IsNullOrWhiteSpace(displayName))
+                    {
+                        displayName = "Archived client";
+                    }
+
+                    var address = string.Join(", ", new[]
+                    {
+                        string.Join(" ", new[] { contact?.AddressLine, contact?.City }.Where(value => !string.IsNullOrWhiteSpace(value))),
+                        string.Join(" ", new[] { contact?.State, contact?.ZipCode }.Where(value => !string.IsNullOrWhiteSpace(value)))
+                    }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+                    var canRestore = restorable.Contains(client.Id);
+                    var canErase = isFounder && purgeable.Contains(client.Id);
+                    var isBusy = busy.Contains(client.Id);
+                    var canSelect = canRestore || canErase;
+                    var visibleEmail = !string.IsNullOrWhiteSpace(client.Email) &&
+                        !client.Email.EndsWith("@deleted.invalid", StringComparison.OrdinalIgnoreCase)
+                        ? client.Email
+                        : null;
+
+                    <article class="archive-card @(canSelect ? "" : "is-pending")">
+                        <div class="archive-card-head">
+                            <label class="archive-card-select">
+                                <input type="checkbox"
+                                       class="archive-select"
+                                       name="selectedProfileIds"
+                                       value="@client.Id"
+                                       data-can-restore="@canRestore.ToString().ToLowerInvariant()"
+                                       data-can-erase="@canErase.ToString().ToLowerInvariant()"
+                                       disabled="@(!canSelect)" />
+                                <span class="archive-checkbox-ui" aria-hidden="true"></span>
+                                <span class="archive-client-name">@displayName</span>
+                            </label>
+                            @if (isBusy)
+                            {
+                                <span class="archive-state">Processing</span>
+                            }
+                            else if (!canSelect)
+                            {
+                                <span class="archive-state">Unavailable</span>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(visibleEmail) ||
+                             !string.IsNullOrWhiteSpace(client.Phone) ||
+                             !string.IsNullOrWhiteSpace(contact?.Phone2) ||
+                             !string.IsNullOrWhiteSpace(address) ||
+                             client.DOB.HasValue ||
+                             !string.IsNullOrWhiteSpace(client.AgentNotes))
+                        {
+                            <dl class="archive-details">
+                                @if (!string.IsNullOrWhiteSpace(visibleEmail))
+                                {
+                                    <div class="archive-detail archive-detail-wide">
+                                        <dt>Email</dt>
+                                        <dd><a href="mailto:@visibleEmail">@visibleEmail</a></dd>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(client.Phone))
+                                {
+                                    <div class="archive-detail">
+                                        <dt>Phone</dt>
+                                        <dd><a href="tel:@client.Phone">@client.Phone</a></dd>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(contact?.Phone2))
+                                {
+                                    <div class="archive-detail">
+                                        <dt>Additional phone</dt>
+                                        <dd>@contact!.Phone2</dd>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(address))
+                                {
+                                    <div class="archive-detail archive-detail-wide">
+                                        <dt>Address</dt>
+                                        <dd>@address</dd>
+                                    </div>
+                                }
+                                @if (client.DOB.HasValue)
+                                {
+                                    <div class="archive-detail">
+                                        <dt>Birth date</dt>
+                                        <dd>@client.DOB.Value.ToString("MMM d, yyyy")</dd>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(client.AgentNotes))
+                                {
+                                    <div class="archive-detail archive-detail-wide">
+                                        <dt>Agent notes</dt>
+                                        <dd>@client.AgentNotes</dd>
+                                    </div>
+                                }
+                            </dl>
+                        }
+
+                        @if (isBusy)
+                        {
+                            <p class="archive-card-note">This archived account is still finishing a protected operation. Try again when processing completes.</p>
+                        }
+                        else if (!canSelect)
+                        {
+                            <p class="archive-card-note">No restore or permanent-erase action is currently available for this archived account.</p>
+                        }
+                    </article>
+                }
+            </div>
+        </form>
     }
 </div>
+
+@section Scripts {
+<script>
+(() => {
+    const form = document.getElementById('archiveBulkForm');
+    if (!form) return;
+
+    const selectAll = document.getElementById('archiveSelectAll');
+    const selectedCount = document.getElementById('archiveSelectedCount');
+    const restore = document.getElementById('archiveRestoreSelected');
+    const erase = document.getElementById('archiveEraseSelected');
+    const confirmation = document.getElementById('archiveEraseConfirmation');
+    const choices = [...form.querySelectorAll('.archive-select:not(:disabled)')];
+
+    const sync = () => {
+        const selected = choices.filter(input => input.checked);
+        const restoreableCount = selected.filter(input => input.dataset.canRestore === 'true').length;
+        const eraseableCount = selected.filter(input => input.dataset.canErase === 'true').length;
+
+        selectedCount.textContent = `${selected.length} selected`;
+        restore.disabled = selected.length === 0 || restoreableCount !== selected.length;
+
+        if (erase) {
+            erase.disabled =
+                selected.length === 0 ||
+                eraseableCount !== selected.length ||
+                (confirmation?.value.trim() ?? '') !== 'ERASE';
+        }
+
+        if (selectAll) {
+            selectAll.checked = choices.length > 0 && selected.length === choices.length;
+            selectAll.indeterminate = selected.length > 0 && selected.length < choices.length;
+        }
+    };
+
+    selectAll?.addEventListener('change', () => {
+        choices.forEach(input => input.checked = selectAll.checked);
+        sync();
+    });
+    choices.forEach(input => input.addEventListener('change', sync));
+    confirmation?.addEventListener('input', sync);
+
+    form.addEventListener('submit', event => {
+        const submitter = event.submitter;
+        if (submitter?.id !== 'archiveEraseSelected') return;
+        if (!window.confirm('Permanently erase the selected archived client account(s)? This cannot be undone.')) {
+            event.preventDefault();
+        }
+    });
+
+    sync();
+})();
+</script>
+}

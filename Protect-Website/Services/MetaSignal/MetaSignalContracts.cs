@@ -48,6 +48,8 @@ public sealed class MetaSignalClientContextPayload
 
 public sealed class MetaSignalIngestRequest
 {
+    public string? SiteKey { get; set; }
+    public string? WebsiteBindingId { get; set; }
     public string EventName { get; set; } = string.Empty;
     public string EventId { get; set; } = string.Empty;
     public string QuoteType { get; set; } = string.Empty;

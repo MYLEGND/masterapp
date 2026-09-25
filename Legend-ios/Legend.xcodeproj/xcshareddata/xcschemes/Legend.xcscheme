@@ -11,7 +11,7 @@
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
                title = "Verify current native testing checkout"
-               scriptText = "# Read-only source verification. Xcode pre-action failures are visible&#10;# diagnostics, not a guaranteed target-build veto; preserve sandboxing.&#10;PYTHONDONTWRITEBYTECODE=1 /usr/bin/env python3 &quot;$SRCROOT/../scripts/sync-published-checkout.py&quot; --check-native&#10;">
+               scriptText = "# Existing checkout authority emits only a DerivedData build artifact.&#10;# Missing provenance makes the target&apos;s resource phase fail closed.&#10;PYTHONDONTWRITEBYTECODE=1 /usr/bin/env python3 &quot;$SRCROOT/../scripts/sync-published-checkout.py&quot; --check-native --native-provenance-output &quot;$DERIVED_FILE_DIR/LegendBuildProvenance.json&quot;&#10;">
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"

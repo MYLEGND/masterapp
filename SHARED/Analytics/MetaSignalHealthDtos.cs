@@ -57,6 +57,7 @@ public sealed class MetaSignalHealthRecentEventRowDto
     public string FunnelStep { get; set; } = "";
     public bool MetaBrowserSent { get; set; }
     public bool MetaServerSent { get; set; }
+    public string BrowserDispatchStatus { get; set; } = "unverified";
     public string DispatcherStatus { get; set; } = "";
     public string AuthorityStatus { get; set; } = "";
     public string MetaServerStatus { get; set; } = "";

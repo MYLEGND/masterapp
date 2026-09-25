@@ -34,6 +34,8 @@ end
 def eligible?(value, platform)
   return false if value.nil? || value.strip.empty?
   return false unless value.match?(/[[:alpha:]]/)
+  # Route templates and placeholder-only values contain no translatable copy.
+  return false if value.match?(%r{\A/?(?:\{[A-Za-z][A-Za-z0-9_]*\}/?)+\z})
   return false if platform == :swift && value.include?("\\(")
   return false if platform == :kotlin && value.include?("$")
 

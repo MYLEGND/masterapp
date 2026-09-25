@@ -7,6 +7,12 @@ namespace Infrastructure.Social;
 
 public static class SocialServiceCollectionExtensions
 {
+    public static IServiceCollection AddMasterAppMediaStorage(this IServiceCollection services)
+    {
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<ISocialMediaStorage, SocialMediaStorage>(services);
+        return services;
+    }
+
     public static IServiceCollection AddMasterAppSocial(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -18,7 +24,7 @@ public static class SocialServiceCollectionExtensions
         services.AddMemoryCache();
         services.AddScoped<ISocialFeedService, SocialFeedService>();
         services.AddScoped<ISocialDiscoveryService, SocialDiscoveryService>();
-        services.AddSingleton<ISocialMediaStorage, SocialMediaStorage>();
+        services.AddMasterAppMediaStorage();
         if (enableMediaProcessing)
         {
             services.AddSingleton<ISocialMediaVideoProcessor>(serviceProvider =>

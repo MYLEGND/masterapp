@@ -5,11 +5,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using AgentPortal.Services.Tracking;
 using Domain.Accounts;
 using Domain.Entities;
 using Domain.Messaging;
@@ -20,15 +22,40 @@ public class AccountController : Controller
     private readonly MasterAppDbContext _db;
     private readonly AgentProfileAccessResolver _profileAccessResolver;
     private readonly IAccountLifecycleService _accountLifecycle;
+    private readonly IAgentTrackingService _tracking;
+    private readonly WebsiteEditorTicketProtector _websiteEditorTickets;
+    private readonly AgentMarketingProfileService _marketing;
 
     public AccountController(
         MasterAppDbContext db,
         AgentProfileAccessResolver profileAccessResolver,
-        IAccountLifecycleService accountLifecycle)
+        IAccountLifecycleService accountLifecycle,
+        IAgentTrackingService tracking,
+        WebsiteEditorTicketProtector websiteEditorTickets,
+        AgentMarketingProfileService marketing)
     {
         _db = db;
         _profileAccessResolver = profileAccessResolver;
         _accountLifecycle = accountLifecycle;
+        _tracking = tracking;
+        _websiteEditorTickets = websiteEditorTickets;
+        _marketing = marketing;
+    }
+
+    private async Task PopulateProtectWebsiteAsync(string userId)
+    {
+        var trackingProfile = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        if (trackingProfile is null || !string.Equals(trackingProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            ViewBag.ProtectWebsiteAvailable = false;
+            ViewBag.ProtectWebsiteUrl = null;
+            return;
+        }
+
+        var urls = await _tracking.GetPersonalUrlsAsync(trackingProfile, HttpContext.RequestAborted);
+        ViewBag.ProtectWebsiteAvailable = true;
+        ViewBag.ProtectWebsiteUrl = urls.PrimaryUrl;
+        ViewBag.ProtectWebsiteSlug = trackingProfile.Slug;
     }
 
     private static string? NormalizeEmail(string? email)
@@ -147,6 +174,8 @@ public class AccountController : Controller
                 ?? "Agent";
         }
 
+        var marketingTracking = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        var marketing = marketingTracking is null ? null : await _marketing.GetAsync(marketingTracking, HttpContext.RequestAborted);
         var vm = new ManageAgentProfileViewModel
         {
             FullName = profile.FullName ?? displayName,
@@ -155,19 +184,21 @@ public class AccountController : Controller
             Phone = profile.Phone,
             ShortBio = profile.ShortBio,
             Npn = profile.Npn,
-            MetaPixelId = profile.MetaPixelId,
+            MetaPixelId = marketing?.PixelId,
+            MarketingRevision = marketing?.Revision,
             BookingEnabled = profile.BookingEnabled ?? false,
             MicrosoftBookingsEmbedUrl = profile.MicrosoftBookingsEmbedUrl,
             FallbackBookingUrl = profile.FallbackBookingUrl,
             BookingPageIdOrMailbox = profile.BookingPageIdOrMailbox,
             CalendarEmail = profile.CalendarEmail,
             PreferModalOnMobile = false,
-            HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)
+            HasSecureMetaCapiAccessToken = marketing?.CapiAccessTokenCiphertext is not null || marketing?.AdsAccessTokenCiphertext is not null
         };
 
         ViewBag.AccountLifecycle = await _accountLifecycle.GetAsync(
             new AccountLifecycleSubject(userId, MessagingParticipantTypes.Agent, profile.Id),
             HttpContext.RequestAborted);
+        await PopulateProtectWebsiteAsync(userId);
 
         return View(vm);
     }
@@ -193,10 +224,19 @@ public class AccountController : Controller
             User,
             requireActive: false,
             HttpContext.RequestAborted);
-        vm.HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(existingProfile?.MetaCapiAccessToken);
+        var marketingTracking = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        var marketing = marketingTracking is null ? null : await _marketing.GetAsync(marketingTracking, HttpContext.RequestAborted);
+        vm.HasSecureMetaCapiAccessToken = marketing?.CapiAccessTokenCiphertext is not null || marketing?.AdsAccessTokenCiphertext is not null;
+        if (marketingTracking is null && !string.IsNullOrWhiteSpace(vm.MetaPixelId))
+            ModelState.AddModelError(nameof(vm.MetaPixelId), "Set up your Protect website before connecting its marketing destination.");
+        if (marketing is not null && vm.MarketingRevision != marketing.Revision)
+            ModelState.AddModelError(nameof(vm.MetaPixelId), "Marketing settings changed. Reload your profile and try again.");
 
         if (!ModelState.IsValid)
+        {
+            await PopulateProtectWebsiteAsync(userId);
             return View(vm);
+        }
 
         var profile = existingProfile;
         if (profile == null)
@@ -216,7 +256,6 @@ public class AccountController : Controller
         profile.Npn = vm.Npn?.Trim();
         profile.Phone = vm.Phone?.Trim();
         profile.ShortBio = string.IsNullOrWhiteSpace(vm.ShortBio) ? null : vm.ShortBio.Trim();
-        profile.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
         var hasBookingFieldValues =
             !string.IsNullOrWhiteSpace(vm.MicrosoftBookingsEmbedUrl) ||
             !string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ||
@@ -238,9 +277,92 @@ public class AccountController : Controller
 
         profile.UpdatedUtc = DateTime.UtcNow;
 
-        _db.SaveChanges();
+        if (marketingTracking is not null)
+        {
+            try { await _marketing.SavePixelAsync(marketingTracking, vm.MetaPixelId, vm.MarketingRevision!.Value, HttpContext.RequestAborted); }
+            catch (DbUpdateConcurrencyException)
+            {
+                ModelState.AddModelError(nameof(vm.MetaPixelId), "Marketing settings changed. Reload your profile and try again.");
+                await PopulateProtectWebsiteAsync(userId);
+                return View(vm);
+            }
+        }
+        else await _db.SaveChangesAsync(HttpContext.RequestAborted);
         TempData["ProfileSaved"] = "Agent profile updated.";
         return RedirectToAction(nameof(ManageProfile));
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> EditProtectWebsite()
+    {
+        var userId = User.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Challenge();
+
+        var trackingProfile = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+        if (trackingProfile is null ||
+            !string.Equals(trackingProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["ProfileWebsiteError"] = "Your Protect website scope is not available yet.";
+            return RedirectToAction(nameof(ManageProfile));
+        }
+
+        var urls = await _tracking.GetPersonalUrlsAsync(trackingProfile, HttpContext.RequestAborted);
+        var ticket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Protect,
+            trackingProfile.AgentUserId.Trim().ToLowerInvariant(),
+            trackingProfile.Slug,
+            FounderGuard.IsFounder(User),
+            DateTime.UtcNow.AddMinutes(45),
+            ActorUserId: userId,
+            ActorEmail: User.FindFirstValue(ClaimTypes.Email)));
+
+        var separator = urls.PrimaryUrl.Contains('?') ? "&" : "?";
+        return Redirect($"{urls.PrimaryUrl}{separator}legendEdit={Uri.EscapeDataString(ticket)}");
+    }
+
+    [HttpGet]
+    [Authorize]
+    public IActionResult EditLegendWebsite()
+    {
+        if (!FounderGuard.IsFounder(User)) return Forbid();
+        var ticket = _websiteEditorTickets.Protect(new WebsiteEditorTicket(
+            WebsiteEditorSiteKeys.Legend, WebsiteEditorSiteKeys.GlobalOwnerKey, null,
+            true, DateTime.UtcNow.AddMinutes(45), ActorUserId: User.GetCanonicalUserId(),
+            ActorEmail: User.FindFirstValue(ClaimTypes.Email)));
+        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var baseUrl = (configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/');
+        return Redirect($"{baseUrl}/?legendEdit={Uri.EscapeDataString(ticket)}");
+    }
+
+    [HttpGet]
+    [Authorize]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> WebsiteSession(string site = "protect")
+    {
+        var userId = User.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(userId)) return Challenge();
+        WebsiteEditorTicket scope;
+        if (site == WebsiteEditorSiteKeys.Legend)
+        {
+            if (!FounderGuard.IsFounder(User)) return Forbid();
+            scope = new WebsiteEditorTicket(site, WebsiteEditorSiteKeys.GlobalOwnerKey, null,
+                true, DateTime.UtcNow.AddMinutes(45), ActorUserId: userId,
+                ActorEmail: User.FindFirstValue(ClaimTypes.Email));
+        }
+        else if (site == WebsiteEditorSiteKeys.Protect)
+        {
+            var profile = await _tracking.GetByUserIdAsync(userId, HttpContext.RequestAborted);
+            if (profile is null || !string.Equals(profile.Status, "active", StringComparison.OrdinalIgnoreCase)) return Forbid();
+            scope = new WebsiteEditorTicket(site, profile.AgentUserId.Trim().ToLowerInvariant(), profile.Slug,
+                FounderGuard.IsFounder(User), DateTime.UtcNow.AddMinutes(45), ActorUserId: userId,
+                ActorEmail: User.FindFirstValue(ClaimTypes.Email));
+        }
+        else return BadRequest();
+        var configuration = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        return Json(new { ticket = _websiteEditorTickets.Protect(scope),
+            apiBase = (configuration["LandingRoutes:BaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') });
     }
 
     [HttpPost]

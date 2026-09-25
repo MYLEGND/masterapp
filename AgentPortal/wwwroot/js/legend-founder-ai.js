@@ -424,7 +424,9 @@
                 for (const row of result.conversations) {
                     let conversation = state.conversations.find(item => item.id === row.id);
                     if (!conversation) {
-                        conversation = { ...newConversationRecord('legend', false, true), id: row.id,
+                        // History carries transcript provenance, not a new provider restriction.
+                        // Keep existing local choices; newly discovered threads use the same defaults as native.
+                        conversation = { ...newConversationRecord(), id: row.id,
                             persisted: true, messages: [], lastMessageId: null };
                         state.conversations.push(conversation);
                     }

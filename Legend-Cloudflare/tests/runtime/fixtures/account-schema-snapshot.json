@@ -1,0 +1,342 @@
+{
+  "kind": "authenticated-read-only-model-schema",
+  "capturedAt": "2026-09-18T21:20:59.028915+00:00",
+  "cli": "wrangler@4.135.0",
+  "endpoint": "GET /accounts/{account_id}/ai/models/schema?model={model}",
+  "accountIdSha256": "82f77dbf2963a3f6ea3d2cc3cb4423a854cd487b59121f878a6a2e370280d735",
+  "inferencePerformed": false,
+  "models": [
+    {
+      "modelId": "@cf/qwen/qwen3-30b-a3b-fp8",
+      "rawSchemaSha256": "051be5c446a13239ca48b4078bc6a993356003fec256ab26e81a11e6205ae4e0",
+      "messagesJsonPointer": "/input/oneOf/1",
+      "inputRequired": [
+        "messages"
+      ],
+      "inputPropertyNames": [
+        "messages",
+        "functions",
+        "tools",
+        "response_format",
+        "raw",
+        "stream",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "top_k",
+        "seed",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty"
+      ],
+      "outputBranches": [
+        {
+          "jsonPointer": "/output/oneOf/0",
+          "title": "Chat Completion Response",
+          "required": [],
+          "properties": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices",
+            "usage",
+            "prompt_logprobs"
+          ],
+          "choiceProperties": [
+            "index",
+            "message",
+            "finish_reason",
+            "stop_reason",
+            "logprobs"
+          ]
+        },
+        {
+          "jsonPointer": "/output/oneOf/1",
+          "title": "Text Completion Response",
+          "required": [],
+          "properties": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices",
+            "usage"
+          ],
+          "choiceProperties": [
+            "index",
+            "text",
+            "finish_reason",
+            "stop_reason",
+            "logprobs",
+            "prompt_logprobs"
+          ]
+        }
+      ],
+      "outputShapeOpaque": false,
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": null,
+        "allowedEfforts": [],
+        "sourcePointer": null
+      }
+    },
+    {
+      "modelId": "@cf/openai/gpt-oss-120b",
+      "rawSchemaSha256": "73c13bd8e6e62cc66721c0a7bed4b5281ebedec5fd8d72f45b37800c2a0c123b",
+      "messagesJsonPointer": "/input/oneOf/0/oneOf/1",
+      "inputRequired": [
+        "messages"
+      ],
+      "inputPropertyNames": [
+        "messages",
+        "functions",
+        "tools",
+        "response_format",
+        "raw",
+        "stream",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "top_k",
+        "seed",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty"
+      ],
+      "outputBranches": [],
+      "outputShapeOpaque": true,
+      "responsesInputDeclared": true,
+      "chatReasoningControl": {
+        "parameter": null,
+        "allowedEfforts": [],
+        "sourcePointer": null
+      }
+    },
+    {
+      "modelId": "@cf/zai-org/glm-5.3-flash",
+      "rawSchemaSha256": "9ad8d83d3c9729659907a38b9f8c07f814f245a72b20d751c78a611224b4ae40",
+      "messagesJsonPointer": "/input/anyOf/0/oneOf/1",
+      "inputRequired": [
+        "messages"
+      ],
+      "inputPropertyNames": [
+        "messages",
+        "model",
+        "audio",
+        "frequency_penalty",
+        "logit_bias",
+        "logprobs",
+        "top_logprobs",
+        "max_tokens",
+        "max_completion_tokens",
+        "metadata",
+        "modalities",
+        "n",
+        "parallel_tool_calls",
+        "prediction",
+        "presence_penalty",
+        "reasoning_effort",
+        "chat_template_kwargs",
+        "response_format",
+        "seed",
+        "stop",
+        "store",
+        "stream",
+        "stream_options",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p",
+        "user",
+        "web_search_options",
+        "function_call",
+        "functions"
+      ],
+      "outputBranches": [
+        {
+          "jsonPointer": "/output/oneOf/0",
+          "title": null,
+          "required": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices"
+          ],
+          "properties": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices",
+            "usage",
+            "system_fingerprint"
+          ],
+          "choiceProperties": []
+        }
+      ],
+      "outputShapeOpaque": false,
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": "reasoning_effort",
+        "allowedEfforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "sourcePointer": "/input/anyOf/0/oneOf/0/properties/reasoning_effort"
+      }
+    },
+    {
+      "modelId": "@cf/zai-org/glm-5.3",
+      "rawSchemaSha256": "9ad8d83d3c9729659907a38b9f8c07f814f245a72b20d751c78a611224b4ae40",
+      "messagesJsonPointer": "/input/anyOf/0/oneOf/1",
+      "inputRequired": [
+        "messages"
+      ],
+      "inputPropertyNames": [
+        "messages",
+        "model",
+        "audio",
+        "frequency_penalty",
+        "logit_bias",
+        "logprobs",
+        "top_logprobs",
+        "max_tokens",
+        "max_completion_tokens",
+        "metadata",
+        "modalities",
+        "n",
+        "parallel_tool_calls",
+        "prediction",
+        "presence_penalty",
+        "reasoning_effort",
+        "chat_template_kwargs",
+        "response_format",
+        "seed",
+        "stop",
+        "store",
+        "stream",
+        "stream_options",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p",
+        "user",
+        "web_search_options",
+        "function_call",
+        "functions"
+      ],
+      "outputBranches": [
+        {
+          "jsonPointer": "/output/oneOf/0",
+          "title": null,
+          "required": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices"
+          ],
+          "properties": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices",
+            "usage",
+            "system_fingerprint"
+          ],
+          "choiceProperties": []
+        }
+      ],
+      "outputShapeOpaque": false,
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": "reasoning_effort",
+        "allowedEfforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "sourcePointer": "/input/anyOf/0/oneOf/0/properties/reasoning_effort"
+      }
+    },
+    {
+      "modelId": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+      "rawSchemaSha256": "9ad8d83d3c9729659907a38b9f8c07f814f245a72b20d751c78a611224b4ae40",
+      "messagesJsonPointer": "/input/anyOf/0/oneOf/1",
+      "inputRequired": [
+        "messages"
+      ],
+      "inputPropertyNames": [
+        "messages",
+        "model",
+        "audio",
+        "frequency_penalty",
+        "logit_bias",
+        "logprobs",
+        "top_logprobs",
+        "max_tokens",
+        "max_completion_tokens",
+        "metadata",
+        "modalities",
+        "n",
+        "parallel_tool_calls",
+        "prediction",
+        "presence_penalty",
+        "reasoning_effort",
+        "chat_template_kwargs",
+        "response_format",
+        "seed",
+        "stop",
+        "store",
+        "stream",
+        "stream_options",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p",
+        "user",
+        "web_search_options",
+        "function_call",
+        "functions"
+      ],
+      "outputBranches": [
+        {
+          "jsonPointer": "/output/oneOf/0",
+          "title": null,
+          "required": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices"
+          ],
+          "properties": [
+            "id",
+            "object",
+            "created",
+            "model",
+            "choices",
+            "usage",
+            "system_fingerprint"
+          ],
+          "choiceProperties": []
+        }
+      ],
+      "outputShapeOpaque": false,
+      "responsesInputDeclared": false,
+      "chatReasoningControl": {
+        "parameter": "reasoning_effort",
+        "allowedEfforts": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "sourcePointer": "/input/anyOf/0/oneOf/0/properties/reasoning_effort"
+      }
+    }
+  ]
+}

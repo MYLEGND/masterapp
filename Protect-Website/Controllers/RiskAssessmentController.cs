@@ -1,3 +1,10 @@
+using Domain.Entities;
+using Infrastructure.Data;
+using Infrastructure.Leads;
+using Microsoft.EntityFrameworkCore;
+using ProtectWebsite.Services.Tracking;
+using System.Text.Json;
+using Shared.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Protect_Website.Models;
 using Protect_Website.Services;
@@ -12,23 +19,24 @@ namespace Protect_Website.Controllers
     [Route("RiskAssessment")]
     public class RiskAssessmentController : Controller
     {
-        private readonly string tenantId;
-        private readonly string clientId;
-        private readonly string clientSecret;
-        private readonly string senderEmail;
         private readonly string recipientEmail;
-        private readonly string websiteName;
         private readonly IProtectEmailSender _emailSender;
 
-        public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender)
+        private readonly MasterAppDbContext _db;
+        private readonly AgentTrackingResolver _resolver;
+        private readonly IWebsiteLifeLeadCaptureService _capture;
+        private readonly ILogger<RiskAssessmentController> _logger;
+
+        public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender,
+            MasterAppDbContext db, AgentTrackingResolver resolver, IWebsiteLifeLeadCaptureService capture,
+            ILogger<RiskAssessmentController> logger)
         {
-            tenantId = configuration["AzureAd:TenantId"]!;
-            clientId = configuration["AzureAd:ClientId"]!;
-            clientSecret = configuration["AzureAd:ClientSecret"]!;
-            senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
-            websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _emailSender = emailSender;
+            _db = db;
+            _resolver = resolver;
+            _capture = capture;
+            _logger = logger;
         }
 
         // GET: /RiskAssessment
@@ -43,11 +51,86 @@ namespace Protect_Website.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SubmitRiskAssessment(RiskAssessmentModel model)
         {
+            if (!model.AcknowledgedDisclaimer)
+                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer), "Please authorize contact before submitting.");
             if (!ModelState.IsValid)
                 return View("~/Views/RiskAssessment/Index.cshtml", model);
 
             try
             {
+                var ct = HttpContext.RequestAborted;
+                var trackingProfile = HttpContext.Items["TrackingProfile"] as AgentTrackingProfile;
+                var requestedSlug = Request.Form["AgentSlug"].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(requestedSlug))
+                {
+                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
+                    if (!resolved.Found || resolved.Profile == null)
+                    {
+                        ModelState.AddModelError("", "The advisor link is no longer available.");
+                        return View("~/Views/RiskAssessment/Index.cshtml", model);
+                    }
+                    trackingProfile = resolved.Profile;
+                }
+                if (trackingProfile == null && !string.IsNullOrWhiteSpace(recipientEmail))
+                {
+                    var fallback = await _resolver.ResolveByUpnAsync(recipientEmail, ct);
+                    trackingProfile = fallback.Profile;
+                }
+                var recipient = trackingProfile?.AgentUpn ?? recipientEmail;
+                var lead = new WebsiteLead
+                {
+                    LeadId = Guid.NewGuid(), FirstName = model.FirstName.Trim(), LastName = model.LastName.Trim(),
+                    Email = model.Email.Trim(), Phone = model.PhoneNumber, InterestType = "risk_assessment",
+                    SourcePageKey = "risk_assessment", TermsAccepted = true,
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
+                    AgentTrackingProfileId = trackingProfile?.Id, AgentSlug = trackingProfile?.Slug,
+                    SessionId = Request.Form["SessionId"].FirstOrDefault(), VisitorId = Request.Form["VisitorId"].FirstOrDefault(),
+                    UtmSource = Request.Form["UtmSource"].FirstOrDefault(), UtmMedium = Request.Form["UtmMedium"].FirstOrDefault(),
+                    UtmCampaign = Request.Form["UtmCampaign"].FirstOrDefault(),
+                    Host = Request.Host.ToString(), Environment = EnvironmentLabelResolver.Resolve(),
+                    IsInternal = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request.Host.Host),
+                    CreatedUtc = DateTime.UtcNow, Status = "New", MetadataJson = JsonSerializer.Serialize(model)
+                };
+                WebsiteLifeLeadCaptureResult captured = null!;
+                if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead, Request.Form["SubmissionId"].FirstOrDefault(), ct, async _ =>
+                {
+                captured = await _capture.UpsertAsync(new WebsiteLifeLeadCaptureRequest
+                {
+                    WebsiteLeadId = lead.LeadId, SubmittedUtc = lead.CreatedUtc, ProductType = "risk_assessment",
+                    OfferKey = "risk_assessment", FirstName = lead.FirstName, LastName = lead.LastName,
+                    Email = lead.Email, Phone = lead.Phone, State = model.State, Age = model.Age,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId, AgentSlug = lead.AgentSlug, RecipientEmail = recipient
+                }, ct);
+                    if (!captured.Captured && captured.Reason != "InternalTestLead")
+                        throw new InvalidOperationException("The advisor handoff could not be completed.");
+                lead.Status = captured.Captured ? "New" : "InternalTestLead";
+                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                {
+                    EventId = Guid.NewGuid(), EventType = "lead_persisted", PageKey = "risk_assessment",
+                    FormKey = "risk_assessment", QuoteType = "risk_assessment", SessionId = lead.SessionId,
+                    VisitorId = lead.VisitorId, AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug = lead.AgentSlug, EventUtc = lead.CreatedUtc, ReceivedUtc = DateTime.UtcNow,
+                    Environment = lead.Environment, Host = lead.Host, IsInternal = lead.IsInternal,
+                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CrmCaptured = captured.Captured })
+                });
+                await _db.SaveChangesAsync(ct);
+
+                }))
+                {
+                    lead = await _db.WebsiteLeads.SingleAsync(x => x.LeadId == lead.LeadId, ct);
+                    model = JsonSerializer.Deserialize<RiskAssessmentModel>(lead.MetadataJson!)
+                        ?? throw new InvalidOperationException("The saved assessment cannot be loaded.");
+                }
+                if (!await WebsiteLeadSubmission.TryClaimNotificationAsync(_db, lead, ct))
+                {
+                    await _db.Entry(lead).ReloadAsync(ct);
+                    if (lead.NotificationSentUtc != null)
+                        return RedirectToAction("Index", "ThankYou");
+                    ModelState.AddModelError("", "Your assessment is saved. The advisor notification is still unconfirmed. Please try again in 15 minutes to retry without creating another assessment.");
+                    return View("~/Views/RiskAssessment/Index.cshtml", model);
+                }
+
                 // ------------------ CALCULATE RESULTS ------------------
                 var result = RiskAssessmentCalculator.Calculate(model);
 
@@ -140,16 +223,19 @@ namespace Protect_Website.Controllers
 
                 // ------------------ SEND EMAIL ------------------
                 var emailSent = await _emailSender.TrySendAsync(
-                    recipientEmail,
+                    recipient,
                     $"[RISK ASSESSMENT] {model.FirstName} {model.LastName}",
                     finalHtml,
                     replyToEmail: model.Email,
                     saveToSentItems: true,
                     cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
 
+                await WebsiteLeadSubmission.CompleteNotificationAsync(_db, lead, emailSent, ct);
                 if (!emailSent)
                 {
-                    throw new InvalidOperationException("Risk assessment email failed to send through unified sender.");
+                    _logger.LogWarning("Risk assessment captured; notification failed for lead {LeadId}.", lead.LeadId);
+                    ModelState.AddModelError("", "Your assessment is saved. The advisor email failed. Submit again to retry the notification without creating another assessment.");
+                    return View("~/Views/RiskAssessment/Index.cshtml", model);
                 }
 
                 // ✅ Thank you routing
@@ -158,7 +244,8 @@ namespace Protect_Website.Controllers
             }
             catch (Exception ex)
             {
-                ModelState.AddModelError("", $"Failed to send risk assessment: {ex.Message}");
+                _logger.LogError(ex, "Risk assessment submission failed.");
+                ModelState.AddModelError("", "We could not complete your assessment. Please retry or contact your advisor.");
                 return View("~/Views/RiskAssessment/Index.cshtml", model);
             }
         }

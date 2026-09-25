@@ -1,0 +1,149 @@
+{
+  "approvedBranch": "legend/approved-changes",
+  "verifiedHead": "b4ae383dcfc4a89502d45cd64cea904f184e260f",
+  "deletedRemoteBranches": [
+    {
+      "branch": "advance/legend-general-reasoning-20260827",
+      "sha": "057144c6416c48a2d5db6a698ba95d80cb0ab318",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "ci/unify-validation-deploy-20260826",
+      "sha": "012ea922d1e173c33b6e1837260b1592788b1bb4",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "codex/rg5-authoritative-exact",
+      "sha": "5c0c179fddf18c7d6198b5a037e90c9cd10e498b",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "copilot/create-website-app-folder",
+      "sha": "5f236cbc0d69ff2198b7e1c4a45056ffa6a2d83f",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "copilot/fix-http-error-500-30",
+      "sha": "5f236cbc0d69ff2198b7e1c4a45056ffa6a2d83f",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "copilot/production-merge-automatic-deployment",
+      "sha": "78a59554389e14fce64a8f42f6753484f111c948",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "diagnostic/legend-live-conversation-20260827-final",
+      "sha": "03a598751590bcaef0968003ff24f96c3e229969",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "fix/founder-production-ready-20260825",
+      "sha": "ff3c1608369a731cce89481adcf1e77eb52eeb73",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "fix/legend-current-evaluator-queue-boundary-20260827",
+      "sha": "45dccc9a45938ad51854381275939c7b2cdf51e0",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "fix/legend-founder-openai-role-learning-20260824",
+      "sha": "46c4a5cbdf7ae88236568bef56c1154f86c643c3",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "fix/legend-founder-openai-role-learning-current-20260825",
+      "sha": "46c4a5cbdf7ae88236568bef56c1154f86c643c3",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "fix/public-web-premium-unification-20260917",
+      "sha": "98bcc97bd670424e6f7819d33eabdeeb64b9d1e4",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "freeze/legend-native-green-20260827",
+      "sha": "057144c6416c48a2d5db6a698ba95d80cb0ab318",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "freeze/legend-sol-architecture-baseline-20260828",
+      "sha": "bcb1915ee1fa991d3b35e707a4e788800d490260",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "repair/translation-admission-20260918",
+      "sha": "a86378791e0e90ea5752be7ea374d21776380e1b",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "staging/legend-calling-20260913",
+      "sha": "7e8704ce639b0bae9ee1b0315e43af7acd5c1026",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "validation/legend-general-reasoning-20260827",
+      "sha": "057144c6416c48a2d5db6a698ba95d80cb0ab318",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "validation/legend-native-learning-e2e-20260829",
+      "sha": "04f8392646ffb2edb98aafad7ce88ba77c0c988b",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "validation/legend-native-production-blocker-20260829",
+      "sha": "ac1a6c49e8c79754071a42e1a543765b6ffd0ff4",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    },
+    {
+      "branch": "validation/legend-native-tiered-evidence-20260828",
+      "sha": "e15e861da6224958c66a8a1f01a94825272df57f",
+      "contained": true,
+      "retainReasons": [],
+      "deletionCandidate": true
+    }
+  ],
+  "preserved": "Unique history, open PR heads/bases, worktree references, executable/configuration references, production/main; old founder/ceo-testing retained.",
+  "automaticSync": "Existing LaunchAgent every 60 seconds, last exit 0; MASTERAPP tracks approved branch with safe fast-forward only.",
+  "releaseControls": "Proposed retirement/reusable direct-release changes remain uncommitted pending specific approval requested after automatic review rejection."
+}

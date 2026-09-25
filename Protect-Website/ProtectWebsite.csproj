@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -10,6 +10,8 @@
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.Web" />
 
   <ItemGroup>
+    <Content Include="../Legend-Design/legend-web-foundation.css" Link="wwwroot/design/legend-web-foundation.css" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../Legend-Design/legend-favicon.svg" Link="wwwroot/images/favicon/legend-favicon.svg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.4.0" />
     <ProjectReference Include="..\\Infrastructure\\Infrastructure.csproj" />
     <ProjectReference Include="..\\Domain\\Domain.csproj" />
@@ -38,6 +40,54 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
   </ItemGroup>
+
+    <ItemGroup>
+    <Content Include="..\Legend-Design\legend-public-web.css"
+             Link="wwwroot\design\legend-public-web.css"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-public-web.js"
+             Link="wwwroot\design\legend-public-web.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-public-cms.js"
+             Link="wwwroot\design\legend-public-cms.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\Legend-Design\legend-design.tokens.json"
+             Link="wwwroot\design\legend-design.tokens.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The publication compiler packages the exact shared website build and DOM
+       dependencies. No independently maintained business HTML is checked in. -->
+  <Target Name="RestoreBusinessWebsiteCompiler" BeforeTargets="BuildBusinessWebsiteCompiler"
+          Inputs="$(MSBuildProjectDirectory)/../Legend-Website/package-lock.json"
+          Outputs="$(MSBuildProjectDirectory)/../Legend-Website/node_modules/.package-lock.json">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../Legend-Website" Command="npm ci --omit=dev --ignore-scripts --no-audit --no-fund" />
+  </Target>
+  <Target Name="BuildBusinessWebsiteCompiler" BeforeTargets="Build;Publish">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../Legend-Website" Command="node scripts/build.mjs" />
+    <ItemGroup>
+      <_WebsiteCompilerDist Include="../Legend-Website/dist/**/*" />
+      <_WebsiteCompilerModules Include="../Legend-Website/node_modules/**/*" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CopyBusinessWebsiteCompilerToOutput" AfterTargets="Build" DependsOnTargets="BuildBusinessWebsiteCompiler">
+    <Copy SourceFiles="@(_WebsiteCompilerDist)" DestinationFiles="@(_WebsiteCompilerDist->'$(TargetDir)WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WebsiteCompilerModules)" DestinationFiles="@(_WebsiteCompilerModules->'$(TargetDir)WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs;../Legend-Website/scripts/render-business-cli.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/src/business-content.mjs;../Legend-Website/src/runtime-config.mjs" DestinationFolder="$(TargetDir)WebsiteCompiler/src" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyBusinessWebsiteCompilerToPublish" AfterTargets="Publish" DependsOnTargets="BuildBusinessWebsiteCompiler">
+    <Copy SourceFiles="@(_WebsiteCompilerDist)" DestinationFiles="@(_WebsiteCompilerDist->'$(PublishDir)WebsiteCompiler/dist/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WebsiteCompilerModules)" DestinationFiles="@(_WebsiteCompilerModules->'$(PublishDir)WebsiteCompiler/node_modules/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/scripts/render-business.mjs;../Legend-Website/scripts/render-business-cli.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/scripts" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="../Legend-Website/src/business-content.mjs;../Legend-Website/src/runtime-config.mjs" DestinationFolder="$(PublishDir)WebsiteCompiler/src" SkipUnchangedFiles="true" />
+  </Target>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
 </Project>

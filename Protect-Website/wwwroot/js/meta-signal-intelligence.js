@@ -455,6 +455,10 @@
       case 'auto_insurance':
       case 'quote_auto':
         return 'auto';
+      case 'business':
+        return 'business';
+      case 'legend':
+        return 'legend';
       case 'life_general':
       case 'life':
       default:
@@ -529,6 +533,7 @@
       persistEvents: rawConfig?.persistEvents !== false,
       debugMode: Boolean(rawConfig?.debugMode),
       endpoint: asTrimmed(rawConfig?.endpoint) || '/analytics/meta-signal',
+      siteKey: asTrimmed(rawConfig?.siteKey),
       quoteType: asTrimmed(rawConfig?.quoteType) || 'life',
       pageKey: asTrimmed(rawConfig?.pageKey),
       effectivePageKey: asTrimmed(rawConfig?.effectivePageKey || rawConfig?.pageKey),
@@ -541,6 +546,7 @@
       highIntentThreshold: Number(rawConfig?.highIntentThreshold || 70),
       leadReadyThreshold: Number(rawConfig?.leadReadyThreshold || 90),
       browserEventNames: new Set(Array.isArray(rawConfig?.browserEventNames) ? rawConfig.browserEventNames : DEFAULT_META_BROWSER_EVENTS),
+      browserSignalEventNames: new Set(Array.isArray(rawConfig?.browserSignalEventNames) ? rawConfig.browserSignalEventNames : (Array.isArray(rawConfig?.browserEventNames) ? rawConfig.browserEventNames : DEFAULT_META_BROWSER_EVENTS)),
       leadSignalRules: Object.assign({
         leadReadyRequiresContactStep: true,
         leadReadyRequiresValidPhone: true,
@@ -565,6 +571,7 @@
       trackSubmitAttempt() {},
       trackBacktrack() {},
       trackDeadClick() {},
+      trackConfiguredEvent() { return null; },
       markSubmitted() {},
       getState() {
         return null;
@@ -1214,19 +1221,17 @@
     }
 
     function fireBrowserPixel(eventName, eventId, pixelPayload) {
-      if (!config.enabled || !config.sendBrowserEvents || !config.browserEventNames.has(eventName) || typeof window.fbq !== 'function') {
-        return false;
-      }
-
-      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) {
-        return false;
-      }
+      if (!config.enabled || !config.sendBrowserEvents) return 'disabled';
+      if (!config.browserEventNames.has(eventName)) return 'not_required';
+      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) return 'human_gate';
+      if (typeof window.fbq !== 'function') return 'pixel_unavailable';
 
       try {
         window.fbq('trackCustom', eventName, pixelPayload, { eventID: eventId });
-        return true;
+        // fbq can queue locally. Returning from it does not acknowledge delivery to Meta.
+        return 'invoked';
       } catch {
-        return false;
+        return 'invocation_failed';
       }
     }
 
@@ -1358,8 +1363,14 @@
         buildLearningEnrichment(eventName, score, clientContext, attribution, metadata)
       );
       const browserPixelPayload = buildPixelPayload(stepNumber, stepName, score, enrichedMetadata, attribution);
-      const browserEventSent = fireBrowserPixel(eventName, eventId, browserPixelPayload);
+      const browserDispatchStatus = options.sendBrowserPixel === false
+        ? 'suppressed_by_mapping'
+        : fireBrowserPixel(eventName, eventId, browserPixelPayload);
+      const browserEventSent = browserDispatchStatus === 'invoked';
+      enrichedMetadata.browserDispatchStatus = browserDispatchStatus;
       const payload = {
+        siteKey: config.siteKey || null,
+        websiteBindingId: asTrimmed(metadata?.websiteBindingId || metadata?.actionKey) || null,
         eventName,
         eventId,
         quoteType: state.quoteType,
@@ -1865,6 +1876,23 @@
       },
       trackDeadClick(metadata = {}) {
         return emitSignal('DeadClick', { metadata });
+      },
+      trackConfiguredEvent(eventName, options = {}) {
+        const normalizedEventName = asTrimmed(eventName);
+        if (!normalizedEventName || !config.browserSignalEventNames.has(normalizedEventName)) {
+          debug('Configured website signal blocked by browser catalog', { eventName: normalizedEventName || null });
+          return null;
+        }
+        const deliveryMode = options.deliveryMode === 'meta' ? 'meta' : 'analytics';
+        return emitSignal(normalizedEventName, {
+          onceKey: asTrimmed(options.onceKey) || null,
+          metadata: Object.assign({}, options.metadata || {}, {
+            configuredWebsiteSignal: true,
+            configuredDeliveryMode: deliveryMode
+          }),
+          sendBrowserPixel: deliveryMode === 'meta',
+          skipThresholds: true
+        });
       },
       markSubmitted(metadata = {}) {
         state.submitted = true;

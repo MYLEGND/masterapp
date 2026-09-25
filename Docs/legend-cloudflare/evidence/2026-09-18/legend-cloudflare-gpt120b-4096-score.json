@@ -1,0 +1,95 @@
+{
+  "suiteVersion": "legend-held-out.2026-09-18.1",
+  "suiteSha256": "06c694737988758e01bab625204c6268f222942e03a84036a575d559b702d8d9",
+  "modelId": "@cf/openai/gpt-oss-120b",
+  "evidenceKind": "reported-live-cloudflare",
+  "scores": [
+    {
+      "caseId": "reasoning-count",
+      "category": "reasoning",
+      "passed": true,
+      "reason": "exact_answer"
+    },
+    {
+      "caseId": "reasoning-dependencies",
+      "category": "reasoning",
+      "passed": true,
+      "reason": "exact_answer"
+    },
+    {
+      "caseId": "reasoning-probability",
+      "category": "reasoning",
+      "passed": true,
+      "reason": "numeric_answer"
+    },
+    {
+      "caseId": "reasoning-insufficient-evidence",
+      "category": "reasoning",
+      "passed": false,
+      "reason": "independent_human_review_required"
+    },
+    {
+      "caseId": "multiturn-correction",
+      "category": "multiturn",
+      "passed": true,
+      "reason": "json_answer"
+    },
+    {
+      "caseId": "multiturn-untrusted-quote",
+      "category": "multiturn",
+      "passed": false,
+      "reason": "invalid_json_answer"
+    },
+    {
+      "caseId": "multiturn-scope",
+      "category": "multiturn",
+      "passed": false,
+      "reason": "independent_human_review_required"
+    },
+    {
+      "caseId": "multiturn-persisted-revision",
+      "category": "multiturn",
+      "passed": true,
+      "reason": "exact_answer"
+    },
+    {
+      "caseId": "code-tenant-filter",
+      "category": "code_diagnosis",
+      "passed": false,
+      "reason": "independent_human_review_required"
+    },
+    {
+      "caseId": "code-pagination-boundary",
+      "category": "code_diagnosis",
+      "passed": false,
+      "reason": "independent_human_review_required"
+    },
+    {
+      "caseId": "code-cancellation-accounting",
+      "category": "code_diagnosis",
+      "passed": false,
+      "reason": "independent_human_review_required"
+    },
+    {
+      "caseId": "code-source-vs-deployed",
+      "category": "code_diagnosis",
+      "passed": false,
+      "reason": "independent_human_review_required"
+    }
+  ],
+  "completed": 5,
+  "total": 12,
+  "completionRate": 0.4166666666666667,
+  "recordedCostMicrousd": 7127,
+  "recordedCostPerSuccessfulTaskMicrousd": 1426,
+  "p95ElapsedMs": 22465,
+  "completionThresholdPassed": false,
+  "requiresIndependentReview": true,
+  "releaseQualified": false,
+  "limitations": [
+    "Reported receipts are not authenticated by this offline summary.",
+    "In-context multi-turn cases do not prove canonical persisted memory.",
+    "Recorded costs omit any platform charges absent from the supplied receipts.",
+    "Application, isolation, tool execution, multilingual and live canary gates remain separate."
+  ]
+}

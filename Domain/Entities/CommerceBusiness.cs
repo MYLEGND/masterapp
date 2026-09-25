@@ -14,6 +14,8 @@ public sealed class CommerceBusiness
     public string Key { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;
+    public string? OwnershipHistoryJson { get; set; }
+
     public string LegalName { get; set; } = string.Empty;
     public string BusinessType { get; set; } = "Ecommerce";
 

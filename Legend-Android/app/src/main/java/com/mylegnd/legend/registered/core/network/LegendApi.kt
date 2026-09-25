@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import com.mylegnd.legend.registered.core.diagnostics.RuntimeDiagnostics
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.logging.HttpLoggingInterceptor
@@ -189,6 +190,9 @@ class LegendApiClient private constructor(val api: LegendApi, val httpClient: Ok
             val auth = Interceptor { chain ->
                 val token = runBlocking { tokenProvider.accessToken() }
                 val incoming = chain.request()
+                if (incoming.url.encodedPath.endsWith(RuntimeDiagnostics.endpoint) && token.isNullOrBlank()) {
+                    throw IOException("Diagnostic replay requires the existing authenticated session.")
+                }
                 val request = incoming.newBuilder().apply {
                     // Streaming Founder-chat progress deliberately uses NDJSON. Preserve a
                     // caller-specified media preference while retaining JSON as the mobile
@@ -204,7 +208,27 @@ class LegendApiClient private constructor(val api: LegendApi, val httpClient: Ok
                 } else chain.proceed(request)
             }
             val logger = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
-            val client = OkHttpClient.Builder().addInterceptor(auth).addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()
+            lateinit var client: OkHttpClient
+            val diagnostics = Interceptor { chain ->
+                val request = chain.request()
+                val capture = !request.url.encodedPath.endsWith(RuntimeDiagnostics.endpoint) &&
+                    !request.header("Authorization").isNullOrBlank()
+                try {
+                    val response = chain.proceed(request)
+                    if (capture) {
+                        if (!response.isSuccessful) RuntimeDiagnostics.recordNetwork(request.url.encodedPath, request.method, response.code)
+                        RuntimeDiagnostics.replay(client, baseUrl)
+                    }
+                    response
+                } catch (error: java.io.IOException) {
+                    if (capture && !chain.call().isCanceled()) {
+                        RuntimeDiagnostics.recordNetwork(request.url.encodedPath, request.method)
+                        RuntimeDiagnostics.replay(client, baseUrl)
+                    }
+                    throw error
+                }
+            }
+            client = OkHttpClient.Builder().addInterceptor(auth).addInterceptor(diagnostics).addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()
             val retrofit = Retrofit.Builder().baseUrl(if (baseUrl.endsWith('/')) baseUrl else "$baseUrl/").client(client).addConverterFactory(json.asConverterFactory("application/json".toMediaType())).build()
             return LegendApiClient(retrofit.create(LegendApi::class.java), client, baseUrl.trimEnd('/'))
         }

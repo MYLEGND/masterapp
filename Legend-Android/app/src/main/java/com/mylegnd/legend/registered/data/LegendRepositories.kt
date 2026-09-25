@@ -12,7 +12,11 @@ import java.util.TimeZone
 sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String, val status: Int? = null, val transportRetryable: Boolean = false) : LoadState<Nothing> }
 internal suspend fun <T> request(block: suspend () -> T): LoadState<T> = try { LoadState.Data(block()) }
 catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-catch (error: Exception) { LoadState.Error(when (error) {
+catch (error: Exception) {
+    if (error !is java.io.IOException && error !is com.mylegnd.legend.registered.core.media.SocialMediaPreparationException) {
+        com.mylegnd.legend.registered.core.diagnostics.RuntimeDiagnostics.recordOperationFailure(error)
+    }
+    LoadState.Error(when (error) {
     is LegendApiException -> error.problem?.message
     is com.mylegnd.legend.registered.core.media.SocialMediaPreparationException -> error.message
     else -> null

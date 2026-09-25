@@ -12,6 +12,48 @@ namespace AgentPortal.Tests;
 public class MetaSendAuthorityTests
 {
     [Fact]
+    public async Task BusinessOwnersDoNotShareMetaDeduplicationReservations()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<MasterAppDbContext>(options =>
+            options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        var authority = new MetaSendAuthority(db, NullLogger<MetaSendAuthority>.Instance);
+        var now = DateTime.UtcNow;
+        var firstOwner = Guid.NewGuid();
+        var secondOwner = Guid.NewGuid();
+        const string eventKey = "Lead:shared-browser-event";
+
+        var first = await authority.TrySendAsync(new MetaSendAuthorityRequest
+        {
+            EventType = "Lead",
+            CommerceBusinessId = firstOwner,
+            SessionId = "same-session",
+            EventUtc = now,
+            DeduplicationKey = eventKey,
+            Source = MetaSendAuthoritySources.MetaSignalAnalyticsBridge
+        });
+        var second = await authority.TrySendAsync(new MetaSendAuthorityRequest
+        {
+            EventType = "Lead",
+            CommerceBusinessId = secondOwner,
+            SessionId = "same-session",
+            EventUtc = now,
+            DeduplicationKey = eventKey,
+            Source = MetaSendAuthoritySources.MetaSignalAnalyticsBridge
+        });
+
+        Assert.True(first.Allowed);
+        Assert.True(second.Allowed);
+        Assert.NotEqual(first.DedupeKey, second.DedupeKey);
+        Assert.StartsWith("business:" + firstOwner.ToString("N") + ":", first.DedupeKey);
+        Assert.StartsWith("business:" + secondOwner.ToString("N") + ":", second.DedupeKey);
+    }
+
+    [Fact]
     public async Task TrySendAsync_UsesExplicitDeduplicationKeyBeforeLeadAndSessionIdentity()
     {
         var services = new ServiceCollection();

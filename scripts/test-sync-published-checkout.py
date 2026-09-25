@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Exercise the launcher sync against disposable real Git repositories."""
 import importlib.util
+import io
+import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stdout
 
 spec = importlib.util.spec_from_file_location('published_sync', Path(__file__).with_name('sync-published-checkout.py'))
 sync = importlib.util.module_from_spec(spec)
@@ -94,6 +97,92 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         with self.assertRaisesRegex(sync.SyncSkipped, 'running'):
             sync.sync_checkout(self.local, process_probe=lambda: True, native=True)
         self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+
+    def test_native_sync_explicitly_refuses_configured_autostash(self):
+        self.configure_native()
+        self.git(self.local, 'config', 'merge.autoStash', 'true')
+        (self.local / 'app.txt').write_text('preserve conflicting work')
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        with self.assertRaises(sync.SyncSkipped):
+            sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+        self.assertEqual((self.local / 'app.txt').read_text(), 'preserve conflicting work')
+        self.assertEqual(self.git(self.local, 'stash', 'list'), '')
+
+    def test_native_sync_pins_branch_even_when_new_branch_has_same_head(self):
+        self.configure_native()
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        authority = sync.git
+        def change_branch(repo, *args, **kwargs):
+            result = authority(repo, *args, **kwargs)
+            if args[0] == 'fetch':
+                self.git(self.local, 'switch', '-c', 'other-work', before)
+                self.git(self.local, 'branch', '--set-upstream-to', 'origin/production')
+            return result
+        with patch.object(sync, 'git', side_effect=change_branch):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'branch changed'):
+                sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+        self.assertEqual(self.git(self.local, 'branch', '--show-current'), 'other-work')
+        self.assertEqual((self.local / 'app.txt').read_text(), 'original')
+
+    def test_native_sync_pins_explicit_target_across_fetch(self):
+        self.configure_native()
+        before = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        authority = sync.git
+        def change_target(repo, *args, **kwargs):
+            result = authority(repo, *args, **kwargs)
+            if args[0] == 'fetch':
+                self.git(self.local, 'config', 'legend.nativeTestingRef', 'refs/remotes/origin/new-intended-target')
+            return result
+        with patch.object(sync, 'git', side_effect=change_target):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'configured target changed'):
+                sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), before)
+        self.assertEqual((self.local / 'app.txt').read_text(), 'original')
+
+    def test_native_sync_default_probe_blocks_before_fetch(self):
+        self.configure_native()
+        before = self.git(self.local, 'rev-parse', 'origin/production')
+        self.publish()
+        with patch.object(sync, 'native_editor_or_build_active', return_value=True):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'running'):
+                sync.sync_checkout(self.local, native=True)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/production'), before)
+
+    def test_workspace_mode_preserves_explicit_target_and_never_falls_back_on_invalid_setting(self):
+        self.assertFalse(sync.workspace_uses_native_target(self.local))
+        self.configure_native()
+        self.assertTrue(sync.workspace_uses_native_target(self.local))
+        self.git(self.local, 'config', 'legend.nativeTestingRef', '')
+        self.assertTrue(sync.workspace_uses_native_target(self.local))
+        with self.assertRaisesRegex(sync.SyncSkipped, 'explicit origin testing ref'):
+            sync.sync_checkout(self.local, process_probe=lambda: False, native=True)
+
+    def test_readonly_status_does_not_fetch_merge_or_create_sync_lock(self):
+        self.configure_native()
+        before = self.git(self.local, 'rev-parse', 'origin/production')
+        self.publish()
+        with patch.object(sync, '__file__', str(self.local / 'scripts' / 'sync-published-checkout.py')), \
+                patch.object(sync, 'native_editor_or_build_active', return_value=False), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(sync.main(['--sync-workspace', '--status']), 0)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report['status'], 'ready')
+        self.assertEqual(report['target'], 'refs/remotes/origin/production')
+        self.assertEqual(report['remoteFreshness'], 'not_checked')
+        self.assertEqual(self.git(self.local, 'rev-parse', 'origin/production'), before)
+        self.assertEqual((self.local / 'app.txt').read_text(), 'original')
+        self.assertFalse((self.local / '.git' / 'legend-published-sync.lock').exists())
+
+    def test_readonly_status_reports_editor_block_without_claiming_remote_freshness(self):
+        self.configure_native()
+        report = sync.sync_status(self.local, native=True, process_probe=lambda: True)
+        self.assertEqual(report['status'], 'blocked')
+        self.assertIn('running', report['reason'])
+        self.assertEqual(report['remoteFreshness'], 'not_checked')
 
     def test_clean_published_checkout_fast_forwards_then_is_current(self):
         self.publish()
@@ -193,6 +282,46 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.assertEqual((self.local / '.git/index').read_bytes(), index)
         self.assertEqual((self.local / 'app.txt').read_text(), 'current uncommitted native changes')
 
+    def test_native_provenance_uses_verified_actual_head_and_no_private_paths(self):
+        self.commit(self.local, 'ahead.txt', 'local candidate')
+        (self.local / 'uncommitted.txt').write_text('working copy')
+        output = self.root / 'DerivedData' / 'LegendBuildProvenance.json'
+        before = self.git(self.local, 'status', '--porcelain=v1')
+        sync.check_native_checkout(self.local, output)
+        payload = json.loads(output.read_text())
+        self.assertEqual(payload, {'schemaVersion': 1,
+                                  'gitCommitHash': self.git(self.local, 'rev-parse', 'HEAD'),
+                                  'hasLocalChanges': True})
+        self.assertNotIn(str(self.local), output.read_text())
+        self.assertEqual(self.git(self.local, 'status', '--porcelain=v1'), before)
+
+    def test_native_provenance_removes_stale_artifact_when_guard_rejects_checkout(self):
+        output = self.root / 'LegendBuildProvenance.json'
+        sync.check_native_checkout(self.local, output)
+        self.assertTrue(output.is_file())
+        self.publish()
+        self.git(self.local, 'fetch', 'origin')
+        with self.assertRaisesRegex(sync.SyncSkipped, 'Stale or divergent'):
+            sync.check_native_checkout(self.local, output)
+        self.assertFalse(output.exists())
+
+    def test_native_provenance_cannot_write_or_delete_source_or_git(self):
+        for output in [self.local / 'source.json', self.local / '.git' / 'metadata.json']:
+            with self.subTest(output=output):
+                output.write_text('preserve existing file')
+                with self.assertRaisesRegex(sync.SyncSkipped, 'outside the source'):
+                    sync.check_native_checkout(self.local, output)
+                self.assertEqual(output.read_text(), 'preserve existing file')
+
+    def test_native_provenance_from_worktree_cannot_write_main_checkout(self):
+        worktree = self.root / 'native-worktree'
+        self.git(self.local, 'worktree', 'add', '--detach', str(worktree), 'HEAD')
+        output = self.local / 'main-source.json'
+        output.write_text('preserve main checkout')
+        with self.assertRaisesRegex(sync.SyncSkipped, 'outside the source'):
+            sync.check_native_checkout(worktree, output)
+        self.assertEqual(output.read_text(), 'preserve main checkout')
+
     def test_native_check_fails_stale_production_without_changing_local_work(self):
         before = self.git(self.local, 'rev-parse', 'HEAD')
         self.publish()
@@ -260,11 +389,39 @@ class RunningProcessDetectionTests(unittest.TestCase):
             ]):
                 self.assertEqual(sync.active_build_or_app(), expected)
 
-    def test_dotnet_process_blocks_without_reading_arguments(self):
+    def test_native_editor_gate_includes_dotnet_but_does_not_block_idle_code_or_codex(self):
+        for executable, expected in [
+            ('/Applications/Xcode.app/Contents/MacOS/Xcode', True),
+            ('/Applications/Android Studio.app/Contents/MacOS/studio', True),
+            ('/usr/local/share/dotnet/dotnet', True),
+            ('/Applications/Visual Studio Code.app/Contents/MacOS/Electron', False),
+            ('/usr/local/bin/codex', False),
+        ]:
+            with self.subTest(executable=executable), patch.object(sync.subprocess, 'run', return_value=
+                    subprocess.CompletedProcess([], 0, stdout=executable + '\n')):
+                self.assertEqual(sync.native_editor_or_build_active(), expected)
+
+    def test_native_editor_gate_fails_closed_if_process_inspection_fails(self):
+        with patch.object(sync.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, stdout='')):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'Cannot verify'):
+                sync.native_editor_or_build_active()
+
+    def test_unknown_dotnet_process_still_blocks(self):
         with patch.object(sync.subprocess, 'run', return_value=
                           subprocess.CompletedProcess([], 0, stdout='/usr/local/share/dotnet/dotnet\n')) as run:
             self.assertTrue(sync.active_build_or_app())
-            run.assert_called_once()
+            self.assertEqual(run.call_count, 2)
+
+    def test_idle_dotnet_servers_do_not_block_but_real_work_does(self):
+        idle = '/usr/bin/dotnet /sdk/MSBuild.dll /nodemode:1\n/usr/bin/dotnet exec /sdk/VBCSCompiler.dll\n'
+        for arguments, expected in [(idle, False), (idle + '/usr/bin/dotnet build MASTERAPP.sln', True),
+                                    ('/usr/bin/dotnet /publish/AgentPortal.dll', True),
+                                    ('/usr/bin/dotnet unknown', True)]:
+            with self.subTest(arguments=arguments), patch.object(sync.subprocess, 'run', side_effect=[
+                subprocess.CompletedProcess([], 0, stdout='/usr/bin/dotnet\n'),
+                subprocess.CompletedProcess([], 0, stdout=arguments),
+            ]):
+                self.assertEqual(sync.native_editor_or_build_active(), expected)
 
 
 if __name__ == '__main__':

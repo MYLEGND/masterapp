@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Domain.Billing;
+using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
@@ -13,7 +14,8 @@ public sealed record ClientSignInPreparationResult(
     string ReturnUrl,
     string? ProtectedState = null,
     DateTime? ExpiresUtc = null,
-    string? LoginHint = null);
+    string? LoginHint = null,
+    string? RedemptionUrl = null);
 
 public sealed record ClientSignInCompletionResult(
     bool Success,
@@ -28,17 +30,20 @@ public sealed class ClientIdentityAccessService
     private readonly IBillingEntitlementService _entitlementService;
     private readonly ClientIdentityContinuationService _continuationService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
+    private readonly global::Infrastructure.Identity.IClientEntraLifecycleService _entraLifecycle;
 
     public ClientIdentityAccessService(
         MasterAppDbContext db,
         IBillingEntitlementService entitlementService,
         ClientIdentityContinuationService continuationService,
-        ClientAppReturnUrlNormalizer returnUrlNormalizer)
+        ClientAppReturnUrlNormalizer returnUrlNormalizer,
+        global::Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle)
     {
         _db = db;
         _entitlementService = entitlementService;
         _continuationService = continuationService;
         _returnUrlNormalizer = returnUrlNormalizer;
+        _entraLifecycle = entraLifecycle;
     }
 
     public static bool IsSupportReturnUrl(string? returnUrl)
@@ -119,7 +124,7 @@ public sealed class ClientIdentityAccessService
                 (x.Email ?? string.Empty).ToLower() == normalizedEmail,
                 cancellationToken);
 
-        if (profile is null)
+        if (profile is null || !IsPortalClientProfile(profile))
         {
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_READY", "We could not find an activated client profile for that email yet.", safeReturnUrl);
         }
@@ -136,6 +141,54 @@ public sealed class ClientIdentityAccessService
             return new ClientSignInPreparationResult(false, "CLIENT_NOT_ACTIVE", "This client account is not active for sign-in yet. Use the activation link or contact your agent for help.", safeReturnUrl);
         }
 
+        global::Infrastructure.Identity.ClientEntraIdentitySynchronizationResult? identity = null;
+        try
+        {
+            identity = await _entraLifecycle.SynchronizeClientIdentityAsync(
+                profile.Id,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch when (HasPersistedMicrosoftIdentityBinding(profile))
+        {
+            // Graph synchronization is a repair/redemption aid, not a second availability
+            // gate for an already-bound active member. The OIDC callback still validates
+            // the stable object ID against the live profile and re-checks entitlement.
+        }
+        catch
+        {
+            return new ClientSignInPreparationResult(
+                false,
+                "CLIENT_IDENTITY_SETUP_PENDING",
+                "Your membership is active, but Microsoft sign-in setup is still completing. Try again shortly or contact your LEGEND guide if access remains unavailable.",
+                safeReturnUrl);
+        }
+
+        if (identity is not null &&
+            (string.IsNullOrWhiteSpace(identity.ObjectId) ||
+             !string.Equals(NormalizeEmail(identity.LoginEmail), normalizedEmail, StringComparison.Ordinal)))
+        {
+            return new ClientSignInPreparationResult(
+                false,
+                "CLIENT_IDENTITY_MISMATCH",
+                "The Microsoft sign-in identity does not match this client account.",
+                safeReturnUrl);
+        }
+
+        if (identity is not null &&
+            identity.RequiresRedemption &&
+            string.IsNullOrWhiteSpace(identity.RedemptionUrl))
+        {
+            return new ClientSignInPreparationResult(
+                false,
+                "CLIENT_IDENTITY_SETUP_PENDING",
+                "Your membership is active, but Microsoft sign-in setup is still completing. Try again shortly or contact your LEGEND guide if access remains unavailable.",
+                safeReturnUrl);
+        }
+
         var protectedState = await _continuationService.CreateProtectedStateAsync(
             profile.Id,
             normalizedEmail,
@@ -150,7 +203,8 @@ public sealed class ClientIdentityAccessService
             safeReturnUrl,
             protectedState.ProtectedState,
             protectedState.ExpiresUtc,
-            normalizedEmail);
+            normalizedEmail,
+            identity?.RequiresRedemption == true ? identity.RedemptionUrl : null);
     }
 
     public async Task<ClientSignInCompletionResult> ValidateAuthenticatedClientSessionAsync(
@@ -159,7 +213,8 @@ public sealed class ClientIdentityAccessService
         CancellationToken cancellationToken = default)
     {
         var safeReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
-        if (IsAgentPrincipal(principal) && IsSupportReturnUrl(safeReturnUrl))
+        if (IsSupportReturnUrl(safeReturnUrl) &&
+            await IsAgentPrincipalAsync(principal, cancellationToken))
             return new ClientSignInCompletionResult(true, safeReturnUrl);
 
         // Canonical Entra Object ID only (F19). GetCanonicalUserId reads oid /
@@ -178,7 +233,7 @@ public sealed class ClientIdentityAccessService
                 (x.ClientUserId ?? string.Empty).ToLower() == oid,
                 cancellationToken);
 
-        if (profile is null)
+        if (profile is null || !IsPortalClientProfile(profile))
             return new ClientSignInCompletionResult(false, safeReturnUrl, "UNKNOWN_CLIENT", "A valid client subscription is required before opening the portal.");
 
         var entitlement = await _entitlementService.EvaluateAsync(
@@ -191,6 +246,107 @@ public sealed class ClientIdentityAccessService
         return entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod
             ? new ClientSignInCompletionResult(true, safeReturnUrl)
             : new ClientSignInCompletionResult(false, safeReturnUrl, "INACTIVE_ENTITLEMENT", "This client subscription is not active for access.");
+    }
+
+    private async Task<ClientSignInCompletionResult> RecoverActiveClientBindingAsync(
+        ClaimsPrincipal principal,
+        string safeReturnUrl,
+        CancellationToken cancellationToken)
+    {
+        var oid = principal.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(oid))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "MISSING_OBJECT_ID",
+                "A valid client sign-in is required.");
+
+        var principalEmails = PrincipalEmailCandidates(principal);
+        if (principalEmails.Length == 0)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "MISSING_EMAIL",
+                "The Microsoft account did not provide the client email required to recover access.");
+
+        var matches = await _db.ClientProfiles
+            .Where(profile =>
+                principalEmails.Contains((profile.NormalizedEmail ?? string.Empty).ToLower()) ||
+                principalEmails.Contains((profile.Email ?? string.Empty).ToLower()))
+            .OrderBy(profile => profile.Id)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+
+        if (matches.Count == 0)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "UNKNOWN_CLIENT",
+                "A valid client subscription is required before opening the portal.");
+
+        if (matches.Count != 1)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "AMBIGUOUS_CLIENT_IDENTITY",
+                "This email is linked to more than one client profile. Contact your LEGEND guide before signing in.");
+
+        var profile = matches[0];
+        if (!IsPortalClientProfile(profile))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "CLIENT_NOT_READY",
+                "This CRM record is not a client portal account.");
+
+        var existingObjectId = NormalizeId(profile.ExternalIdentityObjectId);
+        if (!string.IsNullOrWhiteSpace(existingObjectId) &&
+            !string.Equals(existingObjectId, oid, StringComparison.Ordinal))
+        {
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "CLIENT_ALREADY_LINKED",
+                "This client profile is already linked to a different Microsoft account.");
+        }
+
+        var conflictingProfile = await _db.ClientProfiles
+            .AsNoTracking()
+            .AnyAsync(other =>
+                other.Id != profile.Id &&
+                other.ExternalIdentityObjectId != null &&
+                other.ExternalIdentityObjectId.ToLower() == oid,
+                cancellationToken);
+
+        if (conflictingProfile)
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "IDENTITY_CONFLICT",
+                "This Microsoft account is already linked to a different client profile.");
+
+        var entitlement = await _entitlementService.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                profile.Id,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            cancellationToken);
+
+        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+            return new ClientSignInCompletionResult(
+                false,
+                safeReturnUrl,
+                "INACTIVE_ENTITLEMENT",
+                "This client subscription is not active for access.");
+
+        if (string.IsNullOrWhiteSpace(existingObjectId))
+        {
+            profile.ExternalIdentityObjectId = oid;
+            profile.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        return new ClientSignInCompletionResult(true, safeReturnUrl);
     }
 
     public async Task<ClientSignInCompletionResult> CompleteClientSignInAsync(HttpContext httpContext, ClaimsPrincipal principal, string? fallbackReturnUrl = null, CancellationToken cancellationToken = default)
@@ -217,7 +373,24 @@ public sealed class ClientIdentityAccessService
                 return existingClientSession;
             }
 
-            return IsAgentPrincipal(principal) && IsSupportReturnUrl(safeFallbackReturnUrl)
+            var isAgent = await IsAgentPrincipalAsync(principal, cancellationToken);
+            if (!isAgent)
+            {
+                var recoveredClientSession = await RecoverActiveClientBindingAsync(
+                    principal,
+                    safeFallbackReturnUrl,
+                    cancellationToken);
+
+                if (recoveredClientSession.Success)
+                {
+                    _continuationService.ClearCookie(httpContext.Response);
+                    return recoveredClientSession;
+                }
+
+                return recoveredClientSession;
+            }
+
+            return IsSupportReturnUrl(safeFallbackReturnUrl)
                 ? new ClientSignInCompletionResult(true, safeFallbackReturnUrl)
                 : new ClientSignInCompletionResult(
                     false,
@@ -269,14 +442,8 @@ public sealed class ClientIdentityAccessService
         if (string.IsNullOrWhiteSpace(oid))
             return new ClientSignInCompletionResult(false, continuation.ReturnUrl, "MISSING_OBJECT_ID", "The identity provider did not return a stable object ID.");
 
-        var principalEmail = NormalizeEmail(
-            principal.FindFirstValue("preferred_username")
-            ?? principal.FindFirstValue(ClaimTypes.Upn)
-            ?? principal.FindFirstValue(ClaimTypes.Email)
-            ?? principal.Identity?.Name);
-
-        if (string.IsNullOrWhiteSpace(principalEmail) ||
-            !string.Equals(continuation.IntendedNormalizedEmail, principalEmail, StringComparison.Ordinal))
+        var principalEmails = PrincipalEmailCandidates(principal);
+        if (!principalEmails.Contains(continuation.IntendedNormalizedEmail))
         {
             return new ClientSignInCompletionResult(false, continuation.ReturnUrl, "EMAIL_MISMATCH", "The Microsoft account email does not match the invited client email.");
         }
@@ -301,8 +468,8 @@ public sealed class ClientIdentityAccessService
         }
 
         profile.ExternalIdentityObjectId = oid;
-        if (string.IsNullOrWhiteSpace(profile.NormalizedEmail) && !string.IsNullOrWhiteSpace(principalEmail))
-            profile.NormalizedEmail = principalEmail;
+        if (string.IsNullOrWhiteSpace(profile.NormalizedEmail))
+            profile.NormalizedEmail = continuation.IntendedNormalizedEmail;
 
         await _db.SaveChangesAsync(cancellationToken);
         await _continuationService.ConsumeAsync(continuation, cancellationToken);
@@ -311,15 +478,61 @@ public sealed class ClientIdentityAccessService
         return new ClientSignInCompletionResult(true, continuation.ReturnUrl);
     }
 
-    private static bool IsAgentPrincipal(ClaimsPrincipal principal)
+    private async Task<bool> IsAgentPrincipalAsync(
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
     {
-        var normalizedEmail = NormalizeEmail(
-            principal.FindFirstValue("preferred_username")
-            ?? principal.FindFirstValue(ClaimTypes.Upn)
-            ?? principal.FindFirstValue(ClaimTypes.Email)
-            ?? principal.Identity?.Name);
+        var oid = principal.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(oid))
+            return false;
 
-        return normalizedEmail.EndsWith("@mylegnd.com", StringComparison.OrdinalIgnoreCase);
+        return await _db.AgentProfiles
+                   .AsNoTracking()
+                   .AnyAsync(profile => (profile.AgentUserId ?? string.Empty).ToLower() == oid, cancellationToken)
+               || await _db.AgentTrackingProfiles
+                   .AsNoTracking()
+                   .AnyAsync(profile => (profile.AgentUserId ?? string.Empty).ToLower() == oid &&
+                                        (profile.Status ?? string.Empty).ToLower() == "active", cancellationToken)
+               || await _db.AgentClients
+                   .AsNoTracking()
+                   .AnyAsync(link => (link.AgentUserId ?? string.Empty).ToLower() == oid, cancellationToken);
+    }
+
+    private static bool IsPortalClientProfile(ClientProfile profile) =>
+        ClientRecordClassification.IsClientOrBusinessClient(
+            profile.ClientUserId,
+            profile.CrmNotes,
+            profile.CrmStatus);
+
+    private static string[] PrincipalEmailCandidates(ClaimsPrincipal principal)
+    {
+        var values = principal.Claims
+            .Where(claim =>
+                claim.Type == "preferred_username" ||
+                claim.Type == ClaimTypes.Email ||
+                claim.Type == "email" ||
+                claim.Type == "emails" ||
+                claim.Type == "upn" ||
+                claim.Type == ClaimTypes.Upn ||
+                claim.Type == "unique_name")
+            .Select(claim => NormalizeEmail(claim.Value))
+            .Append(NormalizeEmail(principal.Identity?.Name))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return values;
+    }
+
+    private static bool HasPersistedMicrosoftIdentityBinding(ClientProfile profile)
+    {
+        if (!string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId))
+            return true;
+
+        // Some legacy records stored the Entra object ID in ClientUserId before the
+        // dedicated external-identity column became authoritative. Internal client IDs
+        // use the "client-" prefix, so only a GUID-shaped legacy value is accepted here.
+        return Guid.TryParse(profile.ClientUserId, out _);
     }
 
     private static string NormalizeEmail(string? email) =>

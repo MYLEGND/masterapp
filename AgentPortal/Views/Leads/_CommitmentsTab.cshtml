@@ -73,7 +73,7 @@ else
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form id="createCommitmentForm" method="post" action="/Leads/CreateCommitment">
+        <form id="createCommitmentForm" method="post" action="@((ViewData["CrmApiBase"] as string ?? "") + "/Leads/CreateCommitment")">
             @Html.AntiForgeryToken()
             <input type="hidden" name="LeadId" value="@leadId" />
             <div class="mb-3">

@@ -1,4 +1,3 @@
-using AgentPortal.Models;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -74,22 +73,6 @@ namespace AgentPortal.Controllers;
             .FirstOrDefaultAsync(x => (x.ClientUserId ?? "").ToLower() == clientUserId);
     }
 
-        private static string ResolveRecordType(Domain.Entities.ClientProfile client)
-        {
-            var meta = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
-            var explicitRecordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
-            if (!string.IsNullOrWhiteSpace(explicitRecordType))
-                return explicitRecordType;
-
-            var stage = ClientCrmMetaSerializer.NormalizePipelineStage(meta.PipelineStage);
-            if (string.Equals(stage, "BusinessClient", StringComparison.OrdinalIgnoreCase))
-                return "BusinessClient";
-
-            return Guid.TryParse((client.ClientUserId ?? string.Empty).Trim(), out _)
-                ? "Client"
-                : "Lead";
-        }
-
         private string GetClientPortalBaseUrl()
         {
             return _config["Provisioning:ClientPortalBaseUrl"]?.TrimEnd('/')
@@ -127,11 +110,9 @@ namespace AgentPortal.Controllers;
         if (client == null)
             return NotFound();
 
-        ViewBag.ClientUserId = clientUserId;
-        ViewBag.ClientName = $"{client.FirstName} {client.LastName}".Trim();
-        ViewBag.ClientRecordType = ResolveRecordType(client);
-
-        return View(client);
+        // ClientApp owns the client-facing workspace. Keep the existing
+        // shared ownership check above, then use its canonical support entry.
+        return await RedirectToClientPortalAsync(client, "/");
     }
 
     [HttpGet]

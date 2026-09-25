@@ -233,6 +233,10 @@
 
 <form asp-controller="RiskAssessment" asp-action="SubmitRiskAssessment" method="post" class="pcq-form-frame" id="riskAssessmentForm" data-form-key="risk_assessment_form">
     @Html.AntiForgeryToken()
+        <input type="hidden" name="AgentSlug" value="@Context.Items["TrackingSlug"]" />
+        <input type="hidden" name="SessionId" /><input type="hidden" name="VisitorId" />
+        <input type="hidden" name="UtmSource" /><input type="hidden" name="UtmMedium" /><input type="hidden" name="UtmCampaign" />
+        <input type="hidden" name="SubmissionId" value="@(Context.Request.HasFormContentType && Guid.TryParse(Context.Request.Form["SubmissionId"], out var submissionToken) ? submissionToken : Guid.NewGuid())" />
 
     <!-- keep step on postback -->
     <input asp-for="CurrentStep" type="hidden" id="CurrentStep" />
@@ -847,6 +851,9 @@
                 <span class="ra-step-count">Step 6 of 6</span>
             </div>
 
+            <p>Review your answers before submitting. Select Edit to update a section.</p>
+            <div id="riskAssessmentReview" aria-label="Assessment answers"></div>
+
         <div class="mini-card ra-subsection-card mt-3">
             <div class="form-check">
                 <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" />
@@ -927,9 +934,39 @@
             });
         }
 
+        function renderAssessmentReview() {
+            const review = document.getElementById("riskAssessmentReview");
+            review.replaceChildren();
+            stepWraps.filter(w => Number(w.dataset.step) < 6).forEach(wrap => {
+                const section = document.createElement("section");
+                section.className = "mini-card ra-subsection-card mt-3";
+                const heading = document.createElement("h3");
+                heading.textContent = wrap.querySelector(".section-title span")?.textContent?.trim() || `Section ${wrap.dataset.step}`;
+                const edit = document.createElement("button");
+                edit.type = "button";
+                edit.className = "btn btn-outline-gold";
+                edit.textContent = "Edit";
+                edit.setAttribute("aria-label", `Edit ${heading.textContent}`);
+                edit.addEventListener("click", () => setStep(Number(wrap.dataset.step)));
+                const answers = document.createElement("dl");
+                wrap.querySelectorAll("input, select, textarea").forEach(field => {
+                    if (!field.name || field.disabled || field.type === "hidden" || (field.type === "radio" && !field.checked)) return;
+                    const label = document.createElement("dt");
+                    label.textContent = field.labels?.[0]?.textContent?.trim() || field.name;
+                    const value = document.createElement("dd");
+                    value.textContent = field.type === "checkbox" ? (field.checked ? "Yes" : "No") :
+                        (field.tagName === "SELECT" ? field.selectedOptions[0]?.textContent : field.value) || "Not provided";
+                    answers.append(label, value);
+                });
+                section.append(heading, edit, answers);
+                review.append(section);
+            });
+        }
+
         function setStep(step){
             step = clampStep(step);
             currentStepInput.value = step;
+            if (step === 6) renderAssessmentReview();
 
             stepWraps.forEach(w => w.classList.toggle("active", w.getAttribute("data-step") == step));
             stepPills.forEach(p => {
@@ -976,7 +1013,11 @@
                 const current = clampStep(currentStepInput.value);
 
                 if (target <= current) return setStep(target);
-                if (validateStep(current)) setStep(target);
+                for (let step = current; step < target; step++) {
+                    setStep(step);
+                    if (!validateStep(step)) return;
+                }
+                setStep(target);
             });
         });
 

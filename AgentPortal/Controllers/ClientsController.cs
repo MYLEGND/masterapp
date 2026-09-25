@@ -70,6 +70,30 @@ namespace AgentPortal.Controllers;
             Converters = { new JsonStringEnumConverter() }
         };
 
+        private async Task EnsureBusinessEntityAsync(CreateClientViewModel model, ClientProfile profile, string agentOid)
+        {
+            if (!string.Equals((model.RecordType ?? "").Replace(" ", ""), "BusinessClient", StringComparison.OrdinalIgnoreCase)) return;
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.ICommerceBusinessProvisioningService>();
+            await service.CreateAsync(new Infrastructure.Businesses.CommerceBusinessProvisioningRequest(
+                DisplayName: model.EntityName!, LegalName: model.EntityName!, BusinessType: "BusinessClient",
+                OwnerEmail: profile.Email, OwnerDisplayName: model.EntityName!,
+                OwnerRoleKey: "account", CanManageCatalog: false, CanManageOrders: false,
+                OwnerClientProfileId: profile.Id, Owners: model.BusinessOwners, ActorAgentUserId: agentOid),
+                HttpContext.RequestAborted);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> BusinessOwnerLookup(string email)
+        {
+            var agentOid = User.GetCanonicalUserId();
+            if (string.IsNullOrWhiteSpace(agentOid) || string.IsNullOrWhiteSpace(email))
+                return NotFound();
+
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.ICommerceBusinessProvisioningService>();
+            var owner = await service.ResolveOwnerAsync(email, agentOid, HttpContext.RequestAborted);
+            return owner is null ? NotFound() : Json(owner);
+        }
+
         public ClientsController(
             MasterAppDbContext db,
             ClientProvisioningService provisioning,
@@ -1020,6 +1044,9 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(emailNorm))
             return new PortalEmailSyncResult("Portal-enabled clients must have a real email address.", false);
 
+        if (!AccountEmailChange.IsChanged(previousEmail, emailNorm))
+            return new PortalEmailSyncResult(null, false);
+
         try
         {
             await _entraLifecycle.SynchronizeClientIdentityAsync(profile.Id, cancellationToken);
@@ -1314,28 +1341,15 @@ namespace AgentPortal.Controllers;
         var oneTimePassword = GenerateOneTimePassword();
         string? newClientObjectId = null;
         string? loginUpn = null;
-        var createdGraphUser = false;
-        var committed = false;
-
         try
         {
-            (newClientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
-                firstName,
-                lastName,
-                emailNorm,
-                oneTimePassword
-            );
-
-            newClientObjectId = NormLower(newClientObjectId);
-            loginUpn = Norm(loginUpn);
-
-            if (string.IsNullOrWhiteSpace(newClientObjectId))
-                throw new Exception("Provisioning returned an empty client user id.");
-
-            if (string.IsNullOrWhiteSpace(loginUpn))
-                throw new Exception("Provisioning returned an empty login UPN.");
-
-            createdGraphUser = true;
+            // Client creation owns the durable application record. External
+            // identity is provisioned only after the client accepts the
+            // subscription invitation, through ClientEntraLifecycleService.
+            // This keeps CRM creation available even when Graph invitation
+            // permissions or Microsoft Graph are temporarily unavailable.
+            newClientObjectId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+            loginUpn = emailNorm;
 
             await using var tx = await _db.Database.BeginTransactionAsync();
 
@@ -1378,7 +1392,7 @@ namespace AgentPortal.Controllers;
                 SET ClientUserId = {newClientObjectId},
                     CrmNotes = {serializedMeta},
                     CrmStatus = {"Active"},
-                    ExternalIdentityObjectId = {newClientObjectId},
+                    ExternalIdentityObjectId = {(string?)null},
                     UpdatedUtc = {updatedUtc}
                 WHERE Id = {profileId}");
 
@@ -1397,38 +1411,12 @@ namespace AgentPortal.Controllers;
                 await beforeCommitAsync(convertedProfile);
 
             await tx.CommitAsync();
-            committed = true;
-
             var pipelineStage = DefaultPipelineStageForRecordType(recordType);
             var clientPortalBaseUrl = GetClientPortalBaseUrl();
             string? emailWarning = null;
 
             if (sendWelcomeEmail)
-            {
-                try
-                {
-                    await _provisioning.SendClientWelcomeEmailAsync(
-                        emailNorm,
-                        firstName,
-                        loginUpn,
-                        oneTimePassword,
-                        clientPortalBaseUrl,
-                        newClientObjectId,
-                        forceIdLink: true
-                    );
-                }
-                catch (Exception mailEx)
-                {
-                    _logger.LogError(
-                        mailEx,
-                        "Portal access email failed after successful conversion. Email={Email} ClientUserId={ClientUserId}",
-                        emailNorm,
-                        newClientObjectId
-                    );
-
-                    emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
-                }
-            }
+                emailWarning = "Portal record created. Configure its subscription to send the secure activation invitation.";
 
             return new PortalAccessEnableResult(
                 OldClientUserId: oldClientUserId,
@@ -1441,15 +1429,7 @@ namespace AgentPortal.Controllers;
                 EmailSent: string.IsNullOrWhiteSpace(emailWarning),
                 Warning: emailWarning);
         }
-        catch
-        {
-            if (!committed && createdGraphUser && !string.IsNullOrWhiteSpace(newClientObjectId))
-            {
-                try { await _provisioning.DeleteTenantUserAsync(newClientObjectId); } catch { }
-            }
-
-            throw;
-        }
+        catch { throw; }
     }
 
     private static string NormalizeWaitingOn(string? value)
@@ -2185,6 +2165,7 @@ namespace AgentPortal.Controllers;
             ? await _production.GetContactSnapshotsAsync(agentOid, ProductionSide.Client, clientIds, HttpContext.RequestAborted)
             : new Dictionary<string, ProductionContactSnapshot>(StringComparer.OrdinalIgnoreCase);
 
+        var entityLabels = await Infrastructure.Businesses.BusinessIdentityProjection.LoadLabelsAsync(_db, clients.Select(x => x.Id), HttpContext.RequestAborted);
         var mapped = new List<ClientListItemViewModel>();
 
         foreach (var x in clients)
@@ -2213,6 +2194,7 @@ namespace AgentPortal.Controllers;
 
                 mapped.Add(new ClientListItemViewModel
                 {
+                    EntityName = entityLabels.GetValueOrDefault(x.Id),
                     Id = x.Id,
                     ClientUserId = x.ClientUserId,
                     FirstName = x.FirstName,
@@ -2324,6 +2306,7 @@ namespace AgentPortal.Controllers;
 
             ViewBag.ClientPortalBaseUrl = GetClientPortalBaseUrl();
             ViewBag.Search = search ?? "";
+            ViewData["CanSetFounderSubscriptionOptions"] = FounderGuard.IsFounder(User);
             ViewData["ProductionTotals"] = await _production.GetAgentTotalsAsync(agentOid, ProductionSide.Client);
 
             _logger.LogInformation("Clients/Index loaded {Count} records for agent {AgentOid}.", vm?.Count ?? 0, agentOid);
@@ -3534,6 +3517,7 @@ namespace AgentPortal.Controllers;
                     beforeCommitAsync: async convertedProfile =>
                     {
                         createdClientProfile = convertedProfile;
+                        await EnsureBusinessEntityAsync(model, convertedProfile, agentOid);
                         createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
                             new CreateClientSubscriptionOfferCommand(
                                 convertedProfile.Id,
@@ -3569,26 +3553,10 @@ namespace AgentPortal.Controllers;
                 var personalEmail = emailNorm
                     ?? throw new InvalidOperationException("Portal client email is required.");
 
-                // ==========================================================
-                // 1) Create Entra user (Graph provisioning)
-                // ==========================================================
-                (clientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
-                    firstName,
-                    lastName,
-                    personalEmail,
-                    oneTimePassword
-                );
-
-                clientObjectId = NormLower(clientObjectId);
-                loginUpn = (loginUpn ?? "").Trim();
-
-                if (string.IsNullOrWhiteSpace(clientObjectId))
-                    throw new Exception("Provisioning returned an empty client user id.");
-
-                if (string.IsNullOrWhiteSpace(loginUpn))
-                    throw new Exception("Provisioning returned an empty login UPN.");
-
-                createdGraphUser = true;
+                // Persist the scoped client first. Entra invitation and binding
+                // are the activation flow's responsibility after acceptance.
+                clientObjectId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+                loginUpn = personalEmail;
             }
             else
             {
@@ -3644,7 +3612,8 @@ namespace AgentPortal.Controllers;
             createdClientProfile = new ClientProfile
             {
                 ClientUserId = clientObjectId,
-                ExternalIdentityObjectId = isPortalClient ? clientObjectId : null,
+                // Bound by ClientEntraLifecycleService after secure activation.
+                ExternalIdentityObjectId = null,
                 FirstName = firstName,
                 LastName = lastName,
                 Email = emailNorm ?? "",
@@ -3703,6 +3672,7 @@ namespace AgentPortal.Controllers;
 
             if (isPortalClient)
             {
+                await EnsureBusinessEntityAsync(model, createdClientProfile, agentOid);
                 createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
                     new CreateClientSubscriptionOfferCommand(
                         createdClientProfile.Id,
@@ -3855,7 +3825,7 @@ namespace AgentPortal.Controllers;
             }
 
             var createdMessage = isPortalClient
-                ? $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}"
+                ? $"{RecordTypeLabel(recordType)} created. Secure activation was sent to {emailNorm}."
                 : $"Lead added to pipeline in {StageLabel(pipelineStage)}.";
 
             TempData["Created"] = creationWarnings.Count == 0
@@ -6389,9 +6359,23 @@ namespace AgentPortal.Controllers;
             _db.AccountLifecycleRecords.Any(r => r.ProfileId == p.Id && r.ParticipantType == MessagingParticipantTypes.Client &&
                 (r.State == Domain.Accounts.AccountLifecycleStates.Closed || r.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested)))
             .OrderBy(p => p.LastName).ThenBy(p => p.FirstName).ToListAsync(ct);
-        ViewData["RestorableClientIds"] = (await _db.AccountLifecycleRecords.AsNoTracking()
-            .Where(r => r.RetainClientContact && r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
-            .Select(r => r.ProfileId).ToListAsync(ct)).ToHashSet();
+        var nowUtc = DateTime.UtcNow;
+        var closedClientLifecycle = await _db.AccountLifecycleRecords.AsNoTracking()
+            .Where(r => r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(r => new { r.ProfileId, r.RetainClientContact, r.ClosureLeaseExpiresUtc })
+            .ToListAsync(ct);
+        ViewData["RestorableClientIds"] = closedClientLifecycle
+            .Where(r => r.RetainClientContact)
+            .Select(r => r.ProfileId)
+            .ToHashSet();
+        ViewData["PurgeableClientIds"] = closedClientLifecycle
+            .Where(r => r.ClosureLeaseExpiresUtc == null || r.ClosureLeaseExpiresUtc <= nowUtc)
+            .Select(r => r.ProfileId)
+            .ToHashSet();
+        ViewData["BusyClientIds"] = closedClientLifecycle
+            .Where(r => r.ClosureLeaseExpiresUtc > nowUtc)
+            .Select(r => r.ProfileId)
+            .ToHashSet();
         return View(profiles);
     }
 
@@ -6407,6 +6391,122 @@ namespace AgentPortal.Controllers;
                 User.FindFirstValue("oid") ?? owner, HttpContext.TraceIdentifier), ct)
             : await service.RestoreAssignedClientAsync(profileId, owner, ct);
         TempData["Created"] = result.Message;
+        return RedirectToAction(nameof(Archive));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RestoreSelected(List<Guid>? selectedProfileIds, CancellationToken ct)
+    {
+        var selected = (selectedProfileIds ?? new List<Guid>())
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(26)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            TempData["Created"] = "Choose at least one archived client account to restore.";
+            return RedirectToAction(nameof(Archive));
+        }
+        if (selected.Length > 25)
+        {
+            TempData["Created"] = "Choose no more than 25 archived client accounts at once.";
+            return RedirectToAction(nameof(Archive));
+        }
+
+        string owner;
+        try { owner = GetAgentOidOrThrow(); } catch { return Challenge(); }
+
+        var service = HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>();
+        var founder = FounderGuard.IsFounder(User);
+        var actorId = User.FindFirstValue("oid") ?? owner;
+        var restored = 0;
+        var failed = 0;
+        foreach (var profileId in selected)
+        {
+            ct.ThrowIfCancellationRequested();
+            var result = founder
+                ? await service.RestoreAsync(
+                    new FounderAccountRemovalCommand(
+                        profileId,
+                        MessagingParticipantTypes.Client,
+                        actorId,
+                        HttpContext.TraceIdentifier),
+                    ct)
+                : await service.RestoreAssignedClientAsync(profileId, owner, ct);
+            if (result.Succeeded) restored++;
+            else failed++;
+        }
+
+        TempData["Created"] = failed == 0
+            ? $"{restored} archived client account(s) restored."
+            : $"{restored} archived client account(s) restored; {failed} could not be restored.";
+        return RedirectToAction(nameof(Archive));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PurgeSelected(
+        List<Guid>? selectedProfileIds,
+        string? confirmation,
+        CancellationToken ct)
+    {
+        if (!FounderGuard.IsFounder(User))
+            return Forbid();
+
+        if (!string.Equals(confirmation?.Trim(), "ERASE", StringComparison.Ordinal))
+        {
+            TempData["Created"] = "Type ERASE to permanently remove selected archived accounts.";
+            return RedirectToAction(nameof(Archive));
+        }
+
+        var selected = (selectedProfileIds ?? new List<Guid>())
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(26)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            TempData["Created"] = "Choose at least one archived client account to erase.";
+            return RedirectToAction(nameof(Archive));
+        }
+        if (selected.Length > 25)
+        {
+            TempData["Created"] = "Choose no more than 25 archived client accounts at once.";
+            return RedirectToAction(nameof(Archive));
+        }
+
+        string owner;
+        try { owner = GetAgentOidOrThrow(); } catch { return Challenge(); }
+
+        var actorId = User.FindFirstValue("oid") ?? owner;
+        var service = HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>();
+        var result = await service.PurgeArchivedManyAsync(
+            new FounderAccountRemovalBatchCommand(
+                selected
+                    .Select(id => new FounderAccountTarget(id, MessagingParticipantTypes.Client))
+                    .ToArray(),
+                actorId,
+                HttpContext.TraceIdentifier),
+            ct);
+
+        if (result.FailedCount == 0)
+        {
+            TempData["Created"] = $"{result.CompletedCount} archived client account(s) permanently erased.";
+        }
+        else
+        {
+            var failureMessages = result.Results
+                .Where(item => !item.Succeeded)
+                .Select(item => item.Message)
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .Distinct(StringComparer.Ordinal)
+                .Take(3)
+                .ToArray();
+            TempData["Created"] = failureMessages.Length == 0
+                ? $"{result.CompletedCount} archived client account(s) permanently erased; {result.FailedCount} could not be erased."
+                : $"{result.CompletedCount} archived client account(s) permanently erased. {string.Join(" ", failureMessages)}";
+        }
         return RedirectToAction(nameof(Archive));
     }
 

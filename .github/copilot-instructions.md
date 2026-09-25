@@ -12,7 +12,7 @@ These instructions govern all AI work in `MYLEGND/masterapp`. They define operat
 
 ## Branch and change safety
 
-- `production` is the default and release branch. Never edit, commit, force-update, merge, or deploy it directly.
+- `legend/approved-changes` is the default and quick-release source. `production` is the rigorous CI/security release path. Follow `Docs/releases/branch-lifecycle.md`; never force-update either release branch or bypass production gates. Temporary branches must survive failures and unique work must be preserved before deletion.
 - Before acting, inspect the current branch, base SHA, remote state, commit history, working tree, active PRs, and applicable repository instructions.
 - Use a dedicated, descriptively named branch created from the explicitly approved base SHA.
 - Preserve unrelated, uncommitted, unpushed, generated, and agent-owned work. Stop if scope overlaps active work or ownership is unclear.

@@ -204,7 +204,7 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent), "Please check the box so we can send your estimate and options.");
             }
 
-            
+
             if (string.IsNullOrWhiteSpace(model.Phone))
             {
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.Phone), "Please enter your phone number.");
@@ -257,6 +257,7 @@ if (!ModelState.IsValid)
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
             // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLifeLeadCaptureResult? capturedSubmission = null;
             WebsiteLead lead;
             try
             {
@@ -333,8 +334,83 @@ if (!ModelState.IsValid)
                         RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                     })
                 };
-                _db.WebsiteLeads.Add(lead);
+                if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead,
+                        HttpContext?.Request is { HasFormContentType: true } submissionRequest ? submissionRequest.Form["SubmissionId"].FirstOrDefault() : null,
+                        HttpContext?.RequestAborted ?? CancellationToken.None, async ct =>
+                        {
+                            capturedSubmission = await _websiteLifeLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = model.ProductType,
+                        OfferKey = model.OfferKey,
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.State,
+                        Age = model.Age,
+                        AgeRange = model.AgeRange,
+                        CoverageAmount = model.CoverageAmount,
+                        CoverageAmountOption = model.CoverageAmountOption,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                            if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
+                                throw new InvalidOperationException("The advisor handoff could not be completed.");
+                var eventMetadata = new
+                {
+                    LeadId        = lead.LeadId,
+                    CorrelationId = correlationId,
+                    OfferKey      = model.OfferKey,
+                    PageVariant   = pageMode.PageVariant,
+                    PageMode      = pageMode.PageMode,
+                    PagePath      = Request?.Path.Value,
+                    RecommendationPrimaryKey       = model.RecommendationPrimaryKey,
+                    RecommendationPrimaryTitle     = model.RecommendationPrimaryTitle,
+                    RecommendationSecondaryKey     = model.RecommendationSecondaryKey,
+                    RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
+                };
+
+                var submittedCtx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
+                    lead,
+                    "website_lead_submitted",
+                    eventMetadata,
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    lead.CreatedUtc);
+                var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
+                UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
+
+                var persistedCtx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
+                    lead,
+                    "lead_persisted",
+                    eventMetadata,
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    lead.CreatedUtc);
+                var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
+                UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
                 await _db.SaveChangesAsync();
+
+                        }))
+                {
+                    TempData["QuoteType"] = lead.InterestType;
+            var replayBookingHint = await BuildPublicBookingAjaxHintAsync(
+                lead.LeadId,
+                lead.AgentTrackingProfileId,
+                agentSlug,
+                pageMode.EffectivePageKey,
+                cfg.OfferKey,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+                    if (IsAjax()) return Ok(new { success = true, leadId = lead.LeadId.ToString("D"), alreadyCaptured = true, metaLeadEventId = "lead_" + lead.LeadId.ToString("N"), booking = replayBookingHint });
+                    return RedirectToAction("Index", "ThankYou");
+                }
                 _logger.LogInformation(
                     "LifeQuote [{CorrelationId}]: WebsiteLead {LeadId} saved offer={Offer}",
                     correlationId, lead.LeadId, model.OfferKey);
@@ -369,27 +445,7 @@ if (!ModelState.IsValid)
                         CaptureStage = "attempt"
                     });
 
-                var captureResult = await _websiteLifeLeadCapture.UpsertAsync(
-                    new WebsiteLifeLeadCaptureRequest
-                    {
-                        WebsiteLeadId = lead.LeadId,
-                        SubmittedUtc = lead.CreatedUtc,
-                        ProductType = model.ProductType,
-                        OfferKey = model.OfferKey,
-                        FirstName = lead.FirstName,
-                        LastName = lead.LastName,
-                        Email = lead.Email,
-                        Phone = lead.Phone,
-                        State = model.State,
-                        Age = model.Age,
-                        AgeRange = model.AgeRange,
-                        CoverageAmount = model.CoverageAmount,
-                        CoverageAmountOption = model.CoverageAmountOption,
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug = agentSlug,
-                        RecipientEmail = leadRecipientEmail
-                    },
-                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var captureResult = capturedSubmission!;
 
                 if (captureResult.Captured)
                 {
@@ -497,7 +553,7 @@ if (!ModelState.IsValid)
                     });
             }
 
-            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            var metaLeadEventId = "lead_" + lead.LeadId.ToString("N");
             await TryPersistMetaTrackingAsync(
                 lead,
                 correlationId,
@@ -585,55 +641,6 @@ if (!ModelState.IsValid)
             }
 
             // ── 3. Write analytics event ─────────────────────────────────────────
-            try
-            {
-                var eventMetadata = new
-                {
-                    LeadId        = lead.LeadId,
-                    CorrelationId = correlationId,
-                    OfferKey      = model.OfferKey,
-                    PageVariant   = pageMode.PageVariant,
-                    PageMode      = pageMode.PageMode,
-                    PagePath      = Request?.Path.Value,
-                    RecommendationPrimaryKey       = model.RecommendationPrimaryKey,
-                    RecommendationPrimaryTitle     = model.RecommendationPrimaryTitle,
-                    RecommendationSecondaryKey     = model.RecommendationSecondaryKey,
-                    RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
-                };
-
-                var submittedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    "website_lead_submitted",
-                    eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
-                var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
-                UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
-
-                var persistedCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    "lead_persisted",
-                    eventMetadata,
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
-                var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
-                UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
-                await _db.SaveChangesAsync();
-                _logger.LogInformation(
-                    "LifeQuote [{CorrelationId}]: lead persistence analytics written for lead {LeadId} offer={Offer}",
-                    correlationId, lead.LeadId, model.OfferKey);
-            }
-            catch (Exception analyticsEx)
-            {
-                _logger.LogError(analyticsEx,
-                    "LifeQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
-                    correlationId, lead.LeadId, model.OfferKey);
-            }
-
             var publicBookingHint = await BuildPublicBookingAjaxHintAsync(
                 lead.LeadId,
                 lead.AgentTrackingProfileId,
@@ -1415,7 +1422,7 @@ Internal agent notification. Prospect-facing email was generated separately from
             var coverageLabel   = ResolveLabel(coverageStep?.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount);
             var tobaccoLabel    = ResolveLabel(tobaccoStep?.Options,  model.TobaccoUse);
 
-            
+
             var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange) &&
                 (model.AgeRange.Contains('-') || model.AgeRange.Contains('+'))
                 ? model.AgeRange

@@ -19,6 +19,38 @@
       data-legend-connect-shell
       data-language="@selected?.LanguageCode">
 
+    <details class="lc-card" data-application-copy-panel>
+        <summary>Public application-copy artifacts</summary>
+        <p>Inspect missing public copy without using translation capacity. Import a reviewed artifact of up to 250 entries. Generated copy remains machine-authored; approval-only copy requires its existing review.</p>
+        <nav aria-label="Application-copy inventories">
+            <a href="/founder/legend-connect/application-copy?language=ht" data-copy-inventory="ht">Haitian Creole inventory</a>
+            <a href="/founder/legend-connect/application-copy?language=es" data-copy-inventory="es">Spanish inventory</a>
+            <a href="/founder/legend-connect/application-copy?language=fr" data-copy-inventory="fr">French inventory</a>
+        </nav>
+        <form method="post" asp-action="ImportApplicationCopy" data-copy-import-form>
+            @Html.AntiForgeryToken()
+            <label for="application-copy-artifact">Model-reviewed artifact JSON</label>
+            <textarea id="application-copy-artifact" name="artifactJson" rows="8" maxlength="2097152" required></textarea>
+            <button type="submit" class="lc-button">Import public copy</button>
+        </form>
+        <p role="status" aria-live="polite" data-copy-status></p>
+        <dl hidden data-copy-result>
+            <dt>Catalog version</dt><dd data-copy-value="catalogVersion"></dd>
+            <dt data-copy-inventory-result>Language</dt><dd data-copy-inventory-result data-copy-value="languageCode"></dd>
+            <dt data-copy-inventory-result>Total</dt><dd data-copy-inventory-result data-copy-value="totalEntries"></dd>
+            <dt data-copy-inventory-result>Resolved</dt><dd data-copy-inventory-result data-copy-value="resolvedEntries"></dd>
+            <dt data-copy-inventory-result>Missing</dt><dd data-copy-inventory-result data-copy-value="missingEntries"></dd>
+            <dt data-copy-import-result>Artifact hash</dt><dd data-copy-import-result data-copy-value="artifactSha256"></dd>
+            <dt data-copy-import-result>Imported</dt><dd data-copy-import-result data-copy-value="imported"></dd>
+            <dt data-copy-import-result>Reused</dt><dd data-copy-import-result data-copy-value="reused"></dd>
+        </dl>
+        <div hidden data-copy-inventory-table>
+            <table><thead><tr><th>ID</th><th>Source</th><th>Translation policy</th></tr></thead><tbody data-copy-entries></tbody></table>
+            <button type="button" data-copy-previous>Previous</button>
+            <button type="button" data-copy-next>Next</button>
+        </div>
+    </details>
+
     <section class="lc-hero" aria-labelledby="legend-connect-title">
         <div class="lc-hero-copy">
             <span class="lc-eyebrow">FOUNDER LANGUAGE INTELLIGENCE</span>

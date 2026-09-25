@@ -8,6 +8,8 @@ using Domain.Enums;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.Businesses;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -24,19 +26,31 @@ public class ProfileController : Controller
     private readonly IClientEntraLifecycleService _entraLifecycle;
     private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
     private readonly IAccountLifecycleService _accountLifecycle;
+    private readonly ClientIdentityContinuationService _continuations;
+    private readonly ICommerceBusinessProvisioningService _businessProvisioning;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<ProfileController>? _logger;
 
     public ProfileController(
         MasterAppDbContext db,
         EffectiveClientContextService clientContext,
         IClientEntraLifecycleService entraLifecycle,
         IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
-        IAccountLifecycleService accountLifecycle)
+        IAccountLifecycleService accountLifecycle,
+        ClientIdentityContinuationService continuations,
+        ICommerceBusinessProvisioningService businessProvisioning,
+        IConfiguration configuration,
+        ILogger<ProfileController>? logger = null)
     {
         _db = db;
         _clientContext = clientContext;
         _entraLifecycle = entraLifecycle;
         _subscriptionIdentitySync = subscriptionIdentitySync;
         _accountLifecycle = accountLifecycle;
+        _continuations = continuations;
+        _businessProvisioning = businessProvisioning;
+        _configuration = configuration;
+        _logger = logger;
     }
 
     private static string Norm(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -161,6 +175,73 @@ public class ProfileController : Controller
         };
     }
 
+    private static bool IsBusinessClient(ClientProfile profile) =>
+        string.Equals(
+            ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes),
+            ClientRecordClassification.BusinessClient,
+            StringComparison.Ordinal);
+
+    private string LegendWebsiteBaseUrl() =>
+        (_configuration["LegendWebsiteBaseUrl"] ?? "https://www.mylegnd.com").TrimEnd('/');
+
+    private async Task<List<BusinessWebsiteProfileSummary>> LoadBusinessWebsitesAsync(
+        ClientProfile profile,
+        CancellationToken cancellationToken)
+    {
+
+        var businesses = await WebsiteBusinessAccess.QueryManagedBusinesses(_db, profile.Id)
+            .OrderBy(business => business.DisplayName)
+            .ToListAsync(cancellationToken);
+
+        var businessIds = businesses.Select(business => business.Id).ToArray();
+        var activeDomains = await _db.Set<WebsiteDomainBinding>()
+            .AsNoTracking()
+            .Where(binding =>
+                businessIds.Contains(binding.CommerceBusinessId) &&
+                binding.Status.ToLower() == "active" &&
+                binding.CertificateStatus.ToLower() == "active")
+            .OrderBy(binding => binding.CreatedUtc)
+            .ToListAsync(cancellationToken);
+
+        var primaryDomainByBusiness = activeDomains
+            .GroupBy(binding => binding.CommerceBusinessId)
+            .ToDictionary(group => group.Key, group => group.First().Hostname);
+
+        var baseUrl = LegendWebsiteBaseUrl();
+        return businesses.Select(business => new BusinessWebsiteProfileSummary(
+            business.Id,
+            business.DisplayName,
+            $"{baseUrl}/business-preview/?businessId={business.Id:D}",
+            primaryDomainByBusiness.TryGetValue(business.Id, out var hostname) ? hostname : null))
+            .ToList();
+    }
+
+    private async Task<CommerceBusiness?> AuthorizedBusinessAsync(
+        EffectiveClientContext context,
+        Guid businessId,
+        CancellationToken cancellationToken)
+    {
+
+        if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
+                _db,
+                businessId,
+                context.Profile.Id,
+                User.GetCanonicalUserId(),
+                context.IsAgentView
+                    ? context.AgentEmail
+                    : context.Profile.NormalizedEmail ?? context.Profile.Email,
+                cancellationToken))
+            return null;
+
+        return await _db.CommerceBusinesses
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                business => business.Id == businessId &&
+                            business.IsActive &&
+                            business.Status == "Active",
+                cancellationToken);
+    }
+
     private async Task<ViewResult> ProfileViewAsync(
         EditClientViewModel model,
         EffectiveClientContext context,
@@ -168,9 +249,18 @@ public class ProfileController : Controller
         string? warning = null)
     {
         ViewBag.ViewMode = context.IsAgentView ? "agent" : "client";
-        ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
-        ViewBag.ProfileSaveNotice = notice;
-        ViewBag.ProfileSaveWarning = warning;
+        ViewBag.ViewingClientName = context.AccountDisplayName;
+        ViewBag.ProfileSaveNotice = notice ?? TempData["BusinessWebsiteNotice"]?.ToString();
+        ViewBag.ProfileSaveWarning = warning ?? TempData["BusinessWebsiteWarning"]?.ToString();
+        ViewBag.IsBusinessClient = IsBusinessClient(context.Profile);
+        ViewBag.BusinessWebsites = await LoadBusinessWebsitesAsync(
+            context.Profile,
+            HttpContext.RequestAborted);
+
+        ViewBag.EditableBusinessIds = await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(member => member.ClientProfileId == context.Profile.Id && member.Status == "Active" &&
+                (member.RoleKey == "owner" || member.RoleKey == "account") && member.CanManageTeam)
+            .Select(member => member.CommerceBusinessId).ToArrayAsync(HttpContext.RequestAborted);
 
         if (!context.IsAgentView)
         {
@@ -295,13 +385,17 @@ public class ProfileController : Controller
 
         try
         {
-            await _entraLifecycle.SynchronizeClientIdentityAsync(
-                profile.Id,
-                HttpContext.RequestAborted);
+            // Ordinary profile edits must not depend on an external login mutation.
+            if (AccountEmailChange.IsChanged(previousEmail, profile.NormalizedEmail))
+                await _entraLifecycle.SynchronizeClientIdentityAsync(
+                    profile.Id,
+                    HttpContext.RequestAborted);
         }
-        catch
+        catch (Exception ex)
         {
             await transaction.RollbackAsync();
+            _logger?.LogError(ex, "Profile login-address synchronization failed. ClientProfileId={ClientProfileId} TraceId={TraceId}",
+                profile.Id, HttpContext.TraceIdentifier);
             ModelState.AddModelError(
                 string.Empty,
                 "We couldn't update your sign-in email. No changes were saved. Please try again.");
@@ -313,12 +407,13 @@ public class ProfileController : Controller
             previousEmail,
             profile.NormalizedEmail,
             HttpContext.RequestAborted);
+
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
         await transaction.CommitAsync();
 
         model.DOB = profile.DOB;
-        model.Email = profile.Email;
+        model.Email = profile.Email ?? string.Empty;
         model.FirstName = profile.FirstName;
         model.LastName = profile.LastName;
         model.Phone = profile.Phone;
@@ -376,6 +471,173 @@ public class ProfileController : Controller
             context,
             result.Succeeded ? result.Message : null,
             result.Succeeded ? null : result.Message);
+    }
+
+    [HttpPost("/profile/business-website/setup")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetupBusinessWebsite(string businessName, string? legalName)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context is null || !IsBusinessClient(context.Profile))
+            return Forbid();
+
+        businessName = (businessName ?? string.Empty).Trim();
+        legalName = string.IsNullOrWhiteSpace(legalName) ? businessName : legalName.Trim();
+        if (businessName.Length is < 2 or > 160 || legalName.Length > 200)
+        {
+            TempData["BusinessWebsiteWarning"] = "Enter a valid business name before setting up the website.";
+            return RedirectToAction(nameof(MyProfile));
+        }
+
+        var email = NormalizeEmail(context.Profile.NormalizedEmail ?? context.Profile.Email);
+        if (string.IsNullOrWhiteSpace(email))
+            return Forbid();
+
+        var existing = await WebsiteBusinessAccess.QueryManagedBusinesses(_db, context.Profile.Id)
+            .AnyAsync(HttpContext.RequestAborted);
+
+        if (existing)
+        {
+            TempData["BusinessWebsiteNotice"] = "Your business website scope is already active.";
+            return RedirectToAction(nameof(MyProfile));
+        }
+
+        await _businessProvisioning.CreateAsync(
+            new CommerceBusinessProvisioningRequest(
+                DisplayName: businessName,
+                LegalName: legalName,
+                BusinessType: "BusinessClient",
+                OwnerEmail: email,
+                OwnerDisplayName: businessName,
+                OwnerRoleKey: "account",
+                CanManageStorefront: true,
+                CanManageCatalog: false,
+                CanManageOrders: false,
+                CanManageAnalytics: true,
+                CanManageTeam: true,
+                Storefront: new CommerceBusinessStorefrontProvisioning(
+                    businessName,
+                    $"{businessName} business website.",
+                    "Draft"),
+                OwnerClientProfileId: context.Profile.Id),
+            HttpContext.RequestAborted);
+
+        TempData["BusinessWebsiteNotice"] = "Business website scope created. You can now preview and edit it.";
+        return RedirectToAction(nameof(MyProfile));
+    }
+
+    [HttpPost("/profile/business/{businessId:guid}/entity-name")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessEntityName(Guid businessId, string entityName)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
+            return Forbid();
+        try
+        {
+            if (!ModelState.IsValid) throw new InvalidOperationException("Enter a valid entity name.");
+            await _businessProvisioning.UpdateEntityNameAsync(businessId, context.Profile.Id, entityName,
+                HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
+            TempData["BusinessWebsiteNotice"] = "Entity name saved. Publish your website to update its published pages.";
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { TempData["BusinessWebsiteWarning"] = "Business details changed in another session. Reload and try again."; }
+        catch (InvalidOperationException ex) { TempData["BusinessWebsiteWarning"] = ex.Message; }
+        return RedirectToAction(nameof(MyProfile));
+    }
+
+    [HttpGet("/profile/business/{businessId:guid}/owners")]
+    public async Task<IActionResult> BusinessOwners(Guid businessId)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) is not { } business)
+            return Forbid();
+        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
+            x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.CanManageTeam &&
+            (x.RoleKey == "owner" || x.RoleKey == "account")))
+            return Forbid();
+
+        var owners = await _db.CommerceBusinessMembers.AsNoTracking()
+            .Where(x => x.CommerceBusinessId == businessId && x.Status == "Active" && x.RoleKey == "owner")
+            .OrderBy(x => x.CreatedUtc)
+            .ToListAsync(HttpContext.RequestAborted);
+        var ownerProfileIds = owners.Where(x => x.ClientProfileId.HasValue).Select(x => x.ClientProfileId!.Value).ToArray();
+
+        ViewBag.BusinessId = businessId;
+        ViewBag.EntityName = business.DisplayName;
+        ViewBag.BusinessProfileEmail = business.OwnerEmail;
+        ViewBag.OwnerNames = await _db.ClientProfiles.AsNoTracking()
+            .Where(x => ownerProfileIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => new[] { x.FirstName ?? string.Empty, x.LastName ?? string.Empty }, HttpContext.RequestAborted);
+        return View("BusinessOwners", owners);
+    }
+
+    [HttpGet("/profile/business/{businessId:guid}/owner-lookup")]
+    public async Task<IActionResult> BusinessOwnerLookup(Guid businessId, string email)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
+            return Forbid();
+        if (!await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == businessId &&
+            x.ClientProfileId == context.Profile.Id && x.Status == "Active" && x.CanManageTeam &&
+            (x.RoleKey == "owner" || x.RoleKey == "account")))
+            return Forbid();
+
+        var owner = await _businessProvisioning.ResolveOwnerAsync(
+            email,
+            context.IsAgentView ? User.GetCanonicalUserId() : null,
+            HttpContext.RequestAborted);
+        return owner is null ? NotFound() : Json(owner);
+    }
+
+    [HttpPost("/profile/business/{businessId:guid}/owners")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessOwners(Guid businessId, string entityName, List<BusinessOwnerInput> owners)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context == null || await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted) == null)
+            return Forbid();
+        try
+        {
+            if (!ModelState.IsValid) throw new InvalidOperationException("Check owner account IDs, emails and percentages.");
+            await _businessProvisioning.UpdateOwnershipAsync(businessId, context.Profile.Id, entityName, owners, HttpContext.RequestAborted, context.IsAgentView ? User.GetCanonicalUserId() : null);
+            TempData["BusinessWebsiteNotice"] = "Entity name and linked owners saved.";
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (DbUpdateConcurrencyException) { TempData["BusinessWebsiteWarning"] = "Ownership changed in another session. Reload and try again."; }
+        catch (InvalidOperationException ex) { TempData["BusinessWebsiteWarning"] = ex.Message; }
+        return RedirectToAction(nameof(BusinessOwners), new { businessId });
+    }
+
+    [HttpGet("/profile/business-website/session/{businessId:guid}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> BusinessWebsiteSession(Guid businessId)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context is null) return Forbid();
+
+        var business = await AuthorizedBusinessAsync(context, businessId, HttpContext.RequestAborted);
+        if (business is null) return Forbid();
+
+        var actorUserId = User.GetCanonicalUserId();
+        var actorEmail = context.IsAgentView
+            ? context.AgentEmail
+            : context.Profile.NormalizedEmail ?? context.Profile.Email;
+
+        var handoff = await _continuations.CreateWebsiteEditorHandoffAsync(
+            context.Profile.Id,
+            business.Id,
+            actorUserId,
+            actorEmail ?? string.Empty,
+            HttpContext.RequestAborted);
+
+        var apiBase = (_configuration["WebsiteContentApiBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/');
+        return Json(new
+        {
+            handoffUrl = $"{apiBase}/api/website-content/handoff",
+            state = handoff.OpaqueState,
+            expiresUtc = handoff.ExpiresUtc
+        });
     }
 
     [HttpGet("/profile/{clientUserId}")]

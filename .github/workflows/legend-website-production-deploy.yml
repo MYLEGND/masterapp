@@ -20,7 +20,7 @@ on:
       - '.github/workflows/legend-website-production-deploy.yml'
 
 concurrency:
-  group: legend-website-${{ github.ref }}
+  group: agentportal-production
   cancel-in-progress: false
 
 permissions:
@@ -33,10 +33,10 @@ env:
   AZURE_WEBAPP_NAME: masterapp-website
 
 jobs:
-  # Intentionally named security so the protected production branch receives its
-  # required status from the website-specific fail-closed validation instead of
-  # the unrelated AgentPortal/LEGEND release pipeline.
-  security:
+  # The rigorous workflow owns the protected security check for every PR.
+  # Keep the website gate distinct so it cannot satisfy that check by name.
+  website-security:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'legend/approved-changes'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -91,7 +91,7 @@ jobs:
 
   deploy:
     if: github.event_name == 'push'
-    needs: security
+    needs: website-security
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -115,6 +115,14 @@ jobs:
           npm run build
           cp public/web.config dist/web.config
           npm run check
+
+      - name: Verify current approved release authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin legend/approved-changes
+          git show FETCH_HEAD:scripts/release_policy.py > "$RUNNER_TEMP/website-release-policy.py"
+          python3 "$RUNNER_TEMP/website-release-policy.py" --sha FETCH_HEAD --require-release
 
       - name: Login to existing Azure configuration authority
         uses: azure/login@v2

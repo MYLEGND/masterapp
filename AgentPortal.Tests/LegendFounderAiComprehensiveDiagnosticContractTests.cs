@@ -430,7 +430,7 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
             .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(instructionMethod);
         var instructions = Assert.IsType<string>(instructionMethod!.Invoke(
-            null, new object?[] { "teacher", null, null }));
+            null, new object?[] { "teacher", null, null, false }));
         Assert.Contains("Use existing governed tools for relevant inspection", instructions, StringComparison.Ordinal);
         Assert.Contains("The tool catalog defines its arguments, purpose and prerequisites", instructions, StringComparison.Ordinal);
         Assert.Contains("Execute authorized actions through their exposed tools and claim completion only from successful receipts", instructions, StringComparison.Ordinal);

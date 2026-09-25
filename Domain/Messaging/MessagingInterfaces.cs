@@ -15,6 +15,10 @@ public interface IMessagingService
         MessagingFounderAiBeginTurnCommand command, CancellationToken cancellationToken = default) =>
         Task.FromResult(MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_UNAVAILABLE", ApplicationCopyText.Source("Conversation history is unavailable.")));
 
+    Task<MessagingFounderAiOperationDelegation?> GetFounderAiOperationDelegationAsync(
+        MessagingActor actor, Guid conversationId, Guid operationId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<MessagingFounderAiOperationDelegation?>(null);
+
     Task<MessagingMessageResult> CompleteFounderAiTurnAsync(
         MessagingFounderAiCompleteTurnCommand command, CancellationToken cancellationToken = default) =>
         Task.FromResult(MessagingMessageResult.Failure("FOUNDER_HISTORY_UNAVAILABLE", ApplicationCopyText.Source("Conversation history is unavailable.")));

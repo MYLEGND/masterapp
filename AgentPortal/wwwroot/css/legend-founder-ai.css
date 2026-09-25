@@ -380,7 +380,6 @@
     max-height: 280px;
     overflow-y: auto;
     padding-right: 2px;
-    scrollbar-width: thin;
 }
 
 .legend-founder-ai-history-empty {
@@ -747,8 +746,6 @@
     overscroll-behavior: contain;
     padding: 26px clamp(20px, 4vw, 62px) 24px;
     scroll-behavior: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(158, 126, 57, .25) transparent;
 }
 
 .legend-founder-ai-transcript::before {

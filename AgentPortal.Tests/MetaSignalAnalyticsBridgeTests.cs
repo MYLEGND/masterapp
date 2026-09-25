@@ -76,6 +76,33 @@ public class MetaSignalAnalyticsBridgeTests
     }
 
     [Fact]
+    public void BridgeMetadata_CarriesCanonicalWebsiteSiteKeyForOwnerResolution()
+    {
+        var source = BuildSourceAnalyticsEvent(
+            "website_lead_submitted",
+            "legend-session",
+            MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                eventName: "website_lead_submitted",
+                leadId: Guid.NewGuid(),
+                sessionId: "legend-session",
+                payload: new { siteKey = "legend" },
+                isBrowserSignal: false,
+                isServerAuthority: true,
+                metaServerAuthorityEligible: true,
+                metaSingleTruthDispatchEligible: false,
+                metaPipelineOrigin: "legend_website_inquiry_saved"));
+
+        var metadataJson = InvokeBridgeMetadataBuild(
+            source,
+            mappedEventName: "Lead",
+            deduplicationKey: "legend-lead",
+            trafficType: "crm",
+            resolvedLeadId: Guid.NewGuid());
+
+        Assert.Equal("legend", ReadString(metadataJson, "siteKey"));
+    }
+
+    [Fact]
     public void BridgeMetadata_RefusesDispatchEligibilityWithoutServerTruthMarker()
     {
         var source = BuildSourceAnalyticsEvent("appointment_booked", "session-tagged");
@@ -90,6 +117,64 @@ public class MetaSignalAnalyticsBridgeTests
         Assert.True(ReadBoolean(metadataJson, "isServerAuthority"));
         Assert.False(ReadBoolean(metadataJson, "metaServerAuthorityEligible"));
         Assert.False(ReadBoolean(metadataJson, "metaSingleTruthDispatchEligible"));
+    }
+
+    [Fact]
+    public async Task BusinessServerLeadKeepsPermanentOwnerVersionAndBindingThroughCanonicalBridge()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var businessId = Guid.NewGuid();
+        var versionId = Guid.NewGuid();
+        var leadId = Guid.NewGuid();
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            LeadId = leadId,
+            CommerceBusinessId = businessId,
+            WebsiteContentVersionId = versionId,
+            WebsiteBindingId = "business_contact",
+            FirstName = "Visitor",
+            Email = "visitor@example.org",
+            SourcePageKey = "/contact",
+            InterestType = "BusinessInquiry",
+            TermsAccepted = true,
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var source = BuildSourceAnalyticsEvent(
+            "website_lead_submitted",
+            "business-session",
+            MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                eventName: "website_lead_submitted",
+                leadId,
+                sessionId: "business-session",
+                payload: new { LeadId = leadId, WebsiteLeadId = leadId },
+                isBrowserSignal: false,
+                isServerAuthority: true,
+                metaServerAuthorityEligible: true,
+                metaSingleTruthDispatchEligible: false,
+                metaPipelineOrigin: "business_website_inquiry_saved"));
+        source.CommerceBusinessId = businessId;
+        source.WebsiteContentVersionId = versionId;
+        source.WebsiteBindingId = "business_contact";
+        source.AgentTrackingProfileId = null;
+        source.AgentSlug = null;
+
+        var bridge = new ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge(
+            Mock.Of<IServiceScopeFactory>(),
+            Options.Create(new ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions()),
+            NullLogger<ProtectWebsite.Services.MetaSignal.MetaSignalAnalyticsBridge>.Instance);
+
+        var bridgeRow = await InvokeTryBuildBridgeRowAsync(bridge, db, source);
+
+        Assert.NotNull(bridgeRow);
+        Assert.Equal("Lead", bridgeRow!.EventName);
+        Assert.Equal(businessId, bridgeRow.CommerceBusinessId);
+        Assert.Equal(versionId, bridgeRow.WebsiteContentVersionId);
+        Assert.Equal("business_contact", bridgeRow.WebsiteBindingId);
+        Assert.Null(bridgeRow.AgentTrackingProfileId);
+        Assert.Null(bridgeRow.AgentSlug);
+        Assert.True(ReadBoolean(bridgeRow.MetadataJson!, "metaSingleTruthDispatchEligible"));
     }
 
     [Fact]

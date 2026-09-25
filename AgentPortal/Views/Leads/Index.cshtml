@@ -2,10 +2,12 @@
 @using System.Globalization
 @model List<AgentPortal.Models.ClientListItemViewModel>
 @using AgentPortal.Services
-@using AgentPortal.Security
+
 
 @{
-    ViewData["Title"] = "Leads";
+    var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
+    var isBusinessWorkspace = businessWorkspace is not null;
+    ViewData["Title"] = businessWorkspace?.Preferences.LeadLabel ?? "Leads";
     var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
     // Personal revenue mirrors Paid (single-status per card enforced in ProductionService)
@@ -25,7 +27,7 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
-<div class="wrap density-comfort leads-crm pipeline-mode" id="legendWrap">
+<div class="wrap density-comfort leads-crm pipeline-mode" id="legendWrap" data-business-id="@businessWorkspace?.BusinessId" data-crm-api-base="@(businessWorkspace is null ? "" : $"/business/{businessWorkspace.BusinessId}/crm/api")" data-pipeline-stages="@(businessWorkspace is null ? "[]" : System.Text.Json.JsonSerializer.Serialize(businessWorkspace.Preferences.Stages))">
 
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
@@ -234,7 +236,7 @@ else
                 {
                     continue;
                 }
-                var hasPortalAccess = Guid.TryParse(c.ClientUserId, out _);
+                var hasPortalAccess = businessWorkspace is null && Guid.TryParse(c.ClientUserId, out _);
                 var clientUrl = hasPortalAccess
                     ? (Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true }) ?? "")
                     : "";
@@ -258,7 +260,7 @@ else
                 var sAppointmentConfirmationLabel = (c.LatestAppointmentConfirmationStateLabel ?? "").Trim();
                 var sAppointmentStart = c.LatestAppointmentScheduledStartUtc?.ToString("O") ?? "";
                 var sAppointmentEnd = c.LatestAppointmentScheduledEndUtc?.ToString("O") ?? "";
-                var sWaitingOn = (c.WaitingOn ?? AgentPortal.Models.ClientCrmMeta.DefaultWaitingOn).Trim();
+                var sWaitingOn = (c.WaitingOn ?? Shared.Crm.ClientCrmMeta.DefaultWaitingOn).Trim();
                 var sContactStatus = (c.ContactStatus ?? "NotSet").Trim();
                 var sPinnedBrief = (c.PinnedBrief ?? "").Trim();
                 var sStageEntered = c.StageEnteredUtc.ToString("yyyy-MM-dd");
@@ -317,7 +319,7 @@ var sCity = (c.City ?? "").Trim();
                     : 0;
 
                 <tr class="client-row"
-                    data-client-id="@c.ClientUserId"
+                    data-client-id="@c.ClientUserId" data-business-revision="@c.BusinessRevision"
                     data-first="@c.FirstName"
                     data-last="@c.LastName"
                     data-email="@c.Email"
@@ -559,8 +561,11 @@ var sCity = (c.City ?? "").Trim();
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-quickview open-drawer">Quick View</button>
-                        <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
-                        <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
+                        @if (!isBusinessWorkspace)
+                        {
+                            <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
+                            <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
+                        }
                     </td>
                 </tr>
             }
@@ -569,13 +574,15 @@ var sCity = (c.City ?? "").Trim();
     </div>
 }
 
-@await Html.PartialAsync("_LeadPipelineView")
+@await Html.PartialAsync("~/Views/Leads/_LeadPipelineView.cshtml")
 
 </div>
 
-@await Html.PartialAsync("_LeadQuickView")
-@await Html.PartialAsync("_LeadQuickViewUtilities")
+@await Html.PartialAsync("~/Views/Leads/_LeadQuickView.cshtml")
+@await Html.PartialAsync("~/Views/Leads/_LeadQuickViewUtilities.cshtml")
 
+@if (!isBusinessWorkspace)
+{
 
 <div class="modal fade" id="productionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered production-modal-dialog">
@@ -633,12 +640,14 @@ var sCity = (c.City ?? "").Trim();
     </div>
 </div>
 
+}
+
 <script src="~/js/scheduling/qv-booking.js" asp-append-version="true"></script>
 <script src="~/js/scheduling/qv-appointment-state.js" asp-append-version="true"></script>
 <script src="~/js/scheduling/qv-appointment-management.js" asp-append-version="true"></script>
 <script>
     window.quickViewBillingOptions = {
-        canSetFounderSubscriptionOptions: @(FounderGuard.IsFounder(User) ? "true" : "false")
+        canSetFounderSubscriptionOptions: @((ViewData["CanSetFounderSubscriptionOptions"] as bool? == true) ? "true" : "false")
     };
 </script>
 <script src="~/js/billing/qv-billing-management.js" asp-append-version="true"></script>

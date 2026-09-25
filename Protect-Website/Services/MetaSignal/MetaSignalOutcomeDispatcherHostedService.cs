@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProtectWebsite.Services.Meta;
@@ -56,27 +57,48 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var capi = scope.ServiceProvider.GetRequiredService<IMetaConversionsApiService>();
         var metaPixelResolutionService = scope.ServiceProvider.GetRequiredService<IMetaPixelResolutionService>();
 
-        var rows = await db.MetaSignalEvents
+        var candidates = db.MetaSignalEvents
             .Where(x =>
                 !x.MetaServerSent &&
                 x.MetadataJson != null &&
-                !x.MetadataJson.Contains("\"metaServerStatus\":") &&
-                (x.TrafficType == "crm" ||
-                 x.TrafficType == "ecommerce" ||
+                (!x.MetadataJson.Contains("\"metaServerStatus\":") ||
+                 x.MetadataJson.Contains("\"metaServerRetryable\":true")) &&
+                (x.TrafficType == "crm" || x.TrafficType == "ecommerce" ||
                  x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker)) &&
                 DispatchableEvents.Contains(x.EventName) &&
                 x.MetadataJson.Contains(MetaSignalSingleTruthPolicy.DispatchEligibleMarker))
             .OrderBy(x => x.CreatedUtc)
-            .Take(25)
-            .ToListAsync(cancellationToken);
+            .AsAsyncEnumerable();
 
-        rows = rows
-            .Where(x =>
-                string.Equals(x.TrafficType, "crm", StringComparison.OrdinalIgnoreCase) ||
-                MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(x.MetadataJson) ||
-                MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(x.TrafficType, x.MetadataJson))
-            .Where(x => !IsBlockedAutomatedTraffic(x))
-            .ToList();
+        var rows = new List<MetaSignalEvent>();
+        await foreach (var row in candidates.WithCancellation(cancellationToken))
+        {
+            if (row.CommerceBusinessId.HasValue && (row.CommerceBusinessId == Guid.Empty || row.AgentTrackingProfileId.HasValue || !string.IsNullOrWhiteSpace(row.AgentSlug)))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Status = "skipped_owner_conflict", Note = "business_and_agent_owner_conflict"
+                });
+                continue;
+            }
+            if (IsBlockedAutomatedTraffic(row) ||
+                !(string.Equals(row.TrafficType, "crm", StringComparison.OrdinalIgnoreCase) ||
+                  MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson) ||
+                  MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(row.TrafficType, row.MetadataJson)))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Status = "skipped_traffic_or_producer", Note = "untrusted_or_automated"
+                });
+                continue;
+            }
+            if (DateTime.TryParse(ReadMetadataString(row.MetadataJson, "metaServerNextAttemptUtc"),
+                    CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var nextAttempt) && nextAttempt > DateTime.UtcNow)
+                continue;
+            rows.Add(row);
+            if (rows.Count == 25) break;
+        }
+        await db.SaveChangesAsync(cancellationToken);
 
         var leadIds = rows
             .Where(x => x.LeadId.HasValue)
@@ -93,8 +115,12 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .Where(x => workstationLeadIds.Contains(x.WorkstationLeadId))
             .ToDictionaryAsync(x => x.WorkstationLeadId, cancellationToken);
 
+        // A canonical website conversion may carry either the public WebsiteLead ID
+        // directly (business/website intake) or a workstation lead ID (legacy Protect
+        // bridge). Load both through this one lookup; owner checks below remain mandatory.
         var websiteLeadIds = intakeLinksByWorkstationLeadId.Values
             .Select(x => x.WebsiteLeadPublicId)
+            .Concat(leadIds)
             .Distinct()
             .ToArray();
 
@@ -190,6 +216,16 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 }
             }
 
+            if (websiteLead is not null && websiteLead.CommerceBusinessId != row.CommerceBusinessId)
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Status = "skipped_owner_conflict", Note = "website_lead_owner_mismatch"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+
             var crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
 
             var metadataEmail = ReadNestedMetadataString(row.MetadataJson, "customer", "email");
@@ -251,15 +287,22 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 continue;
             }
 
-            var pixelContext = await metaPixelResolutionService.ResolveForLeadAsync(
+            var pixelContext = row.CommerceBusinessId is { } businessId
+                ? await metaPixelResolutionService.ResolveForBusinessAsync(businessId, cancellationToken)
+                : await metaPixelResolutionService.ResolveForLeadAsync(
                 row.AgentTrackingProfileId ?? websiteLead?.AgentTrackingProfileId,
                 row.AgentSlug ?? websiteLead?.AgentSlug,
-                isFounderPath: false,
+                isFounderPath: string.Equals(
+                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "siteKey"),
+                    WebsiteEditorSiteKeys.Legend,
+                    StringComparison.OrdinalIgnoreCase),
                 cancellationToken);
 
             var capiRequest = new MetaConversionsApiEventRequest
             {
                 LeadId = row.LeadId,
+                CommerceBusinessId = row.CommerceBusinessId,
+                AgentTrackingProfileId = row.AgentTrackingProfileId,
                 CorrelationId = Guid.NewGuid(),
                 EventName = row.EventName,
                 EventId = isBridgeOwned
@@ -399,7 +442,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var leadId = ReadMetadataString(row.MetadataJson, "leadId");
         var clientUserId = ReadMetadataString(row.MetadataJson, "clientUserId");
 
-        if (string.Equals(side, "Client", StringComparison.OrdinalIgnoreCase) &&
+        if (!row.CommerceBusinessId.HasValue && string.Equals(side, "Client", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(clientUserId))
         {
             var client = await db.ClientProfiles
@@ -436,7 +479,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             var lead = await db.WorkstationLeadProfiles
                 .AsNoTracking()
-                .Where(x => x.LeadId == leadId)
+                .Where(x => x.LeadId == leadId && x.CommerceBusinessId == row.CommerceBusinessId)
                 .Select(x => new CrmContactIdentity(
                     x.Email,
                     x.Phone,
@@ -457,7 +500,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             var convertedLead = await db.WorkstationLeadProfiles
                 .AsNoTracking()
-                .Where(x => x.LeadId == clientUserId)
+                .Where(x => x.LeadId == clientUserId && x.CommerceBusinessId == row.CommerceBusinessId)
                 .Select(x => new CrmContactIdentity(
                     x.Email,
                     x.Phone,
@@ -661,6 +704,17 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             };
         }
 
+        var attempt = int.TryParse(ReadMetadataString(existingJson, "metaServerAttemptCount"), out var prior) ? prior + 1 : 1;
+        var retryable = result.Retryable && !result.Sent && attempt < 8;
+        metadata["metaServerAttemptCount"] = attempt;
+        metadata["metaServerRetryable"] = retryable;
+        metadata["metaServerRetryExhausted"] = result.Retryable && !result.Sent && !retryable;
+        metadata["metaServerHttpStatusCode"] = result.HttpStatusCode;
+        metadata["metaServerNextAttemptUtc"] = retryable
+            ? DateTime.UtcNow.AddSeconds(Math.Min(3600, 30 * Math.Pow(2, attempt - 1)))
+            : (DateTime?)null;
+        metadata["metaServerEventsReceived"] = result.EventsReceived;
+        metadata["metaServerTraceId"] = result.TraceId;
         metadata["metaServerStatus"] = result.Status;
         metadata["metaServerNote"] = result.Note;
         metadata["metaServerAttempted"] = result.Attempted;

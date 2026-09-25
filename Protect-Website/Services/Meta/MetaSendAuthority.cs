@@ -12,6 +12,7 @@ public interface IMetaSendAuthority
 
 public sealed class MetaSendAuthority : IMetaSendAuthority
 {
+    private static readonly SemaphoreSlim ReservationGate = new(1, 1);
     private const int ReservationTtlMinutes = 10;
     private const int SentTtlHours = 6;
     private static readonly ConcurrentDictionary<string, AuthorityReservation> Reservations = new(StringComparer.OrdinalIgnoreCase);
@@ -32,7 +33,14 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         _logger = logger;
     }
 
-    public async Task<MetaSendAuthorityDecision> TrySendAsync(
+    public async Task<MetaSendAuthorityDecision> TrySendAsync(MetaSendAuthorityRequest request, CancellationToken cancellationToken = default)
+    {
+        await ReservationGate.WaitAsync(cancellationToken);
+        try { return await ReserveAsync(request, cancellationToken); }
+        finally { ReservationGate.Release(); }
+    }
+
+    private async Task<MetaSendAuthorityDecision> ReserveAsync(
         MetaSendAuthorityRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -100,18 +108,22 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                 Status: "allowed",
                 Note: null);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             var source = NormalizeSource(request.Source);
             var eventType = NormalizeText(request.EventType) ?? "unknown";
             _logger.LogWarning(
                 ex,
-                "MetaSendAuthority fail-open event {EventType} source {Source}",
+                "MetaSendAuthority unavailable for event {EventType} source {Source}",
                 eventType,
                 source);
 
             return new MetaSendAuthorityDecision(
-                Allowed: true,
+                Allowed: false,
                 EventType: eventType,
                 LeadId: request.LeadId,
                 Source: source,
@@ -122,10 +134,12 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
                     request.VisitorId,
                     request.EventUtc,
                     request.DeduplicationKey,
-                    request.EventId),
+                    request.EventId,
+                    request.CommerceBusinessId,
+                    request.AgentTrackingProfileId),
                 ReservationToken: null,
-                Status: "allowed_fail_open",
-                Note: "authority_fail_open");
+                Status: "authority_unavailable",
+                Note: "authority_unavailable");
         }
     }
 
@@ -163,6 +177,12 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         var sentRows = _db.MetaSignalEvents
             .AsNoTracking()
             .Where(x => x.MetaServerSent && x.EventName == request.EventType);
+        if (request.CommerceBusinessId.HasValue)
+            sentRows = sentRows.Where(x => x.CommerceBusinessId == request.CommerceBusinessId);
+        else if (request.AgentTrackingProfileId.HasValue)
+            sentRows = sentRows.Where(x => x.CommerceBusinessId == null && x.AgentTrackingProfileId == request.AgentTrackingProfileId);
+        else
+            sentRows = sentRows.Where(x => x.CommerceBusinessId == null);
 
         if (!string.IsNullOrWhiteSpace(request.EventId) &&
             await sentRows.AnyAsync(x => x.EventId == request.EventId, cancellationToken))
@@ -295,6 +315,8 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         return new NormalizedAuthorityRequest(
             EventType: eventType,
             LeadId: request.LeadId,
+            CommerceBusinessId: request.CommerceBusinessId,
+            AgentTrackingProfileId: request.AgentTrackingProfileId,
             SessionId: sessionId,
             VisitorId: visitorId,
             EventId: eventId,
@@ -303,7 +325,7 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
             RoundedEventUtc: roundedEventUtc,
             Source: source,
             Priority: ResolvePriority(source),
-            DedupeKey: BuildDedupeKey(eventType, request.LeadId, sessionId, visitorId, roundedEventUtc, explicitDedupeKey, eventId),
+            DedupeKey: BuildDedupeKey(eventType, request.LeadId, sessionId, visitorId, roundedEventUtc, explicitDedupeKey, eventId, request.CommerceBusinessId, request.AgentTrackingProfileId),
             ReservationToken: NormalizeText(request.ReservationToken));
     }
 
@@ -320,26 +342,33 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
         string? visitorId,
         DateTime eventUtc,
         string? explicitDedupeKey,
-        string? eventId)
+        string? eventId,
+        Guid? commerceBusinessId,
+        Guid? agentTrackingProfileId)
     {
         var roundedMinute = RoundToMinute(eventUtc).ToString("yyyyMMddHHmm");
+        var ownerPrefix = commerceBusinessId.HasValue && commerceBusinessId != Guid.Empty
+            ? "business:" + commerceBusinessId.Value.ToString("N") + ":"
+            : agentTrackingProfileId.HasValue && agentTrackingProfileId != Guid.Empty
+                ? "agent:" + agentTrackingProfileId.Value.ToString("N") + ":"
+                : string.Empty;
 
         if (!string.IsNullOrWhiteSpace(explicitDedupeKey))
-            return explicitDedupeKey;
+            return ownerPrefix + explicitDedupeKey;
 
         if (leadId.HasValue && leadId.Value != Guid.Empty)
-            return $"{eventType}:{leadId.Value:N}:{roundedMinute}";
+            return ownerPrefix + eventType + ":" + leadId.Value.ToString("N") + ":" + roundedMinute;
 
         if (!string.IsNullOrWhiteSpace(sessionId))
-            return $"{eventType}:{sessionId}:{roundedMinute}";
+            return ownerPrefix + eventType + ":" + sessionId + ":" + roundedMinute;
 
         if (!string.IsNullOrWhiteSpace(visitorId))
-            return $"{eventType}:{visitorId}:{roundedMinute}";
+            return ownerPrefix + eventType + ":" + visitorId + ":" + roundedMinute;
 
         if (!string.IsNullOrWhiteSpace(eventId))
-            return $"{eventType}:{eventId}:{roundedMinute}";
+            return ownerPrefix + eventType + ":" + eventId + ":" + roundedMinute;
 
-        return $"{eventType}:anonymous:{roundedMinute}";
+        return ownerPrefix + eventType + ":anonymous:" + roundedMinute;
     }
 
     private static DateTime RoundToMinute(DateTime value)
@@ -389,6 +418,8 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
     private sealed record NormalizedAuthorityRequest(
         string EventType,
         Guid? LeadId,
+        Guid? CommerceBusinessId,
+        Guid? AgentTrackingProfileId,
         string? SessionId,
         string? VisitorId,
         string? EventId,
@@ -405,6 +436,8 @@ public sealed record MetaSendAuthorityRequest
 {
     public string EventType { get; init; } = string.Empty;
     public Guid? LeadId { get; init; }
+    public Guid? CommerceBusinessId { get; init; }
+    public Guid? AgentTrackingProfileId { get; init; }
     public DateTime EventUtc { get; init; }
     public string? EventId { get; init; }
     public string? DeduplicationKey { get; init; }

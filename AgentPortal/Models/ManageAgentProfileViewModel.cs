@@ -4,6 +4,7 @@ namespace AgentPortal.Models
 {
     public class ManageAgentProfileViewModel
     {
+        public Guid? MarketingRevision { get; set; }
         [Display(Name = "Full name")]
         [Required]
         [MaxLength(150)]

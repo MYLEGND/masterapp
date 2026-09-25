@@ -32,7 +32,8 @@ public sealed record SubscriptionActivationExecutionResult(
     string? SanitizedMessage,
     SubscriptionActivationContextResult Context,
     string? ProtectedContinuationState = null,
-    DateTime? ContinuationExpiresUtc = null);
+    DateTime? ContinuationExpiresUtc = null,
+    string? IdentityRedemptionUrl = null);
 
 public sealed class SubscriptionActivationService
 {
@@ -181,39 +182,40 @@ public sealed class SubscriptionActivationService
 
         try
         {
-            await _entraLifecycle.EnsureClientIdentityAsync(
+            var identity = await _entraLifecycle.EnsureClientIdentityAsync(
                 context.Client.Id,
                 cancellationToken);
             await _households.EnsurePrimaryHouseholdActiveAsync(
                 context.Client.Id,
                 cancellationToken);
+
+            var continuation = await _continuationService.CreateProtectedStateAsync(
+                context.Client.Id,
+                context.Invitation.IntendedNormalizedEmail,
+                _returnUrlNormalizer.Normalize(input.ReturnUrl),
+                ClientIdentityContinuationPurpose.Activation,
+                context.Invitation.Id,
+                activationResult.Subscription.Id,
+                cancellationToken);
+
+            var completedContext = context with { Subscription = activationResult.Subscription };
+            return new SubscriptionActivationExecutionResult(
+                true,
+                null,
+                "Subscription activated successfully.",
+                completedContext,
+                continuation.ProtectedState,
+                continuation.ExpiresUtc,
+                identity.RequiresRedemption ? identity.RedemptionUrl : null);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new SubscriptionActivationExecutionResult(
                 false,
-                "ENTRA_PROVISIONING_FAILED",
-                $"The subscription is active, but identity provisioning could not complete: {ex.Message}",
+                "POST_ACTIVATION_SIGNIN_SETUP_PENDING",
+                "Your membership is active. Secure sign-in setup is still completing. Do not submit another payment. Use member sign-in again shortly or contact your LEGEND guide if access is still unavailable.",
                 context with { Subscription = activationResult.Subscription });
         }
-
-        var continuation = await _continuationService.CreateProtectedStateAsync(
-            context.Client.Id,
-            context.Invitation.IntendedNormalizedEmail,
-            _returnUrlNormalizer.Normalize(input.ReturnUrl),
-            ClientIdentityContinuationPurpose.Activation,
-            context.Invitation.Id,
-            activationResult.Subscription.Id,
-            cancellationToken);
-
-        var completedContext = context with { Subscription = activationResult.Subscription };
-        return new SubscriptionActivationExecutionResult(
-            true,
-            null,
-            "Subscription activated successfully.",
-            completedContext,
-            continuation.ProtectedState,
-            continuation.ExpiresUtc);
     }
 
     public SubscriptionActivationPageViewModel BuildPageViewModel(SubscriptionActivationContextResult context, string token, string returnUrl, string? errorMessage = null)

@@ -1,7 +1,20 @@
 @inject ParfaitApp.Services.IParfaitBusinessProfileService BusinessProfileService
+@inject Microsoft.Extensions.Logging.ILoggerFactory LoggerFactory
 @{
-    var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
-    var metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
+    string metaPixelId = string.Empty;
+    try
+    {
+        var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
+        metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
+    }
+    catch (Exception ex)
+    {
+        // Marketing instrumentation is optional to rendering. A transient analytics or
+        // migration fault must never make the public Parfait storefront return HTTP 500.
+        LoggerFactory.CreateLogger("ParfaitCommerceTracking")
+            .LogError(ex, "Parfait marketing settings lookup failed; rendering storefront without Meta pixel.");
+    }
+
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
 }
 @if (hasMetaPixel)

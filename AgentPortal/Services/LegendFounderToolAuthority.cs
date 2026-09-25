@@ -5,6 +5,7 @@ using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AgentPortal.Services;
 
@@ -13,7 +14,7 @@ namespace AgentPortal.Services;
 /// Conversational providers may request a tool, but only this authority
 /// classifies and executes it through the existing governed LEGEND services.
 /// </summary>
-internal sealed class LegendFounderToolAuthority
+internal sealed partial class LegendFounderToolAuthority
 {
     private const int MinimumSemanticFrameDimensions = 1;
     private const int MaximumSemanticFrameDimensions = 12;
@@ -35,6 +36,7 @@ internal sealed class LegendFounderToolAuthority
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly AgencyCommandService? _agencyCommand;
+    private readonly IServiceScopeFactory? _authorizationScopes;
     private readonly HashSet<string> _consumedMutationAuthorizations =
         new(StringComparer.Ordinal);
     private readonly object _mutationAuthorizationLock = new();
@@ -49,11 +51,13 @@ internal sealed class LegendFounderToolAuthority
     internal LegendFounderToolAuthority(
         FounderLegendConnectService legend,
         IFounderSoftwareRemediationService? softwareRemediation,
-        AgencyCommandService? agencyCommand = null)
+        AgencyCommandService? agencyCommand = null,
+        IServiceScopeFactory? authorizationScopes = null)
     {
         _legend = legend;
         _softwareRemediation = softwareRemediation;
         _agencyCommand = agencyCommand;
+        _authorizationScopes = authorizationScopes;
     }
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
@@ -78,6 +82,43 @@ internal sealed class LegendFounderToolAuthority
             return !RequiresExplicitFounderCommand(name) || mutationConfirmed;
         }).ToArray();
     }
+
+    internal IReadOnlyList<object> GetAvailableCloudTools(
+        string? conversationId, LegendConnectExternalProviderPolicy providerPolicy)
+    {
+        if (!providerPolicy.AllowCloudflareInference || providerPolicy.ForbidsExternalProviders)
+            return Array.Empty<object>();
+        // Reuse the executable registry's original schemas. Read-only does not
+        // imply suitable for cloud disclosure: drilldowns can contain another
+        // account's identity, retained private text or unrestricted evidence.
+        var mutationsEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled");
+        var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
+        return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
+            .Concat(Tools.Where(tool => mutationsEnabled && JsonSerializer.SerializeToElement(tool, JsonOptions)
+                .GetProperty("name").GetString() == CloudRepairTool))
+            .Where(tool => IsCloudExposedTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
+                .GetProperty("name").GetString()!, mutationsEnabled, repositoryEnabled)).ToArray();
+    }
+
+    private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
+        name == CloudRepairTool ? mutationsEnabled : name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name);
+
+    private static bool IsCloudReadableTool(string name) => name is
+        "legend_calculate" or "legend_capabilities" or "legend_software_remediation_status" or
+        "legend_system_overview" or "legend_provider_capacity" or "legend_client_lead_portfolio" or
+        // Source inspection keeps its own regular-file, immutable-revision,
+        // sensitive-path and credential-material checks before returning text.
+        "legend_inspect_repository";
+
+    // A read-only status grouping can still contain arbitrary private text.
+    // Cloud disclosure includes aggregate numbers, never editable CRM labels.
+    internal static object ProjectCloudPortfolioCounts(AgencyCommandPortfolioCountsVm counts) => new
+    {
+        counts.ObservedUtc, counts.ActiveClientCount, counts.AgentLinkedClientCount,
+        counts.ActiveLeadCount, counts.WebsiteLeadCount,
+        crmStatusBreakdownOmitted = true,
+        accessClass = "read_only_aggregate_counts"
+    };
 
     internal IReadOnlyList<object> Capabilities =>
         DescribeFounderCapabilities();
@@ -309,9 +350,31 @@ internal sealed class LegendFounderToolAuthority
         FounderAiToolCall call,
         string mode,
         CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        LegendConnectExternalProviderPolicy? providerPolicy = null,
+        FounderAiActionScope? serverDerivedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (serverDerivedScope is not null)
+        {
+            // Enforce the same disclosure boundary even if a signed callback
+            // asks for a tool omitted from its schema catalog. Keep known
+            // mutations on their existing exact Founder-approval path.
+            if (!TryResolveFounderFunctionParameters(call.Name, out _) ||
+                IsReadOnlyFounderTool(call.Name) && !IsCloudReadableTool(call.Name))
+                return CloudActionFailure("cloud_action_tool_not_exposed");
+            if (!IsReadOnlyFounderTool(call.Name) && !CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled"))
+                return CloudActionFailure("cloud_action_mutations_disabled");
+            if (call.Name == "legend_inspect_repository" && !CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled"))
+                return CloudActionFailure("cloud_action_repository_disabled");
+            return await ExecuteCloudScopedAsync(founder, serverDerivedScope, call, mode, cancellationToken, providerPolicy);
+        }
+
+        // Transitional existing local/Teacher route only. Cloud callers always
+        // provide serverDerivedScope and cannot fall back to this correlation
+        // fence. Remove this transition before retiring the local foundation.
+        if (call.MutationAuthorization?.Scope is not null)
+            return MutationFailure("cloud_action_scope_required", "Cloud actions require a current server-derived scope.");
 
         // Pure argument validation preserves the diagnostic contract without
         // reading protected state. All valid requests still require Founder
@@ -339,6 +402,20 @@ internal sealed class LegendFounderToolAuthority
         // result above. Before dispatch, provider tool selection still grants
         // no authority, including read-only services without actor arguments.
         FounderGuard.EnsureFounderOrThrow(founder);
+
+        return await ExecuteAuthorizedCoreAsync(founder, call, mode, cancellationToken, providerPolicy);
+    }
+
+    // One tool registry and dispatcher for both transitional and cloud callers.
+    private async Task<string> ExecuteAuthorizedCoreAsync(
+        ClaimsPrincipal founder, FounderAiToolCall call, string mode, CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy, bool reviewedCloudRepair = false)
+    {
+        string? diagnosticSection = null;
+        string? diagnosticLanguage = null;
+        if (call.Name == "legend_operational_diagnostics" &&
+            !TryReadOperationalDiagnosticArguments(call.Arguments, out diagnosticSection, out diagnosticLanguage))
+            return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
 
         switch (call.Name)
         {
@@ -368,7 +445,10 @@ internal sealed class LegendFounderToolAuthority
 
             case "legend_capabilities":
             {
-                return SerializeUnbounded(DescribeFounderCapabilities());
+                var cloudExposureOnly = providerPolicy?.AllowCloudflareInference == true;
+                return SerializeUnbounded(DescribeFounderCapabilitiesCore(cloudExposureOnly,
+                    cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:CandidateValidation:Enabled"),
+                    cloudExposureOnly && CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled")));
             }
 
             case "legend_remember_conversation_facts":
@@ -423,9 +503,12 @@ internal sealed class LegendFounderToolAuthority
                     return SerializeUnbounded(SoftwareRemediationNotAvailable());
 
                 using var arguments = JsonDocument.Parse(call.Arguments);
-                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha");
-                var title = ReadRequiredString(arguments.RootElement, "title");
-                var summary = ReadRequiredString(arguments.RootElement, "summary");
+                // Durable cloud approval binds the exact strings shown in the
+                // review; source indentation/newlines and metadata must survive
+                // dispatch unchanged. Preserve legacy caller normalization.
+                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha", preserveWhitespace: reviewedCloudRepair);
+                var title = ReadRequiredString(arguments.RootElement, "title", preserveWhitespace: reviewedCloudRepair);
+                var summary = ReadRequiredString(arguments.RootElement, "summary", preserveWhitespace: reviewedCloudRepair);
                 if (string.IsNullOrWhiteSpace(baseSha) ||
                     string.IsNullOrWhiteSpace(title) ||
                     string.IsNullOrWhiteSpace(summary))
@@ -445,8 +528,8 @@ internal sealed class LegendFounderToolAuthority
                     if (change.ValueKind != JsonValueKind.Object)
                         return "{\"error\":\"invalid_repair_proposal\"}";
 
-                    var path = ReadRequiredString(change, "path");
-                    var content = ReadRequiredString(change, "content");
+                    var path = ReadRequiredString(change, "path", preserveWhitespace: reviewedCloudRepair);
+                    var content = ReadRequiredString(change, "content", preserveWhitespace: reviewedCloudRepair);
                     if (string.IsNullOrWhiteSpace(path) || content is null)
                         return "{\"error\":\"invalid_repair_proposal\"}";
 
@@ -455,7 +538,7 @@ internal sealed class LegendFounderToolAuthority
 
                 return SerializeUnbounded(
                     await _softwareRemediation.PrepareAsync(
-                        mode,
+                        reviewedCloudRepair ? "founder" : mode,
                         new FounderSoftwareRepairProposal(baseSha, title, summary, changes),
                         cancellationToken));
             }
@@ -581,10 +664,9 @@ internal sealed class LegendFounderToolAuthority
                     return """{"error":"client_lead_portfolio_unavailable"}""";
                 }
 
-                return SerializeUnbounded(
-                    await _agencyCommand.GetFounderPortfolioCountsAsync(
-                        founder,
-                        cancellationToken));
+                var counts = await _agencyCommand.GetFounderPortfolioCountsAsync(founder, cancellationToken);
+                return SerializeUnbounded(providerPolicy?.AllowCloudflareInference == true
+                    ? ProjectCloudPortfolioCounts(counts) : counts);
             }
 
             case "legend_provider_capacity":
@@ -1238,6 +1320,9 @@ internal sealed class LegendFounderToolAuthority
         FounderAiMutationAuthorization? authorization,
         CancellationToken cancellationToken)
     {
+        if (authorization?.Scope is not null)
+            return MutationFailure("cloud_restricted_authorization_required",
+                "A cloud authorization cannot enter the transitional correlation-only research path.");
         if (authorization is null)
         {
             return MutationFailure(
@@ -1509,7 +1594,9 @@ internal sealed class LegendFounderToolAuthority
 
     private static bool IsStrictSchemaInstance(
         JsonElement schema,
-        JsonElement instance)
+        JsonElement instance,
+        bool allowRepairSourceText = false,
+        string path = "")
     {
         if (!schema.TryGetProperty("type", out var declaredTypes) ||
             !MatchesDeclaredSchemaType(declaredTypes, instance))
@@ -1532,11 +1619,12 @@ internal sealed class LegendFounderToolAuthority
         return instance.ValueKind switch
         {
             JsonValueKind.Object =>
-                IsStrictObjectSchemaInstance(schema, instance),
+                IsStrictObjectSchemaInstance(schema, instance, allowRepairSourceText, path),
             JsonValueKind.Array =>
-                IsStrictArraySchemaInstance(schema, instance),
+                IsStrictArraySchemaInstance(schema, instance, allowRepairSourceText, path),
             JsonValueKind.String =>
-                IsStrictStringSchemaInstance(schema, instance.GetString() ?? string.Empty),
+                IsStrictStringSchemaInstance(schema, instance.GetString() ?? string.Empty,
+                    allowRepairSourceText && path == "changes[].content"),
             JsonValueKind.Number =>
                 IsStrictNumberSchemaInstance(schema, instance),
             JsonValueKind.True or JsonValueKind.False => true,
@@ -1581,7 +1669,9 @@ internal sealed class LegendFounderToolAuthority
 
     private static bool IsStrictObjectSchemaInstance(
         JsonElement schema,
-        JsonElement instance)
+        JsonElement instance,
+        bool allowRepairSourceText,
+        string path)
     {
         if (HasDuplicateProperties(instance) ||
             !schema.TryGetProperty("properties", out var properties) ||
@@ -1602,7 +1692,8 @@ internal sealed class LegendFounderToolAuthority
         foreach (var property in properties.EnumerateObject())
         {
             if (!instance.TryGetProperty(property.Name, out var value) ||
-                !IsStrictSchemaInstance(property.Value, value))
+                !IsStrictSchemaInstance(property.Value, value, allowRepairSourceText,
+                    path.Length == 0 ? property.Name : path + "." + property.Name))
             {
                 return false;
             }
@@ -1612,7 +1703,9 @@ internal sealed class LegendFounderToolAuthority
 
     private static bool IsStrictArraySchemaInstance(
         JsonElement schema,
-        JsonElement instance)
+        JsonElement instance,
+        bool allowRepairSourceText,
+        string path)
     {
         var length = instance.GetArrayLength();
         if (schema.TryGetProperty("minItems", out var minimum) &&
@@ -1627,14 +1720,18 @@ internal sealed class LegendFounderToolAuthority
         }
         return schema.TryGetProperty("items", out var items) &&
             items.ValueKind == JsonValueKind.Object &&
-            instance.EnumerateArray().All(item => IsStrictSchemaInstance(items, item));
+            instance.EnumerateArray().All(item => IsStrictSchemaInstance(items, item, allowRepairSourceText, path + "[]"));
     }
 
     private static bool IsStrictStringSchemaInstance(
         JsonElement schema,
-        string instance)
+        string instance,
+        bool allowSourceWhitespace = false)
     {
-        if (instance.Any(char.IsControl))
+        // Only the exact repair changes[].content field permits source-code
+        // whitespace. The original text and its byte/length bounds are retained.
+        if (instance.Any(character => char.IsControl(character) &&
+            !(allowSourceWhitespace && character is '\r' or '\n' or '\t')))
             return false;
         if (schema.TryGetProperty("minLength", out var minimum) &&
             (!minimum.TryGetInt32(out var minimumValue) || instance.Length < minimumValue))
@@ -1853,7 +1950,10 @@ internal sealed class LegendFounderToolAuthority
         value.Length <= maximumLength &&
         !value.Any(char.IsControl);
 
-    private static IReadOnlyList<object> DescribeFounderCapabilities()
+    private static IReadOnlyList<object> DescribeFounderCapabilities() => DescribeFounderCapabilitiesCore(false);
+
+    private static IReadOnlyList<object> DescribeFounderCapabilitiesCore(bool cloudExposureOnly,
+        bool mutationsEnabled = false, bool repositoryEnabled = false)
     {
         var capabilities = new List<object>();
         foreach (var tool in BuildFounderTools())
@@ -1872,6 +1972,8 @@ internal sealed class LegendFounderToolAuthority
                 : null;
             if (string.IsNullOrWhiteSpace(name))
                 continue;
+            if (cloudExposureOnly && !IsCloudExposedTool(name, mutationsEnabled, repositoryEnabled))
+                continue;
 
             var description = root.TryGetProperty("description", out var descriptionElement)
                 ? descriptionElement.GetString()
@@ -1887,7 +1989,9 @@ internal sealed class LegendFounderToolAuthority
             {
                 name,
                 description,
-                access = name == "legend_remember_conversation_facts"
+                access = cloudExposureOnly && canPrepareBoundedRepair
+                    ? "founder_exact_proposal_review"
+                    : name == "legend_remember_conversation_facts"
                     ? "authenticated_conversation_state"
                     : conditionallyRestrictedResearch
                     ? "founder_governed_public_read_or_exact_authorized_restricted_read"
@@ -1897,8 +2001,8 @@ internal sealed class LegendFounderToolAuthority
                 restrictedClassRequiresExistingAuthorization = conditionallyRestrictedResearch,
                 zeroWrite = conditionallyRestrictedResearch,
                 canOverrideAuthorities = false,
-                canModifyRepository = canPrepareBoundedRepair,
-                canCreateIsolatedRepairBranch = canPrepareBoundedRepair,
+                canModifyRepository = canPrepareBoundedRepair && !cloudExposureOnly,
+                canCreateIsolatedRepairBranch = canPrepareBoundedRepair && !cloudExposureOnly,
                 canMergeExactApprovedRepair,
                 canDeploy = false,
                 arbitrarySql = false,
@@ -3293,11 +3397,14 @@ internal sealed class LegendFounderToolAuthority
 
     private static string? ReadRequiredString(
         JsonElement root,
-        string propertyName) =>
-        root.TryGetProperty(propertyName, out var property) &&
-        property.ValueKind == JsonValueKind.String
-            ? property.GetString()?.Trim()
-            : null;
+        string propertyName,
+        bool preserveWhitespace = false)
+    {
+        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+            return null;
+        var value = property.GetString();
+        return preserveWhitespace ? value : value?.Trim();
+    }
 
     private static string? ReadOptionalString(
         JsonElement root,
@@ -3520,7 +3627,11 @@ internal sealed record FounderAiToolCall(
     string CallId,
     string Name,
     string Arguments,
-    FounderAiMutationAuthorization? MutationAuthorization = null);
+    FounderAiMutationAuthorization? MutationAuthorization = null,
+    string? IdempotencyKey = null);
 
 internal sealed record FounderAiMutationAuthorization(
-    string CorrelationId);
+    string CorrelationId,
+    FounderAiActionScope? Scope = null,
+    string? ActionDigest = null,
+    string? IdempotencyKey = null);

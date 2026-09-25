@@ -25,7 +25,9 @@ internal sealed partial class MessagingService
     private sealed record FounderAiMessageSize(Guid Id, int BodyLength, int MetadataLength);
 
     private sealed record FounderAiRequestReceipt(int Version, string Mode, string RequestFingerprint,
-        DateTime ExecutionDeadlineUtc);
+        DateTime ExecutionDeadlineUtc,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        MessagingFounderAiCloudflareDelegation? CloudflareDelegation = null);
 
     private async Task<bool> IsFounderAiOwnerAsync(MessagingActor actor, CancellationToken ct) =>
         actor.ParticipantType == MessagingParticipantTypes.Agent &&
@@ -136,6 +138,36 @@ internal sealed partial class MessagingService
             HasOlderMessages: candidates.Count > selectedIds.Count));
     }
 
+    public async Task<MessagingFounderAiOperationDelegation?> GetFounderAiOperationDelegationAsync(
+        MessagingActor actor, Guid conversationId, Guid operationId, CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (conversationId == Guid.Empty || operationId == Guid.Empty ||
+            !await IsFounderAiOwnerAsync(actor, cancellationToken)) return null;
+        if (!await FounderAiOwnedQuery(actor).AsNoTracking().AnyAsync(item =>
+                item.Id == conversationId && !item.IsClosed, cancellationToken)) return null;
+        // Only the current pending operation may delegate. An older Human row
+        // cannot revive after a terminal response or another admitted request.
+        var user = await _db.InternalMessages.AsNoTracking().Where(item => item.ConversationId == conversationId)
+            .OrderByDescending(item => item.SentUtc).ThenByDescending(item => item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        if (user is null || user.IsDeleted || user.SenderUserId != actor.UserId || user.SenderType != actor.ParticipantType ||
+            user.ClientMessageId != FounderAiOperationKey(actor, conversationId, operationId, "user") ||
+            !TryReadFounderAiRequest(user, out var receipt) || receipt!.Version != 2 ||
+            receipt.ExecutionDeadlineUtc <= now || receipt.CloudflareDelegation is not { } delegation ||
+            delegation.UserId != actor.UserId || delegation.ExpiresUtc <= now ||
+            delegation.ExpiresUtc > receipt.ExecutionDeadlineUtc || delegation.ExpiresUtc > FounderAiUtc(user.SentUtc).AddSeconds(120) ||
+            await FounderAiTerminalAsync(conversationId, user.Id, cancellationToken) is not null) return null;
+        // Re-read current profile/Founder authority after resolving the receipt.
+        // Session/version revocation remains the authenticated callback owner's
+        // responsibility; possession of this metadata is not authentication.
+        if (!await IsFounderAiOwnerAsync(actor, cancellationToken) ||
+            receipt.ExecutionDeadlineUtc <= DateTime.UtcNow || delegation.ExpiresUtc <= DateTime.UtcNow) return null;
+        return new(conversationId, operationId, receipt.RequestFingerprint, receipt.ExecutionDeadlineUtc,
+            delegation with { Roles = delegation.Roles.ToArray() });
+    }
+
     public async Task<MessagingFounderAiTurnResult> BeginFounderAiTurnAsync(
         MessagingFounderAiBeginTurnCommand command, CancellationToken cancellationToken = default)
     {
@@ -144,7 +176,9 @@ internal sealed partial class MessagingService
         var now = DateTime.UtcNow;
         if (command.ConversationId == Guid.Empty || command.OperationId == Guid.Empty ||
             string.IsNullOrWhiteSpace(command.Body) || command.Body.Length > FounderAiMaximumBodyCharacters ||
-            command.Mode is not ("legend" or "teacher") || !IsFounderAiFingerprint(command.RequestFingerprint))
+            command.Mode is not ("legend" or "teacher") || !IsFounderAiFingerprint(command.RequestFingerprint) ||
+            (command.CloudflareDelegation is { } scope &&
+                (!ValidFounderAiDelegationScope(scope) || scope.UserId != actor.UserId)))
             return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_REQUEST_INVALID", ApplicationCopyText.Source("The conversation request is invalid."));
         var userKey = FounderAiOperationKey(actor, command.ConversationId, command.OperationId, "user");
         var conversation = await FounderAiOwnedQuery(actor).AsTracking()
@@ -156,7 +190,7 @@ internal sealed partial class MessagingService
                 return FounderAiBeginNotFound();
             if (command.ExpectedLastMessageId is not null)
                 return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_STALE", ApplicationCopyText.Source("Conversation history changed. Reload it before sending."));
-            if (!ValidFounderAiDeadline(command.ExecutionDeadlineUtc, now))
+            if (!ValidFounderAiDeadline(command.ExecutionDeadlineUtc, now) || !ValidFounderAiDelegationAdmission(command, now))
                 return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_DEADLINE_INVALID", ApplicationCopyText.Source("The conversation execution deadline is invalid."));
             conversation = new MessageConversation
             {
@@ -179,8 +213,12 @@ internal sealed partial class MessagingService
         {
             if (prior.SenderUserId != actor.UserId || prior.SenderType != actor.ParticipantType ||
                 !TryReadFounderAiRequest(prior, out var receipt) || prior.Body != command.Body ||
-                receipt!.RequestFingerprint != command.RequestFingerprint || receipt.Mode != command.Mode)
+                receipt!.RequestFingerprint != command.RequestFingerprint || receipt.Mode != command.Mode ||
+                !SameFounderAiReplayIdentity(receipt.CloudflareDelegation, command.CloudflareDelegation))
                 return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_REPLAY_MISMATCH", ApplicationCopyText.Source("This request identifier was already used for different content or settings."));
+            // A retry supplies a freshly computed admission deadline, but this
+            // branch only returns the old receipt. It never replaces metadata
+            // or grants execution using the new delegation/expiry.
             var terminal = await FounderAiTerminalAsync(conversation.Id, prior.Id, cancellationToken);
             if (terminal is not null) return FounderAiReplay(prior, terminal, command.OperationId);
             if (receipt.ExecutionDeadlineUtc > now)
@@ -194,7 +232,7 @@ internal sealed partial class MessagingService
             .FirstOrDefaultAsync(cancellationToken);
         if (last?.Id != command.ExpectedLastMessageId)
             return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_STALE", ApplicationCopyText.Source("Conversation history changed. Reload it before sending."));
-        if (!ValidFounderAiDeadline(command.ExecutionDeadlineUtc, now))
+        if (!ValidFounderAiDeadline(command.ExecutionDeadlineUtc, now) || !ValidFounderAiDelegationAdmission(command, now))
             return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_DEADLINE_INVALID", ApplicationCopyText.Source("The conversation execution deadline is invalid."));
         if (last?.AuthorKind == MessagingAuthorKinds.Human)
         {
@@ -211,8 +249,9 @@ internal sealed partial class MessagingService
             SenderUserId = actor.UserId, SenderType = actor.ParticipantType,
             AuthorKind = MessagingAuthorKinds.Human, Body = command.Body,
             SentUtc = sentUtc, ClientMessageId = userKey,
-            AiTurnMetadataJson = JsonSerializer.Serialize(new FounderAiRequestReceipt(1, command.Mode,
-                command.RequestFingerprint, command.ExecutionDeadlineUtc), FounderAiJson)
+            AiTurnMetadataJson = JsonSerializer.Serialize(new FounderAiRequestReceipt(command.CloudflareDelegation is null ? 1 : 2, command.Mode,
+                command.RequestFingerprint, command.ExecutionDeadlineUtc, command.CloudflareDelegation is { } delegation
+                    ? delegation with { Roles = delegation.Roles.ToArray() } : null), FounderAiJson)
         };
         _db.InternalMessages.Add(user); added.Add(user);
         TouchFounderAiConversation(conversation, sentUtc);
@@ -364,9 +403,36 @@ internal sealed partial class MessagingService
             item.AiTurnMetadataJson.Length > FounderAiMaximumMetadataCharacters) return false;
         try { receipt = JsonSerializer.Deserialize<FounderAiRequestReceipt>(item.AiTurnMetadataJson, FounderAiJson); }
         catch (JsonException) { return false; }
-        return receipt is { Version: 1 } && receipt.Mode is "legend" or "teacher" &&
-            receipt.ExecutionDeadlineUtc.Kind == DateTimeKind.Utc && IsFounderAiFingerprint(receipt.RequestFingerprint);
+        return receipt is not null &&
+            (receipt.Version == 1 && receipt.CloudflareDelegation is null ||
+             receipt.Version == 2 && receipt.CloudflareDelegation is { } delegation && ValidFounderAiDelegationScope(delegation)) &&
+            receipt.Mode is "legend" or "teacher" && receipt.ExecutionDeadlineUtc.Kind == DateTimeKind.Utc &&
+            IsFounderAiFingerprint(receipt.RequestFingerprint);
     }
+
+    private static bool ValidFounderAiDelegationScope(MessagingFounderAiCloudflareDelegation value) =>
+        ValidFounderAiScopeIdentifier(value.AccountId, 256) && ValidFounderAiScopeIdentifier(value.TenantId, 128) &&
+        ValidFounderAiScopeIdentifier(value.UserId, 128) && ValidFounderAiScopeIdentifier(value.SessionId, 256) &&
+        ValidFounderAiScopeIdentifier(value.AuthorizationVersion, 128) && ValidFounderAiScopeIdentifier(value.Environment, 32) &&
+        value.ExpiresUtc.Kind == DateTimeKind.Utc && value.Roles is { Count: > 0 and <= 16 } &&
+        value.Roles.All(role => ValidFounderAiScopeIdentifier(role, 64)) &&
+        value.Roles.Distinct(StringComparer.Ordinal).Count() == value.Roles.Count &&
+        value.Roles.Contains("Founder", StringComparer.Ordinal);
+
+    private static bool ValidFounderAiScopeIdentifier(string? value, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':');
+
+    private static bool ValidFounderAiDelegationAdmission(MessagingFounderAiBeginTurnCommand command, DateTime now) =>
+        command.CloudflareDelegation is not { } value ||
+        value.ExpiresUtc > now && value.ExpiresUtc <= now.AddSeconds(120) && value.ExpiresUtc <= command.ExecutionDeadlineUtc;
+
+    private static bool SameFounderAiReplayIdentity(MessagingFounderAiCloudflareDelegation? prior, MessagingFounderAiCloudflareDelegation? current) =>
+        prior is null ? current is null : current is not null &&
+        prior.AccountId == current.AccountId && prior.TenantId == current.TenantId && prior.UserId == current.UserId &&
+        prior.SessionId == current.SessionId && prior.AuthorizationVersion == current.AuthorizationVersion &&
+        prior.Environment == current.Environment &&
+        prior.Roles.SequenceEqual(current.Roles, StringComparer.Ordinal);
 
     private static bool ValidFounderAiResponse(MessagingFounderAiResponseProvenance value) =>
         value.Version == 1 && value.Mode is "legend" or "teacher" &&

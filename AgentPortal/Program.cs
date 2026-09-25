@@ -1,3 +1,4 @@
+using Infrastructure.Diagnostics;
 using Infrastructure.DailyScripture;
 using AgentPortal.Hubs;
 using AgentPortal.Middleware;
@@ -42,6 +43,8 @@ using Shared.Diagnostics;
 using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
+builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
 
 // QuestPDF license (Community; change if revenue threshold exceeded)
 QuestPDF.Settings.License = LicenseType.Community;
@@ -90,6 +93,14 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton(sp =>
+    Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
+builder.Services.AddSingleton(sp =>
+    Infrastructure.Bookings.BusinessBookingTicketProtector.CreateShared(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
@@ -143,6 +154,8 @@ builder.Services.AddSingleton<ILegendBlindAnswerOrderRandomizer, LegendBlindCryp
 builder.Services.AddScoped<LegendBlindComparativeBenchmarkRunner>();
 builder.Services.AddScoped<LegendFounderAiDiscourseStateService>();
 builder.Services.AddScoped<IFounderSoftwareRemediationService, FounderSoftwareRemediationService>();
+builder.Services.AddHttpClient("FounderRuntimeProvenance", client => client.Timeout = TimeSpan.FromSeconds(8))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendFounderAiConversationService>();
 builder.Services.AddSingleton<LegendFounderAiProgressBroker>();
 builder.Services.AddScoped<FounderImpersonationService>();
@@ -688,6 +701,8 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 await app.Services
     .GetRequiredService<MigrationHealthHostedService>()
@@ -775,7 +790,7 @@ else
         browser => browser.UseDeveloperExceptionPage());
 }
 
-app.UseLegendFailureDiagnostics("AgentPortal");
+app.UseLegendFailureDiagnostics();
 app.UseWhen(
     context => MobileApiRoute.IsMobileApi(context.Request),
     mobile => mobile.UseStatusCodePages(statusContext =>

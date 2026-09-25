@@ -1,0 +1,37 @@
+@{ ViewData["Title"] = "Review exact LEGEND action"; }
+<section class="container py-4" aria-labelledby="action-review-title">
+    <h1 id="action-review-title">Review exact action</h1>
+    @if (ViewData["State"] as string == "Proposed")
+    {
+        <p>This proposal has not changed GitHub. Approval stages only the displayed changes; it does not approve deployment.</p>
+    }
+    else
+    {
+        <p>This proposal is no longer awaiting approval. Inspect the recorded operation and GitHub batch for its outcome; no rollback is implied.</p>
+    }
+    <dl>
+        <dt>Operation</dt><dd>@ViewData["Tool"]</dd>
+        <dt>Status</dt><dd>@ViewData["State"]</dd>
+        <dt>Review expires (UTC)</dt><dd>@ViewData["ExpiresUtc"]</dd>
+        <dt>Review fingerprint</dt><dd><code>@ViewData["ReviewDigest"]</code></dd>
+    </dl>
+    <h2>Repository and revision binding</h2>
+    <pre>@ViewData["Binding"]</pre>
+    <h2>Exact file replacements</h2>
+    <pre>@ViewData["Arguments"]</pre>
+    @if (ViewData["CanApprove"] is true)
+    {
+        <form method="post" asp-action="ApproveAction" asp-route-proposalId="@ViewData["ProposalId"]">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="expectedRevision" value="@ViewData["Revision"]" />
+            <input type="hidden" name="reviewDigest" value="@ViewData["ReviewDigest"]" />
+            <input type="hidden" name="expectedLastMessageId" value="@ViewData["ExpectedLastMessageId"]" />
+            <input type="hidden" name="operationId" value="@ViewData["OperationId"]" />
+            <button type="submit" class="btn btn-primary">Approve and stage these exact changes</button>
+        </form>
+    }
+    else
+    {
+        <p>This proposal cannot be approved. Check its recorded outcome before requesting another action.</p>
+    }
+</section>

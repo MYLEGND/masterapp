@@ -73,8 +73,8 @@ public sealed class LegendFounderAiInspectionRegressionTests
 
         Assert.NotNull(method);
 
-        var teacher = Assert.IsType<string>(method!.Invoke(null, new object?[] { "teacher", null, null }));
-        var legend = Assert.IsType<string>(method.Invoke(null, new object?[] { "legend", null, null }));
+        var teacher = Assert.IsType<string>(method!.Invoke(null, new object?[] { "teacher", null, null, false }));
+        var legend = Assert.IsType<string>(method.Invoke(null, new object?[] { "legend", null, null, false }));
 
         Assert.Contains("external OpenAI Teacher", teacher, StringComparison.Ordinal);
         Assert.Contains("Native LEGEND conversational inference is bypassed", teacher, StringComparison.Ordinal);

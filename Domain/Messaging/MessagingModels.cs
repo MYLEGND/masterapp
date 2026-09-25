@@ -202,7 +202,27 @@ public sealed record MessagingFounderAiBeginTurnCommand(
     string Body,
     string Mode,
     string RequestFingerprint,
-    DateTime ExecutionDeadlineUtc);
+    DateTime ExecutionDeadlineUtc,
+    MessagingFounderAiCloudflareDelegation? CloudflareDelegation = null);
+
+/// <summary>Short-lived server-derived callback scope. Never accepts bearer tokens or model-supplied authority.</summary>
+public sealed record MessagingFounderAiCloudflareDelegation(
+    string AccountId,
+    string TenantId,
+    string UserId,
+    string SessionId,
+    IReadOnlyList<string> Roles,
+    string AuthorizationVersion,
+    string Environment,
+    DateTime ExpiresUtc);
+
+/// <summary>Persisted scope of an active owned operation; callers must also verify current session authorization.</summary>
+public sealed record MessagingFounderAiOperationDelegation(
+    Guid ConversationId,
+    Guid OperationId,
+    string RequestFingerprint,
+    DateTime ExecutionDeadlineUtc,
+    MessagingFounderAiCloudflareDelegation Delegation);
 
 public sealed record MessagingFounderAiCompleteTurnCommand(
     MessagingActor Actor,

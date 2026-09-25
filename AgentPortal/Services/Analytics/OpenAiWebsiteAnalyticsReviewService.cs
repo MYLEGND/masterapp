@@ -52,6 +52,8 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         "STEP 7 — LEADS / FOLLOW-UP: verified leads, form abandonment.\n\n" +
 
         "STRICT RULES:\n" +
+        "  • No paid campaigns does not make direct/organic tracking, landing pages, or form diagnostics moot. Inspect them independently.\n" +
+        "  • Meta health Critical, Watch, Unavailable, or Unverified must be disclosed; absent delivery evidence is not confirmed delivery. Never recommend launching or scaling ads to resolve a tracking failure.\n" +
         "  • NEVER skip ads analysis, even if the data shows zero spend or zero clicks.\n" +
         "  • NEVER give generic CRO advice before completing Step 1.\n" +
         "  • ALWAYS clearly separate: Ad problem vs Signal-quality problem vs Landing page problem vs Form problem.\n" +

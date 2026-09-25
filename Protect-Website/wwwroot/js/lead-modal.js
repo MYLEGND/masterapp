@@ -13,6 +13,7 @@
     new URLSearchParams(window.location.search).has('trackingDebug');
 
   const form = document.getElementById('leadForm');
+  const dialog = modal.querySelector('.lead-card');
   const closeBtn = document.getElementById('leadClose');
   const dismissBtn = document.getElementById('leadDismiss');
   const submitBtn = document.getElementById('leadSubmit');
@@ -20,6 +21,7 @@
   const successEl = document.getElementById('leadSuccess');
   const interestSelect = document.getElementById('leadInterest');
   const pageKey = document.body.dataset.pageKey || '';
+  let submissionId = crypto.randomUUID();
   const INGEST_URL = '/api/lead/submit';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
@@ -30,6 +32,7 @@
   let formStarted = false;
   let modalInstanceId = null;
   let modalCloseTracked = false;
+  let returnFocus = null;
 
   const tracking = window.LegendAnalytics?.track || window.legendTrack || (() => {});
   const ids = window.legendTrackingIds || {};
@@ -81,15 +84,18 @@
     errorEl.classList.remove('show');
     successEl.classList.remove('show');
     form.reset();
+    submissionId = crypto.randomUUID();
     if (interestSelect.value === '') {
       interestSelect.value = options.interest || '';
     }
     formStarted = false;
     modalInstanceId = uuid();
     modalCloseTracked = false;
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
-    form.querySelector('input[name="FirstName"]')?.focus();
+    document.body.classList.add('no-scroll');
+    dialog?.focus({ preventScroll: true });
     sessionStorage.setItem(SOFT_FLAG, '1');
     debug('modal open', {
       pageKey,
@@ -114,6 +120,7 @@
 
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('no-scroll');
     if (!modalCloseTracked) {
       modalCloseTracked = true;
       debug('modal close', {
@@ -138,10 +145,15 @@
     if (redirect && pendingHref) {
       window.location.href = pendingHref;
     }
+    const focusTarget = returnFocus;
     pendingCta = null;
     pendingHref = null;
     formStarted = false;
     modalInstanceId = null;
+    returnFocus = null;
+    if (!redirect && focusTarget?.isConnected) {
+      focusTarget.focus({ preventScroll: true });
+    }
   }
 
   function markFormStart() {
@@ -211,18 +223,6 @@
         return;
       }
     }
-    if (!getField('TermsAccepted')) {
-      errorEl.textContent = 'Please accept the terms.';
-      errorEl.classList.add('show');
-      tracking({
-        EventType: 'lead_form_submit_failure',
-        PageKey: pageKey,
-        ElementKey: pendingCta || resolveElementKey(null),
-        FormKey: 'lead_modal_form'
-      });
-      return;
-    }
-
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
 
@@ -230,6 +230,7 @@
     const query = new URLSearchParams(location.search);
     const attribution = (ids.getAttribution && ids.getAttribution()) || {};
     const payload = {
+      SubmissionId: submissionId,
       FirstName: getField('FirstName'),
       LastName: getField('LastName'),
       Email: getField('Email'),
@@ -239,9 +240,15 @@
       Notes: getField('Notes'),
       MarketingEmailConsent: !!getField('MarketingEmailConsent'),
       CallTextConsent: !!getField('MarketingEmailConsent'), // align single consent to both flags for compatibility
-      TermsAccepted: !!getField('TermsAccepted'),
+      TermsAccepted: !!getField('MarketingEmailConsent'),
       SourcePageKey: pageKey,
       SourceCtaKey: pendingCta,
+      SourcePath: window.location.pathname,
+      MetadataJson: JSON.stringify({
+        flow: 'lead_modal',
+        modalInstanceId,
+        sourcePath: window.location.pathname
+      }),
       SessionId: (ids.getSessionId && ids.getSessionId()) || null,
       VisitorId: (ids.getVisitorId && ids.getVisitorId()) || null,
       UtmSource: attribution.utmSource || query.get('utm_source'),
@@ -267,7 +274,25 @@
         },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Submit failed');
+
+      const responseBody = await res.json().catch(() => null);
+      if (!res.ok || responseBody?.captured !== true) {
+        const captured = responseBody?.captured === true;
+        const message = captured
+          ? 'Your inquiry was saved, but we could not confirm the agent notification. Please use Contact if you need immediate help.'
+          : 'We could not send this right now. Please try again.';
+        const error = new Error(message);
+        error.captured = captured;
+        error.details = responseBody;
+        throw error;
+      }
+
+      if (responseBody.notificationSent === false || responseBody.emailSent === false) {
+        successEl.textContent = 'Your inquiry is saved. The advisor email was not confirmed. Submit again to retry the notification without creating another inquiry.';
+        successEl.classList.add('show');
+        return;
+      }
+      successEl.textContent = 'Your inquiry has been received.';
       successEl.classList.add('show');
       tracking({
         EventType: 'lead_form_submit_success',
@@ -285,14 +310,19 @@
         }
       }, 1400);
     } catch (err) {
-      errorEl.textContent = 'We could not send this right now. Please try again.';
+      errorEl.textContent = err?.message || 'We could not send this right now. Please try again.';
       errorEl.classList.add('show');
       tracking({
         EventType: 'lead_form_submit_failure',
         PageKey: pageKey,
         ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form',
-        SubmitOutcome: 'error'
+        SubmitOutcome: 'error',
+        MetadataJson: JSON.stringify({
+          modalInstanceId,
+          captured: err?.captured === true,
+          error: err?.details?.error || null
+        })
       });
     } finally {
       submitBtn.disabled = false;
@@ -312,6 +342,33 @@
     if (e.target === modal) closeModal(false, 'backdrop');
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.classList.contains('open')) closeModal(false, 'escape_key');
+    if (!modal.classList.contains('open')) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal(false, 'escape_key');
+      return;
+    }
+
+    if (e.key !== 'Tab' || !dialog) return;
+    const focusable = [...dialog.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    )].filter(el => !el.hasAttribute('hidden') && el.getClientRects().length > 0);
+
+    if (focusable.length === 0) {
+      e.preventDefault();
+      dialog.focus({ preventScroll: true });
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   });
 })();

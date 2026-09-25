@@ -77,6 +77,14 @@ val legendProperties = Properties().apply {
 }
 fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
 
+val legendGitCommitHash = providers.exec {
+    workingDir(rootProject.projectDir)
+    commandLine("git", "rev-parse", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { revision ->
+    revision.trim().takeIf { it.matches(Regex("[a-fA-F0-9]{40}")) } ?: "unknown"
+}.get()
+
 val legendApplicationId = "com.mylegnd.legend.registered"
 val releaseRequested = gradle.startParameter.taskNames.any {
     val task = it.substringAfterLast(':')
@@ -227,6 +235,7 @@ android {
         targetSdk = 37
         versionCode = automaticReleaseVersionCode
         versionName = "1.0.0"
+        buildConfigField("String", "GIT_COMMIT_HASH", "\"$legendGitCommitHash\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash

@@ -1,6 +1,6 @@
 <div class="backdrop" id="drawerBackdrop"></div>
 
-<aside class="drawer crm-qv-shell" id="drawer" aria-hidden="true" aria-label="Client quick view">
+<aside class="drawer crm-qv-shell" id="drawer" data-legend-mobile-sheet aria-hidden="true" aria-label="Client quick view">
     <div class="dhead">
         <div class="drawer-head-main">
             <div class="dtitle">
@@ -29,13 +29,13 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="14" height="14" fill="none" class="lead-zoom-icon" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#2D8CFF"/><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H12A1.5 1.5 0 0 1 13.5 7.5v5A1.5 1.5 0 0 1 12 14H4.5A1.5 1.5 0 0 1 3 12.5v-5z" fill="white"/><path d="M13.5 9l3.5-2v6l-3.5-2V9z" fill="white"/></svg>Zoom
                 </button>
                 <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queue</a>
-                <button type="button" class="btn btn-ghost" id="btnCloseDrawer">Close</button>
+                <button type="button" class="btn btn-ghost" id="btnCloseDrawer" data-legend-sheet-close>Close</button>
             </div>
             <div id="dPortalWrap">—</div>
         </div>
     </div>
 
-    <div class="dbody">
+    <div class="dbody" data-legend-sheet-scroll>
         <section class="crm-qv-contact-card">
             <div class="crm-qv-contact-head lead-contact-card-head">
                 <h4>Contact &amp; Profile</h4>
@@ -202,15 +202,36 @@
                             <div class="qv-field">
                                 <label>Status</label>
                                 <select id="dStatus">
+                                @if (ViewData["BusinessWorkspace"] is Shared.Crm.BusinessWorkspaceModel businessScopedStatus)
+                                {
+
+                                    <option value="Lead">@businessScopedStatus.Preferences.LeadLabel</option>
+                                    <option value="Client">@businessScopedStatus.Preferences.ClientLabel</option>
+                                }
+                                else
+                                {
+
                                     <option value="Lead">Lead</option>
                                     <option value="Prospect">Prospect</option>
                                     <option value="Active">Portal Client</option>
                                     <option value="Dormant">Inactive</option>
-                                </select>
+                                                                }
+</select>
                             </div>
                             <div class="qv-field">
                                 <label>Pipeline Stage</label>
                                 <select id="dPipelineStage">
+                                @if (ViewData["BusinessWorkspace"] is Shared.Crm.BusinessWorkspaceModel businessScopedPipelineStage)
+                                {
+
+                                    @foreach (var stage in businessScopedPipelineStage.Preferences.Stages)
+                                    {
+                                        <option value="@stage">@stage</option>
+                                    }
+                                }
+                                else
+                                {
+
                                     <option value="NewLead">Lead</option>
                                     <option value="Opportunities">Opportunities</option>
                                     <option value="Contacted">Contacted</option>
@@ -223,7 +244,8 @@
                                     <option value="Submitted">Submitted</option>
                                     <option value="ClosedLost">Not Moving Forward</option>
                                     <option value="Nurture">Nurture</option>
-                                </select>
+                                                                }
+</select>
                             </div>
                             <div class="qv-field">
                                 <label>Waiting On</label>

@@ -2,10 +2,12 @@
 @using System.Globalization
 @model List<AgentPortal.Models.ClientListItemViewModel>
 @using AgentPortal.Services
-@using AgentPortal.Security
+
 
 @{
-    ViewData["Title"] = "Clients";
+    var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
+    var isBusinessWorkspace = businessWorkspace is not null;
+    ViewData["Title"] = businessWorkspace?.Preferences.ClientLabel ?? "Clients";
     var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
     // Personal revenue mirrors Paid (single-status per card enforced in ProductionService)
@@ -25,8 +27,11 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
-<div class="wrap density-comfort clients-crm pipeline-mode" id="legendWrap">
-<a class="btn btn-gold" asp-action="Archive">Archive / Deleted</a>
+<div class="wrap density-comfort clients-crm pipeline-mode" id="legendWrap" data-business-id="@businessWorkspace?.BusinessId" data-crm-api-base="@(businessWorkspace is null ? "" : $"/business/{businessWorkspace.BusinessId}/crm/api")" data-pipeline-stages="@(businessWorkspace is null ? "[]" : System.Text.Json.JsonSerializer.Serialize(businessWorkspace.Preferences.Stages))">
+@if (!isBusinessWorkspace)
+{
+    <a class="btn btn-gold" asp-action="Archive">Archive / Deleted</a>
+}
 
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
@@ -225,7 +230,7 @@ else
             <tbody>
             @foreach (var c in Model)
             {
-                var hasPortalAccess = Guid.TryParse(c.ClientUserId, out _);
+                var hasPortalAccess = businessWorkspace is null && Guid.TryParse(c.ClientUserId, out _);
                 var clientUrl = hasPortalAccess
                     ? (Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true }) ?? "")
                     : "";
@@ -249,7 +254,7 @@ else
                 var sAppointmentConfirmationLabel = (c.LatestAppointmentConfirmationStateLabel ?? "").Trim();
                 var sAppointmentStart = c.LatestAppointmentScheduledStartUtc?.ToString("O") ?? "";
                 var sAppointmentEnd = c.LatestAppointmentScheduledEndUtc?.ToString("O") ?? "";
-                var sWaitingOn = (c.WaitingOn ?? AgentPortal.Models.ClientCrmMeta.DefaultWaitingOn).Trim();
+                var sWaitingOn = (c.WaitingOn ?? Shared.Crm.ClientCrmMeta.DefaultWaitingOn).Trim();
                 var sPinnedBrief = (c.PinnedBrief ?? "").Trim();
                 var sStageEntered = c.StageEnteredUtc.ToString("yyyy-MM-dd");
                 var sPipelineOrder = c.PipelineOrder.ToString(CultureInfo.InvariantCulture);
@@ -284,13 +289,17 @@ else
                     : (string.Equals(sPipeline, "BusinessClient", StringComparison.OrdinalIgnoreCase)
                         ? "BusinessClient"
                         : sRecordType);
+                var accountDisplayName = string.Equals(resolvedRecordType, "BusinessClient", StringComparison.OrdinalIgnoreCase)
+                    ? (string.IsNullOrWhiteSpace(c.EntityName) ? "Business account" : c.EntityName)
+                    : $"{c.FirstName} {c.LastName}";
                 var isFakeEmail = IsPlaceholderEmail(c.Email);
                 var isSelfManaged = hasPortalAccess && string.Equals(c.AccountManagementMode, "SelfManaged", StringComparison.OrdinalIgnoreCase);
 
                 <tr class="client-row"
-                    data-client-id="@c.ClientUserId"
+                    data-client-id="@c.ClientUserId" data-business-revision="@c.BusinessRevision"
                     data-client-profile-id="@c.Id"
                     data-source-workstation-lead-id="@c.SourceWorkstationLeadId"
+                    data-entity-name="@c.EntityName"
                     data-first="@c.FirstName"
                     data-last="@c.LastName"
                     data-email="@c.Email"
@@ -382,12 +391,16 @@ else
                                 }
                             </div>
                             <div class="crm-contact-name-row">
-                                <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
+                                <span class="name open-drawer" title="Quick View">@accountDisplayName</span>
                                 @if (hasPortalAccess)
                                 {
                                     <span class="crm-account-management-pill @(isSelfManaged ? "is-self-managed" : "is-shared")">@(isSelfManaged ? "Self managed" : "Managed")</span>
                                 }
                             </div>
+                            @if (string.Equals(resolvedRecordType, "BusinessClient", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="muted">Linked contact: @c.FirstName @c.LastName</span>
+                            }
                             <span class="muted@(isFakeEmail ? " crm-email-fake" : "")" data-email-summary="true">@c.Email</span>
                             @if (!string.IsNullOrWhiteSpace(dialPhone))
                             {
@@ -485,10 +498,16 @@ else
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-gold open-drawer">Quick View</button>
-                        <a class="btn btn-ghost" href="@Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true })" target="_blank" rel="noopener">Edit</a>
-                        <button type="button" class="btn btn-outline-light add-client-production-btn"
-                                data-client-id="@c.ClientUserId"
-                                data-client-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
+                        @if (!string.IsNullOrWhiteSpace(clientUrl))
+                        {
+                            <a class="btn btn-ghost" href="@clientUrl" target="_blank" rel="noopener">Edit</a>
+                        }
+                        @if (!isBusinessWorkspace)
+                        {
+                            <button type="button" class="btn btn-outline-light add-client-production-btn"
+                                    data-client-id="@c.ClientUserId" data-business-revision="@c.BusinessRevision"
+                                    data-client-name="@accountDisplayName">Add Production</button>
+                        }
                     </td>
                 </tr>
             }
@@ -498,12 +517,14 @@ else
 
 }
 
-@await Html.PartialAsync("_ClientsPipelineView")
+@await Html.PartialAsync("~/Views/Clients/_ClientsPipelineView.cshtml")
 
 </div>
 
-@await Html.PartialAsync("_ClientsQuickView")
-@await Html.PartialAsync("_ClientsQuickViewUtilities")
+@await Html.PartialAsync("~/Views/Clients/_ClientsQuickView.cshtml")
+@await Html.PartialAsync("~/Views/Clients/_ClientsQuickViewUtilities.cshtml")
+@if (!isBusinessWorkspace)
+{
 
 <div class="modal fade" id="clientProductionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered production-modal-dialog">
@@ -561,6 +582,8 @@ else
     </div>
 </div>
 
+}
+
 <script src="~/js/dp-constants.js" asp-append-version="true"></script>
 <script src="~/js/dp-validators.js" asp-append-version="true"></script>
 <script src="~/js/dp-engine.js" asp-append-version="true"></script>
@@ -569,7 +592,7 @@ else
 <script src="~/js/scheduling/qv-appointment-management.js" asp-append-version="true"></script>
 <script>
     window.quickViewBillingOptions = {
-        canSetFounderSubscriptionOptions: @(FounderGuard.IsFounder(User) ? "true" : "false")
+        canSetFounderSubscriptionOptions: @((ViewData["CanSetFounderSubscriptionOptions"] as bool? == true) ? "true" : "false")
     };
 </script>
 <script src="~/js/billing/qv-billing-management.js" asp-append-version="true"></script>

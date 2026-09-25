@@ -1,3 +1,4 @@
+
 @model ClientApp.Models.EditClientViewModel
 
 @{
@@ -11,7 +12,7 @@
     var avatarInitial = !string.IsNullOrWhiteSpace(Model.FirstName)
         ? Model.FirstName[..1].ToUpperInvariant()
         : "C";
-    var managedClientName = $"{Model.FirstName} {Model.LastName}".Trim();
+    var managedClientName = ViewBag.ViewingClientName as string ?? $"{Model.FirstName} {Model.LastName}".Trim();
     if (string.IsNullOrWhiteSpace(managedClientName))
     {
         managedClientName = "Client";
@@ -22,6 +23,10 @@
     var accountLifecycleState = ViewBag.AccountLifecycleState as string ?? "Active";
     var canResumeAccount = ViewBag.CanResumeAccount is bool canResume && canResume;
     var accountIsRestricted = !string.Equals(accountLifecycleState, "Active", StringComparison.OrdinalIgnoreCase);
+    var isBusinessClient = ViewBag.IsBusinessClient is bool businessClient && businessClient;
+    var businessWebsites = ViewBag.BusinessWebsites as IReadOnlyList<Infrastructure.WebsiteEditing.BusinessWebsiteProfileSummary>
+        ?? Array.Empty<Infrastructure.WebsiteEditing.BusinessWebsiteProfileSummary>();
+    var editableBusinessIds = ViewBag.EditableBusinessIds as Guid[] ?? Array.Empty<Guid>();
 }
 
 <main class="dashboard-page-shell client-create-page client-edit-page">
@@ -30,8 +35,8 @@
             <div class="client-create-header">
                 <div>
                     <div class="dashboard-eyebrow">@(isAgentView ? "Client Profile" : "My Profile")</div>
-                    <h2 class="client-create-title">View / Edit Profile</h2>
-                    <p class="client-create-subtitle">@(isAgentView ? $"Managing {managedClientName}'s contact details, household information, and profile picture." : "Update your contact details, household information, and profile picture in one place.")</p>
+                    <h2 class="client-create-title">@(isBusinessClient ? managedClientName : "View / Edit Profile")</h2>
+                    <p class="client-create-subtitle">@(isBusinessClient ? "Manage your business identity, linked owners, contact details, and website." : isAgentView ? $"Managing {managedClientName}'s contact details, household information, and profile picture." : "Update your contact details, household information, and profile picture in one place.")</p>
                 </div>
                 <span class="client-edit-pill">@(isAgentView ? $"Managing {managedClientName}" : "My Profile")</span>
             </div>
@@ -44,6 +49,57 @@
                     @if (ViewBag.ProfileSaveWarning is string warning)
                     {
                         <div class="client-create-blocked">@warning</div>
+                    }
+
+                    @if (isBusinessClient && businessWebsites.Count == 0)
+                    {
+                        <section class="client-create-section client-create-section-shell" aria-labelledby="businessIdentityTitle">
+                            <div class="client-create-section-head">
+                                <h3 id="businessIdentityTitle" class="client-create-section-title">Business identity</h3>
+                                <p class="client-create-section-copy">Set the entity name used for this business account and its website.</p>
+                            </div>
+                            <form action="/profile/business-website/setup" method="post">
+                                @Html.AntiForgeryToken()
+                                <div class="client-create-grid">
+                                    <div>
+                                        <label class="client-create-label" for="businessEntityName">Entity name</label>
+                                        <input class="client-create-input" id="businessEntityName" name="businessName" required minlength="2" maxlength="160" />
+                                    </div>
+                                    <div>
+                                        <label class="client-create-label" for="businessLegalName">Legal name (if different)</label>
+                                        <input class="client-create-input" id="businessLegalName" name="legalName" maxlength="200" />
+                                    </div>
+                                </div>
+                                <div class="client-create-actions">
+                                    <button type="submit" class="client-create-button client-create-button-primary">Save business identity</button>
+                                </div>
+                            </form>
+                        </section>
+                    }
+
+                    @foreach (var business in businessWebsites)
+                    {
+                        <section class="client-create-section client-create-section-shell" aria-labelledby="entity-heading-@business.BusinessId">
+                            <div class="client-create-section-head">
+                                <h3 id="entity-heading-@business.BusinessId" class="client-create-section-title">Business identity</h3>
+                                <p class="client-create-section-copy">Your entity name identifies this business in account labels and website branding. Linked owners keep their personal names.</p>
+                            </div>
+                            <form method="post" action="/profile/business/@business.BusinessId/entity-name">
+                                @Html.AntiForgeryToken()
+                                <div>
+                                    <label class="client-create-label" for="entityName-@business.BusinessId">Entity name</label>
+                                    <input class="client-create-input" id="entityName-@business.BusinessId" name="entityName" value="@business.BusinessName" required maxlength="160" readonly="@(!editableBusinessIds.Contains(business.BusinessId))" />
+                                </div>
+                                @if (editableBusinessIds.Contains(business.BusinessId))
+                                {
+                                    <div class="client-create-actions">
+                                        <button class="client-create-button client-create-button-primary" type="submit">Save entity name</button>
+                                        <a class="client-create-button client-create-button-secondary" href="/profile/business/@business.BusinessId/owners">Manage linked owners</a>
+                                    </div>
+                                }
+                                <p class="client-edit-note">Publish your website after changing the name to update its published pages.</p>
+                            </form>
+                        </section>
                     }
 
                     <div class="client-create-section client-create-section-shell client-edit-section-spaced">
@@ -84,7 +140,7 @@
                         <div class="client-create-section client-create-section-shell">
                             <div class="client-create-section-head">
                                 <div>
-                                    <div class="client-create-section-title">Primary Profile</div>
+                                    <div class="client-create-section-title">@(isBusinessClient ? "Owner contact details" : "Primary Profile")</div>
                                     <p class="client-create-section-copy">Keep your contact details up to date for your LEGEND guide.</p>
                                 </div>
                             </div>
@@ -178,6 +234,17 @@
                         <div class="client-create-actions"><button type="submit" class="client-create-button client-create-button-primary">Save Profile</button></div>
                     </form>
 
+                    @if (isBusinessClient || businessWebsites.Count > 0)
+                    {
+                        @foreach (var website in businessWebsites)
+                        {
+                            <section class="legend-website-summary">
+                                <div><span class="legend-website-eyebrow">Business website</span><h3>@website.BusinessName</h3><a href="/profile/business/@website.BusinessId/owners">Entity name and owners</a><p>@(website.PrimaryDomain ?? "Domain not connected")</p></div>
+                            </section>
+                        }
+
+                    }
+
                     @if (!isAgentView && !accountIsRestricted)
                     {
                         <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="subscriptions-heading">
@@ -254,6 +321,7 @@
 </main>
 
 @section Scripts {
+
         @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
         <script>
             (() => {

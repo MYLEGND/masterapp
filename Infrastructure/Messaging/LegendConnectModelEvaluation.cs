@@ -288,7 +288,8 @@ public sealed record LegendModelTaskRequest(
     int? MaxOutputTokens = null,
     LegendConnectExternalProviderPolicy? ProviderPolicy = null,
     string? AdapterVersion = null,
-    string? RequestingActorId = null)
+    string? RequestingActorId = null,
+    LegendCloudflareRequestScope? CloudflareScope = null)
 {
     internal static LegendModelTaskRequest Translation(
         string sourceLanguageCode,
@@ -377,7 +378,7 @@ internal interface ILegendConnectModelEvaluationBackend
 /// Provider-neutral challenger inference + independent semantic judge boundary.
 /// Neither operation owns LEGEND evidence or promotion state.
 /// </summary>
-internal sealed class LegendConnectModelInferenceTransport
+internal sealed partial class LegendConnectModelInferenceTransport
     : ILegendConnectModelInferenceTransport
 {
     private const string ClientName =
@@ -424,6 +425,10 @@ internal sealed class LegendConnectModelInferenceTransport
 
         if (string.IsNullOrWhiteSpace(model) || model.Length > 200)
             return new(false, null, "model_inference_invalid_model");
+        if (_configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare" &&
+            string.Equals(model, _configuration["LegendConnect:Foundation:Model"], StringComparison.Ordinal))
+            return await SendCloudflareTaskAsync(task, cancellationToken);
+
         var localModel = _configuration["LegendConnect:Foundation:Model"]?.Trim();
         if (string.Equals(model, localModel, StringComparison.Ordinal) ||
             model.StartsWith("controlled:", StringComparison.Ordinal) ||

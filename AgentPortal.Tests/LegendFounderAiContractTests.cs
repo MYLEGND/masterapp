@@ -1201,11 +1201,14 @@ public sealed class LegendFounderAiContractTests
         var handler = new GitHubRemediationScenarioHandler(
             key.ExportPkcs8PrivateKeyPem(),
             includePullRequestReviews: true);
+        using var batchDb = new Infrastructure.Data.MasterAppDbContext(
+            new DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var service = new FounderSoftwareRemediationService(
             new ScenarioHttpClientFactory(handler),
             CreateRemediationConfiguration(),
             NullLogger<FounderSoftwareRemediationService>.Instance,
-            new StaticTokenCredential());
+            new StaticTokenCredential(), db: batchDb);
 
         var result = await service.PrepareAsync(
             "teacher",
@@ -1217,6 +1220,8 @@ public sealed class LegendFounderAiContractTests
             CancellationToken.None);
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        Assert.Equal("Staged", batchDb.FounderSoftwareRepairBatches.Single().State);
+        Assert.Contains(handler.RequestBodies, body => body.Contains("\"draft\":true", StringComparison.Ordinal));
         Assert.True(document.RootElement.GetProperty("prepared").GetBoolean());
         Assert.Equal(new string('c', 40), document.RootElement.GetProperty("repairCommitSha").GetString());
         Assert.Contains(handler.RequestPaths, path => path.EndsWith("/git/refs", StringComparison.Ordinal));
@@ -1691,11 +1696,13 @@ public sealed class LegendFounderAiContractTests
         bool includePullRequestReviews) : HttpMessageHandler
     {
         public List<string> RequestPaths { get; } = [];
+        public List<string> RequestBodies { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
             RequestPaths.Add(path);
+            if (request.Content is not null) RequestBodies.Add(request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult());
             var response = request.RequestUri.Host.Equals("example.vault.azure.net", StringComparison.OrdinalIgnoreCase)
                 ? Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { value = privateKey }))
                 : RespondToGitHub(path, request.Method);
@@ -1710,6 +1717,8 @@ public sealed class LegendFounderAiContractTests
                 return Json(HttpStatusCode.OK, $"{{\"object\":{{\"sha\":\"{new string('a', 40)}\"}}}}");
             if (path == $"/repos/MYLEGND/masterapp/git/commits/{new string('a', 40)}")
                 return Json(HttpStatusCode.OK, $"{{\"tree\":{{\"sha\":\"{new string('b', 40)}\"}}}}");
+            if (path == $"/repos/MYLEGND/masterapp/git/trees/{new string('b', 40)}" && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, "{\"truncated\":false,\"tree\":[{\"path\":\"AgentPortal/AgentPortal.csproj\",\"type\":\"blob\",\"mode\":\"100644\"},{\"path\":\"AgentPortal/Services/Example.cs\",\"type\":\"blob\",\"mode\":\"100644\"}]}");
             if (path == "/repos/MYLEGND/masterapp/git/blobs" && method == HttpMethod.Post)
                 return Json(HttpStatusCode.Created, $"{{\"sha\":\"{new string('d', 40)}\"}}");
             if (path == "/repos/MYLEGND/masterapp/git/trees" && method == HttpMethod.Post)

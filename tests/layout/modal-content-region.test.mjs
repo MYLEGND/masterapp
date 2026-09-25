@@ -55,6 +55,26 @@ test('layout notifications coalesce into one scheduled geometry update',()=>{
   const context={viewportSyncFrame:0,window:{requestAnimationFrame:callback=>{frames++;scheduled=callback;return 1;}},syncViewportOffsets:()=>updates++};vm.createContext(context);vm.runInContext(implementation('scheduleViewportOffsets'),context);
   context.scheduleViewportOffsets();context.scheduleViewportOffsets();context.scheduleViewportOffsets();assert.equal(frames,1);scheduled();assert.equal(updates,1);assert.equal(context.viewportSyncFrame,0);
 });
+test('shared mobile navigation keeps the motto in the permanent top row and compacts menu actions',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(css,/@media \(max-width: 840px\)[\s\S]*grid-template-areas:[\s\S]*"brand motto toggle"[\s\S]*"left left left"[\s\S]*"right right right"/);
+  assert.match(css,/\.legend-global-nav \.header-psalms \{[\s\S]*grid-area: motto/);
+  assert.match(css,/\.legend-global-nav \.nav-toggle \{[\s\S]*grid-area: toggle/);
+  assert.match(css,/grid-template-columns: repeat\(auto-fit, minmax\(min\(125px, 100%\), 1fr\)\)/);
+  assert.doesNotMatch(css,/@media \(max-width: 840px\)[\s\S]*\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-direction: column/);
+});
+
+test('AgentPortal and ClientApp consume the same authenticated CSS authorities exactly once',()=>{
+  const files=['AgentPortal/Views/Shared/_Layout.cshtml','ClientApp/Views/Shared/_Layout.cshtml'];
+  for(const file of files){
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    for(const href of ['~/design/legend-web-foundation.css','~/design/legend-app-shell.css','~/_content/Shared/css/dashboard-home-shared.css']){
+      assert.equal(source.split(href).length-1,1,file+': '+href);
+    }
+  }
+  assert.equal(existsSync(new URL('../../ClientApp/wwwroot/css/legend-forms.css',import.meta.url)),false);
+});
+
 test('all three host layouts load the single shared owner before page scripts',()=>{
   for(const file of ['AgentPortal/Views/Shared/_Layout.cshtml','AgentPortal/Views/Shared/_ClientWorkspaceLayout.cshtml','ClientApp/Views/Shared/_Layout.cshtml']) {
     const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
@@ -72,6 +92,34 @@ test('shared geometry preserves full backdrop and sizes inner Bootstrap/custom p
   assert.doesNotMatch(script,/attributeFilter:[^\n]*'style'/);
   assert.match(script,/visualViewport\?\.addEventListener\("resize"/);
   assert.match(script,/document.addEventListener\('show.bs.modal'/);
+});
+
+
+test('mobile sheet behavior is globally owned and uses viewport-safe geometry',()=>{
+  const css=readFileSync(new URL('../../SHARED/wwwroot/css/dashboard-home-shared.css',import.meta.url),'utf8');
+  assert.match(css,/@media \(max-width: 900px\)[\s\S]*\[data-legend-mobile-sheet\]/);
+  assert.match(css,/bottom: var\(--legend-modal-area-end\)/);
+  assert.match(css,/data-legend-sheet-snap="half"[\s\S]*46%/);
+  assert.match(script,/function registerMobileSheet\(/);
+  assert.match(script,/addEventListener\("pointerdown"/);
+  assert.match(script,/function lockPageScroll\(/);
+});
+test('lead and client quick views share the mobile sheet contract',()=>{
+  for (const file of ['AgentPortal/Views/Leads/_LeadQuickView.cshtml','AgentPortal/Views/Clients/_ClientsQuickView.cshtml']) {
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,/data-legend-mobile-sheet/);
+    assert.match(source,/data-legend-sheet-scroll/);
+    assert.match(source,/data-legend-sheet-close/);
+  }
+});
+test('CRM scripts delegate page scroll locking to shared modal owner',()=>{
+  for (const file of ['AgentPortal/wwwroot/js/leads-index.js','AgentPortal/wwwroot/js/clients-index.js']) {
+    const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+    assert.match(source,/LegendModal\?\.lockPageScroll\("crm-quick-view"\)/);
+    assert.match(source,/LegendModal\?\.unlockPageScroll\("crm-quick-view"\)/);
+    assert.doesNotMatch(source,/function lockPageScrollForQuickView/);
+    assert.doesNotMatch(source,/quickViewScrollY/);
+  }
 });
 
 function dialogFixture() {

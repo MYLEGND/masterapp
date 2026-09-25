@@ -5,8 +5,12 @@
 @using Microsoft.EntityFrameworkCore
 @using Infrastructure.Data
 @using Shared.Messaging
+@using Shared.Auth
+@inject AgentPortal.Services.Tracking.IAgentTrackingService WebsiteTracking
+@inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @inject MasterAppDbContext _db
 @{
     var currentController =
@@ -47,13 +51,17 @@
                              string.Equals(impersonatedDisplay, impersonatedAgentId, StringComparison.OrdinalIgnoreCase);
     }
     var isFounder = AgentPortal.Security.FounderGuard.IsFounder(User);
+    ViewData["RuntimeDiagnosticsFounder"] = isFounder;
     var isOnboardingPublic = string.Equals(currentController, "OnboardingPublic", StringComparison.OrdinalIgnoreCase);
     var isFinancePage = string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase);
     var isMobileEmbeddedClientCreation = ViewData["MobileClientCreationPortalTicket"] is string mobileClientCreationTicket
         && !string.IsNullOrWhiteSpace(mobileClientCreationTicket);
-    var layoutBodyClass = "d-flex flex-column min-vh-100"
+    var layoutBodyClass = "legend-app d-flex flex-column min-vh-100"
         + (isOnboardingPublic ? " onboarding-public-only" : "")
         + (isFinancePage ? " finance-page" : "");
+    var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
+        WebsiteConfiguration,
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Protect);
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -64,6 +72,8 @@
 
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     @if (isFounder && !isOnboardingPublic)
     {
@@ -79,346 +89,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 
-    <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
+    <link rel="icon" href="@applicationFaviconUrl" />
 
     @RenderSection("Styles", required: false)
 
-    <style>
-        :root{
-            --legend-navy:#0e1b3d;
-            --legend-navy-deep:#0b1530;
-            --legend-gold:#a68023;
-            --legend-gold-deep:#a68023;
-            --legend-gold-bright:#c79931;
-            --legend-line:rgba(166,128,35,.36);
-            --legend-line-strong:rgba(199,153,49,.95);
-            --legend-shadow:0 18px 38px rgba(64,47,11,.10);
-            --legend-shadow-strong:0 24px 56px rgba(64,47,11,.16);
-        }
 
-        body {
-            background: #ffffff;
-            color: #151109;
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* =========================
-           EXPLORE (VERTICAL DRAWER)
-           ========================= */
-
-        /* Click-away overlay */
-        .explore-overlay{
-            position: fixed;
-            inset: 0;
-            z-index: 1098;
-            background: transparent;
-            display: none;
-        }
-        .explore-overlay.open{ display:block; }
-
-        /* Explore trigger anchored inline with main nav */
-        .explore-trigger{
-            position: static;
-            left: auto;
-            top: auto;
-            z-index: auto;
-            width: 42px;
-            height: 42px;
-            border-radius: 13px;
-            border: 1.6px solid var(--legend-gold-deep);
-            background: #0b1529;
-            box-shadow:
-                0 10px 20px rgba(0,0,0,.22),
-                inset 0 0 0 1px rgba(255,255,255,.10);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all .2s ease;
-            padding: 0;
-        }
-
-        .explore-trigger:hover{
-            transform: translateY(-1px) scale(1.01);
-            border-color: rgba(166,128,35,.94);
-            box-shadow:
-                0 14px 24px rgba(0,0,0,.26),
-                inset 0 0 0 1px rgba(255,255,255,.14);
-        }
-
-        .explore-bars{
-            width: 16px;
-            height: 14px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 2px;
-            line-height: 0;
-        }
-
-        .explore-bars span{
-            display:block;
-            width: 100%;
-            height: 2px;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #f8fafc, #ddb457);
-            transition: all .2s ease;
-            opacity: 1;
-            flex: 0 0 auto;
-        }
-
-        .explore-trigger:hover .explore-bars span{
-            background: linear-gradient(90deg, #f8fafc, #efc866);
-        }
-
-        /* Drawer shell */
-        .explore-drawer{
-            position: fixed;
-            left: 18px;
-            top: 156px;
-            z-index: 1099;
-            width: 320px;
-            max-width: calc(100vw - 36px);
-
-            /* CLOSED: fully hidden (no peeking) */
-            transform: translateX(-140%);
-            transition: transform .25s ease;
-            pointer-events: none;
-        }
-
-        .explore-drawer.open{
-            transform: translateX(0);
-            pointer-events: auto;
-        }
-
-        /* remove shadow when closed so nothing bleeds */
-        .explore-drawer:not(.open) .explore-card{
-            box-shadow: none;
-        }
-
-        /* Boxed banner matching top vibe */
-        .explore-card{
-            background: #0b1529;
-            border: 1.5px solid rgba(166,128,35,.86);
-            border-radius: 18px;
-            box-shadow:
-                0 22px 48px rgba(0,0,0,.30),
-                inset 0 0 0 1px rgba(255,255,255,.08);
-            overflow: hidden;
-            position: relative;
-        }
-
-        .explore-card::before{
-            content:"";
-            position:absolute;
-            left:0;
-            right:0;
-            top:0;
-            height:4px;
-            background: linear-gradient(90deg, #a68023, #c79931 26%, #efc866 54%, #c79931 80%, #a68023);
-        }
-
-        .explore-header{
-            padding: 18px 18px 12px 18px;
-            border-bottom: 1px solid rgba(166,128,35,.32);
-            display:flex;
-            align-items:center;
-            justify-content: space-between;
-            gap: 10px;
-            background: #0b1529;
-        }
-
-        .explore-title{
-            font-weight: 1000;
-            letter-spacing: 1.2px;
-            color: var(--legend-gold-bright);
-            font-size: 1rem;
-            white-space: nowrap;
-        }
-
-        .explore-pill{
-            font-size: .74rem;
-            font-weight: 900;
-            color: var(--legend-gold-bright);
-            background: #0f1d38;
-            border: 1px solid rgba(166,128,35,.42);
-            padding: 6px 11px;
-            border-radius: 999px;
-            white-space: nowrap;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.72);
-        }
-
-        .explore-search{
-            padding: 14px 18px 10px 18px;
-        }
-
-        .explore-search input{
-            width: 100%;
-            border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.42);
-            padding: 11px 15px;
-            outline: none;
-            font-weight: 800;
-            transition: all .2s ease;
-            background: #0f1d38;
-            color:#f8fafc;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-        }
-
-        .explore-search input:focus{
-            border-color: rgba(166,128,35,.94);
-            box-shadow: 0 0 0 4px rgba(166,128,35,.14), 0 12px 24px rgba(64,47,11,.08);
-        }
-
-        /* Scrollable list auto-adjusts */
-        .explore-list{
-            max-height: calc(100vh - 330px);
-            overflow: auto;
-            padding: 8px 12px 16px 12px;
-        }
-
-        .explore-group-label{
-            margin: 10px 8px 6px;
-            font-size: .68rem;
-            font-weight: 900;
-            letter-spacing: .16em;
-            text-transform: uppercase;
-            color: #f1d58a;
-            opacity: .9;
-        }
-
-        .explore-item{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: 12px;
-            text-decoration: none;
-            color: #f8fafc;
-            font-weight: 900;
-            transition: all .2s ease;
-            margin: 6px 6px;
-            border: 1px solid rgba(166,128,35,.38);
-            background: #0f1d38;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-        }
-
-        .explore-item:hover{
-            color: var(--legend-gold-bright);
-            background: rgba(166,128,35,.14);
-            transform: translateY(-2px);
-            border-color: rgba(166,128,35,.56);
-            box-shadow: 0 14px 28px rgba(0,0,0,.24);
-        }
-
-        .explore-item span{
-            display:block;
-            font-size:.98rem;
-            letter-spacing:.18px;
-        }
-
-        .explore-item small{
-            font-weight: 900;
-            white-space: nowrap;
-            padding: 5px 10px;
-            border-radius: 999px;
-            border: 1px solid rgba(255,255,255,.16);
-            background: rgba(255,255,255,.06);
-            color: #e2e8f0;
-            letter-spacing: .35px;
-            text-transform: uppercase;
-            font-size: .67rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
-        }
-
-        .explore-item[data-tone="crm"] small{
-            color:#2457c5;
-            border-color:rgba(36,87,197,.28);
-            background:linear-gradient(180deg, #f4f8ff, #e9f1ff);
-        }
-
-        .explore-item[data-tone="prospect"] small{
-            color:#a05d12;
-            border-color:rgba(160,93,18,.26);
-            background:linear-gradient(180deg, #fff7ee, #ffecd7);
-        }
-
-        .explore-item[data-tone="forms"] small{
-            color:#0d7d73;
-            border-color:rgba(13,125,115,.24);
-            background:linear-gradient(180deg, #f1fcfa, #e7f8f5);
-        }
-
-        .explore-item[data-tone="ops"] small{
-            color:#1f8b49;
-            border-color:rgba(31,139,73,.24);
-            background:linear-gradient(180deg, #f3fbf6, #e8f7ed);
-        }
-
-        .explore-item[data-tone="network"] small{
-            color:#7a3fe0;
-            border-color:rgba(122,63,224,.24);
-            background:linear-gradient(180deg, #f7f4ff, #efe9ff);
-        }
-
-        .explore-item[data-tone="library"] small{
-            color:#a05d12;
-            border-color:rgba(160,93,18,.24);
-            background:linear-gradient(180deg, #fff8ef, #fff0dd);
-        }
-
-        .explore-item[data-tone="growth"] small{
-            color:#9d4edd;
-            border-color:rgba(157,78,221,.24);
-            background:linear-gradient(180deg, #faf4ff, #f1e6ff);
-        }
-
-        .explore-item[data-tone="utility"] small{
-            color:#4f6b1b;
-            border-color:rgba(79,107,27,.24);
-            background:linear-gradient(180deg, #f8fbeF, #eef5df);
-        }
-
-        @@media (max-width: 576px){
-            .legend-global-nav .navbar-left .nav-item-explore .explore-trigger{
-                width: 40px;
-                height: 40px;
-            }
-
-            .mini-tools{
-                width: 100%;
-                max-width: none;
-                margin: 0;
-            }
-
-            .explore-drawer{
-                top: 154px;
-                left: 12px;
-            }
-        }
-
-        footer.footer {
-            font-weight: 700;
-            font-size: 0.95rem;
-        }
-
-        /* Hide explore affordances on public onboarding links */
-        .onboarding-public-only .explore-trigger,
-        .onboarding-public-only #exploreDrawer,
-        .onboarding-public-only #exploreOverlay {
-            display: none !important;
-        }
-        /* Lighten heavy shadows on public onboarding to keep scroll smooth */
-        .onboarding-public-only .navbar{
-            box-shadow: 0 10px 22px rgba(0,0,0,.22);
-        }
-
-        .layout-content {
-            padding-top: 1.1rem;
-            padding-bottom: 3rem;
-        }
-    </style>
     <style>
         .impersonation-banner {
             position: sticky;
@@ -438,6 +113,7 @@
     </style>
 <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
 
 <body class="@layoutBodyClass">
@@ -743,6 +419,25 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                var websiteProfile = await WebsiteTracking.GetByUserIdAsync(User.GetCanonicalUserId(), Context.RequestAborted);
+                if (websiteProfile is not null && string.Equals(websiteProfile.Status, "active", StringComparison.OrdinalIgnoreCase))
+                {
+                    var websiteUrls = await WebsiteTracking.GetPersonalUrlsAsync(websiteProfile, Context.RequestAborted);
+                    @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
+                        "Edit Protect website", websiteProfile.DisplayName ?? "Your agent website", "/Account/WebsiteSession?site=protect", "/Account/EditProtectWebsite", websiteUrls.PrimaryUrl, "agent"))
+                }
+                if (isFounder)
+                {
+                    @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
+                        "Edit LEGEND® website", "Founder", "/Account/WebsiteSession?site=legend", "/Account/EditLegendWebsite", "https://www.mylegnd.com", "founder"))
+                }
+            }
+            @if ((ViewData["BusinessWorkspace"] ?? ViewData.Model) is Shared.Crm.BusinessWorkspaceModel selectedBusinessWorkspace)
+            {
+                @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", await BusinessWorkspace.NavigationForBusinessAsync(selectedBusinessWorkspace.BusinessId, User.GetCanonicalUserId(), User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email), Context.RequestAborted))
+            }
             <div class="explore-group-label">Pages</div>
             <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Agent Documents</span>
@@ -791,6 +486,10 @@
                     <span>Legend® Connect</span>
                     <small>Language</small>
                 </a>
+                <a class="explore-item" data-tone="ops" href="/founder/diagnostics">
+                    <span>Diagnostics</span>
+                    <small>System</small>
+                </a>
                 <a class="explore-item" data-tone="ops" asp-controller="AgencyCommand" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                     <span>Agency Command</span>
                     <small>Ops</small>
@@ -826,29 +525,10 @@
                 <small>Utility</small>
             </a>
 
-            <div id="explorePageHealthSlot">
-                <div class="explore-group-label">System</div>
-                <button type="button" class="explore-item" data-tone="utility" id="explorePageHealthTrigger">
-                    <span>Page Health</span>
-                    <small>Diagnostics</small>
-                </button>
-            </div>
-
             @* Add unlimited items here — it auto-scrolls *@
         </div>
     </div>
 </aside>
-
-<script>
-document.getElementById("explorePageHealthTrigger")?.addEventListener("click", () => {
-    document.getElementById("exploreDrawer")?.classList.remove("open");
-    const overlay = document.getElementById("exploreOverlay");
-    overlay?.classList.remove("open", "show");
-    overlay?.setAttribute("aria-hidden", "true");
-    document.getElementById("exploreTrigger")?.setAttribute("aria-expanded", "false");
-    window.LegendPageHealth?.current.open();
-});
-</script>
 
 @await Html.PartialAsync("~/Views/Messaging/_LifeHacModal.cshtml")
 
@@ -1661,14 +1341,14 @@ document.getElementById("explorePageHealthTrigger")?.addEventListener("click", (
     })();
 </script>
 
-<div class="container layout-content flex-grow-1">
+<div class="legend-app-content layout-content flex-grow-1">
     <main role="main">
         @RenderBody()
     </main>
 </div>
 
 <footer class="footer mt-auto py-3">
-    <div class="container text-center">
+    <div class="legend-app-footer text-center">
         &copy; 2025 - MYLEGND, LLC. All rights reserved.
     </div>
 </footer>
@@ -1832,5 +1512,6 @@ document.getElementById("explorePageHealthTrigger")?.addEventListener("click", (
 }
 
 <script src="~/_content/Shared/js/application-localization.js" asp-append-version="true" defer></script>
+<script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
 </body>
 </html>

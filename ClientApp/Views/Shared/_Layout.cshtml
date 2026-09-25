@@ -6,8 +6,11 @@
 @using System.IO
 @using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Infrastructure.Businesses.BusinessWorkspaceService BusinessWorkspace
+@using Shared.Auth
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+@inject Microsoft.Extensions.Configuration.IConfiguration WebsiteConfiguration
 @{
     var layoutController =
         (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName
@@ -31,6 +34,9 @@
     var messagingServiceContactEmail = messagingClientContext is { IsAgentView: false }
         ? messagingClientContext.AgentEmail?.Trim()
         : null;
+    var applicationFaviconUrl = Infrastructure.WebsiteEditing.WebsiteFaviconParity.PublicUrl(
+        WebsiteConfiguration,
+        Infrastructure.WebsiteEditing.WebsiteEditorSiteKeys.Legend);
 }
 <html lang="en">
 <head>
@@ -40,9 +46,10 @@
 
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css?v=20260528-royal2" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/layout-inline.css?v=20260528-royal2" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
     @if (loadSharedFinanceStyles)
     {
@@ -52,12 +59,14 @@
     @RenderSection("Styles", required: false)
     <link rel="stylesheet" href="~/css/client-mobile.css" asp-append-version="true" />
 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <!-- Google Font for Psalms 23 | Proverbs 3:5-6 -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
 
-    <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
+    <link rel="icon" href="@applicationFaviconUrl" />
+    <link rel="stylesheet" href="~/design/legend-website-management.css" asp-append-version="true" />
 </head>
-<body class="client-portal d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
+<body class="legend-app client-portal d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-dark legend-global-nav" data-legend-global-nav>
@@ -91,7 +100,7 @@
                             if (ctx?.Profile != null)
                             {
                                 isBusinessClient = string.Equals(ResolveRecordType(ctx.Profile), "BusinessClient", StringComparison.OrdinalIgnoreCase);
-                                managedClientName = $"{ctx.Profile.FirstName} {ctx.Profile.LastName}".Trim();
+                                managedClientName = ctx.AccountDisplayName;
                                 if (string.IsNullOrWhiteSpace(managedClientName))
                                 {
                                     managedClientName = "Client";
@@ -164,9 +173,12 @@
                             first = CleanToken(messagingClientContext.Profile.FirstName);
                             last = CleanToken(messagingClientContext.Profile.LastName);
 
-                            displayName = string.Join(
-                                " ",
-                                new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                            displayName = messagingClientContext.AccountDisplayName;
+                            if (isBusinessClient)
+                            {
+                                first = displayName;
+                                last = null;
+                            }
 
                             if (string.IsNullOrWhiteSpace(displayName))
                             {
@@ -295,6 +307,13 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            @if (messagingClientContext is not null)
+            {
+                var businessLinks = await BusinessWorkspace.NavigationAsync(messagingClientContext.Profile.Id,
+                    User.GetCanonicalUserId(), messagingClientContext.IsAgentView ? messagingClientContext.AgentEmail : messagingClientContext.Profile.Email,
+                    Context.RequestAborted);
+                @await Html.PartialAsync("~/Views/Shared/_BusinessWorkspaceQuickFind.cshtml", businessLinks)
+            }
             <a class="explore-item" data-tone="protection" asp-controller="ProtectionSnapshot" asp-action="Index">
                 <span>Protection Snapshot</span>
                 <small>Planning</small>
@@ -315,14 +334,14 @@
 
 @await Html.PartialAsync("~/Views/Messaging/_LifeHacModal.cshtml")
 
-<div class="container layout-content flex-grow-1">
+<div class="legend-app-content layout-content flex-grow-1">
     <main role="main">
         @RenderBody()
     </main>
 </div>
 
 <footer class="footer mt-auto py-3">
-    <div class="container text-center footer-shell">
+    <div class="legend-app-footer text-center footer-shell">
         <div class="footer-left">
             <div class="footer-support">
                 <span class="footer-support-label">Need Support?</span>
@@ -475,6 +494,7 @@
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required:false)
 <script src="~/_content/Shared/js/application-localization.js" asp-append-version="true" defer></script>
+<script src="~/design/legend-website-management.js" asp-append-version="true" defer></script>
 </body>
 </html>
 

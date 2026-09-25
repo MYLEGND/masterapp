@@ -1,3 +1,5 @@
+using Infrastructure.Diagnostics;
+using Shared.Diagnostics;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -10,9 +12,11 @@ using Infrastructure.FinancialIntelligence;
 using Infrastructure.Analytics;
 using ParfaitApp.Services;
 using Infrastructure.Data;
+using Infrastructure.Businesses;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 builder.Services.AddControllersWithViews();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -122,6 +126,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
         options.UseSqlServer(configuredDb);
 });
 
+builder.Services.AddScoped<ICommerceBusinessProvisioningService, CommerceBusinessProvisioningService>();
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();
@@ -279,6 +284,8 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
+builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
+
 var app = builder.Build();
 
 {
@@ -317,6 +324,7 @@ else
     app.UseHsts();
 }
 
+app.UseLegendFailureDiagnostics();
 app.UseHttpsRedirection();
 app.Use(async (context, next) =>
 {

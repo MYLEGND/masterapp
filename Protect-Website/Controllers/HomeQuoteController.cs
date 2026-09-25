@@ -69,7 +69,7 @@ namespace Protect_Website.Controllers
 	            if (!ack)
 	                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
 	                    "Please check the authorization box so we can contact you about this quote.");
-	
+
 	            if (!ModelState.IsValid)
 	            {
 	                ViewData["StartStep"] = ResolveStartStep(ModelState);
@@ -92,6 +92,7 @@ namespace Protect_Website.Controllers
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
             // ── 1. Persist lead FIRST — never lost even if email or analytics fails ───
+            WebsiteLifeLeadCaptureResult? capturedSubmission = null;
             WebsiteLead lead;
             try
             {
@@ -150,8 +151,42 @@ namespace Protect_Website.Controllers
                         CorrelationId  = correlationId,
                     })
                 };
-                _db.WebsiteLeads.Add(lead);
-                await _db.SaveChangesAsync();
+                if (!await WebsiteLeadSubmission.TryCreateAsync(_db, lead,
+                        HttpContext?.Request is { HasFormContentType: true } submissionRequest ? submissionRequest.Form["SubmissionId"].FirstOrDefault() : null,
+                        HttpContext?.RequestAborted ?? CancellationToken.None, async ct =>
+                        {
+                            capturedSubmission = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = "home",
+                        OfferKey = "home",
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.AddressState,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                            if (!capturedSubmission.Captured && capturedSubmission.Reason != "InternalTestLead")
+                                throw new InvalidOperationException("The advisor handoff could not be completed.");
+await TryWriteLeadEventAsync(
+                "lead_persisted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "home_insurance" },
+                lead.CreatedUtc);
+await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                lead.CreatedUtc);
+                        }))
+                {
+                    TempData["QuoteType"] = lead.InterestType;
+                    return RedirectToAction("Index", "ThankYou");
+                }
                 _logger.LogInformation(
                     "HomeQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
                     correlationId, lead.LeadId);
@@ -178,6 +213,7 @@ namespace Protect_Website.Controllers
                 }
                 catch (Exception analyticsEx)
                 {
+                    if (eventType is "lead_persisted" or "website_lead_submitted") throw;
                     if (analyticsEvent != null)
                     {
                         var entry = _db.Entry(analyticsEvent);
@@ -194,10 +230,7 @@ namespace Protect_Website.Controllers
                 }
             }
 
-            await TryWriteLeadEventAsync(
-                "lead_persisted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "home_insurance" },
-                lead.CreatedUtc);
+
 
             try
             {
@@ -205,23 +238,7 @@ namespace Protect_Website.Controllers
                     "workstation_capture_attempt",
                     new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "home", OfferKey = "home" });
 
-                var captureResult = await _websiteLeadCapture.UpsertAsync(
-                    new WebsiteLifeLeadCaptureRequest
-                    {
-                        WebsiteLeadId = lead.LeadId,
-                        SubmittedUtc = lead.CreatedUtc,
-                        ProductType = "home",
-                        OfferKey = "home",
-                        FirstName = lead.FirstName,
-                        LastName = lead.LastName,
-                        Email = lead.Email,
-                        Phone = lead.Phone,
-                        State = model.AddressState,
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug = agentSlug,
-                        RecipientEmail = leadRecipientEmail
-                    },
-                    HttpContext?.RequestAborted ?? CancellationToken.None);
+                var captureResult = capturedSubmission!;
 
                 if (captureResult.Captured)
                 {
@@ -293,7 +310,7 @@ namespace Protect_Website.Controllers
                 });
 
 
-            
+
             var rows = new LeadEmailTemplate.RowBuilder();
 
 // ── 2. Send email through unified sender ───────────────────────────────
@@ -318,10 +335,7 @@ namespace Protect_Website.Controllers
             }
 
             // ── 3. Write analytics event (failure does not lose the lead or email) ─
-            await TryWriteLeadEventAsync(
-                "website_lead_submitted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId },
-                lead.CreatedUtc);
+
 
             TempData["QuoteType"] = "Home";
             TempData["MetaLeadEventId"] = metaLeadEventId;
@@ -417,7 +431,7 @@ namespace Protect_Website.Controllers
 	            var formSlug = Request?.Form["AgentSlug"].ToString();
 	            if (!string.IsNullOrWhiteSpace(formSlug))
 	                return formSlug.Trim();
-	
+
 	            return ExtractSlugFromPath(Request?.Path.Value)
 	                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
 	        }
@@ -437,7 +451,7 @@ namespace Protect_Website.Controllers
 	                HasKey(nameof(HomeQuoteFormModel.PersonalLiability)) ||
 	                HasKey(nameof(HomeQuoteFormModel.MedicalPayments)))
 	                return 5;
-	
+
 	            if (HasKey(nameof(HomeQuoteFormModel.DwellingUsage)) ||
 	                HasKey(nameof(HomeQuoteFormModel.DwellingType)) ||
 	                HasKey(nameof(HomeQuoteFormModel.YearBuilt)) ||

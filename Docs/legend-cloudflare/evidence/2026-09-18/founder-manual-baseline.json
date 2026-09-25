@@ -1,0 +1,48 @@
+{
+  "releaseSha": "feea9b81324312167ca9fdb310cbd7c0972c4b29",
+  "workflowRunId": 35408238239,
+  "workerVersion": "ff21d611-5158-49aa-a905-ce977114694c",
+  "status": "temporary Founder manual-test baseline; not multimodel completion",
+  "portalRevisionVerified": true,
+  "cloudflareSettingsVerified": true,
+  "macPreserved": true,
+  "privilegedToolsEnabled": false,
+  "browserVerified": false,
+  "results": [
+    {
+      "case": "conversation-memory",
+      "prompt": "For this conversation only, call my hypothetical project Cedar. Reply with a brief greeting.",
+      "response": "Hello! How can I assist you with your Cedar project today?",
+      "model": "@cf/openai/gpt-oss-120b",
+      "latencyMs": 2770,
+      "usage": {
+        "inputTokens": 868,
+        "outputTokens": 72,
+        "costMicrousd": 358,
+        "costEvidence": "provider_usage"
+      },
+      "assessment": "greeting appropriate",
+      "tools": "none",
+      "source": "real Cloudflare through LEGEND .NET transport; synthetic scope, not authenticated Azure Founder session"
+    },
+    {
+      "case": "conversation-memory",
+      "prompt": "What name did I give my hypothetical project? Answer only the name.",
+      "response": "Cedar",
+      "model": "@cf/openai/gpt-oss-120b",
+      "latencyMs": 2847,
+      "usage": {
+        "inputTokens": 905,
+        "outputTokens": 72,
+        "costMicrousd": 371,
+        "costEvidence": "provider_usage"
+      },
+      "assessment": "pass exact retained name",
+      "tools": "none",
+      "source": "real Cloudflare through LEGEND .NET transport; synthetic scope, not authenticated Azure Founder session"
+    }
+  ],
+  "modelCostUsd": 0.000729,
+  "firstHarnessAttempt": "registry alias mismatch, zero provider calls; preserved in private diagnostic",
+  "crossPlatform": "shared backend contracts and expiring bearer-binding tests pass; device sessions not live verified"
+}

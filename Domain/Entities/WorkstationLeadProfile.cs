@@ -6,6 +6,7 @@ public class WorkstationLeadProfile
 {
     public string LeadId { get; set; } = "";
     public string AgentUserId { get; set; } = "";
+    public Guid? CommerceBusinessId { get; set; }
     public string Bucket { get; set; } = "MortgageProtection";
     public string? OriginalLeadType { get; set; } = "MortgageProtection";
 

@@ -58,6 +58,18 @@ public class AccountController : Controller
         if (challenge.Success)
             return await StartChallengeAsync(challenge.ReturnUrl, challenge.LoginHint);
 
+        // Existing clients may already have a stable Microsoft object-ID binding
+        // and an active entitlement, so they do not need a one-time activation
+        // continuation to begin a new OIDC session. The callback remains the
+        // authority: it permits continuation-free access only after resolving
+        // that object ID to an entitled client profile. First-time binding still
+        // requires the protected continuation created by the member sign-in form.
+        if (string.Equals(challenge.SafeErrorCode, "MISSING_CONTINUATION", StringComparison.Ordinal))
+        {
+            _identityAccessService.ClearChallengeContinuationCookie(Response);
+            return RedirectToAction(nameof(Login), new { returnUrl = target });
+        }
+
         _identityAccessService.ClearChallengeContinuationCookie(Response);
 
         return RedirectToAction(nameof(ActivationRequired), new
@@ -126,6 +138,10 @@ public class AccountController : Controller
         }
 
         _identityAccessService.StoreChallengeContinuationCookie(Response, signInPreparation.ProtectedState, signInPreparation.ExpiresUtc.Value);
+
+        if (!string.IsNullOrWhiteSpace(signInPreparation.RedemptionUrl))
+            return Redirect(signInPreparation.RedemptionUrl);
+
         return await StartChallengeAsync(signInPreparation.ReturnUrl, signInPreparation.LoginHint);
     }
 
@@ -143,11 +159,22 @@ public class AccountController : Controller
         var model = new AgentPortal.Models.ErrorViewModel
         {
             RequestId = diagnostics.RequestId,
-            Diagnostics = diagnostics
+            Diagnostics = null
         };
 
         Response.StatusCode = StatusCodes.Status403Forbidden;
-        Response.Headers["X-Legend-Failure-Kind"] = diagnostics.FailureKind;
+        Response.Headers.Remove("X-Legend-Failure-Kind");
+        Response.Headers.Remove("X-Legend-Failing-Point");
+        Response.Headers.Remove("X-Legend-Redirect-Depth");
+        Response.Headers["X-Legend-Request-Id"] = diagnostics.RequestId;
+        Response.Headers.CacheControl = "no-store";
+        if (AppFailureDiagnosticsBuilder.RequestPrefersJson(Request))
+            return new ObjectResult(new
+            {
+                error = "access_denied",
+                message = "Your current account does not have permission to perform this action.",
+                requestId = diagnostics.RequestId
+            }) { StatusCode = StatusCodes.Status403Forbidden };
         return View("~/Views/Shared/Error.cshtml", model);
     }
 

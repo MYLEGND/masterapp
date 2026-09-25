@@ -55,6 +55,54 @@
     <None Include="..\\AgentPortal\\wwwroot\\css\\legend-founder-ai.css"
           Link="legend-founder-ai.css"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\Clients\\Index.cshtml"
+          Link="business-crm-clients-index.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\Clients\\_ClientsPipelineView.cshtml"
+          Link="business-crm-clients-pipeline.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\Leads\\Index.cshtml"
+          Link="business-crm-leads-index.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\Leads\\_LeadPipelineView.cshtml"
+          Link="business-crm-leads-pipeline.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\ClientApp\\ClientApp.csproj"
+          Link="business-booking-clientapp.csproj"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\ClientApp\\Views\\Shared\\_Layout.cshtml"
+          Link="business-booking-client-layout.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\ClientApp\\Controllers\\BusinessBookingController.cs"
+          Link="business-booking-client-controller.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Controllers\\InternalBusinessBookingController.cs"
+          Link="business-booking-internal-controller.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Controllers\\CalendarController.cs"
+          Link="business-booking-calendar-controller.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\wwwroot\\js\\clients-index.js"
+          Link="business-booking-clients-index.js"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\wwwroot\\js\\leads-index.js"
+          Link="business-booking-leads-index.js"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\wwwroot\\js\\scheduling\\qv-booking.js"
+          Link="business-booking-qv.js"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\wwwroot\\css\\qv-booking.css"
+          Link="business-booking-qv.css"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\Calendar\\MobileBooking.cshtml"
+          Link="business-booking-mobile-view.cshtml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Program.cs"
+          Link="business-booking-agent-program.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\ClientApp\\Program.cs"
+          Link="business-booking-client-program.cs"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\AgentPortal\\Views\\Shared\\_LegendFounderAiModal.cshtml"
           Link="legend-founder-ai-modal.cshtml"
           CopyToOutputDirectory="PreserveNewest" />
@@ -88,6 +136,11 @@
     <None Include="..\\AgentPortal\\Views\\LegendConnect\\Index.cshtml"
           Link="legend-connect-index.cshtml"
           CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../Legend-Cloudflare/tests/security/action-digest-vectors.json"
+          Link="legend-cloudflare-action-digest-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">

@@ -55,7 +55,7 @@
 
 #proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;background:rgba(7,14,28,.72);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
 #proposalOverlay.hp-overlay[hidden]{display:none !important;}
-#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;scrollbar-gutter:stable;border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);padding:1rem 1.1rem;}
+#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);padding:1rem 1.1rem;}
 #proposalDialog .hp-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding-bottom:.7rem;border-bottom:1px solid rgba(166,128,35,.22);margin-bottom:.8rem;}
 #proposalDialog .hp-dialog-brand{display:flex;align-items:center;gap:.9rem;}
 #proposalDialog .hp-dialog-icon{font-size:1.8rem;line-height:1;flex-shrink:0;}
@@ -730,7 +730,6 @@
     border-radius: 22px !important;
     color: #f8fafc !important;
     box-shadow: 0 40px 100px rgba(0,0,0,.58) !important;
-    scrollbar-gutter: stable;
 }
 
 /* Sticky header */

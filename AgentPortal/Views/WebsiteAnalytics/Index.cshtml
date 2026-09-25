@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "Website Analytics";
+    var analyticsBase = ViewData["AnalyticsBase"] as string ?? "/WebsiteAnalytics";
     var initialPreset = ViewData["InitialRangePreset"] as string ?? "today";
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Today";
     var initialRangeFrom = ViewData["InitialRangeFrom"] as string ?? string.Empty;
@@ -24,7 +25,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="legend-workspace-page mb-4 fa-shell" data-analytics-base="@analyticsBase" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -268,7 +269,7 @@
                         </button>
                         <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
                            id="meta-connect-btn"
-                           href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
+                           href="@(analyticsBase + "/meta-connect?returnUrl=" + Uri.EscapeDataString(Context.Request.Path))">
                             Connect Meta Ads
                         </a>
                         <button type="button"
@@ -1121,7 +1122,7 @@
           <div class="meta-signal-health-section-head">
             <div>
               <h6 class="mb-1">Pipeline Health</h6>
-              <p class="mb-0">Raw last-24-hour volume across analytics, bridge-derived signal rows, lead capture, and Meta send flags.</p>
+              <p class="mb-0">Raw selected-range volume across analytics, bridge-derived signal rows, lead capture, and Meta send flags.</p>
             </div>
           </div>
           <div class="meta-signal-health-pipeline-grid" id="metasignal-health-pipeline-grid">
@@ -2220,7 +2221,7 @@
     </div>
 </div>
 
-<div id="aiInsightsDrawer" class="ai-drawer" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+<div id="aiInsightsDrawer" class="ai-drawer" inert aria-hidden="true" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
     <div class="ai-drawer-header">
         <div>
             <div class="ai-drawer-title">AI Review</div>

@@ -4,6 +4,10 @@
     var search = (string)(ViewBag.Search ?? "");
     var hasSearch = !string.IsNullOrWhiteSpace(search);
     var searchResultCount = (int)(ViewBag.TotalClients ?? Model?.Count ?? 0);
+    var businessWorkspace = ViewData["BusinessWorkspace"] as Shared.Crm.BusinessWorkspaceModel;
+    var listUrl = businessWorkspace is null
+        ? (Url.Action("Index", "Clients") ?? "/Clients")
+        : $"/business/{businessWorkspace.BusinessId}/clients";
 }
 
 <section class="cards navy-shell-clients" id="cardsView" aria-label="Pipeline CRM workspace">
@@ -24,8 +28,11 @@
                         <button type="button" class="btn btn-ghost pipeline-head-btn pipeline-head-btn-refresh" id="btnPipelineRefresh">Refresh</button>
                         <button type="button" class="btn btn-stage-tone pipeline-head-btn pipeline-head-btn-buckets" id="btnPipelineAll">All Buckets</button>
                         <button type="button" class="btn btn-green pipeline-head-btn pipeline-head-btn-call" id="btnPipelineCallTask">Call Task Mode</button>
-                        <button type="button" class="btn btn-import pipeline-head-btn pipeline-head-btn-import" id="btnImportLeads">Import Leads (CSV)</button>
-                        <a class="btn btn-gold pipeline-head-btn pipeline-head-btn-new" href="/Clients/Create" id="btnPipelineNew">+ New Lead / Client</a>
+                        @if (businessWorkspace is null)
+                        {
+                            <button type="button" class="btn btn-import pipeline-head-btn pipeline-head-btn-import" id="btnImportLeads">Import Leads (CSV)</button>
+                            <a class="btn btn-gold pipeline-head-btn pipeline-head-btn-new" href="/Clients/Create" id="btnPipelineNew">+ New Lead / Client</a>
+                        }
                     </div>
                 </div>
             </div>
@@ -54,7 +61,7 @@
         </div>
         <div class="pipeline-command-dock" id="legendBar">
             <div class="pipeline-command-row pipeline-command-row-search">
-                <form method="get" asp-action="Index" autocomplete="off" id="clientSearchForm" class="pipeline-command-form">
+                <form method="get" action="@listUrl" autocomplete="off" id="clientSearchForm" class="pipeline-command-form">
                     <div class="field pipeline-command-field" title="Search (/)">
                         <span class="pipeline-command-icon" aria-hidden="true">🔎</span>
                         <input name="search"
@@ -76,7 +83,7 @@
                         <span class="pipeline-inline-stat-label">Search</span>
                         <strong>@searchResultCount</strong>
                     </span>
-                    <a asp-action="Index" class="btn btn-ghost pipeline-mini-btn">Back To Full List</a>
+                    <a href="@listUrl" class="btn btn-ghost pipeline-mini-btn">Back To Full List</a>
                 }
             </div>
 

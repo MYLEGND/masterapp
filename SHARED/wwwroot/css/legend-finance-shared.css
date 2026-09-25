@@ -1647,7 +1647,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     --navy-panel: var(--dash-royal-925, #0d1c38);
     --navy-field: var(--dash-royal-900, #10254c);
     --finance-shell-gutter: clamp(12px, 2vw, 28px);
-    --finance-main-width: 1120px;
+    --finance-main-width: 100%;
     --shadow-a: var(--dash-shadow, 0 28px 60px rgba(4, 10, 28, .26));
     --shadow-b: var(--dash-shadow-strong, 0 34px 80px rgba(3, 8, 22, .38));
     --radius: 20px;
@@ -1667,7 +1667,7 @@ body {
     min-height: calc(100vh - 110px);
     box-sizing: border-box;
     width: 100%;
-    max-width: calc(var(--finance-main-width) + (var(--finance-shell-gutter) * 2));
+    max-width: none;
     margin-top: 0;
     padding-left: var(--finance-shell-gutter);
     padding-right: var(--finance-shell-gutter);
@@ -2015,6 +2015,10 @@ body {
     display: grid;
     place-items: center;
     padding: 2rem 1rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .finance-support-overlay--dense {
@@ -2031,8 +2035,11 @@ body {
 .finance-support-modal {
     position: relative;
     width: min(1750px, 96vw);
-    max-height: 90vh;
+    max-height: min(90dvh, 90vh);
     overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     border: 2px solid var(--line-dark);
     border-radius: 18px;
     background: var(--navy-panel);
@@ -2093,10 +2100,6 @@ body {
     gap: 12px;
 }
 
-body.finance-support-open {
-    overflow: hidden;
-}
-
 .finance-side-card {
     position: relative;
     display: flex;
@@ -2137,7 +2140,10 @@ body.finance-support-open {
     width: min(97vw, 1540px);
     max-width: 1540px;
     max-height: calc(100dvh - 2rem);
-    overflow: hidden;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     padding: 12px;
 }
 
@@ -3280,10 +3286,6 @@ body.finance-support-open {
     flex-wrap: wrap;
 }
 
-body.finance-dual-tools-open {
-    overflow: hidden;
-}
-
 body.finance-dual-tools-open .layout-content,
 body.finance-dual-tools-open main[role="main"] {
     width: 100%;
@@ -3308,7 +3310,7 @@ body.finance-dual-tools-open .layout-content {
 
 .finance-shell--dual-tools .finance-tools-row {
     width: 100%;
-    max-width: min(1920px, calc(100vw - 20px));
+    max-width: 100%;
 }
 
 .finance-shell--dual-tools .finance-tools-row > .col-12 {

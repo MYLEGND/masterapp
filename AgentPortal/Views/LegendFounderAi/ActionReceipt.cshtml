@@ -1,0 +1,7 @@
+@{ ViewData["Title"] = "LEGEND action receipt"; }
+<section class="container py-4">
+    <h1>Action receipt</h1>
+    <p>@(ViewData["Succeeded"] is true ? "The tool returned a successful receipt. Staging is separate from validation and deployment." : "The action did not return a successful receipt. Inspect the outcome before trying again.")</p>
+    <pre>@ViewData["Receipt"]</pre>
+    <a href="/founder/diagnostics" class="btn btn-outline-primary">Inspect staged changes</a>
+</section>

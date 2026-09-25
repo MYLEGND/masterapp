@@ -17,7 +17,7 @@ import com.mylegnd.legend.registered.core.realtime.MobileMessagingRealtimeClient
 import com.mylegnd.legend.registered.core.session.SessionRepository
 import com.mylegnd.legend.registered.data.*
 
-class LegendApplication : Application() { lateinit var container: LegendContainer; private set; override fun onCreate() { super.onCreate(); LegendDesignAuthority.initialize(this); LegendFirebaseMessagingService.ensureNotificationChannel(this); container = LegendContainer(this) } }
+class LegendApplication : Application() { lateinit var container: LegendContainer; private set; override fun onCreate() { super.onCreate(); com.mylegnd.legend.registered.core.diagnostics.RuntimeDiagnostics.initialize(this); LegendDesignAuthority.initialize(this); LegendFirebaseMessagingService.ensureNotificationChannel(this); container = LegendContainer(this) } }
 class LegendContainer(application: Application) {
     val configuration = LegendRuntimeConfigurationLoader.load(application)
     val auth: LegendAuthClient = MsalLegendAuthClient(application, configuration)

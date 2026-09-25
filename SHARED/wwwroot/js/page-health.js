@@ -1,538 +1,250 @@
 (function () {
   if (window.LegendPageHealth) return;
 
-  const KNOWLEDGE_KEY = "legend_page_health_learning_v1";
-  const MAX_SESSION_EVENTS = 18;
-  const MAX_BREADCRUMBS = 12;
-  const MAX_KNOWN_PATTERNS = 24;
+  // This is the existing observer, not an error classifier or repair authority.
+  // Never retain caller messages/details, response bodies, query strings, or IDs.
+  const metadata = document.currentScript?.dataset || {};
+  const originalFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
+  const appIdentifier = ["AgentPortal", "ClientApp", "ParfaitApp", "Protect-Website", "ProtectWebsite", "Legend-Website"].includes(metadata.app)
+    ? metadata.app : "Web";
+  // Endpoint metadata is emitted by the trusted static build from its existing
+  // CMS API base. CORS on that host owns the allowed-origin list.
+  const remoteRequested = metadata.endpoint !== undefined || metadata.bootstrap !== undefined;
+  let publicEndpoint = "";
+  try {
+    const candidate = new URL(metadata.endpoint);
+    if (candidate.protocol === "https:" && !candidate.username && !candidate.password
+        && !candidate.search && !candidate.hash && candidate.pathname === "/api/runtime-diagnostics")
+      publicEndpoint = candidate.href;
+  } catch { }
+  const publicTransport = appIdentifier === "Legend-Website" && publicEndpoint !== ""
+    && metadata.bootstrap === publicEndpoint + "/bootstrap";
+  const endpoint = publicTransport ? publicEndpoint : "/api/runtime-diagnostics";
+  const bootstrap = publicTransport ? publicEndpoint + "/bootstrap" : "";
+  const credentials = publicTransport ? "include" : "same-origin";
+  let csrf = !publicTransport && typeof metadata.csrf === "string" ? metadata.csrf : "";
+  let bootstrapAttempts = 0;
+  const gitCommitHash = typeof metadata.gitCommitHash === "string" && /^[a-f0-9]{40}$/i.test(metadata.gitCommitHash)
+    ? metadata.gitCommitHash.toLowerCase() : "";
+  const route = appIdentifier === "Legend-Website"
+    ? (["/", "/about", "/contact", "/logo", "/privacy-terms"].includes(metadata.route) ? metadata.route : "/")
+    : typeof metadata.route === "string" && /^\/(?:[A-Za-z][A-Za-z0-9_]*\/[A-Za-z][A-Za-z0-9_]*)?$/.test(metadata.route)
+      && metadata.route.length <= 256 ? metadata.route : "/";
+  const canManage = !publicTransport && metadata.founder === "true";
   const observedRequestErrors = new WeakSet();
-  let requestSequence = 0;
-  const settledRequests = new Map();
+  const state = { events: [], queue: [], recent: new Map(), timer: null, inFlight: null,
+    generation: 0, retired: false, disabled: !originalFetch || (remoteRequested && !publicTransport) || (!csrf && !bootstrap), submissions: 0 };
+  const maximumQueue = 24;
+  const maximumEvents = 18;
+  const maximumAttempts = 3;
+  const maximumSubmissions = 60;
+  const maximumAge = 300000;
+  const duplicateWindow = 30000;
 
-  const pageTitle = resolvePageTitle();
-  const pageKey = `${window.location.host}${window.location.pathname}`.toLowerCase();
-  const environment = resolveEnvironment();
-  const state = {
-    events: [],
-    breadcrumbs: [],
-    indexByFingerprint: new Map(),
-    knowledge: loadKnowledge(),
-    ui: null,
-    drawerOpen: false,
-    placementFrame: 0,
-    placementObserver: null
-  };
-  pruneTransientNetworkKnowledge();
+  // Remove only the obsolete diagnostic cache; do not read it or touch app data.
+  try { window.localStorage?.removeItem("legend_page_health_learning_v1"); } catch { }
 
   const current = Object.freeze({
-    log(message, detail, scope = "app") {
-      addBreadcrumb("log", message, detail, scope);
-      return null;
-    },
-    warn(message, detail, scope = "app") {
-      addBreadcrumb("warn", message, detail, scope);
-      return record("warn", message, detail, scope);
-    },
-    error(message, detail, scope = "app") {
-      addBreadcrumb("error", message, detail, scope);
-      return record("error", message, detail, scope);
-    },
-    open() {
-      ensureUi();
-      setDrawerOpen(true);
-    },
-    close() {
-      ensureUi();
-      setDrawerOpen(false);
-    },
-    clearSession() {
-      state.events = [];
-      state.indexByFingerprint.clear();
-      render();
-    },
+    log() { return null; },
+    warn(_message, detail, scope = "app") { return observe(detail, scope, "warning"); },
+    error(_message, detail, scope = "app") { return observe(detail, scope, "error"); },
+    open() { if (canManage) window.location.assign("/founder/diagnostics"); },
+    close() { },
+    clearSession() { clear(false); },
     exportReport() {
-      return buildReport();
+      return JSON.stringify({ route, generatedAt: new Date().toISOString(), currentIssues: state.events, learnedPatterns: {} });
     }
   });
-
   window.LegendPageHealth = Object.freeze({ current });
-  bindGlobalDiagnostics();
-  wrapFetch();
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", render, { once: true });
-  } else {
-    render();
-  }
 
-  function resolvePageTitle() {
-    const title = String(document.title || "").trim();
-    return title.replace(/\s+-\s+Legend™?$/i, "").trim() || "Current page";
+  function property(value, key) { try { return value?.[key]; } catch { return undefined; } }
+  function knownErrorName(error) {
+    const name = property(error, "name");
+    return ["Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError", "URIError", "EvalError",
+      "AggregateError", "TimeoutError", "NetworkError", "AbortError", "SecurityError", "NotAllowedError", "NotFoundError"]
+      .includes(name) ? name : "Error";
   }
-
-  function resolveEnvironment() {
-    const host = window.location.hostname.toLowerCase();
-    return host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")
-      ? "Local"
-      : "Production";
-  }
-
-  function nowIso() {
-    return new Date().toISOString();
-  }
-
-  function normalizeText(value) {
-    return String(value ?? "").trim();
-  }
-
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
-  function safeClone(value, depth) {
-    const level = depth || 0;
-    if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
-    if (value instanceof Error) {
-      return { name: value.name, message: value.message, stack: value.stack };
-    }
-    if (Array.isArray(value)) return value.slice(0, 10).map(item => safeClone(item, level + 1));
-    if (typeof value === "object") {
-      if (level >= 2) return String(value);
-      const output = {};
-      Object.keys(value).slice(0, 18).forEach(key => {
-        output[key] = safeClone(value[key], level + 1);
-      });
-      return output;
-    }
-    return String(value);
-  }
-
-  function loadKnowledge() {
+  function staticScriptPath(value) {
+    if (typeof value !== "string" || value.length > 2048) return "";
     try {
-      const value = JSON.parse(localStorage.getItem(KNOWLEDGE_KEY) || "{}");
-      return value && typeof value === "object" ? value : {};
-    } catch {
-      return {};
-    }
+      const url = new URL(value, window.location.origin);
+      const knownPublicScript = appIdentifier === "Legend-Website"
+        && ["/legend-public-web.js", "/legend-public-cms.js", "/js/page-health.js"].includes(url.pathname);
+      if (url.origin !== window.location.origin || (!knownPublicScript && !/^\/(?:js|_content\/[A-Za-z0-9_.-]+\/js)\/[A-Za-z0-9_./-]+\.m?js$/.test(url.pathname))) return "";
+      return Array.from(document.scripts || []).slice(0, 128).some(script => {
+        try { const known = new URL(script.src, window.location.origin); return known.origin === url.origin && known.pathname === url.pathname; }
+        catch { return false; }
+      }) ? url.pathname.slice(0, 256) : "";
+    } catch { return ""; }
   }
-
-  function saveKnowledge() {
-    try {
-      localStorage.setItem(KNOWLEDGE_KEY, JSON.stringify(state.knowledge));
-    } catch {
-      // Storage can be unavailable in private browsing; diagnostics remain session-scoped.
-    }
-  }
-
-  function firstStackFrame(stack) {
-    return String(stack || "").split("\n").map(line => line.trim()).find(line => /^at\s+/i.test(line)) || "";
-  }
-
-  function extractErrorLike(detail) {
-    const source = detail?.error || detail?.reason || detail;
-    return {
-      name: normalizeText(source?.name),
-      message: normalizeText(source?.message || detail?.message),
-      stack: normalizeText(source?.stack || detail?.stack)
-    };
-  }
-
-  function extractStatus(detail) {
-    const direct = Number(detail?.status);
-    if (Number.isFinite(direct) && direct > 0) return direct;
-    const nested = Number(detail?.response?.status);
-    return Number.isFinite(nested) && nested > 0 ? nested : 0;
-  }
-
-  function extractUrl(detail) {
-    return normalizeText(detail?.url || detail?.requestUrl || detail?.response?.url || detail?.filename);
-  }
-
-  function normalizeNetworkTarget(value) {
-    const raw = normalizeText(value);
-    if (!raw) return "";
-    try {
-      const parsed = new URL(raw, window.location.origin);
-      const path = parsed.pathname.replace(/\/+$/, "") || "/";
-      return `${parsed.origin.toLowerCase()}${path}${parsed.search}`;
-    } catch {
-      return raw.replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
-    }
-  }
-
-  function normalizeMethod(value) {
-    return normalizeText(value).toUpperCase();
-  }
-
-  function isTransientNetworkFailure(payload) {
-    if (payload.scope !== "network" || payload.status !== 0) return false;
-    const text = [payload.message, payload.errorName, payload.errorMessage].join(" ").toLowerCase();
-    return /failed to fetch|network request failed|networkerror|load failed/.test(text);
-  }
-
-  function getStoredNetworkRequest(item, fingerprint) {
-    const match = /^network request failed for\s+([a-z]+)\s+(.+)$/i.exec(normalizeText(item?.message));
-    if (!match) return { method: normalizeMethod(item?.method), target: normalizeNetworkTarget(item?.url) };
-    return { method: normalizeMethod(item?.method || match[1]), target: normalizeNetworkTarget(item?.url || match[2]) };
-  }
-
-  function isTransientNetworkKnowledge(item, fingerprint) {
-    if (normalizeText(item?.scope) !== "network") return false;
-    const text = `${normalizeText(item?.message)}|${normalizeText(fingerprint)}`.toLowerCase();
-    return text.includes("|0|") && /failed to fetch|network request failed|networkerror|load failed/.test(text);
-  }
-
-  function pruneTransientNetworkKnowledge() {
-    let changed = false;
-    Object.keys(state.knowledge).forEach(knownPageKey => {
-      const pageKnowledge = state.knowledge[knownPageKey];
-      if (!pageKnowledge || typeof pageKnowledge !== "object") return;
-      Object.entries(pageKnowledge).forEach(([fingerprint, item]) => {
-        if (!isTransientNetworkKnowledge(item, fingerprint)) return;
-        delete pageKnowledge[fingerprint];
-        changed = true;
-      });
-      if (Object.keys(pageKnowledge).length === 0) delete state.knowledge[knownPageKey];
-    });
-    if (changed) saveKnowledge();
-  }
-
-  function resolveNetworkFailures(url, method, sequence) {
-    const target = normalizeNetworkTarget(url);
-    const normalizedMethod = normalizeMethod(method);
-    if (!target || !normalizedMethod) return;
-
-    const resolved = state.events.filter(event => {
-      const payload = event.payload;
-      return payload.scope === "network"
-        && payload.requestSequence > 0 && payload.requestSequence <= sequence
-        && normalizeMethod(payload.method) === normalizedMethod
-        && normalizeNetworkTarget(payload.url) === target;
-    });
-    if (resolved.length === 0) return;
-
-    const resolvedFingerprints = new Set(resolved.map(event => event.fingerprint));
-    state.events = state.events.filter(event => !resolvedFingerprints.has(event.fingerprint));
-    resolvedFingerprints.forEach(fingerprint => state.indexByFingerprint.delete(fingerprint));
-
-    const pageKnowledge = state.knowledge[pageKey];
-    let knowledgeChanged = false;
-    if (pageKnowledge) {
-      Object.entries(pageKnowledge).forEach(([fingerprint, item]) => {
-        const request = getStoredNetworkRequest(item, fingerprint);
-        if (!isTransientNetworkKnowledge(item, fingerprint) || request.method !== normalizedMethod || request.target !== target) return;
-        delete pageKnowledge[fingerprint];
-        knowledgeChanged = true;
-      });
-      if (Object.keys(pageKnowledge).length === 0) delete state.knowledge[pageKey];
-    }
-    if (knowledgeChanged) saveKnowledge();
-    render();
-  }
-
-  function classifyIssue(payload) {
-    const text = [payload.scope, payload.message, payload.errorName, payload.errorMessage, payload.url].join(" ").toLowerCase();
-    if (payload.errorName === "TimeoutError") return issue("high", "A server request exceeded its time limit.", "The page stopped waiting before this request completed.", "Check the request status before repeating a change. A successful refresh clears this issue.");
-    if (payload.isTransientNetworkFailure) return issue("high", "The page is temporarily unable to reach the server.", "This request ended before the server returned a response.", "Page Health removes this issue automatically when the same request succeeds.");
-    if (payload.status === 401) return issue("high", "Your session expired.", "The current sign-in session is no longer valid.", "Sign back in or refresh this page and try again.");
-    if (payload.status === 403) return issue("high", "This action is blocked by permissions.", "The server rejected this request.", "Check account access or try the action with an authorized user.");
-    if (payload.status === 404) return issue("medium", "A required endpoint could not be found.", "The page requested a route the server does not expose.", "Refresh once. If it repeats, inspect the route in Technical details.");
-    if (payload.status >= 500) return issue("critical", "The server hit an internal error.", "The server failed while handling this request.", "Retry once, then use Technical details to trace the endpoint.");
-    if (/failed to fetch|network request failed|networkerror|load failed/.test(text)) return issue("high", "The page could not reach the server.", "A request failed before receiving a usable response.", "Check the connection and inspect the endpoint details if it repeats.");
-    if (/referenceerror|typeerror|syntaxerror|is not defined|cannot access/.test(text)) return issue("high", "A page script broke while this screen was running.", "A browser error stopped part of this page's logic.", "Use the stack trace in Technical details to fix the exact script path.");
-    if (/boot|init|render|load/.test(text) && payload.scope === "boot") return issue("high", "Part of the page did not finish loading.", "A startup step failed, so this page may be partially ready.", "Refresh once, then inspect the failed startup step if it repeats.");
-    return issue(payload.level === "warn" ? "medium" : "high", "This page hit an unexpected problem.", "The page did not fully recover from an operation.", "Review Technical details and the recent breadcrumbs.");
-  }
-
-  function issue(severity, title, summary, action) {
-    return { severity, title, summary, action };
-  }
-
-  function addBreadcrumb(level, message, detail, scope) {
-    state.breadcrumbs.push({ at: nowIso(), level, scope: normalizeText(scope || "app"), message: normalizeText(message), detail: safeClone(detail) });
-    if (state.breadcrumbs.length > MAX_BREADCRUMBS) state.breadcrumbs.splice(0, state.breadcrumbs.length - MAX_BREADCRUMBS);
-  }
-
-  function record(level, message, detail, scope) {
-    const error = extractErrorLike(detail);
-    const payload = {
-      level,
-      scope: normalizeText(scope || "app"),
-      message: normalizeText(message),
-      errorName: error.name,
-      errorMessage: error.message,
-      stack: error.stack,
-      status: extractStatus(detail),
-      url: extractUrl(detail),
-      method: normalizeMethod(detail?.method),
-      requestSequence: Number(detail?.requestSequence) || 0,
-      detail: safeClone(detail),
-      occurredAt: nowIso()
-    };
-    payload.isTransientNetworkFailure = isTransientNetworkFailure(payload);
-    payload.user = classifyIssue(payload);
-    payload.fingerprint = [payload.scope, payload.errorName, payload.errorMessage || payload.message, payload.status, payload.url, firstStackFrame(payload.stack)].join("|").toLowerCase();
-    payload.breadcrumbs = state.breadcrumbs.slice(-8);
-
-    let event = state.indexByFingerprint.get(payload.fingerprint);
-    if (event) {
-      event.lastSeen = payload.occurredAt;
-      event.sessionCount += 1;
-      event.payload = payload;
-    } else {
-      event = { fingerprint: payload.fingerprint, firstSeen: payload.occurredAt, lastSeen: payload.occurredAt, sessionCount: 1, payload };
-      state.indexByFingerprint.set(payload.fingerprint, event);
-      state.events.unshift(event);
-      if (state.events.length > MAX_SESSION_EVENTS) state.indexByFingerprint.delete(state.events.pop()?.fingerprint);
-    }
-
-    if (!payload.isTransientNetworkFailure) updateKnowledge(event);
-    render();
-    // The status badge exposes new failures without interrupting the current task.
-    // Opening diagnostics is an explicit user action, including after dismissal.
-    const prefix = `[page-health:${pageKey}] ${payload.scope}: ${payload.message}`;
-    (level === "warn" ? console.warn : console.error)(prefix, detail);
-    return event;
-  }
-
-  function updateKnowledge(event) {
-    const pageKnowledge = state.knowledge[pageKey] || {};
-    const prior = pageKnowledge[event.fingerprint] || { count: 0, firstSeen: event.firstSeen };
-    pageKnowledge[event.fingerprint] = {
-      count: prior.count + 1,
-      firstSeen: prior.firstSeen || event.firstSeen,
-      lastSeen: event.lastSeen,
-      title: event.payload.user.title,
-      message: event.payload.message,
-      scope: event.payload.scope,
-      severity: event.payload.user.severity,
-      status: event.payload.status,
-      url: event.payload.url,
-      method: event.payload.method,
-      environment
-    };
-    const entries = Object.entries(pageKnowledge);
-    if (entries.length > MAX_KNOWN_PATTERNS) {
-      entries.sort((left, right) => (right[1].count - left[1].count) || String(right[1].lastSeen).localeCompare(String(left[1].lastSeen))).slice(MAX_KNOWN_PATTERNS).forEach(([fingerprint]) => delete pageKnowledge[fingerprint]);
-    }
-    state.knowledge[pageKey] = pageKnowledge;
-    saveKnowledge();
-  }
-
-  function bindGlobalDiagnostics() {
-    window.addEventListener("error", event => {
-      current.error("Unhandled window error", { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno, error: event.error }, "global");
-    });
-    window.addEventListener("unhandledrejection", event => {
-      if (event.reason && typeof event.reason === "object" && observedRequestErrors.has(event.reason)) return;
-      current.error("Unhandled promise rejection", { reason: event.reason }, "global");
-    });
-  }
-
-  function acceptRequestOutcome(key, sequence) {
-    const request = settledRequests.get(key);
-    if (request.sequence > sequence) return false;
-    request.sequence = sequence;
-    return true;
-  }
-
-  function wrapFetch() {
-    if (typeof window.fetch !== "function") return;
-    const fetchWithPageHealth = window.fetch.bind(window);
-    window.fetch = async function (input, init) {
-      const url = typeof input === "string" || input instanceof URL ? String(input) : normalizeText(input?.url);
-      const method = normalizeText(init?.method || input?.method || "GET").toUpperCase();
-      const startedAt = Date.now();
-      const sequence = ++requestSequence;
-      const signal = init?.signal ?? input?.signal;
-      const requestKey = `${method} ${normalizeNetworkTarget(url)}`;
-      const requestState = settledRequests.get(requestKey) || { pending: 0, sequence: 0 };
-      requestState.pending += 1;
-      settledRequests.set(requestKey, requestState);
-      try {
-        const response = await fetchWithPageHealth(input, init);
-        if (!acceptRequestOutcome(requestKey, sequence)) return response;
-        if (response.ok) {
-          resolveNetworkFailures(url, method, sequence);
-        } else {
-          const detail = { url, method, requestSequence: sequence, status: response.status, statusText: response.statusText, durationMs: Date.now() - startedAt };
-          (response.status >= 500 || response.status === 401 || response.status === 403 ? current.error : current.warn)(`HTTP ${response.status} from ${method} ${url}`, detail, "network");
-        }
-        return response;
-      } catch (error) {
-        if (error && typeof error === "object") observedRequestErrors.add(error);
-        // Superseded/closed views deliberately abort requests. A deadline is still a failure.
-        const cancelled = signal?.aborted && signal.reason?.name !== "TimeoutError"
-          && (error === signal.reason || error?.name === "AbortError");
-        if (!cancelled && acceptRequestOutcome(requestKey, sequence)) current.error(`Network request failed for ${method} ${url}`, { url, method, requestSequence: sequence, durationMs: Date.now() - startedAt, error }, "network");
-        throw error;
-      } finally {
-        // Keep ordering evidence until every overlapping request has completed.
-        // Completed keys need no retained history and cannot evict active keys.
-        requestState.pending -= 1;
-        if (requestState.pending === 0) settledRequests.delete(requestKey);
+  function structuralStack(error, detail) {
+    const frames = [];
+    const filename = staticScriptPath(property(detail, "filename"));
+    const line = Number(property(detail, "lineno"));
+    const column = Number(property(detail, "colno"));
+    if (filename && Number.isSafeInteger(line) && line > 0 && line <= 10000000)
+      frames.push(`${filename}:${line}:${Number.isSafeInteger(column) && column >= 0 && column <= 10000000 ? column : 0}`);
+    const stack = property(error, "stack");
+    if (typeof stack === "string") {
+      for (const candidate of stack.slice(0, 8192).split("\n").slice(1, 12)) {
+        const match = /(https?:\/\/[^\s)]+):(\d{1,8}):(\d{1,8})\)?$/.exec(candidate.trim());
+        const path = match ? staticScriptPath(match[1]) : "";
+        if (path) frames.push(`${path}:${Number(match[2])}:${Number(match[3])}`);
+        if (frames.length === 6) break;
       }
-    };
-  }
-
-  function ensureUi() {
-    if (state.ui || !document.body) return;
-    const root = document.createElement("div");
-    root.className = "legend-page-health-root";
-    root.innerHTML = `
-      <button type="button" class="legend-page-health-toggle is-healthy" aria-expanded="false">
-        <span class="legend-page-health-dot" aria-hidden="true"></span>
-        <span class="legend-page-health-copy"><span class="legend-page-health-label">Page Health</span><span class="legend-page-health-status" role="status" aria-live="polite">No active issues</span></span>
-        <span class="legend-page-health-count">0</span>
-      </button>
-      <div class="legend-page-health-backdrop" hidden></div>
-      <aside class="legend-page-health-drawer" aria-hidden="true">
-        <div class="legend-page-health-head"><div class="legend-page-health-head-copy"><div class="legend-page-health-kicker">${escapeHtml(environment)} diagnostics</div><h3>${escapeHtml(pageTitle)}</h3><p data-page-health-summary></p></div><button type="button" class="legend-page-health-close" aria-label="Close Page Health">Close</button></div>
-        <div class="legend-page-health-toolbar"><button type="button" class="legend-page-health-btn" data-page-health-copy>Copy Report</button><button type="button" class="legend-page-health-btn" data-page-health-clear>Clear Session</button></div>
-        <div class="legend-page-health-body"><section class="legend-page-health-section"><div class="legend-page-health-section-title">Current Session</div><div class="legend-page-health-section-sub">Issues observed since this page loaded.</div><div class="legend-page-health-events"></div></section><section class="legend-page-health-section"><div class="legend-page-health-section-title">Learned Patterns</div><div class="legend-page-health-section-sub">Recurring failure fingerprints stored in this browser for this page.</div><div class="legend-page-health-patterns"></div></section></div>
-      </aside>`;
-    document.body.appendChild(root);
-    state.ui = {
-      root,
-      toggle: root.querySelector(".legend-page-health-toggle"),
-      status: root.querySelector(".legend-page-health-status"),
-      count: root.querySelector(".legend-page-health-count"),
-      backdrop: root.querySelector(".legend-page-health-backdrop"),
-      drawer: root.querySelector(".legend-page-health-drawer"),
-      summary: root.querySelector("[data-page-health-summary]"),
-      events: root.querySelector(".legend-page-health-events"),
-      patterns: root.querySelector(".legend-page-health-patterns")
-    };
-    state.ui.toggle.addEventListener("click", () => setDrawerOpen(!state.drawerOpen));
-    state.ui.backdrop.addEventListener("click", () => setDrawerOpen(false));
-    root.querySelector(".legend-page-health-close").addEventListener("click", () => setDrawerOpen(false));
-    root.querySelector("[data-page-health-clear]").addEventListener("click", current.clearSession);
-    root.querySelector("[data-page-health-copy]").addEventListener("click", copyReport);
-    setDrawerOpen(state.drawerOpen);
-    beginPlacementTracking();
-  }
-
-  function beginPlacementTracking() {
-    if (state.placementObserver) return;
-
-    const schedulePlacement = () => {
-      if (state.placementFrame) window.cancelAnimationFrame(state.placementFrame);
-      state.placementFrame = window.requestAnimationFrame(syncPlacement);
-    };
-
-    window.addEventListener("resize", schedulePlacement, { passive: true });
-    window.addEventListener("load", schedulePlacement, { once: true });
-    if (typeof ResizeObserver === "function") {
-      state.placementObserver = new ResizeObserver(schedulePlacement);
-      const main = getPrimaryMain();
-      if (main) state.placementObserver.observe(main);
-    } else {
-      state.placementObserver = true;
     }
-
-    schedulePlacement();
+    return [...new Set(frames)].slice(0, 6);
   }
-
-  function getPrimaryMain() {
-    return Array.from(document.querySelectorAll('main[role="main"], main'))
-      .find(element => element.getBoundingClientRect().width > 0) || null;
-  }
-
-  function syncPlacement() {
-    state.placementFrame = 0;
-    if (!state.ui || !document.body) return;
-
-    const main = getPrimaryMain();
-    const mainRect = main?.getBoundingClientRect();
-    const rightGutter = mainRect && mainRect.width > 0
-      ? Math.max(0, Math.floor(window.innerWidth - Math.min(window.innerWidth, mainRect.right)))
-      : 0;
-    const gap = 12;
-    const fullWidth = 190;
-    const compactWidth = 44;
-
-    if (rightGutter >= fullWidth + gap) {
-      state.ui.root.dataset.placement = "rail";
-      state.ui.root.dataset.mode = "full";
-      state.ui.root.style.setProperty("--legend-page-health-right", `${Math.max(12, rightGutter - fullWidth - gap)}px`);
-      document.body.classList.remove("legend-page-health-bottom-reserved");
-      return;
-    }
-
-    if (rightGutter >= compactWidth + gap) {
-      state.ui.root.dataset.placement = "rail";
-      state.ui.root.dataset.mode = "compact";
-      state.ui.root.style.setProperty("--legend-page-health-right", `${Math.max(12, rightGutter - compactWidth - gap)}px`);
-      document.body.classList.remove("legend-page-health-bottom-reserved");
-      return;
-    }
-
-    state.ui.root.dataset.placement = "bottom";
-    state.ui.root.dataset.mode = "compact";
-    state.ui.root.style.removeProperty("--legend-page-health-right");
-    document.body.classList.add("legend-page-health-bottom-reserved");
-  }
-
-  function setDrawerOpen(open) {
-    ensureUi();
-    state.drawerOpen = !!open;
-    if (!state.ui) return;
-    state.ui.toggle.setAttribute("aria-expanded", String(state.drawerOpen));
-    state.ui.drawer.setAttribute("aria-hidden", String(!state.drawerOpen));
-    state.ui.drawer.classList.toggle("is-open", state.drawerOpen);
-    state.ui.backdrop.classList.toggle("is-open", state.drawerOpen);
-    state.ui.backdrop.hidden = !state.drawerOpen;
-  }
-
-  function render() {
-    ensureUi();
-    if (!state.ui) return;
-    const errors = state.events.filter(event => event.payload.level === "error").length;
-    const warnings = state.events.filter(event => event.payload.level === "warn").length;
-    const issueCount = errors + warnings;
-    const severity = errors ? "error" : warnings ? "warning" : "healthy";
-    state.ui.toggle.classList.remove("is-healthy", "is-warning", "is-error");
-    state.ui.toggle.classList.add(`is-${severity}`);
-    state.ui.status.textContent = errors ? `${errors} active error${errors === 1 ? "" : "s"}` : warnings ? `${warnings} active warning${warnings === 1 ? "" : "s"}` : "No active issues";
-    state.ui.count.textContent = String(issueCount);
-    state.ui.toggle.setAttribute("aria-label", `Page Health: ${state.ui.status.textContent}`);
-    state.ui.summary.textContent = issueCount ? `${issueCount} current issue${issueCount === 1 ? "" : "s"} detected on ${pageTitle}.` : `Monitoring ${pageTitle}. No active issues detected in this session.`;
-    state.ui.events.innerHTML = state.events.length ? state.events.map(renderEvent).join("") : '<div class="legend-page-health-empty">No active failures in this session. Open Page Health to review diagnostics at any time.</div>';
-    const patterns = Object.entries(state.knowledge[pageKey] || {}).sort((left, right) => (right[1].count - left[1].count) || String(right[1].lastSeen).localeCompare(String(left[1].lastSeen))).slice(0, 6);
-    state.ui.patterns.innerHTML = patterns.length ? patterns.map(renderPattern).join("") : '<div class="legend-page-health-empty">No recurring issue patterns have been recorded for this page.</div>';
-  }
-
-  function renderEvent(event) {
-    const payload = event.payload;
-    const learned = state.knowledge[pageKey]?.[event.fingerprint];
-    const detail = { scope: payload.scope, message: payload.message, errorName: payload.errorName || undefined, errorMessage: payload.errorMessage || undefined, status: payload.status || undefined, url: payload.url || undefined, fingerprint: event.fingerprint, firstSeen: event.firstSeen, lastSeen: event.lastSeen, sessionCount: event.sessionCount, learnedCount: learned?.count || 0, breadcrumbs: payload.breadcrumbs, detail: payload.detail, stack: payload.stack || undefined };
-    return `<article class="legend-page-health-event severity-${escapeHtml(payload.user.severity)}"><div class="legend-page-health-event-top"><span class="legend-page-health-chip is-${escapeHtml(payload.user.severity)}">${escapeHtml(payload.user.severity)}</span><span class="legend-page-health-meta">${escapeHtml(formatStamp(event.lastSeen))}</span></div><h4>${escapeHtml(payload.user.title)}</h4><p>${escapeHtml(payload.user.summary)}</p><p class="legend-page-health-action">${escapeHtml(payload.user.action)}</p><div class="legend-page-health-meta"><span>Scope: ${escapeHtml(payload.scope)}</span><span>Session: ${event.sessionCount}x</span><span>Learned: ${learned?.count || 0}x</span></div><details class="legend-page-health-detail"><summary>Technical details</summary><pre class="legend-page-health-code">${escapeHtml(JSON.stringify(detail, null, 2))}</pre></details></article>`;
-  }
-
-  function renderPattern([fingerprint, item]) {
-    return `<article class="legend-page-health-pattern"><div class="legend-page-health-pattern-top"><strong>${escapeHtml(item.title || "Recurring issue")}</strong><span class="legend-page-health-chip is-${escapeHtml(item.severity || "medium")}">${escapeHtml(item.count)}x</span></div><div class="legend-page-health-pattern-copy">${escapeHtml(item.message || "")}</div><div class="legend-page-health-meta"><span>Scope: ${escapeHtml(item.scope || "app")}</span><span>Last seen: ${escapeHtml(formatStamp(item.lastSeen))}</span></div><details class="legend-page-health-detail"><summary>Fingerprint</summary><pre class="legend-page-health-code">${escapeHtml(fingerprint)}</pre></details></article>`;
-  }
-
-  function formatStamp(value) {
-    try { return new Date(value).toLocaleString(); } catch { return value; }
-  }
-
-  async function copyReport() {
-    const button = state.ui?.root.querySelector("[data-page-health-copy]");
+  function observe(detail, scope, level) {
     try {
-      await navigator.clipboard.writeText(buildReport());
-      button.textContent = "Copied";
-      window.setTimeout(() => { button.textContent = "Copy Report"; }, 1200);
-    } catch (error) {
-      current.error("Could not copy the Page Health report", { error }, "diagnostics");
+      if (state.retired) return null;
+      const error = property(detail, "error") || property(detail, "reason") || detail;
+      const errorName = knownErrorName(error);
+      if (errorName === "AbortError") return null;
+      const status = Number(property(detail, "status"));
+      const statusCode = Number.isInteger(status) && status >= 400 && status <= 599 ? status : null;
+      const method = property(detail, "method");
+      const operation = scope === "network"
+        ? "fetch_" + (["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(method) ? method : "OTHER")
+        : (["global", "boot", "route", "ui"].includes(scope) ? scope : "app") + "_" + level;
+      const frames = structuralStack(error, detail);
+      const offline = scope === "network" && navigator.onLine === false;
+      const payload = {
+        appIdentifier, platform: "Web", route, sourceFilePath: frames[0]?.replace(/:\d+:\d+$/, "") || "",
+        errorName: statusCode ? "HttpError" : offline ? "OfflineError"
+          : scope === "network" && errorName !== "TimeoutError" ? "NetworkError" : errorName,
+        errorMessage: statusCode ? "An HTTP request returned an unsuccessful status."
+          : offline ? "The browser reported an offline network state."
+          : scope === "network" ? "A browser request ended without a response." : "A browser script reported an error.",
+        stackTrace: frames.join("\n"), gitCommitHash, timestamp: new Date().toISOString(),
+        operation, correlationId: "",
+        category: scope === "network" ? "Network" : "SuspectedDefect", statusCode, appVersion: ""
+      };
+      const key = [route, payload.errorName, payload.sourceFilePath, operation, statusCode].join("|");
+      const now = Date.now();
+      const existing = state.events.find(event => event.key === key);
+      if (existing) { existing.sessionCount += 1; existing.payload = payload; }
+      else { state.events.unshift({ key, sessionCount: 1, payload }); state.events.length = Math.min(state.events.length, maximumEvents); }
+      if (!state.disabled && state.submissions < maximumSubmissions && now - (state.recent.get(key) ?? -Infinity) >= duplicateWindow) {
+        state.recent.set(key, now);
+        if (state.recent.size > 64) state.recent.delete(state.recent.keys().next().value);
+        if (state.queue.length >= maximumQueue) state.queue.splice(state.inFlight ? 1 : 0, 1);
+        state.queue.push({ payload, queuedAt: now, attempts: 0 });
+        schedule(1000);
+      }
+      return existing || state.events[0];
+    } catch { return null; } // Diagnostic collection must never change the application result.
+  }
+  function schedule(delay) {
+    if (state.timer !== null || state.inFlight || state.disabled || state.retired || !state.queue.length || navigator.onLine === false) return;
+    state.timer = window.setTimeout(() => { state.timer = null; void submit(); }, delay);
+  }
+  function clear(retired) {
+    state.generation += 1;
+    state.retired = retired;
+    if (state.timer !== null) window.clearTimeout(state.timer);
+    state.timer = null;
+    state.queue = [];
+    state.events = [];
+    state.recent.clear();
+    state.inFlight?.controller.abort();
+    state.inFlight = null;
+  }
+  async function submit() {
+    if (state.disabled || state.retired || state.inFlight || navigator.onLine === false) return;
+    while (state.queue.length && Date.now() - state.queue[0].queuedAt >= maximumAge) state.queue.shift();
+    const item = state.queue[0];
+    if (!item || state.submissions >= maximumSubmissions) { state.queue = []; return; }
+    const request = { controller: new AbortController(), generation: state.generation };
+    state.inFlight = request;
+    item.attempts += 1;
+    state.submissions += 1;
+    const timeout = window.setTimeout(() => request.controller.abort(), 8000);
+    let retryDelay = item.attempts === 1 ? 5000 : 30000;
+    let accepted = false;
+    let terminal = false;
+    try {
+      if (!csrf && bootstrap) {
+        bootstrapAttempts += 1;
+        const admission = await originalFetch(bootstrap, { method: "GET", credentials,
+          cache: "no-store", redirect: "error", signal: request.controller.signal });
+        if (request.generation !== state.generation) return;
+        if (admission.status !== 200) {
+          terminal = admission.type === "opaqueredirect" || (admission.status >= 300 && admission.status < 500
+            && admission.status !== 408 && admission.status !== 429) || bootstrapAttempts >= maximumAttempts;
+          if (terminal) { state.disabled = true; state.queue = []; }
+          return;
+        }
+        const admissionData = await admission.json();
+        if (request.generation !== state.generation) return;
+        const token = property(admissionData, "requestToken");
+        if (typeof token !== "string" || token.length < 1 || token.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+          terminal = true; state.disabled = true; state.queue = []; return;
+        }
+        csrf = token;
+      }
+      const response = await originalFetch(endpoint, { method: "POST", credentials, redirect: "manual",
+        headers: { "Content-Type": "application/json", "RequestVerificationToken": csrf },
+        body: JSON.stringify(item.payload), signal: request.controller.signal });
+      if (request.generation !== state.generation) return;
+      accepted = response.status === 202;
+      terminal = response.type === "opaqueredirect" || (response.status >= 300 && response.status < 500 && response.status !== 408 && response.status !== 429);
+      if (terminal) { state.disabled = true; state.queue = []; }
+      if (response.status === 429) {
+        const value = response.headers?.get?.("Retry-After");
+        const seconds = /^\d{1,6}$/.test(value || "") ? Number(value) : NaN;
+        if (Number.isFinite(seconds)) retryDelay = Math.max(retryDelay, seconds * 1000);
+      }
+    } catch {
+      // Bootstrap/upload failures never feed back into this observer.
+      if (!csrf && bootstrapAttempts >= maximumAttempts && request.generation === state.generation) {
+        terminal = true; state.disabled = true; state.queue = [];
+      }
+    }
+    finally {
+      window.clearTimeout(timeout);
+      if (state.inFlight === request) state.inFlight = null;
+      if (request.generation === state.generation && !terminal) {
+        if (state.queue[0] === item && (accepted || item.attempts >= maximumAttempts ||
+            Date.now() + retryDelay - item.queuedAt >= maximumAge)) state.queue.shift();
+        schedule(accepted ? 1000 : retryDelay);
+      }
     }
   }
 
-  function buildReport() {
-    return JSON.stringify({ page: pageTitle, route: window.location.pathname, environment, generatedAt: nowIso(), currentIssues: state.events, learnedPatterns: state.knowledge[pageKey] || {} }, null, 2);
-  }
+  window.addEventListener("error", event => observe({ error: event.error, filename: event.filename,
+    lineno: event.lineno, colno: event.colno }, "global", "error"));
+  window.addEventListener("unhandledrejection", event => {
+    if (event.reason && typeof event.reason === "object" && observedRequestErrors.has(event.reason)) return;
+    observe({ reason: event.reason }, "global", "error");
+  });
+  window.addEventListener("online", () => schedule(1000));
+  window.addEventListener("pagehide", () => clear(true));
+  window.addEventListener("pageshow", () => { state.retired = false; });
+  if (originalFetch) window.fetch = async function (input, init) {
+    const generation = state.generation;
+    let method = "GET", signal, isIngestion = false;
+    try {
+      const value = typeof input === "string" || input instanceof URL ? String(input) : input?.url;
+      const url = new URL(value, window.location.origin);
+      const ingestionURL = new URL(endpoint, window.location.origin);
+      isIngestion = url.origin === ingestionURL.origin && [ingestionURL.pathname, ingestionURL.pathname + "/bootstrap"]
+        .includes(url.pathname.replace(/\/+$/, ""));
+      method = String(init?.method || input?.method || "GET").toUpperCase();
+      signal = init?.signal ?? input?.signal;
+    } catch { }
+    try {
+      const response = await originalFetch(input, init);
+      if (generation === state.generation && !isIngestion && !response.ok)
+        observe({ method, status: response.status }, "network", "error");
+      return response;
+    } catch (error) {
+      if (error && typeof error === "object") observedRequestErrors.add(error);
+      const cancelled = signal?.aborted && signal.reason?.name !== "TimeoutError"
+        && (error === signal.reason || error?.name === "AbortError");
+      if (generation === state.generation && !isIngestion && !cancelled) observe({ error: signal?.aborted && signal.reason?.name === "TimeoutError"
+        && error?.name === "AbortError" ? signal.reason : error, method }, "network", "error");
+      throw error;
+    }
+  };
 })();

@@ -38,8 +38,23 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             return new WebsiteLifeLeadCaptureResult(false, false, null, bucket, null, "InternalTestLead");
         }
 
-        var agentUserId = await ResolveAgentUserIdAsync(request, cancellationToken);
-        if (string.IsNullOrWhiteSpace(agentUserId))
+        var businessId = websiteLead?.CommerceBusinessId;
+        if (businessId.HasValue)
+        {
+            if (businessId == Guid.Empty || websiteLead!.AgentTrackingProfileId.HasValue ||
+                !await _db.CommerceBusinesses.AnyAsync(x => x.Id == businessId && x.IsActive && x.Status == "Active", cancellationToken))
+                throw new InvalidOperationException("The website lead has no valid permanent business owner.");
+            bucket = "BusinessInquiry";
+        }
+        var initialStage = "New";
+        if (businessId.HasValue)
+        {
+            var settings = await _db.CommerceBusinessStorefrontSettings.AsNoTracking()
+                .SingleAsync(x => x.CommerceBusinessId == businessId, cancellationToken);
+            initialStage = Shared.Crm.BusinessWorkspacePreferences.Read(settings.WorkspacePreferencesJson).Stages[0];
+        }
+        var agentUserId = businessId.HasValue ? string.Empty : await ResolveAgentUserIdAsync(request, cancellationToken);
+        if (!businessId.HasValue && string.IsNullOrWhiteSpace(agentUserId))
         {
             _logger.LogWarning(
                 "Website life lead {WebsiteLeadId} could not be attached to a workstation owner for bucket {Bucket}.",
@@ -55,6 +70,8 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 request.WebsiteLeadId);
         }
 
+        agentUserId ??= string.Empty;
+
         var submittedUtc = websiteLead?.CreatedUtc
             ?? (request.SubmittedUtc == default ? DateTime.UtcNow : request.SubmittedUtc);
         var normalizedPhone = NormalizePhoneKey(websiteLead?.Phone ?? request.Phone);
@@ -69,7 +86,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             // Check tracked local leads first so repeated submissions folded into the same unit of work
             // still attach to the same internal lead before SaveChanges runs.
             var localCandidates = _db.WorkstationLeadProfiles.Local
-                .Where(x => MatchesBucketCandidate(x, agentUserId, bucket))
+                .Where(x => x.CommerceBusinessId == businessId && MatchesBucketCandidate(x, agentUserId, bucket))
                 .OrderByDescending(x => x.UpdatedUtc)
                 .ThenByDescending(x => x.CreatedUtc)
                 .ToList();
@@ -80,7 +97,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             {
                 var candidates = await _db.WorkstationLeadProfiles
                     .Where(x =>
-                        x.AgentUserId == agentUserId &&
+                        x.CommerceBusinessId == businessId && x.AgentUserId == agentUserId &&
                         ((x.OriginalLeadType != null && x.OriginalLeadType == bucket) ||
                          ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == bucket)))
                     .OrderByDescending(x => x.UpdatedUtc)
@@ -95,11 +112,15 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         var created = false;
         if (existing == null)
         {
-            var leadId = request.WebsiteLeadId.ToString("N");
+            var leadId = businessId.HasValue
+                ? new Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+                    $"business-contact:v1|{businessId:N}|{normalizedEmail}")).AsSpan(0, 16)).ToString("N")
+                : request.WebsiteLeadId.ToString("N");
             lead = new WorkstationLeadProfile
             {
                 LeadId = leadId,
                 AgentUserId = agentUserId,
+                CommerceBusinessId = businessId,
                 Bucket = bucket,
                 OriginalLeadType = bucket,
                 FirstName = Clean(websiteLead?.FirstName ?? request.FirstName) ?? "",
@@ -111,7 +132,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 DOB = request.DateOfBirth,
                 Age = request.Age?.ToString(CultureInfo.InvariantCulture) ?? "",
                 LoanAmount = requestedAmount,
-                CrmStage = "New",
+                CrmStage = initialStage,
                 CrmStatus = "Lead",
                 CrmOrder = WorkstationLeadOrder.Build(submittedUtc),
                 CreatedUtc = submittedUtc,
@@ -148,7 +169,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 lead.Bucket = bucket;
 
             if (string.IsNullOrWhiteSpace(lead.CrmStage))
-                lead.CrmStage = "New";
+                lead.CrmStage = initialStage;
             if (string.IsNullOrWhiteSpace(lead.CrmStatus))
                 lead.CrmStatus = "Lead";
 
@@ -156,23 +177,10 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             lead.UpdatedUtc = submittedUtc;
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
-
+        // CRM row and intake link are one unit of work. A failed handoff is not success.
         if (websiteLead != null)
-        {
-            try
-            {
-                await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, submittedUtc, cancellationToken);
-                await _db.SaveChangesAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Website life lead {WebsiteLeadId} created workstation lead {WorkstationLeadId}, but intake link enrichment failed.",
-                    request.WebsiteLeadId,
-                    lead.LeadId);
-            }
-        }
+            await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, submittedUtc, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
 
         return new WebsiteLifeLeadCaptureResult(true, created, lead.LeadId, bucket, agentUserId, null);
     }
@@ -202,6 +210,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
 
         intakeLink.WorkstationLeadId = lead.LeadId;
         intakeLink.AgentUserId = agentUserId;
+        intakeLink.CommerceBusinessId = websiteLead.CommerceBusinessId;
         intakeLink.Bucket = bucket;
         intakeLink.SubmittedUtc = submittedUtc;
         intakeLink.CapturedUtc = DateTime.UtcNow;

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Infrastructure.Businesses;
 using System;
 using System.Linq;
 using System.Security.Claims;
@@ -21,6 +23,55 @@ namespace AgentPortal.Tests;
 
 public sealed class ClientSubscriptionAdministrationTests
 {
+    [Theory]
+    [InlineData("Client")]
+    [InlineData("BusinessClient")]
+    public async Task CreatePortalClient_PersistsAndInvitesWithoutCallingGraphProvisioning(string recordType)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var emailSender = BuildEmailSender(sendResult: true);
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser("founder-agent", "founder@example.test"),
+            billingOrchestrator: BuildInvitationOnlyOrchestrator(db),
+            emailSender: emailSender.Object);
+
+        controller.Url = Mock.Of<Microsoft.AspNetCore.Mvc.IUrlHelper>();
+        controller.HttpContext.RequestServices = new ServiceCollection()
+            .AddSingleton<ICommerceBusinessProvisioningService>(new CommerceBusinessProvisioningService(db)).BuildServiceProvider();
+        var result = await controller.Create(new CreateClientViewModel
+        {
+            RecordType = recordType,
+            EntityName = recordType == "BusinessClient" ? "Test Entity" : null,
+            AccountManagementMode = "SharedAccount",
+            FirstName = recordType == "BusinessClient" ? "Business" : "Client",
+            LastName = "Owner",
+            Email = "owner@example.test",
+            SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Fixed100),
+            SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth)
+        });
+
+        Assert.IsType<RedirectToActionResult>(result);
+        var profile = await db.ClientProfiles.SingleAsync();
+        Assert.True(Guid.TryParse(profile.ClientUserId, out _));
+        Assert.Null(profile.ExternalIdentityObjectId);
+        Assert.Equal(recordType, ClientCrmMetaSerializer.Deserialize(profile.CrmNotes).RecordType);
+        Assert.Single(await db.ClientSubscriptionOffers.ToListAsync());
+        Assert.Single(await db.SubscriptionActivationInvitations.ToListAsync());
+        emailSender.Verify(
+            x => x.TrySendAsync(
+                "owner@example.test",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>()),
+            Times.Once);
+    }
+
     [Fact]
     public async Task ConfigureSubscriptionOffer_ForOwnedExistingClient_CreatesInvitationWithoutChangingClientData()
     {

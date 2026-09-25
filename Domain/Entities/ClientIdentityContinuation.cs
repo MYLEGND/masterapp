@@ -15,6 +15,10 @@ public sealed class ClientIdentityContinuation
     public Guid? ClientSubscriptionId { get; set; }
     public ClientSubscription? ClientSubscription { get; set; }
 
+    public Guid? CommerceBusinessId { get; set; }
+    public string? ActorUserId { get; set; }
+    public string? ActorEmail { get; set; }
+
     public ClientIdentityContinuationPurpose Purpose { get; set; } = ClientIdentityContinuationPurpose.Activation;
     public string TokenHash { get; set; } = string.Empty;
     public string IntendedNormalizedEmail { get; set; } = string.Empty;

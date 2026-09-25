@@ -3,7 +3,13 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Infrastructure.Data;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using ProtectWebsite.Services;
+using ProtectWebsite.Services.Tracking;
+using Shared.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 
@@ -51,6 +57,17 @@ public sealed class TrackingProxyController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.EventType))
             return BadRequest(new { error = "event_type_required" });
 
+        if (req.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Business)
+        {
+            var scopeResolver = HttpContext.RequestServices.GetService<PublicWebsiteRuntimeScopeResolver>();
+            if (scopeResolver is null)
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "website_runtime_scope_unavailable" });
+            var scope = await scopeResolver.ResolveAsync(HttpContext, req.SiteKey, ct);
+            if (scope is null || !PublicWebsiteRuntimeScopeResolver.IsPublishedPath(scope, req.Path))
+                return BadRequest(new { error = "published_website_scope_required" });
+            return await PersistPublicWebsiteEventAsync(req, scope, ct);
+        }
+
         EnsureClientContextFallback(req);
         await EnsureAgentAttributionAsync(req, ct);
 
@@ -77,10 +94,20 @@ public sealed class TrackingProxyController : ControllerBase
     public async Task<IActionResult> SubmitLead([FromBody] LeadSubmitRequest req, CancellationToken ct)
     {
         var correlationId = Guid.NewGuid();
+        EnsureLeadContextFallback(req);
+
+        var attribution = await EnsureLeadAttributionAsync(req, ct);
+        if (!attribution.Succeeded)
+        {
+            _logger.LogWarning(
+                "LeadProxy [{CorrelationId}]: attribution rejected reason={Reason} SourcePath={SourcePath} PayloadSlug={Slug} PayloadProfileId={ProfileId}",
+                correlationId, attribution.Error, req.SourcePath, req.AgentSlug, req.AgentTrackingProfileId);
+            return BadRequest(new { error = attribution.Error ?? "lead_attribution_invalid", correlationId });
+        }
 
         _logger.LogInformation(
-            "LeadProxy [{CorrelationId}]: request received InterestType={InterestType} SourcePageKey={SourcePageKey} AgentSlug={Slug} Host={Host}",
-            correlationId, req.InterestType, req.SourcePageKey, req.AgentSlug, req.Host);
+            "LeadProxy [{CorrelationId}]: request received InterestType={InterestType} SourcePageKey={SourcePageKey} AgentSlug={Slug} ProfileId={ProfileId} Host={Host}",
+            correlationId, req.InterestType, req.SourcePageKey, req.AgentSlug, req.AgentTrackingProfileId, req.Host);
 
         var response = await ForwardAsync("/api/lead/submit", req, ct, correlationId);
 
@@ -89,7 +116,13 @@ public sealed class TrackingProxyController : ControllerBase
             _logger.LogError(
                 "LeadProxy [{CorrelationId}]: forward failed — no response from AgentPortal (proxy configuration or connectivity issue)",
                 correlationId);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "lead_forward_failed", correlationId });
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "lead_forward_failed",
+                captured = false,
+                notificationSent = false,
+                correlationId
+            });
         }
 
         _logger.LogInformation(
@@ -104,6 +137,233 @@ public sealed class TrackingProxyController : ControllerBase
         }
 
         return await BuildPassThroughResultAsync(response, ct);
+    }
+
+    private async Task<IActionResult> PersistPublicWebsiteEventAsync(
+        AnalyticsEventRequest req,
+        PublicWebsiteRuntimeScope scope,
+        CancellationToken cancellationToken)
+    {
+        if (!AnalyticsEventCatalog.TryGet(req.EventType, out var definition) || !definition.AllowBrowser)
+            return BadRequest(new { error = "invalid_event_type" });
+
+        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
+        var existing = await db.AnalyticsEvents.AsNoTracking()
+            .FirstOrDefaultAsync(row => row.ClientEventId == req.ClientEventId, cancellationToken);
+        if (existing is not null)
+        {
+            var sameOwner = existing.CommerceBusinessId == scope.CommerceBusinessId &&
+                existing.WebsiteContentVersionId == scope.PublishedVersion?.Id &&
+                string.Equals(existing.EventType, req.EventType, StringComparison.OrdinalIgnoreCase);
+            return sameOwner ? Ok(new { status = "duplicate_ignored" }) : Conflict(new { error = "event_id_owner_conflict" });
+        }
+
+        var context = new UnifiedEventContext
+        {
+            SiteKey = scope.SiteKey,
+            CommerceBusinessId = scope.CommerceBusinessId,
+            WebsiteContentVersionId = scope.PublishedVersion?.Id,
+            WebsiteBindingId = string.IsNullOrWhiteSpace(req.WebsiteBindingId) ? null : req.WebsiteBindingId.Trim(),
+            EventId = req.ClientEventId.ToString("N"),
+            EventName = req.EventType.Trim(),
+            EventCategory = definition.Category,
+            EventUtc = req.EventUtc ?? DateTime.UtcNow,
+            SessionId = Clean(req.SessionId),
+            VisitorId = Clean(req.VisitorId),
+            Url = Clean(req.Url),
+            Referrer = Clean(req.Referrer),
+            PageKey = Clean(req.PageKey),
+            ElementKey = Clean(req.ElementKey),
+            ButtonLabel = Clean(req.ButtonLabel),
+            FormKey = Clean(req.FormKey),
+            QuoteType = Clean(req.QuoteType),
+            DeviceType = Clean(req.DeviceType),
+            Browser = Clean(req.Browser),
+            OperatingSystem = Clean(req.OperatingSystem),
+            UserAgent = Clean(req.UserAgent) ?? Request.Headers.UserAgent.ToString(),
+            IpAddress = Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            TimeZone = Clean(req.TimeZone),
+            Language = Clean(req.Language),
+            WebDriver = req.WebDriver,
+            IsHeadless = req.IsHeadless,
+            MouseMoveCount = req.MouseMoveCount,
+            HumanInteractionCount = req.HumanInteractionCount,
+            VisibilityChangeCount = req.VisibilityChangeCount,
+            ScreenWidth = req.ScreenWidth,
+            ScreenHeight = req.ScreenHeight,
+            ViewportWidth = req.ViewportWidth,
+            ViewportHeight = req.ViewportHeight,
+            ScrollPercent = req.ScrollPercent,
+            DwellMilliseconds = req.DwellMilliseconds,
+            EngagedMilliseconds = req.EngagedMilliseconds,
+            IsBounceCandidate = req.IsBounceCandidate,
+            IsExitPage = req.IsExitPage,
+            UtmSource = Clean(req.UtmSource),
+            UtmMedium = Clean(req.UtmMedium),
+            UtmCampaign = Clean(req.UtmCampaign),
+            UtmId = Clean(req.UtmId),
+            UtmContent = Clean(req.UtmContent),
+            Fbclid = Clean(req.Fbclid),
+            MetaCampaignId = Clean(req.MetaCampaignId),
+            MetaAdSetId = Clean(req.MetaAdSetId),
+            MetaAdId = Clean(req.MetaAdId),
+            IsInternal = false,
+            Environment = EnvironmentLabelResolver.Resolve(),
+            Host = scope.OriginHost,
+            IsBrowserSignal = true,
+            IsServerAuthority = false,
+            MetaServerAuthorityEligible = false,
+            Metadata = new
+            {
+                Source = "public_website_shared_tracking",
+                Scope = scope.SiteKey,
+                WebsiteBindingId = Clean(req.WebsiteBindingId),
+                AnalyticsMetadata = Clean(req.MetadataJson)
+            }
+        };
+
+        var row = UnifiedEventMapper.ToAnalytics(context);
+        row.ClientEventId = req.ClientEventId;
+        row.SchemaVersion = req.SchemaVersion ?? 1;
+        row.TrackingVersion = Clean(req.TrackingVersion);
+        row.Path = Clean(req.Path);
+        row.SubmitOutcome = Clean(req.SubmitOutcome);
+        row.UtmTerm = Clean(req.UtmTerm);
+        row.MetaCampaignName = Clean(req.MetaCampaignName);
+        row.MetaAdSetName = Clean(req.MetaAdSetName);
+        row.MetaAdName = Clean(req.MetaAdName);
+        row.Placement = Clean(req.Placement);
+        row.FormId = Clean(req.FormId);
+        row.FieldName = Clean(req.FieldName);
+        row.ElementId = Clean(req.ElementId);
+        UnifiedAnalyticsWriter.Write(db, row);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(row).State = EntityState.Detached;
+            existing = await db.AnalyticsEvents.AsNoTracking()
+                .FirstOrDefaultAsync(candidate => candidate.ClientEventId == req.ClientEventId, cancellationToken);
+            if (existing is null) throw;
+            if (existing.CommerceBusinessId != scope.CommerceBusinessId ||
+                existing.WebsiteContentVersionId != scope.PublishedVersion?.Id)
+                return Conflict(new { error = "event_id_owner_conflict" });
+        }
+
+        return Ok(new { status = "ok", eventId = row.EventId });
+    }
+
+    private static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private void EnsureLeadContextFallback(LeadSubmitRequest req)
+    {
+        req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+        req.SourcePath = FirstNonBlank(ResolveLeadSourcePathFromReferrer(), req.SourcePath);
+
+        if (string.IsNullOrWhiteSpace(req.Environment))
+        {
+            req.Environment = _config["ASPNETCORE_ENVIRONMENT"]
+                ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                ?? "Production";
+        }
+    }
+
+    private async Task<(bool Succeeded, string? Error)> EnsureLeadAttributionAsync(LeadSubmitRequest req, CancellationToken ct)
+    {
+        // The browser POST goes to /api/lead/submit, so scoped route middleware no longer
+        // has /a/{slug}. Recover that scope from the same-origin referrer/source path and
+        // validate it against the existing tracking-profile authority before forwarding.
+        var sourceSlug = ExtractAgentSlug(req.SourcePath);
+        if (!string.IsNullOrWhiteSpace(sourceSlug))
+        {
+            var bySourcePath = await _resolver.ResolveBySlugAsync(sourceSlug, ct);
+            if (!bySourcePath.Found || bySourcePath.Profile == null)
+            {
+                return (false, "invalid_agent_scope");
+            }
+
+            req.AgentTrackingProfileId = bySourcePath.Profile.Id;
+            req.AgentSlug = bySourcePath.CanonicalSlug ?? bySourcePath.Profile.Slug;
+            return (true, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(req.AgentSlug))
+        {
+            var bySlug = await _resolver.ResolveBySlugAsync(req.AgentSlug.Trim(), ct);
+            if (!bySlug.Found || bySlug.Profile == null)
+            {
+                return (false, "invalid_agent_slug");
+            }
+
+            req.AgentTrackingProfileId = bySlug.Profile.Id;
+            req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
+            return (true, null);
+        }
+
+        if (req.AgentTrackingProfileId.HasValue)
+        {
+            var byId = await _resolver.ResolveByIdAsync(req.AgentTrackingProfileId.Value, ct);
+            if (!byId.Found || byId.Profile == null)
+            {
+                return (false, "invalid_agent_profile");
+            }
+
+            req.AgentTrackingProfileId = byId.Profile.Id;
+            req.AgentSlug = byId.CanonicalSlug ?? byId.Profile.Slug;
+            return (true, null);
+        }
+
+        // Root-domain Home belongs to Founder. Preserve the existing founder fallback,
+        // but resolve it here so the central lead endpoint receives explicit attribution.
+        var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
+        if (founder.Found && founder.Profile != null)
+        {
+            req.AgentTrackingProfileId = founder.Profile.Id;
+            req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
+        }
+
+        return (true, null);
+    }
+
+    private string? ResolveLeadSourcePathFromReferrer()
+    {
+        var raw = Request.Headers["Referer"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+        {
+            if (!string.Equals(uri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return uri.AbsolutePath;
+        }
+
+        return raw.Trim();
+    }
+
+    private static string? ExtractAgentSlug(string? sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath)) return null;
+
+        var path = sourcePath.Trim();
+        if (Uri.TryCreate(path, UriKind.Absolute, out var absolute))
+        {
+            path = absolute.AbsolutePath;
+        }
+
+        path = path.Split('?', '#')[0];
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 2 || !string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Uri.UnescapeDataString(segments[1]);
     }
 
     private void EnsureClientContextFallback(AnalyticsEventRequest req)
@@ -236,7 +496,7 @@ public sealed class TrackingProxyController : ControllerBase
     private async Task<HttpResponseMessage?> ForwardAsync(string path, object payload, CancellationToken ct, Guid? callerCorrelationId = null)
     {
         var portalBase = (_config["Tracking:ApiBase"] ?? Environment.GetEnvironmentVariable("TRACKING_API_BASE") ?? string.Empty).Trim();
-        var sharedSecret = (_config["Tracking:SharedSecret"] ?? Environment.GetEnvironmentVariable("TRACKING_SHARED_SECRET") ?? string.Empty).Trim();
+        var sharedSecret = Shared.Analytics.AnalyticsIngestConfiguration.ResolveSecret(key => _config[key]);
 
         if (string.IsNullOrWhiteSpace(portalBase) || string.IsNullOrWhiteSpace(sharedSecret))
         {
@@ -455,6 +715,8 @@ public sealed class TrackingProxyController : ControllerBase
     {
         public int? SchemaVersion { get; set; }
         public string? TrackingVersion { get; set; }
+        public string? SiteKey { get; set; }
+        public string? WebsiteBindingId { get; set; }
 
         [Required] public Guid ClientEventId { get; set; }
         [Required] public string EventType { get; set; } = string.Empty;
@@ -522,6 +784,7 @@ public sealed class TrackingProxyController : ControllerBase
 
     public sealed class LeadSubmitRequest
     {
+        public string? SubmissionId { get; set; }
         [Required] public string FirstName { get; set; } = string.Empty;
         public string? LastName { get; set; }
         [Required, EmailAddress] public string Email { get; set; } = string.Empty;
@@ -531,6 +794,7 @@ public sealed class TrackingProxyController : ControllerBase
         public string? Notes { get; set; }
         public string? SourcePageKey { get; set; }
         public string? SourceCtaKey { get; set; }
+        public string? SourcePath { get; set; }
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }

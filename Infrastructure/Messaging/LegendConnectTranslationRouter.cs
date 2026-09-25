@@ -1196,9 +1196,20 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             ApplicationLocalizationTelemetry.Failure("translation_memory_invalid", source, target);
         }
 
+        var admitted = await TryGetArtifactAsync(request, source, target, cancellationToken);
+        if (admitted is not null)
+        {
+            ApplicationLocalizationTelemetry.RetainedHit(source, target);
+            await RecordRetainedReuseAsync(source, target, request.SourceText.Length, approved: false, cancellationToken);
+            return ToRetainedResult(admitted, source, target, reused: true);
+        }
+
         ApplicationLocalizationTelemetry.Miss(source, target);
         var coalesced = await _coalescer.ExecuteAsync(identity, async () =>
         {
+            var admittedAfterFence = await TryGetArtifactAsync(request, source, target, cancellationToken);
+            if (admittedAfterFence is not null)
+                return ToRetainedResult(admittedAfterFence, source, target, reused: true);
             var afterFence = await _intelligence.TryGetRetainedTranslationAsync(identity, cancellationToken);
             if (afterFence is not null && TranslationOutputValidator.IsValid(
                     request.SourceText,
@@ -1343,7 +1354,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         CancellationToken cancellationToken = default,
         int maximumProviderBatches = int.MaxValue)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumProviderBatches);
+        ArgumentOutOfRangeException.ThrowIfNegative(maximumProviderBatches);
+        var inspectOnly = maximumProviderBatches == 0;
         if (requests.Count == 0)
             return Array.Empty<RetainedTranslationResult>();
 
@@ -1354,22 +1366,31 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         {
             var individual = new List<RetainedTranslationResult>(requests.Count);
             foreach (var request in requests)
-                individual.Add(await TranslateRetainedAsync(request, cancellationToken));
+                individual.Add(inspectOnly
+                    ? (await TranslateRetainedBatchAsync(new[] { request }, cancellationToken, 0))[0]
+                    : await TranslateRetainedAsync(request, cancellationToken));
             return individual;
         }
 
-        var source = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            first.SourceLanguageCode,
-            cancellationToken);
-        var target = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            first.TargetLanguageCode,
-            cancellationToken);
+        var source = inspectOnly
+            ? await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(first.SourceLanguageCode, cancellationToken)
+            : await _languages.NormalizeEnabledTranslationLanguageAsync(first.SourceLanguageCode, cancellationToken);
+        var target = inspectOnly
+            ? await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(first.TargetLanguageCode, cancellationToken)
+            : await _languages.NormalizeEnabledTranslationLanguageAsync(first.TargetLanguageCode, cancellationToken);
         if (source is null || target is null || requests.Any(request =>
                 ValidateRetainedRequest(request, source, target) is not null))
         {
             var invalid = new List<RetainedTranslationResult>(requests.Count);
             foreach (var request in requests)
-                invalid.Add(await TranslateRetainedAsync(request, cancellationToken));
+            {
+                if (!inspectOnly)
+                    invalid.Add(await TranslateRetainedAsync(request, cancellationToken));
+                else if (ValidateRetainedRequest(request, source, target) is { } error)
+                    invalid.Add(RetainedFailure(request, source, target, error));
+                else
+                    invalid.Add((await TranslateRetainedBatchAsync(new[] { request }, cancellationToken, 0))[0]);
+            }
             return invalid;
         }
 
@@ -1379,6 +1400,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             target,
             _azure.ProviderName,
             _azure.ProviderVersion)).ToArray();
+        // Inventory shares the same validation/cache projection but cannot publish usage,
+        // provision registry rows, invalidate retained text, or join paid work.
+        if (inspectOnly)
+            return await TranslateRetainedBatchCoreAsync(requests, identities, source, target, 0, cancellationToken);
         var batchIdentity = "retained-batch:" + maximumProviderBatches + ":" + Hash(string.Join('\n', identities));
         var coalesced = await _coalescer.ExecuteAsync(batchIdentity, () =>
             TranslateRetainedBatchCoreAsync(requests, identities, source, target, maximumProviderBatches, cancellationToken), cancellationToken);
@@ -1495,12 +1520,22 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         }
 
         var retainedMatches = await _intelligence.TryGetRetainedTranslationsAsync(
-            unresolved.Select(group => group.Identity).ToArray(),
+            unresolved.SelectMany(group =>
+            {
+                var request = requests[group.RepresentativeIndex];
+                return CanReuseArtifact(request)
+                    ? new[] { group.Identity, ArtifactIdentity(request, source, target) }
+                    : new[] { group.Identity };
+            }).ToArray(),
             cancellationToken);
         foreach (var group in unresolved)
         {
             var request = requests[group.RepresentativeIndex];
             retainedMatches.TryGetValue(group.Identity, out var retained);
+            if ((retained is null || !TranslationOutputValidator.IsValid(request.SourceText, retained.Text, request.PlaceholderContract)) &&
+                CanReuseArtifact(request) && retainedMatches.TryGetValue(ArtifactIdentity(request, source, target), out var artifact) &&
+                IsValidArtifactMatch(request, artifact))
+                retained = artifact;
             if (retained is not null && TranslationOutputValidator.IsValid(
                     request.SourceText,
                     retained.Text,
@@ -1514,12 +1549,21 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             }
             if (retained is not null)
             {
-                await _intelligence.InvalidateRetainedTranslationAsync(group.Identity, cancellationToken);
+                if (maximumProviderBatches > 0)
+                    await _intelligence.InvalidateRetainedTranslationAsync(group.Identity, cancellationToken);
                 ApplicationLocalizationTelemetry.Failure("translation_memory_invalid", source, target);
             }
 
             ApplicationLocalizationTelemetry.Miss(source, target);
             misses.Add(group);
+        }
+
+        if (maximumProviderBatches == 0)
+        {
+            foreach (var miss in misses)
+                foreach (var index in miss.Indices)
+                    results[index] = RetainedFailure(requests[index], source, target, "translation_pending");
+            return results.Select(result => result!).ToArray();
         }
 
         var batches = 0;
@@ -2386,6 +2430,28 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             providerVersion,
             request.ReuseScope,
             request.ScopeIdentityHash));
+
+    // This schema discriminator locates admitted public copy independently of the
+    // runtime Azure version. Model and artifact hash remain truthful row metadata.
+    internal static string ArtifactIdentity(RetainedTranslationRequest request, string source, string target) =>
+        RetainedIdentity(request, source, target, "ApplicationCopyArtifact", ApplicationLocalizationService.ArtifactSchema);
+
+    private static bool CanReuseArtifact(RetainedTranslationRequest request) =>
+        request.ReuseScope == TranslationReuseScopes.Global && string.IsNullOrEmpty(request.ScopeIdentityHash);
+
+    private static bool IsValidArtifactMatch(RetainedTranslationRequest request, LegendRetainedTranslationMemoryMatch match) =>
+        match.Provider == ApplicationLocalizationService.ArtifactProvider &&
+        match.Provenance == ApplicationLocalizationService.ArtifactProvenance &&
+        match.QualityState == ApplicationLocalizationService.ArtifactQuality &&
+        ApplicationLocalizationService.IsValidArtifactText(request.SourceText, match.Text, request.PlaceholderContract);
+
+    private async Task<LegendRetainedTranslationMemoryMatch?> TryGetArtifactAsync(
+        RetainedTranslationRequest request, string source, string target, CancellationToken cancellationToken)
+    {
+        if (!CanReuseArtifact(request) || _intelligence is null) return null;
+        var match = await _intelligence.TryGetRetainedTranslationAsync(ArtifactIdentity(request, source, target), cancellationToken);
+        return match is not null && IsValidArtifactMatch(request, match) ? match : null;
+    }
 
     private static string Hash(string value) => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(value ?? string.Empty)))

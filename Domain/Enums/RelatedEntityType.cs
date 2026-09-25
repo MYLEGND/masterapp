@@ -8,5 +8,6 @@ public enum RelatedEntityType
     Household = 3,
     Proposal = 4,
     Underwriting = 5,
-    FinanceTool = 6
+    FinanceTool = 6,
+    BusinessContact = 7
 }

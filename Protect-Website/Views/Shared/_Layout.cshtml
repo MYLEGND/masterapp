@@ -1,6 +1,8 @@
 ﻿@using System.Text.Json
 @using Microsoft.AspNetCore.Http
 @using Shared.Analytics
+@inject Microsoft.AspNetCore.Mvc.Infrastructure.IActionDescriptorCollectionProvider EditorActions
+@inject Microsoft.AspNetCore.Mvc.Razor.IRazorViewEngine EditorViews
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
@@ -20,7 +22,7 @@
     var variantClass = string.IsNullOrWhiteSpace(pageVariant) ? "website" : pageVariant.Replace(" ", "-").Replace("_", "-").ToLowerInvariant();
     var modeClass = string.IsNullOrWhiteSpace(pageMode) ? "site-mode" : pageMode.Replace(" ", "-").Replace("_", "-").ToLowerInvariant();
     var bodyClasses = $"{extraBodyClass} {(isLandingPage ? "landing-mode" : "site-mode")} page-variant-{variantClass} page-mode-{modeClass} {(isStandaloneQuoteLanding ? "standalone-quote-landing" : string.Empty)}".Trim();
-    var mainClasses = isStandaloneQuoteLanding ? "layout-content" : "container layout-content";
+    var mainClasses = isStandaloneQuoteLanding ? "layout-content" : "public-main layout-content";
     var legalBasePath = !isFounderPath && !string.IsNullOrWhiteSpace(trackingSlug)
         ? $"/a/{trackingSlug}"
         : string.Empty;
@@ -56,22 +58,15 @@
     var seoRawTitle = (ViewData["SeoTitle"] as string) ?? (ViewData["Title"] as string) ?? "Life Insurance & Protection Planning";
     var seoTitle = seoRawTitle.Contains("Legend", StringComparison.OrdinalIgnoreCase)
         ? seoRawTitle
-        : seoRawTitle + " | Legend™";
+        : seoRawTitle + " | LEGEND";
 
     var seoDescription = (ViewData["SeoDescription"] as string)
         ?? "Get a personalized protection review for life insurance, mortgage protection, final expense, and family coverage options.";
 
     var seoRequestPath = Context.Request.Path.Value ?? "/";
-    var seoCanonicalPath = seoRequestPath.EndsWith("/landing", StringComparison.OrdinalIgnoreCase)
-        ? seoRequestPath[..^"/landing".Length]
-        : seoRequestPath;
-
-    if (string.IsNullOrWhiteSpace(seoCanonicalPath))
-    {
-        seoCanonicalPath = "/";
-    }
-
-    var seoCanonicalUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{seoCanonicalPath}";
+    var seoCanonicalPath = ProtectRouteCatalog.CanonicalPath(seoRequestPath);
+    var seoOrigin = Env.IsProduction() ? ProtectRouteCatalog.CanonicalOrigin : $"{Context.Request.Scheme}://{Context.Request.Host}";
+    var seoCanonicalUrl = seoOrigin + seoCanonicalPath;
     var seoOgImage = (ViewData["SeoImage"] as string) ?? $"{Context.Request.Scheme}://{Context.Request.Host}/images/legend-social-preview.png";
     var seoRobots = (ViewData["SeoRobots"] as string) ?? "index,follow";
     var seoType = (ViewData["SeoType"] as string) ?? "website";
@@ -96,8 +91,10 @@
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-public-web.css" asp-append-version="true" />
 
-    <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="~/images/favicon/legend-favicon.svg" asp-append-version="true" />
     <script>
         window.AGENT_TRACKING_PROFILE_ID = "@trackingProfileId";
         window.AGENT_TRACKING_SLUG = "@trackingSlug";
@@ -108,719 +105,6 @@
         window.RESOLVED_META_PIXEL_ID = "@metaPixelId";
         window.RESOLVED_META_PIXEL_OWNER_TYPE = "@metaPixelOwnerType";
     </script>
-
-    <style>
-        :root{
-            --navy:#0e1b3d;
-            --navy-deep:#0b1530;
-            --ink:#0f172a;
-            --muted:#475569;
-            --gold:#a68023;
-            --gold-strong:#c79931;
-            --border: rgba(199,153,49,.95);
-        }
-
-        *,
-        *::before,
-        *::after { box-sizing: border-box; }
-
-        html, body { width: 100%; overflow-x: hidden; }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            color: var(--ink);
-            background: #ffffff;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-
-        main.layout-content {
-            padding-top: 2rem;
-            padding-bottom: 3rem;
-            flex-grow: 1;
-            width: 100%;
-        }
-
-        body.standalone-quote-landing main.layout-content {
-            padding-top: .35rem;
-            padding-bottom: 2rem;
-            background: transparent !important;
-            background-color: transparent !important;
-        }
-
-        footer.footer {
-            background: linear-gradient(180deg, #0e1b3d 0%, #0b1530 100%) !important;
-            color: rgba(236,240,247,0.76);
-            border-top: 1.5px solid #a68023 !important;
-            text-align: center;
-            font-size: 0.95rem;
-            font-weight: 500;
-            padding: 1.2rem 1rem 1.15rem;
-            width: 100%;
-            box-shadow:
-                0 -18px 34px rgba(0,0,0,0.30),
-                inset 0 1px 0 rgba(255,255,255,0.03);
-        }
-
-        /* ------------------------ HEADER / NAVBAR ------------------------ */
-        header { width: 100%; }
-
-        .navbar {
-            background: linear-gradient(160deg, #0e1b3d, #0b1530);
-            border: 2px solid var(--border);
-            border-radius: 18px;
-            height: 148px;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            padding: 0 1.5rem;
-            box-sizing: border-box;
-            position: relative;
-            width: 100%;
-            box-shadow:
-                0 22px 42px rgba(0,0,0,.32),
-                inset 0 0 0 1px rgba(255,255,255,.05);
-        }
-
-        .navbar-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1.35rem;
-            flex: 1 1 auto;
-            width: 100%;
-        }
-
-        .nav-toggle {
-            display: none;
-            align-items: center;
-            justify-content: center;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            border: 1.4px solid rgba(199,153,49,0.55);
-            background: linear-gradient(160deg, #0c1427, #0a1020);
-            box-shadow: 0 10px 18px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.06);
-            cursor: pointer;
-            padding: 0;
-            transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
-        }
-        .nav-toggle:focus-visible { outline: 2px solid var(--gold-strong); outline-offset: 3px; }
-        .nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(0,0,0,.28); }
-        .nav-toggle-bars,
-        .nav-toggle-bars::before,
-        .nav-toggle-bars::after {
-            display: block;
-            width: 20px;
-            height: 2px;
-            background: #f8fafc;
-            border-radius: 4px;
-            position: relative;
-            transition: transform .18s ease, opacity .18s ease;
-        }
-        .nav-toggle-bars::before,
-        .nav-toggle-bars::after {
-            content: "";
-            position: absolute;
-            left: 0;
-        }
-        .nav-toggle-bars::before { top: -6px; }
-        .nav-toggle-bars::after { top: 6px; }
-        .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
-        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
-        .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
-
-        .navbar-brand img {
-            height: auto;
-            max-height: 138px;
-            width: auto;
-            max-width: 100%;
-            display: block;
-            filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
-        }
-
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            align-self: center;
-            flex: 0 0 auto;
-            margin: 0;
-        }
-
-        body.landing-mode .navbar {
-            height: auto;
-            min-height: 88px;
-            padding: 8px 16px;
-        }
-        body.landing-mode .navbar-top {
-            justify-content: center;
-            gap: 0;
-        }
-        body.landing-mode .navbar-brand {
-            margin: 0 auto;
-            pointer-events: none;
-        }
-        body.landing-mode .navbar-brand img {
-            max-height: 68px;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 0.8rem;
-            max-width: 100%;
-            margin-left: auto;
-            justify-content: flex-end;
-        }
-
-        .nav-login {
-            position: relative;
-            display: flex;
-            align-items: stretch;
-        }
-
-        .nav-login-toggle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: .45rem;
-            min-width: 116px;
-            padding-inline: 1rem;
-            cursor: pointer;
-            background: linear-gradient(180deg, #18244a, #101a37);
-            border-radius: 999px;
-        }
-
-        .nav-login-caret {
-            width: 10px;
-            height: 10px;
-            border-right: 2px solid currentColor;
-            border-bottom: 2px solid currentColor;
-            transform: translateY(-1px) rotate(45deg);
-            transition: transform .16s ease;
-            opacity: .86;
-        }
-
-        .nav-login.open .nav-login-caret {
-            transform: translateY(2px) rotate(225deg);
-        }
-
-        .nav-login-menu {
-            position: absolute;
-            top: calc(100% + 8px);
-            right: 0;
-            min-width: 158px;
-            padding: .38rem;
-            display: grid;
-            gap: .3rem;
-            border-radius: 24px;
-            border: 1.4px solid rgba(199,153,49,0.55);
-            background: linear-gradient(175deg, #0b1224, #0c142a);
-            box-shadow: 0 22px 34px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.05);
-            opacity: 0;
-            pointer-events: none;
-            transform: translateY(-6px);
-            transition: opacity .16s ease, transform .16s ease;
-            z-index: 60;
-        }
-
-        .nav-login.open .nav-login-menu {
-            opacity: 1;
-            pointer-events: auto;
-            transform: translateY(0);
-        }
-
-        .nav-login-option {
-            display: inline-flex;
-            align-items: center;
-            justify-content: flex-start;
-            width: 100%;
-            padding: .72rem .95rem;
-            border-radius: 999px;
-            border: 1px solid rgba(199,153,49,0.28);
-            color: #f8fafc;
-            text-decoration: none;
-            background: linear-gradient(180deg, rgba(24,36,74,.92), rgba(14,24,52,.96));
-            transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
-            font-weight: 800;
-            letter-spacing: -.01em;
-            line-height: 1.1;
-            white-space: nowrap;
-        }
-
-        .nav-login-option:hover,
-        .nav-login-option:focus-visible {
-            color: #ffffff;
-            background: linear-gradient(180deg, rgba(199,153,49,.18), rgba(24,36,74,.96));
-            border-color: rgba(199,153,49,0.46);
-            transform: translateY(-1px);
-            box-shadow: 0 10px 20px rgba(0,0,0,.22);
-            outline: none;
-        }
-
-        .header-bottom {
-            position: absolute;
-            bottom: 0.45rem;
-            width: 100%;
-            text-align: center;
-            font-weight: 800;
-            color: var(--gold-strong);
-            font-size: 1.12rem;
-            letter-spacing: 1px;
-            text-shadow: 0 8px 20px rgba(0,0,0,.35);
-        }
-
-        /* Psalms trigger */
-        .header-psalms {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.65);
-            background: #0f172a;
-            color: var(--gold-strong);
-            font-weight: 900;
-            letter-spacing: 1.1px;
-            font-size: 1.02rem;
-            cursor: pointer;
-            box-shadow:
-                0 10px 22px rgba(0,0,0,.28),
-                inset 0 1px 0 rgba(255,255,255,.08);
-            transition: transform .16s ease, box-shadow .18s ease, background .18s ease;
-        }
-        .header-psalms:hover,
-        .header-psalms:focus-visible {
-            transform: translateY(-1px);
-            box-shadow:
-                0 14px 30px rgba(0,0,0,.32),
-                inset 0 1px 0 rgba(255,255,255,.14);
-            background: #111d33;
-            outline: none;
-        }
-        .header-psalms:active {
-            transform: translateY(0);
-            box-shadow:
-                0 8px 16px rgba(0,0,0,.26),
-                inset 0 1px 0 rgba(255,255,255,.08);
-        }
-
-        /* Scripture modal */
-        .scripture-modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(8, 12, 24, 0.72);
-            backdrop-filter: blur(8px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity .18s ease;
-            z-index: 9999;
-            padding: 16px;
-        }
-        .scripture-modal.open { opacity: 1; pointer-events: auto; }
-
-        .scripture-card {
-            width: min(720px, 96vw);
-            background: linear-gradient(180deg, #0f172a 0%, #0c1427 100%);
-            border: 1.5px solid rgba(166,128,35,.55);
-            border-radius: 18px;
-            box-shadow: 0 22px 55px rgba(0,0,0,.35);
-            color: #f4f6fb;
-            padding: 22px 22px 24px;
-            position: relative;
-        }
-        .scripture-card-header{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 10px;
-        }
-        .scripture-day{
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 800;
-            color: rgba(199,153,49,.9);
-            font-size: .82rem;
-        }
-        .scripture-reference{
-            font-size: 1.25rem;
-            font-weight: 900;
-            letter-spacing: .4px;
-        }
-        .scripture-translation{
-            font-size: .9rem;
-            color: rgba(244,246,251,.82);
-        }
-        .scripture-streak-row{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: .92rem;
-            color: rgba(244,246,251,.78);
-            margin-bottom: 12px;
-        }
-        .scripture-streak-label{ font-weight: 800; color: rgba(199,153,49,.9); }
-        .scripture-streak-value{ font-weight: 900; }
-        .scripture-text{
-            font-size: 1.05rem;
-            line-height: 1.8;
-            color: #e8ecf7;
-        }
-        .scripture-close{
-            background: transparent;
-            border: 1px solid rgba(244,246,251,.35);
-            color: #f4f6fb;
-            border-radius: 10px;
-            width: 32px;
-            height: 32px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            transition: background .15s ease, transform .15s ease;
-        }
-        .scripture-close:hover{
-            background: rgba(244,246,251,.12);
-            transform: translateY(-1px);
-        }
-        @@media (max-width: 768px){
-            .header-psalms{ font-size: 1rem; padding: 8px 14px; }
-            .scripture-card{ padding: 18px; }
-            .scripture-reference{ font-size: 1.1rem; }
-        }
-
-        /* ------------------------ RESPONSIVE ------------------------ */
-        @@media (max-width: 820px) {
-            .navbar {
-                height: auto;
-                padding: 10px 12px 8px;
-                border-radius: 14px;
-            }
-
-            .navbar-top {
-                flex-direction: row;
-                align-items: center;
-                gap: 10px;
-            }
-
-            .navbar-brand img {
-                max-height: 38px;
-                filter: drop-shadow(0 4px 10px rgba(0,0,0,.25));
-            }
-
-            body.landing-mode .navbar {
-                min-height: 74px;
-                padding: 8px 12px;
-            }
-            body.landing-mode .navbar-brand img {
-                max-height: 42px;
-            }
-
-            .nav-toggle { display: inline-flex; width: 36px; height: 36px; }
-
-            .nav-links {
-                position: absolute;
-                left: 12px;
-                right: 12px;
-                top: 100%;
-                margin-top: 10px;
-                flex-direction: column;
-                gap: 6px;
-                background: linear-gradient(175deg, #0b1224, #0c142a);
-                border: 1.4px solid rgba(199,153,49,0.55);
-                border-radius: 14px;
-                padding: 10px;
-                box-shadow: 0 20px 32px rgba(0,0,0,.32);
-                display: none;
-                z-index: 50;
-            }
-
-            .navbar.mobile-open .nav-links { display: flex; }
-
-            .nav-link {
-                width: 100%;
-                text-align: left;
-                padding: 0.65rem 0.9rem;
-                border-radius: 10px;
-            }
-
-            .nav-login {
-                width: 100%;
-                flex-direction: column;
-            }
-
-            .nav-login-toggle {
-                width: 100%;
-                justify-content: space-between;
-            }
-
-            .nav-login-menu {
-                position: static;
-                min-width: 0;
-                margin-top: 8px;
-                transform: none;
-                display: none;
-                opacity: 1;
-                pointer-events: auto;
-                box-shadow: none;
-            }
-
-            .nav-login.open .nav-login-menu {
-                display: grid;
-            }
-
-            .header-bottom {
-                position: static;
-                margin-top: 6px;
-                font-size: 0.96rem;
-            }
-
-            .header-psalms {
-                width: 100%;
-                justify-content: center;
-                font-size: 0.92rem;
-                padding: 8px 10px;
-            }
-        }
-
-        /* ------------------------ LEAD MODAL ------------------------ */
-        .lead-modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(8, 12, 24, 0.72);
-            backdrop-filter: blur(8px);
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity .2s ease;
-            z-index: 10000;
-            padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 14px;
-            overflow-y: auto;
-        }
-        .lead-modal.open { opacity: 1; pointer-events: auto; }
-        .lead-card {
-            width: min(720px, 96vw);
-            background: linear-gradient(180deg, #0f172a 0%, #0c1427 100%);
-            border: 1.6px solid rgba(199,153,49,.75);
-            border-radius: 18px;
-            box-shadow: 0 24px 60px rgba(0,0,0,.35);
-            color: #f4f6fb;
-            padding: 22px;
-            position: relative;
-            max-height: 88vh;
-            overflow-y: auto;
-        }
-        .lead-card h3 {
-            margin: 0 0 8px;
-            font-size: 1.4rem;
-            font-weight: 900;
-            letter-spacing: .2px;
-            color: #dfe6f0;
-        }
-        .lead-card p.sub {
-            margin: 0 0 14px;
-            color: rgba(232,237,247,.85);
-            line-height: 1.6;
-        }
-        .lead-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 12px;
-        }
-        .lead-card label {
-            font-weight: 800;
-            color: #f8fafc;
-            margin-bottom: 6px;
-            display: block;
-        }
-        .lead-card input,
-        .lead-card select,
-        .lead-card textarea {
-            width: 100%;
-            border-radius: 12px;
-            border: 1.4px solid rgba(199,153,49,.9);
-            padding: 10px 12px;
-            background: #ffffff;
-            color: #0f172a;
-            font-weight: 700;
-        }
-        .lead-card textarea { resize: vertical; min-height: 90px; }
-        .lead-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 14px;
-        }
-        .lead-btn {
-            border-radius: 12px;
-            padding: 11px 18px;
-            font-weight: 900;
-            border: 1.4px solid rgba(199,153,49,.9);
-            cursor: pointer;
-            transition: transform .15s ease, box-shadow .15s ease;
-        }
-        .lead-btn.primary {
-            background: linear-gradient(180deg, #c79931, #a68023);
-            color: #fff;
-            box-shadow: 0 12px 30px rgba(0,0,0,.22);
-        }
-        .lead-btn.secondary {
-            background: #0f172a;
-            color: #dfe6f0;
-        }
-        .lead-btn:disabled { opacity: .6; cursor: not-allowed; }
-        .lead-error {
-            color: #fca5a5;
-            font-weight: 800;
-            margin-top: 8px;
-            display: none;
-        }
-        .lead-error.show { display: block; }
-        .lead-success {
-            color: #bbf7d0;
-            font-weight: 800;
-            margin-top: 8px;
-            display: none;
-        }
-        .lead-success.show { display: block; }
-        .lead-close {
-            position: sticky;
-            top: 4px;
-            margin-left: auto;
-            background: transparent;
-            border: 1px solid rgba(244,246,251,.3);
-            color: #f4f6fb;
-            border-radius: 10px;
-            width: 36px;
-            height: 36px;
-            font-size: 1.15rem;
-            cursor: pointer;
-            z-index: 2;
-        }
-        .lead-consents {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .lead-consents label {
-            color: #dfe6f0;
-            font-weight: 700;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .lead-consents input { width: auto; }
-        .lead-required { color: #f87171; }
-        @@media (max-width: 640px){
-            .lead-card {
-                padding: 16px;
-                width: 100%;
-                max-height: 86vh;
-                border-radius: 14px;
-            }
-            .lead-grid {
-                grid-template-columns: 1fr;
-                gap: 10px;
-            }
-            .lead-card h3 { font-size: 1.15rem; line-height: 1.3; }
-            .lead-card p.sub { font-size: 0.95rem; }
-            .lead-actions { flex-direction: column; }
-            .lead-btn { width: 100%; justify-content: center; text-align: center; }
-            .lead-close { top: 6px; }
-        }
-    
-        .footer-shell {
-            width: min(100%, 1040px);
-            margin: 0 auto;
-            display: grid;
-            justify-items: center;
-            gap: .6rem;
-        }
-
-        .footer-seo-links {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: .75rem 1rem;
-            padding: 0;
-            margin: 0;
-            font-size: .86rem;
-        }
-
-        .footer-seo-links a {
-            color: rgba(246,232,195,0.72);
-            text-decoration: none;
-            transition: color .2s ease, text-decoration-color .2s ease;
-        }
-
-        .footer-seo-links a:hover {
-            color: #f5dd9c;
-            text-decoration: underline;
-        }
-
-        .footer-meta {
-            display: grid;
-            justify-items: center;
-            gap: .35rem;
-        }
-
-        .footer-copyright {
-            color: rgba(236,240,247,0.82);
-            font-size: .84rem;
-            line-height: 1.35;
-        }
-
-        .footer-legal {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            gap: .45rem;
-            font-size: .96rem;
-            line-height: 1.25;
-        }
-
-        .footer-link {
-            color: #e9c66f !important;
-            text-decoration: none;
-            font-weight: 700;
-            transition: color .2s ease, text-decoration-color .2s ease;
-        }
-
-        .footer-link:hover {
-            color: #f5dd9c !important;
-            text-decoration: underline;
-        }
-
-        @@media (max-width: 640px) {
-            footer.footer {
-                padding: 1rem .9rem .95rem;
-            }
-
-            .footer-seo-links {
-                gap: .55rem .8rem;
-                font-size: .8rem;
-            }
-
-            .footer-copyright {
-                font-size: .8rem;
-            }
-
-            .footer-legal {
-                gap: .35rem;
-                font-size: .88rem;
-            }
-        }
-
-</style>
 
     <!-- ================= META PIXEL ================= -->
     @if (hasMetaPixel)
@@ -843,7 +127,7 @@
     {
       "@@context": "https://schema.org",
       "@@type": "FinancialService",
-      "name": "Legend",
+      "name": "LEGEND",
       "url": "https://protect.mylegnd.com",
       "description": "Personalized protection planning for life insurance, mortgage protection, final expense, disability coverage, and family financial stability.",
       "areaServed": [
@@ -871,85 +155,31 @@
     </script>
 
 
+    @await Html.PartialAsync("~/Views/Diagnostics/_PageHealth.cshtml")
 </head>
 
-<body class="@bodyClasses">
+<body class="legend-public--protect @bodyClasses">
 @if (!isStandaloneQuoteLanding)
 {
-<header>
-    <nav class="navbar">
-        <div class="navbar-top">
-            @if (isLandingPage)
-            {
-                <div class="navbar-brand" aria-label="Legend">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
-                </div>
-            }
-            else
-            {
-                <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
-                </a>
-
-                <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
-                    <span class="nav-toggle-bars"></span>
-                </button>
-
-                <div class="nav-links" id="navLinks">
-                    <a class="nav-link" asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
-                    <a class="nav-link" asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
-                    <a class="nav-link" asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Get a Quote</a>
-                    <a class="nav-link" asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
-                    <div class="nav-login" id="navLogin">
-                        <button class="nav-link nav-login-toggle"
-                                id="navLoginToggle"
-                                type="button"
-                                aria-haspopup="true"
-                                aria-expanded="false"
-                                aria-controls="navLoginMenu">
-                            <span>Login</span>
-                            <span class="nav-login-caret" aria-hidden="true"></span>
-                        </button>
-                        <div class="nav-login-menu" id="navLoginMenu" role="menu" aria-label="Login options">
-                            <a class="nav-login-option"
-                               href="@agentLoginUrl"
-                               target="_blank"
-                               rel="noopener noreferrer"
-                               data-cta="nav_agent_login"
-                               role="menuitem">
-                                Agent Login
-                            </a>
-                            <a class="nav-login-option"
-                               href="@clientLoginUrl"
-                               target="_blank"
-                               rel="noopener noreferrer"
-                               data-cta="nav_client_login"
-                               role="menuitem">
-                                Client Login
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            }
-        </div>
-
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+        <a class="brand" asp-controller="Home" asp-action="Index" aria-label="Legend Legacy Protection home">
+            <span class="brand-wordmark"><strong>LEGEND®</strong></span>
+        </a>
         @if (!isLandingPage)
         {
-            <div class="header-bottom">
-                <button type="button"
-                        class="header-psalms"
-                        id="psalmsTrigger"
-                        aria-haspopup="dialog"
-                        aria-controls="psalmsModal">
-                    LIFE HAC | GOD ABOVE ALL
-                </button>
-            </div>
+            <button class="nav-toggle" type="button" data-public-nav-toggle aria-controls="primary-nav" aria-expanded="false">Menu</button>
+            <nav id="primary-nav" class="nav" data-public-nav data-open="false" aria-label="Primary navigation">
+                <a asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
+                <a asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
+                <a asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Coverage</a>
+                <a asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
+                <a href="@clientLoginUrl" class="nav-cta" data-cta="nav_client_login">Client Login</a>
+            </nav>
         }
-    </nav>
-</header>
+    </header>
 }
-
-<main class="@mainClasses">
+<main id="main" class="@mainClasses">
     @RenderBody()
 </main>
 
@@ -974,31 +204,38 @@
     </div>
 </div>
 
-<footer class="footer mt-auto">
-    <div class="footer-shell">
-        <nav class="footer-seo-links" aria-label="Protection planning links">
+<footer class="site-footer">
+    <div class="footer-grid">
+        <div>
+            <p class="eyebrow">LEGEND LEGACY PROTECTION</p>
+            <p>Insurance planning and protection guidance built around clarity, responsibility, and financial stewardship.</p>
+            <a class="email" asp-controller="Contact" asp-action="Index">Talk with us</a>
+        </div>
+        <div>
+            <h2>Protection</h2>
             <a href="/Quote/Life">Life Insurance</a>
             <a href="/Quote/Mortgage-Protection">Mortgage Protection</a>
-            <a href="/Quote/Term-Life">Term Life</a>
-            <a href="/Quote/Whole-Life">Whole Life</a>
-            <a href="/Quote/Final-Expense">Final Expense</a>
-            <a href="/Quote/IUL">IUL</a>
             <a href="/Quote/Disability">Disability Insurance</a>
-        </nav>
-        <div class="footer-meta">
-            <div class="footer-copyright">&copy; 2025 - MYLEGND, LLC. All rights reserved.</div>
-            <div class="footer-legal">
-                <a href="@termsUrl" class="footer-link">Terms</a>
-                <span aria-hidden="true">•</span>
-                <a href="@privacyUrl" class="footer-link">Privacy</a>
-            </div>
+            <a asp-controller="RiskAssessment" asp-action="Index">Risk Assessment</a>
         </div>
+        <div>
+            <h2>LEGEND</h2>
+            <a href="https://www.mylegnd.com/">Main Website</a>
+            <a href="https://www.instagram.com/legend.vault/" rel="me">Instagram</a>
+            <a href="https://apps.apple.com/us/app/legend/id6798419225">Legend® ios App</a>
+            <a href="@termsUrl">Terms</a>
+            <a href="@privacyUrl">Privacy</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&copy; @DateTime.UtcNow.Year MyLegnd, LLC. All rights reserved.</span>
+        <span>Insurance products are offered through appropriately licensed professionals and subject to carrier terms.</span>
     </div>
 </footer>
 
 <!-- Lead Capture Modal -->
 <div id="leadModal" class="lead-modal" aria-hidden="true">
-    <div class="lead-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle">
+    <div class="lead-card" role="dialog" aria-modal="true" aria-labelledby="leadTitle" aria-describedby="leadSubtitle" tabindex="-1">
         <button type="button" class="lead-close" id="leadClose" aria-label="Close lead capture dialog">&times;</button>
         <h3 id="leadTitle">Tell us what you’re looking for—we’ll walk you through your options clearly.</h3>
         <p class="sub" id="leadSubtitle">We’ll reply with clear next steps. No pressure.</p>
@@ -1049,9 +286,16 @@
                 <textarea name="Notes" placeholder="Share goals or questions (optional)"></textarea>
             </div>
 
-            <div class="lead-consents mt-2">
-                <label><input type="checkbox" name="MarketingEmailConsent" value="true" required /> <span class="lead-required">*</span> I authorize the company to contact me regarding this request.</label>
-                <label><input type="checkbox" name="TermsAccepted" value="true" required /> <span class="lead-required">*</span> I agree to the terms.</label>
+            <div class="lead-consents">
+                <div class="lead-consent">
+                    <input id="leadAuthorization" type="checkbox" name="MarketingEmailConsent" value="true" required />
+                    <label for="leadAuthorization">
+                        <span class="lead-required">*</span>
+                        I authorize LEGEND to contact me regarding this request and agree to the
+                        <a href="@termsUrl" target="_blank" rel="noopener">Terms</a> and
+                        <a href="@privacyUrl" target="_blank" rel="noopener">Privacy Policy</a>.
+                    </label>
+                </div>
             </div>
 
             <div class="lead-actions">
@@ -1316,6 +560,17 @@
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
     })();
 </script>
+<script>
+    window.LEGEND_PUBLIC_CMS_CONTEXT = {
+        siteKey: "protect",
+        apiBase: "",
+        agentSlug: @Html.Raw(JsonSerializer.Serialize(trackingSlug ?? string.Empty)),
+        pagePrefix: @Html.Raw(JsonSerializer.Serialize(legalBasePath)),
+        pages: @Html.Raw(JsonSerializer.Serialize(ProtectWebsite.Services.WebsiteEditorPageCatalog.Discover(EditorActions, EditorViews).Select(page => new { path = page.Path, label = page.Label })))
+    };
+</script>
+<script src="~/design/legend-public-web.js" asp-append-version="true" defer></script>
+<script src="~/design/legend-public-cms.js" asp-append-version="true" defer></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

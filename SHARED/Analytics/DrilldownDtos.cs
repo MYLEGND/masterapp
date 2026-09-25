@@ -145,6 +145,7 @@ public sealed class MarketingHealthMatchedLeadDto
 
 public sealed class MarketingHealthDto
 {
+    public string MetaHealthStatus { get; set; } = "Unverified";
     public int ClientTrackingErrors { get; set; }
     public int ClientTrackingErrorSessions { get; set; }
     public int InferredFormStarts { get; set; }
