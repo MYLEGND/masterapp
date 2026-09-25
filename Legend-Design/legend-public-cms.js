@@ -1432,30 +1432,88 @@
     });
   }
 
+  function resetBaselineElement(el) {
+    if (!el?.dataset?.cmsId) return;
+    delete pageState().elements[el.dataset.cmsId];
+    const original = rememberOriginal(el);
+    el.hidden = original.hidden;
+    if (el instanceof HTMLImageElement) el.src = original.src || '';
+    else if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) setContentText(el, original.text);
+    if (original.href != null) el.setAttribute('href', original.href);
+    if (original.src != null) el.setAttribute('src', original.src);
+    applyStyle(el, null);
+    applyLayout(el, null);
+    delete el.dataset.cmsLocked;
+    el.classList.remove('legend-cms-locked');
+  }
+
+  function cascadeDeleteExtra(extraId) {
+    const containerId = `extra:${extraId}`;
+    const extra = pageState().extras.find(item => item.id === extraId);
+    if (!extra) return;
+    const descendantExtraIds = pageState().extras
+      .filter(item => item.id !== extraId && item.placement?.containerId === containerId)
+      .map(item => item.id);
+    descendantExtraIds.forEach(cascadeDeleteExtra);
+
+    Object.entries(pageState().elements).forEach(([id, override]) => {
+      if (override?.placement?.containerId !== containerId) return;
+      const node = document.querySelector(`[data-cms-id="${CSS.escape(id)}"]`);
+      if (node) {
+        override.hidden = true;
+        applyElementOverride(node, override);
+      }
+    });
+
+    pageState().extras = pageState().extras.filter(item =>
+      item.id !== extraId &&
+      !(extra.type === 'section' && (item.sectionId === `extra:${extraId}` || item.placement?.sectionId === `extra:${extraId}`))
+    );
+    const node = document.querySelector(`[data-cms-id="extra:${CSS.escape(extraId)}"]`);
+    if (node) { scaledElements.delete(node); node.remove(); }
+  }
+
+  function deleteSelection() {
+    const items = selectionItems();
+    if (!items.length || !commonSelectionIsEditable()) return;
+    checkpoint();
+    const handledExtras = new Set();
+
+    for (const el of items) {
+      if (el.dataset.cmsSignalOnly) {
+        delete pageState().elements[el.dataset.cmsId];
+        continue;
+      }
+      if (el.dataset.cmsExtraId) {
+        const id = el.dataset.cmsExtraId;
+        if (!handledExtras.has(id)) {
+          handledExtras.add(id);
+          cascadeDeleteExtra(id);
+        }
+        continue;
+      }
+      const override = overrideForElement(el);
+      if (!override) continue;
+      override.hidden = true;
+      applyElementOverride(el, override);
+    }
+
+    setSelected(null);
+    refreshLayers();
+    markDirty();
+  }
+
   function removeSelected() {
-    if (!selected) return;
+    if (!selected || selectionItems().length !== 1) return;
     checkpoint();
     if (selected.dataset.cmsSignalOnly) { delete pageState().elements[selected.dataset.cmsId]; markDirty(); renderSignalControls(); return; }
     if (selected.dataset.cmsExtraId) {
-      const removedId = selected.dataset.cmsExtraId;
-      const removedSection = selected.dataset.cmsSection;
-      pageState().extras = pageState().extras.filter(x => x.id !== removedId && (!removedSection || (x.sectionId !== removedSection && x.placement?.sectionId !== removedSection)));
-      const removedNode = document.querySelector(`[data-cms-id="extra:${CSS.escape(removedId)}"]`) || selected;
-      scaledElements.delete(removedNode);
-      removedNode.remove();
+      cascadeDeleteExtra(selected.dataset.cmsExtraId);
       setSelected(null);
       markDirty();
       return;
     }
-    delete pageState().elements[selected.dataset.cmsId];
-    const original = rememberOriginal(selected);
-    selected.hidden = original.hidden;
-    if (selected instanceof HTMLImageElement) selected.src = original.src || '';
-    else if (!selected.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(selected.tagName)) { setContentText(selected, original.text); }
-    applyStyle(selected, null);
-    applyLayout(selected, null);
-    delete selected.dataset.cmsLocked;
-    selected.classList.remove('legend-cms-locked');
+    resetBaselineElement(selected);
     syncEditorControls();
     markDirty();
   }
@@ -2733,13 +2791,13 @@
     document.getElementById('legend-cms-down')?.addEventListener('click', () => moveSelectedSection(1));
     document.getElementById('legend-cms-remove')?.addEventListener('click', () => {
       if (!selected) return;
+      if (selectionItems().length > 1) { deleteSelection(); return; }
       const serviceCard = businessServiceCardFor(selected);
       if (serviceCard) {
-        if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); removeSelected(); return; }
-        checkpoint(); const ov = ensureOverride(serviceCard.dataset.cmsId); ov.hidden = true; serviceCard.hidden = true; setSelected(null); markDirty(); return;
+        if (serviceCard.dataset.cmsExtraId) { setSelected(serviceCard); deleteSelection(); return; }
+        checkpoint(); const ov = ensureOverride(serviceCard.dataset.cmsId); ov.hidden = true; applyElementOverride(serviceCard, ov); setSelected(null); markDirty(); return;
       }
-      if (selected.dataset.cmsExtraId) { removeSelected(); return; }
-      checkpoint(); const ov = selectedOverride(); ov.hidden = true; selected.hidden = true; setSelected(null); markDirty();
+      deleteSelection();
     });
     document.getElementById('legend-cms-reset')?.addEventListener('click', removeSelected);
     document.getElementById('legend-cms-exit')?.addEventListener('click', () => {
