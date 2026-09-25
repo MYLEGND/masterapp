@@ -1860,7 +1860,7 @@
     selectionFrame.addEventListener('pointerdown', startGesture);
     preview.addEventListener('pointerdown', event => {
       if (event.button !== undefined && event.button !== 0) return;
-      if (!selected || selected.dataset.cmsSignalOnly || selected.tagName === 'FORM' || ['INPUT','SELECT','TEXTAREA'].includes(event.target?.tagName)) return;
+      if (!selected || selected.dataset.cmsSignalOnly || event.target?.closest?.('input,select,textarea,button,label')) return;
       const hit = event.target?.closest?.('[data-cms-id]');
       if (hit !== selected && !selected.contains?.(event.target)) return;
       beginGesture(event, 'move', '', selected, true);
