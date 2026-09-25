@@ -391,12 +391,27 @@ jobs:
               current="$(resolve_value "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
               if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-MarketingDataProtection__$pair}=$expected"); fi
             done
+            if [ "$app" = masterapp-parfait ]; then
+              # Parfait authentication now uses the existing platform Data Protection
+              # authority. Reuse the canonical Portal Blob/Key Vault locations while
+              # keeping purpose isolation through application name "ParfaitApp".
+              for pair in BlobUri KeyVaultKeyId; do
+                expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
+                key="$(resolve_key "$settings_file" "DataProtection__$pair" "DataProtection:$pair" || true)"
+                current="$(resolve_value "$settings_file" "DataProtection__$pair" "DataProtection:$pair" || true)"
+                if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-DataProtection__$pair}=$expected"); fi
+              done
+            fi
             if [ "${#marketing_updates[@]}" -gt 0 ]; then
               az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${marketing_updates[@]}" --output none
             fi
             az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
             [ "$(resolve_value "$settings_file" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
             [ "$(resolve_value "$settings_file" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
+            if [ "$app" = masterapp-parfait ]; then
+              [ "$(resolve_value "$settings_file" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
+              [ "$(resolve_value "$settings_file" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
+            fi
           done
           echo "Selected marketing consumers use the shared key authority."
 
