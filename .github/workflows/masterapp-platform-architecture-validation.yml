@@ -95,23 +95,10 @@ jobs:
           git fetch --no-tags origin legend/approved-changes
           base=origin/legend/approved-changes
 
-          # A failing renderer suite may only be treated as pre-existing when the
-          # renderer and its tests are unchanged and the centralized assets are
-          # byte-identical to their approved pre-move authorities.
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.test.mjs
-          git diff --quiet "$base" -- Legend-Website/package-lock.json
-
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "$tmpdir"' EXIT
-          git show "$base:Legend-Design/legend-public-cms.js" > "$tmpdir/legend-public-cms.js"
-          git show "$base:Legend-Design/legend-public-web.js" > "$tmpdir/legend-public-web.js"
-          git show "$base:Legend-Design/legend-public-web.css" > "$tmpdir/legend-public-web.css"
-          cmp -s SHARED/WebsitePlatform/legend-public-cms.js "$tmpdir/legend-public-cms.js"
-          cmp -s SHARED/WebsitePlatform/legend-public-web.js "$tmpdir/legend-public-web.js"
-          cmp -s SHARED/WebsitePlatform/legend-public-web.css "$tmpdir/legend-public-web.css"
-
-          echo "Renderer suite failure is pre-existing and all renderer inputs touched by this ownership move are byte-identical to the approved baseline."
+          # Only excuse an approved-baseline failure when every renderer input,
+          # its tests, and the shared runtime are byte-identical to that baseline.
+          git diff --quiet "$base" -- Legend-Website SHARED/WebsitePlatform tests/website
+          echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
 
       - name: Install canonical shared CMS test dependencies
         working-directory: tests/website
