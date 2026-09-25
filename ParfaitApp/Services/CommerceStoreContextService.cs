@@ -31,7 +31,8 @@ public sealed record CommerceStoreContext(
 /// </summary>
 public sealed class CommerceStoreContextService(
     MasterAppDbContext db,
-    CommerceBusinessScopeResolver businesses)
+    CommerceBusinessScopeResolver businesses,
+    ParfaitBusinessScopeService parfaitScope)
 {
     public async Task<CommerceStoreContext?> ResolvePublicAsync(string? businessKey, CancellationToken ct = default)
     {
@@ -39,8 +40,7 @@ public sealed class CommerceStoreContextService(
         CommerceBusiness? business;
         if (string.IsNullOrWhiteSpace(normalized) || normalized == ParfaitBusinessScopeService.ParfaitBusinessKey)
         {
-            business = await businesses.ResolveActiveByKeyAsync(ParfaitBusinessScopeService.ParfaitBusinessKey, ct);
-            if (business is null) return null;
+            business = await parfaitScope.GetParfaitAsync(ct);
             return await BuildAsync(business, publishedOnly: false, ct);
         }
 
