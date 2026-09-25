@@ -1,0 +1,56 @@
+name: Shared runtime authority validation
+on:
+  push:
+    branches:
+      - repair/shared-runtime-authority-parity-20260925
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-runtime-authority-validation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore focused graph
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
+
+      - name: Build shared infrastructure
+        run: dotnet build Infrastructure/Infrastructure.csproj -c Release --no-restore --nologo -warnaserror
+
+      - name: Build Parfait against shared runtime authority
+        run: dotnet build ParfaitApp/ParfaitApp.csproj -c Release --no-restore --nologo -warnaserror
+
+      - name: Build regression tests
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo -warnaserror
+
+      - name: Run platform security authority regressions
+        run: >-
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo
+          --filter "FullyQualifiedName~Phase4PlatformSecurityTests|FullyQualifiedName~Phase6ArchitectureInvariantTests"
+
+      - name: Prove every web composition root delegates Data Protection
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs; do
+            grep -q 'PlatformConfigValidation.ValidateDataProtection' "$file"
+            grep -q 'PlatformDataProtection.AddPlatformDataProtection' "$file"
+          done
+          if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault|DataProtection.*HOME|HOME.*DataProtection' \
+              AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs; then
+            echo "::error::An application composition root owns Data Protection persistence instead of the shared authority."
+            exit 1
+          fi
