@@ -1831,7 +1831,7 @@
   }
 
   function lockMobilePreviewHorizontalScroll() {
-    if (!editorPreview || innerWidth > 800 || editorPreview.scrollLeft === 0) return;
+    if (!editorPreview || window.innerWidth > 800 || editorPreview.scrollLeft === 0) return;
     editorPreview.scrollLeft = 0;
   }
 
