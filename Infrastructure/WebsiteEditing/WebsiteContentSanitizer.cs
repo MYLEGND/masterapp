@@ -287,14 +287,8 @@ public static class WebsiteContentSanitizer
     private static WebsiteCollectionDefinition? SanitizeCollection(WebsiteCollectionDefinition source, string id)
     {
         var sourceKey = (source.Source ?? string.Empty).Trim().ToLowerInvariant();
-        HashSet<string> allowed = sourceKey switch
-        {
-            "business_facts" => new(new[] { "contactEmail", "phone", "hours", "locations", "services" }, StringComparer.Ordinal),
-            "commerce_products" => new(new[] { "id", "name", "slug", "description", "priceLabel", "priceCents", "compareAtPriceCents", "badge", "isFeatured", "primaryImageUrl", "primaryImageAlt" }, StringComparer.Ordinal),
-            _ => new(StringComparer.Ordinal)
-        };
-        if (allowed.Count == 0) return null;
-        var fields = (source.Fields ?? []).Where(allowed.Contains).Distinct(StringComparer.Ordinal).Take(20).ToList();
+        if (!WebsiteCollectionSourcePolicy.TryGet(sourceKey, out var sourceDefinition)) return null;
+        var fields = (source.Fields ?? []).Where(sourceDefinition.Fields.Contains).Distinct(StringComparer.Ordinal).Take(20).ToList();
         if (fields.Count == 0) return null;
         var name = ClampText(source.Name) ?? id;
         if (name.Length > 120) name = name[..120];
