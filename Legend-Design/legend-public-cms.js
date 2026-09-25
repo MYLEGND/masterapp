@@ -39,6 +39,7 @@
   let documentState = { version: 2, faviconImageDataUrl: null, breakpoints: defaultBreakpoints(), elements: {}, sectionOrder: {}, extras: [], reusableComponents: {}, collections: {}, theme: {}, pages: {} };
   let signalCatalog = null;
   let ctaCatalog = [];
+  let managementPayload = null;
   let selected = null;
   let selectedSection = null;
   let editorPreview = null;
@@ -136,10 +137,23 @@
     };
   }
 
+  function normalizePageRoute(value) {
+    if (typeof value !== 'string') return null;
+    let route=value.trim().toLowerCase();
+    if (!route.startsWith('/')) route='/'+route;
+    route=route.replace(/\/+$/,'') || '/';
+    if (!/^\/(?:[a-z0-9_-]+\/?)*$/.test(route) || route.length>160 || route.includes('..')) return null;
+    return route;
+  }
+
+  function currentPageRoute() {
+    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
+    return normalizePageRoute(pathname) || '/';
+  }
+
   function pageState() {
     documentState.pages ||= {};
-    const pathname = customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
-    const routeKey = pathname;
+    const routeKey = currentPageRoute();
     if (!documentState.pages[routeKey]) {
       const belongs = id => id.startsWith(`${pageKey}.`) || id.startsWith(`section:${pageKey}.`);
       const elements = Object.fromEntries(Object.entries(documentState.elements).filter(([id]) => belongs(id)));
@@ -703,47 +717,118 @@
     document.querySelectorAll('[data-business-field]').forEach(el => { const value = business[el.dataset.businessField]; el.textContent = value || ''; el.hidden = !value; });
 
   }
-  function installPageSelector(payload) {
-    const panel = document.querySelector('.legend-cms-panel');
-    if (!panel) return;
-    const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = 'Website page';
-    const select = document.createElement('select'); select.id = 'legend-cms-page-select'; select.setAttribute('aria-label', 'Website page'); label.appendChild(select);
-    const prefix = SITE_KEY === 'protect' ? (payload.agentSlug ? `/a/${encodeURIComponent(payload.agentSlug)}` : context.pagePrefix || '') : '';
-    const current = customPage || (SITE_KEY === 'business' ? location.pathname.replace(/^\/business-preview/, '') : location.pathname.slice(prefix.length)) || '/';
-    const normalize = path => path.replace(/\/$/, '') || '/';
-    const entries = new Map();
+  function templatePageEntries() {
+    const entries=new Map();
     for (const page of context.pages || []) {
-      if (typeof page.path === 'string' && /^\/(?:[a-z0-9_-]+\/?)*$/i.test(page.path)) entries.set(normalize(page.path), { label: page.label || page.path, template: true });
+      const route=normalizePageRoute(page?.path);
+      if (!route) continue;
+      entries.set(route,{route,label:page.label || route,template:true});
     }
-    // Business imported/custom routes are part of this authorized website document,
-    // even when they have no template or navigation link.
-    if (SITE_KEY === 'business') for (const [path, page] of Object.entries(documentState.pages)) {
-      if (/^\/(?:[a-z0-9_-]+\/?)*$/i.test(path)) entries.set(normalize(path), { ...entries.get(normalize(path)), label: page.title || entries.get(normalize(path))?.label || path });
-    }
-    if (!entries.has(normalize(current))) entries.set(normalize(current), { label: document.title || current, template: !customPage });
-    for (const [path, page] of entries) {
-      const option = document.createElement('option'); option.value = path; option.textContent = page.label; select.appendChild(option);
-    }
-    select.value = normalize(current);
-    select.addEventListener('change', async () => {
-      const route = select.value; if (!entries.has(route)) return;
-      select.disabled = true;
-      try {
-        if (saving) { document.getElementById('legend-cms-status').textContent = 'Wait for the current save to finish, then choose a page.'; return; }
-        if (dirty) { const saved = await save(false); if (!saved || dirty) return; }
-        const url = new URL(location.origin);
-        if (SITE_KEY === 'business') {
-          url.pathname = '/business-preview/' + (entries.get(route).template ? route.replace(/^\//, '') : '');
-          url.searchParams.set('businessId', BUSINESS_ID);
-          if (!entries.get(route).template) url.searchParams.set('cmsPage', route);
-        } else url.pathname = prefix + (route === '/' ? '/' : route);
-        url.searchParams.set('legendEdit', editorTicket);
-        location.assign(url.toString());
-      } finally { select.value = normalize(current); select.disabled = false; }
-    });
-    panel.insertBefore(label, panel.querySelector('.legend-cms-navigation'));
+    return entries;
   }
 
+  function websitePageEntries(includeDeleted = true) {
+    const entries=templatePageEntries();
+    for (const [rawPath,page] of Object.entries(documentState.pages || {})) {
+      const route=normalizePageRoute(rawPath);
+      if (!route || !page || typeof page!=='object') continue;
+      const previous=entries.get(route);
+      const navigation=page.navigation || {};
+      entries.set(route,{
+        route,
+        label:navigation.label || page.title || previous?.label || route,
+        template:previous?.template === true || !!page.templatePath,
+        templatePath:normalizePageRoute(page.templatePath) || (previous?.template ? route : null),
+        deleted:navigation.isDeleted === true,
+        showInNavigation:navigation.showInNavigation !== false,
+        parentPath:normalizePageRoute(navigation.parentPath),
+        order:Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0
+      });
+    }
+    return [...entries.values()]
+      .filter(entry=>includeDeleted || !entry.deleted)
+      .sort((a,b)=>a.order-b.order || a.route.localeCompare(b.route));
+  }
+
+  function ensurePageRecord(route) {
+    documentState.pages ||= {};
+    if (!documentState.pages[route]) documentState.pages[route]={elements:{},sectionOrder:{},extras:[],navigation:{showInNavigation:true,order:0,isDeleted:false}};
+    const page=documentState.pages[route];
+    page.elements ||= {}; page.sectionOrder ||= {}; page.extras ||= []; page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    return page;
+  }
+
+  async function navigateToEditorPage(route) {
+    route=normalizePageRoute(route); if(!route) return;
+    if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
+    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
+    const templates=templatePageEntries();
+    const entry=websitePageEntries(true).find(value=>value.route===route);
+    const url=new URL(location.origin);
+    if (SITE_KEY==='business') {
+      const nativeTemplate=templates.has(route) && !entry?.templatePath;
+      url.pathname='/business-preview/' + (nativeTemplate ? route.replace(/^\//,'') : '');
+      url.searchParams.set('businessId',BUSINESS_ID);
+      if (!nativeTemplate) url.searchParams.set('cmsPage',route);
+    } else {
+      const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
+      url.pathname=prefix + (route==='/'?'/':route);
+    }
+    url.searchParams.set('legendEdit',editorTicket);
+    location.assign(url.toString());
+  }
+
+  function renderPageManager() {
+    const host=document.getElementById('legend-cms-page-list');
+    if (!host?.replaceChildren) return;
+    host.replaceChildren();
+    const current=currentPageRoute();
+    const entries=websitePageEntries(true);
+    for (const entry of entries) {
+      const row=document.createElement('div'); row.className='legend-cms-page-row';
+      const open=document.createElement('button'); open.type='button'; open.textContent=`${entry.label} · ${entry.route}${entry.deleted?' · Deleted':''}`;
+      open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
+      open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
+      if (SITE_KEY==='business' && entry.deleted) {
+        const restore=document.createElement('button'); restore.type='button'; restore.textContent='Restore';
+        restore.addEventListener('click',()=>{ checkpoint(); const page=ensurePageRecord(entry.route); page.navigation.isDeleted=false; markDirty(); syncPageControls(); });
+        row.appendChild(restore);
+      }
+      host.appendChild(row);
+    }
+  }
+
+  function syncBusinessPageFields() {
+    const page=pageState(); const navigation=page.navigation ||= {showInNavigation:true,order:0,isDeleted:false};
+    const route=currentPageRoute();
+    const values={
+      'legend-cms-page-nav-label':navigation.label || page.title || route,
+      'legend-cms-page-slug':route,
+      'legend-cms-page-order':String(Number.isFinite(Number(navigation.order))?Number(navigation.order):0)
+    };
+    for (const [id,value] of Object.entries(values)) { const input=document.getElementById(id); if(input) input.value=value; }
+    const visible=document.getElementById('legend-cms-page-nav-visible'); if(visible) visible.checked=navigation.showInNavigation!==false;
+    const parent=document.getElementById('legend-cms-page-parent');
+    if(parent){ parent.replaceChildren(); const none=document.createElement('option'); none.value=''; none.textContent='Top level'; parent.appendChild(none);
+      for(const entry of websitePageEntries(false)){ if(entry.route===route) continue; const option=document.createElement('option'); option.value=entry.route; option.textContent=`${entry.label} · ${entry.route}`; parent.appendChild(option); }
+      parent.value=normalizePageRoute(navigation.parentPath)||'';
+    }
+    const remove=document.getElementById('legend-cms-page-delete'); if(remove){ remove.disabled=route==='/'; remove.textContent=navigation.isDeleted?'Restore page':'Delete page'; }
+    const businessOnly=document.getElementById('legend-cms-page-business-tools'); if(businessOnly) businessOnly.hidden=SITE_KEY!=='business';
+    const fixedNotice=document.getElementById('legend-cms-page-fixed-notice'); if(fixedNotice) fixedNotice.hidden=SITE_KEY==='business';
+    renderPageManager();
+  }
+
+  function installPageSelector(payload) {
+    const panel=document.querySelector('.legend-cms-panel'); if(!panel) return;
+    const label=document.createElement('label'); label.className='legend-cms-group'; label.textContent='Website page';
+    const select=document.createElement('select'); select.id='legend-cms-page-select'; select.setAttribute('aria-label','Website page'); label.appendChild(select);
+    for(const entry of websitePageEntries(false)){ const option=document.createElement('option'); option.value=entry.route; option.textContent=entry.label; select.appendChild(option); }
+    select.value=currentPageRoute();
+    select.addEventListener('change',()=>void navigateToEditorPage(select.value));
+    panel.insertBefore(label,panel.querySelector('.legend-cms-navigation'));
+    syncPageControls();
+  }
   function preservePreviewNavigation() {
     if (renderInput || SITE_KEY !== 'business') return;
     document.querySelectorAll('a[href]').forEach(el => { const url = new URL(el.getAttribute('href'), location.origin); if (url.origin !== location.origin || !url.pathname.startsWith('/business-preview/')) return; url.searchParams.set('businessId', BUSINESS_ID); if (editorMode) url.searchParams.set('legendEdit', editorTicket); el.href = url.toString(); });
@@ -1545,6 +1630,7 @@
     const title = document.getElementById('legend-cms-page-title'), description = document.getElementById('legend-cms-page-description');
     if (title) title.value = page.title ?? document.title ?? '';
     if (description) description.value = page.description ?? document.querySelector('meta[name="description"]')?.content ?? '';
+    syncBusinessPageFields();
     updateSearchPreview();
   }
 
@@ -1579,6 +1665,38 @@
         checkpoint(); pageState()[key] = event.target.value; updateSearchPreview(); markDirty();
       });
     }
+    const pageNavInput=(id,apply)=>document.getElementById(id)?.addEventListener('input',event=>{ if(SITE_KEY!=='business') return; checkpoint(); const page=pageState(); page.navigation ||= {showInNavigation:true,order:0,isDeleted:false}; apply(page.navigation,event.target); markDirty(); renderPageManager(); });
+    pageNavInput('legend-cms-page-nav-label',(navigation,input)=>navigation.label=input.value);
+    pageNavInput('legend-cms-page-order',(navigation,input)=>navigation.order=Number(input.value)||0);
+    pageNavInput('legend-cms-page-nav-visible',(navigation,input)=>navigation.showInNavigation=input.checked);
+    pageNavInput('legend-cms-page-parent',(navigation,input)=>navigation.parentPath=normalizePageRoute(input.value));
+    document.getElementById('legend-cms-page-create')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const route=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!route || route==='/' || websitePageEntries(true).some(entry=>entry.route===route)){ alert('Enter a unique website route such as /team or /services/commercial.'); return; }
+      checkpoint(); const label=(document.getElementById('legend-cms-page-nav-label')?.value || route.split('/').filter(Boolean).at(-1) || 'Page').trim();
+      const sectionId=crypto.randomUUID(); const textId=crypto.randomUUID();
+      documentState.pages[route]={title:label,description:'',templatePath:null,navigation:{label,showInNavigation:true,parentPath:null,order:websitePageEntries(true).length*10,isDeleted:false},elements:{},sectionOrder:{},extras:[{id:sectionId,type:'section',sectionId:'custom.root',style:{}},{id:textId,type:'text',sectionId:'extra:'+sectionId,text:label,style:{}}]};
+      markDirty(); await navigateToEditorPage(route);
+    });
+    document.getElementById('legend-cms-page-duplicate')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(!target || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route for the duplicate.'); return; }
+      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null);
+      source.templatePath=template; source.navigation={...(source.navigation||{}),label:(source.navigation?.label||source.title||'Copy')+' copy',isDeleted:false,order:websitePageEntries(true).length*10};
+      documentState.pages[target]=source; markDirty(); await navigateToEditorPage(target);
+    });
+    document.getElementById('legend-cms-page-rename')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const sourceRoute=currentPageRoute(); const target=normalizePageRoute(document.getElementById('legend-cms-page-slug')?.value);
+      if(sourceRoute==='/' || !target || target==='/' || target===sourceRoute || websitePageEntries(true).some(entry=>entry.route===target)){ alert('Enter a unique route. The home page route cannot be renamed.'); return; }
+      checkpoint(); const source=JSON.parse(JSON.stringify(pageState())); const template=templatePageEntries().has(sourceRoute)?sourceRoute:(normalizePageRoute(source.templatePath)||null); source.templatePath=template;
+      documentState.pages[target]=source; const tombstone=ensurePageRecord(sourceRoute); tombstone.navigation={...(tombstone.navigation||{}),showInNavigation:false,isDeleted:true}; tombstone.elements={}; tombstone.sectionOrder={}; tombstone.extras=[];
+      markDirty(); await navigateToEditorPage(target);
+    });
+    document.getElementById('legend-cms-page-delete')?.addEventListener('click',async()=>{
+      if(SITE_KEY!=='business') return; const route=currentPageRoute(); if(route==='/') return; checkpoint(); const page=ensurePageRecord(route);
+      page.navigation ||= {showInNavigation:true,order:0,isDeleted:false}; page.navigation.isDeleted=!page.navigation.isDeleted; if(page.navigation.isDeleted) page.navigation.showInNavigation=false; markDirty();
+      if(page.navigation.isDeleted) await navigateToEditorPage('/'); else syncPageControls();
+    });
     document.getElementById('legend-cms-duplicate').addEventListener('click', () => {
       if (!selected || !selectedSection) return;
       const sourceExtra = selected.dataset.cmsExtraId ? pageState().extras.find(x => x.id === selected.dataset.cmsExtraId) : null;
@@ -1769,7 +1887,7 @@
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Use the Move and resize handles on the page for Free Canvas positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Create page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
@@ -2109,6 +2227,7 @@
       const payload = await response.json();
       if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
       bindBusiness(payload);
+      managementPayload = payload;
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
