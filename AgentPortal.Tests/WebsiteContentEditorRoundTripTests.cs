@@ -599,6 +599,116 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Contains("a11y_image_alt_missing", savedJson, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task FormBuilder_RoundTripsOneGovernedLeadSchemaAcrossEveryWebsiteScope(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var document = new WebsiteContentDocument();
+        var form = WebsiteFormFieldCatalog.DefaultLeadForm("lead-form", "Consultation");
+        form.RequireConsent = false; // Sanitizer must restore the platform invariant.
+        form.Fields.Add(new()
+        {
+            Id = "goal",
+            Label = "Primary goal",
+            Type = "select",
+            Role = "custom",
+            Required = true,
+            Step = 2,
+            Span = 12,
+            Options = ["Growth", "Protection", "Other"]
+        });
+        document.Forms[form.Id] = form;
+        document.Extras.Add(new()
+        {
+            Id = "form-block",
+            Type = "form",
+            FormDefinitionId = form.Id,
+            SectionId = "home.section.1",
+            Style = new() { WidthPercent = 100 }
+        });
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        var stored = Assert.Single(saved.Forms).Value;
+        Assert.True(stored.RequireConsent);
+        Assert.Equal("Consultation", stored.Name);
+        Assert.Equal(6, stored.Fields.Count);
+        Assert.Equal(2, stored.Fields.Single(field => field.Id == "goal").Step);
+        Assert.Equal(["Growth", "Protection", "Other"], stored.Fields.Single(field => field.Id == "goal").Options);
+        var block = Assert.Single(saved.Extras);
+        Assert.Equal("form", block.Type);
+        Assert.Equal(stored.Id, block.FormDefinitionId);
+
+        fixture.Db.ChangeTracker.Clear();
+        var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket));
+        Assert.Equal("Consultation", reloaded.Forms["lead-form"].Name);
+        Assert.Equal("lead-form", Assert.Single(reloaded.Extras).FormDefinitionId);
+    }
+
+    [Fact]
+    public async Task FormBuilderSanitizer_DropsInvalidIdentitySchemasAndOrphanFormBlocks()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.Forms["missing-email"] = new()
+        {
+            Id = "missing-email",
+            Fields =
+            [
+                new() { Id = "first", Label = "First Name", Type = "text", Role = "firstName", Required = true }
+            ]
+        };
+        document.Forms["valid"] = WebsiteFormFieldCatalog.DefaultLeadForm("valid");
+        document.Forms["valid"].Fields.Add(new()
+        {
+            Id = "bad-select",
+            Label = "Empty options",
+            Type = "select",
+            Role = "custom",
+            Required = false,
+            Options = []
+        });
+        document.Forms["valid"].Fields.Add(new()
+        {
+            Id = "duplicate-email",
+            Label = "Other email",
+            Type = "email",
+            Role = "email",
+            Required = true
+        });
+        document.Extras.Add(new() { Id = "bad-form", Type = "form", FormDefinitionId = "missing-email", SectionId = "home.section.1" });
+        document.Extras.Add(new() { Id = "missing-ref", Type = "form", FormDefinitionId = "unknown", SectionId = "home.section.1" });
+        document.Extras.Add(new() { Id = "good-form", Type = "form", FormDefinitionId = "valid", SectionId = "home.section.1" });
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        Assert.False(saved.Forms.ContainsKey("missing-email"));
+        var valid = Assert.Single(saved.Forms).Value;
+        Assert.DoesNotContain(valid.Fields, field => field.Id == "bad-select");
+        Assert.Single(valid.Fields.Where(field => field.Role == "email"));
+        var block = Assert.Single(saved.Extras);
+        Assert.Equal("good-form", block.Id);
+        Assert.Equal("valid", block.FormDefinitionId);
+    }
+
+    [Fact]
+    public async Task Manage_ExposesTheServerOwnedFormCatalogAndDefaultIdentityContract()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var result = Assert.IsType<OkObjectResult>(await fixture.Controller.Manage(fixture.Ticket(DateTime.UtcNow.AddMinutes(10))));
+        var json = JsonSerializer.Serialize(result.Value, JsonOptions);
+        Assert.Contains("\"formCatalog\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"firstName\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"email\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"defaultDefinition\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("formCatalogV2", json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task CoreComponentRegistry_AcceptsProfessionalPrimitivesWithoutASecondSchema()
     {
