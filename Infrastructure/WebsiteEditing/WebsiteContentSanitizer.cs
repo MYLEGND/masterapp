@@ -269,6 +269,7 @@ public static class WebsiteContentSanitizer
         var kind = (source.Kind ?? "").Trim().ToLowerInvariant();
         if (kind is not ("section" or "block")) return null;
         var body = SanitizePageBody(new WebsitePageDocument { Elements = source.Elements, SectionOrder = source.SectionOrder, Extras = source.Extras }, breakpointKeys);
+        body.Extras.RemoveAll(extra => extra.Type == "reusable");
         var name = ClampText(source.Name) ?? id;
         if (name.Length > 120) name = name[..120];
         return new WebsiteReusableComponentDefinition { Id = id, Name = name, Kind = kind, Elements = body.Elements, SectionOrder = body.SectionOrder, Extras = body.Extras };
