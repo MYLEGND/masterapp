@@ -6,7 +6,8 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../../Legend-Design/legend-public-cms.js', import.meta.url), 'utf8');
 const publicCss = readFileSync(new URL('../../Legend-Design/legend-public-web.css', import.meta.url), 'utf8');
 const businessBuildSource = readFileSync(new URL('../../Legend-Website/scripts/build.mjs', import.meta.url), 'utf8');
-const businessInquirySource = readFileSync(new URL('../../Legend-Website/src/business-inquiry.js', import.meta.url), 'utf8');
+const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-public-inquiry.js', import.meta.url), 'utf8');
+const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
 
@@ -308,19 +309,32 @@ test('canonical public stylesheet preserves authored spaces, tabs and line break
 test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
   assert.ok(businessBuildSource.includes('id="business_inquiry"'));
   for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
-  assert.ok(businessInquirySource.includes("fields.get('FirstName')"));
-  assert.ok(businessInquirySource.includes("fields.get('LastName')"));
-  assert.ok(businessInquirySource.includes("fields.get('Phone')"));
-  assert.ok(businessInquirySource.includes("fields.get('Email')"));
-  assert.ok(source.includes("requiredContactFields: SITE_KEY === 'business' ? ['FirstName','LastName','Phone','Email'] : []"));
+  assert.ok(publicInquirySource.includes("fields.get('FirstName')"));
+  assert.ok(publicInquirySource.includes("fields.get('LastName')"));
+  assert.ok(publicInquirySource.includes("fields.get('Phone')"));
+  assert.ok(publicInquirySource.includes("fields.get('Email')"));
+  assert.ok(source.includes("requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []"));
   assert.ok(publicCss.includes('.public-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))'));
 });
 
-test('published business rendering activates the existing inquiry path without a parallel form runtime',()=>{
+test('Founder and business websites use one shared inquiry runtime with no hard-coded founder email form path',()=>{
+  assert.ok(businessBuildSource.includes('function publicInquiryForm'));
+  assert.ok(businessBuildSource.includes('data-website-inquiry data-form-key="website_inquiry"'));
+  assert.ok(businessBuildSource.includes('${publicInquiryForm()}</section>'));
+  assert.ok(businessBuildSource.includes('publicInquiryForm({preview:true,business:true})'));
+  assert.ok(businessBuildSource.includes('/legend-public-inquiry.js?v='));
+  assert.equal(businessBuildSource.includes('mailto:connect@mylegnd.com'),false);
+  assert.equal(editorContractsSource.includes('legend_email'),false);
+  assert.ok(publicInquirySource.includes("document.querySelectorAll('[data-website-inquiry]:not([data-preview])')"));
+  assert.ok(publicInquirySource.includes("new URL('/api/website-inquiries/public', apiBase)"));
+});
+
+test('published business rendering activates the shared inquiry path without injecting a second runtime',()=>{
+  assert.ok(businessRenderSource.includes("doc.querySelector('[data-website-inquiry]')"));
   assert.ok(businessRenderSource.includes("form.removeAttribute('data-preview')"));
   assert.ok(businessRenderSource.includes("form.querySelectorAll('[disabled]').forEach(element=>element.removeAttribute('disabled'))"));
   assert.ok(businessRenderSource.includes("form.querySelector('[data-preview-notice]')?.remove()"));
-  assert.ok(businessRenderSource.includes("script.src='/business-inquiry.js'"));
+  assert.equal(businessRenderSource.includes("script.src='/business-inquiry.js'"),false);
 });
 
 test('custom code blocks use opaque data frames instead of weakening the page script policy',()=>{
