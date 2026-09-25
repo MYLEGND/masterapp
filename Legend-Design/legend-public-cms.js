@@ -1420,7 +1420,7 @@
     const main = document.querySelector('main');
     const headings = main ? [...main.querySelectorAll('h1:not([hidden])')] : [];
     if (headings.length === 0) checks.push({ code:'live_h1_missing', severity:'warning', message:'The rendered page has no visible H1 heading.' });
-    if (headings.length > 1) checks.push({ code:'live_h1_multiple', severity:'warning', message:\`The rendered page has \${headings.length} visible H1 headings.\` });
+    if (headings.length > 1) checks.push({ code:'live_h1_multiple', severity:'warning', message:`The rendered page has ${headings.length} visible H1 headings.` });
 
     const ids = new Map();
     document.querySelectorAll('[id]').forEach(node => {
@@ -1429,7 +1429,7 @@
       ids.set(id, (ids.get(id) || 0) + 1);
     });
     for (const [id, count] of ids) if (count > 1)
-      checks.push({ code:'live_duplicate_id', severity:'error', message:\`Duplicate rendered id "\${id}" appears \${count} times.\` });
+      checks.push({ code:'live_duplicate_id', severity:'error', message:`Duplicate rendered id "${id}" appears ${count} times.` });
 
     document.querySelectorAll('main img:not([hidden])').forEach(image => {
       if (!image.getAttribute('alt')?.trim())
@@ -1446,7 +1446,7 @@
       const labelled = !!control.getAttribute('aria-label')?.trim()
         || !!control.getAttribute('aria-labelledby')?.trim()
         || !!control.closest('label')
-        || (!!control.id && !!document.querySelector(\`label[for="\${CSS.escape(control.id)}"]\`));
+        || (!!control.id && !!document.querySelector(`label[for="${CSS.escape(control.id)}"]`));
       if (!labelled)
         checks.push({ code:'live_control_label_missing', severity:'warning', message:'A rendered form control has no accessible label.', elementId:control.dataset.cmsId || control.id || null });
     });
@@ -1466,7 +1466,7 @@
       const empty=document.createElement('p'); empty.className='legend-cms-quality-ok'; empty.textContent=emptyMessage; host.appendChild(empty); return;
     }
     for (const check of checks) {
-      const row=document.createElement('div'); row.className=\`legend-cms-quality-item legend-cms-quality-\${check.severity || 'info'}\`;
+      const row=document.createElement('div'); row.className=`legend-cms-quality-item legend-cms-quality-${check.severity || 'info'}`;
       const badge=document.createElement('strong'); badge.textContent=(check.severity || 'info').toUpperCase();
       const message=document.createElement('span'); message.textContent=check.message || check.code || 'Quality observation';
       row.append(badge,message); host.appendChild(row);
@@ -1480,19 +1480,19 @@
     const liveMeta=document.getElementById('legend-cms-quality-live-meta');
     const liveChecks=liveQualityChecks();
     renderQualityChecks(liveHost,liveChecks,'No rendered-canvas issues detected by the current checks.');
-    if (liveMeta) liveMeta.textContent=\`Live page checks (rendered canvas) · \${liveChecks.length} observation\${liveChecks.length===1?'':'s'} · not a publish authorization\`;
+    if (liveMeta) liveMeta.textContent=`Live page checks (rendered canvas) · ${liveChecks.length} observation${liveChecks.length===1?'':'s'} · not a publish authorization`;
     if (!editorTicket || !savedHost) return;
     savedHost.textContent='Checking the saved server draft…';
     if (savedMeta) savedMeta.textContent='Saved draft checks (server) · loading';
     try {
-      const url=new URL(\`\${API_BASE}/api/website-content/manage/quality\`);
+      const url=new URL(`${API_BASE}/api/website-content/manage/quality`);
       url.searchParams.set('ticket',editorTicket);
       const response=await fetch(url,{cache:'no-store'});
-      if(!response.ok) throw new Error(\`Quality check failed (\${response.status})\`);
+      if(!response.ok) throw new Error(`Quality check failed (${response.status})`);
       const payload=await response.json();
       if(payload.source!=='saved_draft_server' || !Array.isArray(payload.checks)) throw new Error('Saved-draft quality response was invalid.');
       renderQualityChecks(savedHost,payload.checks,'No saved-draft issues detected by the server checks.');
-      if(savedMeta) savedMeta.textContent=\`Saved draft checks (server) · revision \${payload.revision} · \${payload.errorCount||0} errors · \${payload.warningCount||0} warnings\`;
+      if(savedMeta) savedMeta.textContent=`Saved draft checks (server) · revision ${payload.revision} · ${payload.errorCount||0} errors · ${payload.warningCount||0} warnings`;
     } catch(error) {
       renderQualityChecks(savedHost,[{severity:'error',message:error?.message || 'Unable to inspect the saved draft.'}],'');
       if(savedMeta) savedMeta.textContent='Saved draft checks (server) · unavailable';
