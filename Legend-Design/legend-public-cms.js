@@ -120,6 +120,7 @@
       sectionOrder: input?.sectionOrder && typeof input.sectionOrder === 'object' ? input.sectionOrder : {},
       extras: Array.isArray(input?.extras) ? input.extras : [],
       theme: input?.theme && typeof input.theme === 'object' ? input.theme : {},
+      reusableComponents: input?.reusableComponents && typeof input.reusableComponents === 'object' ? input.reusableComponents : {},
       breakpoints: Array.isArray(input?.breakpoints) && input.breakpoints.length
         ? input.breakpoints
             .filter(item => item && typeof item.id === 'string' && Number.isFinite(Number(item.maxWidthPx)))
@@ -530,10 +531,45 @@
   }
 
 
+  function reusableDefinition(id) {
+    return id ? documentState.reusableComponents?.[id] || null : null;
+  }
+
+  function reusableMember(definitionId, localId) {
+    const definition = reusableDefinition(definitionId);
+    if (!definition) return null;
+    if (localId === '__root__') return definition;
+    return (definition.components || []).find(component => component.id === localId) || null;
+  }
+
   function overrideForElement(el, create = true) {
     if (!el?.dataset?.cmsId) return null;
+    if (el.dataset.cmsReusableDefinitionId) {
+      return reusableMember(el.dataset.cmsReusableDefinitionId, el.dataset.cmsReusableLocalId) || null;
+    }
     if (el.dataset.cmsExtraId) return pageState().extras.find(x => x.id === el.dataset.cmsExtraId) || null;
     return create ? ensureOverride(el.dataset.cmsId) : pageState().elements[el.dataset.cmsId] || null;
+  }
+
+  function syncReusableMemberDom(el, override) {
+    if (!editorMode || !el?.dataset?.cmsReusableDefinitionId || el.dataset.cmsReusableSyncing === 'true') return;
+    const definitionId = el.dataset.cmsReusableDefinitionId;
+    const localId = el.dataset.cmsReusableLocalId;
+    const field = el.dataset.cmsExtraField || '';
+    document.querySelectorAll('[data-cms-reusable-definition-id]').forEach(other => {
+      if (other === el ||
+          other.dataset.cmsReusableDefinitionId !== definitionId ||
+          other.dataset.cmsReusableLocalId !== localId ||
+          (other.dataset.cmsExtraField || '') !== field)
+        return;
+      other.dataset.cmsReusableSyncing = 'true';
+      try {
+        if (field === 'title' || field === 'text') setContentText(other, override?.[field] || '', true);
+        else applyElementOverride(other, override);
+      } finally {
+        delete other.dataset.cmsReusableSyncing;
+      }
+    });
   }
 
   function isInlineEditable(el) {
@@ -584,6 +620,7 @@
       if (el.dataset.cmsExtraField === 'title') override.title = value;
       else override.text = value;
       el.dataset.cmsPreserveWhitespace = 'true';
+      syncReusableMemberDom(el, override);
       markDirty();
       updateDirectCanvasUi();
     });
@@ -595,6 +632,7 @@
         if (el.dataset.cmsExtraField === 'title') override.title = value;
         else override.text = value;
         setContentText(el, value, true);
+        syncReusableMemberDom(el, override);
       }
       inlineEditCheckpointed = false;
       updateDirectCanvasUi();
@@ -774,6 +812,7 @@
     applyStyle(el, resolved.style);
     applyLayout(el, resolved.layout);
     bindMotion(el, override.interactions);
+    syncReusableMemberDom(el, override);
   }
 
   function createExtra(extra) {
