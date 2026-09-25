@@ -161,6 +161,12 @@ public static class WebsiteContentSanitizer
             ScaleY = BoundedPositive(source.ScaleY, 20),
             ZIndex = source.ZIndex is >= -10000 and <= 10000 ? source.ZIndex : null,
             PositionMode = source.PositionMode is "flow" or "relative" or "absolute" or "sticky" or "fixed" ? source.PositionMode : null,
+            HorizontalAnchor = source.HorizontalAnchor is "left" or "center" or "right" or "stretch" ? source.HorizontalAnchor : null,
+            VerticalAnchor = source.VerticalAnchor is "top" or "center" or "bottom" or "stretch" ? source.VerticalAnchor : null,
+            InsetLeftPx = BoundedSigned(source.InsetLeftPx, 10000),
+            InsetRightPx = BoundedSigned(source.InsetRightPx, 10000),
+            InsetTopPx = BoundedSigned(source.InsetTopPx, 10000),
+            InsetBottomPx = BoundedSigned(source.InsetBottomPx, 10000),
             AspectRatio = source.AspectRatio is > 0 and <= 20 ? source.AspectRatio : null
         };
     }
