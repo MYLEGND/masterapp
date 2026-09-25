@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completion of the canonical storefront routing release. Preserve the already-successful Protect and Parfait deployments at fc495d8f6f2d5c477c85c9f32a64fd113d507b8c; recover only the existing Cloudflare business website router and verify the registered-domain /store canary. Do not rebuild, redeploy, migrate, or mutate unrelated applications or production data.",
-  "purpose": "Complete the failed edge cutover after Protect and Parfait already deployed successfully. Fix only the Cloudflare Worker deployment-history parsing failure, deploy the existing website router so business custom domains serve their central Parfait-backed storefront at /store, and verify camoexterior.com/store remains on the registered domain.",
-  "requestId": "commerce-custom-domain-store-routing-recovery-20260925",
+  "authorization": "Founder authorized completion of the canonical storefront routing release. Preserve the already-successful Protect and Parfait deployments at fc495d8f6f2d5c477c85c9f32a64fd113d507b8c; retry only the existing Cloudflare business website router with a stable bounded custom-domain proof. Do not rebuild, redeploy, migrate, or mutate unrelated applications or production data.",
+  "purpose": "Retry only the edge cutover after the prior Worker version was automatically restored on a one-shot custom-domain 404. Require the verified CAMO business binding and camoexterior.com/store to both stabilize at HTTP 200 without redirect before accepting the new Worker; otherwise restore the prior Worker again.",
+  "requestId": "commerce-custom-domain-store-routing-recovery-2-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
