@@ -20,6 +20,9 @@ public sealed record CommerceStoreContext(
     string SuccessPath,
     string CartStorageKey,
     bool IsParfait,
+    string AccentColor,
+    string? LogoUrl,
+    string? GlobalCheckoutUrl,
     WebsiteThemeOverride Theme);
 
 /// <summary>
@@ -122,6 +125,9 @@ public sealed class CommerceStoreContextService(
             root + "/success",
             "legendCommerceCart:" + business.Key.ToLowerInvariant(),
             isParfait,
+            settings?.AccentColor?.Trim() ?? "",
+            string.IsNullOrWhiteSpace(settings?.LogoUrl) ? null : settings!.LogoUrl.Trim(),
+            string.IsNullOrWhiteSpace(settings?.GlobalStoreCheckoutUrl) ? null : settings!.GlobalStoreCheckoutUrl.Trim(),
             theme);
     }
 
