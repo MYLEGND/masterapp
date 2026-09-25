@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Infrastructure.WebsiteEditing.Controllers;
+using Infrastructure.WebsitePublishing;
 using Xunit;
 
 namespace AgentPortal.Tests;
