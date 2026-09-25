@@ -109,6 +109,8 @@ public sealed class WebsiteInquiriesController : ControllerBase
 
         var lead = BuildLead(scope, request, firstName, lastName, phone, email, message, path);
         var submissionBinding = ResolvePublishedSubmissionBinding(scope, path, request.SourceFormElementId);
+        if (submissionBinding is not null)
+            lead.WebsiteBindingId = submissionBinding.Id;
 
         return scope.SiteKey switch
         {
