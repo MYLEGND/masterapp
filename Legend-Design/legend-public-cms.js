@@ -1779,7 +1779,6 @@
     if (selected) {
       selected.classList.add('legend-cms-selected');
       selected.draggable = false;
-      activateInlineEditing(selected);
     }
     syncEditorControls();
     renderSignalControls();
@@ -1829,6 +1828,11 @@
     selectionFrame.style.height = `${Math.max(rect.height, 1)}px`;
     selectionFrame.dataset.sectionSelected = selected.dataset.cmsSection ? 'true' : 'false';
     if (directGesture) positionGridOverlay(directGesture.section);
+  }
+
+  function lockMobilePreviewHorizontalScroll() {
+    if (!editorPreview || innerWidth > 800 || editorPreview.scrollLeft === 0) return;
+    editorPreview.scrollLeft = 0;
   }
 
   function installDirectCanvasControls(preview) {
@@ -1976,8 +1980,15 @@
     };
     window.addEventListener('pointerup', finishGesture);
     window.addEventListener('pointercancel', finishGesture);
-    preview.addEventListener('scroll', updateDirectCanvasUi, { passive: true });
-    window.addEventListener('resize', refreshResponsiveOverrides);
+    preview.addEventListener('scroll', () => {
+      lockMobilePreviewHorizontalScroll();
+      updateDirectCanvasUi();
+    }, { passive: true });
+    window.addEventListener('resize', () => {
+      lockMobilePreviewHorizontalScroll();
+      refreshResponsiveOverrides();
+    });
+    lockMobilePreviewHorizontalScroll();
     updateDirectCanvasUi();
   }
 
@@ -3325,7 +3336,7 @@
       .legend-cms-edge-handle:hover{background:#d4ad451f!important}
       body.legend-cms-editing{display:grid;grid-template-columns:minmax(0,1fr) minmax(20rem,24rem);height:100dvh;min-height:0;margin:0;overflow:hidden}
       body.legend-cms-editing.legend-cms-panel-hidden{grid-template-columns:minmax(0,1fr)}
-      .legend-cms-preview{min-width:0;min-height:0;height:100%;overflow:auto;position:relative;transform:translateZ(0)}
+      .legend-cms-preview{width:100%;max-width:100%;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;position:relative;transform:translateZ(0)}
       .legend-cms-editor{font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
       .legend-cms-editor *{box-sizing:border-box}
       .legend-cms-editor [hidden]{display:none}
@@ -3358,7 +3369,7 @@
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
-      @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
+      @media(max-width:800px){html{max-width:100%;overflow-x:hidden}body.legend-cms-editing{width:100%;max-width:100%;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr);overflow-x:hidden}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-preview{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none;touch-action:pan-y}.legend-cms-preview>*:not(.legend-cms-grid-overlay):not(.legend-cms-selection-frame){max-width:100%;min-width:0}.legend-cms-panel{width:100%;max-width:100%;min-width:0;overflow-x:hidden;border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}}
     `;
     document.head.appendChild(style);
   }
