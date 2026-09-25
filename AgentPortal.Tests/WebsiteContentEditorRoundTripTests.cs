@@ -309,6 +309,67 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task ComponentCapabilityRegistry_IsTheServerSanitizerAuthority()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "text-one",
+            Type = "text",
+            SectionId = "home.section.1",
+            Layout = new() { Mode = WebsiteLayoutModeCatalog.Free }
+        });
+        document.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "section-one",
+            Type = "section",
+            SectionId = "home.root",
+            Layout = new() { Mode = WebsiteLayoutModeCatalog.Free }
+        });
+        document.Extras.Add(new WebsiteExtraComponent
+        {
+            Id = "unknown-one",
+            Type = "invented-component",
+            SectionId = "home.section.1"
+        });
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        Assert.Equal(2, saved.Extras.Count);
+        Assert.Null(saved.Extras.Single(x => x.Id == "text-one").Layout.Mode);
+        Assert.Equal(WebsiteLayoutModeCatalog.Free, saved.Extras.Single(x => x.Id == "section-one").Layout.Mode);
+        Assert.DoesNotContain(saved.Extras, x => x.Id == "unknown-one");
+    }
+
+    [Fact]
+    public async Task EditorLayerMetadata_RoundTripsWithoutASecondLayerStore()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
+        var document = new WebsiteContentDocument();
+        document.Elements[ElementId] = new WebsiteElementOverride
+        {
+            Text = "Locked heading",
+            EditorLocked = true,
+            EditorLabel = "Hero headline",
+            Style = new() { ZIndex = 9 }
+        };
+
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var saved = ReadDocument(await fixture.Controller.Save(new(ticket, document, 0)));
+        Assert.True(saved.Elements[ElementId].EditorLocked);
+        Assert.Equal("Hero headline", saved.Elements[ElementId].EditorLabel);
+        Assert.Equal(9, saved.Elements[ElementId].Style.ZIndex);
+
+        fixture.Db.ChangeTracker.Clear();
+        var reloaded = ReadDocument(await fixture.CreateController().Manage(ticket)).Elements[ElementId];
+        Assert.True(reloaded.EditorLocked);
+        Assert.Equal("Hero headline", reloaded.EditorLabel);
+        Assert.Equal(9, reloaded.Style.ZIndex);
+    }
+
+    [Fact]
     public async Task InvalidNumericDomains_AreDiscardedWithoutInventingReplacementStyles()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Legend);
