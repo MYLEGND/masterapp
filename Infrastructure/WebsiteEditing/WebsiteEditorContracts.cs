@@ -35,7 +35,49 @@ public sealed class WebsiteContentDocument
     public Dictionary<string, int> SectionOrder { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteExtraComponent> Extras { get; set; } = new();
     public WebsiteThemeOverride Theme { get; set; } = new();
+    public List<WebsiteBreakpointDefinition> Breakpoints { get; set; } = WebsiteBreakpointCatalog.Defaults();
     public DateTime? UpdatedUtc { get; set; }
+}
+
+public sealed class WebsiteBreakpointDefinition
+{
+    public string Id { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int MaxWidthPx { get; set; }
+}
+
+public static class WebsiteBreakpointCatalog
+{
+    public const int MaxBreakpoints = 6;
+    public const int MinBreakpointWidth = 320;
+    public const int MaxBreakpointWidth = 2560;
+
+    public static List<WebsiteBreakpointDefinition> Defaults() =>
+    [
+        new() { Id = "tablet", Label = "Tablet", MaxWidthPx = 1024 },
+        new() { Id = "mobile", Label = "Mobile", MaxWidthPx = 640 }
+    ];
+}
+
+public sealed class WebsiteResponsiveOverride
+{
+    public bool? Hidden { get; set; }
+    public WebsiteStyleOverride Style { get; set; } = new();
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+}
+
+public sealed class WebsiteLayoutOverride
+{
+    public string? Mode { get; set; }
+    public int? Columns { get; set; }
+    public int? Rows { get; set; }
+    public decimal? ColumnGap { get; set; }
+    public decimal? RowGap { get; set; }
+    public string? Direction { get; set; }
+    public string? AlignItems { get; set; }
+    public string? JustifyContent { get; set; }
+    public bool? Wrap { get; set; }
+    public string? Overflow { get; set; }
 }
 
 public sealed class WebsiteElementOverride
@@ -51,6 +93,8 @@ public sealed class WebsiteElementOverride
     public string? VideoUrl { get; set; }
     public WebsitePlacement? Placement { get; set; }
     public WebsiteStyleOverride Style { get; set; } = new();
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteResponsiveOverride> Responsive { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class WebsiteStyleOverride
@@ -75,6 +119,21 @@ public sealed class WebsiteStyleOverride
     public decimal? HeightPx { get; set; }
     public decimal? OffsetXPercent { get; set; }
     public decimal? OffsetYPx { get; set; }
+    public decimal? MinWidthPx { get; set; }
+    public decimal? MaxWidthPx { get; set; }
+    public decimal? MinHeightPx { get; set; }
+    public decimal? MaxHeightPx { get; set; }
+    public decimal? MarginTop { get; set; }
+    public decimal? MarginRight { get; set; }
+    public decimal? MarginBottom { get; set; }
+    public decimal? MarginLeft { get; set; }
+    public decimal? Opacity { get; set; }
+    public decimal? RotationDeg { get; set; }
+    public decimal? ScaleX { get; set; }
+    public decimal? ScaleY { get; set; }
+    public int? ZIndex { get; set; }
+    public string? PositionMode { get; set; }
+    public decimal? AspectRatio { get; set; }
 
 }
 
@@ -104,6 +163,8 @@ public sealed class WebsiteExtraComponent
     public string? Text { get; set; }
     public string? ImageDataUrl { get; set; }
     public WebsiteStyleOverride Style { get; set; } = new();
+    public WebsiteLayoutOverride Layout { get; set; } = new();
+    public Dictionary<string, WebsiteResponsiveOverride> Responsive { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class WebsiteThemeOverride
@@ -144,6 +205,34 @@ public sealed class WebsiteNamedDraft
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
+
+public sealed record WebsiteComponentCapability(
+    string Type,
+    string Label,
+    string Group,
+    bool InlineText,
+    bool SupportsMedia,
+    bool SupportsAction,
+    bool CanContainChildren,
+    IReadOnlyList<string> LayoutModes,
+    IReadOnlyList<string> Triggers);
+
+public static class WebsiteComponentCatalog
+{
+    public static IReadOnlyList<WebsiteComponentCapability> Options { get; } =
+    [
+        new("text", "Text", "Basic", true, false, false, false, ["flow"], ["viewed"]),
+        new("image", "Image", "Media", false, true, false, false, ["flow"], ["viewed", "click"]),
+        new("button", "Button / link", "Basic", true, false, true, false, ["flow"], ["viewed", "click"]),
+        new("video", "Video", "Media", false, true, false, false, ["flow"], ["viewed", "click"]),
+        new("card", "Card", "Layout", true, false, false, true, ["flow", "grid", "flex", "stack"], ["viewed", "click"]),
+        new("section", "Section", "Layout", false, false, false, true, ["flow", "grid", "flex", "stack", "free"], ["viewed", "scroll_threshold"]),
+        new("code", "Code / embed", "Advanced", false, false, false, false, ["flow"], ["viewed"])
+    ];
+
+    public static WebsiteComponentCapability? Find(string? type) =>
+        Options.FirstOrDefault(option => string.Equals(option.Type, type, StringComparison.OrdinalIgnoreCase));
+}
 
 public sealed record WebsiteCallToActionOption(
     string Key,
