@@ -285,14 +285,14 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],qualityPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -639,8 +639,9 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 7);
-      assert.equal(f.w.document.querySelector('[data-open="signals"]'), null);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 9);
+      assert.ok(f.w.document.querySelector('[data-open="signals"]'));
+      assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       f.click('[data-open="page"]');
       assert.equal(f.w.document.querySelector('#legend-cms-page-title').disabled, false);
       f.input('#legend-cms-page-title', 'A title <with text>');
@@ -656,6 +657,32 @@ for (const siteKey of ['legend', 'protect', 'business']) {
     } finally { f.close(); }
   });
 }
+
+test('quality inspector keeps saved-server checks separate from rendered-canvas checks', async () => {
+  const html='<!doctype html><html><head></head><body data-page-key="home"><main><section><h1 id="duplicate">Title</h1><p id="duplicate">Copy</p><img src="https://images.example/a.png"><a href="#">Broken</a><input name="email"></section></main></body></html>';
+  const qualityPayload={source:'saved_draft_server',revision:7,errorCount:1,warningCount:1,checks:[
+    {code:'dynamic_collection_missing',severity:'error',message:'Saved draft dynamic collection is unavailable.'},
+    {code:'page_title_missing',severity:'warning',message:'Saved draft page title is missing.'}
+  ]};
+  const f=await domFixture({html,qualityPayload});
+  try {
+    f.click('[data-open="quality"]');
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const savedMeta=f.w.document.querySelector('#legend-cms-quality-saved-meta').textContent;
+    const liveMeta=f.w.document.querySelector('#legend-cms-quality-live-meta').textContent;
+    const savedText=f.w.document.querySelector('#legend-cms-quality-saved').textContent;
+    const liveText=f.w.document.querySelector('#legend-cms-quality-live').textContent;
+    assert.match(savedMeta,/Saved draft checks \(server\) · revision 7 · 1 errors · 1 warnings/);
+    assert.match(liveMeta,/Live page checks \(rendered canvas\)/);
+    assert.match(savedText,/Saved draft dynamic collection is unavailable/);
+    assert.doesNotMatch(savedText,/Duplicate rendered id/);
+    assert.match(liveText,/Duplicate rendered id "duplicate"/);
+    assert.match(liveText,/missing alternative text/);
+    assert.match(liveText,/no working destination/);
+    assert.match(liveText,/no accessible label/);
+    assert.ok(f.calls.some(call=>new URL(call.url).pathname.endsWith('/manage/quality')));
+  } finally { f.close(); }
+});
 
 test('layers recover a hidden section without losing its descendants', async () => {
   const f = await domFixture();
