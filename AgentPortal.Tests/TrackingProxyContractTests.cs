@@ -19,6 +19,11 @@ public class TrackingProxyContractTests
             .OrderBy(x => x.Name, System.StringComparer.Ordinal)
             .ToList();
 
+        // Public website scope is validated and persisted by the shared proxy
+        // before forwarding; the AgentPortal ingest contract has no SiteKey.
+        Assert.Equal(typeof(string), Assert.Single(proxyProperties.Where(x => x.Name == "SiteKey")).PropertyType);
+        proxyProperties.RemoveAll(x => x.Name == "SiteKey");
+
         Assert.Equal(
             ingestProperties.Select(x => x.Name).ToArray(),
             proxyProperties.Select(x => x.Name).ToArray());
