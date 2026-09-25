@@ -12,19 +12,42 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const cms=await readFile(resolve(root,'dist/legend-public-cms.js'),'utf8');
   const result={};
   const documents=input.document.pages||{};
-  const routes=new Set(businessPages.map(page=>page.key==='home'?'/':'/'+page.key));
-  for(const route of Object.keys(documents)) {
-    if(!/^\/(?:[a-z0-9_-]+\/?)*$/.test(route)||route.length>160)throw new Error('Invalid website page route.');
-    routes.add(route.replace(/\/$/,'')||'/');
+  const normalizeRoute=route=>(route.replace(/\/$/,'')||'/');
+  const templateByRoute=new Map(businessPages.map(page=>[page.key==='home'?'/':'/'+page.key,page]));
+  const routeSet=new Set(templateByRoute.keys());
+  for(const rawRoute of Object.keys(documents)) {
+    if(!/^\/(?:[a-z0-9_-]+\/?)*$/.test(rawRoute)||rawRoute.length>160)throw new Error('Invalid website page route.');
+    routeSet.add(normalizeRoute(rawRoute));
   }
-  if(routes.size>100)throw new Error('Website page limit exceeded.');
+  if(routeSet.size>100)throw new Error('Website page limit exceeded.');
+  const routeMeta=route=> {
+    const page=documents[route]||{};
+    const built=templateByRoute.get(route);
+    const navigation=page.navigation||{};
+    return {
+      route,
+      label:navigation.label||page.title||built?.label||(route==='/'?'Home':route.split('/').filter(Boolean).at(-1)),
+      showInNavigation:navigation.showInNavigation!==false,
+      parentPath:typeof navigation.parentPath==='string'&&navigation.parentPath!==route?normalizeRoute(navigation.parentPath):null,
+      order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0,
+      isDeleted:navigation.isDeleted===true,
+      template:!!built
+    };
+  };
+  const manifest=[...routeSet].map(routeMeta).filter(page=>!page.isDeleted)
+    .sort((a,b)=>a.order-b.order||a.route.localeCompare(b.route));
+  const routes=manifest.map(page=>page.route);
+  const navigation=manifest.filter(page=>page.showInNavigation)
+    .map(page=>`<a href="${page.route}"${page.parentPath?` data-nav-parent="${page.parentPath}"`:''}>${page.label}</a>`).join('');
   for(const route of routes) {
     const key=route==='/'?'home':route.slice(1).replace(/\//g,'-');
-    const built=businessPages.find(page=>page.key===key);
+    const built=templateByRoute.get(route);
     const template=await readFile(resolve(root,'dist/business-preview',built&&key!=='home'?key:'','index.html'),'utf8');
     const {window}=parseHTML(template);
     const doc=window.document;
     if(!built)doc.querySelector('main').replaceChildren();
+    const primaryNav=doc.querySelector('[data-public-nav],#primary-nav,.nav');
+    if(primaryNav) primaryNav.innerHTML=navigation;
     doc.body.dataset.pageKey=key;
     const location=new URL('https://website.invalid'+route);
     // The renderer needs DOM constructors; neither network nor process is exposed.
@@ -69,6 +92,6 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     }
     result[route]={title,description,html:doc.toString()};
   }
-  return {version:1,pages:result};
+  return {version:2,pages:result,manifest};
 }
 
