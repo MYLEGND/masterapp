@@ -259,8 +259,10 @@ public sealed class WebsiteContentController : ControllerBase
         var actor = await AuthorizeAsync(ticket, cancellationToken);
         if (actor is null) return Unauthorized();
         var state = await StateAsync(actor, cancellationToken);
-        var commerceScope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
-            .ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
+        var commerceService = HttpContext?.RequestServices?.GetService(typeof(WebsiteCommerceScopeService)) as WebsiteCommerceScopeService;
+        var commerceScope = commerceService is null
+            ? null
+            : await commerceService.ResolveAsync(actor, state, createIfMissing: false, cancellationToken);
         var history = await _db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => v.StateId == state.Id)
             .OrderByDescending(v => v.Revision).Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
