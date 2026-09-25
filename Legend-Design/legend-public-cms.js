@@ -2244,12 +2244,24 @@
   }
   const undoStack = [], redoStack = [];
   const baselineNodes = new Map();
-  function checkpoint() { undoStack.push(JSON.stringify(documentState)); if (undoStack.length > 80) undoStack.shift(); redoStack.length = 0; }
+  function historySnapshot() {
+    return JSON.stringify({ document: documentState, deletedKeys: [...pendingDeletedKeys] });
+  }
+  function checkpoint() {
+    undoStack.push(historySnapshot());
+    if (undoStack.length > 80) undoStack.shift();
+    redoStack.length = 0;
+  }
   function restoreHistory(from, to) {
     if (!from.length) return;
-    to.push(JSON.stringify(documentState));
+    to.push(historySnapshot());
     baselineNodes.forEach(({ el, parent, next }) => { if (el.dataset.cmsSignalOnly) return; if (parent) parent.insertBefore(el, next?.parentElement === parent ? next : null); const original = rememberOriginal(el); el.hidden = original.hidden; if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) { setContentText(el, original.text); } if (original.href != null) el.setAttribute('href',original.href); if (original.src != null) el.setAttribute('src',original.src); applyStyle(el, null); });
-    applyDocument(JSON.parse(from.pop())); setSelected(null); markDirty();
+    const snapshot = JSON.parse(from.pop());
+    pendingDeletedKeys.clear();
+    for (const key of snapshot.deletedKeys || []) pendingDeletedKeys.add(key);
+    applyDocument(snapshot.document || snapshot);
+    setSelected(null);
+    markDirty();
   }
   function safeUrl(value, media = false) {
     if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value) || /(?:legendEdit|ticket)=/i.test(value)) return false;
