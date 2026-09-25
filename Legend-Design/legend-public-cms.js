@@ -640,13 +640,18 @@
     if (override.hidden === true) el.hidden = true;
     else if (override.hidden === false) el.hidden = false;
 
+    const original = rememberOriginal(el);
     if (el instanceof HTMLImageElement) {
-      if (override.imageDataUrl) el.src = mediaUrl(override.imageDataUrl);
-    } else if (override.text != null && !el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER'].includes(el.tagName)) {
-      setContentText(el, override.text, true);
+      el.src = override.imageDataUrl ? mediaUrl(override.imageDataUrl) : (original.src || '');
+    } else if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) {
+      setContentText(el, override.text != null ? override.text : (original.text || ''), override.text != null);
     }
 
-    if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
+    if (el.tagName === 'A') {
+      const href = override.href != null && safeUrl(override.href) ? override.href : original.href;
+      if (href) el.setAttribute('href', href); else el.removeAttribute('href');
+      el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer';
+    }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
     applyDataBinding(el, override.dataBinding);
