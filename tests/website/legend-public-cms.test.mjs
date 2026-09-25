@@ -10,6 +10,15 @@ const publicInquirySource = readFileSync(new URL('../../Legend-Design/legend-pub
 const editorContractsSource = readFileSync(new URL('../../Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs', import.meta.url), 'utf8');
 const businessRenderSource = readFileSync(new URL('../../Legend-Website/scripts/render-business.mjs', import.meta.url), 'utf8');
 const businessMiddlewareSource = readFileSync(new URL('../../Protect-Website/Services/BusinessWebsiteMiddleware.cs', import.meta.url), 'utf8');
+const componentCatalogFixture = [
+  {type:'text',label:'Text',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']},
+  {type:'image',label:'Image',group:'Media',inlineText:false,supportsMedia:true,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
+  {type:'button',label:'Button / link',group:'Basic',inlineText:true,supportsMedia:false,supportsAction:true,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
+  {type:'video',label:'Video',group:'Media',inlineText:false,supportsMedia:true,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed','click']},
+  {type:'card',label:'Card',group:'Layout',inlineText:true,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack'],triggers:['viewed','click']},
+  {type:'section',label:'Section',group:'Layout',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:true,layoutModes:['flow','grid','flex','stack','free'],triggers:['viewed','scroll_threshold']},
+  {type:'code',label:'Code / embed',group:'Advanced',inlineText:false,supportsMedia:false,supportsAction:false,canContainChildren:false,layoutModes:['flow'],triggers:['viewed']}
+];
 
 function fixture({ context, origin = 'https://protect.example.test', search = '', denied = false, savedStyle = null } = {}) {
   const ids = new Map(), events = new Map(), calls = [], alerts = [], errors = [], windowEvents = new Map();
@@ -66,7 +75,7 @@ function fixture({ context, origin = 'https://protect.example.test', search = ''
     const url = new URL(String(input)); calls.push({ url, init });
     if (url.pathname.endsWith('/manage') && denied) return { ok: false, status: 401 };
     const text = url.pathname.endsWith('/manage') ? 'Editor content' : 'Published content';
-    return { ok: true, status: 200, json: async () => ({ revision: 'revision-one', business: { id:'business-id',displayName:'Fixture business' }, document: init.body ? JSON.parse(init.body).document : {
+    return { ok: true, status: 200, json: async () => ({ revision: 'revision-one', business: { id:'business-id',displayName:'Fixture business' }, componentCatalog:{options:componentCatalogFixture}, document: init.body ? JSON.parse(init.body).document : {
       elements: { 'home.title': { text, ...(savedStyle ? { style: savedStyle } : {}) } }, theme: { gold: '#123456' }
     } }) };
   };
@@ -222,7 +231,7 @@ test('adjustments above former caps round-trip without changing unrelated fields
   assert.deepEqual(JSON.parse(f.calls.at(-1).init.body).document.pages['/'].elements['home.title'].style,
     { fontScale: 12.75, widthPercent: 250.25, paddingTop: 500.5, paddingBottom: 800 });
   assert.equal(f.heading.style.width, '250.25%');
-  assert.equal(f.heading.style.maxWidth, '100%');
+  assert.equal(f.heading.style.maxWidth, '');
 });
 
 test('invalid numeric edits never replace a valid stored adjustment', async () => {
@@ -285,13 +294,14 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',business=null,pages=[],ctaCatalog=[],componentCatalog=componentCatalogFixture,innerWidth=1280,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example/'+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[];
+  Object.defineProperty(w,'innerWidth',{value:innerWidth,writable:true,configurable:true});
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const body=init.body?JSON.parse(init.body):null; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},componentCatalog:{options:componentCatalog}})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -307,7 +317,7 @@ test('canonical public stylesheet preserves authored spaces, tabs and line break
 });
 
 test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
-  assert.ok(businessBuildSource.includes('id="business_inquiry"'));
+  assert.ok(businessBuildSource.includes('id="website_inquiry"'));
   for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
   assert.ok(publicInquirySource.includes("fields.get('FirstName')"));
   assert.ok(publicInquirySource.includes("fields.get('LastName')"));
