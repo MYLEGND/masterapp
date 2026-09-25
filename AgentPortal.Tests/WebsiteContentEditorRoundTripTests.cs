@@ -280,6 +280,89 @@ public sealed class WebsiteContentEditorRoundTripTests
 
 
     [Fact]
+    public async Task CmsCollectionProjection_ReturnsOnlyActiveProductsFromAuthorizedBusiness()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var businessId = fixture.BusinessId!.Value;
+        var foreignBusinessId = Guid.NewGuid();
+        fixture.Db.CommerceBusinesses.Add(new CommerceBusiness
+        {
+            Id = foreignBusinessId,
+            Key = "foreign-business",
+            DisplayName = "Foreign Business",
+            LegalName = "Foreign Business LLC",
+            BusinessType = "BusinessClient",
+            OwnerEmail = "foreign@example.test",
+            Status = "Active",
+            IsActive = true
+        });
+        fixture.Db.CommerceProducts.AddRange(
+            new CommerceProduct
+            {
+                CommerceBusinessId = businessId,
+                ExternalProductKey = "own-active",
+                Name = "Own Active Product",
+                Slug = "own-active",
+                Description = "Visible product",
+                PriceLabel = "$10",
+                PriceCents = 1000,
+                IsActive = true,
+                DisplayOrder = 1
+            },
+            new CommerceProduct
+            {
+                CommerceBusinessId = businessId,
+                ExternalProductKey = "own-inactive",
+                Name = "Own Inactive Product",
+                Slug = "own-inactive",
+                Description = "Hidden product",
+                PriceLabel = "$20",
+                PriceCents = 2000,
+                IsActive = false,
+                DisplayOrder = 2
+            },
+            new CommerceProduct
+            {
+                CommerceBusinessId = foreignBusinessId,
+                ExternalProductKey = "foreign-active",
+                Name = "Foreign Active Product",
+                Slug = "foreign-active",
+                Description = "Must never leak",
+                PriceLabel = "$30",
+                PriceCents = 3000,
+                IsActive = true,
+                DisplayOrder = 1
+            });
+        await fixture.Db.SaveChangesAsync();
+
+        var document = new WebsiteContentDocument();
+        document.Collections["products"] = new WebsiteCollectionDefinition
+        {
+            Id = "products",
+            Name = "Products",
+            Source = "commerce_products",
+            Fields = ["slug", "name", "description", "priceCents"]
+        };
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        fixture.Db.ChangeTracker.Clear();
+        var manage = Assert.IsType<OkObjectResult>(await fixture.CreateController().Manage(ticket));
+        var json = JsonSerializer.SerializeToElement(manage.Value, JsonOptions);
+        var projection = Assert.Single(json.GetProperty("collections").EnumerateArray());
+        Assert.Equal("products", projection.GetProperty("id").GetString());
+        Assert.True(projection.GetProperty("isList").GetBoolean());
+        var item = Assert.Single(projection.GetProperty("items").EnumerateArray());
+        Assert.Equal("own-active", item.GetProperty("key").GetString());
+        Assert.Equal("Own Active Product", item.GetProperty("fields").GetProperty("name").GetString());
+        var serialized = projection.GetRawText();
+        Assert.DoesNotContain("Own Inactive Product", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Foreign Active Product", serialized, StringComparison.Ordinal);
+        Assert.Contains(json.GetProperty("dataCatalog").EnumerateArray(),
+            source => source.GetProperty("key").GetString() == "commerce_products");
+    }
+
+    [Fact]
     public async Task MediaLibrary_IsOwnerScopedSearchableAndRejectsInvalidTickets()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
