@@ -191,8 +191,19 @@ public sealed class WebsiteThemeOverride
     public string? Surface { get; set; }
     public string? Text { get; set; }
     public string? FontFamily { get; set; }
+    public string? HeadingFontFamily { get; set; }
+    public int? HeadingWeight { get; set; }
     public decimal? FontSize { get; set; }
+    public decimal? LineHeight { get; set; }
+    public decimal? H1SizePx { get; set; }
+    public decimal? H2SizePx { get; set; }
+    public decimal? H3SizePx { get; set; }
+    public decimal? PagePaddingPx { get; set; }
+    public decimal? SectionPaddingPx { get; set; }
+    public decimal? ContentGapPx { get; set; }
     public decimal? BorderRadius { get; set; }
+    public decimal? ButtonRadiusPx { get; set; }
+    public string? ShadowPreset { get; set; }
 }
 
 
