@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder explicitly authorized the validated Website Studio direct-editing hardening through legend/approved-changes and subsequent production promotion. Deploy only Protect Website and LEGEND Website in the approved direct lane. Preserve all scoped drafts, published versions, tenant ownership, CRM, analytics, Meta, subscriptions, authentication, and unrelated application flows. Do not deploy AgentPortal, ClientApp, Parfait, or Cloudflare routing in the direct lane.",
-  "purpose": "Deploy the shared Website Studio hardening: separate select/move/resize/text-edit gestures, exact section-bounded selection, dynamic page-selector labels from live page metadata, removal of obsolete competing drag paths, and mobile viewport containment so desktop geometry cannot create horizontal blank canvas space. Use only the existing shared editor/document authority; no parallel state store, page-specific override, or stacked CSS.",
-  "requestId": "website-studio-direct-editing-mobile-hardening-20260925",
+  "purpose": "Deploy the validated shared Website Studio hardening: separate select/move/resize/text-edit gestures, exact section-bounded selection, live page-selector labels from current page metadata, removal of obsolete competing drag paths, published and editor mobile viewport containment, and the corrected CMS catalog regression assertion. Use only the existing shared editor/document authority; no parallel state store, page-specific override, or stacked CSS.",
+  "requestId": "website-studio-direct-editing-mobile-hardening-scoped-release-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
