@@ -61,12 +61,11 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     renderInput.textContent=JSON.stringify({document:currentDocument,business:input.business,pageKey:key,server:false,runtime:{apiBase:publicApiBase,trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal}}).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));
-    const form=doc.querySelector('[data-business-inquiry]');
+    const form=doc.querySelector('[data-website-inquiry]');
     if(form){
       form.removeAttribute('data-preview');
       form.querySelectorAll('[disabled]').forEach(element=>element.removeAttribute('disabled'));
       form.querySelector('[data-preview-notice]')?.remove();
-      const script=doc.createElement('script');script.src='/business-inquiry.js';script.defer=true;doc.body.appendChild(script);
     }
     result[route]={title,description,html:doc.toString()};
   }
