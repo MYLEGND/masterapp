@@ -215,7 +215,7 @@ builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();
 builder.Services.AddScoped<IAgentTrackingService, AgentTrackingService>();
 builder.Services.AddScoped<AgentTrackingProvisioningFilter>();
 builder.Services.AddScoped<AgentAccountLifecycleAuthorizeFilter>();
-builder.Services.AddScoped<AgentTrackingResolver>();
+builder.Services.AddScoped<AgentPortal.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<IExecutionEngine, ExecutionEngine>();
 builder.Services.AddScoped<IDecisionService, DecisionService>();
 builder.Services.AddScoped<IBlockerService, BlockerService>();
