@@ -405,6 +405,64 @@ test('professional geometry controls persist at the active breakpoint only',asyn
 });
 
 
+test('editor lock and z-order persist in the same selected element record',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('main h1');
+    f.click('#legend-cms-lock');
+    assert.equal(f.w.document.querySelector('main h1').dataset.cmsLocked,'true');
+    assert.equal(f.w.document.querySelector('#legend-cms-lock').textContent,'Unlock selected');
+    f.click('[data-open="layout"]');
+    f.click('[data-z-action="front"]');
+    saved=await f.save();
+    const element=Object.values(saved.pages['/'].elements).find(x=>x.editorLocked);
+    assert.ok(element);
+    assert.equal(element.editorLocked,true);
+    assert.equal(element.style.zIndex,1);
+  } finally { f.close(); }
+});
+
+test('custom breakpoint manager persists document breakpoints without a parallel preference store',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('#legend-cms-manage-breakpoints');
+    const dialog=f.w.document.querySelector('#legend-cms-breakpoint-dialog');
+    assert.ok(dialog);
+    const add=[...dialog.querySelectorAll('button')].find(button=>button.textContent==='Add breakpoint');
+    assert.ok(add); add.click();
+    const rows=dialog.querySelectorAll('.legend-cms-breakpoint-row');
+    assert.equal(rows.length,3);
+    const last=rows[rows.length-1];
+    const inputs=last.querySelectorAll('input');
+    inputs[0].value='Wide mobile';
+    inputs[0].dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    inputs[1].value='520';
+    inputs[1].dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    const saveButton=[...dialog.querySelectorAll('button')].find(button=>button.textContent==='Save breakpoints');
+    saveButton.click();
+    saved=await f.save();
+    assert.equal(saved.breakpoints.length,3);
+    assert.ok(saved.breakpoints.some(item=>item.label==='Wide mobile'&&item.maxWidthPx===520));
+  } finally { f.close(); }
+});
+
+test('removing a breakpoint prunes its responsive overrides throughout the canonical document',async()=>{
+  const doc={breakpoints:[{id:'tablet',label:'Tablet',maxWidthPx:1024},{id:'mobile',label:'Mobile',maxWidthPx:640}],pages:{'/':{elements:{'home.h1.template-title.1':{responsive:{mobile:{style:{widthPercent:44},layout:{}}}}},sectionOrder:{},extras:[]}}};
+  const f=await domFixture({doc}); let saved;
+  try {
+    f.click('#legend-cms-manage-breakpoints');
+    const dialog=f.w.document.querySelector('#legend-cms-breakpoint-dialog');
+    const rows=dialog.querySelectorAll('.legend-cms-breakpoint-row');
+    const mobileRow=[...rows].find(row=>row.querySelector('input')?.value==='Mobile');
+    assert.ok(mobileRow);
+    [...mobileRow.querySelectorAll('button')].find(button=>button.textContent==='Remove').click();
+    [...dialog.querySelectorAll('button')].find(button=>button.textContent==='Save breakpoints').click();
+    saved=await f.save();
+    assert.equal(saved.breakpoints.some(item=>item.id==='mobile'),false);
+    assert.equal(saved.pages['/'].elements['home.h1.template-title.1'].responsive?.mobile,undefined);
+  } finally { f.close(); }
+});
+
 test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
   assert.ok(businessBuildSource.includes('id="website_inquiry"'));
   for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
