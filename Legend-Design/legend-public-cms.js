@@ -1520,6 +1520,256 @@
     if (!list.children.length) { const empty = document.createElement('p'); empty.textContent = 'No matching content on this page.'; list.appendChild(empty); }
   }
 
+  function setElementPlacement(el, placement) {
+    const override = overrideForElement(el);
+    if (!override) return null;
+    override.placement = placement ? { ...placement } : null;
+    return override;
+  }
+
+  function freeCanvasParent(parent) {
+    if (!parent) return false;
+    const override = overrideForElement(parent, false);
+    return resolvedVariant(override).layout?.mode === 'free';
+  }
+
+  function groupSelection() {
+    const items = selectionItems();
+    if (items.length < 2 || !commonSelectionIsEditable()) return;
+    const parent = commonSelectionParent();
+    if (!parent) { alert('Select elements that share the same container before grouping.'); return; }
+    const section = currentSectionFor(items[0]);
+    if (!section || !items.every(item => currentSectionFor(item) === section)) {
+      alert('A group must stay inside one section.');
+      return;
+    }
+
+    const parentId = parent.dataset?.cmsId || null;
+    const inLegacyFrame = parent.classList?.contains('cms-layout-frame');
+    if (!parentId && !inLegacyFrame) {
+      alert('Select elements inside a managed website container before grouping.');
+      return;
+    }
+
+    const parentRect = parent.getBoundingClientRect();
+    const rects = items.map(el => ({ el, rect: el.getBoundingClientRect() }));
+    const left = Math.min(...rects.map(item => item.rect.left));
+    const top = Math.min(...rects.map(item => item.rect.top));
+    const right = Math.max(...rects.map(item => item.rect.right));
+    const bottom = Math.max(...rects.map(item => item.rect.bottom));
+    const unionWidth = Math.max(1, right - left);
+    const unionHeight = Math.max(1, bottom - top);
+    const parentFree = freeCanvasParent(parent);
+    const siblings = [...parent.children];
+    const selectedIndices = items.map(item => siblings.indexOf(item)).filter(index => index >= 0);
+    const lastIndex = selectedIndices.length ? Math.max(...selectedIndices) : -1;
+    const nextOutside = siblings.slice(lastIndex + 1).find(node => node.dataset?.cmsId && !selectedElements.has(node)) || null;
+    const firstRecord = overrideForElement(items[0], false);
+    const existingPlacement = firstRecord?.placement || null;
+
+    checkpoint();
+    const id = crypto.randomUUID();
+    const group = {
+      id,
+      type: 'group',
+      sectionId: section.dataset.cmsSection,
+      editorLabel: 'Group',
+      style: {},
+      layout: { mode: parentFree ? 'free' : 'flow' },
+      placement: inLegacyFrame
+        ? {
+            sectionId: section.dataset.cmsSection,
+            beforeId: nextOutside?.dataset.cmsId || null,
+            containerId: null,
+            flow: false,
+            column: existingPlacement?.column || 1,
+            span: existingPlacement?.span || 12
+          }
+        : {
+            sectionId: section.dataset.cmsSection,
+            beforeId: nextOutside?.dataset.cmsId || null,
+            containerId: parentId,
+            flow: true,
+            column: 1,
+            span: 12
+          }
+    };
+
+    if (parentFree) {
+      group.style.positionMode = 'absolute';
+      group.style.offsetXPercent = parentRect.width > 0 ? Math.round(((left - parentRect.left) / parentRect.width * 100) * 1000) / 1000 : 0;
+      group.style.offsetYPx = Math.round((top - parentRect.top) * 1000) / 1000;
+      group.style.widthPercent = parentRect.width > 0 ? Math.max(1, Math.round((unionWidth / parentRect.width * 100) * 1000) / 1000) : 100;
+      group.style.heightPx = Math.max(24, Math.round(unionHeight * 1000) / 1000);
+      group.style.minHeightPx = group.style.heightPx;
+    }
+
+    pageState().extras.push(group);
+    const groupEl = createExtra(group);
+    if (!groupEl) return;
+    applyPlacement(groupEl, group.placement);
+
+    for (const { el, rect } of rects) {
+      const override = setElementPlacement(el, {
+        sectionId: section.dataset.cmsSection,
+        beforeId: null,
+        containerId: `extra:${id}`,
+        flow: true,
+        column: 1,
+        span: 12
+      });
+      if (!override) continue;
+      if (parentFree) {
+        const variant = editableVariant(override);
+        variant.style ||= {};
+        variant.style.positionMode = 'absolute';
+        variant.style.offsetXPercent = Math.round(((rect.left - left) / unionWidth * 100) * 1000) / 1000;
+        variant.style.offsetYPx = Math.round((rect.top - top) * 1000) / 1000;
+        variant.style.widthPercent = Math.max(1, Math.round((rect.width / unionWidth * 100) * 1000) / 1000);
+      }
+      applyPlacement(el, override.placement);
+      applyElementOverride(el, override);
+    }
+
+    setSelected(groupEl);
+    markDirty();
+  }
+
+  function ungroupSelected() {
+    if (!selected?.dataset.cmsExtraId) return;
+    const group = pageState().extras.find(item => item.id === selected.dataset.cmsExtraId);
+    if (group?.type !== 'group') return;
+    const groupEl = selected;
+    const destinationParent = groupEl.parentElement;
+    const children = [...groupEl.children].filter(node => node.dataset?.cmsEditable === 'true');
+    if (!destinationParent || !children.length) return;
+
+    const parentRect = destinationParent.getBoundingClientRect();
+    const childRects = children.map(el => ({ el, rect: el.getBoundingClientRect() }));
+    const parentFree = freeCanvasParent(destinationParent);
+    const destination = group.placement || {
+      sectionId: group.sectionId,
+      beforeId: null,
+      containerId: destinationParent.dataset?.cmsId || null,
+      flow: !!destinationParent.dataset?.cmsId,
+      column: 1,
+      span: 12
+    };
+
+    checkpoint();
+    for (const { el, rect } of childRects) {
+      const override = setElementPlacement(el, {
+        ...destination,
+        beforeId: destination.beforeId || null
+      });
+      if (!override) continue;
+      if (parentFree) {
+        const variant = editableVariant(override);
+        variant.style ||= {};
+        variant.style.positionMode = 'absolute';
+        variant.style.offsetXPercent = parentRect.width > 0 ? Math.round(((rect.left - parentRect.left) / parentRect.width * 100) * 1000) / 1000 : 0;
+        variant.style.offsetYPx = Math.round((rect.top - parentRect.top) * 1000) / 1000;
+        variant.style.widthPercent = parentRect.width > 0 ? Math.max(1, Math.round((rect.width / parentRect.width * 100) * 1000) / 1000) : 100;
+      } else {
+        const variant = editableVariant(override, false);
+        if (variant?.style?.positionMode === 'absolute') {
+          delete variant.style.positionMode;
+          delete variant.style.offsetXPercent;
+          delete variant.style.offsetYPx;
+        }
+      }
+      applyPlacement(el, override.placement);
+      applyElementOverride(el, override);
+    }
+
+    pageState().extras = pageState().extras.filter(item => item.id !== group.id);
+    groupEl.remove();
+    selectedElements.clear();
+    children.forEach(el => selectedElements.add(el));
+    selected = children.at(-1) || null;
+    const sections = new Set(children.map(currentSectionFor).filter(Boolean));
+    selectedSection = sections.size === 1 ? [...sections][0] : currentSectionFor(selected);
+    refreshSelectionClasses();
+    syncEditorControls();
+    renderSignalControls();
+    refreshLayers();
+    updateDirectCanvasUi();
+    markDirty();
+  }
+
+  function alignSelection(action) {
+    const items = selectionItems();
+    const parent = commonSelectionParent();
+    if (items.length < 2 || !parent || !commonSelectionIsEditable()) return;
+    if (!freeCanvasParent(parent)) {
+      alert('Align and distribute are available inside a Free Canvas container. Change the parent container to Free Canvas first.');
+      return;
+    }
+    const parentRect = parent.getBoundingClientRect();
+    if (!parentRect.width) return;
+    const rows = items.map(el => ({ el, rect: el.getBoundingClientRect() }));
+    const left = Math.min(...rows.map(item => item.rect.left));
+    const right = Math.max(...rows.map(item => item.rect.right));
+    const top = Math.min(...rows.map(item => item.rect.top));
+    const bottom = Math.max(...rows.map(item => item.rect.bottom));
+    const centerX = (left + right) / 2;
+    const centerY = (top + bottom) / 2;
+
+    const targets = new Map(rows.map(item => [item.el, { left: item.rect.left, top: item.rect.top }]));
+    if (action === 'left') rows.forEach(item => targets.get(item.el).left = left);
+    if (action === 'right') rows.forEach(item => targets.get(item.el).left = right - item.rect.width);
+    if (action === 'center-x') rows.forEach(item => targets.get(item.el).left = centerX - item.rect.width / 2);
+    if (action === 'top') rows.forEach(item => targets.get(item.el).top = top);
+    if (action === 'bottom') rows.forEach(item => targets.get(item.el).top = bottom - item.rect.height);
+    if (action === 'center-y') rows.forEach(item => targets.get(item.el).top = centerY - item.rect.height / 2);
+
+    if (action === 'distribute-x' && rows.length >= 3) {
+      const sorted = [...rows].sort((a,b) => a.rect.left - b.rect.left);
+      const total = sorted.reduce((sum,item) => sum + item.rect.width, 0);
+      const gap = (right - left - total) / (sorted.length - 1);
+      let cursor = left;
+      sorted.forEach(item => { targets.get(item.el).left = cursor; cursor += item.rect.width + gap; });
+    }
+    if (action === 'distribute-y' && rows.length >= 3) {
+      const sorted = [...rows].sort((a,b) => a.rect.top - b.rect.top);
+      const total = sorted.reduce((sum,item) => sum + item.rect.height, 0);
+      const gap = (bottom - top - total) / (sorted.length - 1);
+      let cursor = top;
+      sorted.forEach(item => { targets.get(item.el).top = cursor; cursor += item.rect.height + gap; });
+    }
+
+    checkpoint();
+    for (const item of rows) {
+      const override = overrideForElement(item.el);
+      if (!override) continue;
+      const variant = editableVariant(override);
+      variant.style ||= {};
+      variant.style.positionMode = 'absolute';
+      variant.style.offsetXPercent = Math.round(((targets.get(item.el).left - parentRect.left) / parentRect.width * 100) * 1000) / 1000;
+      variant.style.offsetYPx = Math.round((targets.get(item.el).top - parentRect.top) * 1000) / 1000;
+      applyElementOverride(item.el, override);
+    }
+    updateDirectCanvasUi();
+    syncEditorControls();
+    markDirty();
+  }
+
+  function syncMultiSelectionControls() {
+    const items = selectionItems();
+    const parent = commonSelectionParent();
+    const editable = commonSelectionIsEditable();
+    const group = document.getElementById('legend-cms-group-selection');
+    const ungroup = document.getElementById('legend-cms-ungroup-selection');
+    if (group) group.disabled = !(items.length >= 2 && parent && editable);
+    const selectedExtra = selected?.dataset.cmsExtraId ? pageState().extras.find(item => item.id === selected.dataset.cmsExtraId) : null;
+    if (ungroup) ungroup.disabled = !(items.length === 1 && selectedExtra?.type === 'group');
+    const canAlign = items.length >= 2 && parent && editable && freeCanvasParent(parent);
+    document.querySelectorAll('[data-align-selection]').forEach(button => {
+      const distribute = button.dataset.alignSelection?.startsWith('distribute');
+      button.disabled = !canAlign || (distribute && items.length < 3);
+    });
+  }
+
   function adjustSelectedZ(action) {
     if (!selected) return;
     const parent = selected.parentElement;
