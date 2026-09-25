@@ -20,6 +20,7 @@ public class AnalyticsEventCatalogTests
         "discovery_steps_completed",
         "funnel_start",
         "form_first_focus",
+        "form_interaction", // Internal form state transition reason; never emitted as an analytics event.
         "form_started",
         "lead_confirmed",
         "page_load",
