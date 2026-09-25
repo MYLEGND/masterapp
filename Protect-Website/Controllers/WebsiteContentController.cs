@@ -276,6 +276,16 @@ public sealed class WebsiteContentController : ControllerBase
             readiness = new { checks = new[] { new { passed = true, message = "Draft is isolated from published content. Publishing validates and compiles the complete website." } } } });
     }
 
+    public sealed record WebsiteStudioAiRequest(
+        string Ticket,
+        long ExpectedRevision,
+        string Mode,
+        string Instruction,
+        string PagePath,
+        string? SelectedElementId = null,
+        string? SelectedSectionId = null,
+        string? SelectedText = null);
+
     public sealed record SaveRequest(string Ticket, WebsiteContentDocument Document, long? ExpectedRevision = null, Guid? DraftId = null, string? DraftName = null);
     public sealed record ProfileRequest(string Ticket, BusinessWebsiteProfileInput Settings);
     private object SignalCatalogPayload() => new { events = WebsiteSignalBindingPolicy.Options, matchingFields = WebsiteSignalBindingPolicy.ApprovedMatchingFields, runtimeEnabled = _configuration.GetValue<bool>("WebsiteMarketing:Enabled") };
@@ -307,6 +317,96 @@ public sealed class WebsiteContentController : ControllerBase
             report.WarningCount,
             report.Checks
         });
+    }
+
+    [HttpPost("manage/ai/propose")]
+    public async Task<IActionResult> WebsiteStudioAiProposal(
+        [FromBody] WebsiteStudioAiRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(request.Ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+        var state = await StateAsync(actor, cancellationToken);
+        if (state.Revision != request.ExpectedRevision)
+            return Conflict(new { error = "revision_conflict", revision = state.Revision });
+
+        var document = Read(state.DraftJson);
+        var page = document.Pages.TryGetValue(request.PagePath, out var pageValue)
+            ? pageValue
+            : null;
+        CommerceBusiness? business = null;
+        WebsiteBusinessFacts? facts = null;
+        if (actor.SiteKey == WebsiteEditorSiteKeys.Business && actor.CommerceBusinessId.HasValue)
+        {
+            business = await _db.CommerceBusinesses.AsNoTracking()
+                .SingleAsync(value => value.Id == actor.CommerceBusinessId.Value, cancellationToken);
+            facts = await WebsiteBusinessFacts.LoadAsync(_db, actor.CommerceBusinessId.Value, cancellationToken);
+        }
+
+        var context = new ProtectWebsite.Services.WebsiteStudioAiContext(
+            actor.SiteKey,
+            request.PagePath,
+            request.SelectedElementId,
+            request.SelectedSectionId,
+            request.SelectedText,
+            business?.DisplayName,
+            business?.BusinessType,
+            facts?.Services,
+            facts?.Hours,
+            document.Breakpoints,
+            page?.Title,
+            page?.Description);
+
+        try
+        {
+            var provider = HttpContext.RequestServices
+                .GetRequiredService<ProtectWebsite.Services.IWebsiteStudioAiProposalService>();
+            var proposed = await provider.ProposeAsync(
+                new ProtectWebsite.Services.WebsiteStudioAiProviderRequest(
+                    request.Mode,
+                    request.Instruction,
+                    context),
+                cancellationToken);
+            var applied = WebsiteStudioAiProposalPolicy.Apply(
+                document,
+                request.Mode,
+                proposed.Summary,
+                request.PagePath,
+                request.SelectedElementId,
+                request.SelectedSectionId,
+                proposed.Operations);
+
+            return Ok(new
+            {
+                source = "ai_proposal_preview",
+                baseRevision = state.Revision,
+                applied.Mode,
+                applied.Summary,
+                applied.Operations,
+                proposedDocument = applied.ProposedDocument,
+                persisted = false,
+                published = false
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "invalid_ai_proposal", message = ex.Message });
+        }
+        catch (TimeoutException)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout,
+                new { error = "website_studio_ai_timeout", message = "Website Studio AI timed out. No draft changes were saved." });
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "website_studio_ai_not_configured")
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { error = ex.Message, message = "Website Studio AI is not configured. No draft changes were saved." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { error = ex.Message, message = "Website Studio AI could not produce a valid proposal. No draft changes were saved." });
+        }
     }
 
     [HttpGet("manage/profile")]
