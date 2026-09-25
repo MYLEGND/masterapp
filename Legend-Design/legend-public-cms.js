@@ -40,6 +40,7 @@
   let ctaCatalog = [];
   let componentCatalog = [];
   let motionCatalog = null;
+  let mediaLibraryAssets = [];
   let currentDesignBreakpoint = 'base';
   let selected = null;
   const selectedElements = new Set();
@@ -1757,6 +1758,138 @@
     markDirty();
   }
 
+  function formatMediaBytes(value) {
+    const bytes = Number(value) || 0;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function renderMediaLibrary() {
+    const host = document.getElementById('legend-cms-media-grid');
+    const status = document.getElementById('legend-cms-media-status');
+    if (!host) return;
+    host.replaceChildren();
+    const filter = (document.getElementById('legend-cms-media-search')?.value || '').trim().toLowerCase();
+    const items = mediaLibraryAssets.filter(asset => {
+      if (!filter) return true;
+      return String(asset.sourceName || '').toLowerCase().includes(filter) ||
+        String(asset.contentType || '').toLowerCase().includes(filter);
+    });
+    if (status) status.textContent = `${items.length} of ${mediaLibraryAssets.length} asset${mediaLibraryAssets.length === 1 ? '' : 's'}`;
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.textContent = mediaLibraryAssets.length ? 'No media matches this search.' : 'No media has been uploaded to this website yet.';
+      host.appendChild(empty);
+      return;
+    }
+
+    for (const asset of items) {
+      const card = document.createElement('article');
+      card.className = 'legend-cms-media-card';
+      const preview = asset.contentType?.startsWith('video/') ? document.createElement('video') : document.createElement('img');
+      preview.className = 'legend-cms-media-preview';
+      preview.src = mediaUrl(asset.url);
+      if (preview.tagName === 'VIDEO') {
+        preview.muted = true;
+        preview.preload = 'metadata';
+      } else {
+        preview.alt = asset.sourceName ? `Media preview: ${asset.sourceName}` : 'Website media preview';
+        preview.loading = 'lazy';
+      }
+      const name = document.createElement('strong');
+      name.textContent = asset.sourceName || (asset.contentType?.startsWith('video/') ? 'Video' : 'Image');
+      const meta = document.createElement('small');
+      meta.textContent = [asset.contentType, formatMediaBytes(asset.sizeBytes)].filter(Boolean).join(' · ');
+      const use = document.createElement('button');
+      use.type = 'button';
+      use.textContent = asset.contentType?.startsWith('video/') ? 'Use video' : 'Use image';
+      use.addEventListener('click', () => useMediaAsset(asset));
+      card.append(preview, name, meta, use);
+      host.appendChild(card);
+    }
+  }
+
+  async function loadMediaLibrary() {
+    const status = document.getElementById('legend-cms-media-status');
+    if (status) status.textContent = 'Loading media…';
+    try {
+      const url = new URL(`${API_BASE}/api/website-content/manage/media`);
+      url.searchParams.set('ticket', editorTicket);
+      const response = await fetch(url, { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(payload.assets)) throw new Error(payload.message || payload.error || 'Media library unavailable.');
+      mediaLibraryAssets = payload.assets;
+      renderMediaLibrary();
+    } catch (error) {
+      mediaLibraryAssets = [];
+      if (status) status.textContent = error?.message || 'Media library unavailable.';
+      renderMediaLibrary();
+    }
+  }
+
+  function useMediaAsset(asset) {
+    if (!asset?.url || typeof asset.contentType !== 'string') return;
+    const isImage = asset.contentType.startsWith('image/');
+    const isVideo = asset.contentType.startsWith('video/');
+    if (!isImage && !isVideo) return;
+
+    if (selectionItems().length === 1 && isImage && selected instanceof HTMLImageElement) {
+      checkpoint();
+      const override = selectedOverride();
+      if (!override) return;
+      override.imageDataUrl = asset.url;
+      applyElementOverride(selected, override);
+      markDirty();
+      syncEditorControls();
+      showPanel('content');
+      return;
+    }
+    if (selectionItems().length === 1 && isVideo && selected?.tagName === 'VIDEO') {
+      checkpoint();
+      const override = selectedOverride();
+      if (!override) return;
+      override.videoUrl = asset.url;
+      applyElementOverride(selected, override);
+      markDirty();
+      syncEditorControls();
+      showPanel('content');
+      return;
+    }
+
+    const section = selectedSection || currentSectionFor(selected) || document.querySelector('[data-cms-section]');
+    if (!section) {
+      alert('Select a section before adding media.');
+      return;
+    }
+    checkpoint();
+    const type = isImage ? 'image' : 'video';
+    const extra = {
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      sectionId: section.dataset.cmsSection,
+      type,
+      style: isImage ? { widthPercent: 70 } : { widthPercent: 100 },
+      ...(isImage ? { imageDataUrl: asset.url, alt: asset.sourceName || '' } : { videoUrl: asset.url })
+    };
+    const container = selectedFlowContainer(section);
+    if (container) {
+      extra.placement = {
+        sectionId: section.dataset.cmsSection,
+        containerId: container.dataset.cmsId,
+        beforeId: null,
+        flow: true,
+        column: 1,
+        span: 12
+      };
+    }
+    pageState().extras.push(extra);
+    const el = createExtra(extra);
+    if (extra.placement) applyPlacement(el, extra.placement);
+    setSelected(el);
+    markDirty();
+    showPanel('content');
+  }
+
   async function uploadMedia(file) {
     if (!file) return null;
     const status = document.getElementById('legend-cms-status');
@@ -2011,6 +2144,7 @@
     if (name === 'layers') refreshLayers();
     if (name === 'page') syncPageControls();
     if (name === 'motion') renderMotionControls();
+    if (name === 'media') void loadMediaLibrary();
   }
 
   function elementLabel(el) {
@@ -2926,10 +3060,11 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="media">Media</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a component</h2><p>The available components come from the shared server capability registry. Add one, then position and resize it directly on the page.</p><div id="legend-cms-add-components" class="legend-cms-menu"></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse and reuse media already owned by this website. Uploads continue through the existing scoped media authority.</p><label class="legend-cms-group">Find media<input id="legend-cms-media-search" type="search" placeholder="Search file name or type"></label><label class="legend-cms-group">Upload media<input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"></label><p id="legend-cms-media-status" role="status" aria-live="polite"></p><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="motion" hidden><h2>Motion & interactions</h2><p>Motion is stored with the selected element and uses the shared runtime. It never requires page-specific animation code.</p><div id="legend-cms-motion-controls"></div></section>
       <section data-cms-view="layout" hidden><h2>Position & layout</h2><p>Move and resize on the canvas. For containers, choose Flow, Grid, Flex, Stack, or Free Canvas here. Layout changes are saved at the active breakpoint.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min width px<input data-geometry-key="minWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max width px<input data-geometry-key="maxWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min height px<input data-geometry-key="minHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max height px<input data-geometry-key="maxHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Aspect ratio<input data-geometry-key="aspectRatio" type="number" min="0.05" max="20" step="any" placeholder="Auto"></label><label class="legend-cms-group">Opacity<input data-geometry-key="opacity" type="number" min="0" max="1" step="0.01" placeholder="1"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Rotate °<input data-geometry-key="rotationDeg" type="number" min="-3600" max="3600" step="any" placeholder="0"></label><label class="legend-cms-group">Layer / z-index<input data-geometry-key="zIndex" type="number" min="-10000" max="10000" step="1" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Scale X<input data-geometry-key="scaleX" type="number" min="0.01" max="20" step="any" placeholder="1"></label><label class="legend-cms-group">Scale Y<input data-geometry-key="scaleY" type="number" min="0.01" max="20" step="any" placeholder="1"></label></div><label class="legend-cms-group">Position mode<select data-geometry-key="positionMode"><option value="">Automatic</option><option value="flow">Flow</option><option value="relative">Relative</option><option value="absolute">Absolute</option><option value="sticky">Sticky</option><option value="fixed">Fixed to viewport</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Horizontal anchor<select data-geometry-key="horizontalAnchor"><option value="">None</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Vertical anchor<select data-geometry-key="verticalAnchor"><option value="">None</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option><option value="stretch">Stretch</option></select></label></div><div class="legend-cms-row"><label class="legend-cms-group">Left inset px<input data-geometry-key="insetLeftPx" type="number" min="-10000" max="10000" step="any"></label><label class="legend-cms-group">Right inset px<input data-geometry-key="insetRightPx" type="number" min="-10000" max="10000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Top inset px<input data-geometry-key="insetTopPx" type="number" min="-10000" max="10000" step="any"></label><label class="legend-cms-group">Bottom inset px<input data-geometry-key="insetBottomPx" type="number" min="-10000" max="10000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Margin top<input data-geometry-key="marginTop" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin right<input data-geometry-key="marginRight" type="number" min="-2000" max="2000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Margin bottom<input data-geometry-key="marginBottom" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin left<input data-geometry-key="marginLeft" type="number" min="-2000" max="2000" step="any"></label></div><label class="legend-cms-group">Container layout<select id="legend-cms-layout-mode" data-layout-control></select></label><div class="legend-cms-row"><label class="legend-cms-group">Columns<input id="legend-cms-layout-columns" data-layout-control type="number" min="1" max="24" value="12"></label><label class="legend-cms-group">Rows<input id="legend-cms-layout-rows" data-layout-control type="number" min="1" max="24" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Column gap<input id="legend-cms-layout-column-gap" data-layout-control type="number" min="0" max="500" step="any"></label><label class="legend-cms-group">Row gap<input id="legend-cms-layout-row-gap" data-layout-control type="number" min="0" max="500" step="any"></label></div><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction" data-layout-control><option value="row">Row</option><option value="column">Column</option></select></label><label class="legend-cms-group">Align items<select id="legend-cms-layout-align" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option><option value="baseline">Baseline</option></select></label><label class="legend-cms-group">Distribute<select id="legend-cms-layout-justify" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label><label><input id="legend-cms-layout-wrap" data-layout-control type="checkbox" checked> Wrap children</label><label class="legend-cms-group">Overflow<select id="legend-cms-layout-overflow" data-layout-control><option value="visible">Visible</option><option value="hidden">Hidden</option><option value="clip">Clip</option><option value="auto">Auto</option><option value="scroll">Scroll</option></select></label><div class="legend-cms-group"><strong>Selection</strong><div class="legend-cms-row"><button id="legend-cms-group-selection" type="button" disabled>Group selection</button><button id="legend-cms-ungroup-selection" type="button" disabled>Ungroup</button></div><div class="legend-cms-align-grid"><button type="button" data-align-selection="left" disabled>Align left</button><button type="button" data-align-selection="center-x" disabled>Center horizontally</button><button type="button" data-align-selection="right" disabled>Align right</button><button type="button" data-align-selection="top" disabled>Align top</button><button type="button" data-align-selection="center-y" disabled>Center vertically</button><button type="button" data-align-selection="bottom" disabled>Align bottom</button><button type="button" data-align-selection="distribute-x" disabled>Distribute horizontally</button><button type="button" data-align-selection="distribute-y" disabled>Distribute vertically</button></div><small>Align and distribute require elements inside the same Free Canvas container. Grouping works in any shared managed container.</small></div><div class="legend-cms-row legend-cms-z-actions"><button type="button" data-z-action="front">Bring to front</button><button type="button" data-z-action="back">Send to back</button><button type="button" data-z-action="forward">Bring forward</button><button type="button" data-z-action="backward">Send backward</button></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
@@ -2975,6 +3110,14 @@
       applyElementOverride(selected, ov); syncEditorControls(); markDirty();
     });
     document.getElementById('legend-cms-edit-code')?.addEventListener('click', openCodeEditor);
+    document.getElementById('legend-cms-media-search')?.addEventListener('input', renderMediaLibrary);
+    document.getElementById('legend-cms-media-upload')?.addEventListener('change', async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const url = await uploadMedia(file);
+      event.target.value = '';
+      if (url) await loadMediaLibrary();
+    });
     document.getElementById('legend-cms-group-selection')?.addEventListener('click', groupSelection);
     document.getElementById('legend-cms-ungroup-selection')?.addEventListener('click', ungroupSelected);
     document.querySelectorAll('[data-align-selection]').forEach(button => button.addEventListener('click', () => alignSelection(button.dataset.alignSelection)));
@@ -3062,7 +3205,7 @@
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .legend-cms-favicon-preview{display:block;width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:6px;border:1px solid #50617e}.legend-cms-favicon button{width:100%;padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:center}
       .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:8px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
-      .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}.legend-cms-motion-card{display:grid;gap:4px;margin:12px 0;padding:12px;border:1px solid #344766;border-radius:12px;background:#0b1e3a}.legend-cms-align-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.legend-cms-align-grid button{min-width:0;padding:9px;border:1px solid #344766;border-radius:8px;background:#142c50;color:#fff}
+      .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}.legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:9px;border:1px solid #344766;border-radius:12px;background:#0b1e3a}.legend-cms-media-preview{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card small{margin:0}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}.legend-cms-motion-card{display:grid;gap:4px;margin:12px 0;padding:12px;border:1px solid #344766;border-radius:12px;background:#0b1e3a}.legend-cms-align-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.legend-cms-align-grid button{min-width:0;padding:9px;border:1px solid #344766;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
