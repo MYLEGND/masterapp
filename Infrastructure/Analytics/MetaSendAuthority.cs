@@ -1,8 +1,9 @@
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace ProtectWebsite.Services.Meta;
+namespace Infrastructure.Analytics;
 
 public interface IMetaSendAuthority
 {

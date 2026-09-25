@@ -1,3 +1,5 @@
+using Infrastructure.Analytics;
+using Infrastructure.Bookings;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,7 +26,7 @@ using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
 
@@ -175,12 +177,12 @@ public class LifeQuoteControllerPublicBookingTests
         captureService
             .Setup(service => service.UpsertAsync(It.IsAny<WebsiteLifeLeadCaptureRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WebsiteLifeLeadCaptureResult(
-                Captured: false,
-                Created: false,
-                WorkstationLeadId: null,
+                Captured: true,
+                Created: true,
+                WorkstationLeadId: "booking-disabled-test-lead",
                 Bucket: "LifeInsurance",
                 AgentUserId: null,
-                Reason: "NoAgentOwner"));
+                Reason: "Captured"));
 
         var metaPixelResolution = new Mock<IMetaPixelResolutionService>();
         metaPixelResolution

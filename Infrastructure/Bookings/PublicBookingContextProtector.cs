@@ -2,7 +2,7 @@ using System;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 
-namespace ProtectWebsite.Services.Booking;
+namespace Infrastructure.Bookings;
 
 public sealed record PublicBookingContext(
     Guid WebsiteLeadId,

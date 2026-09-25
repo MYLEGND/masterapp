@@ -21,8 +21,8 @@ await copyFile(resolve(repoRoot,'Legend-ios/Legend/Resources/Assets.xcassets/Leg
 await copyFile(resolve(root,'public','robots.txt'),resolve(dist,'robots.txt'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-favicon.svg'),resolve(dist,'favicon.svg'));
 await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/images/company-icons/legend-protect-transparent.png'),resolve(dist,'assets/legend-logo.png'));
-await copyFile(resolve(repoRoot,'Legend-Design/legend-public-web.js'),resolve(dist,'legend-public-web.js'));
-await copyFile(resolve(repoRoot,'Legend-Design/legend-public-cms.js'),resolve(dist,'legend-public-cms.js'));
+await copyFile(resolve(repoRoot,'SHARED/WebsitePlatform/legend-public-web.js'),resolve(dist,'legend-public-web.js'));
+await copyFile(resolve(repoRoot,'SHARED/WebsitePlatform/legend-public-cms.js'),resolve(dist,'legend-public-cms.js'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-public-inquiry.js'),resolve(dist,'legend-public-inquiry.js'));
 await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/js/tracking.js'),resolve(dist,'legend-public-tracking.js'));
 await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/js/meta-signal-intelligence.js'),resolve(dist,'legend-public-meta-signal-intelligence.js'));
@@ -35,7 +35,7 @@ const trackingVersion=await assetVersion('legend-public-tracking.js');
 const metaSignalVersion=await assetVersion('legend-public-meta-signal-intelligence.js');
 const c=tokens.colors;
 const foundationCss=await readFile(resolve(repoRoot,'Legend-Design/legend-web-foundation.css'),'utf8');
-const baseCss=await readFile(resolve(repoRoot,'Legend-Design/legend-public-web.css'),'utf8');
+const baseCss=await readFile(resolve(repoRoot,'SHARED/WebsitePlatform/legend-public-web.css'),'utf8');
 await writeFile(resolve(dist,'site.css'),`${foundationCss}\n${baseCss}`);
 
 const cssVersion=await assetVersion('site.css');

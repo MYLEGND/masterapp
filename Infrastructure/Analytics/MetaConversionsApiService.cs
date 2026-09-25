@@ -1,12 +1,13 @@
+using Microsoft.Extensions.Logging;
+using Infrastructure.Analytics;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
-using ProtectWebsite.Services.MetaSignal;
 using Shared.Analytics;
 
-namespace ProtectWebsite.Services.Meta;
+namespace Infrastructure.Analytics;
 
 public interface IMetaConversionsApiService
 {

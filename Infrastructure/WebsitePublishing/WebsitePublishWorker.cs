@@ -1,12 +1,17 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ProtectWebsite.Controllers;
+using Infrastructure.WebsiteEditing.Controllers;
 
-namespace ProtectWebsite.Services;
+namespace Infrastructure.WebsitePublishing;
 
 /// <summary>Runs the same publishing authority after rechecking the scheduled actor's current access.</summary>
 public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<WebsitePublishWorker> logger) : BackgroundService
@@ -41,11 +46,11 @@ public sealed class WebsitePublishWorker(IServiceScopeFactory scopes, ILogger<We
                     ?? throw new InvalidOperationException("Scheduled owner is unavailable.");
                 var tickets = scope.ServiceProvider.GetRequiredService<WebsiteEditorTicketProtector>();
                 var token = tickets.Protect(actor with { ExpiresUtc = DateTime.UtcNow.AddMinutes(5) });
-                var controller = new WebsiteContentController(db, tickets, scope.ServiceProvider.GetRequiredService<IConfiguration>())
+                var controller = new WebsitePlatformController(db, tickets, scope.ServiceProvider.GetRequiredService<IConfiguration>())
                 {
                     ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = scope.ServiceProvider } }
                 };
-                var result = await controller.Publish(new WebsiteContentController.PublishRequest(token, state.Revision), cancellationToken);
+                var result = await controller.Publish(new WebsitePlatformController.PublishRequest(token, state.Revision), cancellationToken);
                 if (result is not OkObjectResult) throw new InvalidOperationException("Scheduled publication was rejected. Review access and draft readiness.");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

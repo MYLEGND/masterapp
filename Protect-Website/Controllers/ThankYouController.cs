@@ -1,3 +1,5 @@
+using Infrastructure.Analytics;
+using Infrastructure.Bookings;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;

@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using System;
 using System.Linq;
 using System.Reflection;
@@ -10,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;

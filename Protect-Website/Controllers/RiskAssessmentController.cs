@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Leads;

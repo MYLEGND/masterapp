@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using Domain.Entities;
 using Shared.Analytics;
 
-namespace ProtectWebsite.Services.MetaSignal;
+namespace Infrastructure.Analytics;
 
 internal static class MetaSignalAnalyticsBridgeMetadata
 {

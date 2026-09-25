@@ -1,12 +1,13 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Infrastructure.Analytics;
 using Shared.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using ProtectWebsite.Services.Tracking;
 
-namespace ProtectWebsite.Services.Meta;
+namespace Infrastructure.Analytics;
 
 public interface IMetaPixelResolutionService
 {

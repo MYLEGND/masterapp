@@ -1,3 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Infrastructure.Analytics;
 using System.Globalization;
 using System.Text.Json;
 using Domain.Entities;
@@ -5,10 +9,9 @@ using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using ProtectWebsite.Services.Meta;
 using Shared.Analytics;
 
-namespace ProtectWebsite.Services.MetaSignal;
+namespace Infrastructure.Analytics;
 
 public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 {

@@ -1,10 +1,14 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
 using Infrastructure.Data;
 using Infrastructure.WebsiteEditing;
 
-namespace ProtectWebsite.Services;
+namespace Infrastructure.WebsiteRuntime;
 
 /// <summary>Custom domains serve only immutable pages from the verified business publication.</summary>
 public sealed class BusinessWebsiteMiddleware(RequestDelegate next, IWebHostEnvironment environment, IConfiguration configuration)

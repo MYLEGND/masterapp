@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using System;
 using System.Linq;
 using System.Reflection;
@@ -11,8 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using Shared.Analytics;
 using Xunit;
 

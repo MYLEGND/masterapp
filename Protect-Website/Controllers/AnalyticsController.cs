@@ -4,7 +4,7 @@ using Infrastructure.Leads;
 using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Shared.Analytics;

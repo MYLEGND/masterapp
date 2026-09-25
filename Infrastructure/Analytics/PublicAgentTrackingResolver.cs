@@ -3,7 +3,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace ProtectWebsite.Services.Tracking;
+namespace Infrastructure.Analytics;
 
 public sealed class AgentTrackingResolver
 {

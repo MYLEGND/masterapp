@@ -1,3 +1,4 @@
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using ProtectWebsite.Services.Meta;

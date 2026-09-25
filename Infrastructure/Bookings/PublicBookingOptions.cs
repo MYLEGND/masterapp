@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ProtectWebsite.Services.Booking;
+namespace Infrastructure.Bookings;
 
 public sealed class PublicBookingOptions
 {

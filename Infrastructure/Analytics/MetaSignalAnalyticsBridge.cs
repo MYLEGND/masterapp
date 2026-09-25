@@ -1,3 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Infrastructure.Analytics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,7 +13,7 @@ using Microsoft.Extensions.Options;
 using Shared.Analytics;
 using Shared.Meta;
 
-namespace ProtectWebsite.Services.MetaSignal;
+namespace Infrastructure.Analytics;
 
 public sealed class MetaSignalAnalyticsBridge : BackgroundService
 {

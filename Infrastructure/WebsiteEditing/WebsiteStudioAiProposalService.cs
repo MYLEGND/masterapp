@@ -1,10 +1,12 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Infrastructure.WebsiteEditing;
 
-namespace ProtectWebsite.Services;
+namespace Infrastructure.WebsiteEditing;
 
 public sealed record WebsiteStudioAiContext(
     string SiteKey,

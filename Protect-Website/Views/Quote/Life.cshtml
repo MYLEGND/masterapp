@@ -10,7 +10,7 @@
 @using System.Text.Json
 @using Shared.Analytics
 @model Protect_Website.Models.LifeWizardViewModel
-@inject Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions> MetaSignalOptionsAccessor
+@inject Microsoft.Extensions.Options.IOptionsSnapshot<Infrastructure.Analytics.MetaSignalIntelligenceOptions> MetaSignalOptionsAccessor
 
 @{
     var cfg = Model.Config;

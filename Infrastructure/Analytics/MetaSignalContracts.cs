@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace ProtectWebsite.Services.MetaSignal;
+namespace Infrastructure.Analytics;
 
 public sealed class MetaSignalAttributionPayload
 {

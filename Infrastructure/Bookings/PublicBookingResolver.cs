@@ -7,7 +7,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-namespace ProtectWebsite.Services.Booking;
+namespace Infrastructure.Bookings;
 
 public sealed class PublicBookingResolver : IPublicBookingResolver
 {

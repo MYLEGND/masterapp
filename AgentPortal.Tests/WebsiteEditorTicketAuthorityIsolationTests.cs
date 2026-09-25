@@ -21,15 +21,15 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
     }
 
     [Fact]
-    public void Protect_IsTheBusinessWebsiteTicketMintingAuthority()
+    public void MasterAppPlatform_IsTheBusinessWebsiteTicketMintingAuthority()
     {
-        var protect = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsiteContentController.cs"));
+        var platform = File.ReadAllText(Source("Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
 
-        Assert.Contains("[HttpPost(\"handoff\")]", protect, StringComparison.Ordinal);
-        Assert.Contains("WebsiteBusinessAccess.CanManageAsActorAsync", protect, StringComparison.Ordinal);
-        Assert.Contains("ExecuteUpdateAsync", protect, StringComparison.Ordinal);
-        Assert.Contains("_tickets.Protect(new WebsiteEditorTicket", protect, StringComparison.Ordinal);
-        Assert.Contains("ClientIdentityContinuationPurpose.WebsiteEditor", protect, StringComparison.Ordinal);
+        Assert.Contains("[HttpPost(\"handoff\")]", platform, StringComparison.Ordinal);
+        Assert.Contains("WebsiteBusinessAccess.CanManageAsActorAsync", platform, StringComparison.Ordinal);
+        Assert.Contains("ExecuteUpdateAsync", platform, StringComparison.Ordinal);
+        Assert.Contains("_tickets.Protect(new WebsiteEditorTicket", platform, StringComparison.Ordinal);
+        Assert.Contains("ClientIdentityContinuationPurpose.WebsiteEditor", platform, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class WebsiteEditorTicketAuthorityIsolationTests
         var portal = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_Layout.cshtml"));
         var workspace = File.ReadAllText(Source("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml"));
         var client = File.ReadAllText(Source("ClientApp", "Views", "Shared", "_Layout.cshtml"));
-        var controller = File.ReadAllText(Source("Protect-Website", "Controllers", "WebsiteContentController.cs"));
+        var controller = File.ReadAllText(Source("Infrastructure", "WebsiteEditing", "WebsitePlatformController.cs"));
 
         Assert.Contains("WebsiteFaviconParity.PublicUrl", portal, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorSiteKeys.Protect", portal, StringComparison.Ordinal);
