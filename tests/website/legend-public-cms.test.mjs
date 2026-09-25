@@ -286,7 +286,7 @@ test('business CMS sends the authoritative business id through the existing publ
 
 // Full DOM integration: these tests execute the same shipped editor, not copied helpers.
 import { JSDOM } from 'jsdom';
-async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],qualityPayload=null,mediaPayload=null,aiPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
+async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],signalCatalog=null,qualityPayload=null,mediaPayload=null,aiPayload=null,signalTestPayload=null,signalHealthPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
   const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
@@ -295,7 +295,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
-  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog}})}; };
+  w.fetch=async(url,init={})=> { calls.push({url:String(url),...init}); const parsed=new URL(String(url)); const body=init.body?JSON.parse(init.body):null; if(parsed.pathname.endsWith('/manage/quality')) return {ok:!denied,status:denied?401:200,json:async()=>qualityPayload || {source:'saved_draft_server',revision:1,errorCount:0,warningCount:0,checks:[]}}; if(parsed.pathname.endsWith('/manage/media') && (!init.method || init.method==='GET')) return {ok:!denied,status:denied?401:200,json:async()=>mediaPayload || {assets:[]}}; if(parsed.pathname.endsWith('/manage/ai/propose')) return {ok:!denied,status:denied?401:200,json:async()=>aiPayload || {source:'ai_proposal_preview',baseRevision:'r1',summary:'No changes',operations:[],proposedDocument:doc,persisted:false,published:false}}; if(parsed.pathname.endsWith('/manage/signals/test')) return {ok:!denied,status:denied?401:200,json:async()=>signalTestPayload || {source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false}}}; if(parsed.pathname.endsWith('/manage/signals/health')) return {ok:!denied,status:denied?401:200,json:async()=>signalHealthPayload || {source:'website_signal_existing_authorities',publishedVersionId:null,binding:{matchingConsent:'not_requested'},destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},analytics:[],meta:[]}}; return {ok:!denied,status:denied?401:200,json:async()=>({siteKey,business,revision:'r'+calls.length,document:body?.document || doc,ctaCatalog:{options:ctaCatalog},signalCatalog:signalCatalog || undefined})}; };
   w.eval(source);
   // JSDOM dispatches initial readiness itself; wait for the fetch continuation.
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -436,6 +436,76 @@ test('responsive V2 runtime inherits base style and switches breakpoint style an
   } finally { f.close(); }
 });
 
+
+
+test('signal editor private test saves draft first but sends no production signal and shows dry-run result',async()=>{
+  const catalog={events:[{name:'ViewContent',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
+  const f=await domFixture({
+    signalCatalog:catalog,
+    signalTestPayload:{
+      source:'website_signal_private_dry_run',dryRun:true,persisted:false,metaDispatched:false,
+      destination:{ownerType:'business',browserPixelConfigured:false,serverCapiConfigured:false},
+      stages:{mappingValidated:true,browserTriggerSupported:true,browserAnalyticsWouldBeAccepted:true,browserPixelWouldInvoke:false,serverOutcomeRequired:false}
+    }
+  });
+  try{
+    f.click('main h1');
+    f.click('[data-open="signals"]');
+    const add=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')].find(button=>button.textContent==='Add interaction mapping');
+    assert.ok(add); add.click();
+    const send=f.w.document.querySelector('#legend-cms-signal-controls select');
+    send.value='analytics'; send.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    const testButton=f.w.document.querySelector('[data-signal-test]');
+    assert.ok(testButton);
+    testButton.click();
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const saveCall=f.calls.find(call=>call.method==='POST' && new URL(call.url).pathname==='/api/website-content/manage');
+    const testCall=f.calls.find(call=>new URL(call.url).pathname.endsWith('/manage/signals/test'));
+    assert.ok(saveCall);
+    assert.ok(testCall);
+    const request=JSON.parse(testCall.body);
+    assert.equal(request.pagePath,'/');
+    assert.equal(request.elementId,'home.h1.template-title.1');
+    assert.equal(request.bindingId,testButton.dataset.signalTest);
+    assert.equal(f.calls.some(call=>new URL(call.url).pathname==='/analytics/meta-signal'),false);
+    const status=f.w.document.querySelector(`[data-signal-diagnostics="${testButton.dataset.signalTest}"]`).textContent;
+    assert.match(status,/PRIVATE TEST/);
+    assert.match(status,/no analytics or Meta event sent/);
+    assert.match(status,/Analytics ingest: would accept/);
+  } finally { f.close(); }
+});
+
+test('signal editor delivery health renders existing authoritative evidence without credential material',async()=>{
+  const bindingId='11111111111111111111111111111111';
+  const doc={pages:{'/':{elements:{'home.h1.template-title.1':{signals:[{id:bindingId,trigger:'viewed',eventName:'ViewContent',deliveryMode:'analytics',oncePerSession:true,matchingFields:[]}]}},sectionOrder:{},extras:[],navigation:{showInNavigation:true}}}};
+  const catalog={events:[{name:'ViewContent',category:'page',metaEligible:true,requiresServerOutcome:false,triggers:['viewed']}],matchingFields:[],runtimeEnabled:true};
+  const f=await domFixture({
+    doc,signalCatalog:catalog,
+    signalHealthPayload:{
+      source:'website_signal_existing_authorities',
+      publishedVersionId:'22222222-2222-2222-2222-222222222222',
+      binding:{matchingConsent:'not_requested'},
+      destination:{ownerType:'business',browserPixelConfigured:true,serverCapiConfigured:true,testEventCodeConfigured:false},
+      analytics:[{eventType:'ViewContent',receivedUtc:'2026-09-24T20:00:00Z'}],
+      meta:[{eventName:'ViewContent',metaBrowserSent:true,metaServerSent:false,dispatch:{status:'not_server_authority'}}]
+    }
+  });
+  try{
+    f.click('main h1'); f.click('[data-open="signals"]');
+    const health=f.w.document.querySelector(`[data-signal-health="${bindingId}"]`);
+    assert.ok(health); health.click();
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const host=f.w.document.querySelector(`[data-signal-diagnostics="${bindingId}"]`);
+    assert.match(host.textContent,/Destination owner: business/);
+    assert.match(host.textContent,/Pixel: configured/);
+    assert.match(host.textContent,/CAPI: configured/);
+    assert.match(host.textContent,/Analytics accepted/);
+    assert.match(host.textContent,/Meta signal/);
+    assert.doesNotMatch(host.textContent,/token|ciphertext/i);
+  } finally { f.close(); }
+});
 
 test('AI Assist generates a review-only proposal then uses normal save authority after explicit apply', async()=>{
   const proposed={
