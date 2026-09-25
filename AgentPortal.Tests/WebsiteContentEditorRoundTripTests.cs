@@ -900,7 +900,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         {
             public Task<ProtectWebsite.Services.WebsiteStudioAiProviderProposal> ProposeAsync(
                 ProtectWebsite.Services.WebsiteStudioAiProviderRequest request,
-                CancellationToken cancellationToken = default) =>
+                System.Threading.CancellationToken cancellationToken = default) =>
                 Task.FromResult(new ProtectWebsite.Services.WebsiteStudioAiProviderProposal(
                     "Improve the selected heading.",
                     [new WebsiteStudioAiOperation { Kind = "set_text", Text = "AI proposed heading" }]));
