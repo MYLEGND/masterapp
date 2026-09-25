@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Infrastructure.Analytics;
 using Shared.Analytics;
 using Domain.Entities;
