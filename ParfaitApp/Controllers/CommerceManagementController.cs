@@ -9,6 +9,7 @@ namespace ParfaitApp.Controllers;
 
 [Route("commerce/manage")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+[IgnoreAntiforgeryToken]
 public sealed class CommerceManagementController(
     MasterAppDbContext db,
     WebsiteEditorTicketProtector tickets,
@@ -72,7 +73,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("product")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveProduct(
         [FromForm] string ticket,
         [FromForm] ParfaitProductEditorViewModel product,
@@ -98,7 +98,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("product/delete")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteProduct(
         [FromForm] string ticket,
         [FromForm] string id,
@@ -111,7 +110,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("product/images/upload")]
-    [ValidateAntiForgeryToken]
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadImages(
         [FromForm] string ticket,
@@ -126,7 +124,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("product/images/delete")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteImage(
         [FromForm] string ticket,
         [FromForm] string productId,
@@ -140,7 +137,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("product/images/display")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveImageDisplay(
         [FromForm] string ticket,
         [FromForm] string productId,
@@ -165,7 +161,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("products/reorder")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ReorderProducts(
         [FromForm] string ticket,
         [FromForm] List<string> productIds,
@@ -178,7 +173,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("order")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateOrder(
         [FromForm] string ticket,
         [FromForm] ParfaitOrderAdminUpdateRequest request,
@@ -192,7 +186,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("settings/commerce")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveCommerceSettings(
         [FromForm] string ticket,
         [FromForm] ParfaitCommerceSettingsViewModel settings,
@@ -206,7 +199,6 @@ public sealed class CommerceManagementController(
     }
 
     [HttpPost("settings/storefront")]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveStorefrontSettings(
         [FromForm] string ticket,
         [FromForm] CommerceStorefrontSettingsInput input,
@@ -285,6 +277,8 @@ public sealed class CommerceManagementController(
     {
         Response.Headers["Content-Security-Policy"] =
             "frame-ancestors 'self' https://mylegnd.com https://www.mylegnd.com https://protect.mylegnd.com https://masterapp-protect.azurewebsites.net";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
         Response.Headers.Remove("X-Frame-Options");
     }
 
