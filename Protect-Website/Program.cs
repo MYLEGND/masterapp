@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
 using Infrastructure.Bookings;
 using Infrastructure.Analytics;
-using ProtectWebsite.Services.MetaSignal;
+using Infrastructure.Analytics;
 using ProtectWebsite.Services.Booking;
 using System.IO;
 using System.Linq;
@@ -114,21 +114,21 @@ builder.Services.AddScoped<Infrastructure.Analytics.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
 builder.Services.AddScoped<Infrastructure.Analytics.IMetaPixelResolutionService, Infrastructure.Analytics.MetaPixelResolutionService>();
-builder.Services.AddScoped<IMetaSendAuthority, MetaSendAuthority>();
+builder.Services.AddScoped<Infrastructure.Analytics.IMetaSendAuthority, Infrastructure.Analytics.MetaSendAuthority>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
 builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
-builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
+builder.Services.Configure<Infrastructure.Analytics.MetaOptions>(builder.Configuration.GetSection("Meta"));
 builder.Services.Configure<Infrastructure.Analytics.MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
-builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
+builder.Services.AddHttpClient<Infrastructure.Analytics.IMetaConversionsApiService, Infrastructure.Analytics.MetaConversionsApiService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
-builder.Services.AddHostedService<MetaSignalAnalyticsBridge>();
-builder.Services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
+builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalAnalyticsBridge>();
+builder.Services.AddHostedService<Infrastructure.Analytics.MetaSignalOutcomeDispatcherHostedService>();
 
 // Data Protection — platform authority. Shares the "AgentPortal" application
 // name and (in dev) the AgentPortal key directory so protected agent-scoped Meta
