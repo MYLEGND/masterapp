@@ -1005,6 +1005,7 @@
         startHeightPx: positiveNumber(gestureStyle.heightPx) ? Number(gestureStyle.heightPx) : Math.max(selectedRect.height, 24),
         startOffsetXPercent: Number.isFinite(Number(gestureStyle.offsetXPercent)) ? Number(gestureStyle.offsetXPercent) : 0,
         startOffsetYPx: Number.isFinite(Number(gestureStyle.offsetYPx)) ? Number(gestureStyle.offsetYPx) : 0,
+        style: gestureStyle,
         changed: false
       };
       gridOverlay.hidden = false;
@@ -1023,8 +1024,7 @@
       const dy = event.clientY - gesture.startY;
       const override = selectedOverride();
       if (!override) return;
-      override.style ||= {};
-      const style = gestureStyle;
+      const style = gesture.style;
       const sectionWidth = gesture.sectionRect.width || gesture.parentRect.width || 1;
       const parentWidth = gesture.parentRect.width || sectionWidth || 1;
       const cell = sectionWidth / 12;
