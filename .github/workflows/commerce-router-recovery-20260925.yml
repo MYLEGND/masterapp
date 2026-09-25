@@ -30,6 +30,10 @@ jobs:
           ref: fc495d8f6f2d5c477c85c9f32a64fd113d507b8c
           persist-credentials: false
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
       - name: Authenticate for read-only routing authority lookup
         uses: azure/login@v2
         with:
@@ -63,6 +67,97 @@ jobs:
           echo "::add-mask::$bridge"
           printf 'LEGEND_WEBSITE_BRIDGE_SECRET=%s\n' "$bridge" >> "$GITHUB_ENV"
           echo "Existing bridge authority matched."
+
+      - name: Prove CAMO domain binding from production source of truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          connection="$(az webapp config connection-string list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="MasterAppDb") | .value' | head -n 1)"
+          if [ -z "$connection" ] || [ "$connection" = null ]; then
+            connection="$(az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json | jq -r '.[] | select(.name=="ConnectionStrings__MasterAppDb" or .name=="MasterAppDb" or .name=="SQLCONNSTR_MasterAppDb") | .value' | head -n 1)"
+          fi
+          [ -n "$connection" ] && [ "$connection" != null ] || { echo "::error::Production MasterAppDb connection is unavailable."; exit 1; }
+          echo "::add-mask::$connection"
+          export MASTERAPP_PROBE_CONNECTION="$connection"
+
+          mkdir -p /tmp/domainprobe
+          cat > /tmp/domainprobe/DomainProbe.csproj <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net10.0</TargetFramework>
+              <ImplicitUsings>enable</ImplicitUsings>
+              <Nullable>enable</Nullable>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="$GITHUB_WORKSPACE/Infrastructure/Infrastructure.csproj" />
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > /tmp/domainprobe/Program.cs <<'EOF'
+          using Domain.Entities;
+          using Infrastructure.Data;
+          using Microsoft.EntityFrameworkCore;
+
+          var connection = Environment.GetEnvironmentVariable("MASTERAPP_PROBE_CONNECTION")
+              ?? throw new InvalidOperationException("Missing connection.");
+          var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+              .UseSqlServer(connection)
+              .Options;
+          await using var db = new MasterAppDbContext(options);
+
+          var host = "camoexterior.com";
+          var bindings = await db.Set<WebsiteDomainBinding>()
+              .AsNoTracking()
+              .Where(x => x.Hostname == host)
+              .Select(x => new
+              {
+                  x.Id,
+                  x.CommerceBusinessId,
+                  x.Hostname,
+                  x.Status,
+                  x.CertificateStatus,
+                  x.LastCheckedUtc,
+                  x.CreatedUtc
+              })
+              .ToListAsync();
+
+          Console.WriteLine($"binding-count={bindings.Count}");
+          foreach (var row in bindings)
+              Console.WriteLine($"binding id={row.Id} business={row.CommerceBusinessId} host={row.Hostname} status={row.Status} certificate={row.CertificateStatus} lastChecked={row.LastCheckedUtc:O} created={row.CreatedUtc:O}");
+
+          var businessIds = bindings.Select(x => x.CommerceBusinessId).Distinct().ToArray();
+          var linkedBusinesses = await db.CommerceBusinesses
+              .AsNoTracking()
+              .Where(x => businessIds.Contains(x.Id))
+              .Select(x => new { x.Id, x.Key, x.DisplayName, x.PrimaryDomain, x.Status, x.IsActive })
+              .ToListAsync();
+          foreach (var row in linkedBusinesses)
+              Console.WriteLine($"linked-business id={row.Id} key={row.Key} display={row.DisplayName} primaryDomain={row.PrimaryDomain} status={row.Status} active={row.IsActive}");
+
+          var camoBusinesses = await db.CommerceBusinesses
+              .AsNoTracking()
+              .Where(x =>
+                  x.Key.ToLower().Contains("camo") ||
+                  x.DisplayName.ToLower().Contains("camo") ||
+                  (x.PrimaryDomain != null && x.PrimaryDomain.ToLower().Contains("camoexterior")))
+              .Select(x => new { x.Id, x.Key, x.DisplayName, x.PrimaryDomain, x.Status, x.IsActive })
+              .ToListAsync();
+          Console.WriteLine($"camo-business-count={camoBusinesses.Count}");
+          foreach (var row in camoBusinesses)
+              Console.WriteLine($"camo-business id={row.Id} key={row.Key} display={row.DisplayName} primaryDomain={row.PrimaryDomain} status={row.Status} active={row.IsActive}");
+
+          var camoIds = camoBusinesses.Select(x => x.Id).ToArray();
+          var states = await db.Set<WebsiteContentState>()
+              .AsNoTracking()
+              .Where(x => x.CommerceBusinessId.HasValue && camoIds.Contains(x.CommerceBusinessId.Value))
+              .Select(x => new { x.Id, x.OwnerKey, x.SiteKey, x.CommerceBusinessId, x.PublishedVersionId, x.Revision })
+              .ToListAsync();
+          foreach (var row in states)
+              Console.WriteLine($"website-state id={row.Id} owner={row.OwnerKey} site={row.SiteKey} business={row.CommerceBusinessId} published={row.PublishedVersionId} revision={row.Revision}");
+          EOF
+
+          dotnet run --project /tmp/domainprobe/DomainProbe.csproj -c Release --nologo
 
       - name: Probe signed origins and current public CAMO without mutation
         shell: bash
