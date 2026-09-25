@@ -357,6 +357,12 @@ app.Use(async (context, next) =>
 
     await next();
 });
+var webRoot = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+app.UseStaticFiles(new StaticFileOptions
+{
+    RequestPath = "/store-assets",
+    FileProvider = new PhysicalFileProvider(webRoot)
+});
 app.UseStaticFiles(new StaticFileOptions
 {
     RequestPath = "/uploads/parfait-products",
