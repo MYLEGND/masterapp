@@ -390,7 +390,10 @@
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
     const managedActionKey = selected.dataset.websiteActionKey;
-    const managedAction = managedActionKey ? availableCtaOptions().find(option => option.key === managedActionKey) : null;
+    const selectedHref = selected.getAttribute?.('href');
+    const managedAction = (managedActionKey && availableCtaOptions().find(option => option.key === managedActionKey))
+      || (selectedHref && availableCtaOptions().find(option => option.href === selectedHref))
+      || null;
     if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
       const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics + Meta';
       host.appendChild(automaticTitle);
@@ -2975,7 +2978,7 @@
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
-    signals.innerHTML = '<h2>Analytics & Meta</h2><p>Choose what this interaction means. Draft changes take effect when published.</p><div id="legend-cms-signal-controls"></div>';
+    signals.innerHTML = '<h2>Analytics & Meta</h2><p>Standard page engagement, managed buttons, and the canonical inquiry form are wired automatically from the shared Protect Website analytics and Meta authorities. Select content to review that wiring. Advanced custom mappings are only for non-standard interactions.</p><div id="legend-cms-signal-controls"></div>';
     tools.appendChild(signals);
     const motion = document.createElement('section'); motion.dataset.cmsView='motion'; motion.hidden=true;
     motion.innerHTML='<h2>Motion & interactions</h2><p>Declarative visual motion only. These effects never create analytics, leads, bookings, purchases, or other business outcomes.</p><small id="legend-cms-motion-status">Select an element to configure motion.</small><div id="legend-cms-motion-controls"></div>';
