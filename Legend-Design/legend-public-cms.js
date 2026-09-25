@@ -237,6 +237,133 @@
     });
   }
 
+  function selectedSignalElementId() {
+    if (!selected) return null;
+    return selected.dataset.cmsExtraId ? `extra:${selected.dataset.cmsExtraId}` : selected.dataset.cmsId || null;
+  }
+
+  function signalDiagnosticHost(bindingId) {
+    return document.querySelector(`[data-signal-diagnostics="${CSS.escape(bindingId)}"]`);
+  }
+
+  function renderSignalDiagnosticMessage(bindingId, text, tone = 'info') {
+    const host = signalDiagnosticHost(bindingId);
+    if (!host) return;
+    host.replaceChildren();
+    const message = document.createElement('p');
+    message.className = `legend-cms-signal-diagnostic legend-cms-signal-${tone}`;
+    message.textContent = text;
+    host.appendChild(message);
+  }
+
+  async function ensureSavedForSignalInspection(bindingId) {
+    if (!dirty) return true;
+    renderSignalDiagnosticMessage(bindingId, 'Saving the current draft before inspecting this mapping…');
+    const saved = await save(false);
+    if (!saved || dirty) {
+      renderSignalDiagnosticMessage(bindingId, 'Save the current draft before testing this mapping.', 'error');
+      return false;
+    }
+    return true;
+  }
+
+  async function runSignalDryRun(binding) {
+    const elementId = selectedSignalElementId();
+    if (!binding?.id || !elementId) return;
+    if (!await ensureSavedForSignalInspection(binding.id)) return;
+    renderSignalDiagnosticMessage(binding.id, 'Running private dry-run validation…');
+    try {
+      const response = await fetch(`${API_BASE}/api/website-content/manage/signals/test`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: editorTicket,
+          expectedRevision: revision,
+          pagePath: currentPageRoute(),
+          elementId,
+          bindingId: binding.id
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || `Signal dry-run failed (${response.status})`);
+      if (payload.source !== 'website_signal_private_dry_run' || payload.dryRun !== true ||
+          payload.persisted !== false || payload.metaDispatched !== false)
+        throw new Error('Signal dry-run response was invalid.');
+      const stages = payload.stages || {};
+      const destination = payload.destination || {};
+      const details = [
+        'PRIVATE TEST · no analytics or Meta event sent',
+        `Mapping: ${stages.mappingValidated ? 'valid' : 'invalid'}`,
+        `Browser trigger: ${stages.browserTriggerSupported ? 'supported' : 'server-only'}`,
+        `Analytics ingest: ${stages.browserAnalyticsWouldBeAccepted ? 'would accept' : 'not browser-eligible'}`,
+        `Browser Pixel: ${stages.browserPixelWouldInvoke ? 'would invoke' : 'would not invoke'}`,
+        `Server outcome required: ${stages.serverOutcomeRequired ? 'yes' : 'no'}`,
+        `Destination: Pixel ${destination.browserPixelConfigured ? 'ready' : 'not configured'}, CAPI ${destination.serverCapiConfigured ? 'ready' : 'not configured'}`
+      ].join(' · ');
+      renderSignalDiagnosticMessage(binding.id, details, 'ok');
+    } catch (error) {
+      renderSignalDiagnosticMessage(binding.id, error?.message || 'Unable to run private signal test.', 'error');
+    }
+  }
+
+  async function loadSignalHealth(binding) {
+    const elementId = selectedSignalElementId();
+    if (!binding?.id || !elementId) return;
+    if (!await ensureSavedForSignalInspection(binding.id)) return;
+    renderSignalDiagnosticMessage(binding.id, 'Loading destination health and published delivery evidence…');
+    try {
+      const url = new URL(`${API_BASE}/api/website-content/manage/signals/health`);
+      url.searchParams.set('ticket', editorTicket);
+      url.searchParams.set('pagePath', currentPageRoute());
+      url.searchParams.set('elementId', elementId);
+      url.searchParams.set('bindingId', binding.id);
+      const response = await fetch(url, { cache:'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || `Signal health failed (${response.status})`);
+      if (payload.source !== 'website_signal_existing_authorities')
+        throw new Error('Signal health response was invalid.');
+
+      const host = signalDiagnosticHost(binding.id);
+      if (!host) return;
+      host.replaceChildren();
+      const destination = payload.destination || {};
+      const mapping = payload.binding || {};
+      const summary = document.createElement('p');
+      summary.className = 'legend-cms-signal-diagnostic legend-cms-signal-ok';
+      summary.textContent = [
+        `Destination owner: ${destination.ownerType || 'none'}`,
+        `Pixel: ${destination.browserPixelConfigured ? 'configured' : 'not configured'}`,
+        `CAPI: ${destination.serverCapiConfigured ? 'configured' : 'not configured'}`,
+        `Consent/matching: ${mapping.matchingConsent || 'not requested'}`,
+        `Published version: ${payload.publishedVersionId || 'not published'}`
+      ].join(' · ');
+      host.appendChild(summary);
+
+      const evidence = [
+        ...(payload.analytics || []).map(row => `Analytics accepted · ${row.eventType} · ${row.receivedUtc || ''}`),
+        ...(payload.meta || []).map(row => {
+          const dispatch = row.dispatch || {};
+          const server = dispatch.sent ? 'server sent' : dispatch.status ? `server ${dispatch.status}` : 'no server dispatch';
+          return `Meta signal · ${row.eventName} · browser ${row.metaBrowserSent ? 'invoked' : 'not invoked'} · ${server}`;
+        })
+      ];
+      if (!evidence.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No published delivery evidence exists yet for this exact binding/version.';
+        host.appendChild(empty);
+      } else {
+        for (const value of evidence.slice(0, 12)) {
+          const row = document.createElement('div');
+          row.className = 'legend-cms-signal-history';
+          row.textContent = value;
+          host.appendChild(row);
+        }
+      }
+    } catch (error) {
+      renderSignalDiagnosticMessage(binding.id, error?.message || 'Unable to load signal health.', 'error');
+    }
+  }
+
   function renderSignalControls() {
     const host = document.getElementById('legend-cms-signal-controls');
     if (!host) return;
@@ -281,6 +408,22 @@
           label.append(input, document.createTextNode(' Match approved ' + field)); host.appendChild(label);
         }
       }
+      const diagnostics = document.createElement('div');
+      diagnostics.className = 'legend-cms-signal-diagnostics';
+      diagnostics.dataset.signalDiagnostics = binding.id;
+      const diagnosticIntro = document.createElement('p');
+      diagnosticIntro.textContent = 'Destination health and delivery evidence have not been checked for this mapping.';
+      diagnostics.appendChild(diagnosticIntro);
+      const diagnosticActions = document.createElement('div'); diagnosticActions.className = 'legend-cms-row';
+      const testButton = document.createElement('button'); testButton.type = 'button'; testButton.textContent = 'Run private test';
+      testButton.dataset.signalTest = binding.id;
+      testButton.addEventListener('click', () => void runSignalDryRun(binding));
+      const healthButton = document.createElement('button'); healthButton.type = 'button'; healthButton.textContent = 'Refresh delivery history';
+      healthButton.dataset.signalHealth = binding.id;
+      healthButton.addEventListener('click', () => void loadSignalHealth(binding));
+      diagnosticActions.append(testButton, healthButton);
+      diagnostics.appendChild(diagnosticActions);
+      host.appendChild(diagnostics);
       const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
       remove.addEventListener('click', () => { checkpoint(); overrides.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
     }
@@ -2711,6 +2854,7 @@
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
+      .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
       .legend-cms-quality-list{display:grid;gap:8px;margin:10px 0 18px}.legend-cms-quality-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-item strong{font-size:10px;letter-spacing:.08em;color:#e6c77e}.legend-cms-quality-item span{font-size:12px;line-height:1.45;color:#f7f6f2}.legend-cms-quality-error{border-color:#e6a6a6}.legend-cms-quality-warning{border-color:#e6c77e}.legend-cms-quality-ok{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;color:#d8f4e3;background:#0d2b25}
