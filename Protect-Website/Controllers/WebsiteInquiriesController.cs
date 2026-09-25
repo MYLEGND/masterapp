@@ -482,7 +482,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
     {
         try
         {
-            var service = HttpContext.RequestServices.GetRequiredService<BusinessInquiryNotificationService>();
+            var service = new BusinessInquiryNotificationService(_db, _recipients, _emailSender);
             return await service.DeliverOneAsync(inquiryId, cancellationToken);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
