@@ -204,9 +204,21 @@ public static class WebsiteContentSanitizer
             GoldStrong = SanitizeHex(source.GoldStrong),
             Surface = SanitizeHex(source.Surface),
             Muted = SanitizeHex(source.Muted),
-            Text = SanitizeHex(source.Text), FontFamily = SanitizeFont(source.FontFamily),
-            FontSize = source.FontSize > 0 ? source.FontSize : null,
-            BorderRadius = source.BorderRadius >= 0 ? source.BorderRadius : null
+            Text = SanitizeHex(source.Text),
+            FontFamily = SanitizeFont(source.FontFamily),
+            HeadingFontFamily = SanitizeFont(source.HeadingFontFamily),
+            HeadingWeight = source.HeadingWeight is >= 100 and <= 900 ? source.HeadingWeight : null,
+            FontSize = source.FontSize is >= 10 and <= 32 ? source.FontSize : null,
+            LineHeight = source.LineHeight is >= 0.8m and <= 3m ? source.LineHeight : null,
+            H1SizePx = source.H1SizePx is >= 20 and <= 180 ? source.H1SizePx : null,
+            H2SizePx = source.H2SizePx is >= 18 and <= 140 ? source.H2SizePx : null,
+            H3SizePx = source.H3SizePx is >= 14 and <= 96 ? source.H3SizePx : null,
+            PagePaddingPx = source.PagePaddingPx is >= 0 and <= 240 ? source.PagePaddingPx : null,
+            SectionPaddingPx = source.SectionPaddingPx is >= 16 and <= 320 ? source.SectionPaddingPx : null,
+            ContentGapPx = source.ContentGapPx is >= 0 and <= 120 ? source.ContentGapPx : null,
+            BorderRadius = source.BorderRadius is >= 0 and <= 120 ? source.BorderRadius : null,
+            ButtonRadiusPx = source.ButtonRadiusPx is >= 0 and <= 999 ? source.ButtonRadiusPx : null,
+            ShadowPreset = source.ShadowPreset is "none" or "subtle" or "medium" or "strong" ? source.ShadowPreset : null
         };
     }
 
