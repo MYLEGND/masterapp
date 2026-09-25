@@ -59,6 +59,7 @@ public sealed class WebsiteElementOverride
     public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public string? SyncSourceId { get; set; }
+    public WebsiteDataBinding? DataBinding { get; set; }
 }
 
 public sealed class WebsiteStyleOverride
@@ -117,6 +118,7 @@ public sealed class WebsiteExtraComponent
     public Dictionary<string, WebsiteLayoutOverride> BreakpointLayouts { get; set; } = new(StringComparer.Ordinal);
     public List<WebsiteAnimationBinding> Animations { get; set; } = new();
     public string? SyncSourceId { get; set; }
+    public WebsiteDataBinding? DataBinding { get; set; }
 }
 
 public sealed class WebsiteThemeOverride
@@ -206,10 +208,17 @@ public sealed class WebsiteCollectionDefinition
     public List<string> Fields { get; set; } = new();
 }
 
+public sealed class WebsiteDataBinding
+{
+    public string CollectionId { get; set; } = "";
+    public string Field { get; set; } = "";
+}
+
 public sealed class WebsiteDynamicPageBinding
 {
     public string CollectionId { get; set; } = "";
     public string ItemKeyField { get; set; } = "";
+    public string? RoutePattern { get; set; }
 }
 public sealed record BusinessWebsiteProfileSummary(
     Guid BusinessId,
