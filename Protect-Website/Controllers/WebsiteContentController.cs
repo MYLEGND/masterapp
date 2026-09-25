@@ -677,6 +677,43 @@ public sealed class WebsiteContentController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { details, revision = state.Revision });
     }
+    [HttpGet("manage/media")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> MediaLibrary([FromQuery] string ticket, CancellationToken cancellationToken = default)
+    {
+        var actor = await AuthorizeAsync(ticket, cancellationToken);
+        if (actor is null) return Unauthorized();
+
+        var assets = await _db.Set<WebsiteMediaAsset>()
+            .AsNoTracking()
+            .Where(asset => asset.OwnerKey == actor.OwnerUserId)
+            .OrderByDescending(asset => asset.CreatedUtc)
+            .Take(200)
+            .Select(asset => new
+            {
+                asset.Id,
+                asset.ContentType,
+                asset.SizeBytes,
+                asset.SourceUrl,
+                asset.CreatedUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var apiBase = MediaBaseUrl();
+        return Ok(new
+        {
+            assets = assets.Select(asset => new
+            {
+                asset.Id,
+                url = apiBase + "/api/website-content/media/" + asset.Id,
+                asset.ContentType,
+                asset.SizeBytes,
+                sourceName = string.IsNullOrWhiteSpace(asset.SourceUrl) ? null : asset.SourceUrl,
+                asset.CreatedUtc
+            })
+        });
+    }
+
     [HttpPost("manage/media")]
     [RequestSizeLimit(26_000_000)]
     public async Task<IActionResult> UploadMedia([FromForm] string ticket, [FromForm] IFormFile file, CancellationToken cancellationToken = default)
@@ -687,8 +724,17 @@ public sealed class WebsiteContentController : ControllerBase
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer, cancellationToken);
         var media = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
-        var asset = await media.StoreAsync(actor.OwnerUserId, "", file.FileName, buffer.ToArray(), cancellationToken);
-        return Ok(new { url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id, sizeBytes = asset.SizeBytes });
+        var safeName = Path.GetFileName(file.FileName ?? string.Empty).Trim();
+        if (safeName.Length > 240) safeName = safeName[..240];
+        var asset = await media.StoreAsync(actor.OwnerUserId, safeName, file.FileName, buffer.ToArray(), cancellationToken);
+        return Ok(new
+        {
+            id = asset.Id,
+            url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id,
+            asset.ContentType,
+            asset.SizeBytes,
+            sourceName = string.IsNullOrWhiteSpace(asset.SourceUrl) ? null : asset.SourceUrl
+        });
     }
     [HttpPost("manage/import-file")]
     [RequestSizeLimit(52_000_000)]
