@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized direct deployment of the exact shared scoped website candidate from legend/approved-changes to only Protect Website and LEGEND Website after validate-only run #154 passed the exact build, selected website checks, deployable package creation/retention, and final enforcement. Preserve the centralized editor/runtime, analytics and Meta single-truth authority, scoped CRM/lead ownership, domain isolation, and all unrelated working flows. Do not deploy AgentPortal, ClientApp, Parfait, or the Cloudflare router.",
+  "authorization": "Founder explicitly authorized direct deployment of the exact validated shared scoped website candidate from legend/approved-changes to only Protect Website and LEGEND Website after the surgical compile and test-namespace repairs passed validation. Preserve the centralized website/editor/runtime, analytics, Meta single-truth authority, scoped CRM/lead ownership, domain isolation, and all unrelated working flows. Do not deploy AgentPortal, ClientApp, Parfait, or the Cloudflare router.",
   "purpose": "Deploy the exact candidate validated by LEGEND approved direct release #154 to Protect Website and LEGEND Website only, with post-deploy provenance verification and fail-closed enforcement.",
-  "requestId": "shared-website-studio-direct-release-20260924-after-passed-validation-154",
+  "requestId": "shared-website-studio-direct-release-20260924-after-validation",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
