@@ -389,37 +389,30 @@
     const bindings = overrides?.signals || [];
     paragraph(bindings.length ? `${bindings.length} interaction mapping${bindings.length === 1 ? '' : 's'}` : 'No signal. This element has no configured marketing event.');
     if (!signalCatalog.runtimeEnabled) paragraph('Delivery is not activated for this release. You can prepare and save mappings.');
-    if (type === 'FORM') {
-      const presetTitle = document.createElement('strong'); presetTitle.textContent = 'Form event presets from Protect Website';
-      host.appendChild(presetTitle);
-      const presetHelp = document.createElement('p');
-      presetHelp.textContent = 'These buttons come directly from the canonical Meta/analytics event catalog. Browser events fire only when eligible; confirmed Lead remains server-authoritative.';
-      host.appendChild(presetHelp);
-      const presetGrid = document.createElement('div'); presetGrid.className = 'legend-cms-signal-presets';
-      const presets = candidates.flatMap(option => option.triggers
-        .filter(trigger => triggers.includes(trigger))
-        .map(trigger => ({ option, trigger })));
-      for (const preset of presets) {
-        const button = document.createElement('button'); button.type='button';
-        button.textContent = `${preset.option.name} · ${preset.trigger.replaceAll('_',' ')} · ${preset.option.metaEligible ? 'Meta + analytics' : 'Analytics'}`;
-        button.disabled = bindings.length >= 8 || bindings.some(binding => binding.trigger === preset.trigger);
-        button.addEventListener('click', () => {
-          if (button.disabled) return;
-          checkpoint();
-          overrides.signals ||= [];
-          overrides.signals.push({
-            id: crypto.randomUUID().replaceAll('-',''),
-            eventName: preset.option.name,
-            trigger: preset.trigger,
-            deliveryMode: preset.option.metaEligible ? 'meta' : 'analytics',
-            oncePerSession: true,
-            matchingFields: []
-          });
-          markDirty(); renderSignalControls();
-        });
-        presetGrid.appendChild(button);
+    const managedActionKey = selected.dataset.websiteActionKey;
+    const managedAction = managedActionKey ? availableCtaOptions().find(option => option.key === managedActionKey) : null;
+    if (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) {
+      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic form analytics + Meta';
+      host.appendChild(automaticTitle);
+      const automaticHelp = document.createElement('p');
+      automaticHelp.textContent = 'No mapping is required. The shared Protect Website runtime automatically tracks the canonical inquiry lifecycle, and the backend owns the confirmed Lead outcome.';
+      host.appendChild(automaticHelp);
+      const automatic = document.createElement('div'); automatic.className = 'legend-cms-signal-presets';
+      const names = ['LeadFormStart','ContactInputStarted','PhoneFieldCompleted','RequiredContactFieldsCompleted','SubmitAttempt','Lead'];
+      for (const name of names) {
+        const option = signalCatalog.events.find(value => value.name === name);
+        if (!option) continue;
+        const row = document.createElement('div');
+        row.textContent = `${name} · automatic · ${option.requiresServerOutcome ? 'verified server outcome' : option.metaEligible ? 'Meta + analytics when configured' : 'analytics'}`;
+        automatic.appendChild(row);
       }
-      host.appendChild(presetGrid);
+      host.appendChild(automatic);
+    } else if (managedAction) {
+      const automaticTitle = document.createElement('strong'); automaticTitle.textContent = 'Automatic button analytics + Meta';
+      host.appendChild(automaticTitle);
+      const automaticHelp = document.createElement('p');
+      automaticHelp.textContent = `${managedAction.label || managedAction.key} is already wired by the shared action contract: ${managedAction.analyticsEventName || 'cta_click'}${managedAction.metaIntentEventName ? ' + ' + managedAction.metaIntentEventName : ''}. No manual mapping is required.`;
+      host.appendChild(automaticHelp);
     }
     const addSelect = (labelText, values, value, action) => {
       const label = document.createElement('label'); label.className = 'legend-cms-group'; label.textContent = labelText;
@@ -465,8 +458,10 @@
       const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove mapping';
       remove.addEventListener('click', () => { checkpoint(); overrides.signals = bindings.filter(x => x.id !== binding.id); markDirty(); renderSignalControls(); }); host.appendChild(remove);
     }
-    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add interaction mapping';
-    add.disabled = bindings.length >= 8 || !candidates.length;
+    const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add advanced custom mapping';
+    const automaticContract = (type === 'FORM' && selected.matches?.('[data-website-inquiry]')) || !!managedAction;
+    add.hidden = automaticContract;
+    add.disabled = automaticContract || bindings.length >= 8 || !candidates.length;
     add.addEventListener('click', () => {
       const option = candidates.flatMap(x => x.triggers.filter(t => triggers.includes(t) && !bindings.some(b => b.trigger === t)).map(t => ({ event: x, trigger: t })))[0];
       if (!option) { paragraph('All supported triggers for this element are already mapped.'); return; }
@@ -1081,6 +1076,7 @@
       el.setAttribute('action', '/api/website-inquiries/public');
       el.setAttribute('method', 'post');
       const fieldset = document.createElement('fieldset');
+      if (editorMode) { el.dataset.preview = ''; fieldset.disabled = true; }
       const legend = document.createElement('legend'); legend.textContent = extra.title || 'Send an inquiry';
       const grid = document.createElement('div'); grid.className = 'public-form-grid';
       const field = (labelText, name, type = 'text', attrs = {}) => {
@@ -1668,7 +1664,7 @@
           effectivePageKey: pageKey,
           pageVariant: SITE_KEY + '_website',
           pageMode: 'site_mode',
-          formId: inquiryForm?.dataset.formKey || '',
+          formId: inquiryForm?.id || inquiryForm?.dataset.formKey || '',
           requiredContactFields: inquiryForm ? ['FirstName','LastName','Phone','Email'] : []
         });
         installPublishedSignalBindings();
@@ -2925,6 +2921,10 @@
   function addBlock(type) {
     const section = selectedSection || document.querySelector('[data-cms-section]');
     if (!section && type !== 'section') return;
+    if (type === 'form' && document.querySelector('form[data-website-inquiry]')) {
+      alert('This page already has its canonical inquiry form. Select that form to move, resize, or review its automatic analytics and Meta wiring.');
+      return;
+    }
     const sectionAnchor = type === 'section'
       ? (selectedSection && !selectedSection.matches('.site-header,.site-footer') ? selectedSection : pageLayerSections()[0] || null)
       : null;
@@ -3186,7 +3186,7 @@
       .legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:10px;border:1px solid #344766;border-radius:12px;background:#10284a}.legend-cms-media-card img,.legend-cms-media-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-component-list{display:grid;gap:8px;margin-top:12px}.legend-cms-component-row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:7px;align-items:start;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-component-row>div{min-width:0}.legend-cms-component-row strong,.legend-cms-component-row small{display:block;overflow-wrap:anywhere}.legend-cms-component-row button{padding:7px 9px}.cms-reusable-instance{min-width:0}.legend-cms-reusable-missing{padding:12px;border:1px dashed #c98e8e;border-radius:8px;background:#2b1717;color:#f6dede}
       .legend-cms-collaboration-roster,.legend-cms-collaboration-comments{display:grid;gap:8px;margin:10px 0 16px}.legend-cms-collaborator,.legend-cms-comment{display:grid;gap:6px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-collaborator small,.legend-cms-comment small{margin:0}.legend-cms-comment[data-depth="1"]{margin-left:18px;border-left:3px solid #d4ad45}.legend-cms-comment-head{display:flex;gap:8px;justify-content:space-between;align-items:center}.legend-cms-comment-head span{text-transform:capitalize;font-size:11px;color:#d4ad45}
-      .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets button{padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:left}
+      .legend-cms-signal-presets{display:grid;grid-template-columns:1fr;gap:7px;margin:10px 0 16px}.legend-cms-signal-presets>div{padding:10px 12px;border:1px solid #3e765d;border-radius:10px;background:#0d2b25;color:#d8f4e3;font-size:12px}
       .legend-cms-signal-diagnostics{display:grid;gap:8px;margin:10px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#0d213e}.legend-cms-signal-diagnostic{margin:0!important;padding:8px 10px;border-radius:8px}.legend-cms-signal-ok{border:1px solid #3e765d;background:#0d2b25;color:#d8f4e3!important}.legend-cms-signal-error{border:1px solid #a95858;background:#35191c;color:#ffdede!important}.legend-cms-signal-history{padding:7px 9px;border-left:3px solid #50617e;font-size:12px;color:#dce6f4;overflow-wrap:anywhere}
       .legend-cms-ai-summary{padding:10px 12px;border:1px solid #d4ad45;border-radius:10px;background:#10284a;color:#f7f6f2}.legend-cms-ai-operation{margin:7px 0;padding:9px 11px;border-left:3px solid #d4ad45;background:#0d213e;color:#dce6f4;font-size:12px;overflow-wrap:anywhere}
       .legend-cms-motion-row{display:grid;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-motion-row .legend-cms-group{margin:4px 0}.legend-cms-motion-row>.legend-cms-row{align-items:end}
