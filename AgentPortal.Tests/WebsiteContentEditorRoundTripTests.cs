@@ -905,7 +905,7 @@ public sealed class WebsiteContentEditorRoundTripTests
         private sealed class FixtureWebsiteStudioAi : Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService
         {
             public Task<Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal> ProposeAsync(
-                ProtectWebsite.Services.WebsiteStudioAiProviderRequest request,
+                Infrastructure.WebsiteEditing.WebsiteStudioAiProviderRequest request,
                 System.Threading.CancellationToken cancellationToken = default) =>
                 Task.FromResult(new Infrastructure.WebsiteEditing.WebsiteStudioAiProviderProposal(
                     "Improve the selected heading.",
