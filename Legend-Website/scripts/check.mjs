@@ -40,7 +40,7 @@ console.log('Shared observer copy, bounded route metadata, existing API base, an
 for (const file of ['legend-public-cms.js','legend-public-web.js','site.css']) {
   const bytes=await readFile(resolve(root,'dist',file));
   const version=createHash('sha256').update(bytes).digest('hex');
-  if(file.endsWith('.js') && !bytes.equals(await readFile(resolve(root,'../Legend-Design',file))))throw new Error('Shared asset differs from authority: '+file);
+  if(file.endsWith('.js') && !bytes.equals(await readFile(resolve(root,'../SHARED/WebsitePlatform',file))))throw new Error('Shared asset differs from authority: '+file);
   for(const route of routes){
     const html=await readFile(resolve(root,'dist',route,'index.html'),'utf8');
     if(!html.includes(`/${file}?v=${version}`))throw new Error('Missing exact asset version: '+file);
