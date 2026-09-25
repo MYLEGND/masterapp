@@ -1675,12 +1675,81 @@
     const span = Math.min(13 - column, Math.max(1, Number(placement.span) || 12));
     el.style.setProperty('--cms-column', String(column)); el.style.setProperty('--cms-span', String(span)); el.style.minWidth = '0'; el.style.maxWidth = '100%'; el.style.overflowWrap = 'anywhere';
   }
+  function approvedDataSources() {
+    return SITE_KEY === 'business' && Array.isArray(managementPayload?.dataCatalog) ? managementPayload.dataCatalog : [];
+  }
+
+  function sourceForCollection(collectionId) {
+    const collection=documentState.collections?.[collectionId];
+    return collection ? approvedDataSources().find(source=>source.key===collection.source) || null : null;
+  }
+
+  function ensureCollectionForSource(sourceKey, fields = []) {
+    const source=approvedDataSources().find(value=>value.key===sourceKey);
+    if(!source) return null;
+    documentState.collections ||= {};
+    let collection=Object.values(documentState.collections).find(value=>value?.source===sourceKey);
+    if(!collection){ collection={id:sourceKey,name:source.label,source:sourceKey,fields:[]}; documentState.collections[sourceKey]=collection; }
+    collection.fields ||= [];
+    for(const field of fields) if(source.fields?.includes(field) && !collection.fields.includes(field)) collection.fields.push(field);
+    return collection;
+  }
+
+  function setSelectOptions(select, values, current, emptyLabel = null) {
+    if(!select) return;
+    select.replaceChildren();
+    if(emptyLabel!=null){ const empty=document.createElement('option'); empty.value=''; empty.textContent=emptyLabel; select.appendChild(empty); }
+    for(const [value,label] of values){ const option=document.createElement('option'); option.value=value; option.textContent=label; select.appendChild(option); }
+    if(current!=null) select.value=current;
+  }
+
+  function renderDataControls() {
+    const business=document.getElementById('legend-cms-data-business');
+    const notice=document.getElementById('legend-cms-data-unavailable');
+    if(business) business.hidden=SITE_KEY!=='business';
+    if(notice) notice.hidden=SITE_KEY==='business';
+    if(SITE_KEY!=='business') return;
+    const sources=approvedDataSources();
+    const override=selectedOverride?.() || null;
+    const binding=override?.dataBinding || null;
+    const boundSource=sourceForCollection(binding?.collectionId);
+    const sourceSelect=document.getElementById('legend-cms-data-source');
+    const sourceKey=boundSource?.key || sourceSelect?.value || sources[0]?.key || '';
+    setSelectOptions(sourceSelect,sources.map(source=>[source.key,source.label]),sourceKey,'Choose source');
+    const source=sources.find(value=>value.key===sourceSelect?.value) || sources.find(value=>value.key===sourceKey);
+    const fieldSelect=document.getElementById('legend-cms-data-field');
+    setSelectOptions(fieldSelect,(source?.fields||[]).map(field=>[field,field.replaceAll(/([A-Z])/g,' $1').replace(/^./,m=>m.toUpperCase())]),binding?.field || fieldSelect?.value || source?.fields?.[0] || '');
+    const target=document.getElementById('legend-cms-data-target'); if(target) target.value=binding?.target || target.value || 'text';
+    const bindButton=document.getElementById('legend-cms-data-bind'); if(bindButton) bindButton.disabled=!selected || !!selected.dataset.cmsSignalOnly;
+    const clearButton=document.getElementById('legend-cms-data-clear'); if(clearButton) clearButton.disabled=!binding;
+    const status=document.getElementById('legend-cms-data-status');
+    if(status) status.textContent=binding ? `Bound to ${boundSource?.label || binding.collectionId} · ${binding.field}.` : selected?'Selected content is not data-bound.':'Select content on the page to bind it.';
+
+    const page=pageState();
+    const dynamic=page.dynamicBinding || null;
+    const listSources=sources.filter(value=>value.isList===true);
+    const dynamicSource=sourceForCollection(dynamic?.collectionId);
+    const dynamicSelect=document.getElementById('legend-cms-dynamic-source');
+    setSelectOptions(dynamicSelect,listSources.map(value=>[value.key,value.label]),dynamicSource?.key || '','Static page');
+    const chosenDynamic=listSources.find(value=>value.key===dynamicSelect?.value) || dynamicSource;
+    const keySelect=document.getElementById('legend-cms-dynamic-key');
+    setSelectOptions(keySelect,(chosenDynamic?.fields||[]).map(field=>[field,field]),dynamic?.itemKeyField || (chosenDynamic?.fields?.includes('slug')?'slug':chosenDynamic?.fields?.includes('id')?'id':chosenDynamic?.fields?.[0]||''));
+    const pattern=document.getElementById('legend-cms-dynamic-pattern');
+    if(pattern) pattern.value=dynamic?.routePattern || `${currentPageRoute()==='/'?'/items':currentPageRoute()}/{item}`;
+    const preview=document.getElementById('legend-cms-dynamic-preview');
+    const projection=dynamic?.collectionId ? collectionData.get(dynamic.collectionId) : chosenDynamic ? collectionData.get(chosenDynamic.key) : null;
+    const items=Array.isArray(projection?.items)?projection.items:[];
+    setSelectOptions(preview,items.map(item=>[item.key,String(item.fields?.name||item.key)]),dynamicCollectionItem?.collectionId===dynamic?.collectionId?dynamicCollectionItem.key:'','Preview item');
+    const dynamicStatus=document.getElementById('legend-cms-dynamic-status');
+    if(dynamicStatus) dynamicStatus.textContent=dynamic ? `Dynamic route ${dynamic.routePattern || ''} from ${dynamicSource?.label || dynamic.collectionId}.` : 'This page is static.';
+  }
   function showPanel(name) {
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
     if (name === 'media') void refreshMediaLibrary();
     if (name === 'components') renderReusableComponents();
+    if (name === 'data') renderDataControls();
     if (name === 'page') syncPageControls();
     if (name === 'signals') renderSignalControls();
     if (name === 'quality') void refreshQualityInspector();
@@ -2121,14 +2190,14 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Responsive</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="media">Media</button><button type="button" data-open="components">Components</button><button type="button" data-open="data">Data</button><button type="button" data-open="signals">Analytics & Meta</button><button type="button" data-open="quality">Quality</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Pages & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a block</h2><p>Add to the selected section, then position and resize it directly on the page.</p><div class="legend-cms-menu"><button data-add="text">Text</button><button data-add="button">Button / link</button><button id="legend-cms-new-image">Image</button><button data-add="video">Video</button><button data-add="code">Code / embed</button><button data-add="section">Section</button></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
       <section data-cms-view="layout" hidden><h2>Responsive layout</h2><p>Edit the base design or explicitly target one breakpoint. Breakpoint overrides inherit every unset value from the base design.</p><label class="legend-cms-group">Editing breakpoint<select id="legend-cms-breakpoint"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Custom name<input id="legend-cms-breakpoint-label" type="text" maxlength="80" placeholder="Large tablet"></label><label class="legend-cms-group">Key<input id="legend-cms-breakpoint-key" type="text" maxlength="40" placeholder="large-tablet"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min px<input id="legend-cms-breakpoint-min" type="number" min="0" max="10000" value="900"></label><label class="legend-cms-group">Max px<input id="legend-cms-breakpoint-max" type="number" min="0" max="10000" placeholder="No maximum"></label></div><div class="legend-cms-row"><button id="legend-cms-breakpoint-add" type="button">Add breakpoint</button><button id="legend-cms-breakpoint-remove" type="button">Remove custom breakpoint</button></div><hr><label class="legend-cms-group">Container behavior<select id="legend-cms-layout-mode"><option value="free">Free Canvas</option><option value="stack">Stack</option><option value="grid">Grid</option><option value="flex">Flex / Auto Layout</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction"><option value="column">Column</option><option value="row">Row</option></select></label><label class="legend-cms-group">Gap px<input id="legend-cms-layout-gap" type="number" min="0" max="240" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Grid columns<input id="legend-cms-layout-columns" type="number" min="1" max="12"></label><label class="legend-cms-group">Min item width px<input id="legend-cms-layout-min" type="number" min="1" max="4000"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Align items<select id="legend-cms-layout-align"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Justify<select id="legend-cms-layout-justify"><option value="">Default</option><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label></div><label class="legend-cms-group">Wrap<select id="legend-cms-layout-wrap"><option value="">Default</option><option value="nowrap">No wrap</option><option value="wrap">Wrap</option></select></label><p>Use the Move and resize handles on the page for Free Canvas positioning.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
-      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Create page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
+      <section data-cms-view="media" hidden><h2>Media library</h2><p>Browse media already owned by this website scope. Reusing an asset does not copy the file or create another storage record.</p><div class="legend-cms-row"><label class="legend-cms-group">Search<input id="legend-cms-media-search" type="search" placeholder="Name or file type"></label><label class="legend-cms-group">Type<select id="legend-cms-media-kind"><option value="all">All media</option><option value="image">Images</option><option value="video">Videos</option></select></label></div><input id="legend-cms-media-upload" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"><button id="legend-cms-media-refresh" type="button">Refresh library</button><small id="legend-cms-media-status" role="status"></small><div id="legend-cms-media-grid" class="legend-cms-media-grid"></div></section>\n      <section data-cms-view="components" hidden><h2>Reusable components</h2><p>Save an added block or added section once, then insert synchronized references. Template sections remain owned by the template system and are not copied into component storage.</p><label class="legend-cms-group">Component name<input id="legend-cms-component-name" type="text" maxlength="120" placeholder="Hero, testimonial, contact band"></label><button id="legend-cms-component-save" type="button">Save selected as component</button><small id="legend-cms-component-status" role="status"></small><div id="legend-cms-component-list" class="legend-cms-component-list"></div></section>\n      <section data-cms-view="data" hidden><h2>Dynamic CMS</h2><p id="legend-cms-data-unavailable" hidden>Scoped business data is available only on Business websites.</p><div id="legend-cms-data-business"><h3>Selected content binding</h3><label class="legend-cms-group">Source<select id="legend-cms-data-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Field<select id="legend-cms-data-field"></select></label><label class="legend-cms-group">Apply as<select id="legend-cms-data-target"><option value="text">Text</option><option value="image">Image URL</option><option value="href">Link destination</option></select></label></div><div class="legend-cms-row"><button id="legend-cms-data-bind" type="button">Bind selected</button><button id="legend-cms-data-clear" type="button">Clear binding</button></div><small id="legend-cms-data-status" role="status"></small><hr><h3>Dynamic page</h3><p>Use an existing list source to generate one published route per item. The preview choice below is local editor state only.</p><label class="legend-cms-group">List source<select id="legend-cms-dynamic-source"></select></label><div class="legend-cms-row"><label class="legend-cms-group">Route key field<select id="legend-cms-dynamic-key"></select></label><label class="legend-cms-group">Route pattern<input id="legend-cms-dynamic-pattern" type="text" placeholder="/products/{item}"></label></div><label class="legend-cms-group">Preview item<select id="legend-cms-dynamic-preview"></select></label><div class="legend-cms-row"><button id="legend-cms-dynamic-apply" type="button">Apply dynamic page</button><button id="legend-cms-dynamic-clear" type="button">Make page static</button></div><small id="legend-cms-dynamic-status" role="status"></small></div></section>\n      <section data-cms-view="page" hidden><h2>Pages & search appearance</h2><p>Page structure and SEO stay in the same versioned website document.</p><div id="legend-cms-page-list" class="legend-cms-page-list"></div><p id="legend-cms-page-fixed-notice" hidden>LEGEND and Protect currently expose only their real published route catalog. Arbitrary route creation stays disabled until their shared route-manifest publication layer is connected.</p><div id="legend-cms-page-business-tools"><div class="legend-cms-row"><label class="legend-cms-group">Navigation label<input id="legend-cms-page-nav-label" type="text" maxlength="120"></label><label class="legend-cms-group">Route / slug<input id="legend-cms-page-slug" type="text" maxlength="160"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Parent page<select id="legend-cms-page-parent"></select></label><label class="legend-cms-group">Navigation order<input id="legend-cms-page-order" type="number" step="1"></label></div><label class="legend-cms-group"><input id="legend-cms-page-nav-visible" type="checkbox"> Show in public navigation</label><div class="legend-cms-menu"><button id="legend-cms-page-create" type="button">Create page</button><button id="legend-cms-page-duplicate" type="button">Duplicate page</button><button id="legend-cms-page-rename" type="button">Rename / move route</button><button id="legend-cms-page-delete" type="button">Delete page</button></div></div><hr><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
       <section data-cms-view="theme" id="legend-cms-theme-view" hidden><h2>Site theme</h2><p>One palette, typography system, and browser icon for every page of this website.</p><div class="legend-cms-group legend-cms-favicon"><label for="legend-cms-favicon">Browser favicon</label><img id="legend-cms-favicon-preview" class="legend-cms-favicon-preview" alt=""><input id="legend-cms-favicon" type="file" accept="image/jpeg,image/png,image/webp"><small>PNG, JPEG, or WebP. This is scoped to this website and becomes public only when the website is published.</small><button id="legend-cms-favicon-remove" type="button">Use LEGEND fallback favicon</button></div></section>`;
     panel.appendChild(tools);
     const signals = document.createElement('section'); signals.dataset.cmsView = 'signals'; signals.hidden = true;
@@ -2154,6 +2223,41 @@
     content.appendChild(links);
     panel.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.open)));
     syncBreakpointControls();
+    document.getElementById('legend-cms-data-source')?.addEventListener('change',renderDataControls);
+    document.getElementById('legend-cms-dynamic-source')?.addEventListener('change',renderDataControls);
+    document.getElementById('legend-cms-data-bind')?.addEventListener('click',()=>{
+      if(SITE_KEY!=='business' || !selected) return;
+      const sourceKey=document.getElementById('legend-cms-data-source')?.value;
+      const field=document.getElementById('legend-cms-data-field')?.value;
+      const target=document.getElementById('legend-cms-data-target')?.value || 'text';
+      const source=approvedDataSources().find(value=>value.key===sourceKey);
+      if(!source || !source.fields?.includes(field)) return;
+      if(target==='image' && !(selected instanceof HTMLImageElement)){ alert('Image data can only bind to an image.'); return; }
+      if(target==='href' && selected.tagName!=='A'){ alert('Link destinations can only bind to a link.'); return; }
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[field]); const override=selectedOverride(); if(!collection || !override) return;
+      override.dataBinding={collectionId:collection.id,field,target}; applyElementOverride(selected,override); markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-data-clear')?.addEventListener('click',()=>{
+      const override=selectedOverride(); if(!override?.dataBinding) return; checkpoint(); delete override.dataBinding; applyElementOverride(selected,override); markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-dynamic-apply')?.addEventListener('click',()=>{
+      if(SITE_KEY!=='business') return;
+      const sourceKey=document.getElementById('legend-cms-dynamic-source')?.value;
+      const itemKeyField=document.getElementById('legend-cms-dynamic-key')?.value;
+      const routePattern=document.getElementById('legend-cms-dynamic-pattern')?.value?.trim();
+      const source=approvedDataSources().find(value=>value.key===sourceKey && value.isList===true);
+      if(!source || !source.fields?.includes(itemKeyField) || !/^\/(?:[a-z0-9_-]+\/)*\{item\}\/?$/i.test(routePattern||'')){ alert('Choose a list source, a valid key field, and a route pattern such as /products/{item}.'); return; }
+      checkpoint(); const collection=ensureCollectionForSource(sourceKey,[itemKeyField]); if(!collection) return;
+      pageState().dynamicBinding={collectionId:collection.id,itemKeyField,routePattern:routePattern.toLowerCase()}; dynamicCollectionItem=null; markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-dynamic-clear')?.addEventListener('click',()=>{
+      if(!pageState().dynamicBinding) return; checkpoint(); pageState().dynamicBinding=null; dynamicCollectionItem=null; refreshResponsiveOverrides(); markDirty(); renderDataControls();
+    });
+    document.getElementById('legend-cms-dynamic-preview')?.addEventListener('change',event=>{
+      const binding=pageState().dynamicBinding; const projection=binding?collectionData.get(binding.collectionId):null;
+      const item=(projection?.items||[]).find(value=>value.key===event.target.value);
+      dynamicCollectionItem=item?{collectionId:binding.collectionId,key:item.key,fields:item.fields}:null; refreshResponsiveOverrides(); renderDataControls();
+    });
     document.getElementById('legend-cms-component-save')?.addEventListener('click',()=>{
       const status=document.getElementById('legend-cms-component-status');
       const name=document.getElementById('legend-cms-component-name')?.value?.trim();
