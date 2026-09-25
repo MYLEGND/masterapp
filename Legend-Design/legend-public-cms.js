@@ -40,6 +40,8 @@
   let signalCatalog = null;
   let ctaCatalog = [];
   let managementPayload = null;
+  let collectionData = new Map();
+  let dynamicCollectionItem = renderInput?.dynamicItem || null;
   let selected = null;
   let selectedSection = null;
   let editorPreview = null;
@@ -597,6 +599,39 @@
     if (remove) remove.disabled = !current;
   }
 
+  function updateCollectionData(payload) {
+    collectionData = new Map();
+    for (const projection of Array.isArray(payload?.collections) ? payload.collections : []) {
+      if (projection?.id) collectionData.set(projection.id, projection);
+    }
+    dynamicCollectionItem = payload?.dynamicItem || dynamicCollectionItem;
+  }
+
+  function resolveDataBinding(binding) {
+    if (!binding?.collectionId || !binding?.field) return undefined;
+    const projection = collectionData.get(binding.collectionId);
+    if (!projection) return undefined;
+    let item = null;
+    if (dynamicCollectionItem?.collectionId === binding.collectionId && dynamicCollectionItem?.fields) item = dynamicCollectionItem;
+    else if (projection.isList !== true) item = Array.isArray(projection.items) ? projection.items[0] : null;
+    if (!item?.fields || !Object.prototype.hasOwnProperty.call(item.fields, binding.field)) return undefined;
+    return item.fields[binding.field];
+  }
+
+  function applyDataBinding(el, binding) {
+    const value = resolveDataBinding(binding);
+    if (value === undefined || value === null || !el) return;
+    const target = binding?.target || 'text';
+    if (target === 'image') {
+      if (el instanceof HTMLImageElement && typeof value === 'string' && safeUrl(value, true)) el.src = mediaUrl(value);
+      return;
+    }
+    if (target === 'href') {
+      if (el.tagName === 'A' && typeof value === 'string' && safeUrl(value)) el.href = value;
+      return;
+    }
+    if (!el.dataset.cmsSection && !['DIV','ARTICLE','HEADER','FOOTER','FORM'].includes(el.tagName)) setContentText(el, String(value), true);
+  }
   function applyElementOverride(el, override) {
     if (el?.dataset.cmsSignalOnly) return;
     if (!el || !override) return;
@@ -614,6 +649,7 @@
     if (override.href != null && el.tagName === 'A' && safeUrl(override.href)) { el.href = override.href; el.target = override.target === '_blank' ? '_blank' : '_self'; el.rel = 'noopener noreferrer'; }
     if (override.alt != null && el.tagName === 'IMG') el.alt = override.alt;
     if (override.videoUrl && el.tagName === 'VIDEO' && safeUrl(override.videoUrl, true)) el.src = mediaUrl(override.videoUrl);
+    applyDataBinding(el, override.dataBinding);
     applyStyle(el, effectiveStyle(override));
     applyLayout(el, effectiveLayout(override));
   }
@@ -857,6 +893,7 @@
   }
 
   function bindBusiness(payload) {
+    updateCollectionData(payload);
     const business = payload.business;
     if (SITE_KEY !== 'business') return;
     if (!business?.id || !business.displayName) throw new Error('This business website is unavailable.');
