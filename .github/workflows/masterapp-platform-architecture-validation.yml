@@ -46,6 +46,11 @@ jobs:
       - name: Build Protect host
         run: dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
 
+      - name: Verify Protect serves the exact shared tracking assets
+        run: |
+          cmp SHARED/WebsitePlatform/tracking.js Protect-Website/bin/Release/net10.0/wwwroot/js/tracking.js
+          cmp SHARED/WebsitePlatform/meta-signal-intelligence.js Protect-Website/bin/Release/net10.0/wwwroot/js/meta-signal-intelligence.js
+
       - name: Compile full regression test project
         run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
 
@@ -107,3 +112,6 @@ jobs:
       - name: Run canonical shared CMS tests
         working-directory: tests/website
         run: npm test
+
+      - name: Run canonical form tracking tests
+        run: node --test tests/analytics/form-tracker.test.cjs

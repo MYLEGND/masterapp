@@ -50,6 +50,14 @@
              Link="wwwroot\design\legend-public-web.js"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\SHARED\WebsitePlatform\tracking.js"
+             Link="wwwroot\js\tracking.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\SHARED\WebsitePlatform\meta-signal-intelligence.js"
+             Link="wwwroot\js\meta-signal-intelligence.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\SHARED\WebsitePlatform\legend-public-cms.js"
              Link="wwwroot\design\legend-public-cms.js"
              CopyToOutputDirectory="PreserveNewest"
