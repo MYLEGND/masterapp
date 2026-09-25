@@ -315,6 +315,81 @@
     }); host.appendChild(add);
   }
 
+  function renderMotionControls() {
+    const host = document.getElementById('legend-cms-motion-controls');
+    if (!host) return;
+    host.replaceChildren();
+    const note = text => { const p=document.createElement('p'); p.textContent=text; host.appendChild(p); };
+    if (!selected) { note('Select one element or component to configure motion.'); return; }
+    if (selectionItems().length > 1) { note('Motion is edited one element at a time.'); return; }
+    if (!motionCatalog) { note('The motion catalog could not be loaded. Reopen the editor to try again.'); return; }
+
+    const override = selectedOverride();
+    if (!override) return;
+    override.interactions ||= [];
+    const interactions = override.interactions;
+    note(interactions.length ? `${interactions.length} motion interaction${interactions.length===1?'':'s'}` : 'No motion is configured for this element.');
+
+    const optionSelect = (labelText, options, value, onChange) => {
+      const label=document.createElement('label');label.className='legend-cms-group';label.textContent=labelText;
+      const select=document.createElement('select');
+      for(const item of options||[]){const option=document.createElement('option');option.value=item.key;option.textContent=item.label||item.key;select.appendChild(option);}
+      select.value=value||select.options[0]?.value||'';
+      select.addEventListener('change',()=>{checkpoint();onChange(select.value);markDirty();renderMotionControls();});
+      label.appendChild(select);return label;
+    };
+    const numberInput = (labelText, value, min, max, step, onInput) => {
+      const label=document.createElement('label');label.className='legend-cms-group';label.textContent=labelText;
+      const input=document.createElement('input');input.type='number';input.min=String(min);input.max=String(max);input.step=String(step);input.value=value??'';
+      input.addEventListener('change',()=>{const numeric=Number(input.value);if(!Number.isFinite(numeric))return;checkpoint();onInput(numeric);markDirty();});
+      label.appendChild(input);return label;
+    };
+
+    for(const interaction of interactions){
+      const card=document.createElement('div');card.className='legend-cms-motion-card';
+      card.append(
+        optionSelect('Trigger',motionCatalog.triggers,interaction.trigger,value=>interaction.trigger=value),
+        optionSelect('Effect',motionCatalog.effects,interaction.effect,value=>interaction.effect=value),
+        optionSelect('Easing',motionCatalog.easings,interaction.easing,value=>interaction.easing=value)
+      );
+      if(interaction.effect==='slide') card.append(optionSelect('Direction',motionCatalog.directions,interaction.direction||'up',value=>interaction.direction=value));
+      card.append(
+        numberInput('Duration ms',interaction.durationMs??500,50,10000,10,value=>interaction.durationMs=value),
+        numberInput('Delay ms',interaction.delayMs??0,0,10000,10,value=>interaction.delayMs=value)
+      );
+      if(interaction.effect==='slide') card.append(numberInput('Distance px',interaction.distancePx??32,0,2000,1,value=>interaction.distancePx=value));
+      if(['scale','rotate','blur'].includes(interaction.effect)) card.append(numberInput(
+        interaction.effect==='scale'?'Start scale':interaction.effect==='rotate'?'Rotation °':'Blur px',
+        interaction.amount??(interaction.effect==='scale'?.92:interaction.effect==='rotate'?-8:12),
+        interaction.effect==='scale'?.01:-2000,
+        interaction.effect==='scale'?5:2000,
+        .01,
+        value=>interaction.amount=value
+      ));
+      const onceLabel=document.createElement('label');const once=document.createElement('input');once.type='checkbox';once.checked=interaction.once!==false;
+      once.addEventListener('change',()=>{checkpoint();interaction.once=once.checked;markDirty();});onceLabel.append(once,document.createTextNode(' Play once when applicable'));card.appendChild(onceLabel);
+      const actions=document.createElement('div');actions.className='legend-cms-row';
+      const preview=document.createElement('button');preview.type='button';preview.textContent='Preview';preview.addEventListener('click',()=>playMotion(selected,interaction));
+      const remove=document.createElement('button');remove.type='button';remove.textContent='Remove';remove.addEventListener('click',()=>{checkpoint();override.interactions=interactions.filter(item=>item.id!==interaction.id);markDirty();renderMotionControls();});
+      actions.append(preview,remove);card.appendChild(actions);host.appendChild(card);
+    }
+
+    const add=document.createElement('button');add.type='button';add.textContent='Add motion';
+    add.disabled=interactions.length>=Number(motionCatalog.maxInteractionsPerElement||8);
+    add.addEventListener('click',()=>{
+      checkpoint();
+      override.interactions.push({
+        id:crypto.randomUUID().replaceAll('-',''),
+        trigger:motionCatalog.triggers?.[0]?.key||'enter-view',
+        effect:motionCatalog.effects?.[0]?.key||'fade',
+        durationMs:500,delayMs:0,easing:'ease-out',once:true,direction:'up',distancePx:32
+      });
+      markDirty();renderMotionControls();
+    });
+    host.appendChild(add);
+    if(prefersReducedMotion()) note('Reduced Motion is enabled on this device. Motion remains configured but preview/playback is suppressed.');
+  }
+
   function applyTheme(theme) {
     const root = document.documentElement;
     const map = {
@@ -1786,6 +1861,7 @@
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
     if (name === 'layers') refreshLayers();
     if (name === 'page') syncPageControls();
+    if (name === 'motion') renderMotionControls();
   }
 
   function elementLabel(el) {
@@ -2701,11 +2777,12 @@
     panel.appendChild(content);
     const navigation = document.createElement('nav');
     navigation.className = 'legend-cms-navigation'; navigation.setAttribute('aria-label', 'Website editing tools');
-    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
+    navigation.innerHTML = `<div class="legend-cms-tabs"><button type="button" data-open="content">Content</button><button type="button" data-open="add">Add blocks</button><button type="button" data-open="appearance">Design</button><button type="button" data-open="layout">Position</button><button type="button" data-open="motion">Motion</button><button type="button" data-open="layers">Layers</button><button type="button" data-open="theme">Site theme</button><button type="button" data-open="page">Page & SEO</button></div>`;
     panel.insertBefore(navigation, content);
     const tools = document.createElement('div'); tools.innerHTML = `
       <section data-cms-view="add" hidden><h2>Add a component</h2><p>The available components come from the shared server capability registry. Add one, then position and resize it directly on the page.</p><div id="legend-cms-add-components" class="legend-cms-menu"></div></section>
       <section data-cms-view="appearance" hidden><h2>Appearance</h2>${appearanceFields()}<button id="legend-cms-container">Select section container</button></section>
+      <section data-cms-view="motion" hidden><h2>Motion & interactions</h2><p>Motion is stored with the selected element and uses the shared runtime. It never requires page-specific animation code.</p><div id="legend-cms-motion-controls"></div></section>
       <section data-cms-view="layout" hidden><h2>Position & layout</h2><p>Move and resize on the canvas. For containers, choose Flow, Grid, Flex, Stack, or Free Canvas here. Layout changes are saved at the active breakpoint.</p><div class="legend-cms-row"><label class="legend-cms-group">X offset %<input id="legend-cms-offset-x" type="number" step="any" value="0"></label><label class="legend-cms-group">Y offset px<input id="legend-cms-offset-y" type="number" step="any" value="0"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min width px<input data-geometry-key="minWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max width px<input data-geometry-key="maxWidthPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Min height px<input data-geometry-key="minHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label><label class="legend-cms-group">Max height px<input data-geometry-key="maxHeightPx" type="number" min="0" max="10000" step="any" placeholder="None"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Aspect ratio<input data-geometry-key="aspectRatio" type="number" min="0.05" max="20" step="any" placeholder="Auto"></label><label class="legend-cms-group">Opacity<input data-geometry-key="opacity" type="number" min="0" max="1" step="0.01" placeholder="1"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Rotate °<input data-geometry-key="rotationDeg" type="number" min="-3600" max="3600" step="any" placeholder="0"></label><label class="legend-cms-group">Layer / z-index<input data-geometry-key="zIndex" type="number" min="-10000" max="10000" step="1" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Scale X<input data-geometry-key="scaleX" type="number" min="0.01" max="20" step="any" placeholder="1"></label><label class="legend-cms-group">Scale Y<input data-geometry-key="scaleY" type="number" min="0.01" max="20" step="any" placeholder="1"></label></div><label class="legend-cms-group">Position mode<select data-geometry-key="positionMode"><option value="">Automatic</option><option value="flow">Flow</option><option value="relative">Relative</option><option value="absolute">Absolute</option><option value="sticky">Sticky</option><option value="fixed">Fixed to viewport</option></select></label><div class="legend-cms-row"><label class="legend-cms-group">Horizontal anchor<select data-geometry-key="horizontalAnchor"><option value="">None</option><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option><option value="stretch">Stretch</option></select></label><label class="legend-cms-group">Vertical anchor<select data-geometry-key="verticalAnchor"><option value="">None</option><option value="top">Top</option><option value="center">Center</option><option value="bottom">Bottom</option><option value="stretch">Stretch</option></select></label></div><div class="legend-cms-row"><label class="legend-cms-group">Left inset px<input data-geometry-key="insetLeftPx" type="number" min="-10000" max="10000" step="any"></label><label class="legend-cms-group">Right inset px<input data-geometry-key="insetRightPx" type="number" min="-10000" max="10000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Top inset px<input data-geometry-key="insetTopPx" type="number" min="-10000" max="10000" step="any"></label><label class="legend-cms-group">Bottom inset px<input data-geometry-key="insetBottomPx" type="number" min="-10000" max="10000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Margin top<input data-geometry-key="marginTop" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin right<input data-geometry-key="marginRight" type="number" min="-2000" max="2000" step="any"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Margin bottom<input data-geometry-key="marginBottom" type="number" min="-2000" max="2000" step="any"></label><label class="legend-cms-group">Margin left<input data-geometry-key="marginLeft" type="number" min="-2000" max="2000" step="any"></label></div><label class="legend-cms-group">Container layout<select id="legend-cms-layout-mode" data-layout-control></select></label><div class="legend-cms-row"><label class="legend-cms-group">Columns<input id="legend-cms-layout-columns" data-layout-control type="number" min="1" max="24" value="12"></label><label class="legend-cms-group">Rows<input id="legend-cms-layout-rows" data-layout-control type="number" min="1" max="24" placeholder="Auto"></label></div><div class="legend-cms-row"><label class="legend-cms-group">Column gap<input id="legend-cms-layout-column-gap" data-layout-control type="number" min="0" max="500" step="any"></label><label class="legend-cms-group">Row gap<input id="legend-cms-layout-row-gap" data-layout-control type="number" min="0" max="500" step="any"></label></div><label class="legend-cms-group">Direction<select id="legend-cms-layout-direction" data-layout-control><option value="row">Row</option><option value="column">Column</option></select></label><label class="legend-cms-group">Align items<select id="legend-cms-layout-align" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="stretch">Stretch</option><option value="baseline">Baseline</option></select></label><label class="legend-cms-group">Distribute<select id="legend-cms-layout-justify" data-layout-control><option value="start">Start</option><option value="center">Center</option><option value="end">End</option><option value="space-between">Space between</option><option value="space-around">Space around</option><option value="space-evenly">Space evenly</option></select></label><label><input id="legend-cms-layout-wrap" data-layout-control type="checkbox" checked> Wrap children</label><label class="legend-cms-group">Overflow<select id="legend-cms-layout-overflow" data-layout-control><option value="visible">Visible</option><option value="hidden">Hidden</option><option value="clip">Clip</option><option value="auto">Auto</option><option value="scroll">Scroll</option></select></label><div class="legend-cms-group"><strong>Selection</strong><div class="legend-cms-row"><button id="legend-cms-group-selection" type="button" disabled>Group selection</button><button id="legend-cms-ungroup-selection" type="button" disabled>Ungroup</button></div><div class="legend-cms-align-grid"><button type="button" data-align-selection="left" disabled>Align left</button><button type="button" data-align-selection="center-x" disabled>Center horizontally</button><button type="button" data-align-selection="right" disabled>Align right</button><button type="button" data-align-selection="top" disabled>Align top</button><button type="button" data-align-selection="center-y" disabled>Center vertically</button><button type="button" data-align-selection="bottom" disabled>Align bottom</button><button type="button" data-align-selection="distribute-x" disabled>Distribute horizontally</button><button type="button" data-align-selection="distribute-y" disabled>Distribute vertically</button></div><small>Align and distribute require elements inside the same Free Canvas container. Grouping works in any shared managed container.</small></div><div class="legend-cms-row legend-cms-z-actions"><button type="button" data-z-action="front">Bring to front</button><button type="button" data-z-action="back">Send to back</button><button type="button" data-z-action="forward">Bring forward</button><button type="button" data-z-action="backward">Send backward</button></div><button id="legend-cms-undo">Undo</button><button id="legend-cms-redo">Redo</button></section>
       <section data-cms-view="layers" hidden><h2>Page layers</h2><p>Select, find, or restore content—even when it is hidden.</p><label class="legend-cms-group">Find content<input id="legend-cms-layer-search" type="search" placeholder="Search this page"></label><div id="legend-cms-layers" class="legend-cms-layer-list"></div></section>
       <section data-cms-view="page" hidden><h2>Page & search appearance</h2><p>Saved with this page's draft and applied on publication.</p><label class="legend-cms-group">Page title<input id="legend-cms-page-title" type="text" maxlength="200"></label><label class="legend-cms-group">Search description<textarea id="legend-cms-page-description" rows="4" maxlength="500"></textarea></label><div class="legend-cms-search-preview"><strong id="legend-cms-search-title"></strong><p id="legend-cms-search-description"></p></div></section>
@@ -2836,7 +2913,7 @@
       .legend-cms-theme label{font-size:11px;font-weight:800}.legend-cms-theme input{width:100%;height:36px;border:0;background:transparent}
       .legend-cms-favicon-preview{display:block;width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;padding:6px;border:1px solid #50617e}.legend-cms-favicon button{width:100%;padding:10px 12px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;text-align:center}
       .legend-cms-panel button{cursor:pointer}.legend-cms-inline-help{margin:8px 0 14px;padding:10px 12px;border:1px solid #344766;border-radius:10px;background:#10284a;color:#e7eef8}.legend-cms-menu{display:grid;gap:10px}.legend-cms-menu button,.legend-cms-panel section>button{padding:13px;border:1px solid #50617e;border-radius:12px;background:#142c50;color:#fff;text-align:left}.legend-cms-panel input,.legend-cms-panel textarea,.legend-cms-panel select{width:100%;min-width:0;max-width:100%;color:#f7f6f2;background:#142c50;border:1px solid #50617e;border-radius:8px;padding:8px}.legend-cms-panel :focus-visible{outline:2px solid #f0cf78;outline-offset:3px}
-      .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}.legend-cms-align-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.legend-cms-align-grid button{min-width:0;padding:9px;border:1px solid #344766;border-radius:8px;background:#142c50;color:#fff}
+      .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}.legend-cms-motion-card{display:grid;gap:4px;margin:12px 0;padding:12px;border:1px solid #344766;border-radius:12px;background:#0b1e3a}.legend-cms-align-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.legend-cms-align-grid button{min-width:0;padding:9px;border:1px solid #344766;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
       .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
