@@ -55,7 +55,7 @@ builder.Services.AddScoped<Infrastructure.Businesses.ICommerceBusinessProvisioni
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteCommerceScopeService>();
 builder.Services.AddHostedService<Infrastructure.WebsiteEditing.WebsiteDomainHealthWorker>();
 builder.Services.AddSingleton<Infrastructure.WebsitePublishing.WebsitePageCompiler>();
-builder.Services.AddHostedService<ProtectWebsite.Services.WebsitePublishWorker>();
+builder.Services.AddHostedService<Infrastructure.WebsitePublishing.WebsitePublishWorker>();
 var publicWebsiteOrigins = new[]
 {
     "https://www.mylegnd.com", "https://mylegnd.com", "https://protect.mylegnd.com",
