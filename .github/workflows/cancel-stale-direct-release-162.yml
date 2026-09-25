@@ -1,0 +1,34 @@
+name: Cancel stale direct release 162
+on:
+  push:
+    branches:
+      - ops/cancel-stale-direct-release-162-20260925
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel-stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only the superseded all-target run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STALE_RUN_ID: "36115519808"
+          STALE_SHA: "2cb0cd1dc39dd7769ba0cf3833ba87db3cfdedfa"
+          CURRENT_APPROVED_SHA: "7f84304c7e1284563df9450459106be1b02d82c2"
+        run: |
+          set -euo pipefail
+          approved="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/legend/approved-changes" --jq '.object.sha')"
+          test "$approved" = "$CURRENT_APPROVED_SHA"
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STALE_RUN_ID")"
+          test "$(jq -r '.head_sha' <<<"$run_json")" = "$STALE_SHA"
+          status="$(jq -r '.status' <<<"$run_json")"
+          if [ "$status" = "completed" ]; then
+            echo "Stale run already completed; nothing to cancel."
+            exit 0
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$STALE_RUN_ID/cancel"
+          echo "Cancellation requested for stale run $STALE_RUN_ID."
