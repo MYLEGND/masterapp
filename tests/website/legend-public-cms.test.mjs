@@ -287,8 +287,10 @@ test('business CMS sends the authoritative business id through the existing publ
 import { JSDOM } from 'jsdom';
 async function domFixture({siteKey='legend',doc={},denied=false,search='?legendEdit=ticket',pathname='/',business=null,pages=[],ctaCatalog=[],qualityPayload=null,mediaPayload=null,viewportWidth=1024,html='<!doctype html><html><head><style>h1{font-size:64px}section{padding:24px}</style></head><body data-page-key="home"><main><section><h1>Template title</h1><a href="https://old.example"><span>Original link</span></a><img src="https://images.example/a.png" alt="original"></section><section><h2>Second section</h2></section></main></body></html>'}={}) {
   const dom = new JSDOM(html, {url:'https://site.example'+pathname+search,runScripts:'outside-only'});
-  const {window:w}=dom; const calls=[];
+  const {window:w}=dom; const calls=[]; const animations=[];
   Object.defineProperty(w,'innerWidth',{value:viewportWidth,writable:true,configurable:true});
+  w.matchMedia=()=>({matches:false});
+  w.HTMLElement.prototype.animate=function(keyframes,options){ const record={element:this,keyframes,options,cancelled:false}; animations.push(record); return {cancel(){record.cancelled=true;}}; };
   w.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:'',businessId: business?.id || '',pages};
   w.HTMLDialogElement.prototype.showModal = function() {}; w.HTMLDialogElement.prototype.close = function() { this.dispatchEvent(new w.Event('close')); };
   w.CSS={escape: v=>String(v).replaceAll('"','\\"')}; w.alert=()=>{}; w.confirm=()=>true;
@@ -301,7 +303,7 @@ async function domFixture({siteKey='legend',doc={},denied=false,search='?legendE
   const change=(selector,value)=> {const el=w.document.querySelector(selector);el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const editSelected=(value)=> {const el=w.document.querySelector('.legend-cms-selected');assert.ok(el);el.textContent=value;el.dispatchEvent(new w.Event('beforeinput',{bubbles:true,cancelable:true}));el.dispatchEvent(new w.Event('input',{bubbles:true}));};
   const save=async()=>{click('#legend-cms-save');input('#legend-cms-draft-name','Test variation');click('#legend-cms-draft-submit');await new Promise(resolve=>setTimeout(resolve,0));return JSON.parse(calls.at(-1).body).document;};
-  return {w,calls,click,input,change,editSelected,save,close:()=>w.close()};
+  return {w,calls,animations,click,input,change,editSelected,save,close:()=>w.close()};
 }
 test('responsive V2 runtime inherits base style and switches breakpoint style and layout on resize',async()=>{
   const doc={
@@ -339,6 +341,59 @@ test('responsive V2 runtime inherits base style and switches breakpoint style an
     assert.equal(section.style.gap,'24px');
   } finally { f.close(); }
 });
+
+test('public declarative click motion plays once and is not duplicated by responsive refresh',async()=>{
+  const id='11111111111111111111111111111111';
+  const doc={elements:{'home.h1.template-title.1':{animations:[{id,trigger:'click',effect:'slide-up',durationMs:500,delayMs:25,distancePx:30,easing:'ease-out',once:true}]}}};
+  const f=await domFixture({doc,search:''});
+  try{
+    const heading=f.w.document.querySelector('main h1');
+    heading.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.animations.length,1);
+    assert.equal(f.animations[0].options.duration,500);
+    assert.equal(f.animations[0].options.delay,25);
+    assert.equal(f.animations[0].options.easing,'ease-out');
+    assert.match(String(f.animations[0].keyframes[0].transform),/translateY\(30px\)/);
+    f.w.dispatchEvent(new f.w.Event('resize'));
+    heading.dispatchEvent(new f.w.MouseEvent('click',{bubbles:true,cancelable:true}));
+    assert.equal(f.animations.length,1);
+  } finally { f.close(); }
+});
+
+test('Studio motion panel writes typed motion and preview does not create analytics requests',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    f.click('[data-open="motion"]');
+    f.click('#legend-cms-motion-controls > button');
+    const row=f.w.document.querySelector('.legend-cms-motion-row');
+    assert.ok(row);
+    const selects=row.querySelectorAll('select');
+    selects[0].value='hover'; selects[0].dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    selects[1].value='scale'; selects[1].dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    const numberInputs=row.querySelectorAll('input[type="number"]');
+    numberInputs[0].value='650'; numberInputs[0].dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    f.click('.legend-cms-motion-row .legend-cms-row button');
+    assert.equal(f.animations.length,1);
+    assert.equal(f.calls.some(call=>new URL(call.url).pathname.includes('/tracking/')),false);
+    const saved=await f.save();
+    const override=Object.values(saved.pages['/'].elements).find(value=>Array.isArray(value.animations)&&value.animations.length);
+    assert.ok(override);
+    const motion=override.animations[0];
+    assert.equal(motion.trigger,'hover');
+    assert.equal(motion.effect,'scale');
+    assert.equal(motion.durationMs,650);
+    assert.match(motion.id,/^[a-f0-9]{32}$/);
+  } finally { f.close(); }
+});
+
+test('motion runtime explicitly respects reduced-motion preference and never injects arbitrary scripts',()=>{
+  assert.ok(source.includes("prefers-reduced-motion: reduce"));
+  assert.ok(source.includes("typeof el.animate !== 'function' || prefersReducedMotion()"));
+  assert.equal(source.includes('eval(binding'),false);
+  assert.equal(source.includes('new Function(binding'),false);
+});
+
 test('canonical public stylesheet preserves authored spaces, tabs and line breaks',()=>{
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
 });
@@ -639,7 +694,7 @@ for (const siteKey of ['legend', 'protect', 'business']) {
   test(`${siteKey}: shared studio keeps navigation, theme and metadata available without selection`, async () => {
     const f = await domFixture({siteKey, business: siteKey === 'business' ? {id: 'business-id', displayName: 'Fixture business'} : null});
     try {
-      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 11);
+      assert.equal(f.w.document.querySelectorAll('.legend-cms-tabs [data-open]').length, 12);
       assert.ok(f.w.document.querySelector('[data-open="signals"]'));
       assert.ok(f.w.document.querySelector('[data-open="quality"]'));
       f.click('[data-open="page"]');
