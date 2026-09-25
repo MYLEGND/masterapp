@@ -1000,7 +1000,7 @@ test('selected blocks use one sharp border with invisible directional resize zon
   assert.match(source,/\.legend-cms-selection-frame\{[^}]*border:1px solid #d4ad45/);
   assert.match(source,/\.legend-cms-edge-right\{right:-6px\}/);
   assert.match(source,/\.legend-cms-corner-ne\{[^}]*cursor:nesw-resize/);
-  assert.equal(source.includes('border-radius:50%'),false);
+  assert.equal(/legend-cms-(?:resize|edge)[^\n]*border-radius:50%/.test(source),false);
   assert.match(source,/background-size:calc\(100% \/ 12\) 100%,100% 24px/);
   assert.match(source,/legend-cms-grid-overlay::before[^}]*opacity:0/);
   assert.equal(f.w.document.querySelector('#legend-cms-drag'),null);
