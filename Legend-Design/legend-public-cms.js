@@ -1874,7 +1874,7 @@
       .legend-cms-draft-dialog{width:min(500px,calc(100vw - 32px));height:auto;max-height:calc(100dvh - 32px);border-radius:16px}.legend-cms-draft-dialog::backdrop{background:#0009}.legend-cms-draft-dialog label{display:grid;gap:8px;margin:16px 0}.legend-cms-draft-dialog button{padding:10px 16px;margin-right:8px}
       .legend-cms-code-dialog{width:min(980px,calc(100vw - 32px));height:min(78dvh,760px);max-height:calc(100dvh - 32px);display:grid;grid-template-rows:auto auto minmax(220px,1fr) auto auto;gap:12px;padding:20px;border:1px solid #d4ad45;border-radius:16px;background:#081a3a;color:#f7f6f2}.legend-cms-code-dialog::backdrop{background:#000a}.legend-cms-code-dialog h2,.legend-cms-code-dialog p{margin:0}.legend-cms-code-source{width:100%;min-width:0;min-height:220px;resize:none;padding:14px;border:1px solid #50617e;border-radius:10px;background:#07152d;color:#f7f6f2;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}.legend-cms-code-actions{display:flex;gap:10px;justify-content:flex-end}.legend-cms-code-actions button,#legend-cms-code-group button{padding:10px 14px;border:1px solid #50617e;border-radius:10px;background:#142c50;color:#fff;font-weight:700}
       .legend-cms-panel-toggle{position:fixed;z-index:2147483000;top:max(10px,env(safe-area-inset-top));right:10px;min-height:40px;padding:8px 12px;border:1px solid #d4ad45;border-radius:999px;background:#081a3af2;color:#fff;font:700 14px/1.2 Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 8px 24px #0005}
-      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}
+      .legend-cms-panel h2{margin:0 0 4px;font-size:19px}.legend-cms-panel small{display:block;color:#b8c6dc;margin-bottom:14px;overflow-wrap:anywhere}.legend-cms-breakpoint-control{position:sticky;top:46px;z-index:3;padding:10px;border:1px solid #344766;border-radius:10px;background:#0b1e3a}.legend-cms-breakpoint-control small{margin:0}.legend-cms-preview[data-cms-breakpoint]:not([data-cms-breakpoint="base"]){box-shadow:0 0 0 1px #d4ad45 inset;background:#eef2f7}
       .legend-cms-group{display:grid;gap:7px;margin:12px 0}.legend-cms-group label{font-size:12px;font-weight:800;color:#e2d5b8}
       .legend-cms-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
       .legend-cms-theme{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
@@ -1908,6 +1908,7 @@
     panel.setAttribute('aria-labelledby', 'legend-cms-heading');
     panel.innerHTML = `
       <h2 id="legend-cms-heading">Website studio</h2>
+      <label class="legend-cms-group legend-cms-breakpoint-control" for="legend-cms-breakpoint">Responsive canvas<select id="legend-cms-breakpoint"></select><small id="legend-cms-breakpoint-note"></small></label>
       <small id="legend-cms-selected-label">Select content on the page</small>
       <p id="legend-cms-inline-help" class="legend-cms-inline-help" hidden>Type directly on the selected page text. Highlight, replace, or delete words on the canvas; use this panel for controls and actions.</p>
       <div id="legend-cms-code-group" class="legend-cms-group" hidden>
@@ -1977,6 +1978,7 @@
     `;
     panel.insertBefore(bar, panel.firstChild);
     enhanceEditor(panel, preview);
+    installBreakpointControls(preview);
     refreshScaledElements();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
     syncEditorControls();
@@ -1994,6 +1996,8 @@
 
     ['legend-cms-scale','legend-cms-width','legend-cms-height','legend-cms-padding-top','legend-cms-padding-bottom','legend-cms-offset-x','legend-cms-offset-y','legend-cms-align','legend-cms-hidden']
       .forEach(id => document.getElementById(id)?.addEventListener('input', updateSelectedFromControls));
+    ['legend-cms-layout-mode','legend-cms-layout-columns','legend-cms-layout-rows','legend-cms-layout-column-gap','legend-cms-layout-row-gap','legend-cms-layout-direction','legend-cms-layout-align','legend-cms-layout-justify','legend-cms-layout-wrap','legend-cms-layout-overflow']
+      .forEach(id => document.getElementById(id)?.addEventListener('input', updateLayoutFromControls));
 
     document.getElementById('legend-cms-image')?.addEventListener('change', e => {
       const file = e.target.files?.[0];
@@ -2078,6 +2082,7 @@
       if (payload.siteKey && payload.siteKey !== SITE_KEY) throw new Error('This edit session belongs to a different website. Open it from your profile.');
       bindBusiness(payload);
       ctaCatalog = Array.isArray(payload.ctaCatalog?.options) ? payload.ctaCatalog.options : [];
+      componentCatalog = Array.isArray(payload.componentCatalog?.options) ? payload.componentCatalog.options : [];
       if (customPage) {
         const pages = normalizeDocument(payload.document).pages;
         if (!pages[customPage]) throw new Error('This page is not part of the authorized website draft.');
