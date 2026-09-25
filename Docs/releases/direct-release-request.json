@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized a non-deploying Protect Website-only validation after the exact EF WebsiteStudioComments model-snapshot repair and new pre-Azure pending-model-changes gate. LEGEND Website already deployed successfully in release #155 and must not be redeployed by this recovery. Preserve all unrelated applications and flows.",
+  "authorization": "Founder authorized a non-deploying Protect Website-only validation after completing the exact EF WebsiteStudioComments alignment: migration, model snapshot, canonical model table mapping, and pre-Azure pending-model-changes gate. LEGEND Website already deployed successfully in #155 and must not be redeployed.",
   "purpose": "Validate only the remaining Protect Website candidate, including build, Website Studio contract checks, EF model/snapshot consistency, and immutable package creation. Do not mutate Azure or deploy any application.",
-  "requestId": "protect-only-validate-after-ef-snapshot-repair-20260924",
+  "requestId": "protect-only-validate-after-complete-ef-alignment-20260924",
   "releaseMode": "validate-only",
   "targets": [
     "masterapp-protect"
