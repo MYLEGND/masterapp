@@ -2003,7 +2003,7 @@
       const hidden = document.body.classList.toggle('legend-cms-panel-hidden');
       panelToggle.textContent = hidden ? 'Open controls' : 'Full-page canvas';
       panelToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
-      const refresh = () => { refreshScaledElements(); updateDirectCanvasUi(); };
+      const refresh = () => { refreshScaledElements(); refreshResponsiveOverrides(); updateDirectCanvasUi(); };
       if (typeof requestAnimationFrame === 'function') requestAnimationFrame(refresh);
       else refresh();
     });
@@ -2029,7 +2029,7 @@
     enhanceEditor(panel, preview);
     installBreakpointControls(preview);
     refreshScaledElements();
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); updateDirectCanvasUi(); }).observe(preview);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { refreshScaledElements(); refreshResponsiveOverrides(); updateDirectCanvasUi(); }).observe(preview);
     syncEditorControls();
 
     document.addEventListener('click', event => {
@@ -2166,7 +2166,7 @@
     window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE = true;
     if (!renderInput.server) {
       if (!editorMode) void startPublicRuntime();
-      window.addEventListener('resize', refreshScaledElements);
+      window.addEventListener('resize', () => { refreshScaledElements(); refreshResponsiveOverrides(); });
       if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
     }
     return;
@@ -2179,7 +2179,7 @@
       try { await loadPublic(); await startPublicRuntime(); }
       catch (error) { unavailable(error); }
     }
-    window.addEventListener('resize', refreshScaledElements);
+    window.addEventListener('resize', () => { refreshScaledElements(); refreshResponsiveOverrides(); });
     if (document.fonts?.ready) document.fonts.ready.then(refreshScaledElements);
   }, { once: true });
 })();
