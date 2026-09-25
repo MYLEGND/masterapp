@@ -23,7 +23,9 @@ jobs:
         run: |
           set -euo pipefail
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --nologo \
-            --filter 'FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteSignalBindingTests|FullyQualifiedName~BusinessWorkspaceTests'
+            --filter 'FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~WebsiteSignalBindingTests|FullyQualifiedName~BusinessWorkspaceTests'
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --nologo \
+            --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests.BusinessPublication_PreservesUtf8AcrossDotNetNodeCompilerTransport'
       - name: Website Studio browser verification
         run: |
           set -euo pipefail
