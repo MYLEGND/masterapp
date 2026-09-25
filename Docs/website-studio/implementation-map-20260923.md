@@ -44,7 +44,7 @@ This continuation starts from the exact successfully deployed website-studio rev
 
 ## Implemented in this branch
 
-The existing `Legend-Design/legend-public-cms.js` remains the only editor/runtime used by LEGEND, Protect, and business websites. This change replaces its navigation and control styling in place. It adds persistent tool navigation, searchable page layers with hidden-content recovery, independent block duplication, accessible save status, keyboard save/undo/redo, page title/description controls, and constrained design choices that match the server sanitizer. No duplicate editor, stylesheet, delivery pipeline, database, or application controller is introduced.
+The existing `SHARED/WebsitePlatform/legend-public-cms.js` remains the only editor/runtime used by LEGEND, Protect, and business websites. This change replaces its navigation and control styling in place. It adds persistent tool navigation, searchable page layers with hidden-content recovery, independent block duplication, accessible save status, keyboard save/undo/redo, page title/description controls, and constrained design choices that match the server sanitizer. No duplicate editor, stylesheet, delivery pipeline, database, or application controller is introduced.
 
 Draft page keys now use route paths accepted by `WebsiteContentSanitizer`. Legacy template keys migrate into the same document; canonical values win conflicts and unrelated elements are retained. New sections have a nonempty parent marker even on an empty page. Deleting an added block removes it from the draft rather than persisting an unsupported `hidden` field. Existing section deletion remains reversible through Layers.
 
@@ -54,7 +54,7 @@ This is an editor foundation, not the requested completed website-building platf
 
 These are shared platform rules, not site-specific patches:
 
-- **One editor/runtime:** `Legend-Design/legend-public-cms.js` remains the editor for Founder/LEGEND, Protect/agent, and business scopes. Scope-specific pages may supply owned content and authorization context, but they must not fork editor behavior.
+- **One editor/runtime:** `SHARED/WebsitePlatform/legend-public-cms.js` remains the editor for Founder/LEGEND, Protect/agent, and business scopes. Scope-specific pages may supply owned content and authorization context, but they must not fork editor behavior.
 - **Text edits on the canvas:** editable text, headings, and link/button labels are edited directly on the rendered page with the same canonical element/extra override. The side panel is not a second text source.
 - **Direct geometry in the canonical style contract:** width, optional height, horizontal offset, and vertical offset live in `WebsiteStyleOverride` and are sanitized by `WebsiteContentSanitizer`. The canvas exposes move/resize handles, a 12-column horizontal placement grid, a 24px vertical rhythm grid, and center snap guides. Do not add page-specific drag CSS or a second placement store.
 - **Existing placement compatibility:** legacy `WebsitePlacement` values remain readable so published documents are not broken, but the active studio interaction uses direct canvas movement/resizing rather than the former destination/column/span/drop controls.
@@ -74,7 +74,7 @@ These are shared platform rules, not site-specific patches:
 | Founder LEGEND entry | Same controller: `EditLegendWebsite`, `WebsiteSession` | Preserve Founder authorization and `__legend_global__` ownership. |
 | Business entry | `ClientApp/Controllers/ProfileController.cs`: `BusinessWebsiteSession`, `AuthorizedBusinessAsync`; profile view | Resolve `CommerceBusinessId` from membership/authorized shared access. Never substitute an agent ID. |
 | Shared management | `Legend-Design/legend-website-management.js` and `.css` | Keep versions, readiness, domains, inquiries, scheduling in this one component. |
-| Shared editor/runtime | `Legend-Design/legend-public-cms.js` | One editor, renderer, selected-element inspector, undo history and document model. |
+| Shared editor/runtime | `SHARED/WebsitePlatform/legend-public-cms.js` | One editor, renderer, selected-element inspector, undo history and document model. |
 | Document/publish | `Infrastructure/WebsiteEditing/WebsiteEditorContracts.cs`, `WebsiteContentSanitizer.cs`; `Protect-Website/Controllers/WebsiteContentController.cs` | Extend versioned documents; retain revision checks and immutable published snapshots. |
 | Business authorization | `WebsiteBusinessAccess.cs`, `WebsiteTicketAuthorization.cs`, `CommerceBusinessMember` | Integrate AFTER the active ownership repair. Recheck access on every read/write/export/test/publish. |
 | Business rendering/routes | `Legend-Website/scripts/render-business.mjs`; `Protect-Website/Services/BusinessWebsiteMiddleware.cs` | Compiled published pages already determine custom-domain routes and sitemap. |
