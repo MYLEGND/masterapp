@@ -961,6 +961,7 @@
     }
 
     form.setAttribute('aria-label', definition.name || 'Website inquiry form');
+    form.dataset.successMessage = definition.successMessage || 'Your inquiry has been sent.';
     const steps = [...new Set((definition.fields || []).map(field => Math.max(1, Number(field.step) || 1)))].sort((a,b)=>a-b);
     const effectiveSteps = steps.length ? steps : [1];
 
