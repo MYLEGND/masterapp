@@ -386,6 +386,8 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.Null(saved.Extras.Single(x => x.Id == "text-one").Layout.Mode);
         Assert.Equal(WebsiteLayoutModeCatalog.Free, saved.Extras.Single(x => x.Id == "section-one").Layout.Mode);
         Assert.DoesNotContain(saved.Extras, x => x.Id == "unknown-one");
+        Assert.Contains(WebsiteComponentCatalog.Options, x => x.Type == "group" && x.CanContainChildren);
+        Assert.Contains(WebsiteLayoutModeCatalog.Free, WebsiteComponentCatalog.Find("group")!.LayoutModes);
     }
 
     [Fact]
