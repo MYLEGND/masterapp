@@ -516,11 +516,11 @@
     }
 }
 
-@inject ProtectWebsite.Services.Booking.IPublicBookingResolver PublicBookingResolver
+@inject Infrastructure.Bookings.IPublicBookingResolver PublicBookingResolver
 
 @{
     var bookingConfig = await PublicBookingResolver.ResolveAsync(
-        new ProtectWebsite.Services.Booking.PublicBookingResolveContext(
+        new Infrastructure.Bookings.PublicBookingResolveContext(
             WebsiteLeadId: null,
             AgentTrackingProfileId: null,
             AgentUserId: null,
