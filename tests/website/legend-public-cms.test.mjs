@@ -114,6 +114,7 @@ test('Protect empty API base initializes the ticketed editor and saves to the sa
   const ticket = 'fixture-ticket+/=';
   const f = fixture({ context: { siteKey: 'protect', apiBase: '' }, search: '?legendEdit=' + encodeURIComponent(ticket) });
   await f.ready();
+  assert.deepEqual(f.errors, []);
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].url.href, 'https://protect.example.test/api/website-content/manage?ticket=fixture-ticket%2B%2F%3D');
   assert.equal(f.heading.textContent, 'Editor content');
