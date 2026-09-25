@@ -17,6 +17,9 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
     private static readonly HashSet<string> LegendHosts =
         new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
 
+    public static bool HasValidPublicOrigin(HttpContext context) =>
+        TryOrigin(context.Request.Headers.Origin.ToString(), out _);
+
     public async Task<PublicWebsiteRuntimeScope?> ResolveInquiryAsync(
         HttpContext context,
         CancellationToken cancellationToken = default)
