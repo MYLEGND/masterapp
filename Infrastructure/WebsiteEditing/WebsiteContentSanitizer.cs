@@ -70,6 +70,7 @@ public static class WebsiteContentSanitizer
             {
                 Title = ClampText(page.Value.Title),
                 Description = ClampText(page.Value.Description),
+                TemplatePath = SanitizePagePath(page.Value.TemplatePath),
                 Navigation = SanitizeNavigation(path, page.Value.Navigation),
                 DynamicBinding = SanitizeDynamicBinding(page.Value.DynamicBinding),
                 Elements = body.Elements,
