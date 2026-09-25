@@ -1037,6 +1037,26 @@ test('direct canvas replaces designated drop controls and persists shared geomet
     assert.equal(loaded.w.document.querySelector('.legend-cms-panel'),null);
   }finally{loaded.close();}
 });
+test('selected content drag preserves free-form placement instead of forcing grid cells',async()=>{
+  const f=await domFixture();
+  try{
+    f.click('main h1');
+    const heading=f.w.document.querySelector('main h1');
+    const section=heading.closest('[data-cms-section]');
+    const preview=f.w.document.querySelector('.legend-cms-preview');
+    heading.getBoundingClientRect=()=>({left:100,top:100,right:300,bottom:140,width:200,height:40});
+    section.getBoundingClientRect=()=>({left:50,top:50,right:650,bottom:450,width:600,height:400});
+    preview.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:800,width:1000,height:800});
+    heading.dispatchEvent(new f.w.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:100,clientY:100,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointermove',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
+    f.w.dispatchEvent(new f.w.MouseEvent('pointerup',{bubbles:true,cancelable:true,clientX:137,clientY:113,button:0}));
+    const saved=await f.save();
+    const style=Object.values(saved.pages['/'].elements)[0].style;
+    assert.equal(style.offsetXPercent,3.7);
+    assert.equal(style.offsetYPx,13);
+  }finally{f.close();}
+});
+
 test('selected content can be pointer-dragged and is clamped inside its section frame',async()=>{
   const f=await domFixture();
   try{
