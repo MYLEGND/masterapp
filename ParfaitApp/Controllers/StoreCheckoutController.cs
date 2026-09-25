@@ -1,6 +1,7 @@
 using Domain.Billing;
 using Infrastructure.Billing.Square;
 using Infrastructure.Commerce;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
@@ -18,8 +19,10 @@ public sealed class StoreCheckoutController : Controller
     private readonly IBillingOrchestrator _billingOrchestrator;
     private readonly IGraphMailService _mail;
     private readonly IParfaitAnalyticsService _analytics;
-    private readonly CommerceSignalService _commerceSignals;
-    private readonly CommerceStoreContextService _stores;
+    private readonly CommerceSignalService? _commerceSignals;
+    private readonly CommerceStoreContextService? _stores;
+    private readonly ParfaitMetaSignalBridgeService? _legacyMetaSignalBridge;
+    private readonly bool _legacyCompatibility;
 
     public StoreCheckoutController(
         SquareBillingOptions squareOptions,
@@ -43,8 +46,34 @@ public sealed class StoreCheckoutController : Controller
         _stores = stores;
     }
 
+    // Compatibility constructor for existing Parfait callers/tests. It preserves the
+    // original Parfait route while the production DI constructor above owns scoped stores.
+    public StoreCheckoutController(
+        SquareBillingOptions squareOptions,
+        ParfaitProductService products,
+        ParfaitOrderService orders,
+        ParfaitCustomerAutomationService automations,
+        IBillingOrchestrator billingOrchestrator,
+        IGraphMailService mail,
+        IParfaitAnalyticsService analytics,
+        ParfaitMetaSignalBridgeService metaSignalBridge)
+    {
+        _squareOptions = squareOptions;
+        _products = products;
+        _orders = orders;
+        _automations = automations;
+        _billingOrchestrator = billingOrchestrator;
+        _mail = mail;
+        _analytics = analytics;
+        _legacyMetaSignalBridge = metaSignalBridge;
+        _legacyCompatibility = true;
+    }
+
+    [NonAction]
+    public IActionResult Checkout() => RenderCheckoutAsync(null, CancellationToken.None).GetAwaiter().GetResult();
+
     [HttpGet("checkout")]
-    public Task<IActionResult> Checkout(CancellationToken ct) => RenderCheckoutAsync(null, ct);
+    public Task<IActionResult> Checkout(CancellationToken ct = default) => RenderCheckoutAsync(null, ct);
 
     [HttpGet("s/{businessKey}/checkout")]
     public Task<IActionResult> ScopedCheckout(string businessKey, CancellationToken ct) =>
@@ -104,7 +133,7 @@ public sealed class StoreCheckoutController : Controller
 
     private async Task<IActionResult> RenderCheckoutAsync(string? businessKey, CancellationToken ct)
     {
-        var store = await _stores.ResolvePublicAsync(businessKey, ct);
+        var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
         ApplyStoreContext(store);
@@ -119,7 +148,7 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCartQuoteRequest? request,
         CancellationToken ct)
     {
-        var store = await _stores.ResolvePublicAsync(businessKey, ct);
+        var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
         request ??= new ParfaitCartQuoteRequest();
@@ -132,7 +161,7 @@ public sealed class StoreCheckoutController : Controller
         ParfaitAutomationCheckoutLeadCaptureRequest? request,
         CancellationToken ct)
     {
-        var store = await _stores.ResolvePublicAsync(businessKey, ct);
+        var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
         request ??= new ParfaitAutomationCheckoutLeadCaptureRequest();
@@ -152,7 +181,7 @@ public sealed class StoreCheckoutController : Controller
         ParfaitCheckoutPayRequest? request,
         CancellationToken ct)
     {
-        var store = await _stores.ResolvePublicAsync(businessKey, ct);
+        var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
         request ??= new ParfaitCheckoutPayRequest();
@@ -219,15 +248,18 @@ public sealed class StoreCheckoutController : Controller
         var order = paymentStart.Order;
         var firstItem = validatedItems.FirstOrDefault();
         var signalContext = BuildSignalContext(store);
-        await _commerceSignals.RecordAsync(
-            "InitiateCheckout",
-            request.CheckoutAttemptId!,
-            signalContext,
-            firstItem is null ? null : ProductSignal(firstItem),
-            CustomerSignal(request.Customer),
-            order.OrderNumber,
-            validatedItems.Select(ProductSignal).ToArray(),
-            ct);
+        if (_commerceSignals is not null)
+        {
+            await _commerceSignals.RecordAsync(
+                "InitiateCheckout",
+                request.CheckoutAttemptId!,
+                signalContext,
+                firstItem is null ? null : ProductSignal(firstItem),
+                CustomerSignal(request.Customer),
+                order.OrderNumber,
+                validatedItems.Select(ProductSignal).ToArray(),
+                ct);
+        }
 
         var note = $"{store.StoreName} {order.OrderNumber}: " +
             string.Join(", ", order.Items.Select(i => $"{i.Name} / {i.Size} x{i.Quantity}"));
@@ -282,15 +314,18 @@ public sealed class StoreCheckoutController : Controller
 
         try
         {
-            await _analytics.TrackPurchaseScopedAsync(
-                store.CommerceBusinessId,
-                store.WebsiteContentVersionId,
-                store.WebsiteSiteKey,
-                store.BusinessKey,
-                store.CheckoutPath,
-                paidOrder,
-                HttpContext,
-                ct);
+            if (_legacyCompatibility)
+                await _analytics.TrackPurchaseAsync(paidOrder, HttpContext, ct);
+            else
+                await _analytics.TrackPurchaseScopedAsync(
+                    store.CommerceBusinessId,
+                    store.WebsiteContentVersionId,
+                    store.WebsiteSiteKey,
+                    store.BusinessKey,
+                    store.CheckoutPath,
+                    paidOrder,
+                    HttpContext,
+                    ct);
         }
         catch
         {
@@ -299,15 +334,22 @@ public sealed class StoreCheckoutController : Controller
 
         try
         {
-            await _commerceSignals.RecordAsync(
-                "Purchase",
-                paidOrder.OrderNumber,
-                signalContext,
-                firstItem is null ? null : ProductSignal(firstItem),
-                CustomerSignal(request.Customer),
-                paidOrder.OrderNumber,
-                validatedItems.Select(ProductSignal).ToArray(),
-                ct);
+            if (_commerceSignals is not null)
+            {
+                await _commerceSignals.RecordAsync(
+                    "Purchase",
+                    paidOrder.OrderNumber,
+                    signalContext,
+                    firstItem is null ? null : ProductSignal(firstItem),
+                    CustomerSignal(request.Customer),
+                    paidOrder.OrderNumber,
+                    validatedItems.Select(ProductSignal).ToArray(),
+                    ct);
+            }
+            else if (_legacyMetaSignalBridge is not null)
+            {
+                await _legacyMetaSignalBridge.RecordPurchaseAsync(paidOrder, HttpContext, ct);
+            }
         }
         catch
         {
@@ -333,7 +375,7 @@ public sealed class StoreCheckoutController : Controller
         string orderNumber,
         CancellationToken ct)
     {
-        var store = await _stores.ResolvePublicAsync(businessKey, ct);
+        var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
         ApplyStoreContext(store);
@@ -343,6 +385,36 @@ public sealed class StoreCheckoutController : Controller
                 ? null
                 : _orders.GetOrder(store.CommerceBusinessId, orderNumber)
         });
+    }
+
+    private Task<CommerceStoreContext?> ResolveStoreAsync(string? businessKey, CancellationToken ct)
+    {
+        if (_stores is not null)
+            return _stores.ResolvePublicAsync(businessKey, ct);
+
+        if (!string.IsNullOrWhiteSpace(businessKey))
+            return Task.FromResult<CommerceStoreContext?>(null);
+
+        var businessId = _products.GetDefaultBusinessId();
+        return Task.FromResult<CommerceStoreContext?>(new CommerceStoreContext(
+            businessId,
+            WebsiteContentVersionId: null,
+            WebsiteSiteKey: "ParfaitApp",
+            BusinessKey: "parfait",
+            StoreName: "Parfait",
+            NavigationLabel: "Shop",
+            Headline: "Parfait",
+            Subheadline: "Parfait storefront.",
+            StoreRootPath: "/store",
+            CartPath: "/store/cart",
+            CheckoutPath: "/store/checkout",
+            SuccessPath: "/store/success",
+            CartStorageKey: "parfaitCart",
+            IsParfait: true,
+            AccentColor: "",
+            LogoUrl: null,
+            GlobalCheckoutUrl: null,
+            Theme: new WebsiteThemeOverride()));
     }
 
     private void ApplyStoreContext(CommerceStoreContext store)
