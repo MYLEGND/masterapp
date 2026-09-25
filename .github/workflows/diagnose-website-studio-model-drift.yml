@@ -1,0 +1,38 @@
+name: Diagnose Website Studio EF model drift
+
+on:
+  push:
+    branches:
+      - diagnose/website-studio-model-20260925
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - name: Generate EF model-drift probe
+        env:
+          EF_FORCE_SQLSERVER: 'true'
+          DOTNET_ENVIRONMENT: Development
+          ASPNETCORE_ENVIRONMENT: Development
+          ConnectionStrings__MasterAppDb: 'Server=tcp:localhost,1433;Initial Catalog=probe;User Id=probe;Password=Probe123!;TrustServerCertificate=True;Encrypt=False'
+        run: |
+          set -euo pipefail
+          dotnet tool restore
+          dotnet build AgentPortal/AgentPortal.csproj -c Release --nologo
+          dotnet tool run dotnet-ef migrations add WebsiteStudioModelDriftProbe \
+            --project Infrastructure/Infrastructure.csproj \
+            --startup-project AgentPortal/AgentPortal.csproj \
+            --context MasterAppDbContext \
+            --configuration Release \
+            --no-build
+          echo '===== GENERATED MIGRATION FILES ====='
+          git status --short
+          echo '===== GENERATED DIFF ====='
+          git diff -- Infrastructure/Migrations
