@@ -44,7 +44,7 @@ jobs:
           printf '%s\n' "${changed[@]}"
           for path in "${changed[@]}"; do
             case "$path" in
-              Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs|.github/workflows/resume-centralized-commerce-release-173.yml) ;;
+              Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs|Docs/releases/direct-release-request.json|.github/workflows/resume-centralized-commerce-release-173.yml) ;;
               *) echo "::error::Unexpected change after validated application package: $path"; exit 1 ;;
             esac
           done
