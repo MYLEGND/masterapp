@@ -463,6 +463,17 @@ jobs:
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
           persisted="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
           [ "$persisted" = "$bridge_secret" ]
+          protect_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)"
+          if [ "$protect_origin" != "masterapp-protect.azurewebsites.net" ]; then
+            if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
+              echo "::error::Preserve-live routing recovery requires Protect's existing bridge origin host."
+              exit 1
+            fi
+            az webapp config appsettings set -g masterapp-rg -n masterapp-protect \
+              --settings "WebsiteRouting__BridgeOriginHost=masterapp-protect.azurewebsites.net" --output none
+          fi
+          az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
+          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$settings" | head -n 1)" = "masterapp-protect.azurewebsites.net" ]
 
           parfait_settings=/tmp/parfait-website-routing.json
           az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
