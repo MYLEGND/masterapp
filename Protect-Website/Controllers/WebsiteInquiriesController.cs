@@ -7,6 +7,7 @@ using Infrastructure.Security;
 using Infrastructure.WebsiteEditing;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
+using ProtectWebsite.Services.Communication;
 using Shared.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -75,6 +76,9 @@ public sealed class WebsiteInquiriesController : ControllerBase
     [EnableRateLimiting(PlatformRateLimiting.PublicFormPolicy)]
     public async Task<IActionResult> Submit([FromBody] PublicRequest request, CancellationToken cancellationToken)
     {
+        if (!PublicWebsiteRuntimeScopeResolver.HasValidPublicOrigin(HttpContext))
+            return BadRequest(new { error = "verified_website_origin_required" });
+
         var scope = await _publicScopes.ResolveInquiryAsync(HttpContext, cancellationToken);
         if (scope is null)
             return NotFound(new { error = "published_website_required" });
@@ -359,7 +363,7 @@ public sealed class WebsiteInquiriesController : ControllerBase
             var html =
                 $"<p><strong>{WebUtility.HtmlEncode(name)}</strong></p>" +
                 $"<p>{WebUtility.HtmlEncode(trackedLead.Email)} · {WebUtility.HtmlEncode(trackedLead.Phone)}</p>" +
-                $"<p>{WebUtility.HtmlEncode(trackedLead.Notes).Replace("\n", "<br>")}</p>" +
+                $"<p>{WebUtility.HtmlEncode(trackedLead.Notes ?? "").Replace("\n", "<br>")}</p>" +
                 $"<p>Page: {WebUtility.HtmlEncode(trackedLead.SourcePageKey)}</p>";
             try
             {
