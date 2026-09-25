@@ -1,9 +1,9 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized the shared scoped website management and editing upgrade for validation through legend/approved-changes, followed only after a fully successful validation by direct deployment of the affected Protect Website and LEGEND Website targets. This rerun includes the section-child preservation correction and the scoped validate-only gate correction found by the first validation run. Preserve the centralized website editor/runtime, existing analytics and Meta authorities, CRM/lead ownership, domain scoping, and all unrelated working application flows. No all-target release, no parallel system, no CSS override, and no production publication during this validation phase.",
-  "purpose": "Re-run the exact scoped validation after repairing the three findings from the first gate: preserve section descendants when selection is cleared, retain Layers hide/show recovery, use the unified website_inquiry form identity, and enforce the correct public-only validate-only contract. Validate the full shared website studio candidate for Protect Website and LEGEND Website only; every deployment step must remain skipped.",
-  "requestId": "shared-website-studio-validation-rerun-20260924",
-  "releaseMode": "validate-only",
+  "authorization": "Founder explicitly authorized direct deployment of the fully validated shared scoped website management and editing upgrade from legend/approved-changes to only the affected Protect Website and LEGEND Website targets. The repaired validate-only run passed the exact candidate build, complete website test/build gate, package creation, artifact retention, and final enforcement. Preserve the centralized editor/runtime, existing analytics and Meta single-truth authority, scoped CRM/lead ownership, domain isolation, and all unrelated working flows. Do not deploy AgentPortal, ClientApp, Parfait, or the Cloudflare router for this release.",
+  "purpose": "Directly release the validated shared website studio candidate to Protect Website and LEGEND Website only. This includes direct-canvas editing, section/layer preservation, shared Founder/Business inquiry runtime, scoped lead/CRM capture, scoped browser analytics, server-authoritative Meta Lead handling, favicon/theme/page controls, sandboxed code blocks, and the validated website build. Require exact selected-target deployment, post-deploy provenance verification, and fail closed on any mismatch.",
+  "requestId": "shared-website-studio-direct-release-20260924",
+  "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
     "masterapp-website"
