@@ -110,11 +110,9 @@ jobs:
           git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs Legend-Website/scripts/render-business.test.mjs Legend-Website/package-lock.json
           git diff --quiet "$base" -- SHARED/WebsitePlatform/legend-public-cms.js SHARED/WebsitePlatform/legend-public-web.js SHARED/WebsitePlatform/legend-public-web.css
           git diff --quiet "$base" -- tests/website ':!tests/website/legend-public-cms.test.mjs'
-          git show "$base:tests/website/legend-public-cms.test.mjs" |
-            sed 's#../../Protect-Website/wwwroot/js/meta-signal-intelligence.js#../../SHARED/WebsitePlatform/meta-signal-intelligence.js#' |
-            cmp -s - tests/website/legend-public-cms.test.mjs
-          cmp -s SHARED/WebsitePlatform/tracking.js <(git show "$base:Protect-Website/wwwroot/js/tracking.js")
-          cmp -s SHARED/WebsitePlatform/meta-signal-intelligence.js <(git show "$base:Protect-Website/wwwroot/js/meta-signal-intelligence.js")
+          git diff --quiet "$base" -- tests/website/legend-public-cms.test.mjs
+          cmp -s SHARED/WebsitePlatform/tracking.js <(git show "$base:SHARED/WebsitePlatform/tracking.js")
+          cmp -s SHARED/WebsitePlatform/meta-signal-intelligence.js <(git show "$base:SHARED/WebsitePlatform/meta-signal-intelligence.js")
           echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
 
       - name: Install canonical shared CMS test dependencies
