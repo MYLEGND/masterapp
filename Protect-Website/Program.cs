@@ -8,6 +8,8 @@ using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
+using Infrastructure.Bookings;
+using Infrastructure.Analytics;
 using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services.Booking;
 using System.IO;
@@ -43,7 +45,7 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
-builder.Services.AddScoped<ProtectWebsite.Services.IWebsiteStudioAiProposalService, ProtectWebsite.Services.WebsiteStudioAiProposalService>();
+builder.Services.AddScoped<Infrastructure.WebsiteEditing.IWebsiteStudioAiProposalService, Infrastructure.WebsiteEditing.WebsiteStudioAiProposalService>();
 Infrastructure.Social.SocialServiceCollectionExtensions.AddMasterAppMediaStorage(builder.Services);
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteMediaService>();
 builder.Services.AddScoped<Infrastructure.WebsiteEditing.WebsiteImportService>();
@@ -108,10 +110,10 @@ builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
 builder.Services.AddScoped<BusinessInquiryNotificationService>();
 builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
 
-builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
+builder.Services.AddScoped<Infrastructure.Analytics.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
-builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+builder.Services.AddScoped<Infrastructure.Analytics.IMetaPixelResolutionService, Infrastructure.Analytics.MetaPixelResolutionService>();
 builder.Services.AddScoped<IMetaSendAuthority, MetaSendAuthority>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
@@ -120,7 +122,7 @@ builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfi
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
-builder.Services.Configure<MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
+builder.Services.Configure<Infrastructure.Analytics.MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
 builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
