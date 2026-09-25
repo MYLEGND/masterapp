@@ -997,6 +997,8 @@ test('selected blocks use one sharp border with invisible directional resize zon
   assert.equal(frame.querySelectorAll('.legend-cms-edge-handle').length,8);
   assert.equal(frame.querySelector('.legend-cms-move-handle'),null);
   assert.equal(frame.querySelector('.legend-cms-resize-handle'),null);
+  assert.equal(source.includes('.legend-cms-move-handle{'),false);
+  assert.equal(source.includes('.legend-cms-resize-handle{'),false);
   assert.match(source,/\.legend-cms-selection-frame\{[^}]*border:1px solid #d4ad45/);
   assert.match(source,/\.legend-cms-edge-right\{right:-6px\}/);
   assert.match(source,/\.legend-cms-corner-ne\{[^}]*cursor:nesw-resize/);
