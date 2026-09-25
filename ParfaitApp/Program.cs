@@ -133,6 +133,7 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<IConfiguration>(),
         sp.GetRequiredService<IHostEnvironment>()));
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
+builder.Services.AddScoped<CommerceStoreContextService>();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();
 builder.Services.AddScoped<ParfaitOrderService>();
