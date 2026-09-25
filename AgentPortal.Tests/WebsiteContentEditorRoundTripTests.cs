@@ -278,6 +278,47 @@ public sealed class WebsiteContentEditorRoundTripTests
         Assert.IsType<UnauthorizedResult>(await fixture.CreateController().Manage(ticket));
     }
 
+
+    [Fact]
+    public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Navigation = new WebsitePageNavigation { ShowInNavigation = true },
+            DynamicBinding = new WebsiteDynamicPageBinding { CollectionId = "missing", ItemKeyField = "id" },
+            Extras =
+            [
+                new WebsiteExtraComponent
+                {
+                    Id = "photo",
+                    Type = "image",
+                    SectionId = "home.section.1",
+                    ImageDataUrl = "https://images.example/photo.png"
+                }
+            ]
+        };
+
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+
+        var quality = Assert.IsType<OkObjectResult>(await fixture.CreateController().DraftQuality(ticket, CancellationToken.None));
+        var json = JsonSerializer.SerializeToElement(quality.Value, JsonOptions);
+        Assert.Equal("saved_draft_server", json.GetProperty("source").GetString());
+        Assert.Equal(1, json.GetProperty("revision").GetInt64());
+        var codes = json.GetProperty("checks").EnumerateArray()
+            .Select(value => value.GetProperty("code").GetString())
+            .Where(value => value is not null)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("page_title_missing", codes);
+        Assert.Contains("navigation_label_missing", codes);
+        Assert.Contains("dynamic_collection_missing", codes);
+        Assert.Contains("image_alt_missing", codes);
+
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().DraftQuality("invalid-ticket", CancellationToken.None));
+    }
+
     private static WebsiteContentDocument ReadDocument(IActionResult result)
     {
         var value = Assert.IsType<OkObjectResult>(result).Value;
