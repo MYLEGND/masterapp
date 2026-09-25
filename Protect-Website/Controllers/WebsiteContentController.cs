@@ -144,11 +144,17 @@ public sealed class WebsiteContentController : ControllerBase
                 return NotFound(new { error = "website_not_published" });
             document = new WebsiteContentDocument();
         }
+        var publicFacts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
+        IReadOnlyDictionary<string, WebsiteCollectionProjection> publicCollections = business is null
+            ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
+            : await new WebsiteCollectionProjectionService(_db).LoadAsync(document, business.Id, cancellationToken);
         return Ok(new
         {
             siteKey,
             business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType },
             businessName = business?.DisplayName,
+            facts = publicFacts,
+            collections = publicCollections.Values,
             document
         });
     }
@@ -251,10 +257,16 @@ public sealed class WebsiteContentController : ControllerBase
             .OrderByDescending(v => v.Revision).Select(v => new { versionId = v.Id, v.Revision, v.CreatedUtc }).ToListAsync(cancellationToken);
         var business = actor.CommerceBusinessId.HasValue ? await _db.CommerceBusinesses.AsNoTracking().SingleAsync(b => b.Id == actor.CommerceBusinessId, cancellationToken) : null;
         var facts = business is null ? null : await WebsiteBusinessFacts.LoadAsync(_db, business.Id, cancellationToken);
+        var draft = Read(state.DraftJson);
+        IReadOnlyDictionary<string, WebsiteCollectionProjection> collectionData = business is null
+            ? new Dictionary<string, WebsiteCollectionProjection>(StringComparer.Ordinal)
+            : await new WebsiteCollectionProjectionService(_db).LoadAsync(draft, business.Id, cancellationToken);
         var ctaOptions = await BuildCallToActionCatalogAsync(actor, facts, cancellationToken);
-        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = Read(state.DraftJson),
+        return Ok(new { business = business is null ? null : new { business.Id, business.DisplayName, business.LegalName, business.BusinessType }, siteKey = actor.SiteKey, agentSlug = actor.AgentSlug, commerceBusinessId = actor.CommerceBusinessId, document = draft,
             revision = state.Revision, publishedRevision = history.FirstOrDefault(v => v.versionId == state.PublishedVersionId)?.Revision,
             facts,
+            dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
+            collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
@@ -455,8 +467,10 @@ public sealed class WebsiteContentController : ControllerBase
             DocumentJson = state.DraftJson, ImportReportJson = state.ImportReportJson, ActorUserId = actor.ActorUserId! };
         if (business is not null)
         {
+            var collections = await new WebsiteCollectionProjectionService(_db)
+                .LoadAsync(document, business.Id, cancellationToken);
             var compiler = HttpContext.RequestServices.GetRequiredService<ProtectWebsite.Services.WebsitePageCompiler>();
-            version.CompiledPagesJson = await compiler.CompileAsync(document, business, facts!, cancellationToken);
+            version.CompiledPagesJson = await compiler.CompileAsync(document, business, facts!, collections, cancellationToken);
         }
         _db.Set<WebsiteContentVersion>().Add(version);
         state.PublishedVersionId = version.Id;
