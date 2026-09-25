@@ -394,21 +394,67 @@
 
   function applyTheme(theme) {
     const root = document.documentElement;
-    const map = {
+    const stringMap = {
       navy: '--web-navy',
       navyDeep: '--web-navy-deep',
       gold: '--web-gold',
       goldStrong: '--web-gold-strong',
-      surface: '--web-surface', text: '--web-ink', muted: '--web-muted', fontFamily: '--web-font'
+      surface: '--web-surface',
+      text: '--web-ink',
+      muted: '--web-muted',
+      fontFamily: '--web-font',
+      headingFontFamily: '--web-heading-font'
     };
-    // The template's gradient end follows the selected primary color; it must
-    // not retain an uneditable royal-blue stop when the palette changes.
+    const pxMap = {
+      fontSize: '--web-body-size',
+      h1SizePx: '--web-h1-size',
+      h2SizePx: '--web-h2-size',
+      h3SizePx: '--web-h3-size',
+      pagePaddingPx: '--web-page-pad',
+      sectionPaddingPx: '--web-section-pad-y',
+      contentGapPx: '--web-content-gap',
+      buttonRadiusPx: '--web-button-radius'
+    };
     if (theme?.navy) root.style.setProperty('--web-navy-royal', theme.navy);
     else root.style.removeProperty('--web-navy-royal');
-    Object.entries(map).forEach(([key, cssVar]) => {
+
+    Object.entries(stringMap).forEach(([key, cssVar]) => {
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
+    Object.entries(pxMap).forEach(([key, cssVar]) => {
+      const value = Number(theme?.[key]);
+      if (Number.isFinite(value) && value >= 0) root.style.setProperty(cssVar, `${value}px`);
+      else root.style.removeProperty(cssVar);
+    });
+
+    const lineHeight = Number(theme?.lineHeight);
+    if (Number.isFinite(lineHeight) && lineHeight > 0) root.style.setProperty('--web-body-line-height', String(lineHeight));
+    else root.style.removeProperty('--web-body-line-height');
+
+    const headingWeight = Number(theme?.headingWeight);
+    if (Number.isInteger(headingWeight) && headingWeight >= 100 && headingWeight <= 900) root.style.setProperty('--web-heading-weight', String(headingWeight));
+    else root.style.removeProperty('--web-heading-weight');
+
+    const radius = Number(theme?.borderRadius);
+    if (Number.isFinite(radius) && radius >= 0) {
+      root.style.setProperty('--web-radius-lg', `${radius}px`);
+      root.style.setProperty('--web-radius-md', `${Math.round(radius * .64 * 100) / 100}px`);
+      root.style.setProperty('--web-radius-sm', `${Math.round(radius * .43 * 100) / 100}px`);
+    } else {
+      root.style.removeProperty('--web-radius-lg');
+      root.style.removeProperty('--web-radius-md');
+      root.style.removeProperty('--web-radius-sm');
+    }
+
+    const shadows = {
+      none: 'none',
+      subtle: '0 12px 32px rgba(8,26,58,.08)',
+      medium: '0 24px 70px rgba(8,26,58,.12)',
+      strong: '0 32px 90px rgba(8,26,58,.24)'
+    };
+    if (theme?.shadowPreset && shadows[theme.shadowPreset]) root.style.setProperty('--web-shadow', shadows[theme.shadowPreset]);
+    else root.style.removeProperty('--web-shadow');
   }
 
   function applyStyle(el, style) {
@@ -2620,9 +2666,10 @@
       if (copy.type === 'video') copy.videoUrl = original?.videoUrl ?? rememberOriginal(selected).src;
       pageState().extras.push(copy); setSelected(createExtra(copy)); markDirty();
     });
-    const fontInput = panel.querySelector('[data-theme-key="fontFamily"]');
-    if (fontInput?.replaceWith) {
-      const select = document.createElement('select'); select.dataset.themeKey = 'fontFamily';
+    for (const key of ['fontFamily','headingFontFamily']) {
+      const fontInput = panel.querySelector(`[data-theme-key="${key}"]`);
+      if (!fontInput?.replaceWith) continue;
+      const select = document.createElement('select'); select.dataset.themeKey = key;
       for (const value of ['inherit','system-ui','serif','sans-serif','monospace','Georgia','Arial']) {
         const option = document.createElement('option'); option.value = value; option.textContent = value; select.appendChild(option);
       }
@@ -3571,7 +3618,24 @@
           <label>Navy<input data-theme-key="navy" type="color" value="#102b62"></label>
           <label>Deep navy<input data-theme-key="navyDeep" type="color" value="#081a3a"></label>
           <label>Gold<input data-theme-key="gold" type="color" value="#d4ad45"></label>
-          <label>Bright gold<input data-theme-key="goldStrong" type="color" value="#f0cf78"></label><label>Surface<input data-theme-key="surface" type="color" value="#ffffff"></label><label>Text<input data-theme-key="text" type="color" value="#101a35"></label><label>Muted<input data-theme-key="muted" type="color" value="#667085"></label><label>Font family<input data-theme-key="fontFamily" type="text" value=""></label>
+          <label>Bright gold<input data-theme-key="goldStrong" type="color" value="#f0cf78"></label>
+          <label>Surface<input data-theme-key="surface" type="color" value="#ffffff"></label>
+          <label>Text<input data-theme-key="text" type="color" value="#101a35"></label>
+          <label>Muted<input data-theme-key="muted" type="color" value="#667085"></label>
+          <label>Body font<input data-theme-key="fontFamily" type="text" value=""></label>
+          <label>Heading font<input data-theme-key="headingFontFamily" type="text" value=""></label>
+          <label>Heading weight<input data-theme-key="headingWeight" type="number" min="100" max="900" step="100"></label>
+          <label>Body size px<input data-theme-key="fontSize" type="number" min="10" max="32" step="any"></label>
+          <label>Body line height<input data-theme-key="lineHeight" type="number" min="0.8" max="3" step="0.05"></label>
+          <label>H1 size px<input data-theme-key="h1SizePx" type="number" min="20" max="180" step="any"></label>
+          <label>H2 size px<input data-theme-key="h2SizePx" type="number" min="18" max="140" step="any"></label>
+          <label>H3 size px<input data-theme-key="h3SizePx" type="number" min="14" max="96" step="any"></label>
+          <label>Page side padding px<input data-theme-key="pagePaddingPx" type="number" min="0" max="240" step="any"></label>
+          <label>Section vertical padding px<input data-theme-key="sectionPaddingPx" type="number" min="16" max="320" step="any"></label>
+          <label>Content gap px<input data-theme-key="contentGapPx" type="number" min="0" max="120" step="any"></label>
+          <label>Card radius px<input data-theme-key="borderRadius" type="number" min="0" max="120" step="any"></label>
+          <label>Button radius px<input data-theme-key="buttonRadiusPx" type="number" min="0" max="999" step="any"></label>
+          <label>Shadow<select data-theme-key="shadowPreset"><option value="">Template default</option><option value="none">None</option><option value="subtle">Subtle</option><option value="medium">Medium</option><option value="strong">Strong</option></select></label>
         </div>
       </div>
     `;
@@ -3707,13 +3771,31 @@
 
     document.querySelectorAll('[data-theme-key]').forEach(input => {
       const key = input.dataset.themeKey;
-      const themeVariables = { navy: '--web-navy', navyDeep: '--web-navy-deep', gold: '--web-gold', goldStrong: '--web-gold-strong',surface:'--web-surface',text:'--web-ink',muted:'--web-muted',fontFamily:'--web-font' };
-      const currentColor = documentState.theme?.[key]
-        || getComputedStyle(document.documentElement).getPropertyValue(themeVariables[key]).trim();
-      if (input.type !== 'color' || /^#[0-9a-f]{6}$/i.test(currentColor)) input.value = currentColor;
+      const themeVariables = {
+        navy:'--web-navy',navyDeep:'--web-navy-deep',gold:'--web-gold',goldStrong:'--web-gold-strong',
+        surface:'--web-surface',text:'--web-ink',muted:'--web-muted',fontFamily:'--web-font',
+        headingFontFamily:'--web-heading-font',headingWeight:'--web-heading-weight',fontSize:'--web-body-size',
+        lineHeight:'--web-body-line-height',h1SizePx:'--web-h1-size',h2SizePx:'--web-h2-size',h3SizePx:'--web-h3-size',
+        pagePaddingPx:'--web-page-pad',sectionPaddingPx:'--web-section-pad-y',contentGapPx:'--web-content-gap',
+        borderRadius:'--web-radius-lg',buttonRadiusPx:'--web-button-radius'
+      };
+      const stored = documentState.theme?.[key];
+      const fallback = themeVariables[key]
+        ? getComputedStyle(document.documentElement).getPropertyValue(themeVariables[key]).trim()
+        : key === 'shadowPreset' ? 'medium' : '';
+      if (input.type === 'number') {
+        const numeric = stored ?? parseFloat(fallback);
+        input.value = Number.isFinite(Number(numeric)) ? String(numeric) : '';
+      } else {
+        const current = stored ?? fallback;
+        if (input.type !== 'color' || /^#[0-9a-f]{6}$/i.test(current)) input.value = current || '';
+      }
       input.addEventListener('input', () => {
+        const value = input.type === 'number' ? Number(input.value) : input.value;
+        if (input.type === 'number' && input.value !== '' && !Number.isFinite(value)) return;
         checkpoint();
-        documentState.theme[key] = input.value;
+        if (input.value === '') delete documentState.theme[key];
+        else documentState.theme[key] = value;
         applyTheme(documentState.theme);
         markDirty();
       });
