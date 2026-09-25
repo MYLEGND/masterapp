@@ -789,6 +789,11 @@ test('shared CTA dropdown creates a styled live button and keeps its label indep
     assert.equal(button.textContent,'Call Now');
     f.editSelected('Talk with our team');
     assert.equal(button.textContent,'Talk with our team');
+    f.click('[data-open="signals"]');
+    assert.match(f.w.document.querySelector('#legend-cms-signal-controls').textContent,/Automatic button analytics \+ Meta/);
+    const advanced=[...f.w.document.querySelectorAll('#legend-cms-signal-controls button')]
+      .find(node=>node.textContent==='Add advanced custom mapping');
+    assert.ok(advanced); assert.equal(advanced.hidden,true);
     const saved=await f.save(); const extra=saved.pages['/'].extras[0];
     assert.equal(extra.actionKey,'business_call');
     assert.equal(extra.href,'tel:+16025550199');
