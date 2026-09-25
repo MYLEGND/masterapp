@@ -708,7 +708,7 @@ public sealed class WebsiteContentController : ControllerBase
                 url = apiBase + "/api/website-content/media/" + asset.Id,
                 asset.ContentType,
                 asset.SizeBytes,
-                sourceName = string.IsNullOrWhiteSpace(asset.SourceUrl) ? null : asset.SourceUrl,
+                sourceName = MediaSourceName(asset.SourceUrl),
                 asset.CreatedUtc
             })
         });
@@ -724,7 +724,7 @@ public sealed class WebsiteContentController : ControllerBase
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer, cancellationToken);
         var media = HttpContext.RequestServices.GetRequiredService<WebsiteMediaService>();
-        var safeName = Path.GetFileName(file.FileName ?? string.Empty).Trim();
+        var safeName = MediaSourceName(file.FileName) ?? "website-media";
         if (safeName.Length > 240) safeName = safeName[..240];
         var asset = await media.StoreAsync(actor.OwnerUserId, safeName, file.FileName, buffer.ToArray(), cancellationToken);
         return Ok(new
@@ -733,7 +733,7 @@ public sealed class WebsiteContentController : ControllerBase
             url = MediaBaseUrl() + "/api/website-content/media/" + asset.Id,
             asset.ContentType,
             asset.SizeBytes,
-            sourceName = string.IsNullOrWhiteSpace(asset.SourceUrl) ? null : asset.SourceUrl
+            sourceName = MediaSourceName(asset.SourceUrl)
         });
     }
     [HttpPost("manage/import-file")]
@@ -757,6 +757,19 @@ public sealed class WebsiteContentController : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
         return Ok(new { document = Read(state.DraftJson), revision = state.Revision, report = result.Report });
     }
+    private static string? MediaSourceName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var candidate = value.Trim();
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+            candidate = Path.GetFileName(uri.LocalPath);
+        else
+            candidate = Path.GetFileName(candidate);
+        candidate = new string(candidate.Where(ch => !char.IsControl(ch)).ToArray()).Trim();
+        if (candidate.Length == 0) return null;
+        return candidate.Length <= 240 ? candidate : candidate[..240];
+    }
+
     private string WebsiteContentApiBaseUrl() => (_configuration["WebsiteContentApiBaseUrl"] ?? "https://masterapp-protect.azurewebsites.net").TrimEnd('/');
     private string MediaBaseUrl() => WebsiteContentApiBaseUrl();
     private WebsiteDomainService DomainService() => HttpContext.RequestServices.GetRequiredService<WebsiteDomainService>();
