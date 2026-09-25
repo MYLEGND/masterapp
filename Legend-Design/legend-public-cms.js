@@ -883,6 +883,154 @@
     syncReusableMemberDom(el, override);
   }
 
+  function formAutocomplete(role) {
+    return ({ firstName:'given-name', lastName:'family-name', email:'email', phone:'tel', url:'url' })[role] || null;
+  }
+
+  function createFormField(field) {
+    const wrap = document.createElement('label');
+    wrap.className = 'cms-form-field';
+    wrap.style.gridColumn = `span ${Math.max(1, Math.min(12, Number(field.span) || 12))}`;
+    wrap.dataset.formFieldId = field.id;
+    wrap.dataset.formFieldRole = field.role || 'custom';
+
+    const title = document.createElement('span');
+    title.textContent = field.label || 'Field';
+    if (field.required) {
+      const required = document.createElement('span');
+      required.className = 'cms-form-required';
+      required.textContent = ' *';
+      required.setAttribute('aria-hidden', 'true');
+      title.appendChild(required);
+    }
+    wrap.appendChild(title);
+
+    let control;
+    if (field.type === 'textarea') {
+      control = document.createElement('textarea');
+      control.rows = 5;
+    } else if (field.type === 'select') {
+      control = document.createElement('select');
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose one';
+      if (field.required) placeholder.disabled = true;
+      control.appendChild(placeholder);
+      for (const value of field.options || []) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        control.appendChild(option);
+      }
+    } else if (field.type === 'checkbox') {
+      control = document.createElement('input');
+      control.type = 'checkbox';
+      control.value = 'true';
+      wrap.classList.add('cms-form-checkbox');
+    } else {
+      control = document.createElement('input');
+      control.type = ['email','tel','date','number','url'].includes(field.type) ? field.type : 'text';
+    }
+
+    control.name = field.id;
+    control.dataset.formFieldId = field.id;
+    control.dataset.formFieldRole = field.role || 'custom';
+    if (field.required) control.required = true;
+    if (field.placeholder && field.type !== 'select' && field.type !== 'checkbox') control.placeholder = field.placeholder;
+    const autocomplete = formAutocomplete(field.role);
+    if (autocomplete) control.autocomplete = autocomplete;
+    if (field.type === 'tel') control.inputMode = 'tel';
+    wrap.appendChild(control);
+    return wrap;
+  }
+
+  function renderFormComponent(extra) {
+    const definition = formDefinition(extra.formDefinitionId);
+    const form = document.createElement('form');
+    form.className = 'cms-extra cms-extra-form public-form';
+    form.dataset.websiteCustomForm = 'true';
+    form.dataset.formDefinitionId = extra.formDefinitionId || '';
+    form.dataset.formKey = extra.formDefinitionId ? `website_form:${extra.formDefinitionId}` : 'website_form';
+    form.noValidate = false;
+    if (!definition) {
+      form.dataset.formMissing = 'true';
+      const missing = document.createElement('p');
+      missing.textContent = editorMode ? 'Missing form definition' : 'This form is unavailable.';
+      form.appendChild(missing);
+      return form;
+    }
+
+    form.setAttribute('aria-label', definition.name || 'Website inquiry form');
+    const steps = [...new Set((definition.fields || []).map(field => Math.max(1, Number(field.step) || 1)))].sort((a,b)=>a-b);
+    const effectiveSteps = steps.length ? steps : [1];
+
+    effectiveSteps.forEach((step, index) => {
+      const fieldset = document.createElement('fieldset');
+      fieldset.dataset.formStep = String(step);
+      fieldset.hidden = !editorMode && index !== 0;
+      if (effectiveSteps.length > 1) {
+        const legend = document.createElement('legend');
+        legend.textContent = `Step ${index + 1} of ${effectiveSteps.length}`;
+        fieldset.appendChild(legend);
+      }
+      const grid = document.createElement('div');
+      grid.className = 'cms-form-grid';
+      for (const field of (definition.fields || []).filter(item => (Number(item.step) || 1) === step))
+        grid.appendChild(createFormField(field));
+      fieldset.appendChild(grid);
+
+      const actions = document.createElement('div');
+      actions.className = 'cms-form-actions';
+      if (effectiveSteps.length > 1 && index > 0) {
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn ghost';
+        back.dataset.formBack = 'true';
+        back.textContent = 'Back';
+        actions.appendChild(back);
+      }
+      if (effectiveSteps.length > 1 && index < effectiveSteps.length - 1) {
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.className = 'btn primary';
+        next.dataset.formNext = 'true';
+        next.textContent = 'Next';
+        actions.appendChild(next);
+      } else {
+        if (definition.requireConsent !== false) {
+          const consent = document.createElement('label');
+          consent.className = 'cms-form-consent';
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.name = '__consent';
+          input.required = true;
+          const copy = document.createElement('span');
+          copy.textContent = definition.consentText || 'I agree to share this inquiry with this website.';
+          consent.append(input, copy);
+          fieldset.appendChild(consent);
+        }
+        const submit = document.createElement('button');
+        submit.type = 'submit';
+        submit.className = 'btn primary';
+        submit.textContent = definition.submitLabel || 'Send';
+        actions.appendChild(submit);
+      }
+      fieldset.appendChild(actions);
+      form.appendChild(fieldset);
+    });
+
+    const status = document.createElement('p');
+    status.setAttribute('role','status');
+    status.setAttribute('aria-live','polite');
+    status.dataset.formStatus = 'true';
+    form.appendChild(status);
+    if (editorMode) {
+      form.dataset.preview = 'true';
+      form.addEventListener('submit', event => event.preventDefault());
+    }
+    return form;
+  }
+
   function createExtraElement(extra) {
     let el;
     if (extra.type === 'heading') {
@@ -908,6 +1056,8 @@
       el = document.createElement('div');
       el.className = 'cms-extra cms-extra-container';
       el.setAttribute('role', 'group');
+    } else if (extra.type === 'form') {
+      el = renderFormComponent(extra);
     } else if (extra.type === 'image') {
       el = document.createElement('img');
       el.src = mediaUrl(extra.imageDataUrl || '');
@@ -3709,7 +3859,7 @@
       .legend-cms-panel input[type=checkbox]{width:auto}.legend-cms-panel input[type=color]{min-height:40px;padding:4px}.legend-cms-panel button:disabled{opacity:.45;cursor:default}.legend-cms-media-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-cms-media-card{display:grid;gap:7px;min-width:0;padding:9px;border:1px solid #344766;border-radius:12px;background:#0b1e3a}.legend-cms-media-preview{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#07152d}.legend-cms-media-card strong,.legend-cms-media-card small{overflow-wrap:anywhere}.legend-cms-media-card small{margin:0}.legend-cms-media-card button{padding:9px;border:1px solid #50617e;border-radius:8px;background:#142c50;color:#fff}.legend-cms-motion-card{display:grid;gap:4px;margin:12px 0;padding:12px;border:1px solid #344766;border-radius:12px;background:#0b1e3a}.legend-cms-quality-summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 8px;padding:10px;border:1px solid #344766;border-radius:10px;background:#10284a}.legend-cms-quality-summary strong{margin-right:auto}.legend-cms-quality-summary span{font-size:12px;color:#c9d5e7}.legend-cms-quality-list{display:grid;gap:8px}.legend-cms-quality-issue{margin:0;padding:10px;border:1px solid #344766;border-radius:10px;background:#0d2342}.legend-cms-quality-issue strong,.legend-cms-quality-issue small{display:block}.legend-cms-quality-issue p{margin:6px 0 0}.legend-cms-quality-warning{border-color:#d4ad45}.legend-cms-quality-error{border-color:#ef7b7b}.legend-cms-quality-empty{padding:10px;border:1px dashed #344766;border-radius:10px}.legend-cms-align-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.legend-cms-align-grid button{min-width:0;padding:9px;border:1px solid #344766;border-radius:8px;background:#142c50;color:#fff}
       .legend-cms-navigation{margin:0 0 20px}.legend-cms-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.legend-cms-tabs button{min-height:40px;padding:8px 4px;border:1px solid #344766;border-radius:8px;background:transparent;color:#c9d5e7;font:600 12px/1.3 Inter,system-ui,sans-serif}.legend-cms-tabs button[aria-pressed=true]{background:#e6c77e;color:#10213e;border-color:#e6c77e}
       #legend-cms-status{flex-basis:100%;font-size:12px;color:#c9d5e7;order:1}.legend-cms-panel p{font-size:13px;line-height:1.6;color:#b8c6dc}.legend-cms-layer-list{display:grid;gap:6px}.legend-cms-layer{display:flex;gap:4px;min-width:0}.legend-cms-layer button{min-width:0;padding:10px;border:1px solid #344766;background:#142c50;border-radius:8px;color:#f7f6f2;text-align:left;font-size:12px;overflow-wrap:anywhere}.legend-cms-layer button:first-child{flex:1}.legend-cms-layer button[aria-pressed=true]{border-color:#e6c77e}.legend-cms-search-preview{padding:16px;border:1px solid #344766;border-radius:12px;overflow-wrap:anywhere}.legend-cms-search-preview strong{color:#e6c77e}
-      .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}
+      .cms-extra-image{display:block;margin-left:auto;margin-right:auto;height:auto}.cms-extra-form{display:block;width:100%}.cms-form-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}.cms-form-field{display:grid;gap:6px;min-width:0}.cms-form-field>span{font-weight:700}.cms-form-field input,.cms-form-field textarea,.cms-form-field select{width:100%;min-width:0}.cms-form-checkbox{grid-template-columns:auto minmax(0,1fr);align-items:center}.cms-form-checkbox>span{grid-column:2}.cms-form-checkbox>input{grid-column:1;grid-row:1;width:auto}.cms-form-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.cms-form-consent{display:flex;align-items:flex-start;gap:8px;margin-top:14px}.cms-form-consent input{width:auto;margin-top:3px}.cms-form-required{color:#a00}@media(max-width:640px){.cms-form-field{grid-column:1 / -1!important}}
       @media(max-width:800px){body.legend-cms-editing{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55fr) minmax(0,45fr)}body.legend-cms-editing.legend-cms-panel-hidden{grid-template-rows:minmax(0,1fr)}.legend-cms-panel{border-top:2px solid #d4ad45}.legend-cms-panel-toggle{top:max(8px,env(safe-area-inset-top));right:8px}.legend-cms-move-handle{min-height:38px;padding:8px 12px;top:-44px}.legend-cms-resize-handle{width:34px;height:34px}.legend-cms-resize-x{right:-18px}.legend-cms-resize-y{bottom:-18px}.legend-cms-resize-xy{right:-18px;bottom:-18px}}
     `;
     document.head.appendChild(style);
