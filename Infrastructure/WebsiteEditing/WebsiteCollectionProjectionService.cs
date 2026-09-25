@@ -50,6 +50,22 @@ public sealed record WebsiteCollectionProjection(
 /// </summary>
 public sealed class WebsiteCollectionProjectionService(MasterAppDbContext db)
 {
+    public Task<IReadOnlyDictionary<string, WebsiteCollectionProjection>> LoadCatalogAsync(
+        Guid commerceBusinessId,
+        CancellationToken cancellationToken = default)
+    {
+        var document = new WebsiteContentDocument();
+        foreach (var source in WebsiteCollectionSourcePolicy.Catalog)
+            document.Collections[source.Key] = new WebsiteCollectionDefinition
+            {
+                Id = source.Key,
+                Name = source.Label,
+                Source = source.Key,
+                Fields = source.Fields.ToList()
+            };
+        return LoadAsync(document, commerceBusinessId, cancellationToken);
+    }
+
     public async Task<IReadOnlyDictionary<string, WebsiteCollectionProjection>> LoadAsync(
         WebsiteContentDocument document,
         Guid commerceBusinessId,
