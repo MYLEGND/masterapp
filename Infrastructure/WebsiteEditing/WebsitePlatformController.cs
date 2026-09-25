@@ -157,7 +157,7 @@ public class WebsitePlatformController : ControllerBase
             businessName = business?.DisplayName,
             facts = publicFacts,
             collections = publicCollections.Values,
-            store = StorePayload(document, publicStoreScope, ticket: null),
+            store = StorePayload(siteKey, document, publicStoreScope, ticket: null),
             document
         });
     }
@@ -279,7 +279,7 @@ public class WebsitePlatformController : ControllerBase
             dataCatalog = WebsiteCollectionSourcePolicy.Catalog,
             collections = collectionData.Values,
             ctaCatalog = new { options = ctaOptions },
-            store = StorePayload(draft, commerceScope, ticket),
+            store = StorePayload(actor.SiteKey, draft, commerceScope, ticket),
             usage = new { mediaBytes = await _db.Set<WebsiteMediaAsset>().Where(a => a.OwnerKey == actor.OwnerUserId).SumAsync(a => (long?)a.SizeBytes, cancellationToken) ?? 0, mediaCount = await _db.Set<WebsiteMediaAsset>().CountAsync(a => a.OwnerKey == actor.OwnerUserId, cancellationToken), publishedVersions = history.Count },
             importReport = string.IsNullOrEmpty(state.ImportReportJson) ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(state.ImportReportJson),
             drafts = ReadDrafts(state).Select(d => new { d.Id, d.Name, d.UpdatedUtc }),
@@ -330,7 +330,7 @@ public class WebsitePlatformController : ControllerBase
         {
             document,
             revision = state.Revision,
-            store = StorePayload(document, scope, request.Ticket)
+            store = StorePayload(actor.SiteKey, document, scope, request.Ticket)
         });
     }
 
@@ -367,7 +367,7 @@ public class WebsitePlatformController : ControllerBase
         {
             document,
             revision = state.Revision,
-            store = StorePayload(document, scope, request.Ticket)
+            store = StorePayload(actor.SiteKey, document, scope, request.Ticket)
         });
     }
 
@@ -1863,6 +1863,7 @@ public class WebsitePlatformController : ControllerBase
         (_configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/');
 
     private object StorePayload(
+        string siteKey,
         WebsiteContentDocument document,
         WebsiteCommerceScope? scope,
         string? ticket)
@@ -1884,7 +1885,10 @@ public class WebsitePlatformController : ControllerBase
                 managerUrl = (string?)null
             };
 
-        var root = CommercePublicBaseUrl() + "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
+        var root = siteKey == WebsiteEditorSiteKeys.Protect
+            ? (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
+              "/store/s/" + Uri.EscapeDataString(scope.BusinessKey)
+            : "/store";
         return new
         {
             enabled = document.Store.Enabled,

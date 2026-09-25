@@ -137,6 +137,9 @@ public sealed class StoreCheckoutController : Controller
         var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
+        var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, "/checkout", ct);
+        if (redirect is not null) return redirect;
+
         ApplyStoreContext(store);
         ViewBag.SquareApplicationId = _squareOptions.ApplicationId;
         ViewBag.SquareLocationId = _squareOptions.LocationId;
@@ -380,6 +383,10 @@ public sealed class StoreCheckoutController : Controller
         var store = await ResolveStoreAsync(businessKey, ct);
         if (store is null) return NotFound();
 
+        var suffix = "/success?orderNumber=" + Uri.EscapeDataString(orderNumber ?? string.Empty);
+        var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, suffix, ct);
+        if (redirect is not null) return redirect;
+
         ApplyStoreContext(store);
         return View("~/Views/Store/Success.cshtml", new ParfaitOrderSuccessViewModel
         {
@@ -392,7 +399,7 @@ public sealed class StoreCheckoutController : Controller
     private Task<CommerceStoreContext?> ResolveStoreAsync(string? businessKey, CancellationToken ct)
     {
         if (_stores is not null)
-            return _stores.ResolvePublicAsync(businessKey, ct);
+            return _stores.ResolvePublicAsync(HttpContext, businessKey, ct);
 
         if (!string.IsNullOrWhiteSpace(businessKey))
             return Task.FromResult<CommerceStoreContext?>(null);
@@ -420,6 +427,24 @@ public sealed class StoreCheckoutController : Controller
             Theme: new WebsiteThemeOverride()));
     }
 
+    private async Task<IActionResult?> CanonicalizeScopedRequestAsync(
+        CommerceStoreContext store,
+        string? businessKey,
+        string suffix,
+        CancellationToken ct)
+    {
+        if (_stores is null ||
+            string.IsNullOrWhiteSpace(businessKey) ||
+            store.IsParfait ||
+            !_stores.IsCentralCommerceHost(HttpContext))
+            return null;
+
+        var canonicalRoot = await _stores.ResolveCanonicalPublicRootAsync(store, ct);
+        return string.IsNullOrWhiteSpace(canonicalRoot)
+            ? null
+            : RedirectPermanent(canonicalRoot + suffix);
+    }
+
     private void ApplyStoreContext(CommerceStoreContext store)
     {
         ViewData["CommerceStoreContext"] = store;
@@ -439,7 +464,7 @@ public sealed class StoreCheckoutController : Controller
             store.WebsiteSiteKey,
             store.BusinessKey,
             store.StoreName,
-            $"{Request.Scheme}://{Request.Host}{store.CheckoutPath}",
+            $"{Request.Scheme}://{(_stores?.ResolveEffectivePublicHost(HttpContext) ?? Request.Host.Host)}{store.CheckoutPath}",
             Cookie("pf_sid"),
             Cookie("pf_vid"),
             Request.Headers.Referer.ToString(),

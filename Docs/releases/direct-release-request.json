@@ -1,12 +1,13 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the validated MasterApp platform ownership refactor after isolated architecture validation succeeded. Deploy only Protect Website and LEGEND Website. Preserve AgentPortal, ClientApp, Parfait, Cloudflare routing, CRM, website drafts/published versions, database state, authentication, billing authorities, marketing connections, and unrelated systems.",
-  "purpose": "Scoped runtime release of the centralized MasterApp ownership refactor. Protect remains the thin host/adapter while website management, publishing, runtime, shared frontend authority, Meta runtime authorities, and public booking authority are owned by MasterApp Infrastructure/SHARED. No behavior rewrite, no duplicate service, no parallel data path, and no unrelated deployment.",
-  "requestId": "masterapp-platform-ownership-20260925",
+  "authorization": "Founder explicitly corrected the centralized commerce routing contract. Deploy only Protect Website, Parfait, and the existing Cloudflare business website router required to keep each storefront on its canonical public host. Preserve AgentPortal, ClientApp, LEGEND static website deployment, CRM, website drafts and published versions, database state, authentication, billing authorities, marketing connections, and unrelated systems.",
+  "purpose": "Replace public business and LEGEND storefront URLs that incorrectly expose shopparfait.com/store/s/{businessKey}. Business websites must use their verified registered host at /store, LEGEND must use mylegnd.com/store, Parfait remains shopparfait.com/store, and Protect remains the sole shared-host scoped exception at protect.mylegnd.com/store/s/{businessKey}. Reuse the single Parfait commerce product/order/checkout authority through the existing authenticated Cloudflare website-routing bridge; do not create a duplicate storefront, duplicate product/order system, or app-specific website runtime.",
+  "requestId": "commerce-custom-domain-store-routing-20260925",
   "releaseMode": "approved-only",
   "targets": [
     "masterapp-protect",
-    "masterapp-website"
+    "masterapp-parfait"
   ],
-  "cloudflareWebsiteRouting": false
+  "cloudflareWebsiteRouting": true,
+  "websiteRoutingCanaryHost": "camoexterior.com"
 }

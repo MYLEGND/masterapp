@@ -391,27 +391,12 @@ jobs:
               current="$(resolve_value "$settings_file" "MarketingDataProtection__$pair" "MarketingDataProtection:$pair" || true)"
               if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-MarketingDataProtection__$pair}=$expected"); fi
             done
-            if [ "$app" = masterapp-parfait ]; then
-              # Parfait authentication now uses the existing platform Data Protection
-              # authority. Reuse the canonical Portal Blob/Key Vault locations while
-              # keeping purpose isolation through application name "ParfaitApp".
-              for pair in BlobUri KeyVaultKeyId; do
-                expected="$blob"; if [ "$pair" = KeyVaultKeyId ]; then expected="$keyvault"; fi
-                key="$(resolve_key "$settings_file" "DataProtection__$pair" "DataProtection:$pair" || true)"
-                current="$(resolve_value "$settings_file" "DataProtection__$pair" "DataProtection:$pair" || true)"
-                if [ "$current" != "$expected" ]; then marketing_updates+=("${key:-DataProtection__$pair}=$expected"); fi
-              done
-            fi
             if [ "${#marketing_updates[@]}" -gt 0 ]; then
               az webapp config appsettings set -g masterapp-rg -n "$app" --settings "${marketing_updates[@]}" --output none
             fi
             az webapp config appsettings list -g masterapp-rg -n "$app" -o json > "$settings_file"
             [ "$(resolve_value "$settings_file" MarketingDataProtection__BlobUri 'MarketingDataProtection:BlobUri')" = "$blob" ]
             [ "$(resolve_value "$settings_file" MarketingDataProtection__KeyVaultKeyId 'MarketingDataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            if [ "$app" = masterapp-parfait ]; then
-              [ "$(resolve_value "$settings_file" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob" ]
-              [ "$(resolve_value "$settings_file" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault" ]
-            fi
           done
           echo "Selected marketing consumers use the shared key authority."
 
@@ -477,7 +462,26 @@ jobs:
           az webapp config appsettings list -g masterapp-rg -n masterapp-protect -o json > "$settings"
           persisted="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$settings" | head -n 1)"
           [ "$persisted" = "$bridge_secret" ]
-          echo "Shared website routing authority is present in Protect without exposing its value."
+
+          parfait_settings=/tmp/parfait-website-routing.json
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
+          parfait_bridge="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)"
+          parfait_origin="$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)"
+          if [ "$PRESERVE_LIVE_TARGETS" = true ]; then
+            [ "$parfait_bridge" = "$bridge_secret" ] || { echo "::error::Preserve-live routing recovery requires Parfait to already share the website bridge authority."; exit 1; }
+            [ "$parfait_origin" = "masterapp-parfait.azurewebsites.net" ] || { echo "::error::Preserve-live routing recovery requires Parfait's existing bridge origin host."; exit 1; }
+          else
+            parfait_updates=()
+            if [ "$parfait_bridge" != "$bridge_secret" ]; then parfait_updates+=("WebsiteRouting__BridgeSecret=$bridge_secret"); fi
+            if [ "$parfait_origin" != "masterapp-parfait.azurewebsites.net" ]; then parfait_updates+=("WebsiteRouting__BridgeOriginHost=masterapp-parfait.azurewebsites.net"); fi
+            if [ "${#parfait_updates[@]}" -gt 0 ]; then
+              az webapp config appsettings set -g masterapp-rg -n masterapp-parfait --settings "${parfait_updates[@]}" --output none
+            fi
+          fi
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait_settings"
+          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeSecret" or .name == "WebsiteRouting:BridgeSecret") | (.value // empty)' "$parfait_settings" | head -n 1)" = "$bridge_secret" ]
+          [ "$(jq -r '.[] | select(.name == "WebsiteRouting__BridgeOriginHost" or .name == "WebsiteRouting:BridgeOriginHost") | (.value // empty)' "$parfait_settings" | head -n 1)" = "masterapp-parfait.azurewebsites.net" ]
+          echo "Shared website routing authority is present in Protect and Parfait without exposing its value."
 
 
       - name: Apply additive diagnostics migrations before restarting apps
@@ -556,9 +560,18 @@ jobs:
           app-name: masterapp-protect
           slot-name: Production
           package: /tmp/protect-publish
+      - name: Direct deploy Parfait
+        id: parfait
+        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        continue-on-error: true
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: masterapp-parfait
+          slot-name: Production
+          package: /tmp/parfait-publish
       - name: Deploy shared Cloudflare business website router
         id: routingdeploy
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingsecret.outcome == 'success' && (steps.package.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && env.VALIDATE_ONLY != 'true' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -651,15 +664,6 @@ jobs:
             exit 1
           fi
           echo "Cloudflare website router deployed and LEGEND-owned host pass-through verified."
-      - name: Direct deploy Parfait
-        id: parfait
-        if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-parfait') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        continue-on-error: true
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-parfait
-          slot-name: Production
-          package: /tmp/parfait-publish
       - name: Direct deploy Website
         id: website
         if: ${{ !cancelled() && contains(fromJSON(env.SELECTED_TARGETS), 'masterapp-website') && steps.package.outcome == 'success' && steps.azure.outcome == 'success' && (steps.migrate.outcome == 'success' || env.PUBLIC_ONLY == 'true') }}
@@ -671,7 +675,7 @@ jobs:
           package: /tmp/diagnostics-packages/website.zip
       - name: Verify custom-domain bridge end to end
         id: routinglive
-        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
+        if: ${{ !cancelled() && env.WEBSITE_ROUTING == 'true' && steps.routingdeploy.outcome == 'success' && (steps.protect.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') && (steps.parfait.outcome == 'success' || env.PRESERVE_LIVE_TARGETS == 'true') }}
         continue-on-error: true
         shell: bash
         run: |
@@ -717,6 +721,20 @@ jobs:
                   value=receipt.get(key)
                   if not isinstance(value,str) or len(value) < 32:
                       raise SystemExit(f'Custom-domain routing proof missing {key}')
+          finally:
+              conn.close()
+
+          conn=http.client.HTTPSConnection(host,443,timeout=30,context=ssl.create_default_context())
+          try:
+              conn.request('GET','/store',headers={'User-Agent':'LEGEND-commerce-domain-proof/1.0','Cache-Control':'no-cache'})
+              response=conn.getresponse()
+              body=response.read(4097)
+              location=response.getheader('Location')
+              print(host,'/store',response.status,len(body),location or '')
+              if response.status != 200:
+                  raise SystemExit(f'Custom-domain store proof failed: HTTP {response.status}')
+              if location:
+                  raise SystemExit('Custom-domain store must not redirect away from the registered domain')
           finally:
               conn.close()
           PYCUSTOM

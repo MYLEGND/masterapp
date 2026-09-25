@@ -79,10 +79,9 @@ export async function compileBusiness(input, root=resolve(import.meta.dirname,'.
   const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted)
     .sort((a,b)=>a.order-b.order||a.route.localeCompare(b.route));
   const navEntries=manifest.filter(page=>page.showInNavigation);
-  const commerceBase=String(input?.commerce?.publicBaseUrl||'https://shopparfait.com').replace(/\/$/,'');
   const storeEnabled=input.document?.store?.enabled===true && !!input.business?.key;
   const storeLabel=String(input.document?.store?.navigationLabel||'Store').trim().slice(0,40)||'Store';
-  const storeRoot=storeEnabled?`${commerceBase}/store/s/${encodeURIComponent(input.business.key)}`:null;
+  const storeRoot=storeEnabled?'/store':null;
   const storeContext=storeEnabled?{
     enabled:true,label:storeLabel,commerceBusinessId:input.business.id,businessKey:input.business.key,
     storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
