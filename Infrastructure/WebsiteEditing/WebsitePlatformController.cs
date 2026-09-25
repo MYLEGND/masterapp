@@ -157,7 +157,7 @@ public class WebsitePlatformController : ControllerBase
             businessName = business?.DisplayName,
             facts = publicFacts,
             collections = publicCollections.Values,
-            store = StorePayload(document, publicStoreScope, ticket: null),
+            store = StorePayload(siteKey, document, publicStoreScope, ticket: null),
             document
         });
     }
@@ -1863,6 +1863,7 @@ public class WebsitePlatformController : ControllerBase
         (_configuration["Commerce:PublicBaseUrl"] ?? "https://shopparfait.com").TrimEnd('/');
 
     private object StorePayload(
+        string siteKey,
         WebsiteContentDocument document,
         WebsiteCommerceScope? scope,
         string? ticket)
@@ -1884,7 +1885,10 @@ public class WebsitePlatformController : ControllerBase
                 managerUrl = (string?)null
             };
 
-        var root = CommercePublicBaseUrl() + "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
+        var root = siteKey == WebsiteEditorSiteKeys.Protect
+            ? (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
+              "/store/s/" + Uri.EscapeDataString(scope.BusinessKey)
+            : "/store";
         return new
         {
             enabled = document.Store.Enabled,
