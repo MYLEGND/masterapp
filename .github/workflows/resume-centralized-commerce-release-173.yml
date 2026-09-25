@@ -1,11 +1,11 @@
 name: Resume centralized commerce release 173
+# trigger: parfait-runtime-authority-scope-repair-20260925
 
 on:
   push:
     branches:
       - legend/approved-changes
     paths:
-      - Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs
       - .github/workflows/resume-centralized-commerce-release-173.yml
 
 permissions:
@@ -18,197 +18,198 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APPLICATION_RELEASE_SHA: 3d1ebdb82561a12716d0d9c3f3daa927a1bfa803
-  SOURCE_RUN_ID: "36175813329"
-  ARTIFACT_NAME: founder-diagnostics-packages-3d1ebdb82561a12716d0d9c3f3daa927a1bfa803
-  COMMERCE_MIGRATION: 20260925163000_AddWebsiteCommerceScope
+  COMMERCE_APPLICATION_SHA: 3d1ebdb82561a12716d0d9c3f3daa927a1bfa803
 
 jobs:
-  resume:
+  resume-parfait:
     if: github.ref == 'refs/heads/legend/approved-changes'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     environment: Production
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Prove this is only the migration-metadata recovery
+      - name: Prove this resumes only the failed Parfait runtime gate
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git merge-base --is-ancestor "$APPLICATION_RELEASE_SHA" HEAD
-          mapfile -t changed < <(git diff --name-only "$APPLICATION_RELEASE_SHA" HEAD)
-          printf '%s\n' "${changed[@]}"
-          for path in "${changed[@]}"; do
-            case "$path" in
-              Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs|Docs/releases/direct-release-request.json|.github/workflows/resume-centralized-commerce-release-173.yml) ;;
-              *) echo "::error::Unexpected change after validated application package: $path"; exit 1 ;;
-            esac
-          done
-          test "${#changed[@]}" -ge 1
+          git merge-base --is-ancestor "$COMMERCE_APPLICATION_SHA" HEAD
+          test -f .github/workflows/resume-centralized-commerce-release-173.yml
+          echo "No application build, migration, package recovery, or unrelated deployment will be repeated."
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.x'
-
-      - name: Build only the EF migration startup assembly
-        run: |
-          dotnet build AgentPortal/AgentPortal.csproj -c Release --nologo -warnaserror
-          dotnet tool restore
-          ConnectionStrings__MasterAppDb='Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false' \
-            EF_FORCE_SQLSERVER=true DOTNET_ENVIRONMENT=Development ASPNETCORE_ENVIRONMENT=Development \
-            dotnet tool run dotnet-ef migrations has-pending-model-changes \
-              --project Infrastructure/Infrastructure.csproj \
-              --startup-project AgentPortal/AgentPortal.csproj \
-              --context MasterAppDbContext \
-              --configuration Release \
-              --no-build
-
-      - name: Recover exact validated deployment packages from failed run
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: /tmp/diagnostics-packages
-          github-token: ${{ github.token }}
-          run-id: ${{ env.SOURCE_RUN_ID }}
-
-      - name: Verify recovered packages are exact and immutable
+      - name: Confirm the retained commerce package is still the live Parfait target
         shell: bash
         run: |
           set -euo pipefail
-          test -s /tmp/diagnostics-packages/protect.zip
-          test -s /tmp/diagnostics-packages/parfait.zip
-          test -s /tmp/diagnostics-packages/website.zip
-          test -s /tmp/diagnostics-packages/SHA256SUMS
-          sha256sum -c /tmp/diagnostics-packages/SHA256SUMS
-          unzip -tq /tmp/diagnostics-packages/protect.zip >/dev/null
-          unzip -tq /tmp/diagnostics-packages/parfait.zip >/dev/null
-          unzip -tq /tmp/diagnostics-packages/website.zip >/dev/null
-          unzip -p /tmp/diagnostics-packages/protect.zip wwwroot/_deployment-provenance.json | jq -e --arg sha "$APPLICATION_RELEASE_SHA" '.releaseSha == $sha' >/dev/null
-          unzip -p /tmp/diagnostics-packages/parfait.zip wwwroot/_deployment-provenance.json | jq -e --arg sha "$APPLICATION_RELEASE_SHA" '.releaseSha == $sha' >/dev/null
-          test "$(unzip -p /tmp/diagnostics-packages/website.zip _deployment-provenance.txt | tr -d '\r\n')" = "$APPLICATION_RELEASE_SHA"
-          rm -rf /tmp/protect-publish /tmp/parfait-publish
-          mkdir -p /tmp/protect-publish /tmp/parfait-publish
-          unzip -q /tmp/diagnostics-packages/protect.zip -d /tmp/protect-publish
-          unzip -q /tmp/diagnostics-packages/parfait.zip -d /tmp/parfait-publish
+          python3 - <<'PY'
+          import urllib.error, urllib.request
+          url='https://masterapp-parfait.azurewebsites.net/api/runtime-provenance?before-authority-repair=1'
+          try:
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'Cache-Control':'no-cache'}),timeout=20) as r:
+                  print('pre-repair status', r.status)
+                  print(r.read(512).decode(errors='replace'))
+          except urllib.error.HTTPError as e:
+              print('pre-repair status', e.code)
+              print(e.read(512).decode(errors='replace'))
+          PY
 
-      - uses: azure/login@v2
+      - name: Authenticate to Azure
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Resume at failed step — apply only the validated additive migration
+      - name: Restore only Parfait canonical runtime authority
+        id: authority
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PYMIGRATE'
-          import json, os, subprocess
+          portal="$RUNNER_TEMP/portal-settings.json"
+          parfait="$RUNNER_TEMP/parfait-settings.json"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-portal -o json > "$portal"
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait"
 
-          candidate=os.environ['COMMERCE_MIGRATION']
-
-          def az(*args):
-              return json.loads(subprocess.check_output(['az',*args,'-o','json'],text=True))
-
-          rows=az('webapp','config','connection-string','list','-g','masterapp-rg','-n','masterapp-portal')
-          connection=next((x['value'] for x in rows if x['name']=='MasterAppDb'),None)
-          if not connection:
-              settings={x['name']:x['value'] for x in az('webapp','config','appsettings','list','-g','masterapp-rg','-n','masterapp-portal')}
-              connection=next((settings[k] for k in ('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb') if settings.get(k)),None)
-          if not connection or '\n' in connection or not any(x in connection.lower() for x in ('server=tcp:','.database.windows.net','initial catalog=')):
-              raise SystemExit('Production SQL connection unavailable; no deployment authorized.')
-          print('::add-mask::'+connection,flush=True)
-
-          env=os.environ | {
-              'ConnectionStrings__MasterAppDb':connection,
-              'EF_FORCE_SQLSERVER':'true',
-              'DOTNET_ENVIRONMENT':'Development',
-              'ASPNETCORE_ENVIRONMENT':'Development'
+          resolve_value() {
+            local file="$1"; shift
+            for key in "$@"; do
+              value="$(jq -r --arg key "$key" '.[] | select(.name == $key) | (.value // empty)' "$file" | head -n 1)"
+              if [ -n "$value" ]; then printf '%s' "$value"; return 0; fi
+            done
+            return 1
           }
-          common=[
-              '--project','Infrastructure/Infrastructure.csproj',
-              '--startup-project','AgentPortal/AgentPortal.csproj',
-              '--context','MasterAppDbContext',
-              '--configuration','Release',
-              '--no-build'
-          ]
-          listing=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
-          pending=[line.split()[0] for line in listing.splitlines() if '(Pending)' in line]
-          unexpected=[migration for migration in pending if migration != candidate]
-          if unexpected:
-              raise SystemExit('Unexpected pending migrations; no deployment authorized: '+', '.join(unexpected))
-          if candidate in pending:
-              subprocess.run(['dotnet','tool','run','dotnet-ef','database','update',candidate,*common],env=env,check=True)
-          else:
-              print('Candidate migration is already applied; continuing idempotently.')
 
-          after=subprocess.check_output(['dotnet','tool','run','dotnet-ef','migrations','list',*common],env=env,text=True)
-          remaining=[line.split()[0] for line in after.splitlines() if '(Pending)' in line]
-          if remaining:
-              raise SystemExit('Pending migrations remain after recovery: '+', '.join(remaining))
-          print('Commerce schema ready. No down migration executed.')
-          PYMIGRATE
+          founder="$(resolve_value "$portal" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')"
+          blob="$(resolve_value "$portal" DataProtection__BlobUri 'DataProtection:BlobUri')"
+          keyvault="$(resolve_value "$portal" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')"
+          [ -n "$founder" ] && [ -n "$blob" ] && [ -n "$keyvault" ]
+          echo "::add-mask::$founder"
+          echo "::add-mask::$blob"
+          echo "::add-mask::$keyvault"
 
-      - name: Deploy exact retained Protect package
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-protect
-          slot-name: Production
-          package: /tmp/protect-publish
+          current_founder="$(resolve_value "$parfait" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid' || true)"
+          current_blob="$(resolve_value "$parfait" DataProtection__BlobUri 'DataProtection:BlobUri' || true)"
+          current_keyvault="$(resolve_value "$parfait" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId' || true)"
 
-      - name: Deploy exact retained Parfait package
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-parfait
-          slot-name: Production
-          package: /tmp/parfait-publish
+          updates=()
+          if [ "$current_founder" != "$founder" ]; then updates+=("FOUNDER_OID=$founder"); fi
+          if [ "$current_blob" != "$blob" ]; then updates+=("DataProtection__BlobUri=$blob"); fi
+          if [ "$current_keyvault" != "$keyvault" ]; then updates+=("DataProtection__KeyVaultKeyId=$keyvault"); fi
+          if [ "${#updates[@]}" -gt 0 ]; then
+            az webapp config appsettings set -g masterapp-rg -n masterapp-parfait --settings "${updates[@]}" --output none
+          fi
 
-      - name: Deploy exact retained LEGEND Website package
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: masterapp-website
-          slot-name: Production
-          package: /tmp/diagnostics-packages/website.zip
+          parfait_pid="$(az webapp show -g masterapp-rg -n masterapp-parfait --query identity.principalId -o tsv)"
+          if [ -z "$parfait_pid" ]; then
+            parfait_pid="$(az webapp identity assign -g masterapp-rg -n masterapp-parfait --query principalId -o tsv)"
+          fi
+          [ -n "$parfait_pid" ]
 
-      - name: Verify every recovered target is live on the validated application SHA
+          BLOB_URI="$blob" KEY_URI="$keyvault" python3 - <<'PY' > "$RUNNER_TEMP/parfait-dp-resources.txt"
+          import os, urllib.parse
+          blob=urllib.parse.urlparse(os.environ["BLOB_URI"])
+          key=urllib.parse.urlparse(os.environ["KEY_URI"])
+          print((blob.hostname or "").split(".")[0])
+          print((key.hostname or "").split(".")[0])
+          PY
+          storage_name="$(sed -n '1p' "$RUNNER_TEMP/parfait-dp-resources.txt")"
+          vault_name="$(sed -n '2p' "$RUNNER_TEMP/parfait-dp-resources.txt")"
+          subscription_id="$(az account show --query id -o tsv)"
+          [ -n "$subscription_id" ]
+          storage_id="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.Storage/storageAccounts/$storage_name"
+          vault_id="/subscriptions/$subscription_id/resourceGroups/masterapp-rg/providers/Microsoft.KeyVault/vaults/$vault_name"
+
+          az role assignment create \
+            --assignee-object-id "$parfait_pid" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Storage Blob Data Contributor" \
+            --scope "$storage_id" --output none
+          az role assignment create \
+            --assignee-object-id "$parfait_pid" \
+            --assignee-principal-type ServicePrincipal \
+            --role "Key Vault Crypto User" \
+            --scope "$vault_id" --output none
+
+          az webapp config appsettings list -g masterapp-rg -n masterapp-parfait -o json > "$parfait"
+          test "$(resolve_value "$parfait" FOUNDER_OID FounderOid Founder__Oid 'Founder:Oid')" = "$founder"
+          test "$(resolve_value "$parfait" DataProtection__BlobUri 'DataProtection:BlobUri')" = "$blob"
+          test "$(resolve_value "$parfait" DataProtection__KeyVaultKeyId 'DataProtection:KeyVaultKeyId')" = "$keyvault"
+          test "$(az webapp show -g masterapp-rg -n masterapp-parfait --query identity.type -o tsv)" = "SystemAssigned"
+
+          rm -f "$portal" "$parfait" "$RUNNER_TEMP/parfait-dp-resources.txt"
+          echo "Parfait now uses the existing managed-identity Data Protection authority."
+
+      - name: Verify the retained commerce package recovers without redeployment
+        id: verify
         shell: bash
         run: |
-          python3 - <<'PYLIVE'
-          import concurrent.futures, json, os, time, urllib.request
-          expected=os.environ['APPLICATION_RELEASE_SHA']
-          inventory={
-              'masterapp-protect.azurewebsites.net':'/api/runtime-provenance',
-              'masterapp-parfait.azurewebsites.net':'/api/runtime-provenance',
-              'masterapp-website.azurewebsites.net':'/_deployment-provenance.txt',
-              'mylegnd.com':'/_deployment-provenance.txt',
-              'www.mylegnd.com':'/_deployment-provenance.txt'
-          }
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, time, urllib.error, urllib.request
+          expected=os.environ['COMMERCE_APPLICATION_SHA']
+          provenance='https://masterapp-parfait.azurewebsites.net/api/runtime-provenance?authority-repair='+expected
+          deadline=time.monotonic()+600
+          last=None
+          while time.monotonic()<deadline:
+              try:
+                  request=urllib.request.Request(provenance,headers={
+                      'Cache-Control':'no-cache',
+                      'User-Agent':'LEGEND-parfait-authority-recovery/1.0'})
+                  with urllib.request.urlopen(request,timeout=20) as response:
+                      body=json.load(response)
+                      actual=body.get('sourceRevision')
+                      last={'status':response.status,'actual':actual}
+                      if response.status==200 and actual==expected:
+                          break
+              except urllib.error.HTTPError as error:
+                  last={'status':error.code,'body':error.read(256).decode(errors='replace')}
+              except Exception as error:
+                  last={'error':type(error).__name__,'message':str(error)[:200]}
+              time.sleep(5)
+          else:
+              print(json.dumps({'passed':False,'endpoint':'provenance','last':last}))
+              raise SystemExit(1)
 
-          def verify(item):
-              host,path=item
-              end=time.monotonic()+480
-              actual=None
-              while time.monotonic()<end:
-                  try:
-                      request=urllib.request.Request(
-                          'https://'+host+path+'?release='+expected,
-                          headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-commerce-resume/1.0'})
-                      with urllib.request.urlopen(request,timeout=15) as response:
-                          actual=response.read().decode().strip() if path.endswith('.txt') else json.load(response).get('sourceRevision')
-                      if actual==expected:
-                          return {'host':host,'passed':True,'actual':actual}
-                  except Exception as error:
-                      actual=type(error).__name__
-                  time.sleep(5)
-              return {'host':host,'passed':False,'actual':actual}
+          checks=[
+              ('https://masterapp-parfait.azurewebsites.net/', {200}),
+              ('https://masterapp-parfait.azurewebsites.net/store', {200}),
+              ('https://shopparfait.com/', {200}),
+              ('https://shopparfait.com/store', {200}),
+              ('https://masterapp-parfait.azurewebsites.net/internal/login', {200,302}),
+          ]
+          failures=[]
+          for url, allowed in checks:
+              try:
+                  req=urllib.request.Request(url,headers={'Cache-Control':'no-cache','User-Agent':'LEGEND-parfait-authority-recovery/1.0'})
+                  opener=urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+                  with opener.open(req,timeout=20) as response:
+                      status=response.status
+                  if status not in allowed:
+                      failures.append({'url':url,'status':status})
+              except urllib.error.HTTPError as error:
+                  if error.code not in allowed:
+                      failures.append({'url':url,'status':error.code})
+              except Exception as error:
+                  failures.append({'url':url,'error':type(error).__name__})
+          print(json.dumps({'passed':not failures,'sourceRevision':expected,'failures':failures}))
+          if failures:
+              raise SystemExit(1)
+          PY
 
-          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-              rows=list(pool.map(verify,inventory.items()))
-          for row in rows:
-              print(json.dumps(row))
-          if not all(row['passed'] for row in rows):
-              raise SystemExit('Recovered commerce release did not verify on every selected live target.')
-          PYLIVE
+      - name: Enforce Parfait-only recovery outcome
+        if: always()
+        env:
+          AUTHORITY: ${{ steps.authority.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "authority=$AUTHORITY verify=$VERIFY"
+          if [ "$AUTHORITY" != success ] || [ "$VERIFY" != success ]; then
+            echo "::error::Parfait runtime authority recovery did not verify. No unrelated app was deployed."
+            exit 1
+          fi
+          echo "Parfait-only commerce recovery completed from the failed live gate without repeating prior build, migration, rollback preservation, or deployments."
