@@ -1,5 +1,5 @@
 name: Resume centralized commerce release 173
-# trigger: parfait-persistent-dp-recovery-20260925
+# trigger: parfait-persistent-dp-recovery-20260925-rerun
 
 on:
   push:
