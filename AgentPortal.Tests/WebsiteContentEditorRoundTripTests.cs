@@ -487,6 +487,171 @@ public sealed class WebsiteContentEditorRoundTripTests
     }
 
     [Fact]
+    public async Task SignalDryRun_ValidatesMappingWithoutPersistingAnalyticsMetaOrDraftChanges()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var browserBindingId = Guid.NewGuid().ToString("N");
+        var serverBindingId = Guid.NewGuid().ToString("N");
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride
+                {
+                    Text = "CTA",
+                    Signals =
+                    [
+                        new WebsiteSignalBinding
+                        {
+                            Id = browserBindingId,
+                            Trigger = "click",
+                            EventName = "LeadFormStart",
+                            DeliveryMode = "meta",
+                            OncePerSession = true
+                        },
+                        new WebsiteSignalBinding
+                        {
+                            Id = serverBindingId,
+                            Trigger = "submission_saved",
+                            EventName = "Lead",
+                            DeliveryMode = "meta",
+                            OncePerSession = true
+                        }
+                    ]
+                }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        fixture.Db.ChangeTracker.Clear();
+        var before = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        var beforeJson = before.DraftJson;
+
+        var browser = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, browserBindingId),
+            CancellationToken.None));
+        var browserJson = JsonSerializer.SerializeToElement(browser.Value, JsonOptions);
+        Assert.Equal("website_signal_private_dry_run", browserJson.GetProperty("source").GetString());
+        Assert.True(browserJson.GetProperty("dryRun").GetBoolean());
+        Assert.False(browserJson.GetProperty("persisted").GetBoolean());
+        Assert.False(browserJson.GetProperty("metaDispatched").GetBoolean());
+        Assert.True(browserJson.GetProperty("stages").GetProperty("mappingValidated").GetBoolean());
+        Assert.True(browserJson.GetProperty("stages").GetProperty("browserTriggerSupported").GetBoolean());
+        Assert.True(browserJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
+        Assert.False(browserJson.GetProperty("stages").GetProperty("browserPixelWouldInvoke").GetBoolean());
+
+        var server = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision, "/", ElementId, serverBindingId),
+            CancellationToken.None));
+        var serverJson = JsonSerializer.SerializeToElement(server.Value, JsonOptions);
+        Assert.True(serverJson.GetProperty("stages").GetProperty("serverOutcomeRequired").GetBoolean());
+        Assert.False(serverJson.GetProperty("stages").GetProperty("browserTriggerSupported").GetBoolean());
+        Assert.False(serverJson.GetProperty("stages").GetProperty("browserAnalyticsWouldBeAccepted").GetBoolean());
+
+        fixture.Db.ChangeTracker.Clear();
+        var after = Assert.Single(await fixture.Db.Set<WebsiteContentState>().AsNoTracking().ToListAsync());
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(beforeJson, after.DraftJson);
+        Assert.Empty(await fixture.Db.AnalyticsEvents.AsNoTracking().ToListAsync());
+        Assert.Empty(await fixture.Db.MetaSignalEvents.AsNoTracking().ToListAsync());
+
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest(ticket, before.Revision - 1, "/", ElementId, browserBindingId),
+            CancellationToken.None));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalDryRun(
+            new WebsiteContentController.WebsiteSignalTestRequest("invalid-ticket", before.Revision, "/", ElementId, browserBindingId),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SignalHealth_ReadsOnlyCurrentWebsiteVersionAndBindingHistoryWithoutSecrets()
+    {
+        using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        var bindingId = Guid.NewGuid().ToString("N");
+        var otherBindingId = Guid.NewGuid().ToString("N");
+        var document = new WebsiteContentDocument();
+        document.Pages["/"] = new WebsitePageDocument
+        {
+            Elements = new(StringComparer.Ordinal)
+            {
+                [ElementId] = new WebsiteElementOverride
+                {
+                    Signals =
+                    [
+                        new WebsiteSignalBinding
+                        {
+                            Id = bindingId,
+                            Trigger = "click",
+                            EventName = "LeadFormStart",
+                            DeliveryMode = "analytics"
+                        }
+                    ]
+                }
+            }
+        };
+        Assert.IsType<OkObjectResult>(await fixture.Controller.Save(new(ticket, document, 0)));
+        var state = Assert.Single(await fixture.Db.Set<WebsiteContentState>().ToListAsync());
+        var versionId = Guid.NewGuid();
+        state.PublishedVersionId = versionId;
+        fixture.Db.AnalyticsEvents.Add(new AnalyticsEvent
+        {
+            EventId = Guid.NewGuid(),
+            EventType = "LeadFormStart",
+            EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow,
+            CommerceBusinessId = fixture.BusinessId,
+            WebsiteContentVersionId = versionId,
+            WebsiteBindingId = bindingId,
+            PageKey = "/"
+        });
+        fixture.Db.MetaSignalEvents.Add(new MetaSignalEvent
+        {
+            EventId = Guid.NewGuid().ToString("N"),
+            EventName = "LeadFormStart",
+            CreatedUtc = DateTime.UtcNow,
+            CommerceBusinessId = fixture.BusinessId,
+            WebsiteContentVersionId = versionId,
+            WebsiteBindingId = bindingId,
+            MetaBrowserSent = false,
+            MetaServerSent = false,
+            MetadataJson = "{"metaServerAttempted":true,"metaServerSent":false,"metaServerStatus":"retry_scheduled","metaServerRetryable":true,"metaServerAttemptCount":2,"metaServerHttpStatusCode":503,"metaServerTraceId":"trace-safe"}"
+        });
+        fixture.Db.AnalyticsEvents.Add(new AnalyticsEvent
+        {
+            EventId = Guid.NewGuid(),
+            EventType = "LeadFormStart",
+            EventUtc = DateTime.UtcNow,
+            ReceivedUtc = DateTime.UtcNow,
+            CommerceBusinessId = Guid.NewGuid(),
+            WebsiteContentVersionId = Guid.NewGuid(),
+            WebsiteBindingId = otherBindingId
+        });
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().SignalHealth(
+            ticket, "/", ElementId, bindingId, CancellationToken.None));
+        var json = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+        Assert.Equal("website_signal_existing_authorities", json.GetProperty("source").GetString());
+        Assert.Equal(versionId, json.GetProperty("publishedVersionId").GetGuid());
+        Assert.Single(json.GetProperty("analytics").EnumerateArray());
+        var meta = Assert.Single(json.GetProperty("meta").EnumerateArray());
+        Assert.Equal("retry_scheduled", meta.GetProperty("dispatch").GetProperty("status").GetString());
+        Assert.Equal(2, meta.GetProperty("dispatch").GetProperty("attemptCount").GetInt32());
+        Assert.Equal(503, meta.GetProperty("dispatch").GetProperty("httpStatusCode").GetInt32());
+        Assert.Equal("trace-safe", meta.GetProperty("dispatch").GetProperty("traceId").GetString());
+
+        var serialized = json.ToString();
+        Assert.DoesNotContain("AccessToken", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Ciphertext", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(otherBindingId, serialized, StringComparison.Ordinal);
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().SignalHealth(
+            "invalid-ticket", "/", ElementId, bindingId, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DraftQuality_ReadsOnlyAuthorizedPersistedDraftAndReportsServerSource()
     {
         using var fixture = new Fixture(WebsiteEditorSiteKeys.Business);
