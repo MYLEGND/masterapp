@@ -316,6 +316,95 @@ test('canonical public stylesheet preserves authored spaces, tabs and line break
   assert.match(publicCss,/\[data-cms-preserve-whitespace="true"\]\{white-space:pre-wrap;tab-size:4;overflow-wrap:anywhere\}/);
 });
 
+test('Add panel is rendered from the authenticated component capability catalog',async()=>{
+  const f=await domFixture();
+  try {
+    assert.equal(f.w.document.querySelectorAll('#legend-cms-add-components [data-add]').length, componentCatalogFixture.filter(x=>x.type!=='image').length);
+    assert.equal(f.w.document.querySelector('#legend-cms-new-image')?.textContent,'Image');
+    assert.equal(source.includes('<button data-add="text">Text</button>'),false);
+    assert.ok(editorContractsSource.includes('WebsiteComponentCatalog'));
+  } finally { f.close(); }
+});
+
+test('mobile edits stay in the responsive variant while desktop base remains unchanged',async()=>{
+  const doc={breakpoints:[{id:'tablet',label:'Tablet',maxWidthPx:1024},{id:'mobile',label:'Mobile',maxWidthPx:640}],pages:{'/':{elements:{'home.h1.template-title.1':{style:{widthPercent:80}}},sectionOrder:{},extras:[]}}};
+  const f=await domFixture({doc,innerWidth:1280}); let saved;
+  try {
+    f.click('main h1');
+    assert.equal(f.w.document.querySelector('main h1').style.width,'80%');
+    f.change('#legend-cms-breakpoint','mobile');
+    f.input('#legend-cms-width','45');
+    saved=await f.save();
+    const element=saved.pages['/'].elements['home.h1.template-title.1'];
+    assert.equal(element.style.widthPercent,80);
+    assert.equal(element.responsive.mobile.style.widthPercent,45);
+    assert.equal(element.responsive.tablet,undefined);
+  } finally { f.close(); }
+
+  const desktop=await domFixture({doc:saved,search:'',innerWidth:1280});
+  try { assert.equal(desktop.w.document.querySelector('main h1').style.width,'80%'); }
+  finally { desktop.close(); }
+  const mobile=await domFixture({doc:saved,search:'',innerWidth:500});
+  try { assert.equal(mobile.w.document.querySelector('main h1').style.width,'45%'); }
+  finally { mobile.close(); }
+});
+
+test('responsive variants cascade desktop to tablet to mobile without duplicating complete layouts',async()=>{
+  const doc={breakpoints:[{id:'tablet',label:'Tablet',maxWidthPx:1024},{id:'mobile',label:'Mobile',maxWidthPx:640}],pages:{'/':{elements:{'home.h1.template-title.1':{
+    style:{widthPercent:90,paddingTop:10},
+    responsive:{tablet:{style:{widthPercent:70},layout:{}},mobile:{style:{paddingTop:30},layout:{}}}
+  }},sectionOrder:{},extras:[]}}};
+  const f=await domFixture({doc,search:'',innerWidth:500});
+  try {
+    const heading=f.w.document.querySelector('main h1');
+    assert.equal(heading.style.width,'70%');
+    assert.equal(heading.style.paddingTop,'30px');
+  } finally { f.close(); }
+});
+
+test('container layout modes are persisted in the same element override and rendered directly',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('main h1');
+    f.click('#legend-cms-container');
+    f.input('#legend-cms-layout-mode','grid');
+    f.input('#legend-cms-layout-columns','6');
+    f.input('#legend-cms-layout-column-gap','18');
+    saved=await f.save();
+    const section=saved.pages['/'].elements['section:home.section.1'];
+    assert.equal(section.layout.mode,'grid');
+    assert.equal(section.layout.columns,6);
+    assert.equal(section.layout.columnGap,18);
+  } finally { f.close(); }
+
+  const published=await domFixture({doc:saved,search:''});
+  try {
+    const section=published.w.document.querySelector('main section');
+    assert.equal(section.style.display,'grid');
+    assert.equal(section.style.gridTemplateColumns,'repeat(6, minmax(0, 1fr))');
+    assert.equal(section.style.columnGap,'18px');
+  } finally { published.close(); }
+});
+
+test('professional geometry controls persist at the active breakpoint only',async()=>{
+  const f=await domFixture(); let saved;
+  try {
+    f.click('main h1');
+    f.change('#legend-cms-breakpoint','tablet');
+    const set=(key,value)=>f.input(`[data-geometry-key="${key}"]`,value);
+    set('minWidthPx','240');set('maxWidthPx','760');set('aspectRatio','1.5');
+    set('opacity','0.72');set('rotationDeg','8');set('scaleX','1.1');set('scaleY','0.9');set('zIndex','12');
+    saved=await f.save();
+    const element=Object.values(saved.pages['/'].elements).find(x=>x.responsive?.tablet);
+    assert.ok(element);
+    assert.equal(element.style.minWidthPx,undefined);
+    assert.equal(element.responsive.tablet.style.maxWidthPx,760);
+    assert.equal(element.responsive.tablet.style.rotationDeg,8);
+    assert.equal(element.responsive.tablet.style.zIndex,12);
+  } finally { f.close(); }
+});
+
+
 test('shared business inquiry uses Protect contact identity and two-column rows',()=>{
   assert.ok(businessBuildSource.includes('id="website_inquiry"'));
   for (const field of ['FirstName','LastName','Phone','Email']) assert.ok(businessBuildSource.includes(`name="${field}"`));
