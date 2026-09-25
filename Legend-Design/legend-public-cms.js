@@ -2204,6 +2204,114 @@
     const span = Math.min(13 - column, Math.max(1, Number(placement.span) || 12));
     el.style.setProperty('--cms-column', String(column)); el.style.setProperty('--cms-span', String(span)); el.style.minWidth = '0'; el.style.maxWidth = '100%'; el.style.overflowWrap = 'anywhere';
   }
+  function liveQualityIssues() {
+    const root = editorPreview || document;
+    const issues = [];
+    const add = (code, severity, category, scope, message) => issues.push({ code, severity, category, scope, message });
+    const visible = element => !element.hidden && element.getAttribute?.('aria-hidden') !== 'true';
+
+    const images = [...root.querySelectorAll('img')].filter(image => !image.closest('.legend-cms-editor') && visible(image));
+    for (const image of images) {
+      const override = overrideForElement(image, false);
+      const decorative = override?.isDecorative === true || image.getAttribute('aria-hidden') === 'true';
+      const alt = (override?.alt ?? image.getAttribute('alt') ?? '').trim();
+      if (!decorative && !alt)
+        add('live_image_alt_missing','warning','Accessibility',elementLabel(image),'Add image description text or mark this image decorative.');
+    }
+
+    const headings = [...root.querySelectorAll('main h1,main h2,main h3,main h4,main h5,main h6')]
+      .filter(heading => !heading.closest('.legend-cms-editor') && visible(heading));
+    const h1s = headings.filter(heading => heading.tagName === 'H1');
+    if (h1s.length === 0) add('live_h1_missing','warning','Accessibility',pageKey,'Add one clear H1 page heading.');
+    if (h1s.length > 1) add('live_h1_multiple','info','Accessibility',pageKey,`This page renders ${h1s.length} H1 headings. Confirm the heading hierarchy is intentional.`);
+    let previousLevel = null;
+    for (const heading of headings) {
+      const level = Number(heading.tagName.slice(1));
+      if (previousLevel && level > previousLevel + 1)
+        add('live_heading_level_jump','warning','Accessibility',elementLabel(heading),`Heading level jumps from H${previousLevel} to H${level}. Use a logical heading order.`);
+      previousLevel = level;
+    }
+
+    const controls = [...root.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea')]
+      .filter(control => !control.closest('.legend-cms-editor') && visible(control));
+    for (const control of controls) {
+      const labelled = !!control.getAttribute('aria-label') || !!control.getAttribute('aria-labelledby') || !!control.closest('label') ||
+        (!!control.id && !!root.querySelector(`label[for="${CSS.escape(control.id)}"]`));
+      if (!labelled)
+        add('live_form_label_missing','warning','Accessibility',control.name || control.id || control.tagName,'Add a visible label or accessible name for this field.');
+    }
+
+    const actions = [...root.querySelectorAll('a[href],button')]
+      .filter(action => !action.closest('.legend-cms-editor') && visible(action));
+    for (const action of actions) {
+      const name = (action.getAttribute('aria-label') || action.textContent || '').trim();
+      if (!name) add('live_action_name_missing','warning','Accessibility',action.getAttribute('href') || action.tagName,'Give this action visible text or an accessible name.');
+    }
+
+    const ids = new Map();
+    [...root.querySelectorAll('[id]')].filter(element => !element.closest('.legend-cms-editor')).forEach(element => {
+      if (!element.id) return;
+      if (!ids.has(element.id)) ids.set(element.id, []);
+      ids.get(element.id).push(element);
+    });
+    for (const [id, matches] of ids) if (matches.length > 1)
+      add('live_duplicate_id','warning','Accessibility',id,`This rendered page contains ${matches.length} elements with the same id. IDs must be unique.`);
+
+    if (editorPreview && editorPreview.clientWidth > 0 && editorPreview.scrollWidth > editorPreview.clientWidth + 2)
+      add('live_horizontal_overflow','warning','Performance','Current viewport','The rendered page is wider than the active viewport. Check positioned elements, fixed widths, and custom code.');
+
+    return issues;
+  }
+
+  function qualityCount(report, key) {
+    const pascal = key[0].toUpperCase() + key.slice(1);
+    return Number(report?.[key] ?? report?.[pascal] ?? 0) || 0;
+  }
+
+  function renderQualityIssueList(host, issues, emptyText) {
+    host.replaceChildren();
+    if (!issues?.length) {
+      const empty = document.createElement('p');
+      empty.className = 'legend-cms-quality-empty';
+      empty.textContent = emptyText;
+      host.appendChild(empty);
+      return;
+    }
+    for (const issue of issues) {
+      const card = document.createElement('article');
+      card.className = `legend-cms-quality-issue legend-cms-quality-${issue.severity || 'info'}`;
+      const heading = document.createElement('strong');
+      heading.textContent = `${issue.category || 'Quality'} · ${String(issue.severity || 'info').toUpperCase()}`;
+      const scope = document.createElement('small');
+      scope.textContent = issue.scope || 'Website';
+      const message = document.createElement('p');
+      message.textContent = issue.message || issue.code || 'Review this item.';
+      card.append(heading, scope, message);
+      host.appendChild(card);
+    }
+  }
+
+  function renderQualityPanel() {
+    const serverSummary = document.getElementById('legend-cms-quality-server-summary');
+    const serverHost = document.getElementById('legend-cms-quality-server');
+    const liveSummary = document.getElementById('legend-cms-quality-live-summary');
+    const liveHost = document.getElementById('legend-cms-quality-live');
+    if (!serverHost || !liveHost) return;
+
+    const serverIssues = savedQualityReport?.issues || savedQualityReport?.Issues || [];
+    const errorCount = qualityCount(savedQualityReport,'errorCount');
+    const warningCount = qualityCount(savedQualityReport,'warningCount');
+    const infoCount = qualityCount(savedQualityReport,'infoCount');
+    if (serverSummary) serverSummary.textContent = savedQualityReport
+      ? `${errorCount} blocking · ${warningCount} warning · ${infoCount} review`
+      : 'Save the draft to refresh authoritative server checks.';
+    renderQualityIssueList(serverHost, serverIssues, 'Saved draft has no server-detected quality issues.');
+
+    const liveIssues = liveQualityIssues();
+    if (liveSummary) liveSummary.textContent = `${liveIssues.filter(issue=>issue.severity==='warning').length} warning · ${liveIssues.filter(issue=>issue.severity==='info').length} review`;
+    renderQualityIssueList(liveHost, liveIssues, 'The current rendered page passes the available live checks.');
+  }
+
   function showPanel(name) {
     document.querySelectorAll('[data-cms-view]').forEach(view => { view.hidden = view.dataset.cmsView !== name; });
     document.querySelectorAll('[data-open]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.open === name)));
@@ -2211,6 +2319,7 @@
     if (name === 'page') syncPageControls();
     if (name === 'motion') renderMotionControls();
     if (name === 'media') void loadMediaLibrary();
+    if (name === 'quality') renderQualityPanel();
   }
 
   function elementLabel(el) {
