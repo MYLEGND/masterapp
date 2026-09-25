@@ -16,24 +16,30 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
 {
     private static readonly HashSet<string> LegendHosts =
         new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
+    private static readonly string ProtectHost =
+        new Uri(Shared.Analytics.ProtectRouteCatalog.CanonicalOrigin).IdnHost;
 
     public static bool HasValidPublicOrigin(HttpContext context) =>
         TryOrigin(context.Request.Headers.Origin.ToString(), out _);
 
     public async Task<PublicWebsiteRuntimeScope?> ResolveInquiryAsync(
         HttpContext context,
+        string? sourcePath = null,
         CancellationToken cancellationToken = default)
     {
-        // The verified browser Origin selects the public owner. The form never sends
-        // an owner ID or site key that could redirect an inquiry to another scope.
-        var legend = await ResolveAsync(context, WebsiteEditorSiteKeys.Legend, cancellationToken);
+        // The verified browser Origin + public page path selects the owner. The form
+        // never supplies a permanent owner ID or tracking-profile ID.
+        var legend = await ResolveAsync(context, WebsiteEditorSiteKeys.Legend, sourcePath, cancellationToken);
         if (legend is not null) return legend;
-        return await ResolveAsync(context, WebsiteEditorSiteKeys.Business, cancellationToken);
+        var protect = await ResolveAsync(context, WebsiteEditorSiteKeys.Protect, sourcePath, cancellationToken);
+        if (protect is not null) return protect;
+        return await ResolveAsync(context, WebsiteEditorSiteKeys.Business, sourcePath, cancellationToken);
     }
 
     public async Task<PublicWebsiteRuntimeScope?> ResolveAsync(
         HttpContext context,
         string? requestedSiteKey,
+        string? sourcePath = null,
         CancellationToken cancellationToken = default)
     {
         var siteKey = NormalizeSiteKey(requestedSiteKey);
@@ -63,6 +69,31 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                 null,
                 version,
                 origin.IdnHost);
+        }
+
+        if (siteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            if (!origin.IdnHost.Equals(ProtectHost, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var pagePath = NormalizePath(sourcePath) ?? RefererPath(context, origin) ?? "/";
+            var profile = await ResolveProtectProfileAsync(pagePath, cancellationToken);
+            if (profile is null)
+                return null;
+
+            var ownerKey = NormalizeOwner(profile.AgentUserId);
+            var version = await PublishedAsync(ownerKey, WebsiteEditorSiteKeys.Protect, cancellationToken);
+            if (version is null)
+                return null;
+
+            return new PublicWebsiteRuntimeScope(
+                WebsiteEditorSiteKeys.Protect,
+                ownerKey,
+                null,
+                version,
+                origin.IdnHost,
+                profile.Id,
+                profile.Slug);
         }
 
         if (siteKey == WebsiteEditorSiteKeys.Business)
@@ -95,6 +126,22 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         if (scope.SiteKey == WebsiteEditorSiteKeys.Legend)
             return true;
 
+        if (scope.SiteKey == WebsiteEditorSiteKeys.Protect)
+        {
+            var canonical = Shared.Analytics.ProtectRouteCatalog.CanonicalPath(normalized);
+            if (canonical.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+            {
+                var end = canonical.IndexOf('/', 3);
+                if (end < 0) return false;
+                var scopedSlug = canonical[3..end];
+                if (!string.Equals(scopedSlug, scope.AgentSlug, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                canonical = canonical[end..];
+            }
+            return Shared.Analytics.ProtectRouteCatalog.Routes.Any(route =>
+                route.Path.Equals(canonical, StringComparison.OrdinalIgnoreCase));
+        }
+
         if (scope.SiteKey != WebsiteEditorSiteKeys.Business ||
             string.IsNullOrWhiteSpace(scope.PublishedVersion?.CompiledPagesJson))
             return false;
@@ -111,6 +158,59 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             return false;
         }
     }
+
+    private async Task<AgentTrackingProfile?> ResolveProtectProfileAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var slug = AgentSlugFromPath(path);
+        if (!string.IsNullOrWhiteSpace(slug))
+        {
+            var normalized = slug.Trim().ToLowerInvariant();
+            return await db.AgentTrackingProfiles.AsNoTracking()
+                .SingleOrDefaultAsync(profile =>
+                    profile.Status == "active" &&
+                    profile.Slug.ToLower() == normalized,
+                    cancellationToken);
+        }
+
+        var founderUpn = (configuration["Founder:Upn"] ?? string.Empty).Trim().ToLowerInvariant();
+        if (founderUpn.Length == 0)
+            return null;
+
+        return await db.AgentTrackingProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(profile =>
+                profile.Status == "active" &&
+                profile.AgentUpn.ToLower() == founderUpn,
+                cancellationToken);
+    }
+
+    private static string? AgentSlugFromPath(string? path)
+    {
+        var normalized = NormalizePath(path);
+        if (normalized is null || !normalized.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var remainder = normalized[3..];
+        var slash = remainder.IndexOf('/');
+        var slug = (slash < 0 ? remainder : remainder[..slash]).Trim();
+        return slug.Length is > 0 and <= 160 &&
+               slug.All(character => char.IsLetterOrDigit(character) || character is '-' or '_')
+            ? slug
+            : null;
+    }
+
+    private static string? RefererPath(HttpContext context, Uri origin)
+    {
+        var raw = context.Request.Headers.Referer.ToString();
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var referer) ||
+            referer.Scheme != Uri.UriSchemeHttps ||
+            !referer.IdnHost.Equals(origin.IdnHost, StringComparison.OrdinalIgnoreCase))
+            return null;
+        return NormalizePath(referer.AbsolutePath);
+    }
+
+    private static string NormalizeOwner(string? value)
+        => (value ?? string.Empty).Trim().ToLowerInvariant();
 
     private async Task<WebsiteContentVersion?> PublishedAsync(
         string ownerKey,
@@ -168,4 +268,6 @@ public sealed record PublicWebsiteRuntimeScope(
     string OwnerKey,
     Guid? CommerceBusinessId,
     WebsiteContentVersion? PublishedVersion,
-    string OriginHost);
+    string OriginHost,
+    Guid? AgentTrackingProfileId = null,
+    string? AgentSlug = null);
