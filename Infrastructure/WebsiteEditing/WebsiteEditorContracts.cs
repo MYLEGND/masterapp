@@ -241,6 +241,7 @@ public static class WebsiteComponentCatalog
         new("button", "Button / link", "Basic", true, false, true, false, ["flow"], ["viewed", "click"]),
         new("video", "Video", "Media", false, true, false, false, ["flow"], ["viewed", "click"]),
         new("card", "Card", "Layout", true, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack], ["viewed", "click"]),
+        new("group", "Group", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed"]),
         new("section", "Section", "Layout", false, false, false, true, [WebsiteLayoutModeCatalog.Flow, WebsiteLayoutModeCatalog.Grid, WebsiteLayoutModeCatalog.Flex, WebsiteLayoutModeCatalog.Stack, WebsiteLayoutModeCatalog.Free], ["viewed", "scroll_threshold"]),
         new("code", "Code / embed", "Advanced", false, false, false, false, ["flow"], ["viewed"])
     ];
