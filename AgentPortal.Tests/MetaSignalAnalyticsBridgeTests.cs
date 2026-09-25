@@ -76,6 +76,33 @@ public class MetaSignalAnalyticsBridgeTests
     }
 
     [Fact]
+    public void BridgeMetadata_CarriesCanonicalWebsiteSiteKeyForOwnerResolution()
+    {
+        var source = BuildSourceAnalyticsEvent(
+            "website_lead_submitted",
+            "legend-session",
+            MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                eventName: "website_lead_submitted",
+                leadId: Guid.NewGuid(),
+                sessionId: "legend-session",
+                payload: new { siteKey = "legend" },
+                isBrowserSignal: false,
+                isServerAuthority: true,
+                metaServerAuthorityEligible: true,
+                metaSingleTruthDispatchEligible: false,
+                metaPipelineOrigin: "legend_website_inquiry_saved"));
+
+        var metadataJson = InvokeBridgeMetadataBuild(
+            source,
+            mappedEventName: "Lead",
+            deduplicationKey: "legend-lead",
+            trafficType: "crm",
+            resolvedLeadId: Guid.NewGuid());
+
+        Assert.Equal("legend", ReadString(metadataJson, "siteKey"));
+    }
+
+    [Fact]
     public void BridgeMetadata_RefusesDispatchEligibilityWithoutServerTruthMarker()
     {
         var source = BuildSourceAnalyticsEvent("appointment_booked", "session-tagged");
