@@ -135,6 +135,12 @@ public sealed class WebsiteStyleOverride
     public decimal? ScaleY { get; set; }
     public int? ZIndex { get; set; }
     public string? PositionMode { get; set; }
+    public string? HorizontalAnchor { get; set; }
+    public string? VerticalAnchor { get; set; }
+    public decimal? InsetLeftPx { get; set; }
+    public decimal? InsetRightPx { get; set; }
+    public decimal? InsetTopPx { get; set; }
+    public decimal? InsetBottomPx { get; set; }
     public decimal? AspectRatio { get; set; }
 
 }
