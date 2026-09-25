@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - architecture/masterapp-platform-ownership-20260925
+      - architecture/masterapp-authority-completion-20260925
     paths-ignore:
       - 'Docs/**'
   workflow_dispatch:
@@ -45,23 +46,34 @@ jobs:
       - name: Build Protect host
         run: dotnet build Protect-Website/ProtectWebsite.csproj -c Release --no-restore
 
+      - name: Verify Protect serves the exact shared tracking assets
+        run: |
+          dotnet publish Protect-Website/ProtectWebsite.csproj -c Release --no-restore -o "$RUNNER_TEMP/protect-authority-publish"
+          cmp SHARED/WebsitePlatform/tracking.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/tracking.js"
+          cmp SHARED/WebsitePlatform/meta-signal-intelligence.js "$RUNNER_TEMP/protect-authority-publish/wwwroot/js/meta-signal-intelligence.js"
+
       - name: Compile full regression test project
         run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
 
       - name: Run website ownership and publishing regressions
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests"
+          --filter "FullyQualifiedName~WebsitePublishingAuthorityTests|FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteEditorTicketAuthorityIsolationTests|FullyQualifiedName~WebsiteDomainImportTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~BusinessWorkspaceTests"
 
       - name: Run Meta authority regressions
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
-          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests"
+          --filter "FullyQualifiedName~MetaSignalAnalyticsBridgeTests|FullyQualifiedName~MetaSignalBridgeRecoveryTests|FullyQualifiedName~MetaSignalOutcomeDispatcherHostedServiceTests|FullyQualifiedName~MetaConversionsApiServiceTests|FullyQualifiedName~UnifiedEventMapperTests|FullyQualifiedName~AnalyticsIngestControllerTests|FullyQualifiedName~LaunchAuditReliabilityTests|FullyQualifiedName~WebsiteInquiryIsolationTests|FullyQualifiedName~MarketingConnectionIsolationTests|FullyQualifiedName~BusinessMetaPixelResolutionTests|FullyQualifiedName~BusinessMetaAdsScopeTests|FullyQualifiedName~MetaSignalSingleTruthPolicyTests|FullyQualifiedName~TrackingProxyContractTests|FullyQualifiedName~ProtectLeadModalInquiryTests"
 
       - name: Run booking authority regressions
         run: >
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
           --filter "FullyQualifiedName~PublicBookingResolverTests|FullyQualifiedName~PublicBookingConfirmationServiceTests|FullyQualifiedName~LifeQuoteControllerPublicBookingTests"
+
+      - name: Run CRM outcome regressions
+        run: >
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build
+          --filter "FullyQualifiedName~LeadsControllerTests|FullyQualifiedName~ProductionControllerTests|FullyQualifiedName~WebsiteAnalyticsScopeTests"
 
       - name: Install shared website renderer dependencies
         working-directory: Legend-Website
@@ -89,23 +101,17 @@ jobs:
           git fetch --no-tags origin legend/approved-changes
           base=origin/legend/approved-changes
 
-          # A failing renderer suite may only be treated as pre-existing when the
-          # renderer and its tests are unchanged and the centralized assets are
-          # byte-identical to their approved pre-move authorities.
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs
-          git diff --quiet "$base" -- Legend-Website/scripts/render-business.test.mjs
-          git diff --quiet "$base" -- Legend-Website/package-lock.json
-
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "$tmpdir"' EXIT
-          git show "$base:Legend-Design/legend-public-cms.js" > "$tmpdir/legend-public-cms.js"
-          git show "$base:Legend-Design/legend-public-web.js" > "$tmpdir/legend-public-web.js"
-          git show "$base:Legend-Design/legend-public-web.css" > "$tmpdir/legend-public-web.css"
-          cmp -s SHARED/WebsitePlatform/legend-public-cms.js "$tmpdir/legend-public-cms.js"
-          cmp -s SHARED/WebsitePlatform/legend-public-web.js "$tmpdir/legend-public-web.js"
-          cmp -s SHARED/WebsitePlatform/legend-public-web.css "$tmpdir/legend-public-web.css"
-
-          echo "Renderer suite failure is pre-existing and all renderer inputs touched by this ownership move are byte-identical to the approved baseline."
+          # Only excuse an approved-baseline failure when every renderer input,
+          # its tests, and the shared runtime are byte-identical to that baseline.
+          git diff --quiet "$base" -- Legend-Website/scripts/render-business.mjs Legend-Website/scripts/render-business.test.mjs Legend-Website/package-lock.json
+          git diff --quiet "$base" -- SHARED/WebsitePlatform/legend-public-cms.js SHARED/WebsitePlatform/legend-public-web.js SHARED/WebsitePlatform/legend-public-web.css
+          git diff --quiet "$base" -- tests/website ':!tests/website/legend-public-cms.test.mjs'
+          git show "$base:tests/website/legend-public-cms.test.mjs" |
+            sed 's#../../Protect-Website/wwwroot/js/meta-signal-intelligence.js#../../SHARED/WebsitePlatform/meta-signal-intelligence.js#' |
+            cmp -s - tests/website/legend-public-cms.test.mjs
+          cmp -s SHARED/WebsitePlatform/tracking.js <(git show "$base:Protect-Website/wwwroot/js/tracking.js")
+          cmp -s SHARED/WebsitePlatform/meta-signal-intelligence.js <(git show "$base:Protect-Website/wwwroot/js/meta-signal-intelligence.js")
+          echo "Renderer suite failure also exists with byte-identical approved renderer inputs."
 
       - name: Install canonical shared CMS test dependencies
         working-directory: tests/website
@@ -114,3 +120,6 @@ jobs:
       - name: Run canonical shared CMS tests
         working-directory: tests/website
         run: npm test
+
+      - name: Run canonical form tracking tests
+        run: node --test tests/analytics/form-tracker.test.cjs

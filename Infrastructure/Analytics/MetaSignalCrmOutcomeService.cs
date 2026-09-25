@@ -4,9 +4,10 @@ using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Shared.Analytics;
 
-namespace AgentPortal.Services;
+namespace Infrastructure.Analytics;
 
 public sealed class MetaSignalCrmOutcomeService
 {

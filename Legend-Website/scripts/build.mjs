@@ -24,8 +24,8 @@ await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/images/company-icons/le
 await copyFile(resolve(repoRoot,'SHARED/WebsitePlatform/legend-public-web.js'),resolve(dist,'legend-public-web.js'));
 await copyFile(resolve(repoRoot,'SHARED/WebsitePlatform/legend-public-cms.js'),resolve(dist,'legend-public-cms.js'));
 await copyFile(resolve(repoRoot,'Legend-Design/legend-public-inquiry.js'),resolve(dist,'legend-public-inquiry.js'));
-await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/js/tracking.js'),resolve(dist,'legend-public-tracking.js'));
-await copyFile(resolve(repoRoot,'Protect-Website/wwwroot/js/meta-signal-intelligence.js'),resolve(dist,'legend-public-meta-signal-intelligence.js'));
+await copyFile(resolve(repoRoot,'SHARED/WebsitePlatform/tracking.js'),resolve(dist,'legend-public-tracking.js'));
+await copyFile(resolve(repoRoot,'SHARED/WebsitePlatform/meta-signal-intelligence.js'),resolve(dist,'legend-public-meta-signal-intelligence.js'));
 // Version shared assets by their exact bytes, as Protect's append-version does.
 const assetVersion = async path => createHash('sha256').update(await readFile(resolve(dist,path))).digest('hex');
 const cmsVersion=await assetVersion('legend-public-cms.js');

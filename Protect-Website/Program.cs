@@ -106,6 +106,7 @@ else
 }
 
 builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
+builder.Services.AddScoped<IWebsiteInquiryEmailSender>(services => services.GetRequiredService<IProtectEmailSender>());
 builder.Services.AddScoped<BusinessInquiryNotificationService>();
 builder.Services.AddHostedService<BusinessInquiryNotificationWorker>();
 
