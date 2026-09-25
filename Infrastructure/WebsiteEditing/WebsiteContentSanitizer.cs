@@ -25,13 +25,19 @@ public static class WebsiteContentSanitizer
             var id = SanitizeId(string.IsNullOrWhiteSpace(pair.Key) ? pair.Value.Id : pair.Key);
             if (id.Length == 0 || clean.ReusableComponents.ContainsKey(id)) continue;
 
+            var rootType = (pair.Value.RootType ?? string.Empty).Trim().ToLowerInvariant();
+            if (rootType is not ("group" or "container")) rootType = "group";
+            var rootCapability = WebsiteComponentCatalog.Find(rootType);
             var definition = new WebsiteReusableComponentDefinition
             {
                 Id = id,
                 Name = ClampText(pair.Value.Name) ?? "Reusable component",
+                RootType = rootType,
+                Signals = WebsiteSignalBindingPolicy.Validate(pair.Value.Signals),
+                Interactions = SanitizeInteractions(pair.Value.Interactions),
                 Style = SanitizeStyle(pair.Value.Style),
-                Layout = SanitizeLayout(pair.Value.Layout),
-                Responsive = SanitizeResponsive(pair.Value.Responsive, breakpointIds),
+                Layout = SanitizeLayout(pair.Value.Layout, rootCapability?.LayoutModes),
+                Responsive = SanitizeResponsive(pair.Value.Responsive, breakpointIds, rootCapability?.LayoutModes),
                 UpdatedUtc = pair.Value.UpdatedUtc == default ? DateTime.UtcNow : pair.Value.UpdatedUtc
             };
 
