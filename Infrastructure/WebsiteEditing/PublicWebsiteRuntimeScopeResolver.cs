@@ -17,6 +17,17 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
     private static readonly HashSet<string> LegendHosts =
         new(StringComparer.OrdinalIgnoreCase) { "mylegnd.com", "www.mylegnd.com" };
 
+    public async Task<PublicWebsiteRuntimeScope?> ResolveInquiryAsync(
+        HttpContext context,
+        CancellationToken cancellationToken = default)
+    {
+        // The verified browser Origin selects the public owner. The form never sends
+        // an owner ID or site key that could redirect an inquiry to another scope.
+        var legend = await ResolveAsync(context, WebsiteEditorSiteKeys.Legend, cancellationToken);
+        if (legend is not null) return legend;
+        return await ResolveAsync(context, WebsiteEditorSiteKeys.Business, cancellationToken);
+    }
+
     public async Task<PublicWebsiteRuntimeScope?> ResolveAsync(
         HttpContext context,
         string? requestedSiteKey,
