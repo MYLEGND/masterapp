@@ -1,10 +1,12 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder reported that Shop Parfait internal login is failing with HTTP 500 and explicitly requested a surgical app-wide fix. Deploy only Parfait. Preserve AgentPortal, ClientApp, Protect, LEGEND Website, Cloudflare routing, billing, CRM, editor state, and unrelated systems.",
-  "purpose": "Complete the planned Parfait Data Protection migration so OIDC state, nonce/correlation data, and ParfaitApp.InternalAuth survive deploys/restarts. Use the existing platform Data Protection authority and the canonical Portal Blob/Key Vault locations, isolated by the ParfaitApp application name. This is the one documented migration boundary; existing Parfait sessions may require one fresh sign-in and an unreadable legacy Meta credential may require reconnect.",
-  "requestId": "parfait-auth-data-protection-login-500-repair-20260925",
+  "authorization": "Founder explicitly authorized the centralized website commerce addition after isolated validation. Deploy only Parfait, Protect Website, and LEGEND Website. Preserve AgentPortal, ClientApp, Cloudflare routing, CRM, existing website drafts/published versions, authentication, billing authorities, marketing connections, and unrelated systems.",
+  "purpose": "Release the centralized Store capability: Website Studio Add/Remove Store and editable Store/Shop navigation, scoped cart and Parfait-hosted storefront, shared product/order/inventory/discount/checkout authorities, Parfait-style Manage Store workspace, compiled business Store navigation, and canonical analytics/Meta routing. No mirrored storefront, no duplicate product/order store, no second Meta sender, and no stacked website override system.",
+  "requestId": "centralized-website-commerce-20260925",
   "releaseMode": "approved-only",
   "targets": [
+    "masterapp-protect",
+    "masterapp-website",
     "masterapp-parfait"
   ],
   "cloudflareWebsiteRouting": false
